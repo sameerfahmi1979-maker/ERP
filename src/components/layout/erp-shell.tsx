@@ -1,6 +1,8 @@
+"use client";
+
+import { useState } from "react";
 import { AppHeader } from "@/components/layout/app-header";
 import { AppSidebar } from "@/components/layout/app-sidebar";
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 
 type ErpShellProps = {
   children: React.ReactNode;
@@ -9,13 +11,15 @@ type ErpShellProps = {
 };
 
 export function ErpShell({ children, displayName, email }: ErpShellProps) {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
   return (
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset>
+    <div className="flex h-screen w-full overflow-hidden bg-background">
+      <AppSidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />
+      <div className="flex flex-1 flex-col overflow-hidden">
         <AppHeader displayName={displayName} email={email} />
-        <main className="flex flex-1 flex-col gap-4 p-4 md:p-6">{children}</main>
-      </SidebarInset>
-    </SidebarProvider>
+        <main className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
+      </div>
+    </div>
   );
 }

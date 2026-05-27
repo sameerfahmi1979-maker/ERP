@@ -1,20 +1,34 @@
-import { PageBreadcrumb } from "@/components/layout/page-breadcrumb";
+import { ERPPageHeader } from "@/components/erp/page-header";
+import { ERPSectionCard } from "@/components/erp/section-card";
+import { Button } from "@/components/ui/button";
 import { UsersTable } from "@/features/users/users-table";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { listUsers } from "@/server/queries/users";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Plus, Users as UsersIcon } from "lucide-react";
 
 export default async function AdminUsersPage() {
   const ctx = await getAuthContext();
 
   if (!hasPermission(ctx, "users.view")) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Access denied</CardTitle>
-          <CardDescription>You need the users.view permission.</CardDescription>
-        </CardHeader>
-      </Card>
+      <div className="flex flex-col gap-6">
+        <ERPPageHeader
+          title="Users"
+          description="User directory and management"
+          breadcrumbs={[
+            { label: "Dashboard", href: "/dashboard" },
+            { label: "Admin" },
+            { label: "Users" },
+          ]}
+        />
+        <Card>
+          <CardHeader>
+            <CardTitle>Access denied</CardTitle>
+            <CardDescription>You need the users.view permission.</CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
     );
   }
 
@@ -22,28 +36,34 @@ export default async function AdminUsersPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <PageBreadcrumb
-          items={[
-            { label: "Dashboard", href: "/dashboard" },
-            { label: "Admin" },
-            { label: "Users" },
-          ]}
-        />
-        <h1 className="text-2xl font-semibold tracking-tight">Users</h1>
-        <p className="text-muted-foreground">
-          ERP user profiles with numeric IDs. Auth email is shown only for the signed-in user until admin service queries are added.
-        </p>
-      </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>User directory</CardTitle>
-          <CardDescription>Search, filter, and role assignment foundations.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <UsersTable data={users} />
-        </CardContent>
-      </Card>
+      <ERPPageHeader
+        title="User Management"
+        description="ERP user profiles with numeric IDs. Auth email is shown only for the signed-in user until admin service queries are added."
+        breadcrumbs={[
+          { label: "Dashboard", href: "/dashboard" },
+          { label: "Admin" },
+          { label: "Users" },
+        ]}
+        actions={
+          <Button size="sm" className="h-9 text-xs gap-1.5">
+            <Plus className="h-3.5 w-3.5" />
+            Add User
+          </Button>
+        }
+      />
+      <ERPSectionCard
+        title="User Directory"
+        description="Search, filter, and role assignment foundations"
+        actions={
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <UsersIcon className="h-3.5 w-3.5" />
+            <span>{users.length} total</span>
+          </div>
+        }
+        noPadding
+      >
+        <UsersTable data={users} />
+      </ERPSectionCard>
     </div>
   );
 }

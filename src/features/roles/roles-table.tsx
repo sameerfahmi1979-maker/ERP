@@ -11,9 +11,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Pencil, CheckCircle, Ban, Trash2, Shield } from "lucide-react";
+import { MoreHorizontal, Pencil, CheckCircle, Ban, Trash2, Shield, Eye } from "lucide-react";
 import type { Role } from "@/types/database";
 import { RoleFormDialog } from "./role-form-dialog";
+import { RoleDetailDrawer } from "./role-detail-drawer";
 import { updateRoleStatus, deleteRole } from "@/server/actions/roles";
 import { toast } from "sonner";
 
@@ -24,6 +25,13 @@ type RolesTableProps = {
 export function RolesTable({ data }: RolesTableProps) {
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [selectedRoleId, setSelectedRoleId] = useState<number | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  const handleViewDetails = (roleId: number) => {
+    setSelectedRoleId(roleId);
+    setIsDrawerOpen(true);
+  };
 
   const columns: ColumnDef<Role>[] = [
     {
@@ -113,6 +121,10 @@ export function RolesTable({ data }: RolesTableProps) {
               <MoreHorizontal className="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleViewDetails(role.id)}>
+                <Eye className="mr-2 h-4 w-4" />
+                View Details
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={handleEdit}>
                 <Pencil className="mr-2 h-4 w-4" />
                 Edit
@@ -147,6 +159,11 @@ export function RolesTable({ data }: RolesTableProps) {
           }}
         />
       )}
+      <RoleDetailDrawer
+        roleId={selectedRoleId}
+        open={isDrawerOpen}
+        onOpenChange={setIsDrawerOpen}
+      />
     </>
   );
 }

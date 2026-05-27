@@ -1,14 +1,14 @@
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { ERPSectionCard } from "@/components/erp/section-card";
-import { Button } from "@/components/ui/button";
 import { UsersTable } from "@/features/users/users-table";
+import { AddUserDialog } from "@/features/users/add-user-dialog";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { listUsers } from "@/server/queries/users";
 import { listRoles } from "@/server/queries/roles";
 import { listOrganizations } from "@/server/queries/organizations";
 import { listBranches } from "@/server/queries/branches";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Users as UsersIcon } from "lucide-react";
+import { Users as UsersIcon } from "lucide-react";
 
 export default async function AdminUsersPage() {
   const ctx = await getAuthContext();
@@ -42,6 +42,8 @@ export default async function AdminUsersPage() {
     listBranches(),
   ]);
 
+  const canManage = hasPermission(ctx, "users.manage");
+
   return (
     <div className="flex flex-col gap-6">
       <ERPPageHeader
@@ -53,10 +55,13 @@ export default async function AdminUsersPage() {
           { label: "Users" },
         ]}
         actions={
-          <Button size="sm" className="h-9 text-xs gap-1.5" disabled>
-            <Plus className="h-3.5 w-3.5" />
-            Add User
-          </Button>
+          canManage ? (
+            <AddUserDialog
+              companies={organizations}
+              branches={branches}
+              roles={roles}
+            />
+          ) : null
         }
       />
       <ERPSectionCard

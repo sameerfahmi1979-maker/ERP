@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit, createAuditDiff } from "@/server/actions/audit";
@@ -8,9 +9,11 @@ import {
   adminUpdateUserProfileSchema,
   userRoleAssignmentSchema,
   userRoleRemovalSchema,
+  createUserSchema,
   type AdminUpdateUserProfileInput,
   type UserRoleAssignmentInput,
   type UserRoleRemovalInput,
+  type CreateUserInput,
 } from "@/features/users/user-schema";
 
 export type ActionResult<T = unknown> = {
@@ -18,6 +21,142 @@ export type ActionResult<T = unknown> = {
   data?: T;
   error?: string;
 };
+
+/**
+ * Create new user (Admin only)
+ * Creates Auth user and user profile with optional initial role assignment
+ * Uses service-role Supabase Admin API (server-only)
+ * Phase 002D
+ */
+export async function createUser(
+  input: CreateUserInput,
+): Promise<ActionResult<{ user_profile_id: number }>> {
+  try {
+    // 1. Validate input
+    const validated = createUserSchema.parse(input);
+
+    // 2. Check permissions
+    const ctx = await getAuthContext();
+    if (!hasPermission(ctx, "users.manage")) {
+      return { success: false, error: "You do not have permission to create users" };
+    }
+
+    // 3. Create Auth user using Admin API (service-role)
+    const adminClient = createAdminClient();
+    
+    let authUser;
+    if (validated.send_invite_email) {
+      // Use invite email method (requires SMTP configured)
+      const { data, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
+        validated.email,
+        {
+          data: {
+            full_name: validated.full_name,
+          },
+        }
+      );
+      if (inviteError) {
+        console.error("inviteUserByEmail error", inviteError);
+        return { success: false, error: `Failed to send invite: ${inviteError.message}` };
+      }
+      authUser = data.user;
+    } else {
+      // Use createUser with temporary password
+      if (!validated.temporary_password) {
+        return { success: false, error: "Temporary password is required when not sending invite email" };
+      }
+      
+      const { data, error: createError } = await adminClient.auth.admin.createUser({
+        email: validated.email,
+        password: validated.temporary_password,
+        email_confirm: true, // Auto-confirm email
+        user_metadata: {
+          full_name: validated.full_name,
+        },
+      });
+      
+      if (createError) {
+        console.error("createUser error", createError);
+        return { success: false, error: `Failed to create user: ${createError.message}` };
+      }
+      authUser = data.user;
+    }
+
+    if (!authUser) {
+      return { success: false, error: "Failed to create Auth user" };
+    }
+
+    // 4. Create user profile
+    const supabase = await createClient();
+    const { data: profile, error: profileError } = await supabase
+      .from("user_profiles")
+      .insert({
+        auth_user_id: authUser.id,
+        full_name: validated.full_name,
+        display_name: validated.display_name,
+        phone: validated.phone,
+        job_title: validated.job_title,
+        department: validated.department,
+        owner_company_id: validated.owner_company_id,
+        branch_id: validated.branch_id,
+        status: validated.status,
+      })
+      .select("id")
+      .single();
+
+    if (profileError || !profile) {
+      console.error("user_profiles insert error", profileError);
+      // Cleanup: delete Auth user if profile creation fails
+      await adminClient.auth.admin.deleteUser(authUser.id);
+      return { success: false, error: `Failed to create user profile: ${profileError?.message}` };
+    }
+
+    // 5. Assign initial role if specified
+    if (validated.initial_role_id) {
+      const { error: roleError } = await supabase
+        .from("user_roles")
+        .insert({
+          user_profile_id: profile.id,
+          role_id: validated.initial_role_id,
+          owner_company_id: validated.initial_role_scope_company_id,
+          branch_id: validated.initial_role_scope_branch_id,
+          is_active: true,
+        });
+
+      if (roleError) {
+        console.error("user_roles insert error", roleError);
+        // Don't fail the entire operation, just log warning
+        console.warn(`User created but role assignment failed: ${roleError.message}`);
+      }
+    }
+
+    // 6. Log audit
+    await logAudit({
+      module_code: "users",
+      entity_name: "user_profiles",
+      entity_id: profile.id,
+      entity_reference: validated.email,
+      action: "create",
+      old_values: null,
+      new_values: {
+        email: validated.email,
+        full_name: validated.full_name,
+        status: validated.status,
+        auth_method: validated.send_invite_email ? "invite_email" : "temporary_password",
+      },
+      owner_company_id: validated.owner_company_id ?? undefined,
+      branch_id: validated.branch_id ?? undefined,
+    });
+
+    // 7. Revalidate
+    revalidatePath("/admin/users");
+
+    return { success: true, data: { user_profile_id: profile.id } };
+  } catch (error) {
+    console.error("createUser exception", error);
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
 
 /**
  * Admin update user profile

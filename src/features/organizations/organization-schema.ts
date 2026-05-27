@@ -11,6 +11,7 @@ export const ownerCompanyStatusSchema = z.enum(["active", "inactive", "suspended
 
 // Create schema (for new organizations)
 export const createOrganizationSchema = z.object({
+  // Basic Information
   legal_name_en: z.string().min(1, "English legal name is required").max(255),
   legal_name_ar: z.string().max(255).optional().nullable(),
   short_name: z.string().max(100).optional().nullable(),
@@ -21,16 +22,43 @@ export const createOrganizationSchema = z.object({
     .regex(/^[A-Z0-9_-]+$/, "Company code must be uppercase letters, numbers, hyphens, or underscores"),
   legal_form: z.string().max(100).optional().nullable(),
   country: z.string().max(100).optional().nullable(),
-  emirate: z.string().max(100).optional().nullable(),
-  trade_license_no: z.string().max(100).optional().nullable(),
-  trn: z.string().max(100).optional().nullable(),
-  corporate_tax_no: z.string().max(100).optional().nullable(),
-  default_currency: z.string().max(10).default("AED"),
   status: ownerCompanyStatusSchema.default("active"),
+  
+  // Address & Contact (Phase 002D)
+  emirate: z.string().max(100).optional().nullable(),
+  city: z.string().max(100).optional().nullable(),
+  area: z.string().max(100).optional().nullable(),
+  address_line_1: z.string().max(500).optional().nullable(),
+  address_line_2: z.string().max(500).optional().nullable(),
+  po_box: z.string().max(50).optional().nullable(),
+  makani_number: z.string().max(50).optional().nullable(),
   primary_email: z.string().email("Invalid email format").max(255).optional().nullable().or(z.literal("")),
   primary_phone: z.string().max(50).optional().nullable(),
   website: z.string().url("Invalid URL format").max(255).optional().nullable().or(z.literal("")),
+  default_currency: z.string().max(10).default("AED"),
+  
+  // Legal & Licensing (Phase 002D)
+  trade_license_no: z.string().max(100).optional().nullable(),
+  trade_license_issue_date: z.string().optional().nullable(),
+  trade_license_expiry_date: z.string().optional().nullable(),
+  licensing_authority: z.string().max(255).optional().nullable(),
+  chamber_membership_no: z.string().max(100).optional().nullable(),
+  chamber_membership_expiry_date: z.string().optional().nullable(),
+  
+  // Tax & Compliance (Phase 002D)
+  trn: z.string().max(100).optional().nullable(),
+  vat_registered: z.boolean().default(true),
+  corporate_tax_no: z.string().max(100).optional().nullable(),
+  corporate_tax_registered: z.boolean().default(false),
+  icv_certificate_no: z.string().max(100).optional().nullable(),
+  icv_score: z.number().min(0).max(100).optional().nullable(),
+  icv_issue_date: z.string().optional().nullable(),
+  icv_expiry_date: z.string().optional().nullable(),
+  adnoc_supplier_no: z.string().max(100).optional().nullable(),
+  
+  // Other
   logo_url: z.string().url("Invalid URL format").max(500).optional().nullable().or(z.literal("")),
+  notes: z.string().optional().nullable(),
 });
 
 // Update schema (for editing organizations)

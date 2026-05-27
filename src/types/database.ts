@@ -13,6 +13,13 @@ export type UserProfile = {
   avatar_url: string | null;
   created_at: string;
   updated_at: string;
+  // Phase 002D additions
+  employee_reference: string | null;
+  manager_user_profile_id: number | null;
+  preferred_language: string;
+  timezone: string;
+  last_admin_updated_at: string | null;
+  notes: string | null;
 };
 
 export type Role = {
@@ -22,6 +29,14 @@ export type Role = {
   description: string | null;
   is_system_role: boolean;
   is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  // Phase 002D additions
+  display_name: string | null;
+  role_category: string | null;
+  role_level: string | null;
+  is_assignable: boolean;
+  notes: string | null;
 };
 
 export type Permission = {
@@ -32,6 +47,13 @@ export type Permission = {
   action_code: string;
   description: string | null;
   is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  // Phase 002D additions
+  display_name: string | null;
+  is_system_permission: boolean;
+  is_visible: boolean;
+  sort_order: number;
 };
 
 export type OwnerCompany = {
@@ -56,6 +78,26 @@ export type OwnerCompany = {
   updated_at: string;
   created_by: number | null;
   updated_by: number | null;
+  // Phase 002D additions - UAE compliance fields
+  city: string | null;
+  area: string | null;
+  address_line_1: string | null;
+  address_line_2: string | null;
+  po_box: string | null;
+  makani_number: string | null;
+  trade_license_issue_date: string | null;
+  trade_license_expiry_date: string | null;
+  licensing_authority: string | null;
+  chamber_membership_no: string | null;
+  chamber_membership_expiry_date: string | null;
+  vat_registered: boolean;
+  corporate_tax_registered: boolean;
+  icv_certificate_no: string | null;
+  icv_score: number | null;
+  icv_issue_date: string | null;
+  icv_expiry_date: string | null;
+  adnoc_supplier_no: string | null;
+  notes: string | null;
 };
 
 export type Branch = {
@@ -76,6 +118,22 @@ export type Branch = {
   updated_at: string;
   created_by: number | null;
   updated_by: number | null;
+  // Phase 002D additions - operational & location fields
+  branch_type: string | null;
+  is_main_branch: boolean;
+  operating_status: string;
+  city: string | null;
+  makani_number: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  contact_person_name: string | null;
+  contact_phone: string | null;
+  contact_email: string | null;
+  has_workshop: boolean;
+  has_warehouse: boolean;
+  has_yard: boolean;
+  has_weighbridge: boolean;
+  notes: string | null;
 };
 
 export type UserWithRoles = UserProfile & {

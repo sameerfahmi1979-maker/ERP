@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -21,7 +21,6 @@ import {
 } from "@/components/ui/card";
 
 export function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const {
@@ -37,16 +36,21 @@ export function LoginForm() {
       email: values.email,
       password: values.password,
     });
-    setLoading(false);
 
     if (error) {
+      setLoading(false);
       toast.error(error.message);
       return;
     }
 
     toast.success("Signed in successfully");
-    router.push(searchParams.get("redirectTo") ?? "/dashboard");
-    router.refresh();
+    
+    // Small delay to ensure cookies are set
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    const redirectTo = searchParams.get("redirectTo") ?? "/dashboard";
+    // eslint-disable-next-line react-hooks/immutability
+    window.location.href = redirectTo;
   });
 
   return (

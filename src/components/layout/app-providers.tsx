@@ -1,14 +1,8 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-
-const ThemeProvider = dynamic(
-  () =>
-    import("@/components/layout/theme-provider").then((mod) => mod.ThemeProvider),
-  { ssr: false },
-);
+import { ThemeProvider } from "@/components/layout/theme-provider";
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
   return (

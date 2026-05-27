@@ -1,40 +1,63 @@
-import { PageBreadcrumb } from "@/components/layout/page-breadcrumb";
+import { ERPPageHeader } from "@/components/erp/page-header";
+import { ERPSectionCard } from "@/components/erp/section-card";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { listAuditLogs } from "@/server/queries/audit";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AuditLogsTable } from "@/features/audit/audit-logs-table";
+import { FileText } from "lucide-react";
 
 export default async function AdminAuditPage() {
   const ctx = await getAuthContext();
 
   if (!hasPermission(ctx, "audit.view")) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Access denied</CardTitle>
-        </CardHeader>
-      </Card>
+      <div className="flex flex-col gap-6">
+        <ERPPageHeader
+          title="Audit Logs"
+          description="System audit trail"
+          breadcrumbs={[
+            { label: "Dashboard", href: "/dashboard" },
+            { label: "Admin" },
+            { label: "Audit Logs" },
+          ]}
+        />
+        <Card>
+          <CardHeader>
+            <CardTitle>Access denied</CardTitle>
+            <CardDescription>You need the audit.view permission.</CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
     );
   }
 
+  const auditLogs = await listAuditLogs({ limit: 200 });
+
   return (
     <div className="flex flex-col gap-6">
-      <PageBreadcrumb
-        items={[
+      <ERPPageHeader
+        title="Audit Logs"
+        description="System activity and change history"
+        breadcrumbs={[
           { label: "Dashboard", href: "/dashboard" },
+          { label: "Admin" },
           { label: "Audit Logs" },
         ]}
+        actions={
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <FileText className="h-3.5 w-3.5" />
+            <span>{auditLogs.length} recent logs</span>
+          </div>
+        }
       />
-      <h1 className="text-2xl font-semibold tracking-tight">Audit Logs</h1>
-      <Card>
-        <CardHeader>
-          <CardTitle>Audit trail placeholder</CardTitle>
-          <CardDescription>
-            The audit_logs table stores BIGINT entity_id values and human-readable entity_reference text.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">Audit listing UI will connect after migration approval.</p>
-        </CardContent>
-      </Card>
+      <ERPSectionCard
+        title="Activity Log"
+        description="Recent system activities and changes (last 200 entries)"
+        noPadding
+      >
+        <AuditLogsTable data={auditLogs} />
+      </ERPSectionCard>
     </div>
   );
 }
+

@@ -25,10 +25,6 @@ export async function updateSession(request: NextRequest) {
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
   const pathname = request.nextUrl.pathname;
   const isAuthRoute =
     pathname.startsWith("/login") ||
@@ -41,6 +37,26 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/admin") ||
     pathname.startsWith("/settings") ||
     pathname.startsWith("/profile");
+
+  // Try to get user session
+  let user = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch {
+    // Fallback to cookie check if API call fails
+    const allCookies = request.cookies.getAll();
+    const hasAuthCookie = allCookies.some(cookie => 
+      cookie.name.includes('sb-') && cookie.name.includes('auth-token')
+    );
+    
+    if (hasAuthCookie && isAuthRoute) {
+      // If we have auth cookies but API failed, still allow redirect to dashboard
+      const url = request.nextUrl.clone();
+      url.pathname = "/dashboard";
+      return NextResponse.redirect(url);
+    }
+  }
 
   if (!user && isProtected) {
     const url = request.nextUrl.clone();

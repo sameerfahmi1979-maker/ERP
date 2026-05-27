@@ -37,8 +37,25 @@ export type Permission = {
 export type OwnerCompany = {
   id: number;
   legal_name_en: string;
+  legal_name_ar: string | null;
+  short_name: string | null;
   company_code: string;
+  legal_form: string | null;
+  country: string | null;
+  emirate: string | null;
+  trade_license_no: string | null;
+  trn: string | null;
+  corporate_tax_no: string | null;
+  default_currency: string;
   status: string;
+  primary_email: string | null;
+  primary_phone: string | null;
+  website: string | null;
+  logo_url: string | null;
+  created_at: string;
+  updated_at: string;
+  created_by: number | null;
+  updated_by: number | null;
 };
 
 export type Branch = {
@@ -46,7 +63,19 @@ export type Branch = {
   owner_company_id: number;
   branch_code: string;
   branch_name_en: string;
+  branch_name_ar: string | null;
+  emirate: string | null;
+  area: string | null;
+  address_line_1: string | null;
+  address_line_2: string | null;
+  po_box: string | null;
+  phone: string | null;
+  email: string | null;
   status: string;
+  created_at: string;
+  updated_at: string;
+  created_by: number | null;
+  updated_by: number | null;
 };
 
 export type UserWithRoles = UserProfile & {
@@ -54,4 +83,25 @@ export type UserWithRoles = UserProfile & {
   roles?: { role_code: string; role_name: string }[];
   owner_company?: OwnerCompany | null;
   branch?: Branch | null;
+};
+
+export type BranchWithCompany = Branch & {
+  owner_company?: Pick<OwnerCompany, "id" | "legal_name_en" | "company_code" | "status"> | null;
+};
+
+export type AuditLog = {
+  id: number;
+  actor_user_profile_id: number | null;
+  owner_company_id: number | null;
+  branch_id: number | null;
+  module_code: string | null;
+  entity_name: string | null;
+  entity_id: number | null;
+  entity_reference: string | null;
+  action: string;
+  old_values: Record<string, unknown> | null;
+  new_values: Record<string, unknown> | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  created_at: string;
 };

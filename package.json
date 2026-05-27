@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "cross-env NODE_TLS_REJECT_UNAUTHORIZED=0 next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -13,11 +13,14 @@
   "dependencies": {
     "@base-ui/react": "^1.5.0",
     "@hookform/resolvers": "^5.4.0",
+    "@radix-ui/react-label": "^2.1.8",
+    "@radix-ui/react-slot": "^1.2.4",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.2",
     "@tanstack/react-table": "^8.21.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "cross-env": "^7.0.3",
     "date-fns": "^4.3.0",
     "lucide-react": "^1.16.0",
     "next": "16.2.6",

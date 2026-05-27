@@ -1,11 +1,11 @@
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { ERPSectionCard } from "@/components/erp/section-card";
-import { Button } from "@/components/ui/button";
 import { RolesTable } from "@/features/roles/roles-table";
+import { AddRoleButton } from "@/features/roles/add-role-button";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { listRoles } from "@/server/queries/roles";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Shield } from "lucide-react";
+import { Shield } from "lucide-react";
 
 export default async function AdminRolesPage() {
   const ctx = await getAuthContext();
@@ -33,6 +33,7 @@ export default async function AdminRolesPage() {
   }
 
   const roles = await listRoles();
+  const canManage = hasPermission(ctx, "roles.manage");
 
   return (
     <div className="flex flex-col gap-6">
@@ -44,12 +45,7 @@ export default async function AdminRolesPage() {
           { label: "Admin" },
           { label: "Roles" },
         ]}
-        actions={
-          <Button size="sm" className="h-9 text-xs gap-1.5">
-            <Plus className="h-3.5 w-3.5" />
-            Add Role
-          </Button>
-        }
+        actions={canManage ? <AddRoleButton /> : null}
       />
       <ERPSectionCard
         title="Role Catalog"

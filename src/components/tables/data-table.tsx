@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Search, Filter, Download } from "lucide-react";
 
 type DataTableProps<TData, TValue> = {
   columns: ColumnDef<TData, TValue>[];
@@ -49,22 +50,43 @@ export function DataTable<TData, TValue>({
   });
 
   return (
-    <div className="flex flex-col gap-4">
-      {searchKey ? (
-        <Input
-          placeholder={searchPlaceholder}
-          value={globalFilter}
-          onChange={(e) => setGlobalFilter(e.target.value)}
-          className="max-w-sm"
-        />
-      ) : null}
-      <div className="rounded-lg border">
+    <div className="flex flex-col">
+      {/* Toolbar */}
+      {searchKey && (
+        <div className="flex items-center justify-between gap-2 p-4 border-b border-border/40">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder={searchPlaceholder}
+              value={globalFilter}
+              onChange={(e) => setGlobalFilter(e.target.value)}
+              className="pl-9 h-9 text-sm bg-background"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="h-9 text-xs gap-1.5">
+              <Filter className="h-3.5 w-3.5" />
+              Filter
+            </Button>
+            <Button variant="outline" size="sm" className="h-9 text-xs gap-1.5">
+              <Download className="h-3.5 w-3.5" />
+              Export
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Table */}
+      <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
+              <TableRow key={headerGroup.id} className="hover:bg-transparent border-border/40">
                 {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
+                  <TableHead 
+                    key={header.id} 
+                    className="h-11 text-xs font-semibold uppercase tracking-wider text-muted-foreground bg-muted/30"
+                  >
                     {header.isPlaceholder
                       ? null
                       : flexRender(
@@ -79,9 +101,12 @@ export function DataTable<TData, TValue>({
           <TableBody>
             {table.getRowModel().rows.length ? (
               table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
+                <TableRow 
+                  key={row.id} 
+                  className="border-border/40 hover:bg-muted/30 transition-colors"
+                >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell key={cell.id} className="h-14 text-sm">
                       {flexRender(
                         cell.column.columnDef.cell,
                         cell.getContext(),
@@ -94,7 +119,7 @@ export function DataTable<TData, TValue>({
               <TableRow>
                 <TableCell
                   colSpan={columns.length}
-                  className="h-24 text-center text-muted-foreground"
+                  className="h-32 text-center text-sm text-muted-foreground"
                 >
                   {emptyMessage}
                 </TableCell>
@@ -103,15 +128,17 @@ export function DataTable<TData, TValue>({
           </TableBody>
         </Table>
       </div>
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          Page {table.getState().pagination.pageIndex + 1} of{" "}
-          {table.getPageCount() || 1}
+
+      {/* Footer */}
+      <div className="flex items-center justify-between px-4 py-3 border-t border-border/40">
+        <p className="text-xs text-muted-foreground">
+          Showing {table.getRowModel().rows.length} of {data.length} results
         </p>
         <div className="flex gap-2">
           <Button
             variant="outline"
             size="sm"
+            className="h-8 text-xs"
             onClick={() => table.previousPage()}
             disabled={!table.getCanPreviousPage()}
           >
@@ -120,6 +147,7 @@ export function DataTable<TData, TValue>({
           <Button
             variant="outline"
             size="sm"
+            className="h-8 text-xs"
             onClick={() => table.nextPage()}
             disabled={!table.getCanNextPage()}
           >

@@ -4,6 +4,9 @@ import { Button } from "@/components/ui/button";
 import { UsersTable } from "@/features/users/users-table";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { listUsers } from "@/server/queries/users";
+import { listRoles } from "@/server/queries/roles";
+import { listOrganizations } from "@/server/queries/organizations";
+import { listBranches } from "@/server/queries/branches";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Plus, Users as UsersIcon } from "lucide-react";
 
@@ -32,28 +35,33 @@ export default async function AdminUsersPage() {
     );
   }
 
-  const users = await listUsers();
+  const [users, roles, organizations, branches] = await Promise.all([
+    listUsers(),
+    listRoles(),
+    listOrganizations(),
+    listBranches(),
+  ]);
 
   return (
     <div className="flex flex-col gap-6">
       <ERPPageHeader
         title="User Management"
-        description="ERP user profiles with numeric IDs. Auth email is shown only for the signed-in user until admin service queries are added."
+        description="Manage user profiles and role assignments"
         breadcrumbs={[
           { label: "Dashboard", href: "/dashboard" },
           { label: "Admin" },
           { label: "Users" },
         ]}
         actions={
-          <Button size="sm" className="h-9 text-xs gap-1.5">
+          <Button size="sm" className="h-9 text-xs gap-1.5" disabled>
             <Plus className="h-3.5 w-3.5" />
             Add User
           </Button>
         }
       />
       <ERPSectionCard
-        title="User Directory"
-        description="Search, filter, and role assignment foundations"
+        title="All Users"
+        description="User profiles and role assignments"
         actions={
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <UsersIcon className="h-3.5 w-3.5" />
@@ -62,8 +70,14 @@ export default async function AdminUsersPage() {
         }
         noPadding
       >
-        <UsersTable data={users} />
+        <UsersTable
+          data={users}
+          roles={roles}
+          companies={organizations}
+          branches={branches}
+        />
       </ERPSectionCard>
     </div>
   );
 }
+

@@ -122,7 +122,12 @@ create table public.user_roles (
   is_active boolean not null default true,
   assigned_at timestamptz not null default now(),
   assigned_by bigint references public.user_profiles(id) on delete set null,
-  unique (user_profile_id, role_id, owner_company_id, branch_id)
+  constraint user_roles_scope_unique unique nulls not distinct (
+    user_profile_id,
+    role_id,
+    owner_company_id,
+    branch_id
+  )
 );
 
 create table public.audit_logs (
@@ -261,7 +266,7 @@ as $$
   );
 $$;
 
-create or replace function public.current_user_has_permission(permission_code text)
+create or replace function public.current_user_is_global_admin()
 returns boolean
 language sql
 stable
@@ -272,6 +277,165 @@ as $$
     select 1
     from public.user_roles ur
     join public.roles r on r.id = ur.role_id
+    join public.user_profiles up on up.id = ur.user_profile_id
+    where up.auth_user_id = auth.uid()
+      and ur.is_active = true
+      and r.is_active = true
+      and r.role_code in ('system_admin', 'group_admin')
+      and ur.owner_company_id is null
+      and ur.branch_id is null
+  );
+$$;
+
+create or replace function public.current_user_has_role_in_company(
+  role_code text,
+  target_owner_company_id bigint
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    target_owner_company_id is not null
+    and (
+      public.current_user_is_global_admin()
+      or exists (
+        select 1
+        from public.user_roles ur
+        join public.roles r on r.id = ur.role_id
+        join public.user_profiles up on up.id = ur.user_profile_id
+        where up.auth_user_id = auth.uid()
+          and ur.is_active = true
+          and r.is_active = true
+          and r.role_code = current_user_has_role_in_company.role_code
+          and ur.owner_company_id = target_owner_company_id
+          and ur.branch_id is null
+      )
+    );
+$$;
+
+create or replace function public.current_user_has_role_in_branch(
+  role_code text,
+  target_branch_id bigint
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    target_branch_id is not null
+    and (
+      public.current_user_is_global_admin()
+      or exists (
+        select 1
+        from public.user_roles ur
+        join public.roles r on r.id = ur.role_id
+        join public.user_profiles up on up.id = ur.user_profile_id
+        where up.auth_user_id = auth.uid()
+          and ur.is_active = true
+          and r.is_active = true
+          and r.role_code = current_user_has_role_in_branch.role_code
+          and ur.branch_id = target_branch_id
+      )
+    );
+$$;
+
+create or replace function public.current_user_has_permission_in_company(
+  permission_code text,
+  target_owner_company_id bigint
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    target_owner_company_id is not null
+    and (
+      public.current_user_is_global_admin()
+      or exists (
+        select 1
+        from public.user_roles ur
+        join public.roles r on r.id = ur.role_id
+        join public.role_permissions rp on rp.role_id = r.id
+        join public.permissions p on p.id = rp.permission_id
+        join public.user_profiles up on up.id = ur.user_profile_id
+        where up.auth_user_id = auth.uid()
+          and ur.is_active = true
+          and r.is_active = true
+          and p.is_active = true
+          and p.permission_code = current_user_has_permission_in_company.permission_code
+          and ur.owner_company_id = target_owner_company_id
+          and ur.branch_id is null
+      )
+    );
+$$;
+
+create or replace function public.current_user_has_permission_in_branch(
+  permission_code text,
+  target_branch_id bigint
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    target_branch_id is not null
+    and (
+      public.current_user_is_global_admin()
+      or exists (
+        select 1
+        from public.user_roles ur
+        join public.roles r on r.id = ur.role_id
+        join public.role_permissions rp on rp.role_id = r.id
+        join public.permissions p on p.id = rp.permission_id
+        join public.user_profiles up on up.id = ur.user_profile_id
+        where up.auth_user_id = auth.uid()
+          and ur.is_active = true
+          and r.is_active = true
+          and p.is_active = true
+          and p.permission_code = current_user_has_permission_in_branch.permission_code
+          and ur.branch_id = target_branch_id
+      )
+      or exists (
+        select 1
+        from public.user_roles ur
+        join public.roles r on r.id = ur.role_id
+        join public.role_permissions rp on rp.role_id = r.id
+        join public.permissions p on p.id = rp.permission_id
+        join public.user_profiles up on up.id = ur.user_profile_id
+        join public.branches b on b.id = target_branch_id
+        where up.auth_user_id = auth.uid()
+          and ur.is_active = true
+          and r.is_active = true
+          and p.is_active = true
+          and p.permission_code = current_user_has_permission_in_branch.permission_code
+          and ur.owner_company_id = b.owner_company_id
+          and ur.branch_id is null
+      )
+    );
+$$;
+
+-- Permission at any scope (for global RBAC catalog tables: roles, permissions).
+create or replace function public.current_user_has_permission_any_scope(permission_code text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select public.current_user_is_global_admin()
+  or exists (
+    select 1
+    from public.user_roles ur
+    join public.roles r on r.id = ur.role_id
     join public.role_permissions rp on rp.role_id = r.id
     join public.permissions p on p.id = rp.permission_id
     join public.user_profiles up on up.id = ur.user_profile_id
@@ -279,22 +443,297 @@ as $$
       and ur.is_active = true
       and r.is_active = true
       and p.is_active = true
-      and p.permission_code = permission_code
-  )
-  or public.current_user_has_role('system_admin');
+      and p.permission_code = current_user_has_permission_any_scope.permission_code
+  );
 $$;
+
+-- Unscoped permission check: global admins or explicitly global role assignments only.
+create or replace function public.current_user_has_permission(permission_code text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select public.current_user_is_global_admin()
+  or exists (
+    select 1
+    from public.user_roles ur
+    join public.roles r on r.id = ur.role_id
+    join public.role_permissions rp on rp.role_id = r.id
+    join public.permissions p on p.id = rp.permission_id
+    join public.user_profiles up on up.id = ur.user_profile_id
+    where up.auth_user_id = auth.uid()
+      and ur.is_active = true
+      and r.is_active = true
+      and p.is_active = true
+      and p.permission_code = current_user_has_permission.permission_code
+      and ur.owner_company_id is null
+      and ur.branch_id is null
+  );
+$$;
+
+create or replace function public.update_my_profile(
+  p_display_name text default null,
+  p_phone text default null,
+  p_avatar_url text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  update public.user_profiles
+  set
+    display_name = coalesce(p_display_name, display_name),
+    phone = p_phone,
+    avatar_url = p_avatar_url,
+    updated_at = now()
+  where auth_user_id = auth.uid();
+
+  if not found then
+    raise exception 'Profile not found';
+  end if;
+end;
+$$;
+
+create or replace function public.current_user_can_manage_user_role_assignment(
+  target_user_profile_id bigint,
+  target_role_id bigint,
+  target_owner_company_id bigint,
+  target_branch_id bigint
+)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_is_global_admin boolean;
+  v_current_profile_id bigint;
+  v_target_user_company_id bigint;
+  v_target_user_branch_id bigint;
+  v_target_role_code text;
+  v_current_user_has_company_admin boolean;
+  v_current_user_has_branch_admin boolean;
+begin
+  -- Get current user's profile
+  v_current_profile_id := public.current_user_profile_id();
+  if v_current_profile_id is null then
+    return false;
+  end if;
+
+  -- Check if current user is true global admin
+  v_is_global_admin := public.current_user_is_global_admin();
+
+  -- Global admins can manage any role assignment
+  if v_is_global_admin then
+    return true;
+  end if;
+
+  -- Get target role code
+  select role_code into v_target_role_code
+  from public.roles
+  where id = target_role_id;
+
+  if v_target_role_code is null then
+    return false;
+  end if;
+
+  -- Non-global admins cannot assign system_admin or group_admin
+  if v_target_role_code in ('system_admin', 'group_admin') then
+    return false;
+  end if;
+
+  -- Non-global admins cannot create global-null assignments
+  if target_owner_company_id is null and target_branch_id is null then
+    return false;
+  end if;
+
+  -- Get target user's company and branch
+  select owner_company_id, branch_id
+  into v_target_user_company_id, v_target_user_branch_id
+  from public.user_profiles
+  where id = target_user_profile_id;
+
+  if v_target_user_company_id is null then
+    return false;  -- Target user must belong to a company for scoped admin management
+  end if;
+
+  -- Check if current user has company-level admin permission in target company
+  v_current_user_has_company_admin := public.current_user_has_permission_in_company(
+    'users.update',
+    v_target_user_company_id
+  );
+
+  if v_current_user_has_company_admin then
+    -- Company admin can assign roles within their company
+    -- But the assignment scope must match
+    if target_owner_company_id = v_target_user_company_id then
+      -- If assigning branch-scoped role, branch must belong to the company
+      if target_branch_id is not null then
+        return exists (
+          select 1
+          from public.branches
+          where id = target_branch_id
+            and owner_company_id = target_owner_company_id
+        );
+      end if;
+      return true;
+    end if;
+    return false;
+  end if;
+
+  -- Check if current user has branch-level admin permission
+  if v_target_user_branch_id is not null then
+    v_current_user_has_branch_admin := public.current_user_has_permission_in_branch(
+      'users.update',
+      v_target_user_branch_id
+    );
+
+    if v_current_user_has_branch_admin then
+      -- Branch admin can only assign branch-scoped roles within their branch
+      return target_owner_company_id = v_target_user_company_id
+        and target_branch_id = v_target_user_branch_id;
+    end if;
+  end if;
+
+  return false;
+end;
+$$;
+
+-- Validate user_roles scope consistency
+create or replace function public.validate_user_role_scope()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  -- If branch_id is not null, owner_company_id must also be not null
+  if new.branch_id is not null and new.owner_company_id is null then
+    raise exception 'Branch-scoped assignment requires owner_company_id';
+  end if;
+
+  -- If branch_id is not null, verify it belongs to owner_company_id
+  if new.branch_id is not null and new.owner_company_id is not null then
+    if not exists (
+      select 1
+      from public.branches
+      where id = new.branch_id
+        and owner_company_id = new.owner_company_id
+    ) then
+      raise exception 'Branch % does not belong to company %', new.branch_id, new.owner_company_id;
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger trg_user_roles_validate_scope
+  before insert or update on public.user_roles
+  for each row execute function public.validate_user_role_scope();
+
+-- Validate user_profiles scope consistency
+create or replace function public.validate_user_profile_scope()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  -- If branch_id is not null, owner_company_id must also be not null
+  if new.branch_id is not null and new.owner_company_id is null then
+    raise exception 'User assigned to branch must have owner_company_id';
+  end if;
+
+  -- If branch_id is not null, verify it belongs to owner_company_id
+  if new.branch_id is not null and new.owner_company_id is not null then
+    if not exists (
+      select 1
+      from public.branches
+      where id = new.branch_id
+        and owner_company_id = new.owner_company_id
+    ) then
+      raise exception 'Branch % does not belong to company %', new.branch_id, new.owner_company_id;
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger trg_user_profiles_validate_scope
+  before insert or update on public.user_profiles
+  for each row execute function public.validate_user_profile_scope();
+
+-- Validate audit_logs scope consistency
+create or replace function public.validate_audit_log_scope()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  -- If branch_id is not null, owner_company_id must also be not null
+  if new.branch_id is not null and new.owner_company_id is null then
+    raise exception 'Audit log for branch must have owner_company_id';
+  end if;
+
+  -- If branch_id is not null, verify it belongs to owner_company_id
+  if new.branch_id is not null and new.owner_company_id is not null then
+    if not exists (
+      select 1
+      from public.branches
+      where id = new.branch_id
+        and owner_company_id = new.owner_company_id
+    ) then
+      raise exception 'Audit log branch % does not belong to company %', new.branch_id, new.owner_company_id;
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger trg_audit_logs_validate_scope
+  before insert or update on public.audit_logs
+  for each row execute function public.validate_audit_log_scope();
 
 revoke all on function public.current_user_profile_id() from public;
 revoke all on function public.current_user_owner_company_id() from public;
 revoke all on function public.current_user_branch_id() from public;
 revoke all on function public.current_user_has_role(text) from public;
+revoke all on function public.current_user_is_global_admin() from public;
+revoke all on function public.current_user_has_role_in_company(text, bigint) from public;
+revoke all on function public.current_user_has_role_in_branch(text, bigint) from public;
+revoke all on function public.current_user_has_permission_any_scope(text) from public;
 revoke all on function public.current_user_has_permission(text) from public;
+revoke all on function public.current_user_has_permission_in_company(text, bigint) from public;
+revoke all on function public.current_user_has_permission_in_branch(text, bigint) from public;
+revoke all on function public.update_my_profile(text, text, text) from public;
+revoke all on function public.current_user_can_manage_user_role_assignment(bigint, bigint, bigint, bigint) from public;
 
 grant execute on function public.current_user_profile_id() to authenticated;
 grant execute on function public.current_user_owner_company_id() to authenticated;
 grant execute on function public.current_user_branch_id() to authenticated;
 grant execute on function public.current_user_has_role(text) to authenticated;
+grant execute on function public.current_user_is_global_admin() to authenticated;
+grant execute on function public.current_user_has_role_in_company(text, bigint) to authenticated;
+grant execute on function public.current_user_has_role_in_branch(text, bigint) to authenticated;
+grant execute on function public.current_user_has_permission_any_scope(text) to authenticated;
 grant execute on function public.current_user_has_permission(text) to authenticated;
+grant execute on function public.current_user_has_permission_in_company(text, bigint) to authenticated;
+grant execute on function public.current_user_has_permission_in_branch(text, bigint) to authenticated;
+grant execute on function public.update_my_profile(text, text, text) to authenticated;
+grant execute on function public.current_user_can_manage_user_role_assignment(bigint, bigint, bigint, bigint) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Row Level Security
@@ -309,142 +748,213 @@ alter table public.role_permissions enable row level security;
 alter table public.user_roles enable row level security;
 alter table public.audit_logs enable row level security;
 
--- owner_companies
+-- owner_companies (tenant-scoped)
 create policy owner_companies_select on public.owner_companies
   for select to authenticated
   using (
-    public.current_user_has_permission('organizations.view')
-    or public.current_user_has_role('system_admin')
-    or public.current_user_has_role('group_admin')
+    public.current_user_is_global_admin()
+    or public.current_user_has_permission_in_company('organizations.view', id)
   );
 
 create policy owner_companies_manage on public.owner_companies
   for all to authenticated
   using (
-    public.current_user_has_permission('organizations.manage')
-    or public.current_user_has_role('system_admin')
-    or public.current_user_has_role('group_admin')
+    public.current_user_is_global_admin()
+    or public.current_user_has_permission_in_company('organizations.manage', id)
   )
   with check (
-    public.current_user_has_permission('organizations.manage')
-    or public.current_user_has_role('system_admin')
-    or public.current_user_has_role('group_admin')
+    public.current_user_is_global_admin()
+    or public.current_user_has_permission_in_company('organizations.manage', id)
   );
 
--- branches
+-- branches (tenant-scoped)
 create policy branches_select on public.branches
   for select to authenticated
   using (
-    public.current_user_has_permission('branches.view')
-    or public.current_user_has_role('system_admin')
-    or public.current_user_has_role('group_admin')
-    or (
-      public.current_user_has_role('company_admin')
-      and owner_company_id = public.current_user_owner_company_id()
-    )
-    or (
-      public.current_user_has_role('branch_admin')
-      and id = public.current_user_branch_id()
-    )
+    public.current_user_is_global_admin()
+    or public.current_user_has_permission_in_company('branches.view', owner_company_id)
+    or public.current_user_has_permission_in_branch('branches.view', id)
   );
 
 create policy branches_manage on public.branches
   for all to authenticated
   using (
-    public.current_user_has_permission('branches.manage')
-    or public.current_user_has_role('system_admin')
-    or public.current_user_has_role('group_admin')
+    public.current_user_is_global_admin()
+    or public.current_user_has_permission_in_company('branches.manage', owner_company_id)
+    or public.current_user_has_permission_in_branch('branches.manage', id)
   )
   with check (
-    public.current_user_has_permission('branches.manage')
-    or public.current_user_has_role('system_admin')
-    or public.current_user_has_role('group_admin')
+    public.current_user_is_global_admin()
+    or public.current_user_has_permission_in_company('branches.manage', owner_company_id)
+    or public.current_user_has_permission_in_branch('branches.manage', id)
   );
 
--- user_profiles
+-- user_profiles (own row + scoped admin; no direct self-update)
 create policy user_profiles_select_own on public.user_profiles
   for select to authenticated
   using (auth_user_id = auth.uid());
 
-create policy user_profiles_select_admin on public.user_profiles
-  for select to authenticated
-  using (public.current_user_has_permission('users.view'));
-
-create policy user_profiles_update_own on public.user_profiles
-  for update to authenticated
-  using (auth_user_id = auth.uid())
-  with check (auth_user_id = auth.uid());
-
-create policy user_profiles_manage on public.user_profiles
-  for all to authenticated
-  using (public.current_user_has_permission('users.update'))
-  with check (public.current_user_has_permission('users.update'));
-
--- roles (read for authenticated with roles.view; manage for admins)
-create policy roles_select on public.roles
+create policy user_profiles_select_scoped on public.user_profiles
   for select to authenticated
   using (
-    public.current_user_has_permission('roles.view')
-    or public.current_user_has_role('system_admin')
+    public.current_user_is_global_admin()
+    or public.current_user_has_permission_in_company('users.view', owner_company_id)
+    or (
+      branch_id is not null
+      and public.current_user_has_permission_in_branch('users.view', branch_id)
+    )
   );
+
+create policy user_profiles_insert_scoped on public.user_profiles
+  for insert to authenticated
+  with check (
+    public.current_user_is_global_admin()
+    or public.current_user_has_permission_in_company('users.create', owner_company_id)
+    or (
+      branch_id is not null
+      and public.current_user_has_permission_in_branch('users.create', branch_id)
+    )
+  );
+
+create policy user_profiles_update_scoped on public.user_profiles
+  for update to authenticated
+  using (
+    public.current_user_is_global_admin()
+    or public.current_user_has_permission_in_company('users.update', owner_company_id)
+    or (
+      branch_id is not null
+      and public.current_user_has_permission_in_branch('users.update', branch_id)
+    )
+  )
+  with check (
+    public.current_user_is_global_admin()
+    or public.current_user_has_permission_in_company('users.update', owner_company_id)
+    or (
+      branch_id is not null
+      and public.current_user_has_permission_in_branch('users.update', branch_id)
+    )
+  );
+
+create policy user_profiles_delete_scoped on public.user_profiles
+  for delete to authenticated
+  using (
+    public.current_user_is_global_admin()
+    or public.current_user_has_permission_in_company('users.delete', owner_company_id)
+    or (
+      branch_id is not null
+      and public.current_user_has_permission_in_branch('users.delete', branch_id)
+    )
+  );
+
+-- roles / permissions (global RBAC catalog — any-scope read, global manage)
+create policy roles_select on public.roles
+  for select to authenticated
+  using (public.current_user_has_permission_any_scope('roles.view'));
 
 create policy roles_manage on public.roles
   for all to authenticated
-  using (public.current_user_has_permission('roles.manage'))
-  with check (public.current_user_has_permission('roles.manage'));
+  using (
+    public.current_user_is_global_admin()
+    or public.current_user_has_permission('roles.manage')
+  )
+  with check (
+    public.current_user_is_global_admin()
+    or public.current_user_has_permission('roles.manage')
+  );
 
--- permissions
 create policy permissions_select on public.permissions
   for select to authenticated
-  using (
-    public.current_user_has_permission('permissions.view')
-    or public.current_user_has_role('system_admin')
-  );
+  using (public.current_user_has_permission_any_scope('permissions.view'));
 
 create policy permissions_manage on public.permissions
   for all to authenticated
-  using (public.current_user_has_permission('permissions.manage'))
-  with check (public.current_user_has_permission('permissions.manage'));
+  using (
+    public.current_user_is_global_admin()
+    or public.current_user_has_permission('permissions.manage')
+  )
+  with check (
+    public.current_user_is_global_admin()
+    or public.current_user_has_permission('permissions.manage')
+  );
 
--- role_permissions
 create policy role_permissions_select on public.role_permissions
   for select to authenticated
-  using (
-    public.current_user_has_permission('roles.view')
-    or public.current_user_has_role('system_admin')
-  );
+  using (public.current_user_has_permission_any_scope('roles.view'));
 
 create policy role_permissions_manage on public.role_permissions
   for all to authenticated
-  using (public.current_user_has_permission('roles.manage'))
-  with check (public.current_user_has_permission('roles.manage'));
-
--- user_roles
-create policy user_roles_select on public.user_roles
-  for select to authenticated
   using (
-    public.current_user_has_permission('users.view')
-    or user_profile_id = public.current_user_profile_id()
+    public.current_user_is_global_admin()
+    or public.current_user_has_permission('roles.manage')
+  )
+  with check (
+    public.current_user_is_global_admin()
+    or public.current_user_has_permission('roles.manage')
   );
 
-create policy user_roles_manage on public.user_roles
-  for all to authenticated
-  using (public.current_user_has_permission('users.update'))
-  with check (public.current_user_has_permission('users.update'));
+-- user_roles (tenant-scoped)
+create policy user_roles_select_own on public.user_roles
+  for select to authenticated
+  using (user_profile_id = public.current_user_profile_id());
 
--- audit_logs
+create policy user_roles_select_scoped on public.user_roles
+  for select to authenticated
+  using (
+    public.current_user_is_global_admin()
+    or exists (
+      select 1
+      from public.user_profiles up
+      where up.id = user_roles.user_profile_id
+        and (
+          public.current_user_has_permission_in_company('users.view', up.owner_company_id)
+          or (
+            up.branch_id is not null
+            and public.current_user_has_permission_in_branch('users.view', up.branch_id)
+          )
+        )
+    )
+  );
+
+create policy user_roles_manage_scoped on public.user_roles
+  for all to authenticated
+  using (
+    public.current_user_can_manage_user_role_assignment(
+      user_profile_id,
+      role_id,
+      owner_company_id,
+      branch_id
+    )
+  )
+  with check (
+    public.current_user_can_manage_user_role_assignment(
+      user_profile_id,
+      role_id,
+      owner_company_id,
+      branch_id
+    )
+  );
+
+-- audit_logs (tenant-scoped)
 create policy audit_logs_select on public.audit_logs
   for select to authenticated
   using (
-    public.current_user_has_permission('audit.view')
-    or public.current_user_has_role('system_admin')
+    public.current_user_is_global_admin()
+    or public.current_user_has_permission_in_company('audit.view', owner_company_id)
+    or (
+      branch_id is not null
+      and public.current_user_has_permission_in_branch('audit.view', branch_id)
+    )
   );
 
 create policy audit_logs_insert on public.audit_logs
   for insert to authenticated
   with check (
-    public.current_user_has_permission('audit.view')
-    or public.current_user_has_role('system_admin')
+    public.current_user_is_global_admin()
+    or public.current_user_has_permission_in_company('audit.view', owner_company_id)
+    or (
+      branch_id is not null
+      and public.current_user_has_permission_in_branch('audit.view', branch_id)
+    )
   );
 
 -- ---------------------------------------------------------------------------

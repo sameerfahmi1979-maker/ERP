@@ -1,6 +1,7 @@
 # ERP_BASE_001 — Implementation Report
 
 **Date:** 2026-05-27  
+**Updated:** 2026-05-27 (ERP_BASE_001A + 001B + 001C corrections applied)  
 **Branch:** `feature/erp-base-foundation`
 
 ---
@@ -51,26 +52,34 @@
 - `npm install` (dependencies + shadcn components)
 - `npx shadcn@latest init` / `add` (with TLS workaround for corporate proxy)
 - `tsc --noEmit` — **PASS**
-- `next build` — **FAIL** (see below)
-- `eslint` — 1 error in generated `use-mobile.ts` (shadcn), 2 warnings
+- `next build` — **PASS** (after 001A + 001B fixes)
+- `eslint` — **PASS** (0 errors, 1 warning)
 
 ---
 
-## Build / lint status
+## Build / lint status (latest after 001A + 001B)
 
 | Check | Result |
 |-------|--------|
 | TypeScript (`npm run typecheck`) | **PASS** |
-| ESLint | **1 error** (shadcn `use-mobile.ts` setState-in-effect rule) |
-| Production build | **FAIL** — `Invariant: Expected workStore to be initialized` during prerender of `/_global-error` / `/_not-found` |
+| ESLint | **PASS** (0 errors, 1 warning: TanStack Table `useReactTable` incompatible-library) |
+| Production build | **PASS** (from clean path `C:\dev\agt-erp`) |
+| Migration pushed | **NO** (awaiting approval) |
 
-**Likely cause:** Next.js 16 build on Windows with project path containing `&` (`AI & Apps`) and mixed drive-letter casing (`d:\` vs `D:\`) in webpack module IDs (visible in build logs).
+**001A fixes:**
+- Added `export const dynamic = "force-dynamic"` to relevant pages/layouts
+- Fixed `use-mobile.ts` with `useSyncExternalStore` pattern
+- Fixed TypeScript error in `users.ts` query
 
-**Workaround recommendation:** Clone or move the project to a short path without `&`, e.g. `C:\dev\erp-foundation`, then run `npm run build` again. `npm run dev` should work for local development from the current folder using:
+**001B fixes:**
+- Hardened role assignment authorization (see `ERP_BASE_001B_ROLE_ASSIGNMENT_HARDENING_REPORT.md`)
 
-```bash
-node node_modules/next/dist/bin/next dev
-```
+**001C fixes:**
+- Fixed company-scoped helpers to require `ur.branch_id is null` (prevents branch-scoped leak)
+- Added user_profiles, user_roles, and audit_logs scope validation triggers (SECURITY DEFINER)
+- See `ERP_BASE_001C_SCOPE_HELPER_FIX_REPORT.md` for full detail
+
+**Path note:** Build passes when run from `C:\dev\agt-erp` (clean path without `&` character). Original OneDrive path may still cause build issues on Windows due to special characters.
 
 ---
 

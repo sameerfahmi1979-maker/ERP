@@ -90,14 +90,33 @@ if (roleError || !role) {
   process.exit(1);
 }
 
-const { error: assignError } = await admin.from("user_roles").upsert(
-  {
+const { data: existingAssignment } = await admin
+  .from("user_roles")
+  .select("id")
+  .eq("user_profile_id", profileId)
+  .eq("role_id", role.id)
+  .is("owner_company_id", null)
+  .is("branch_id", null)
+  .maybeSingle();
+
+let assignError = null;
+
+if (existingAssignment?.id) {
+  const { error } = await admin
+    .from("user_roles")
+    .update({ is_active: true })
+    .eq("id", existingAssignment.id);
+  assignError = error;
+} else {
+  const { error } = await admin.from("user_roles").insert({
     user_profile_id: profileId,
     role_id: role.id,
+    owner_company_id: null,
+    branch_id: null,
     is_active: true,
-  },
-  { onConflict: "user_profile_id,role_id,owner_company_id,branch_id" },
-);
+  });
+  assignError = error;
+}
 
 if (assignError) {
   console.error("Failed to assign system_admin role:", assignError.message);

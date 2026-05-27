@@ -74,7 +74,14 @@ export function hasRole(ctx: AuthContext, roleCode: string): boolean {
 export function hasPermission(ctx: AuthContext, permissionCode: string): boolean {
   return (
     ctx.permissionCodes.includes(permissionCode) ||
-    ctx.roleCodes.includes("system_admin")
+    ctx.roleCodes.includes("system_admin") ||
+    ctx.roleCodes.includes("group_admin")
+  );
+}
+
+export function isGlobalAdmin(ctx: AuthContext): boolean {
+  return (
+    ctx.roleCodes.includes("system_admin") || ctx.roleCodes.includes("group_admin")
   );
 }
 

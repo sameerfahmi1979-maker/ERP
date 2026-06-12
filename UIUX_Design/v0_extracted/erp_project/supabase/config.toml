@@ -1,0 +1,10 @@
+# Supabase local development config (optional).
+# Project ref for cloud linking: mmiefuieduzdiiwnqpie
+
+project_id = "mmiefuieduzdiiwnqpie"
+
+[api]
+enabled = true
+
+[db]
+major_version = 17

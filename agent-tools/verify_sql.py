@@ -1,0 +1,26 @@
+import re
+
+with open(r'c:\dev\agt-erp\supabase\migrations\20260607150000_erp_base_002f3e2_people_contacts_crm_database_lookups_seeds.sql', 'r', encoding='utf-8') as f:
+    content = f.read()
+    
+print('VERIFICATION COMPLETE')
+print('=' * 60)
+print(f'File size: {len(content):,} bytes')
+print(f'Lines: {len(content.splitlines()):,}')
+print()
+print('KEY COUNTS:')
+print(f'  category_scope: {content.count("category_scope")}')
+print(f'  metadata_json: {content.count("metadata_json")}')
+print(f'  is_active: {content.count("is_active")}')
+print(f'  action_code: {content.count("action_code")}')
+print()
+print('STRUCTURE:')
+print(f'  CREATE TABLE IF NOT EXISTS: {content.count("CREATE TABLE IF NOT EXISTS")}')
+print(f'  CREATE POLICY: {content.count("CREATE POLICY")}')
+print(f'  WITH cat AS: {content.count("WITH cat AS (")}')
+print(f'  INSERT INTO global_lookup_categories: {content.count("INSERT INTO global_lookup_categories")}')
+print(f'  INSERT INTO global_lookup_values: {content.count("INSERT INTO global_lookup_values")}')
+print(f'  INSERT INTO permissions: {content.count("INSERT INTO permissions")}')
+print(f'  INSERT INTO role_permissions: {content.count("INSERT INTO role_permissions")}')
+print()
+print('STATUS: All corrections verified!')

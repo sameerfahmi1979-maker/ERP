@@ -1,0 +1,5 @@
+{
+  "operation": "chunk1b1",
+  "sql_preview": "-- SECTION 2: LOOKUP VALUES (~130 Values)\n-- ============================================================================\n\n-- ----------------------------------------------------------------------------\n-- PARTY_STATUS_TYPES (5 values)\n-- ----------------------------------------------------------------------------\nWITH cat AS (\n  SELECT id FROM global_lookup_categories WHERE category_code = 'PARTY_STATUS_TYPES' LIMIT 1\n)\nINSERT INTO global_lookup_values (\n  category_id, value_code, value_label_e...",
+  "size": 8756
+}

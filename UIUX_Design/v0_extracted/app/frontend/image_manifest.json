@@ -1,0 +1,48 @@
+{
+  "status": "success",
+  "results": [
+    {
+      "status": "success",
+      "path": "https://mgx-backend-cdn.metadl.com/generate/images/587190/2026-05-27/plapp3yaag3a/logo-agt-monogram.png",
+      "absolute_path": "https://mgx-backend-cdn.metadl.com/generate/images/587190/2026-05-27/plapp3yaag3a/logo-agt-monogram.png",
+      "url": "https://mgx-backend-cdn.metadl.com/generate/images/587190/2026-05-27/plapp3yaag3a/logo-agt-monogram.png",
+      "message": "Image generated successfully.\n\nNote: The image is on CDN and will be displayed automatically. Just describe what you created briefly, no need to mention filenames or URLs.",
+      "description": "Modern minimalist logo for Alliance Gulf Transport - a stylized 'AGT' monogram with abstract road/route lines forming the letters, professional blue and teal gradient colors, clean geometric design suitable for enterprise software",
+      "style": "minimalist",
+      "filename": "logo-agt-monogram.png"
+    },
+    {
+      "status": "success",
+      "path": "https://mgx-backend-cdn.metadl.com/generate/images/587190/2026-05-27/plapoeqaag6q/login-side-illustration.png",
+      "absolute_path": "https://mgx-backend-cdn.metadl.com/generate/images/587190/2026-05-27/plapoeqaag6q/login-side-illustration.png",
+      "url": "https://mgx-backend-cdn.metadl.com/generate/images/587190/2026-05-27/plapoeqaag6q/login-side-illustration.png",
+      "message": "Image generated successfully.\n\nNote: The image is on CDN and will be displayed automatically. Just describe what you created briefly, no need to mention filenames or URLs.",
+      "description": "Abstract enterprise illustration for ERP login page - flowing geometric shapes representing connected business modules (fleet, HR, finance), blue and teal gradient color scheme, modern glass-morphism style with subtle grid patterns, professional and futuristic feel",
+      "style": "minimalist",
+      "filename": "login-side-illustration.jpg"
+    },
+    {
+      "status": "success",
+      "path": "https://mgx-backend-cdn.metadl.com/generate/images/587190/2026-05-27/plaptlqaag4q/dashboard-welcome-illustration.png",
+      "absolute_path": "https://mgx-backend-cdn.metadl.com/generate/images/587190/2026-05-27/plaptlqaag4q/dashboard-welcome-illustration.png",
+      "url": "https://mgx-backend-cdn.metadl.com/generate/images/587190/2026-05-27/plaptlqaag4q/dashboard-welcome-illustration.png",
+      "message": "Image generated successfully.\n\nNote: The image is on CDN and will be displayed automatically. Just describe what you created briefly, no need to mention filenames or URLs.",
+      "description": "Welcoming dashboard hero illustration - isometric view of a modern logistics control center with trucks, warehouses, and digital dashboards, blue and teal color palette, clean flat design with subtle shadows, professional enterprise feel",
+      "style": "minimalist",
+      "filename": "dashboard-welcome-illustration.png"
+    },
+    {
+      "status": "success",
+      "path": "https://mgx-backend-cdn.metadl.com/generate/images/587190/2026-05-27/plapo7aaag4a/empty-state-no-data.png",
+      "absolute_path": "https://mgx-backend-cdn.metadl.com/generate/images/587190/2026-05-27/plapo7aaag4a/empty-state-no-data.png",
+      "url": "https://mgx-backend-cdn.metadl.com/generate/images/587190/2026-05-27/plapo7aaag4a/empty-state-no-data.png",
+      "message": "Image generated successfully.\n\nNote: The image is on CDN and will be displayed automatically. Just describe what you created briefly, no need to mention filenames or URLs.",
+      "description": "Friendly empty state illustration - a clean desk with a magnifying glass and scattered papers, suggesting 'no data found' or 'nothing here yet', soft blue and gray tones, minimal flat design",
+      "style": "minimalist",
+      "filename": "empty-state-no-data.png"
+    }
+  ],
+  "success_count": 4,
+  "failed_count": 0,
+  "message": "Generated 4/4 images"
+}

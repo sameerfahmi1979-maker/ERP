@@ -97,4 +97,27 @@ export const queryKeys = {
     ownerCompanyId: number | null | undefined = null,
     includeInactive = false
   ) => ["master", "profit_centers", ownerCompanyId ?? null, includeInactive] as const,
+
+  // ── Child tables (Phase 3B.6G.1) ───────────────────────────────────────────
+  // Convention: ["child", <child_table_name>, <parent_id>]
+  // Outer "child" segment enables broad invalidation; table+parent narrows it.
+  // Used by parent drawer child CRUD sections (contacts, addresses, banks, docs).
+  child: {
+    /** Generic child-table key. parentId null = not yet saved parent (Add mode). */
+    table: (tableName: string, parentId: number | string | null | undefined) =>
+      ["child", tableName, parentId ?? null] as const,
+
+    // Customer child tables (reference implementation — 3B.6G.3 will consume)
+    customerContacts: (customerId: number | null | undefined) =>
+      ["child", "customer_contacts", customerId ?? null] as const,
+
+    customerAddresses: (customerId: number | null | undefined) =>
+      ["child", "customer_addresses", customerId ?? null] as const,
+
+    customerBankDetails: (customerId: number | null | undefined) =>
+      ["child", "customer_bank_details", customerId ?? null] as const,
+
+    customerDocuments: (customerId: number | null | undefined) =>
+      ["child", "customer_documents", customerId ?? null] as const,
+  },
 };

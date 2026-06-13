@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { type ColumnDef } from "@tanstack/react-table";
 import { ERPDataTable } from "@/components/erp/table/erp-data-table";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +20,7 @@ import { BranchFormDialog } from "./branch-form-dialog";
 import { updateBranchStatus, deleteBranch } from "@/server/actions/branches";
 import { toast } from "sonner";
 import type { OwnerCompany } from "@/types/database";
+import { useBranchFormPrefetch } from "./hooks/use-branch-form-prefetch";
 
 type BranchesTableProps = {
   data: BranchWithCompany[];
@@ -41,6 +42,11 @@ export function BranchesTable({
 }: BranchesTableProps) {
   const [editingBranch, setEditingBranch] = useState<BranchWithCompany | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  const prefetchBranchForm = useBranchFormPrefetch();
+  useEffect(() => {
+    prefetchBranchForm();
+  }, [prefetchBranchForm]);
 
   const columns: ColumnDef<BranchWithCompany>[] = [
     {
@@ -137,6 +143,7 @@ export function BranchesTable({
         };
 
         const handleEdit = () => {
+          prefetchBranchForm();
           setEditingBranch(branch);
           setIsDialogOpen(true);
         };

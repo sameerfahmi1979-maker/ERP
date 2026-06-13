@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Edit, Trash2, Phone, Mail } from "lucide-react";
@@ -21,11 +22,14 @@ import { LookupSelect } from "@/components/erp/lookup-select";
 import { RequiredLabel } from "@/components/erp/required-label";
 import type { CustomerContact } from "@/features/master-data/customers/types";
 import {
-  getCustomerContacts,
   deleteCustomerContact,
   createCustomerContact,
   updateCustomerContact,
 } from "@/server/actions/master-data/customer-contacts";
+import { useCustomerContactsQuery } from "@/features/master-data/customers/hooks/use-customer-child-queries";
+import { invalidateCustomerContacts } from "@/lib/query/invalidation";
+import { prefetchLookupCategories } from "@/lib/query/prefetch-lookups";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type CustomerContactsSectionProps = {
   customerId: number;
@@ -33,8 +37,12 @@ type CustomerContactsSectionProps = {
 };
 
 export function CustomerContactsSection({ customerId, disabled }: CustomerContactsSectionProps) {
-  const [contacts, setContacts] = useState<CustomerContact[]>([]);
-  const [loading, setLoading] = useState(true);
+  // 3B.6G.3 — TanStack Query keyed by ["child","customer_contacts",customerId].
+  // The section is lazy-mounted by the drawer, so this fires only after the
+  // Contacts tab is first activated AND a saved customer exists.
+  const queryClient = useQueryClient();
+  const { items: contacts, isLoading: loading, error: loadError } =
+    useCustomerContactsQuery(customerId);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<CustomerContact | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -60,25 +68,22 @@ export function CustomerContactsSection({ customerId, disabled }: CustomerContac
     status_code: "ACTIVE",
   });
 
-  const loadContacts = async () => {
-    setLoading(true);
-    const result = await getCustomerContacts(customerId);
-    if (result.success && result.data) {
-      setContacts(result.data);
-    }
-    setLoading(false);
-  };
-
+  // Prefetch the lookup categories used by the Add/Edit contact dialog so the
+  // dialog feels instant when opened. Runs in parallel with the contacts fetch.
+  // PARTY_STATUS_TYPES is already prefetched by CUSTOMER_FORM_PREFETCH on drawer open.
   useEffect(() => {
-    loadContacts();
-  }, [customerId]);
+    void prefetchLookupCategories(queryClient, [
+      "CONTACT_TYPES",
+      "COMMUNICATION_PREFERENCE_TYPES",
+    ]);
+  }, [queryClient]);
 
   const handleDelete = async (id: number) => {
     if (!confirm("Are you sure you want to delete this contact?")) return;
     const result = await deleteCustomerContact(id);
     if (result.success) {
       toast.success("Contact deleted");
-      loadContacts();
+      invalidateCustomerContacts(queryClient, customerId);
     } else {
       toast.error(result.error ?? "Failed to delete contact");
     }
@@ -158,18 +163,37 @@ export function CustomerContactsSection({ customerId, disabled }: CustomerContac
       if (result.success) {
         toast.success(editingContact ? "Contact updated" : "Contact created");
         setIsDialogOpen(false);
-        loadContacts();
+        invalidateCustomerContacts(queryClient, customerId);
       } else {
         toast.error(result.error ?? "Failed to save contact");
       }
-    } catch (error) {
+    } catch {
       toast.error("An error occurred");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  if (loading) return <div className="text-sm text-muted-foreground">Loading contacts...</div>;
+  if (loading) return (
+    <div className="space-y-3">
+      {[1, 2].map((i) => (
+        <div key={i} className="p-4 border rounded-md space-y-2">
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-4 w-36" />
+            <Skeleton className="h-5 w-14 rounded-full" />
+          </div>
+          <Skeleton className="h-3 w-24" />
+          <div className="flex gap-4 mt-1">
+            <Skeleton className="h-3 w-32" />
+            <Skeleton className="h-3 w-24" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+  if (loadError) {
+    return <div className="text-sm text-destructive">Failed to load contacts: {loadError}</div>;
+  }
 
   return (
     <div>

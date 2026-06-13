@@ -52,6 +52,8 @@ interface NavItem {
   icon: LucideIcon;
   path: string;
   badge?: string;
+  /** Future module — no route exists yet; rendered disabled (3E.4 QA gate). */
+  comingSoon?: boolean;
 }
 
 interface NavGroup {
@@ -120,19 +122,19 @@ const navGroups: NavGroup[] = [
   {
     label: "Operations",
     items: [
-      { label: "Fleet Management", icon: Truck, path: "/modules/fleet" },
-      { label: "HR & Payroll", icon: UserCog, path: "/modules/hr" },
-      { label: "Workshop", icon: Wrench, path: "/modules/workshop" },
-      { label: "HSE", icon: HardHat, path: "/modules/hse" },
+      { label: "Fleet Management", icon: Truck, path: "/modules/fleet", comingSoon: true },
+      { label: "HR & Payroll", icon: UserCog, path: "/modules/hr", comingSoon: true },
+      { label: "Workshop", icon: Wrench, path: "/modules/workshop", comingSoon: true },
+      { label: "HSE", icon: HardHat, path: "/modules/hse", comingSoon: true },
     ],
   },
   {
     label: "Finance & Supply",
     items: [
-      { label: "Finance", icon: DollarSign, path: "/modules/finance" },
-      { label: "Inventory", icon: Package, path: "/modules/inventory" },
-      { label: "Procurement", icon: ShoppingCart, path: "/modules/procurement" },
-      { label: "Documents", icon: FileText, path: "/modules/documents" },
+      { label: "Finance", icon: DollarSign, path: "/modules/finance", comingSoon: true },
+      { label: "Inventory", icon: Package, path: "/modules/inventory", comingSoon: true },
+      { label: "Procurement", icon: ShoppingCart, path: "/modules/procurement", comingSoon: true },
+      { label: "Documents", icon: FileText, path: "/modules/documents", comingSoon: true },
     ],
   },
 ];
@@ -213,7 +215,26 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
                   <div className="space-y-0.5">
                     {group.items.map((item) => {
                       const active = isActive(item.path);
-                      const NavButton = (
+                      // Future modules have no routes yet — render disabled, never a dead link.
+                      const NavButton = item.comingSoon ? (
+                        <div
+                          key={item.path}
+                          aria-disabled="true"
+                          className={cn(
+                            "flex items-center gap-2.5 w-full rounded-md text-sm font-medium cursor-not-allowed select-none",
+                            collapsed ? "justify-center p-2.5" : "px-2.5 py-2",
+                            "text-muted-foreground/40"
+                          )}
+                        >
+                          <item.icon className="h-4 w-4 shrink-0" />
+                          {!collapsed && <span className="truncate">{item.label}</span>}
+                          {!collapsed && (
+                            <span className="ml-auto text-[10px] bg-muted text-muted-foreground/60 px-1.5 py-0.5 rounded-full font-medium">
+                              Soon
+                            </span>
+                          )}
+                        </div>
+                      ) : (
                         <Link
                           key={item.path}
                           href={item.path}
@@ -240,7 +261,7 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
                           <Tooltip key={item.path}>
                             <TooltipTrigger render={NavButton} />
                             <TooltipContent side="right" className="text-xs">
-                              {item.label}
+                              {item.comingSoon ? `${item.label} (coming soon)` : item.label}
                             </TooltipContent>
                           </Tooltip>
                         );

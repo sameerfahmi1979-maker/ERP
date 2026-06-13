@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { type ColumnDef } from "@tanstack/react-table";
 import { ERPDataTable } from "@/components/erp/table/erp-data-table";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,7 @@ import type { OwnerCompany } from "@/types/database";
 import { OrganizationFormDialog } from "./organization-form-dialog";
 import { updateOrganizationStatus, deleteOrganization } from "@/server/actions/organizations";
 import { toast } from "sonner";
+import { useOrganizationFormPrefetch } from "./hooks/use-organization-form-prefetch";
 
 type OrganizationsTableProps = {
   data: OwnerCompany[];
@@ -38,6 +39,11 @@ export function OrganizationsTable({
 }: OrganizationsTableProps) {
   const [editingOrg, setEditingOrg] = useState<OwnerCompany | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  const prefetchOrgForm = useOrganizationFormPrefetch();
+  useEffect(() => {
+    prefetchOrgForm();
+  }, [prefetchOrgForm]);
 
   const columns: ColumnDef<OwnerCompany>[] = [
     {
@@ -130,6 +136,7 @@ export function OrganizationsTable({
         };
 
         const handleEdit = () => {
+          prefetchOrgForm();
           setEditingOrg(org);
           setIsDialogOpen(true);
         };

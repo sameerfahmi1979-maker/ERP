@@ -77,6 +77,10 @@ function CustomerFormDrawerInner({ customer, mode, open, onOpenChange }: Omit<Cu
   const isEditing = currentMode === "edit";
   const isViewing = currentMode === "view";
 
+  // 3B.7 fix: after Add → Save (drawer stays open), child sections must unlock
+  // using the newly created id, not just the original customer prop.
+  const effectiveCustomerId = currentCustomer?.id ?? createdCustomerId;
+
   // Dirty state tracking for Safe Close
   const { isDirty, resetDirty } = useFormDirty({
     formId: "customer-form",
@@ -521,18 +525,18 @@ function CustomerFormDrawerInner({ customer, mode, open, onOpenChange }: Omit<Cu
               </div>
             </ERPFieldGrid>
 
-            {currentCustomer && mountedSections.has("location") && (
+            {effectiveCustomerId !== null && mountedSections.has("location") && (
               <div className="mt-6">
                 <h4 className="text-sm font-semibold mb-3">Additional Addresses</h4>
-                <CustomerAddressesSection customerId={currentCustomer.id} disabled={isViewing} />
+                <CustomerAddressesSection customerId={effectiveCustomerId} disabled={isViewing} />
               </div>
             )}
           </ERPDrawerSection>
 
           {/* Tab 3: Contacts — lazyMount: pure child CRUD, no FormData inputs */}
           <ERPDrawerSection id="contacts" activeId={activeSection} title="Contacts" lazyMount>
-            {currentCustomer ? (
-              <CustomerContactsSection customerId={currentCustomer.id} disabled={isViewing} />
+            {effectiveCustomerId !== null ? (
+              <CustomerContactsSection customerId={effectiveCustomerId} disabled={isViewing} />
             ) : (
               <div className="text-sm text-muted-foreground">Save customer first to add contacts</div>
             )}
@@ -594,10 +598,10 @@ function CustomerFormDrawerInner({ customer, mode, open, onOpenChange }: Omit<Cu
               </div>
             </ERPFieldGrid>
 
-            {currentCustomer && mountedSections.has("finance") && (
+            {effectiveCustomerId !== null && mountedSections.has("finance") && (
               <div className="mt-6">
                 <h4 className="text-sm font-semibold mb-3">Bank Details</h4>
-                <CustomerBankDetailsSection customerId={currentCustomer.id} disabled={isViewing} />
+                <CustomerBankDetailsSection customerId={effectiveCustomerId} disabled={isViewing} />
               </div>
             )}
           </ERPDrawerSection>

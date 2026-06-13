@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Customer } from "@/features/master-data/customers/types";
 import type { AuthContext } from "@/lib/rbac/check";
@@ -36,6 +36,7 @@ import {
 } from "@/server/actions/master-data/customers";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { useCustomerFormPrefetch } from "@/features/master-data/customers/hooks/use-customer-form-prefetch";
 
 type CustomersTableProps = {
   customers: Customer[];
@@ -51,6 +52,22 @@ export function CustomersTable({ customers, authContext, onRefresh }: CustomersT
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<Customer | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // 3B.6G.2 — warm Customer form lookup/master caches on page mount so the
+  // drawer's comboboxes are ready before the user clicks Add/Edit.
+  const prefetchCustomerForm = useCustomerFormPrefetch();
+  useEffect(() => {
+    prefetchCustomerForm();
+  }, [prefetchCustomerForm]);
+
+  // Fire-and-forget prefetch + open drawer immediately (never blocks open).
+  // Covers cold/stale cache when the user clicks straight after navigation.
+  const openDrawer = (item: Customer | null, mode: "add" | "edit" | "view") => {
+    prefetchCustomerForm();
+    setSelected(item);
+    setFormMode(mode);
+    setIsFormOpen(true);
+  };
 
   const handleRefresh = () => {
     if (onRefresh) onRefresh();
@@ -154,12 +171,12 @@ export function CustomersTable({ customers, authContext, onRefresh }: CustomersT
               <span className="sr-only">Open menu</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => { setSelected(item); setFormMode("view"); setIsFormOpen(true); }}>
+              <DropdownMenuItem onClick={() => openDrawer(item, "view")}>
                 <Eye className="mr-2 h-4 w-4" />
                 View
               </DropdownMenuItem>
               {canManage && !item.is_locked && (
-                <DropdownMenuItem onClick={() => { setSelected(item); setFormMode("edit"); setIsFormOpen(true); }}>
+                <DropdownMenuItem onClick={() => openDrawer(item, "edit")}>
                   <Edit className="mr-2 h-4 w-4" />
                   Edit
                 </DropdownMenuItem>
@@ -245,7 +262,7 @@ export function CustomersTable({ customers, authContext, onRefresh }: CustomersT
         }}
         toolbarSlot={
           canManage ? (
-            <Button onClick={() => { setSelected(null); setFormMode("add"); setIsFormOpen(true); }} size="sm" className="gap-2">
+            <Button onClick={() => openDrawer(null, "add")} size="sm" className="gap-2">
               <Plus className="h-4 w-4" />
               Add Customer
             </Button>

@@ -23,6 +23,11 @@ import {
   type TaxTypeRow,
 } from "@/lib/lookups/option-mappers";
 import type { ERPComboboxOption } from "@/components/erp/combobox";
+import {
+  fetchCurrencies,
+  fetchPaymentTerms,
+  fetchTaxTypes,
+} from "@/lib/lookups/master-data-fetchers";
 
 interface FinanceQueryResult<T> {
   data: T[];
@@ -51,20 +56,8 @@ export function useCurrenciesQuery(
 
   const result = useQuery({
     queryKey: queryKeys.currencies(includeInactive),
-    queryFn: async (): Promise<CurrencyRow[]> => {
-      const supabase = createClient();
-      let query = supabase
-        .from("currencies")
-        .select("id, currency_code, currency_name_en, currency_name_ar, symbol, is_base_currency")
-        .order("sort_order", { ascending: true })
-        .order("currency_name_en", { ascending: true });
-
-      if (!includeInactive) query = query.eq("is_active", true);
-
-      const { data, error } = await query;
-      if (error) throw new Error(error.message);
-      return (data ?? []) as CurrencyRow[];
-    },
+    // Shared fetcher (3B.6G.1) so prefetch and hook can never drift.
+    queryFn: () => fetchCurrencies(includeInactive),
     enabled,
   });
 
@@ -137,20 +130,8 @@ export function usePaymentTermsQuery(
 
   const result = useQuery({
     queryKey: queryKeys.paymentTerms(includeInactive),
-    queryFn: async (): Promise<PaymentTermRow[]> => {
-      const supabase = createClient();
-      let query = supabase
-        .from("payment_terms")
-        .select("id, term_code, term_name_en, term_name_ar, due_days")
-        .order("sort_order", { ascending: true })
-        .order("term_name_en", { ascending: true });
-
-      if (!includeInactive) query = query.eq("is_active", true);
-
-      const { data, error } = await query;
-      if (error) throw new Error(error.message);
-      return (data ?? []) as PaymentTermRow[];
-    },
+    // Shared fetcher (3B.6G.1) so prefetch and hook can never drift.
+    queryFn: () => fetchPaymentTerms(includeInactive),
     enabled,
   });
 
@@ -179,20 +160,8 @@ export function useTaxTypesQuery(
 
   const result = useQuery({
     queryKey: queryKeys.taxTypes(includeInactive),
-    queryFn: async (): Promise<TaxTypeRow[]> => {
-      const supabase = createClient();
-      let query = supabase
-        .from("tax_types")
-        .select("id, tax_code, tax_name_en, tax_name_ar, tax_rate")
-        .order("sort_order", { ascending: true })
-        .order("tax_name_en", { ascending: true });
-
-      if (!includeInactive) query = query.eq("is_active", true);
-
-      const { data, error } = await query;
-      if (error) throw new Error(error.message);
-      return (data ?? []) as TaxTypeRow[];
-    },
+    // Shared fetcher (3B.6G.1) so prefetch and hook can never drift.
+    queryFn: () => fetchTaxTypes(includeInactive),
     enabled,
   });
 

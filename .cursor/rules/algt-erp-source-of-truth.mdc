@@ -1,0 +1,26 @@
+---
+description: ALGT ERP source-of-truth rules for every implementation, QA, planning, and documentation task
+globs:
+  - "**/*"
+alwaysApply: true
+---
+
+# ALGT ERP Source of Truth Rule
+
+Before any ERP implementation, planning, QA, bug fix, refactor, database work, or UI task:
+
+1. Read `.cursor/ALGT_ERP_SOURCE_OF_TRUTH.md`.
+2. Read the current phase prompt.
+3. Read latest relevant implementation reports under `implementation_Review/`.
+4. Connect to live Supabase via **`user-supabase`** if database/source verification is needed.
+5. Follow the global ERP rules in `docs/standards/` exactly.
+
+After any phase is completed:
+
+1. Create the phase report in `implementation_Review/`.
+2. Update `.cursor/ALGT_ERP_SOURCE_OF_TRUTH.md` (phase status, files changed, report filename, bugs fixed, notes, next phase).
+3. Do not rely on stale tracker files when a newer closure report or source code contradicts them.
+4. **Live source code and latest closure reports override older planning documents.**
+5. Do not build modules marked **PLANNED** or **DB-READY** unless Sameer/Dina explicitly approve the phase prompt.
+
+**Supabase:** Use `https://mmiefuieduzdiiwnqpie.supabase.co` via **`user-supabase`**. Do NOT use `plugin-supabase-supabase` (wrong project).

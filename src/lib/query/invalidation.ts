@@ -115,3 +115,42 @@ export function invalidateCostCenters(queryClient: QueryClient): void {
 export function invalidateProfitCenters(queryClient: QueryClient): void {
   queryClient.invalidateQueries({ queryKey: ["master", "profit_centers"] });
 }
+
+// ── Child tables (Phase 3B.6G.1) ──────────────────────────────────────────────
+// Targeted invalidation: a child mutation must refresh ONLY its own
+// ["child", <table>, <parentId>] entry — never parent or master caches.
+
+/** Invalidate one child table for one parent record. */
+export function invalidateChildTable(
+  queryClient: QueryClient,
+  tableName: string,
+  parentId: number | string | null | undefined
+): void {
+  queryClient.invalidateQueries({
+    queryKey: ["child", tableName, parentId ?? null],
+  });
+}
+
+/** Invalidate every cached child table (e.g. on logout / role switch). */
+export function invalidateAllChildTables(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["child"] });
+}
+
+/**
+ * Factory producing an entity-specific child invalidator (3B.6G.4).
+ * Future modules generate their helpers in one line:
+ *   export const invalidateVendorContacts = createChildInvalidator("vendor_contacts");
+ */
+export function createChildInvalidator(
+  tableName: string
+): (queryClient: QueryClient, parentId: number | string) => void {
+  return (queryClient, parentId) =>
+    invalidateChildTable(queryClient, tableName, parentId);
+}
+
+// Customer child helpers (reference implementation — consumed since 3B.6G.3)
+
+export const invalidateCustomerContacts = createChildInvalidator("customer_contacts");
+export const invalidateCustomerAddresses = createChildInvalidator("customer_addresses");
+export const invalidateCustomerBankDetails = createChildInvalidator("customer_bank_details");
+export const invalidateCustomerDocuments = createChildInvalidator("customer_documents");

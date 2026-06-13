@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Edit, Trash2, Building2 } from "lucide-react";
@@ -23,11 +24,14 @@ import { CurrencySelect } from "@/components/erp/finance-basics/currency-select"
 import { RequiredLabel } from "@/components/erp/required-label";
 import type { CustomerBankDetail } from "@/features/master-data/customers/types";
 import {
-  getCustomerBankDetails,
   deleteCustomerBankDetail,
   createCustomerBankDetail,
   updateCustomerBankDetail,
 } from "@/server/actions/master-data/customer-bank-details";
+import { useCustomerBankDetailsQuery } from "@/features/master-data/customers/hooks/use-customer-child-queries";
+import { invalidateCustomerBankDetails } from "@/lib/query/invalidation";
+import { prefetchLookupCategories } from "@/lib/query/prefetch-lookups";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type CustomerBankDetailsSectionProps = {
   customerId: number;
@@ -35,9 +39,18 @@ type CustomerBankDetailsSectionProps = {
 };
 
 export function CustomerBankDetailsSection({ customerId, disabled }: CustomerBankDetailsSectionProps) {
-  const [bankDetails, setBankDetails] = useState<CustomerBankDetail[]>([]);
-  const [loading, setLoading] = useState(true);
+  // 3B.6G.3 — TanStack Query keyed by ["child","customer_bank_details",customerId].
+  // The drawer mounts this only after the Finance tab is first activated
+  // AND a saved customer exists, so no fetch happens before that.
+  const queryClient = useQueryClient();
+  const { items: bankDetails, isLoading: loading, error: loadError } =
+    useCustomerBankDetailsQuery(customerId);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  // Prefetch BANK_ACCOUNT_TYPES lookup so the Add/Edit dialog feels instant.
+  useEffect(() => {
+    void prefetchLookupCategories(queryClient, ["BANK_ACCOUNT_TYPES"]);
+  }, [queryClient]);
   const [editingBankDetail, setEditingBankDetail] = useState<CustomerBankDetail | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -55,25 +68,12 @@ export function CustomerBankDetailsSection({ customerId, disabled }: CustomerBan
     notes: "",
   });
 
-  const loadBankDetails = async () => {
-    setLoading(true);
-    const result = await getCustomerBankDetails(customerId);
-    if (result.success && result.data) {
-      setBankDetails(result.data);
-    }
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    loadBankDetails();
-  }, [customerId]);
-
   const handleDelete = async (id: number) => {
     if (!confirm("Are you sure you want to delete this bank detail?")) return;
     const result = await deleteCustomerBankDetail(id);
     if (result.success) {
       toast.success("Bank detail deleted");
-      loadBankDetails();
+      invalidateCustomerBankDetails(queryClient, customerId);
     } else {
       toast.error(result.error ?? "Failed to delete bank detail");
     }
@@ -139,18 +139,34 @@ export function CustomerBankDetailsSection({ customerId, disabled }: CustomerBan
       if (result.success) {
         toast.success(editingBankDetail ? "Bank detail updated" : "Bank detail created");
         setIsDialogOpen(false);
-        loadBankDetails();
+        invalidateCustomerBankDetails(queryClient, customerId);
       } else {
         toast.error(result.error ?? "Failed to save bank detail");
       }
-    } catch (error) {
+    } catch {
       toast.error("An error occurred");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  if (loading) return <div className="text-sm text-muted-foreground">Loading bank details...</div>;
+  if (loading) return (
+    <div className="space-y-3">
+      {[1, 2].map((i) => (
+        <div key={i} className="p-4 border rounded-md space-y-2">
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-5 w-14 rounded-full" />
+          </div>
+          <Skeleton className="h-3 w-28" />
+          <Skeleton className="h-3 w-36" />
+        </div>
+      ))}
+    </div>
+  );
+  if (loadError) {
+    return <div className="text-sm text-destructive">Failed to load bank details: {loadError}</div>;
+  }
 
   return (
     <div>

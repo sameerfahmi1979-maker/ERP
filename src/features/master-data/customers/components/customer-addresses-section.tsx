@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Edit, Trash2, MapPin } from "lucide-react";
@@ -21,11 +22,14 @@ import { LookupSelect } from "@/components/erp/lookup-select";
 import { CountrySelect, EmirateSelect, CitySelect, AreaZoneSelect } from "@/components/erp/geography";
 import type { CustomerAddress } from "@/features/master-data/customers/types";
 import {
-  getCustomerAddresses,
   deleteCustomerAddress,
   createCustomerAddress,
   updateCustomerAddress,
 } from "@/server/actions/master-data/customer-addresses";
+import { useCustomerAddressesQuery } from "@/features/master-data/customers/hooks/use-customer-child-queries";
+import { invalidateCustomerAddresses } from "@/lib/query/invalidation";
+import { prefetchLookupCategories } from "@/lib/query/prefetch-lookups";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type CustomerAddressesSectionProps = {
   customerId: number;
@@ -33,9 +37,19 @@ type CustomerAddressesSectionProps = {
 };
 
 export function CustomerAddressesSection({ customerId, disabled }: CustomerAddressesSectionProps) {
-  const [addresses, setAddresses] = useState<CustomerAddress[]>([]);
-  const [loading, setLoading] = useState(true);
+  // 3B.6G.3 — TanStack Query keyed by ["child","customer_addresses",customerId].
+  // The drawer mounts this only after the Location tab is first activated
+  // AND a saved customer exists, so no fetch happens before that.
+  const queryClient = useQueryClient();
+  const { items: addresses, isLoading: loading, error: loadError } =
+    useCustomerAddressesQuery(customerId);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  // Prefetch ADDRESS_TYPES lookup so the Add/Edit dialog feels instant.
+  // PARTY_STATUS_TYPES is already prefetched by CUSTOMER_FORM_PREFETCH on drawer open.
+  useEffect(() => {
+    void prefetchLookupCategories(queryClient, ["ADDRESS_TYPES"]);
+  }, [queryClient]);
   const [editingAddress, setEditingAddress] = useState<CustomerAddress | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -61,25 +75,12 @@ export function CustomerAddressesSection({ customerId, disabled }: CustomerAddre
     status_code: "ACTIVE",
   });
 
-  const loadAddresses = async () => {
-    setLoading(true);
-    const result = await getCustomerAddresses(customerId);
-    if (result.success && result.data) {
-      setAddresses(result.data);
-    }
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    loadAddresses();
-  }, [customerId]);
-
   const handleDelete = async (id: number) => {
     if (!confirm("Are you sure you want to delete this address?")) return;
     const result = await deleteCustomerAddress(id);
     if (result.success) {
       toast.success("Address deleted");
-      loadAddresses();
+      invalidateCustomerAddresses(queryClient, customerId);
     } else {
       toast.error(result.error ?? "Failed to delete address");
     }
@@ -170,18 +171,34 @@ export function CustomerAddressesSection({ customerId, disabled }: CustomerAddre
       if (result.success) {
         toast.success(editingAddress ? "Address updated" : "Address created");
         setIsDialogOpen(false);
-        loadAddresses();
+        invalidateCustomerAddresses(queryClient, customerId);
       } else {
         toast.error(result.error ?? "Failed to save address");
       }
-    } catch (error) {
+    } catch {
       toast.error("An error occurred");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  if (loading) return <div className="text-sm text-muted-foreground">Loading addresses...</div>;
+  if (loading) return (
+    <div className="space-y-3">
+      {[1, 2].map((i) => (
+        <div key={i} className="p-4 border rounded-md space-y-2">
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="h-5 w-14 rounded-full" />
+          </div>
+          <Skeleton className="h-3 w-48" />
+          <Skeleton className="h-3 w-32" />
+        </div>
+      ))}
+    </div>
+  );
+  if (loadError) {
+    return <div className="text-sm text-destructive">Failed to load addresses: {loadError}</div>;
+  }
 
   return (
     <div>

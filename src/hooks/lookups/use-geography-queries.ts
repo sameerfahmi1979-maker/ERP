@@ -25,6 +25,7 @@ import {
   type PortRow,
 } from "@/lib/lookups/option-mappers";
 import type { ERPComboboxOption } from "@/components/erp/combobox";
+import { fetchCountries } from "@/lib/lookups/master-data-fetchers";
 
 // ── Shared result shape ─────────────────────────────────────────────────────────
 
@@ -56,21 +57,8 @@ export function useCountriesQuery(
 
   const result = useQuery({
     queryKey: queryKeys.countries(gccOnly, includeInactive),
-    queryFn: async (): Promise<CountryRow[]> => {
-      const supabase = createClient();
-      let query = supabase
-        .from("countries")
-        .select("id, country_code, name_en, name_ar, is_gcc")
-        .order("sort_order", { ascending: true })
-        .order("name_en", { ascending: true });
-
-      if (!includeInactive) query = query.eq("is_active", true);
-      if (gccOnly) query = query.eq("is_gcc", true);
-
-      const { data, error } = await query;
-      if (error) throw new Error(error.message);
-      return (data ?? []) as CountryRow[];
-    },
+    // Shared fetcher (3B.6G.1) so prefetch and hook can never drift.
+    queryFn: () => fetchCountries(gccOnly, includeInactive),
     enabled,
   });
 

@@ -1,0 +1,111 @@
+---
+description: ERP Workspace Unsaved Form Draft Preservation Standard (UI.4E.2)
+globs:
+  - "src/features/**/*workspace-form.tsx"
+  - "src/components/workspace/**"
+  - "src/hooks/use-workspace*.ts"
+  - "src/lib/workspace/**"
+alwaysApply: false
+---
+
+# ERP Workspace Unsaved Form Draft Preservation
+
+Phase: ERP GLOBAL UI.4E.2
+
+## Rules
+
+1. All `ERPRecordWorkspaceForm` implementations MUST use `useWorkspaceFormDraft`.
+2. Switching workspace tabs MUST NOT clear dirty unsaved form values.
+3. Opening another menu or workspace tab MUST NOT clear dirty unsaved form values.
+4. Unsaved form drafts are **in-memory only** — stored in `WorkspaceDraftProvider` useRef Map.
+5. Do NOT store unsaved form field values in `localStorage` or `sessionStorage`.
+6. Sensitive fields in `DRAFT_FIELD_DENYLIST` MUST never enter the draft store.
+7. ALL `defaultValue` props in workspace forms MUST use `getDraftDefault(fieldName, serverFallback)`.
+8. Controlled combobox/select values MUST initialize from `getDraftDefault()` in `useState(() => ...)`.
+9. Controlled combobox/select `onChange` MUST call `writeDraftField(fieldName, value)`.
+10. `clearDraft()` MUST run after successful save, save-and-close, or discard.
+11. User/auth password fields (`temporary_password`, `password`, etc.) MUST NEVER be drafted.
+12. The form element MUST have `onInput={syncDraft} onChange={syncDraft}` for automatic capture.
+
+## Standard Hook Usage
+
+```tsx
+import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
+
+const FORM_ID = "my-workspace-form";
+
+export function MyWorkspaceForm({ record, mode }) {
+  const isViewing = mode === "view";
+
+  const { getDraftDefault, getDraftBoolean, syncDraft, writeDraftField, clearDraft } =
+    useWorkspaceFormDraft({ formId: FORM_ID, enabled: !isViewing });
+
+  // Controlled state — initialize from draft
+  const [countryId, setCountryId] = useState<number | null>(() => {
+    const d = getDraftDefault("country_id", "");
+    return d ? Number(d) : record?.country_id ?? null;
+  });
+
+  const handleSave = async () => {
+    const result = await saveAction(data);
+    if (result.success) {
+      clearDraft();   // ← clear draft on success
+      resetDirty();
+      toast.success("Saved");
+      return true;
+    }
+    return false;     // ← do NOT clear draft on failure
+  };
+
+  return (
+    <ERPRecordWorkspaceForm ...>
+      <form id={FORM_ID} onInput={syncDraft} onChange={syncDraft} onSubmit={...}>
+        <Input
+          name="display_name"
+          defaultValue={getDraftDefault("display_name", record?.display_name ?? "")}
+        />
+        <CountrySelect
+          value={countryId}
+          onValueChange={(v) => {
+            setCountryId(v);
+            writeDraftField("country_id", v ?? "");
+          }}
+        />
+      </form>
+    </ERPRecordWorkspaceForm>
+  );
+}
+```
+
+## Draft Key Format
+
+```
+draft:tab:{activeTabId}:{formId}
+```
+
+## Sensitive Field Denylist
+
+All of the following (case-insensitive, also matched as substrings):
+`password`, `temporary_password`, `confirm_password`, `token`, `access_token`, `refresh_token`,
+`api_key`, `secret`, `client_secret`, `otp`, `pin`, `file`, `attachment`, `bank_account_number`,
+`account_number`, `iban`, `emirates_id`, `passport_number`
+
+## Lifecycle
+
+- **Mount with draft** → restore `defaultValue` from draft, restore dirty indicator
+- **User types** → `onInput`/`onChange` → debounced `snapshotFormData` → patch draft store
+- **Controlled change** → `writeDraftField(name, value)` → write single field
+- **Tab switch** → component unmounts; draft persists in memory
+- **Tab return** → component remounts; `getDraftDefault` restores values; dirty indicator restored
+- **Save success** → `clearDraft()` → `resetDirty()`
+- **Tab close (clean)** → `clearDraftsForTab(tabId)` in workspace provider
+- **Tab close (discard)** → `clearDraftsForTab(tabId)` then close
+- **Browser refresh** → draft lost (acceptable; `beforeunload` shows warning if dirty)
+
+## Files
+
+- `src/lib/workspace/workspace-draft-types.ts` — types + denylist
+- `src/lib/workspace/workspace-draft-store.ts` — store factory + snapshot utility
+- `src/components/workspace/workspace-draft-provider.tsx` — React context provider
+- `src/hooks/use-workspace-form-draft.ts` — component hook
+- `docs/standards/ERP_GLOBAL_WORKSPACE_UNSAVED_FORM_DRAFT_STANDARD.md` — full standard doc

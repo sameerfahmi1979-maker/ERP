@@ -1,0 +1,54 @@
+---
+description: Bank Master standard — Finance Basics Banks is the only source of truth for bank master data. Banks must not be created as Party records.
+globs:
+  - "src/**/*.ts"
+  - "src/**/*.tsx"
+alwaysApply: true
+---
+
+# ERP Bank Master Standard
+
+## Single Source of Truth
+
+**Finance Basics → Banks** is the ONLY bank master data source of truth.
+
+```
+/admin/master-data/finance-basics/banks
+```
+
+**Party Master → Party Records** must NEVER be used to create banks.
+
+## Rules
+
+1. **Finance Basics Banks stores official bank master data**: bank name, bank code, SWIFT/BIC, country, bank type, website, phone, email, status.
+2. **Banks must not be created as Party records.** Do not use `Party Type = BANK` for new parties.
+3. **BANK is not a valid Party Type** — it does not exist in `party_types` (never created by design).
+4. **Party Master Bank Details** (`party_bank_details`) stores *party-specific* account/relationship data: account name, account number, IBAN, currency, branch, relationship manager info, facility limit.
+5. **`party_bank_details.bank_id`** must reference the Finance Banks `banks` table. Use `BankSelect` (from `@/components/erp/finance-basics`) for the bank selector — not free-text or Party lookup.
+6. **Do not duplicate bank master data into party records.** Bank name, SWIFT, code, country shown in Party Bank Details must be read-only from Finance Banks.
+7. **If a bank doesn't exist**, create it in Finance Basics Banks (`/admin/master-data/finance-basics/banks/record/new`) — not Party Master.
+8. **`/admin/master-data/parties/banks`** is a retired route — it redirects to `/admin/master-data/finance-basics/banks`. Do not reintroduce it.
+9. **Party sidebar** must not include "Banks" under Party Master. The Banks link lives only under Finance Basics.
+10. **`BANK` must not appear in `ALLOWED_DEFAULT_TYPE_CODES`** in `parties-table.tsx` or `record/new/page.tsx`.
+
+## Component References
+
+| Component | File | Use |
+|---|---|---|
+| `BankSelect` | `src/components/erp/finance-basics/bank-select.tsx` | Finance Bank selector (ERPCombobox-based) |
+| `useBanksQuery` | `src/hooks/lookups/use-finance-queries.ts` | TanStack Query for Finance Banks list |
+| `BankRow` | `src/lib/lookups/option-mappers.ts` | Type: `id, bank_code, bank_name_en, bank_name_ar, short_name` |
+
+## DB Status (as of BANK MASTER STANDARD.1)
+
+| Table | Role |
+|---|---|
+| `banks` | Finance Basics — bank master (RETAIN, active) |
+| `party_bank_details` | Party-specific account/relationship data — links to `banks.id` via `bank_id` FK |
+| `party_types` | No `BANK` type row exists (never created) |
+
+## Known Follow-up
+
+**ERP BANK MASTER STANDARD.2** — Party Bank Relationship Field Enhancement:
+- `party_bank_details` is missing: `relationship_manager_name`, `relationship_manager_mobile`, `relationship_manager_email`, `facility_limit`, `facility_expiry`
+- These require a DB migration before they can appear in the UI

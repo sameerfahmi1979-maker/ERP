@@ -1,0 +1,163 @@
+---
+description: ERP Email Settings Standard — Enforced rules for Microsoft 365 Graph email provider integration across all ERP modules. Read whenever implementing email sending, email provider settings, or any module that sends notifications by email.
+globs:
+  - "src/lib/email/**"
+  - "src/server/actions/settings/email-settings.ts"
+  - "src/features/settings/email/**"
+  - "src/app/**/admin/settings/email/**"
+alwaysApply: false
+---
+
+# ALGT ERP Email Settings Standard
+
+**Phase:** ERP SETTINGS.2 (Implemented)  
+**Status:** LIVE  
+**Reference:** `implementation_Review/ERP_SETTINGS_2_EMAIL_PROVIDER_MICROSOFT_365_GRAPH_CONFIGURATION_IMPLEMENTATION_REPORT.md`
+
+---
+
+## 1. Non-Negotiable Security Rules
+
+1. **Microsoft client secrets MUST NOT be stored in any DB column** — not in `config_json`, `notes`, or any other column of `erp_email_provider_configs`.
+
+2. **Only `secret_ref` (env var name) and `masked_secret_preview` are stored** — example: `secret_ref = MICROSOFT_GRAPH_CLIENT_SECRET`, `masked_secret_preview = ****abcd`.
+
+3. **Secrets MUST NOT be returned to the frontend** — server actions never include secret values in their return payload.
+
+4. **Secrets MUST NOT appear in browser network responses, logs, or audit events.**
+
+5. **Access tokens are never persisted** — they are requested server-side per-operation via client credentials flow.
+
+6. **No refresh tokens, no delegated user OAuth in this phase** — server-side application permission only.
+
+7. **No Microsoft Graph SDK imports in feature modules (DMS, HR, Fleet, etc.)** — all email calls must go through the provider abstraction.
+
+---
+
+## 2. Provider Abstraction Rules
+
+All email sending in the ERP MUST go through the provider factory:
+
+```typescript
+// CORRECT — any ERP module
+import { getEmailProvider, sendEmailViaProvider } from "@/lib/email/providers/factory";
+const provider = await getEmailProvider("M365_DEFAULT");
+const result = await provider.sendEmail({ to: ["..."], subject: "...", textBody: "..." });
+
+// ALSO CORRECT — feature-gated send
+import { isEmailFeatureEnabled, getDefaultEmailProvider } from "@/lib/email/providers/factory";
+if (await isEmailFeatureEnabled("DMS_EXPIRY_EMAILS")) {
+  const provider = await getDefaultEmailProvider();
+  await provider.sendEmail({ ... });
+}
+
+// WRONG — never import Graph calls directly in DMS or other modules
+import { MicrosoftGraphEmailProvider } from "@/lib/email/providers/microsoft-graph-provider"; // ← NEVER in DMS
+```
+
+Allowed direct SDK/provider import location: `src/lib/email/providers/*.ts` ONLY.
+
+---
+
+## 3. Database Rules
+
+| Table | Purpose |
+|---|---|
+| `erp_email_provider_configs` | Provider config (no plain secrets) |
+| `erp_email_send_logs` | Send and test logs (no full body, no secrets) |
+| `erp_email_feature_flags` | Feature-level gates (DMS_EXPIRY_EMAILS, etc.) |
+
+- All tables use BIGINT PKs.
+- All tables have RLS enabled and forced.
+- No anonymous access.
+- Audit all create/update/delete/test actions via `logAudit()`.
+
+---
+
+## 4. Provider Types
+
+Valid `provider_type` values for `erp_email_provider_configs`:
+
+```
+microsoft_graph  ← implemented in SETTINGS.2
+smtp             ← future
+sendgrid         ← future
+mailgun          ← future
+aws_ses          ← future
+local_dev        ← future
+custom           ← future
+```
+
+---
+
+## 5. Feature Flag Rules
+
+All ERP email features are gated by `erp_email_feature_flags.is_enabled`.
+
+Seeded flags (all default to `false` except `SYSTEM_TEST_EMAIL`):
+
+```
+DMS_EXPIRY_EMAILS
+DMS_RENEWAL_EMAILS
+HR_EXPIRY_EMAILS
+FLEET_EXPIRY_EMAILS
+WORKFLOW_EMAILS
+REPORT_EMAILS
+SYSTEM_TEST_EMAIL  ← true (admin test only)
+```
+
+**Do NOT enable email feature flags without Sameer approval.**
+
+---
+
+## 6. DMS Integration Rules
+
+1. **DMS email delivery MUST use ERP Email Settings / Notification Engine** — not hardcoded Graph calls in DMS.
+2. **DMS must not store Microsoft credentials** — no tenant_id, client_id, or secrets in DMS tables.
+3. **DMS.8 notification queue** (`dms_notification_queue`) remains `email_ready` status until ERP NOTIFICATIONS.1 connects it to the global delivery engine.
+4. **DMS.8A** will connect DMS expiry/renewal notifications to the global email delivery engine after ERP NOTIFICATIONS.1.
+
+---
+
+## 7. Permission Codes
+
+```
+settings.email.view
+settings.email.manage
+settings.email.secrets.manage
+settings.email.test
+settings.email.logs.view
+settings.email.feature_flags.manage
+```
+
+---
+
+## 8. UI Rules
+
+- Route: `/admin/settings/email`
+- Feature folder: `src/features/settings/email/`
+- Uses standard ERP settings page layout (not ERPRecordWorkspaceForm)
+- Secret input: cleared immediately after save; show only `masked_secret_preview` — never pre-fill
+- No client-side secret storage of any kind
+- Secret dialog goes through `saveEmailProviderSecret` server action
+
+---
+
+## 9. Send Log Rules
+
+- `erp_email_send_logs.message_preview` stores first 300 chars max — never full body.
+- Never log the client secret or access token.
+- Log all test connection and test send attempts.
+
+---
+
+## 10. Next Phase Reference
+
+After SETTINGS.2: **ERP NOTIFICATIONS.1 — Global Notification and Email Delivery Engine**
+
+- Creates global notification queue.
+- Consumes `email_ready` notifications from DMS and other modules.
+- Uses `getEmailProvider()` / `getDefaultEmailProvider()` from `src/lib/email/providers/factory.ts`.
+- Adds retry/escalation/delivery status.
+
+After NOTIFICATIONS.1: **ERP DMS.8A — Connect DMS Expiry Notifications to Global Email Delivery**

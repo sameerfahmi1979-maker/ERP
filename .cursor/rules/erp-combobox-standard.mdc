@@ -1,0 +1,128 @@
+---
+description: Enforces ERPCombobox over shadcn Select for all async-option fields in this ERP. Apply whenever writing or reviewing any Select/combobox/dropdown component in src/features/ or src/components/erp/.
+globs:
+  - "src/features/**/*.tsx"
+  - "src/components/erp/**/*.tsx"
+alwaysApply: false
+---
+
+# ERP Combobox Standard — Never Use `<Select>` with Async Options
+
+## The Bug This Prevents
+
+Shadcn/Radix `<Select>` resolves its display text (`SelectValue`) from `SelectItem` children
+**at the time those items are mounted**. If options arrive asynchronously (any `useQuery`,
+server action, or prefetch), and the items haven't mounted yet when the `value` prop is set,
+Radix falls back to rendering the raw `value` string — the numeric database ID (`"1"`, `"2"`, etc.)
+— instead of the human-readable label.
+
+This was fixed in **ERP BASE 002F.5A.3X** (2026-06-14), where 11 `<Select>` fields across
+5 Party Master files were converted to `ERPCombobox`.
+
+## The Rule
+
+> **Any field whose options come from a database, server action, `useQuery`, or any async source
+> MUST use `ERPCombobox` (or an `ERPCombobox`-backed wrapper). Never use bare `<Select>` + `<SelectItem>`.**
+
+`ERPCombobox` derives `selectedOption` via `.find()` on the live `options` array on every
+render, so it always resolves the correct label as soon as options become available — with no
+dependency on mount order.
+
+## Approved Components (all backed by ERPCombobox internally)
+
+| Use case | Component |
+|----------|-----------|
+| Generic async lookup | `<ERPCombobox value={...} onValueChange={...} options={[...]} />` |
+| Party selection | `<PartySelect />` — `src/components/erp/party-select.tsx` |
+| Country | `<CountrySelect />` |
+| Emirate (cascades on countryId) | `<EmirateSelect countryId={...} />` |
+| City (cascades on emirateId) | `<CitySelect emirateId={...} />` |
+| Area/Zone (cascades on cityId) | `<AreaZoneSelect cityId={...} />` |
+| Currency | `<CurrencySelect />` |
+| Payment Term | `<PaymentTermSelect />` |
+| Tax Type | `<TaxTypeSelect />` |
+| Bank | `<BankSelect />` |
+| Any ERP lookup category | `<LookupSelect category="..." />` |
+
+All live in `src/components/erp/`.
+
+## Correct Pattern
+
+```tsx
+import { ERPCombobox } from "@/components/erp/combobox";
+
+// options built from async useQuery data
+<ERPCombobox
+  value={form.nature_id}                  // number | null — stored DB value
+  onValueChange={(v) =>
+    setForm((f) => ({ ...f, nature_id: v !== null ? Number(v) : null }))
+  }
+  options={(natures ?? []).map((n) => ({
+    value: n.id,    // number — DB primary key
+    label: n.name_en,  // string — human-readable display label
+  }))}
+  placeholder="Select nature..."
+  required                                // use allowClear for optional fields
+/>
+```
+
+## Forbidden Pattern
+
+```tsx
+// ❌ NEVER DO THIS with async options
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+<Select value={natureId ? String(natureId) : ""} onValueChange={(v) => setNatureId(v ? parseInt(v) : null)}>
+  <SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger>
+  <SelectContent>
+    {natures.map((n) => (
+      <SelectItem key={n.id} value={String(n.id)}>{n.name_en}</SelectItem>
+    ))}
+  </SelectContent>
+</Select>
+```
+
+## When `<Select>` IS Acceptable
+
+Bare shadcn `<Select>` is only acceptable for **static, hardcoded options** that are always
+present at render time — for example:
+
+```tsx
+// ✅ OK — options are static constants, never async
+<Select value={alignment} onValueChange={setAlignment}>
+  <SelectContent>
+    <SelectItem value="left">Left</SelectItem>
+    <SelectItem value="center">Center</SelectItem>
+    <SelectItem value="right">Right</SelectItem>
+  </SelectContent>
+</Select>
+```
+
+## ERPCombobox Option Shape
+
+```ts
+interface ERPComboboxOption {
+  value: string | number;  // stored DB value (ID)
+  label: string;           // human-readable display name
+  labelAr?: string;        // optional Arabic label
+  code?: string;           // optional short code (shown when showCode=true)
+  description?: string;    // optional search/filter text
+  badge?: string;          // optional badge alongside label
+  disabled?: boolean;
+  raw?: unknown;           // original DB row for custom renderOption
+}
+```
+
+## Key Props
+
+| Prop | Purpose |
+|------|---------|
+| `value` | Current value (number \| string \| null) — the DB ID |
+| `onValueChange` | Callback receives `string \| number \| null` — convert to number if needed |
+| `options` | Array of `ERPComboboxOption` |
+| `required` | Hides the clear button; deselect is blocked |
+| `allowClear` | Shows ✕ button for optional fields |
+| `showCode` | Prefixes label with `code - ` in the trigger |
+| `loading` | Shows spinner while async data loads |
+| `maxVisibleOptions` | Truncates long lists with a "type to search" hint |
+| `disabled` / `readOnly` | Standard read-only states |

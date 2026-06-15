@@ -1,0 +1,37 @@
+# Source Links
+
+- **Abu Dhabi Executive Council**: https://ecouncil.ae
+- **Abu Dhabi Executive Office**: https://adeo.ae
+- **Department of Government Enablement**: https://dge.gov.ae
+- **Department of Finance - Abu Dhabi**: https://dof.abudhabi.ae
+- **Statistics Centre - Abu Dhabi**: https://scad.gov.ae
+- **Abu Dhabi Accountability Authority**: https://adaa.gov.ae
+- **Abu Dhabi Department of Economic Development**: https://added.gov.ae
+- **Industrial Development Bureau**: https://idb.added.gov.ae
+- **Abu Dhabi Investment Office**: https://investinabudhabi.gov.ae
+- **Abu Dhabi Chamber of Commerce and Industry**: https://abudhabichamber.ae
+- **Department of Municipalities and Transport**: https://dmt.gov.ae
+- **Abu Dhabi City Municipality**: https://dmt.gov.ae/adm
+- **Al Ain City Municipality**: https://dmt.gov.ae/aam
+- **Al Dhafra Region Municipality**: https://dmt.gov.ae/drm
+- **Integrated Transport Centre**: https://itc.gov.ae
+- **Abu Dhabi Housing Authority**: https://adha.gov.ae
+- **Environment Agency Abu Dhabi**: https://ead.gov.ae
+- **Department of Energy - Abu Dhabi**: https://doe.gov.ae
+- **Abu Dhabi Agriculture and Food Safety Authority**: https://adafsa.gov.ae
+- **Tadweer Group**: https://tadweer.ae
+- **Abu Dhabi Quality and Conformity Council**: https://qcc.gov.ae
+- **Abu Dhabi Police**: https://adpolice.gov.ae
+- **Abu Dhabi Civil Defence**: https://adcda.gov.ae
+- **Abu Dhabi Customs**: https://adcustoms.gov.ae
+- **Abu Dhabi Judicial Department**: https://adjd.gov.ae
+- **Department of Health - Abu Dhabi**: https://doh.gov.ae
+- **Abu Dhabi Public Health Centre**: https://adphc.gov.ae
+- **Department of Education and Knowledge**: https://adek.gov.ae
+- **Department of Community Development**: https://addcd.gov.ae
+- **Department of Culture and Tourism - Abu Dhabi**: https://dctabudhabi.ae
+- **Abu Dhabi Global Market Registration Authority**: https://adgm.com
+- **Khalifa Economic Zones Abu Dhabi**: https://kezadgroup.com
+- **Abu Dhabi Airports Free Zone**: https://adafz.ae
+- **Masdar City Free Zone**: https://masdarcityfreezone.com
+- **twofour54**: https://twofour54.com

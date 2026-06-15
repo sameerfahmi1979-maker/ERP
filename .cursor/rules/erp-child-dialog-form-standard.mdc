@@ -1,0 +1,316 @@
+---
+description: ERP child form dialog standard — all add/edit child record dialogs must use ERPChildDialogForm
+globs:
+  - src/features/**/*.tsx
+  - src/components/erp/**/*.tsx
+alwaysApply: true
+---
+
+# ERP Child Form Dialog Standard
+
+## Phase
+
+ERP GLOBAL UI.2 — Apply Standard Child Dialog Design System-Wide (2026-06-14)
+ERP GLOBAL UI.4G — Child Form Modal Workspace Blocking and UX Standard Fix (2026-06-14)
+
+## Golden Rules (UI.4G)
+
+1. **ALL ERP child form dialogs MUST use `ERPChildDialogForm`.**
+   Any dialog that adds or edits a child record MUST use `ERPChildDialogForm` from
+   `@/components/erp/erp-child-dialog-form`. No custom `DialogContent` widths allowed.
+
+2. **Child forms are intentional BLOCKING modal tasks.**
+   When a child form is open, workspace tab switching and sidebar/background actions
+   are blocked. The user MUST save or cancel the child form before continuing.
+
+3. **Workspace tab bar MUST NOT be clickable while a child form is open.**
+   The child dialog overlay (z-[100]) sits above the tab bar (z-[30]).
+
+4. **Sidebar/background MUST NOT be clickable while a child form is open.**
+   The full-screen overlay at z-[100] naturally blocks all background interaction.
+
+5. **Parent record content MUST be inert + dimmed while child form is open.**
+   Pass `isChildDialogOpen={childDialogOpen}` to `ERPRecordWorkspaceForm`.
+
+6. **Outside click and Esc MUST NOT silently close a child form.**
+   `ERPChildDialogForm` blocks all close events not triggered by Cancel/X/Save.
+
+7. **Child forms MUST NOT be converted to workspace record tabs.**
+   Main Add/Edit/View forms use `ERPRecordWorkspaceForm`. Child Add/Edit forms use
+   `ERPChildDialogForm`. This distinction is non-negotiable.
+
+8. **Combobox/popover inside child dialogs MUST render above child dialog content.**
+   `ERPCombobox` dropdown uses `z-[120]` (above dialog content at z-[110]).
+
+---
+
+## The Component
+
+```tsx
+import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
+
+<ERPChildDialogForm
+  open={isDialogOpen}
+  onOpenChange={setDialogOpen}         // must call both setIsDialogOpen + onChildOpen?.(open)
+  title={editing ? "Edit Contact" : "Add Contact"}
+  subtitle="Enter contact person details"
+  icon={<UserRound className="h-5 w-5" />}
+  mode={editing ? "edit" : "add"}      // "add" | "edit" | "view"
+  size="lg"                            // default; see size table below
+  isSubmitting={isSubmitting}
+  onSubmit={handleSubmit}
+>
+  <div className="grid grid-cols-12 gap-4">
+    {/* form fields */}
+  </div>
+</ERPChildDialogForm>
+```
+
+---
+
+## Props Reference
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `open` | `boolean` | — | Dialog open state |
+| `onOpenChange` | `(open: boolean) => void` | — | Close/open callback |
+| `title` | `string` | — | Header title (required) |
+| `subtitle` | `string?` | — | Header subtitle / description |
+| `icon` | `ReactNode?` | — | Small icon beside title |
+| `mode` | `"add" \| "edit" \| "view"` | `"add"` | Controls submit button label |
+| `size` | `"sm" \| "md" \| "lg" \| "xl"` | `"lg"` | Dialog width (see table) |
+| `isSubmitting` | `boolean` | `false` | Disables buttons + shows spinner |
+| `onCancel` | `() => void?` | — | Pre-cancel callback (rare) |
+| `onSubmit` | `() => void?` | — | Primary button click handler |
+| `submitLabel` | `string?` | `"Add"` / `"Save"` | Override submit label |
+| `cancelLabel` | `string?` | `"Cancel"` | Override cancel label |
+| `children` | `ReactNode` | — | Form body content |
+
+---
+
+## Size Tokens
+
+| Token | Max Width | When To Use |
+|-------|-----------|-------------|
+| `sm` | 480px | Confirmation/delete forms, very simple 2–3 field forms |
+| `md` | 640px | Admin lookup CRUD forms (≤8 fields, no cascades) |
+| `lg` | 960px | **Default.** Standard child forms (contacts, addresses, bank details, licenses) |
+| `xl` | 1120px | Complex matrix/table forms — requires justification in PR |
+
+**Default is `lg` (960px). Do not reduce to `md` just because a form is currently short.**
+
+---
+
+## Layout Standard
+
+### Header
+- Fixed (does not scroll)
+- Icon + Title + optional Subtitle
+- Close X button (top right)
+
+### Body
+- Scrollable only: `overflow-y-auto flex-1 min-h-0`
+- Padding: `p-6` (24px all sides)
+- Content: 12-column grid with 16px gap
+
+### Footer
+- Sticky (never scrolls)
+- Cancel button on **left** (outline variant)
+- Submit button on **right** (primary variant)
+- Footer padding: `px-6 py-3`
+
+---
+
+## Z-index Standard (UI.4G)
+
+| Layer | Z-index | Notes |
+|-------|---------|-------|
+| App/page content | base | |
+| Workspace tab bar | `z-[30]` | Intentionally below child dialog overlay |
+| Record form content | base | |
+| Child dialog overlay | `z-[100]` | Full-screen; blocks tab bar and sidebar |
+| Child dialog content | `z-[110]` | |
+| Combobox/popover inside child dialog | `z-[120]` | |
+| Alert/confirm dialog | `z-[130]` | |
+| Toast | top layer | |
+
+Child dialog overlay uses: `bg-slate-950/60 backdrop-blur-[2px]`
+
+**DO NOT raise workspace-tab-bar above z-[30].**
+**DO NOT set child dialog overlay below z-[100].**
+
+---
+
+## Parent Drawer Inert Pattern
+
+When a child dialog opens from inside an `ERPDrawerForm`, the parent drawer MUST become
+inert (non-interactive) and visibly dimmed.
+
+### Pattern (required for any drawer with child dialogs)
+
+```tsx
+// parent-form-drawer.tsx
+const [childDialogOpen, setChildDialogOpen] = useState(false);
+const handleChildOpen = useCallback((open: boolean) => setChildDialogOpen(open), []);
+
+<ERPDrawerForm ...>
+  <div
+    inert={childDialogOpen || undefined}
+    className={cn(
+      "flex flex-col flex-1 overflow-hidden min-h-0",
+      "transition-opacity duration-200",
+      childDialogOpen && "opacity-50"
+    )}
+  >
+    <ERPDrawerSectionNav ... />
+    <form ...>
+      <ERPDrawerBody>
+        <SomeTab partyId={id} onChildOpen={handleChildOpen} />
+      </ERPDrawerBody>
+      <ERPFormFooter ... />
+    </form>
+  </div>
+</ERPDrawerForm>
+```
+
+### Tab Pattern
+
+```tsx
+// Each tab with a child dialog
+type MyTabProps = {
+  partyId: number;
+  disabled?: boolean;
+  onChildOpen?: (open: boolean) => void;   // ← required
+};
+
+const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+// ← use this helper for all open/close calls:
+const setDialogOpen = (open: boolean) => {
+  setIsDialogOpen(open);
+  onChildOpen?.(open);
+};
+
+<ERPChildDialogForm
+  open={isDialogOpen}
+  onOpenChange={setDialogOpen}   // ← NOT setIsDialogOpen
+  ...
+>
+```
+
+---
+
+## Grid and Field Standard
+
+```tsx
+{/* Standard 12-column grid */}
+<div className="grid grid-cols-12 gap-4">
+  {/* Full row */}
+  <div className="col-span-12">
+    <RequiredLabel required>Field Name</RequiredLabel>
+    <Input ... />
+  </div>
+
+  {/* Half row */}
+  <div className="col-span-6">...</div>
+  <div className="col-span-6">...</div>
+
+  {/* Third row */}
+  <div className="col-span-4">...</div>
+  <div className="col-span-4">...</div>
+  <div className="col-span-4">...</div>
+</div>
+```
+
+---
+
+## Combobox Rule (Rule 14)
+
+**NEVER use shadcn `<Select>` with async-loaded or database-sourced options.**
+
+Shadcn `Select` resolves display labels at mount time. If options load after mount,
+the selected value renders as a raw ID instead of the human-readable label.
+
+**Always use `ERPCombobox` for async/database-sourced options:**
+
+```tsx
+import { ERPCombobox } from "@/components/erp/combobox";
+
+<ERPCombobox
+  value={form.status_id}
+  onValueChange={(v) => setForm(f => ({ ...f, status_id: Number(v) }))}
+  options={(statuses ?? []).map(s => ({ value: s.id, label: s.name_en }))}
+  placeholder="Select status..."
+  required
+/>
+```
+
+---
+
+## Forbidden Patterns
+
+```tsx
+// ❌ NEVER — custom DialogContent width for a child form:
+<Dialog open={...} onOpenChange={...}>
+  <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+    ...
+
+// ❌ NEVER — DialogFooter inside the scrollable body area:
+<DialogContent className="... overflow-y-auto">
+  <div>...fields...</div>
+  <DialogFooter>  {/* scrolls with content — WRONG */}
+    ...
+  </DialogFooter>
+</DialogContent>
+
+// ❌ NEVER — inline footer buttons without sticky container:
+<div className="flex justify-end gap-2">
+  <Button>Cancel</Button>
+  <Button>Save</Button>
+</div>
+
+// ❌ NEVER — shadcn Select for async data:
+<Select value={form.type_id} onValueChange={...}>
+  <SelectTrigger>...</SelectTrigger>
+  <SelectContent>
+    {types.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+  </SelectContent>
+</Select>
+```
+
+---
+
+## Allowed Exceptions
+
+These dialog types do NOT use `ERPChildDialogForm`:
+
+| Type | Component | Reason |
+|------|-----------|--------|
+| Delete confirmation | `AlertDialog` | Not a form; uses `AlertDialogContent` |
+| Unsaved changes | `AlertDialog` | Not a form |
+| Utility/email dialogs | Custom `DialogContent` | Complex custom state; overlay fix applied directly |
+| Main standalone CRUD drawers | `ERPDrawerForm` | These are primary add/edit screens, not child forms |
+
+---
+
+## Reference Implementation
+
+See canonical Party Master implementation:
+- `src/components/erp/erp-child-dialog-form.tsx` — the component
+- `src/features/master-data/parties/party-contacts-tab.tsx` — standard usage
+- `src/features/master-data/parties/party-form-drawer.tsx` — inert wrapper pattern
+- `implementation_Review/ERP_GLOBAL_UI_2_STANDARD_CHILD_DIALOG_DESIGN_SYSTEM_WIDE_IMPLEMENTATION_REPORT.md`
+
+---
+
+## CLEANUP.2 Note
+
+All pre-workspace `*-form-dialog.tsx` files for **main CRUD operations** were permanently
+deleted in **ERP GLOBAL CLEANUP.2** (2026-06-14). 21 files removed.
+
+```
+✗ Do NOT create new sliding *-form-dialog.tsx files for main Add/Edit/View forms.
+✗ Do NOT import deleted legacy form-dialog components.
+✓ Only ERPChildDialogForm is allowed for child (sub-record) forms.
+✓ Main CRUD forms → ERPRecordWorkspaceForm.
+```

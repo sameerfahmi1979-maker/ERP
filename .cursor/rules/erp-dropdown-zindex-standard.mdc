@@ -1,0 +1,143 @@
+---
+description: "ERP dropdown, select, popover and tooltip z-index stacking rules. Apply whenever using Select, Popover, DropdownMenu, Tooltip, AlertDialog, ERPCombobox, or ERPChildDialogForm."
+globs: ["src/**/*.tsx", "src/**/*.ts", "src/components/ui/**"]
+alwaysApply: false
+---
+
+# ERP Dropdown / Overlay Z-Index Standard
+
+**Version:** V1  
+**Phase:** ERP GLOBAL UI.4G+ (enforced from DMS.4 closure, 2026-06-14)  
+**Status:** ACTIVE  
+
+---
+
+## Canonical Z-Index Stack
+
+This is the **single source of truth** for all overlay z-index values in the ERP app.
+Do NOT use `z-50` for any portal-rendered overlay. Do NOT deviate from this stack.
+
+| Layer | Z-index | File / Component |
+|---|---|---|
+| App content | base (auto) | — |
+| Workspace tab bar | `z-[30]` | `workspace-tab-bar.tsx` |
+| ERPDrawerForm / Sheet | `z-[50]` | `sheet.tsx` (base) |
+| ERPChildDialogForm overlay | `z-[100]` | `erp-child-dialog-form.tsx` (overlay) |
+| ERPChildDialogForm content | `z-[110]` | `erp-child-dialog-form.tsx` (content) |
+| **Select / Popover / DropdownMenu** | **`z-[120]`** | `select.tsx`, `popover.tsx`, `dropdown-menu.tsx` |
+| **ERPCombobox PopoverContent** | **`z-[120]`** | `erp-combobox.tsx` |
+| **AlertDialog / confirmation dialog** | **`z-[130]`** | `alert-dialog.tsx` |
+| **Tooltip** | **`z-[140]`** | `tooltip.tsx` |
+| Toast / Sonner | `z-[9999]` | sonner |
+
+---
+
+## Rules
+
+### 1. Never use `z-50` for portal-rendered components
+
+`z-50` was the shadcn/Radix default. This ERP project raised all portaled overlay defaults.
+After the ERP GLOBAL UI.4G fix, **`z-50` is reserved only for non-portaled positioned elements**.
+
+❌ **Wrong** — will render behind child dialogs:
+```tsx
+<SelectContent className="z-50 ...">
+```
+
+✅ **Correct** — always use `z-[120]` (already the default in `select.tsx`):
+```tsx
+<SelectContent>  {/* default z-[120] is correct */}
+```
+
+### 2. All Select/Popover/DropdownMenu are globally at `z-[120]`
+
+The following UI primitives have their defaults set to `z-[120]`:
+- `src/components/ui/select.tsx` → `SelectContent` (Positioner + Popup)
+- `src/components/ui/popover.tsx` → `PopoverContent`
+- `src/components/ui/dropdown-menu.tsx` → `DropdownMenuContent` (Positioner + Popup)
+
+Do **NOT** override these to a lower value (`z-50`, `z-10`, etc.) inside forms or dialogs.
+Do **NOT** add a `className` that overrides `z-[120]` downward.
+
+### 3. ERPCombobox inside ERPChildDialogForm is the approved async picker
+
+For any field sourced from the database (categories, document types, parties, employees, etc.)
+inside an `ERPChildDialogForm`, always use `ERPCombobox`, not bare `<Select>`.
+
+`ERPCombobox` explicitly sets `z-[120]` on its `PopoverContent` (redundant with the default
+but intentional for documentation).
+
+❌ **Wrong — async data in a child dialog using bare Select:**
+```tsx
+<ERPChildDialogForm ...>
+  <Select value={form.category_id} ...>
+    <SelectContent>
+      {categories.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name_en}</SelectItem>)}
+    </SelectContent>
+  </Select>
+</ERPChildDialogForm>
+```
+
+✅ **Correct — async data uses ERPCombobox:**
+```tsx
+<ERPChildDialogForm ...>
+  <ERPCombobox
+    options={categories.map(c => ({ value: c.id, label: c.name_en }))}
+    value={form.category_id}
+    onValueChange={(v) => setForm(f => ({ ...f, category_id: v }))}
+  />
+</ERPChildDialogForm>
+```
+
+### 4. AlertDialog must appear above dropdowns
+
+`AlertDialog` (confirm/destroy dialogs) are at `z-[130]`. This is correct and already set in
+`alert-dialog.tsx`. Never lower the AlertDialog overlay or content below `z-[130]`.
+
+### 5. Tooltip must appear above all overlays
+
+Tooltips are at `z-[140]`. This is already set in `tooltip.tsx`.
+Never add a tooltip inside an AlertDialog (it would render behind at `z-[130]`).
+If needed inside a dialog, pass the tooltip `className="z-[150]"`.
+
+### 6. ERPChildDialogForm z-index must not change without team approval
+
+`ERPChildDialogForm` uses `z-[100]` (overlay) and `z-[110]` (content).
+Changing these values breaks the entire overlay stacking contract.
+Always update ALL related z-index values together if the base ever needs to change.
+
+### 7. Do NOT add `isolate` to form containers or section panels
+
+The CSS `isolation: isolate` (Tailwind class `isolate`) creates a new stacking context.
+If added to a container that wraps a portal trigger, it can trap z-index values.
+Only use `isolate` on overlay elements themselves (e.g., the dialog positioner).
+
+---
+
+## How This Was Discovered
+
+After ERP GLOBAL UI.4G raised `ERPChildDialogForm` to `z-[100]`/`z-[110]`, the
+`SelectContent`, `PopoverContent`, and `DropdownMenuContent` were left at Tailwind's default
+`z-50`. This caused Select dropdowns inside DMS admin child dialogs to render **behind** the
+dialog panel — appearing invisible to users.
+
+Fix applied 2026-06-14 (ERP DMS.4 closure):
+- `select.tsx` Positioner + Popup: `z-50` → `z-[120]`
+- `dropdown-menu.tsx` Positioner + Popup: `z-50` → `z-[120]`
+- `popover.tsx` Content: `z-50` → `z-[120]`
+- `alert-dialog.tsx` Overlay + Content: `z-50` → `z-[130]`
+- `tooltip.tsx` Positioner + Popup + Arrow: `z-50` → `z-[140]`
+
+---
+
+## When Adding New Overlay Components
+
+If you add a **new UI primitive** that renders in a portal (e.g., a date picker, color picker,
+command palette, context menu), assign its z-index based on this stack:
+
+- Floating picker / command palette: `z-[120]`
+- Modal dialog: `z-[110]`
+- Confirmation / destructive modal: `z-[130]`
+- Tooltip / hint: `z-[140]`
+
+Never use `z-50` for portaled components. Update this rule file when adding new layers.

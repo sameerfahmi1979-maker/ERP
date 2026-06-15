@@ -1,0 +1,170 @@
+---
+description: Enforces correct modal blocking when child dialogs open inside ERP drawers. Apply whenever implementing or reviewing any tab or child form that opens a Dialog inside a Sheet/drawer in this ERP.
+globs:
+  - "src/features/**/*.tsx"
+  - "src/components/erp/**/*.tsx"
+alwaysApply: false
+---
+
+# ERP Drawer — Child Dialog Modal Blocking Standard
+
+## The Bug This Prevents
+
+Both the ERP drawer (`Sheet`) and child form dialogs (`Dialog`) use `@base-ui/react/dialog`
+at the same `z-50` z-index. Base UI's nested modal stack does **not** prevent the Sheet
+(parent drawer) from receiving pointer and keyboard events when a child `Dialog` is open.
+
+This was fixed in **ERP BASE 002F.5A.3X** (2026-06-14).
+
+Without the fix, users can:
+- Switch parent tabs while a child form is open
+- Edit parent fields through the dialog
+- Trigger parent Save / Save & Close
+- Open a second child form while one is already open
+
+## The Fix Pattern
+
+Use the browser-native **`inert` HTML attribute** on the drawer's inner content wrapper.
+
+`inert` makes an element and all its descendants:
+- Non-interactive (all pointer events ignored)
+- Non-focusable (keyboard cannot reach the subtree)
+- Hidden from accessibility tools
+
+**Why this works without blocking the Dialog**: Child `Dialog` components render via
+`DialogPortal` to `document.body` — outside the `SheetContent` DOM. `inert` on the
+SheetContent wrapper does NOT affect the Dialog.
+
+---
+
+## Required Implementation for Any Drawer with Child Dialogs
+
+### Step 1 — Parent Drawer: Track child dialog state and apply `inert`
+
+```tsx
+// In the parent drawer component:
+const [childDialogOpen, setChildDialogOpen] = useState(false);
+const handleChildOpen = useCallback((open: boolean) => setChildDialogOpen(open), []);
+
+// In JSX — wrap all interactive drawer content:
+<ERPDrawerForm ...>
+  <div inert={childDialogOpen || undefined} className="contents">
+    <ERPDrawerSectionNav ... />
+    <form ...>
+      <ERPDrawerBody>
+        <SomeTab partyId={...} onChildOpen={handleChildOpen} />
+        {/* ... other tabs ... */}
+      </ERPDrawerBody>
+      <ERPFormFooter ... />
+    </form>
+  </div>
+</ERPDrawerForm>
+```
+
+- Use `className="contents"` so the wrapper is invisible to layout (`display: contents`).
+- The `inert` attribute is `true` (present) when any child dialog is open, `undefined`
+  (absent) otherwise.
+- Dialogs that live OUTSIDE `ERPDrawerForm` (e.g. duplicate detection dialogs rendered
+  after the closing tag) do NOT need to be inside the `inert` wrapper.
+
+### Step 2 — Each Tab with a Child Dialog: Add `onChildOpen` prop + `setDialogOpen` helper
+
+```tsx
+// Props type:
+type MyTabProps = {
+  partyId: number;
+  disabled?: boolean;
+  onChildOpen?: (open: boolean) => void;  // ← add this
+};
+
+// In the component:
+export function MyTab({ partyId, disabled, onChildOpen }: MyTabProps) {
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  // ← add this helper — replaces direct setIsDialogOpen calls:
+  const setDialogOpen = (open: boolean) => {
+    setIsDialogOpen(open);
+    onChildOpen?.(open);
+  };
+
+  // openAdd / openEdit: use setDialogOpen(true)
+  const openAdd = () => {
+    setForm({ ...emptyForm });
+    setDialogOpen(true);       // ← not setIsDialogOpen
+  };
+
+  // handleSubmit: use setDialogOpen(false) on success
+  const handleSubmit = async () => {
+    const result = await saveAction(...);
+    if (result.success) {
+      setDialogOpen(false);    // ← not setIsDialogOpen
+    }
+  };
+
+  return (
+    <>
+      {/* ... table / list ... */}
+
+      {/* Dialog: use setDialogOpen in onOpenChange */}
+      <Dialog open={isDialogOpen} onOpenChange={setDialogOpen}>  {/* ← not setIsDialogOpen */}
+        <DialogContent>
+          {/* ... form fields ... */}
+          <DialogFooter>
+            <Button onClick={() => setDialogOpen(false)}>Cancel</Button>  {/* ← not setIsDialogOpen */}
+            <Button onClick={handleSubmit}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+```
+
+---
+
+## Rules Summary
+
+1. **Every tab component that opens a child Dialog MUST accept `onChildOpen?: (open: boolean) => void`.**
+2. **Every tab MUST define a `setDialogOpen` helper** that calls both `setIsDialogOpen` and `onChildOpen?.(open)`.
+3. **Never call `setIsDialogOpen` directly** in openAdd, openEdit, handleSubmit, or Cancel — always use `setDialogOpen`.
+4. **The parent drawer MUST wrap interactive content in `<div inert={childDialogOpen || undefined}>`.**
+5. **Dialog.onOpenChange MUST use `setDialogOpen`** (not `setIsDialogOpen`) so Esc and outside-click also notify the parent.
+6. **Do NOT apply `inert` to the Dialog itself** — the Dialog renders in a portal to body and is unaffected by `inert` on the drawer content.
+
+---
+
+## Why `inert` and Not `pointer-events-none`
+
+| Approach | Blocks pointer | Blocks keyboard | Blocks focus | Accessible |
+|----------|---------------|-----------------|--------------|-----------|
+| `pointer-events-none` (CSS) | ✅ | ❌ | ❌ | ❌ |
+| `disabled` on each element | ✅ | ✅ | ✅ | partial |
+| `inert` (HTML attribute) | ✅ | ✅ | ✅ | ✅ |
+
+`inert` is the only option that fully blocks ALL forms of interaction with a single attribute,
+on the whole subtree, without modifying individual child components.
+
+## React 19 Note
+
+React 19 natively supports the `inert` boolean HTML attribute on all elements.
+Use `inert={condition || undefined}` — when condition is `false`, `|| undefined` removes
+the attribute entirely (React does not render `inert={false}` as an attribute).
+
+```tsx
+// ✅ Correct
+<div inert={childDialogOpen || undefined}>
+
+// ✅ Also valid in React 19
+<div inert={childDialogOpen ? true : undefined}>
+
+// ❌ Wrong — renders inert="" unconditionally
+<div inert>
+
+// ❌ Wrong — renders inert="false" (still inert!) in some React versions
+<div inert={false}>
+```
+
+## Reference Implementation
+
+See `src/features/master-data/parties/party-form-drawer.tsx` and all
+`src/features/master-data/parties/party-*-tab.tsx` files for the canonical implementation.

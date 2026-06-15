@@ -1,0 +1,272 @@
+---
+description: >
+  ERP Record Workspace Form Standard.
+  Governs how large main-record forms are structured, opened, named, and
+  closed inside workspace record tabs. Replaces ERPDrawerForm for large
+  entities (5+ tabs, child tables). ERPChildDialogForm remains unchanged
+  for child forms. Implemented in ERP GLOBAL UI.4C.
+alwaysApply: false
+---
+
+# ERP Record Workspace Form Standard
+
+**Status:** IMPLEMENTED — ERP GLOBAL UI.4C (2026-06-14)  
+**Activate alwaysApply:** After first module is converted (ERP GLOBAL UI.4D — Party Master pilot)  
+**Components:** `src/components/workspace/erp-record-workspace-form.tsx` and siblings
+
+---
+
+## Rule 1 — When to use ERPRecordWorkspaceForm vs ERPDrawerForm
+
+Use `ERPRecordWorkspaceForm` for any entity meeting 2+ of these criteria:
+
+- 5 or more navigation sections/tabs
+- Has child tables (contacts, addresses, bank details, documents, etc.)
+- Has audit/notes/compliance tabs
+- Is a "long-lived entity" (not a quick setup value)
+- Users frequently switch context while editing
+
+```
+REQUIRES ERPRecordWorkspaceForm (convert in UI.4D+):
+✓ Party Master (12 tabs, 8+ child tables)
+✓ Customers (after Party Master)
+✓ Future: Employee profile
+✓ Future: Fleet asset / equipment
+✓ Future: Purchase Order / Invoice
+✓ Future: Job Card / Workshop order
+✓ Future: Project
+✓ Future: DMS document record
+
+KEEP ERPDrawerForm:
+✓ Organizations, Branches (2–3 fields)
+✓ Roles, Permissions (simple forms)
+✓ Geography, Finance Basics, UOM, Lookups (≤ 5 fields)
+✓ Numbering Rules, Users, Admin forms
+```
+
+---
+
+## Rule 2 — ERPRecordWorkspaceForm anatomy
+
+Every record workspace form must follow this layout:
+
+```
+ERPRecordWorkspaceForm
+  ├── ERPRecordHeader              (shrink-0, always visible)
+  │    ├── Record code badge       (font-mono, auto-generated)
+  │    ├── Display name + subtitle
+  │    ├── Status badge
+  │    ├── Mode badge (Add / Editing / View)
+  │    ├── Type badges
+  │    ├── Dirty indicator (amber dot + "Unsaved")
+  │    └── Close (X) button → calls onRequestClose
+  ├── Content zone                 (flex-1, inert-able for child dialogs)
+  │    ├── ERPRecordSectionNav     (240px desktop / horizontal mobile)
+  │    └── ScrollArea body         (flex-1, overflow-auto)
+  │         └── ERPRecordSection panels (lazyMount for child-table sections)
+  └── ERPRecordFormFooter          (shrink-0, always visible)
+       ├── Add/Edit: Cancel · Save · Save & Close
+       └── View:     Close
+```
+
+---
+
+## Rule 3 — File locations
+
+```
+src/components/workspace/erp-record-workspace-form.tsx   ← main shell + ERPRecordSection
+src/components/workspace/erp-record-header.tsx
+src/components/workspace/erp-record-section-nav.tsx
+src/components/workspace/erp-record-form-footer.tsx
+src/hooks/use-record-workspace-form.ts
+```
+
+---
+
+## Rule 4 — Dirty state
+
+Every record workspace form MUST wire dirty state:
+
+```tsx
+// In the record form component:
+const { isDirty, resetDirty } = useFormDirty({ formId, enabled: mode !== "view" });
+const { requestClose, showUnsavedDialog, confirmDiscard, cancelDiscard } =
+  useRecordWorkspaceForm({ formId, mode, isDirty, onClose: () => /* navigate away */ });
+
+<ERPRecordWorkspaceForm
+  isDirty={isDirty}
+  onRequestClose={requestClose}
+  ...
+/>
+```
+
+- `useRecordWorkspaceForm` calls `useWorkspaceTabDirty` internally — no manual call needed.
+- Tab dirty dot appears automatically when `isDirty = true`.
+- Save MUST call `resetDirty()` after successful save.
+- Do NOT persist unsaved form field values to localStorage or workspace state.
+
+---
+
+## Rule 5 — Safe close
+
+```
+Close button / Cancel / X
+  └── calls onRequestClose → useRecordWorkspaceForm().requestClose
+        ├── Inside WorkspaceProvider: workspace.closeTab(activeTabId)
+        │     └── WorkspaceProvider (4B) handles dirty dialog
+        └── Outside WorkspaceProvider: internal UnsavedChangesDialog fallback
+```
+
+Avoid double dialogs: do NOT add a separate dirty check in the form if already using `useRecordWorkspaceForm` + WorkspaceProvider.
+
+---
+
+## Rule 6 — Child dialogs
+
+Child form dialogs inside a record form MUST use `ERPChildDialogForm`.
+
+When a child dialog opens, pass `isChildDialogOpen={true}` to `ERPRecordWorkspaceForm`:
+
+```tsx
+<ERPRecordWorkspaceForm
+  isChildDialogOpen={childDialogOpen}
+  ...
+>
+  {/* child dialog portals to body — escapes inert zone */}
+  <ERPChildDialogForm open={childDialogOpen} ... />
+```
+
+The inert wrapper covers: section nav + body + footer.  
+It does NOT cover: header, workspace tab bar, sidebar.
+
+---
+
+## Rule 7 — Section panels
+
+Use `ERPRecordSection` from `erp-record-workspace-form.tsx`:
+
+```tsx
+<ERPRecordSection id="contacts" activeId={activeSection} lazyMount>
+  <ContactsContent />
+</ERPRecordSection>
+```
+
+lazyMount rule (same as ERPDrawerSection):
+- Set `lazyMount` on sections whose fields are NOT included in parent FormData.
+- Display-only sections and child-CRUD sections are safe candidates.
+
+---
+
+## Rule 8 — Section nav
+
+Pass a `sections` array to `ERPRecordWorkspaceForm`:
+
+```tsx
+const sections: ERPRecordSection[] = [
+  { id: "basic", label: "Basic Information", icon: <Building2 className="h-3.5 w-3.5" /> },
+  { id: "contacts", label: "Contacts", badge: contactCount, lazyMount: true },
+  { id: "audit", label: "Audit", disabled: mode === "add" },
+];
+```
+
+Do NOT hardcode section IDs — define them as a `const` at the module level.
+
+---
+
+## Rule 9 — Mode management
+
+```
+mode="add"   → all sections enabled, Cancel = discard new record, Save = create
+mode="edit"  → all sections enabled, Cancel = discard edits, Save = update
+mode="view"  → read-only, Close button only, no dirty tracking
+```
+
+Switching from view → edit should NOT create a new workspace tab. Update the tab's `formMode` via `RENAME_TAB` or `workspaceStore` dispatch.
+
+---
+
+## Rule 10 — Naming
+
+Workspace record tabs:
+- Title: Entity display name ("ABC Contracting LLC") or "New [EntityType]"
+- Subtitle: Record code when available ("PTY-000001")
+- tabKind: "record"
+- entityType: e.g. "party", "customer", "vendor"
+- entityId: DB primary key (when editing existing record)
+
+After first save of a new record:
+- Call `dispatch({ type: "RENAME_TAB", tabId, title: displayName, subtitle: recordCode })`.
+
+---
+
+## Rule 11 — Forbidden patterns
+
+```
+✗ Do NOT use Sheet/ERPDrawerForm for entities listed in Rule 1
+✗ Do NOT store unsaved form values in workspace or localStorage
+✗ Do NOT block workspace tab bar from child dialogs
+✗ Do NOT duplicate dirty-close dialogs
+✗ Do NOT use ERPRecordWorkspaceForm for simple admin forms
+✗ Do NOT skip calling resetDirty() after successful save
+```
+
+---
+
+## Rule 12 — Party Master conversion (complete)
+
+Party Master was converted to `ERPRecordWorkspaceForm` in **ERP GLOBAL UI.4D**. It is the reference implementation.
+
+---
+
+## Rule 13 — Section state and scroll state are mandatory (UI.4E)
+
+Every `ERPRecordWorkspaceForm` implementation **must** use `useWorkspaceSectionState` to persist the active section across workspace tab switches.
+
+```ts
+import { useWorkspaceSectionState } from "@/hooks/use-workspace-section-state";
+
+// Existing record:
+const [activeSection, setActiveSection] = useWorkspaceSectionState({
+  key: "active-section",
+  initialSection: "basic",
+  scope: "record",
+  recordType: "party",   // change per entity
+  recordId: entity.id,
+});
+
+// New/unsaved record:
+const [activeSection, setActiveSection] = useWorkspaceSectionState({
+  key: "active-section",
+  initialSection: "basic",
+  scope: "tab",
+  identifier: activeTab?.id ?? "new",
+});
+```
+
+Scroll state via `useWorkspaceScrollState` + the `bodyScrollRef` prop of `ERPRecordWorkspaceForm` is strongly recommended.
+
+---
+
+## Rule 14 — Do not persist sensitive form field values
+
+`useWorkspaceSectionState` only persists the active section ID (a string).  
+`useWorkspaceScrollState` only persists scroll coordinates (numbers).
+
+Never cache form field values, PII, financial identifiers, or unsaved business data.  
+See `docs/standards/ERP_GLOBAL_WORKSPACE_OPEN_ELEMENT_CACHE_STANDARD.md`.
+
+---
+
+## Rule 15 — Legacy `*-form-dialog.tsx` files are deleted (CLEANUP.2)
+
+All pre-workspace `*-form-dialog.tsx` files for main Add/Edit/View CRUD operations
+were removed in **ERP GLOBAL CLEANUP.2** (2026-06-14). 21 files deleted.
+
+```
+✗ Do NOT create new *-form-dialog.tsx files for main CRUD forms.
+✗ Do NOT import or resurrect deleted legacy form-dialog components.
+✓ Main Add/Edit/View → ERPRecordWorkspaceForm (workspace record tab)
+✓ Child Add/Edit → ERPChildDialogForm (blocking modal)
+```
+
+Any new CRUD form must follow the workspace pattern from day one.

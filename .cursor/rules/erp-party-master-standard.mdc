@@ -1,0 +1,88 @@
+---
+description: Party Master standard — all customer/vendor/party functionality must use the Unified Party Master. Legacy customer module is retired.
+globs:
+  - "src/**/*.ts"
+  - "src/**/*.tsx"
+alwaysApply: true
+---
+
+# ERP Party Master Standard
+
+## Customer Functionality
+
+All customer functionality MUST use the Unified Party Master.
+
+**Active customer route:**
+```
+/admin/master-data/parties/customers
+```
+
+**Do NOT use or reference:**
+```
+/admin/master-data/customers         ← legacy, redirects to party master
+/admin/master-data/customers/record/ ← legacy, redirects to party master
+```
+
+## Rules
+
+1. Customer records are Party records with `CUSTOMER` party type.
+2. Add Customer = Add Party via `/admin/master-data/parties/record/new`.
+3. View/Edit Customer = open Party record from the Customers filtered view.
+4. Customer contacts, addresses, bank details = Party child tabs.
+5. Do NOT import or build against legacy customer feature files — they have been deleted.
+6. Do NOT create new server actions against `customers`, `customer_contacts`, `customer_addresses`, `customer_bank_details`, or `customer_documents` tables — they have been dropped.
+7. `customer_categories` and `customer_statuses` tables are RETAINED — they are used by `party_customer_profiles` (Party Master). Do not drop them.
+
+## Workspace Route Registry
+
+Legacy customer entries (`CUSTOMERS_LEGACY`) have been removed from `src/lib/workspace/workspace-route-registry.ts`.
+
+The active party customer list tab is registered as:
+```
+/admin/master-data/parties/customers  (moduleCode: PARTY_MASTER)
+```
+
+## Server Actions
+
+Legacy customer server actions have been deleted:
+- ~~`src/server/actions/master-data/customers.ts`~~
+- ~~`src/server/actions/master-data/customer-contacts.ts`~~
+- ~~`src/server/actions/master-data/customer-addresses.ts`~~
+- ~~`src/server/actions/master-data/customer-bank-details.ts`~~
+
+Use Party Master server actions in `src/server/actions/master-data/parties.ts`.
+
+## DB Status (as of CLEANUP.1)
+
+| Table | Status |
+|---|---|
+| `customers` | DROPPED (migration 20260614145000) |
+| `customer_contacts` | DROPPED (migration 20260614145000) |
+| `customer_addresses` | DROPPED (migration 20260614145000) |
+| `customer_bank_details` | DROPPED (migration 20260614145000) |
+| `customer_documents` | DROPPED (migration 20260614145000) |
+| `customer_categories` | RETAINED — FK from `party_customer_profiles` |
+| `customer_statuses` | RETAINED — FK from `party_customer_profiles` |
+
+## Party Documents — DMS.6 (as of 2026-06-15)
+
+After DMS.6, the Party Documents tab is DMS-backed. The following rules apply:
+
+**AFTER DMS.6:**
+
+1. Party Documents tab (`PartyDmsDocumentsTab`) uses `dms_documents` + `dms_document_links(entity_type='party')` — NOT `party_documents`.
+2. Do NOT write to `party_documents` from any new UI code after DMS.6.
+3. Do NOT use `party_document_types` for any new dropdown after DMS.6 — use `dms_document_types`.
+4. `party_documents` table is legacy archive — kept for soak period. Drop only in `ERP DMS.CLEANUP.1`.
+5. `party_document_types` table is legacy archive — kept for soak period.
+6. New Party document creation must use `createDmsDocument` + `linkDmsDocumentToEntity(documentId, 'party', partyId)`.
+7. File upload for Party documents goes through `/dms/inbox?entity_type=party&entity_id={partyId}`.
+8. Metadata-only document creation goes through `/dms/documents/record/new?entity_type=party&entity_id={partyId}`.
+9. `party_licenses.dms_license_document_id` — new nullable FK to dms_documents (use instead of legacy `license_document_id` where available).
+10. `party_tax_registrations.dms_certificate_document_id` — new nullable FK to dms_documents (use instead of legacy `certificate_document_id` where available).
+11. Old FK columns `party_licenses.license_document_id` and `party_tax_registrations.certificate_document_id` — NOT dropped; kept until DMS.CLEANUP.1.
+
+**Server actions for Party DMS documents:**
+- `src/server/actions/dms/entity-documents.ts` — generic entity-document CRUD (all ERP modules)
+- `src/server/actions/master-data/party-dms-documents.ts` — party-specific wrappers
+- Old `src/server/actions/master-data/party-documents.ts` — kept as legacy; do not delete until soak period ends

@@ -1,0 +1,240 @@
+---
+description: ALGT ERP DMS — Document Management System Standards V2. Apply when creating, editing, or reviewing any DMS-related code, database schema, UI, server actions, or architecture decisions. Also applies when working with party_documents, party_document_types, erp_ai_provider_configs, or any file upload/storage feature.
+globs:
+  - "src/features/dms/**"
+  - "src/app/**/dms/**"
+  - "src/server/actions/dms/**"
+  - "src/lib/dms/**"
+  - "src/components/dms/**"
+  - "supabase/migrations/*dms*"
+  - "src/app/**/settings/ai/**"
+alwaysApply: false
+---
+
+# ALGT ERP DMS Standard — Version 2
+
+**Phase:** ERP DMS.1A (Architecture Review Complete)  
+**Status:** PLANNED — DMS.2 requires explicit approval from Sameer.  
+**V2 Reference:** `implementation_Review/Phase_DMS_1_Planning/ERP_ENTERPRISE_DMS_ARCHITECTURE_STANDARD_V2.md`  
+**Main Plan:** `implementation_Review/Phase_DMS_1_Planning/ERP_DMS_1_AI_READY_ENTERPRISE_DMS_RESEARCH_AND_ARCHITECTURE_PLAN.md`  
+**Approval Gate:** `implementation_Review/Phase_DMS_1_Planning/ERP_DMS_1A_ARCHITECTURE_REVIEW_CORRECTIONS_EXISTING_DOCUMENT_INVENTORY_AND_FINAL_APPROVAL_GATE.md`
+
+---
+
+## 0. PLANNED Status Warning
+
+**Do NOT implement DMS features** until Sameer explicitly approves the DMS.2 phase prompt.
+
+Do not:
+- Create DMS database tables or migrations
+- Create DMS UI screens
+- Add DMS routes to the sidebar or workspace registry
+- Create DMS server actions
+- Modify existing Party Documents tab to use DMS
+- Install OCR or AI packages
+- Create Supabase Storage buckets
+
+---
+
+## 1. DMS Single Source of Truth Rule (Non-Negotiable)
+
+After DMS.6 is complete:
+
+```
+✅ ALL document files must be stored in DMS (dms_documents + dms_document_files)
+
+✅ ALLOWED — stay in ERP module tables:
+  party_licenses         (structured: license number, expiry, authority — NOT a file)
+  party_tax_registrations (structured: TRN number, effective dates — NOT a file)
+  party_compliance_profiles (structured: approval status, risk — NO files)
+
+❌ PROHIBITED after DMS.6:
+  Creating employee_documents table
+  Creating vehicle_documents table
+  Creating equipment_documents table
+  Creating project_documents table
+  Any new *_documents table for any ERP module
+  Writing to party_documents.file_path (column is deprecated placeholder)
+```
+
+For all future ERP modules that need document attachments:
+```typescript
+// CORRECT — use generic link
+await createDmsDocumentLink({
+  documentId: dmsDocId,
+  entityType: 'vehicle',  // or 'employee', 'project', etc.
+  entityId: vehicleId,
+});
+
+// WRONG — do not create module-specific tables
+// ALTER TABLE vehicles ADD COLUMN document_id BIGINT; ← NEVER
+// CREATE TABLE vehicle_documents (...); ← NEVER
+```
+
+---
+
+## 2. Core DMS Principles
+
+1. **BIGINT PKs only** — All DMS tables use `BIGINT GENERATED ALWAYS AS IDENTITY`. No UUID.
+2. **AI assists, humans decide** — All AI extractions go to `dms_review_queue`. No auto-save.
+3. **Immutable originals** — Files never overwritten. New version = new `dms_document_versions` row.
+4. **RLS everywhere** — All DMS tables and `erp_ai_provider_configs` have RLS enabled.
+5. **Confidentiality tiers** — Six levels: `internal`, `company`, `hr`, `finance`, `legal`, `executive`.
+6. **Provider-agnostic AI** — All OCR/AI via factory functions reading `erp_ai_provider_configs`. Never hardcode a provider.
+7. **One document, many links** — `dms_document_links(entity_type, entity_id)` for all ERP links.
+8. **Full audit trail** — Every action writes to `dms_document_events`.
+9. **ERP-native UX** — `ERPRecordWorkspaceForm`, `ERPDataTable`, `ERPChildDialogForm` exclusively.
+10. **Supabase Storage** — All files in `dms-documents` and `dms-temp` buckets. Never in DB.
+
+---
+
+## 3. Table Naming Conventions
+
+All DMS tables prefixed `dms_`. AI settings table: `erp_ai_provider_configs`.
+
+```
+dms_document_categories
+dms_document_types           ← supersedes party_document_types after DMS.6
+dms_metadata_definitions
+dms_documents
+dms_document_files
+dms_document_versions
+dms_tags
+dms_document_tags
+dms_document_metadata_values
+dms_document_links           ← replaces fragmented party_id FK columns
+dms_upload_sessions
+dms_ai_extraction_jobs
+dms_ai_extraction_results
+dms_review_queue
+dms_document_workflows
+dms_document_workflow_steps
+dms_document_approvals
+dms_document_access_rules
+dms_document_events          ← append-only audit log
+dms_document_comments
+dms_saved_searches
+dms_retention_policies
+dms_expiry_reminders
+erp_ai_provider_configs      ← AI provider configuration (non-sensitive only; keys in Vault)
+```
+
+---
+
+## 4. `dms_document_links` Entity Types (Definitive List)
+
+Valid `entity_type` values for `dms_document_links`:
+
+```
+'party'                   → parties.id
+'party_license'           → party_licenses.id
+'party_tax_registration'  → party_tax_registrations.id
+'employee'                → employees.id    (future)
+'vehicle'                 → vehicles.id     (future)
+'equipment'               → equipment.id   (future)
+'project'                 → projects.id    (future)
+'contract'                → contracts.id   (future)
+'purchase_order'          → purchase_orders.id (future)
+'invoice'                 → invoices.id    (future)
+'job_card'                → job_cards.id   (future)
+'hse_incident'            → hse_incidents.id (future)
+'company'                 → owner_companies.id
+'branch'                  → branches.id
+'bank'                    → finance_banks.id
+```
+
+---
+
+## 5. `party_documents` Migration Status
+
+**Current status (pre-DMS.6):** `party_documents` is an ACTIVE but metadata-only table. The `file_path`, `file_name`, `file_mime_type`, `file_size` columns have ALWAYS been NULL — no files were ever stored.
+
+**During DMS.6:**
+- Metadata rows migrate to `dms_documents` + `dms_document_links(entity_type='party')`
+- `party_licenses.license_document_id` FK altered to point to `dms_documents`
+- `party_tax_registrations.certificate_document_id` FK altered to point to `dms_documents`
+- `party_documents` marked deprecated (30-day soak period)
+- `MASTER_PARTY_DOCUMENT` numbering rule disabled
+
+**After DMS.6:**
+- `party_documents` is read-only (no inserts, no updates)
+- `party_document_types` is read-only (new types go to `dms_document_types`)
+- `getPartyDocumentTypes()` server action replaced by `getDmsDocumentTypes()`
+
+---
+
+## 6. AI Provider Rules
+
+All AI/OCR interactions MUST go through provider abstraction:
+
+```typescript
+// CORRECT — use factory
+const classifier = getDocumentClassifier(); // reads erp_ai_provider_configs
+const result = await classifier.classify(ocrText, knownTypes);
+
+// WRONG — never hardcode provider
+import OpenAI from 'openai'; // ← NEVER in DMS feature code
+const openai = new OpenAI({ apiKey: process.env.OPENAI_KEY }); // ← NEVER directly
+```
+
+API keys MUST be in Supabase Vault or environment variables. NEVER in any DB table:
+```typescript
+// Keys accessed server-side only
+const apiKey = await supabase.vault.getSecret('OPENAI_API_KEY');
+
+// WRONG
+const config = await supabase.from('erp_ai_provider_configs').select('api_key'); // ← NEVER - no api_key column exists
+```
+
+All AI results MUST go to `dms_review_queue` before being saved to `dms_document_metadata_values`.
+
+---
+
+## 7. Storage Rules
+
+- **Private buckets only** — `dms-documents` and `dms-temp`
+- **Signed URLs server-side** after `hasPermission()` check
+- **SHA-256 deduplication** before upload
+- **Max file size:** 50MB (PDFs/images), 25MB (Office docs)
+- **Allowed MIME types:** `application/pdf`, `image/jpeg`, `image/png`, `image/tiff`, Office types
+- **Storage path:** `{company_id}/{year}/{type_code}/{document_id}/{file_role}.{ext}`
+- **Originals immutable** — `file_role='original'` files are never modified or deleted
+- **`party_documents.file_path`** — DEPRECATED PLACEHOLDER. Never write to it. Never read from it for storage operations.
+
+---
+
+## 8. Prohibited Patterns (V2 — Comprehensive)
+
+- ❌ Do NOT write to `party_documents.file_path`, `file_name`, `file_mime_type`, or `file_size`
+- ❌ Do NOT create `*_documents` tables for any ERP module after DMS.6
+- ❌ Do NOT store AI API keys in any database column
+- ❌ Do NOT add document types to `party_document_types` after DMS.3 — use `dms_document_types`
+- ❌ Do NOT reference `party_document_types` in any new form after DMS.6
+- ❌ Do NOT call AI provider SDKs directly in DMS feature code — use factory functions
+- ❌ Do NOT generate signed URLs in client components — server actions only
+- ❌ Do NOT hardcode one AI provider (OpenAI, Azure, etc.) in DMS code
+- ❌ Do NOT add `{entity}_id FK` columns to `dms_documents` — use `dms_document_links`
+- ❌ Do NOT disable RLS on any DMS table or `erp_ai_provider_configs`
+- ❌ Do NOT auto-save AI-extracted values — all go to review queue first
+- ❌ Do NOT implement DMS features before Sameer approves DMS.2 phase prompt
+
+---
+
+## 9. Phase Sequence (V2)
+
+```
+DMS.2  → DB Foundation + erp_ai_provider_configs + Storage buckets
+DMS.3  → Admin Masters + party_document_types migration
+DMS.4  → Document Repository List + Record Workspace Form
+DMS.5  → Upload Inbox + File Storage (FIRST real files)
+DMS.6  → Party Integration + party_documents migration
+DMS.7  → Versioning + Audit Trail
+DMS.8  → Expiry + Renewal + Notifications
+SETTINGS.1 → AI Settings Provider UI (BEFORE DMS.9)
+DMS.9  → OCR Pipeline (Tesseract)
+DMS.10 → AI Classification + Extraction
+DMS.11 → AI Review Queue
+DMS.12 → Full-Text Search
+DMS.13 → Security/RLS QA
+DMS.14 → HR/Fleet/Projects integration readiness
+```

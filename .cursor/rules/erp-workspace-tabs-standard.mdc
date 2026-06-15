@@ -1,0 +1,329 @@
+---
+description: >
+  IMPLEMENTED — ERP Global Workspace Tab Standard.
+  Governs how all future ERP modules register routes, open tabs, name tabs,
+  handle dirty state, interact with child dialogs, and cache UI state in the workspace.
+alwaysApply: false
+---
+
+# ERP Workspace Tabs Standard
+
+**Status:** IMPLEMENTED (UI.4A through UI.4G complete)
+**Last updated:** ERP GLOBAL UI.4G
+
+---
+
+## Rule 1 — Workspace is the only navigation model after 4A
+
+After ERP GLOBAL UI.4A is implemented, all sidebar navigation must use the workspace tab system.
+
+```ts
+// CORRECT — after 4A
+workspaceStore.openTab({ route: "/admin/master-data/parties", title: "All Parties", icon: "Building2", tabKind: "list" })
+
+// FORBIDDEN after 4A — do not hard-navigate via Link in sidebar
+<Link href="/admin/master-data/parties">All Parties</Link>
+```
+
+Exception: External links (URLs outside the app) may still use `<a target="_blank">`.
+
+---
+
+## Rule 2 — Every route must be registered in the workspace route registry
+
+All protected routes must have a corresponding entry in:
+
+```
+src/lib/workspace/workspace-route-registry.ts
+```
+
+Each entry defines:
+- `route`: exact path or pattern
+- `title`: human-readable tab title (string or function)
+- `icon`: Lucide icon name string
+- `tabKind`: `"list"` | `"record"` | `"dashboard"` | `"settings"` | `"utility"`
+- `singleton`: `true` for list/utility routes (re-click switches, doesn't open duplicate)
+- `closable`: `false` for dashboard only
+
+```ts
+// CORRECT — registry entry
+{ route: "/admin/master-data/parties", title: "All Parties", icon: "Building2", tabKind: "list", singleton: true }
+
+// FORBIDDEN — opening a tab without a registry entry
+workspaceStore.openTab({ route: "/some/unregistered/route", title: "???" })
+```
+
+---
+
+## Rule 3 — Tab naming conventions
+
+| Tab kind | Format | Example |
+|---|---|---|
+| Dashboard | "Dashboard" | Dashboard |
+| List page | Module name | All Parties |
+| Typed list | Type name | Customers |
+| New record | "New {Entity}" | New Party |
+| Edit/View record | "{Entity} — {Name or Code}" | Party — ABC Contracting |
+| Settings | "Settings" | Settings |
+
+Do not use long IDs or database keys as tab titles. Use human-readable names.
+
+---
+
+## Rule 4 — Singleton tabs: switch don't duplicate
+
+List and utility routes are singleton (`singleton: true`). If already open, clicking the sidebar item switches to the existing tab without creating a duplicate.
+
+```ts
+// Implementation in openTab:
+const existing = tabs.find(t => t.route === route)
+if (existing) {
+  setActiveTab(existing.id)
+  router.push(route)
+  return
+}
+```
+
+---
+
+## Rule 5 — Record tabs allow multiple instances
+
+Record tabs (`tabKind: "record"`) may have multiple instances open simultaneously if they represent different entity IDs. Clicking "Edit" on two different Party records opens two separate tabs.
+
+```
+Party — ABC Contracting [id: 1]
+Party — XYZ Holdings [id: 2]
+```
+
+Clicking "Edit" on a record that is already open switches to the existing record tab.
+
+---
+
+## Rule 6 — Maximum open tabs
+
+```ts
+const MAX_WORKSPACE_TABS = 8  // initial
+const HARD_MAX_WORKSPACE_TABS = 10
+```
+
+If max reached, show toast:
+```
+"Maximum tabs open. Close a tab before opening a new one."
+```
+
+Do not silently close an existing tab to make room.
+
+---
+
+## Rule 7 — Dashboard tab is pinned and non-closable
+
+```ts
+{ route: "/dashboard", tabKind: "dashboard", closable: false, pinned: true }
+```
+
+The Dashboard tab cannot be closed. It is always the leftmost tab.
+
+---
+
+## Rule 8 — Tab dirty indicator
+
+When a form inside a workspace tab has unsaved changes:
+
+1. The form must call `workspaceStore.markDirty(tabId, true)`
+2. The tab chip shows an amber pulse dot
+3. The tab close button remains active but triggers `UnsavedChangesDialog` before close
+
+```tsx
+// Bridge in useRecordWorkspaceForm:
+useEffect(() => {
+  workspaceStore.markDirty(tabId, isDirty)
+}, [tabId, isDirty])
+```
+
+Never close a dirty tab silently.
+
+---
+
+## Rule 9 — Closing a dirty tab requires confirmation
+
+```tsx
+// On tab close button click:
+if (tab.dirty) {
+  showUnsavedChangesDialog({
+    onDiscard: () => { workspaceStore.markDirty(tabId, false); workspaceStore.closeTab(tabId) },
+    onStay: () => { /* do nothing */ }
+  })
+} else {
+  workspaceStore.closeTab(tabId)
+}
+```
+
+---
+
+## Rule 10 — Browser close/navigate away warning
+
+If any open tab has `dirty: true`, register `window.onbeforeunload` to warn the user.
+
+```ts
+// In WorkspaceProvider:
+useEffect(() => {
+  const hasDirty = tabs.some(t => t.dirty)
+  window.onbeforeunload = hasDirty ? (e) => { e.returnValue = ""; return ""; } : null
+  return () => { window.onbeforeunload = null }
+}, [tabs])
+```
+
+---
+
+## Rule 11 — Tab persistence in localStorage
+
+After every tab open/close/switch, persist tab metadata to localStorage.
+
+```ts
+// Key
+const STORAGE_KEY = "erp_workspace_tabs"
+const ACTIVE_KEY = "erp_workspace_activeTabId"
+
+// What to persist — metadata only
+type PersistedTab = Pick<WorkspaceTab, "id" | "route" | "title" | "subtitle" | "icon" | "tabKind" | "closable" | "pinned">
+```
+
+**NEVER store in localStorage:**
+- Form field values
+- Passwords, tokens, session data
+- Sensitive business data (bank accounts, IDs)
+- `dirty` state (always reset to false on restore)
+
+On restore, revalidate each tab's route against current user permissions. Drop unauthorized tabs silently.
+
+---
+
+## Rule 12 — Child dialogs BLOCK the full workspace (UI.4G)
+
+**Design decision (UI.4G):** Child forms are intentional BLOCKING modal tasks.
+
+When a child dialog (`ERPChildDialogForm`) is open:
+
+1. The full-screen overlay (z-[100]) covers the workspace including the tab bar and sidebar.
+2. Workspace tab switching is blocked — the tab bar (z-[30]) is behind the overlay.
+3. Outside click and Esc are blocked — the user MUST cancel or save explicitly.
+4. Only the child dialog content (z-[110]) and combobox dropdowns (z-[120]) are interactive.
+5. The owning record form content must be inert + opacity-50 (via `isChildDialogOpen`).
+
+**DO NOT raise the tab bar above z-[30] or lower the child dialog overlay below z-[100].**
+This would break the blocking behavior and allow tab switching while a child form is open.
+
+---
+
+## Rule 13 — Sidebar coming-soon items stay disabled
+
+Items marked `comingSoon: true` in `navGroups` must remain as disabled `<div>` elements. Do not connect them to `openTab`. Do not create stub routes.
+
+---
+
+## Rule 14 — Direct URL and browser refresh
+
+On `WorkspaceProvider` mount:
+1. Read `location.pathname`
+2. Restore tabs from localStorage
+3. If pathname matches a restored tab, activate it
+4. If pathname does not match any restored tab, create a new tab for it using the registry
+5. Navigate to the active tab's route
+
+---
+
+## Rule 15 — ERPDrawerForm remains allowed for small quick-setup forms
+
+Forms with fewer than 5 fields and no child tables may continue using `ERPDrawerForm`.
+
+```
+ALLOWED to keep ERPDrawerForm:
+- Geography (Countries, Emirates, Cities, Areas, Ports)
+- Finance Basics (Currencies, Payment Terms, Tax Types, Banks, Cost/Profit Centers)
+- UOM (Categories, Units, Conversions)
+- Lookups (Categories, Values)
+- Organizations, Branches, Roles, Numbering Rules
+
+MUST migrate to ERPRecordWorkspaceForm (see erp-record-workspace-form-standard.mdc):
+- Party Master
+- Customers (after Party Master)
+- Future: Employee, Fleet Asset, Purchase Order, Job Card
+```
+
+---
+
+## Rule 16 — No custom tab widths or colors per module
+
+All workspace tabs use the global tab chip style. Do not add per-module custom backgrounds, gradients, or font sizes to tabs.
+
+Active tab: `bg-background border-b-2 border-primary text-foreground`
+Inactive tab: `bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted`
+Dirty indicator: `h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse`
+Close button: `h-4 w-4 text-muted-foreground hover:text-destructive`
+
+---
+
+## Rule 17 — All list/table screens must cache UI state (UI.4E)
+
+Every implemented and future workspace list/table screen must preserve safe UI state when the user switches workspace tabs and returns.
+
+**For screens using ERPDataTable:** automatic — no additional code needed.
+The `tableId` prop must be unique per route/screen. `ERPDataTable` persists:
+- search text (`globalFilter`)
+- page index and page size
+- sorting state
+- column visibility, sizing
+
+**For screens with custom state outside ERPDataTable:** use `useWorkspaceTableState`:
+
+```ts
+import { useWorkspaceTableState } from "@/hooks/use-workspace-table-state";
+
+const { search, setSearch, pagination, setPagination } = useWorkspaceTableState({
+  key: "my-table",
+  scope: "route",
+  identifier: "/admin/my-module",
+});
+```
+
+**Sensitive data:** Never persist passwords, tokens, PII, bank account numbers, IBAN, or unsaved form field values in localStorage. See `docs/standards/ERP_GLOBAL_WORKSPACE_OPEN_ELEMENT_CACHE_STANDARD.md`.
+
+---
+
+## Rule 18 — Record forms must cache active section and scroll state (UI.4E)
+
+All `ERPRecordWorkspaceForm` usages must wire `useWorkspaceSectionState`:
+
+```ts
+import { useWorkspaceSectionState } from "@/hooks/use-workspace-section-state";
+
+const [activeSection, setActiveSection] = useWorkspaceSectionState(
+  party?.id
+    ? { key: "active-section", initialSection: "basic", scope: "record", recordType: "party", recordId: party.id }
+    : { key: "active-section", initialSection: "basic", scope: "tab", identifier: activeTab?.id }
+);
+```
+
+Scroll state via `useWorkspaceScrollState` and the `bodyScrollRef` prop of `ERPRecordWorkspaceForm` is strongly recommended for new record form implementations.
+
+---
+
+## Rule 19 — Z-index standard for overlays (UI.4G)
+
+| Layer | Z-index | Notes |
+|-------|---------|-------|
+| App/page content | base | |
+| Workspace tab bar | `z-[30]` | Intentionally below child dialog overlay |
+| Drawer / Sheet | `z-[50]` | |
+| Child dialog overlay | `z-[100]` | Full-screen; blocks tab bar and sidebar |
+| Child dialog content | `z-[110]` | |
+| ERPCombobox / Popover inside child dialog | `z-[120]` | |
+| Alert / confirm dialog | `z-[130]` | |
+| Toast | top layer | |
+
+**Critical constraints:**
+- Tab bar MUST stay at `z-[30]` — raising it would allow tab switching while child form is open.
+- Child dialog overlay MUST be `z-[100]` — lowering it would not block the tab bar.
+- ERPCombobox MUST be `z-[120]` — ensures dropdown appears above dialog content (z-[110]).
+
+ERPCombobox applies `z-[120]` globally — no per-form hacks needed.

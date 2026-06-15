@@ -1,0 +1,115 @@
+---
+description: AI-first upload-to-fill workflow standard for DMS document intake. Apply when building or modifying DMS upload flows, document creation dialogs, AI review screens, or intake server actions.
+globs:
+  - "src/features/dms/**"
+  - "src/server/actions/dms/**"
+  - "src/app/(protected)/dms/**"
+alwaysApply: false
+---
+
+# ERP DMS — AI-First Upload-to-Fill Standard
+
+**Standard document:** `docs/standards/ERP_DMS_AI_FIRST_UPLOAD_TO_FILL_WORKFLOW_STANDARD.md`  
+**Investigation report:** `implementation_Review/ERP_DMS_10A_AI_FIRST_UPLOAD_TO_FILL_WORKFLOW_INVESTIGATION_AND_REDESIGN_REPORT.md`  
+
+---
+
+## Core Rule
+
+> The primary DMS document creation path is: **Upload → AI Fills → User Reviews → Approve & Save.**  
+> Manual field entry before upload is a FALLBACK, not the default.
+
+---
+
+## Required Flow for File-Based Document Creation (DMS.11 — Option A Implemented)
+
+```
+1. User uploads file → dms-temp bucket (upload session created)
+2. User clicks "Upload & AI Fill" → startAiIntakeFromUploadSession(uploadSessionId)
+3. System downloads temp file, extracts PDF text or base64-encodes images
+4. AI provider classifies + extracts all fields
+5. Result stored in dms_ai_extraction_results with upload_session_id (no document yet)
+6. dms_upload_sessions.intake_status → "review_pending"
+7. Redirect to /dms/intake/[sessionCode]
+8. User reviews AI-filled form (editable, confidence badges shown)
+9. User clicks "Approve & Save" → approveAiIntakeAndCreateDocument()
+10. Final dms_documents record created, file copied dms-temp → dms-documents
+11. Version v1 + file record created, metadata/tags/links/expiry reminders saved
+12. dms_upload_sessions.intake_status → "approved", document_id set
+13. Redirect to final document at /dms/documents/record/[documentId]
+```
+
+---
+
+## Prohibited Patterns — Hard Violations
+
+```
+❌ Auto-save AI suggestions to dms_documents or dms_document_metadata_values without user action
+❌ Require title or document_type_id BEFORE AI runs in the AI-first intake path
+❌ Show AI results only in a separate tab (not in the creation/review form)
+❌ Allow AI to change document type / category without user review
+❌ Log OCR text, AI prompt content, or raw AI responses
+❌ Return API keys to the client
+❌ Populate dms_document_metadata_values before applyAiResultToDocument() is called
+```
+
+---
+
+## Required Server Actions
+
+| Action | Purpose |
+|---|---|
+| `createDraftDocumentFromUpload(uploadSessionId)` | Minimal draft, status=pending_ai_review, copies file |
+| `runDmsAiAnalysisForDocument(documentId)` | Existing DMS.10 action — call automatically after draft creation |
+| `applyAiResultToDocument(documentId, aiResultId, accepted, metadataValues)` | Confirm-save: writes accepted values, sets status=active, writes audit |
+
+---
+
+## Required DB State
+
+- `dms_upload_sessions.document_id` — FK to dms_documents after intake draft created
+- `dms_documents.status = "pending_ai_review"` — valid status for AI intake drafts
+- `dms_ai_extraction_results.ai_status` — must be set to "accepted" on approval
+
+---
+
+## AI Review Screen Requirements
+
+Every AI review screen MUST:
+- Show AI-suggested values as **pre-filled editable controls** (not static text in a tab)
+- Show a **confidence badge** (high/medium/low/needs_manual_review) per field
+- Validate required fields (title, type, category) before allowing Approve & Save
+- Have footer buttons: `Approve & Save` | `Save Draft` | `Re-run AI` | `Discard`
+- Never auto-submit
+
+---
+
+## Status Values
+
+- `draft` — manual creation, no AI
+- `pending_ai_review` — AI intake in progress, awaiting user review
+- `pending_review` — awaiting human approvals workflow
+- `active` — finalized after review
+- Other statuses unchanged from DMS.2
+
+---
+
+## UX Copy
+
+| Context | Label |
+|---|---|
+| Main intake button | "Upload & AI Fill" |
+| Review approval | "Approve & Save" |
+| Review save without finalize | "Save Draft" |
+| Re-trigger AI | "Re-run AI" |
+| Cancel intake | "Discard" |
+| Old manual path | "Create Manually" |
+
+---
+
+## Related Rules
+
+- `erp-dms-standard.mdc` — general DMS rules
+- `erp-ai-settings-standard.mdc` — AI provider and security rules
+- `erp-record-workspace-form-standard.mdc` — form standard for AI review screen
+- `erp-workspace-unsaved-form-draft-standard.mdc` — draft preservation in review form

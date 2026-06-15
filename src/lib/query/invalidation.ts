@@ -1,0 +1,326 @@
+/**
+ * TanStack Query cache invalidation utilities for ERP master-data.
+ * Phase 002F.3E.3B.6B — Global Lookup Cache and Hook Standard
+ *
+ * Call these from server-action success handlers (e.g. after creating a new
+ * country, currency, or lookup value) so all cached comboboxes refresh.
+ *
+ * Usage example — inside a client-side onSuccess callback:
+ *   import { useQueryClient } from "@tanstack/react-query";
+ *   import { invalidateLookupCategory } from "@/lib/query/invalidation";
+ *   const qc = useQueryClient();
+ *   invalidateLookupCategory(qc, "CUSTOMER_TYPES");
+ */
+
+import type { QueryClient } from "@tanstack/react-query";
+
+// ── Lookup values ─────────────────────────────────────────────────────────────
+
+/** Invalidate a single lookup category cache (all variant keys for that code). */
+export function invalidateLookupCategory(
+  queryClient: QueryClient,
+  categoryCode: string
+): void {
+  queryClient.invalidateQueries({
+    queryKey: ["lookup", "values", categoryCode.toUpperCase()],
+  });
+  // Also clear batch entries so any batch query that included this category refetches
+  queryClient.invalidateQueries({ queryKey: ["lookup", "batch"] });
+}
+
+/** Invalidate all lookup value caches. */
+export function invalidateAllLookups(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["lookup"] });
+}
+
+// ── Geography ─────────────────────────────────────────────────────────────────
+
+export function invalidateCountries(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["master", "countries"] });
+}
+
+export function invalidateEmirates(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["master", "emirates"] });
+}
+
+export function invalidateCities(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["master", "cities"] });
+}
+
+export function invalidateAreas(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["master", "areas"] });
+}
+
+export function invalidatePorts(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["master", "ports"] });
+}
+
+/** Invalidate all geography tables (countries → emirates → cities → areas → ports). */
+export function invalidateGeography(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["master", "countries"] });
+  queryClient.invalidateQueries({ queryKey: ["master", "emirates"] });
+  queryClient.invalidateQueries({ queryKey: ["master", "cities"] });
+  queryClient.invalidateQueries({ queryKey: ["master", "areas"] });
+  queryClient.invalidateQueries({ queryKey: ["master", "ports"] });
+}
+
+// ── Finance basics ────────────────────────────────────────────────────────────
+
+export function invalidateCurrencies(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["master", "currencies"] });
+}
+
+export function invalidateBanks(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["master", "banks"] });
+}
+
+export function invalidatePaymentTerms(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["master", "payment_terms"] });
+}
+
+export function invalidateTaxTypes(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["master", "tax_types"] });
+}
+
+/** Invalidate all finance basics caches. */
+export function invalidateFinanceBasics(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["master", "currencies"] });
+  queryClient.invalidateQueries({ queryKey: ["master", "banks"] });
+  queryClient.invalidateQueries({ queryKey: ["master", "payment_terms"] });
+  queryClient.invalidateQueries({ queryKey: ["master", "tax_types"] });
+}
+
+// ── Unit of measure ───────────────────────────────────────────────────────────
+
+/** Invalidate UOM categories and unit lists. */
+export function invalidateUom(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["master", "uom_categories"] });
+  queryClient.invalidateQueries({ queryKey: ["master", "units_of_measure"] });
+}
+
+// ── Organisation structure ────────────────────────────────────────────────────
+
+/** Invalidate owner companies and branches. */
+export function invalidateOrganizations(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["master", "owner_companies"] });
+  queryClient.invalidateQueries({ queryKey: ["master", "branches"] });
+}
+
+// ── Cost / profit centres ─────────────────────────────────────────────────────
+
+export function invalidateCostCenters(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["master", "cost_centers"] });
+}
+
+export function invalidateProfitCenters(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["master", "profit_centers"] });
+}
+
+// ── Child tables (Phase 3B.6G.1) ──────────────────────────────────────────────
+// Targeted invalidation: a child mutation must refresh ONLY its own
+// ["child", <table>, <parentId>] entry — never parent or master caches.
+
+/** Invalidate one child table for one parent record. */
+export function invalidateChildTable(
+  queryClient: QueryClient,
+  tableName: string,
+  parentId: number | string | null | undefined
+): void {
+  queryClient.invalidateQueries({
+    queryKey: ["child", tableName, parentId ?? null],
+  });
+}
+
+/** Invalidate every cached child table (e.g. on logout / role switch). */
+export function invalidateAllChildTables(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["child"] });
+}
+
+/**
+ * Factory producing an entity-specific child invalidator (3B.6G.4).
+ * Future modules generate their helpers in one line:
+ *   export const invalidateVendorContacts = createChildInvalidator("vendor_contacts");
+ */
+export function createChildInvalidator(
+  tableName: string
+): (queryClient: QueryClient, parentId: number | string) => void {
+  return (queryClient, parentId) =>
+    invalidateChildTable(queryClient, tableName, parentId);
+}
+
+// Customer child helpers (reference implementation — consumed since 3B.6G.3)
+
+export const invalidateCustomerContacts = createChildInvalidator("customer_contacts");
+export const invalidateCustomerAddresses = createChildInvalidator("customer_addresses");
+export const invalidateCustomerBankDetails = createChildInvalidator("customer_bank_details");
+export const invalidateCustomerDocuments = createChildInvalidator("customer_documents");
+
+// Party Master child helpers
+export const invalidatePartyContacts = createChildInvalidator("party_contacts");
+export const invalidatePartyAddresses = createChildInvalidator("party_addresses");
+export const invalidatePartyBankDetails = createChildInvalidator("party_bank_details");
+export const invalidatePartyLicenses = createChildInvalidator("party_licenses");
+export const invalidatePartyTaxRegistrations = createChildInvalidator("party_tax_registrations");
+export const invalidatePartyDocuments = createChildInvalidator("party_documents");
+export const invalidatePartyNotes = createChildInvalidator("party_notes");
+export const invalidatePartyServiceCategories = createChildInvalidator("party_service_categories");
+
+// ── DMS Admin ──────────────────────────────────────────────────────────────────
+
+export function invalidateDmsAdminOverview(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["dms", "admin", "overview"] });
+}
+
+export function invalidateDmsCategories(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["dms", "admin", "categories"] });
+  queryClient.invalidateQueries({ queryKey: ["dms", "admin", "overview"] });
+}
+
+export function invalidateDmsDocumentTypes(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["dms", "admin", "document-types"] });
+  queryClient.invalidateQueries({ queryKey: ["dms", "admin", "overview"] });
+}
+
+export function invalidateDmsMetadataDefinitions(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["dms", "admin", "metadata-definitions"] });
+}
+
+export function invalidateDmsTags(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["dms", "admin", "tags"] });
+  queryClient.invalidateQueries({ queryKey: ["dms", "admin", "overview"] });
+}
+
+export function invalidateDmsRetentionPolicies(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["dms", "admin", "retention-policies"] });
+  queryClient.invalidateQueries({ queryKey: ["dms", "admin", "overview"] });
+}
+
+export function invalidateAllDmsAdmin(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["dms", "admin"] });
+}
+
+// ── DMS Documents (DMS.4) ─────────────────────────────────────────────────────
+
+export function invalidateDmsDocuments(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["dms", "documents"] });
+}
+
+export function invalidateDmsDocument(queryClient: QueryClient, id: number): void {
+  queryClient.invalidateQueries({ queryKey: ["dms", "documents", id] });
+}
+
+export function invalidateDmsDocumentRecord(queryClient: QueryClient, id: number): void {
+  queryClient.invalidateQueries({ queryKey: ["dms", "documents", id] });
+  queryClient.invalidateQueries({ queryKey: ["dms", "documents"] });
+}
+
+// ── DMS.5 — Upload Inbox + File Storage ──────────────────────────────────────
+
+export function invalidateDmsUploadSessions(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["dms", "upload-sessions"] });
+}
+
+export function invalidateDmsDocumentFiles(queryClient: QueryClient, documentId: number): void {
+  queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId, "files"] });
+}
+
+export function invalidateDmsDocumentVersions(queryClient: QueryClient, documentId: number): void {
+  queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId, "versions"] });
+}
+
+export function invalidateDmsDocumentFileStorage(queryClient: QueryClient, documentId: number): void {
+  queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId, "files"] });
+  queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId, "versions"] });
+  queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId] });
+  queryClient.invalidateQueries({ queryKey: ["dms", "documents"] });
+}
+
+// ── DMS.6 — Entity document links ─────────────────────────────────────────────
+
+export function invalidateDmsEntityDocuments(
+  queryClient: QueryClient,
+  entityType: string,
+  entityId: number
+): void {
+  queryClient.invalidateQueries({ queryKey: ["dms", "entity-documents", entityType, entityId] });
+}
+
+export function invalidatePartyDmsDocuments(
+  queryClient: QueryClient,
+  partyId: number
+): void {
+  queryClient.invalidateQueries({ queryKey: ["dms", "entity-documents", "party", partyId] });
+  queryClient.invalidateQueries({ queryKey: ["party", "dms-documents", partyId] });
+}
+
+export function invalidateDmsAvailableForLink(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["dms", "available-for-link"] });
+}
+
+// ── DMS.8 — Expiry, Renewals, Notifications ───────────────────────────────────
+
+export function invalidateDmsExpiry(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["dms", "expiry"] });
+}
+
+export function invalidateDmsDocumentExpiry(queryClient: QueryClient, documentId: number): void {
+  queryClient.invalidateQueries({ queryKey: ["dms", "expiry", "reminders", "doc", documentId] });
+  queryClient.invalidateQueries({ queryKey: ["dms", "expiry", "stats"] });
+  queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId] });
+}
+
+export function invalidateDmsRenewals(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["dms", "renewals"] });
+}
+
+export function invalidateDmsDocumentRenewals(queryClient: QueryClient, documentId: number): void {
+  queryClient.invalidateQueries({ queryKey: ["dms", "renewals", "doc", documentId] });
+  queryClient.invalidateQueries({ queryKey: ["dms", "renewals"] });
+}
+
+export function invalidateDmsNotifications(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["dms", "notifications"] });
+}
+
+// ── DMS.10 — AI Analysis ─────────────────────────────────────────────────────
+
+export function invalidateDmsAiAnalysis(queryClient: QueryClient, documentId: number): void {
+  queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId, "ai-status"] });
+  queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId, "ai-results"] });
+  queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId, "record"] });
+}
+
+// ── DMS.9 — OCR Pipeline ─────────────────────────────────────────────────────
+
+export function invalidateDmsOcr(queryClient: QueryClient, documentId: number): void {
+  queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId, "ocr-status"] });
+  queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId, "ocr-text"] });
+  queryClient.invalidateQueries({ queryKey: ["dms", "ocr-jobs"] });
+}
+
+export function invalidateDmsFileOcr(queryClient: QueryClient, fileId: number): void {
+  queryClient.invalidateQueries({ queryKey: ["dms", "files", fileId, "ocr-text"] });
+}
+
+// ── NOTIFICATIONS.1 — Global Notifications ────────────────────────────────────
+
+export function invalidateMyNotifications(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["notifications", "my"] });
+  queryClient.invalidateQueries({ queryKey: ["notifications", "unread-count"] });
+}
+
+export function invalidateUnreadNotifications(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["notifications", "unread-count"] });
+}
+
+export function invalidateEmailQueue(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["notifications", "email-queue"] });
+}
+
+export function invalidateNotificationTemplates(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["notifications", "templates"] });
+}
+
+export function invalidateNotificationLogs(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["notifications", "delivery-logs"] });
+}

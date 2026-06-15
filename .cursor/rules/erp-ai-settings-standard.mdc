@@ -1,0 +1,136 @@
+---
+description: ALGT ERP AI Settings Standard — Applies when creating, editing, or reviewing AI provider configuration, AI settings UI, API key handling, provider abstraction, or any feature that calls an AI/OCR provider.
+globs:
+  - "src/features/settings/ai/**"
+  - "src/app/**/settings/ai/**"
+  - "src/server/actions/settings/ai-settings*"
+  - "src/lib/ai/**"
+  - "supabase/migrations/*ai_settings*"
+  - "supabase/migrations/*settings_1*"
+alwaysApply: false
+---
+
+# ALGT ERP AI Settings Standard
+
+**Phase:** ERP SETTINGS.1 (Implemented)  
+**Reference:** `implementation_Review/ERP_SETTINGS_1_AI_SETTINGS_PROVIDER_CONFIGURATION_IMPLEMENTATION_REPORT.md`
+
+---
+
+## 1. Non-Negotiable Security Rules
+
+1. **API keys MUST NOT be stored in any plain database column** — not in `config_json`, `notes`, or any other column of `erp_ai_provider_configs`.
+
+2. **API keys MUST NOT be returned to the frontend** — server actions must never include secret values in their return payload. Only `masked_secret_preview` may be returned.
+
+3. **API keys MUST NOT appear in browser network responses** — verify with DevTools before any release.
+
+4. **API keys are stored in environment variables (`process.env.*`)** — `secret_ref` stores the env var name (e.g., `OPENAI_API_KEY`), never the value.
+
+5. **Test connection is server-side only** — never call AI provider APIs from the client.
+
+6. **No sensitive prompt data in usage logs** — `erp_ai_usage_logs` must not contain document text, OCR results, or AI-extracted fields unless explicitly approved.
+
+---
+
+## 2. Provider Abstraction Rules
+
+All AI provider calls MUST go through the provider factory:
+
+```typescript
+// CORRECT
+import { getAiProvider } from "@/lib/ai/providers/factory";
+const provider = await getAiProvider("DEFAULT_DMS_EXTRACTOR");
+const result = await provider.testConnection();
+
+// WRONG — never import SDKs directly in feature modules
+import OpenAI from "openai"; // ← NEVER in DMS/party/invoice code
+const openai = new OpenAI({ apiKey: "..." }); // ← NEVER
+```
+
+Allowed SDK imports location: `src/lib/ai/providers/*.ts` ONLY.
+
+---
+
+## 3. Provider Types
+
+Valid `provider_type` values for `erp_ai_provider_configs`:
+
+```
+openai
+azure_openai
+azure_document_intelligence
+google_document_ai
+aws_textract
+tesseract
+local_ollama
+local_custom
+```
+
+---
+
+## 4. Feature Flag Rules
+
+All AI features are gated by `erp_ai_feature_flags.is_enabled`.
+
+DMS AI features default to `is_enabled = false`:
+
+```
+DMS_OCR
+DMS_CLASSIFICATION
+DMS_EXTRACTION
+DMS_AI_REVIEW
+ERP_AI_ASSISTANT
+AI_SEARCH
+LOCAL_LLM
+```
+
+Do NOT enable AI features without Sameer confirmation.
+
+`requires_human_review` defaults to `true` for all DMS features. **Never set to false without Sameer approval.**
+
+---
+
+## 5. Database Rules
+
+- Tables: `erp_ai_provider_configs`, `erp_ai_usage_logs`, `erp_ai_feature_flags`
+- All use BIGINT primary keys
+- All have RLS enabled and enforced
+- No anonymous access
+- Audit all create/update/delete/test actions via `logAudit()`
+
+---
+
+## 6. UI Rules
+
+- Route: `/admin/settings/ai`
+- Uses standard ERP settings page layout (not ERPRecordWorkspaceForm — it's a settings page, not a record form)
+- API key input: clear immediately after save; show only masked preview
+- Secret field never pre-populated on edit
+- No client-side key storage of any kind
+
+---
+
+## 7. Permission Codes
+
+```
+settings.ai.view
+settings.ai.manage
+settings.ai.test
+settings.ai.secrets.manage
+settings.ai.usage.view
+```
+
+---
+
+## 8. DMS Integration Rule
+
+DMS AI/OCR phases (DMS.9–DMS.11) MUST read provider configuration from `erp_ai_provider_configs` via the factory:
+
+```typescript
+// DMS server action — CORRECT
+const ocrProvider = await getAiProvider("DEFAULT_DMS_OCR");
+if (!ocrProvider.isEnabled) throw new Error("OCR is not enabled");
+```
+
+DMS must never hardcode a provider or read API keys directly.

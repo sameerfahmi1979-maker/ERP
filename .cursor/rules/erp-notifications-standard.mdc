@@ -1,0 +1,137 @@
+---
+description: ERP Global Notifications Standard — NOTIFICATIONS.1
+globs:
+  - src/features/notifications/**
+  - src/server/actions/notifications/**
+  - src/app/(protected)/notifications/**
+  - src/app/(protected)/admin/notifications/**
+alwaysApply: false
+---
+
+# ALGT ERP Notifications Standard
+
+**Phase:** ERP NOTIFICATIONS.1 (Implemented)
+**Status:** LIVE
+**Reference:** `implementation_Review/ERP_NOTIFICATIONS_1_GLOBAL_NOTIFICATION_AND_EMAIL_DELIVERY_ENGINE_IMPLEMENTATION_REPORT.md`
+
+---
+
+## 1. Core Rules
+
+1. **Global notifications are ERP-wide, not DMS-only** — all modules must use `erp_notifications` / `erp_email_queue`.
+2. **Modules create notifications through global notification server actions** — import from `@/server/actions/notifications/notifications`.
+3. **Outbound email must go through `erp_email_queue`** — never send directly from feature code.
+4. **Email delivery must use ERP Email Settings provider abstraction** — `getDefaultEmailProvider()` or `getEmailProvider(code)` from `@/lib/email/providers/factory`.
+5. **Microsoft Graph must not be hardcoded in feature modules** — only in `src/lib/email/providers/*.ts`.
+6. **Secrets must not be stored or logged** — never in notification or queue tables.
+7. **Notification templates live in `erp_notification_templates`** — use `renderNotificationTemplate()` for variable substitution.
+8. **Email retries must be logged** — insert into `erp_notification_delivery_logs` on each attempt.
+9. **In-app notifications must work even if email provider is disabled** — `channel_in_app` and `channel_email` are independent.
+10. **DMS-local notifications remain until DMS.8A bridge migration** — do not delete `dms_notification_queue`.
+
+---
+
+## 2. Database Tables
+
+| Table | Purpose |
+|---|---|
+| `erp_notifications` | Global in-app notifications (BIGINT PK, RLS forced) |
+| `erp_email_queue` | Outbound email queue with retry/backoff (BIGINT PK, RLS forced) |
+| `erp_notification_templates` | Reusable templates with `{{variable}}` syntax (BIGINT PK, RLS forced) |
+| `erp_notification_delivery_logs` | Append-only delivery log (BIGINT PK, RLS forced) |
+
+**No UUID primary keys. No anonymous access. All tables RLS forced.**
+
+---
+
+## 3. Template Variable Syntax
+
+```
+{{variable_name}}
+```
+
+- Only replace variables from `template_variables_json`.
+- Missing variable leaves `{{variable_name}}` visible (no silent blank).
+- No `eval`. No arbitrary code execution.
+- Use `renderNotificationTemplate(templateCode, variables)` from `@/server/actions/notifications/templates`.
+
+---
+
+## 4. Email Queue Processing
+
+```ts
+// Queue an email
+import { queueEmail } from "@/server/actions/notifications/email-queue";
+await queueEmail({ source_module: "DMS", to_emails: ["..."], subject: "...", ... });
+
+// Process queue (admin action)
+import { processEmailQueue } from "@/server/actions/notifications/email-queue";
+await processEmailQueue({ limit: 20, dryRun: false });
+```
+
+Retry backoff:
+- Attempt 1 failed → retry in +5 minutes
+- Attempt 2 failed → retry in +30 minutes
+- Attempt 3 failed → `status = "failed"` (final)
+
+---
+
+## 5. Permissions
+
+```
+notifications.view
+notifications.manage
+notifications.dismiss
+notifications.admin
+notifications.email_queue.view
+notifications.email_queue.manage
+notifications.email_queue.process
+notifications.templates.view
+notifications.templates.manage
+notifications.logs.view
+```
+
+---
+
+## 6. Routes
+
+| Route | Purpose |
+|---|---|
+| `/notifications` | User's own in-app notifications |
+| `/admin/notifications` | Admin — all notifications |
+| `/admin/notifications/email-queue` | Admin — email queue + processing |
+| `/admin/notifications/templates` | Admin — template CRUD |
+| `/admin/notifications/logs` | Admin — delivery logs |
+
+---
+
+## 7. DMS Integration Rules
+
+1. DMS expiry notifications connect to global engine in **ERP DMS.8A** only.
+2. DMS must not directly process `erp_email_queue`.
+3. Bridge helpers are in `src/server/actions/notifications/bridges/dms-notification-bridge.ts` (admin-manual only).
+4. `dms_notification_queue` remains until DMS.8A migrates its records.
+
+---
+
+## 8. Email Settings Integration
+
+1. Email provider is consumed by the global notification/email delivery engine.
+2. Feature modules must not call the email provider directly.
+3. `isEmailFeatureEnabled(featureCode)` gates must be checked before auto-sending.
+
+---
+
+## 9. Seed Templates
+
+```
+DMS_EXPIRY_REMINDER  → DMS expiry warning (in-app + email)
+DMS_DOCUMENT_EXPIRED → DMS expired document (in-app + email, urgent)
+SYSTEM_TEST_EMAIL    → Admin test email (email only)
+```
+
+---
+
+## 10. Next Phase
+
+After NOTIFICATIONS.1: **ERP DMS.8A — Connect DMS Expiry Notifications to Global Email Delivery**

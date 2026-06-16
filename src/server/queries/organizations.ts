@@ -13,8 +13,8 @@ export async function listOrganizations(): Promise<OwnerCompany[]> {
     .select(`
       *,
       country_rel:countries(id, name_en, name_ar, country_code),
-      emirate_rel:emirates(id, name_en, name_ar),
-      city_rel:cities(id, name_en, name_ar),
+      emirate_rel:emirates!emirate_id(id, name_en, name_ar),
+      city_rel:cities!city_id(id, name_en, name_ar),
       area_zone_rel:areas_zones(id, name_en, name_ar)
     `)
     .order("id", { ascending: true });

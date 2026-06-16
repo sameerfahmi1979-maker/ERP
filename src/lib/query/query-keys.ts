@@ -225,6 +225,36 @@ export const queryKeys = {
     dmsDocuments: (partyId: number) => ["party", "dms-documents", partyId] as const,
   },
 
+  // ── Common Master Data (COMMON MD.1) ─────────────────────────────────────
+  commonMd: {
+    departments: (filters?: Record<string, unknown>) =>
+      filters ? (["common_md", "departments", filters] as const) : (["common_md", "departments"] as const),
+    department: (id: number) => ["common_md", "departments", id] as const,
+
+    designations: (filters?: Record<string, unknown>) =>
+      filters ? (["common_md", "designations", filters] as const) : (["common_md", "designations"] as const),
+    designation: (id: number) => ["common_md", "designations", id] as const,
+
+    workSites: (filters?: Record<string, unknown>) =>
+      filters ? (["common_md", "work_sites", filters] as const) : (["common_md", "work_sites"] as const),
+    workSite: (id: number) => ["common_md", "work_sites", id] as const,
+
+    workCalendars: (filters?: Record<string, unknown>) =>
+      filters ? (["common_md", "work_calendars", filters] as const) : (["common_md", "work_calendars"] as const),
+    workCalendar: (id: number) => ["common_md", "work_calendars", id] as const,
+    workShifts: (calendarId: number) => ["common_md", "work_shifts", calendarId] as const,
+
+    approvalRoles: (filters?: Record<string, unknown>) =>
+      filters ? (["common_md", "approval_roles", filters] as const) : (["common_md", "approval_roles"] as const),
+    approvalRole: (id: number) => ["common_md", "approval_roles", id] as const,
+
+    dmsRequiredDocumentRules: (filters?: Record<string, unknown>) =>
+      filters ? (["common_md", "dms_required_document_rules", filters] as const) : (["common_md", "dms_required_document_rules"] as const),
+    dmsRequiredDocumentRule: (id: number) => ["common_md", "dms_required_document_rules", id] as const,
+
+    companySignatories: (companyId: number) => ["common_md", "company_signatories", companyId] as const,
+  },
+
   // ── Global ERP Notifications (NOTIFICATIONS.1) ────────────────────────────
   notifications: {
     my: (filters?: Record<string, unknown>) =>

@@ -115,6 +115,18 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
+    label: "Common Master Data",
+    items: [
+      { label: "Common MD Overview", icon: Layers, path: "/admin/common-master-data" },
+      { label: "Departments", icon: Building, path: "/admin/common-master-data/departments" },
+      { label: "Designations", icon: UserCog, path: "/admin/common-master-data/designations" },
+      { label: "Work Sites", icon: HardHat, path: "/admin/common-master-data/work-sites" },
+      { label: "Work Calendars", icon: Clock, path: "/admin/common-master-data/work-calendars" },
+      { label: "Approval Roles", icon: ShieldCheck, path: "/admin/common-master-data/approval-roles" },
+      { label: "Required Doc. Rules", icon: FileText, path: "/admin/common-master-data/dms-required-documents" },
+    ],
+  },
+  {
     label: "Geography & Locations",
     items: [
       { label: "Countries", icon: Globe, path: "/admin/master-data/geography/countries" },

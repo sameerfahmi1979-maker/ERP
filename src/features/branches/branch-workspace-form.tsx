@@ -15,7 +15,7 @@ import { CountrySelect } from "@/components/erp/geography/country-select";
 import { EmirateSelect } from "@/components/erp/geography/emirate-select";
 import { CitySelect } from "@/components/erp/geography/city-select";
 import { AreaZoneSelect } from "@/components/erp/geography/area-zone-select";
-import { Building2, MapPin, Contact, Wrench, ScrollText } from "lucide-react";
+import { Building2, MapPin, Contact, Wrench, ScrollText, Files } from "lucide-react";
 import type { AuthContext } from "@/lib/rbac/check";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
@@ -23,6 +23,7 @@ import {
   ERPRecordWorkspaceForm,
   ERPRecordSectionPanel,
 } from "@/components/workspace/erp-record-workspace-form";
+import { DmsEntityDocumentsTab } from "@/features/dms/entity-documents";
 
 type BranchWorkspaceFormProps = {
   branch?: BranchWithCompany | null;
@@ -117,6 +118,7 @@ export function BranchWorkspaceForm({ branch, companies = [], mode }: BranchWork
     { id: "contact", label: "Contact Details", icon: Contact },
     { id: "operations", label: "Operations Flags", icon: Wrench },
     { id: "notes", label: "Internal Notes", icon: ScrollText },
+    { id: "documents", label: "Documents", icon: Files },
   ];
 
   const handleRequestClose = () => closeTab(activeTab?.id ?? "");
@@ -155,6 +157,10 @@ export function BranchWorkspaceForm({ branch, companies = [], mode }: BranchWork
       has_yard: formData.get("has_yard") === "on",
       has_weighbridge: formData.get("has_weighbridge") === "on",
       notes: (formData.get("notes") as string) || null,
+      opening_date: (formData.get("opening_date") as string) || null,
+      closing_date: (formData.get("closing_date") as string) || null,
+      legal_branch_name: (formData.get("legal_branch_name") as string) || null,
+      trade_license_branch_ref: (formData.get("trade_license_branch_ref") as string) || null,
     };
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -340,12 +346,49 @@ export function BranchWorkspaceForm({ branch, companies = [], mode }: BranchWork
         </ERPRecordSectionPanel>
 
         <ERPRecordSectionPanel id="notes" activeId={activeSection} title="Branch Internal Notes">
-          <div className="space-y-2">
-            <Label htmlFor="notes" className="text-muted-foreground text-xs">Notes & Comments</Label>
-            <Textarea id="notes" name="notes" defaultValue={getDraftDefault("notes", branch?.notes ?? "")} rows={8} placeholder="Internal notes about this branch..." disabled={isViewing} />
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="legal_branch_name" className="text-muted-foreground text-xs">Legal Branch Name</Label>
+                <Input id="legal_branch_name" name="legal_branch_name" defaultValue={getDraftDefault("legal_branch_name", ((branch as Record<string, unknown>)?.legal_branch_name as string) ?? "")} disabled={isViewing} placeholder="Official legal name" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="trade_license_branch_ref" className="text-muted-foreground text-xs">Trade License Branch Ref</Label>
+                <Input id="trade_license_branch_ref" name="trade_license_branch_ref" defaultValue={getDraftDefault("trade_license_branch_ref", ((branch as Record<string, unknown>)?.trade_license_branch_ref as string) ?? "")} disabled={isViewing} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="opening_date" className="text-muted-foreground text-xs">Opening Date</Label>
+                <Input type="date" id="opening_date" name="opening_date" defaultValue={getDraftDefault("opening_date", ((branch as Record<string, unknown>)?.opening_date as string) ?? "")} disabled={isViewing} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="closing_date" className="text-muted-foreground text-xs">Closing Date</Label>
+                <Input type="date" id="closing_date" name="closing_date" defaultValue={getDraftDefault("closing_date", ((branch as Record<string, unknown>)?.closing_date as string) ?? "")} disabled={isViewing} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="notes" className="text-muted-foreground text-xs">Notes & Comments</Label>
+              <Textarea id="notes" name="notes" defaultValue={getDraftDefault("notes", branch?.notes ?? "")} rows={5} placeholder="Internal notes about this branch..." disabled={isViewing} />
+            </div>
           </div>
         </ERPRecordSectionPanel>
       </form>
+
+      {/* DMS Documents tab — entityType: branch */}
+      <ERPRecordSectionPanel id="documents" activeId={activeSection} title="Documents">
+        {!branch?.id ? (
+          <p className="text-sm text-muted-foreground">Save the branch first to manage documents.</p>
+        ) : (
+          <DmsEntityDocumentsTab
+            entityType="branch"
+            entityId={branch.id}
+            entityLabel="Branch"
+            canUpload={!isViewing}
+            canLinkExisting={!isViewing}
+            canUnlink={!isViewing}
+            showComplianceCards
+          />
+        )}
+      </ERPRecordSectionPanel>
     </ERPRecordWorkspaceForm>
   );
 }

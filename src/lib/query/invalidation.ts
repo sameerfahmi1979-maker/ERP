@@ -304,6 +304,39 @@ export function invalidateDmsFileOcr(queryClient: QueryClient, fileId: number): 
   queryClient.invalidateQueries({ queryKey: ["dms", "files", fileId, "ocr-text"] });
 }
 
+// ── COMMON MD.1 — Common Master Data ─────────────────────────────────────────
+
+export function invalidateCommonMdDepartments(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["common_md", "departments"] });
+}
+
+export function invalidateCommonMdDesignations(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["common_md", "designations"] });
+}
+
+export function invalidateCommonMdWorkSites(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["common_md", "work_sites"] });
+}
+
+export function invalidateCommonMdWorkCalendars(queryClient: QueryClient, calendarId?: number): void {
+  queryClient.invalidateQueries({ queryKey: ["common_md", "work_calendars"] });
+  if (calendarId) {
+    queryClient.invalidateQueries({ queryKey: ["common_md", "work_shifts", calendarId] });
+  }
+}
+
+export function invalidateCommonMdApprovalRoles(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["common_md", "approval_roles"] });
+}
+
+export function invalidateCommonMdDmsRequiredDocumentRules(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ["common_md", "dms_required_document_rules"] });
+}
+
+export function invalidateCommonMdCompanySignatories(queryClient: QueryClient, companyId: number): void {
+  queryClient.invalidateQueries({ queryKey: ["common_md", "company_signatories", companyId] });
+}
+
 // ── NOTIFICATIONS.1 — Global Notifications ────────────────────────────────────
 
 export function invalidateMyNotifications(queryClient: QueryClient): void {

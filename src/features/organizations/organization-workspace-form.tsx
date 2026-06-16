@@ -16,7 +16,7 @@ import { CitySelect } from "@/components/erp/geography/city-select";
 import { AreaZoneSelect } from "@/components/erp/geography/area-zone-select";
 import { CurrencySelect } from "@/components/erp/finance-basics/currency-select";
 import { createClient } from "@/lib/supabase/client";
-import { Building2, MapPin, ShieldCheck, FileCode2, ScrollText } from "lucide-react";
+import { Building2, MapPin, ShieldCheck, FileCode2, ScrollText, Briefcase, Files, PlusCircle, Pencil, Trash2 } from "lucide-react";
 import type { AuthContext } from "@/lib/rbac/check";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
@@ -24,6 +24,12 @@ import {
   ERPRecordWorkspaceForm,
   ERPRecordSectionPanel,
 } from "@/components/workspace/erp-record-workspace-form";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { queryKeys } from "@/lib/query/query-keys";
+import { listCompanySignatories, createCompanySignatory, updateCompanySignatory, softDeleteCompanySignatory } from "@/server/actions/common-master-data/owner-company-signatories";
+import { DmsEntityDocumentsTab } from "@/features/dms/entity-documents";
 
 type OrganizationWorkspaceFormProps = {
   organization?: OwnerCompany | null;
@@ -46,6 +52,13 @@ export function OrganizationWorkspaceForm({ organization, mode }: OrganizationWo
   const [currencyId, setCurrencyId] = useState<number | null>(null);
   const [currencyCode, setCurrencyCode] = useState<string | null>(null);
   const [currencyLoading, setCurrencyLoading] = useState(false);
+  // Extended profile selects
+  const [officeEmirateId, setOfficeEmirateId] = useState<number | null>((organization as Record<string, unknown>)?.office_emirate_id as number | null ?? null);
+  const [officeCityId, setOfficeCityId] = useState<number | null>((organization as Record<string, unknown>)?.office_city_id as number | null ?? null);
+  // Signatories dialog state
+  const [signatoryDialog, setSignatoryDialog] = useState<{ open: boolean; editing: Record<string, unknown> | null }>({ open: false, editing: null });
+  const [sigSaving, setSigSaving] = useState(false);
+  const queryClient = useQueryClient();
 
   const isEditing = mode === "edit";
   const isViewing = mode === "view";
@@ -113,8 +126,57 @@ export function OrganizationWorkspaceForm({ organization, mode }: OrganizationWo
     { id: "address", label: "Address & Contact", icon: MapPin },
     { id: "legal", label: "Legal & Licensing", icon: ShieldCheck },
     { id: "tax", label: "Tax & Compliance", icon: FileCode2 },
+    { id: "extended", label: "Extended Profile", icon: Briefcase },
     { id: "notes", label: "Internal Notes", icon: ScrollText },
+    { id: "signatories", label: "Signatories", icon: Pencil },
+    { id: "documents", label: "Documents", icon: Files },
   ];
+
+  const companyId = organization?.id ?? 0;
+  const { data: signatories, refetch: refetchSignatories } = useQuery({
+    queryKey: queryKeys.commonMd.companySignatories(companyId),
+    queryFn: async () => {
+      if (!companyId) return [];
+      const res = await listCompanySignatories(companyId);
+      return res.data ?? [];
+    },
+    enabled: !!companyId && activeSection === "signatories",
+  });
+
+  const handleSaveSignatory = async (formData: FormData) => {
+    setSigSaving(true);
+    try {
+      const full_name = formData.get("full_name") as string;
+      const designation = (formData.get("designation") as string) || null;
+      const signature_scope = (formData.get("signature_scope") as string) || null;
+      const is_primary = formData.get("is_primary") === "on";
+      const is_active = formData.get("is_active") !== "off";
+      const effective_from = (formData.get("effective_from") as string) || null;
+      const effective_to = (formData.get("effective_to") as string) || null;
+      const notes = (formData.get("notes") as string) || null;
+      if (signatoryDialog.editing) {
+        const res = await updateCompanySignatory({ id: Number(signatoryDialog.editing.id), company_id: companyId, full_name, designation, signature_scope, is_primary, is_active, effective_from, effective_to, notes });
+        if (!res.success) { toast.error(res.error ?? "Failed to update signatory"); return; }
+        toast.success("Signatory updated");
+      } else {
+        const res = await createCompanySignatory({ company_id: companyId, full_name, designation, signature_scope, is_primary, is_active, effective_from, effective_to, notes });
+        if (!res.success) { toast.error(res.error ?? "Failed to add signatory"); return; }
+        toast.success("Signatory added");
+      }
+      setSignatoryDialog({ open: false, editing: null });
+      queryClient.invalidateQueries({ queryKey: queryKeys.commonMd.companySignatories(companyId) });
+    } finally {
+      setSigSaving(false);
+    }
+  };
+
+  const handleDeleteSignatory = async (id: number) => {
+    if (!confirm("Remove this signatory?")) return;
+    const res = await softDeleteCompanySignatory(id, companyId);
+    if (!res.success) { toast.error(res.error ?? "Failed to remove"); return; }
+    toast.success("Signatory removed");
+    queryClient.invalidateQueries({ queryKey: queryKeys.commonMd.companySignatories(companyId) });
+  };
 
   const handleRequestClose = () => closeTab(activeTab?.id ?? "");
 
@@ -163,6 +225,14 @@ export function OrganizationWorkspaceForm({ organization, mode }: OrganizationWo
       adnoc_supplier_no: (formData.get("adnoc_supplier_no") as string) || null,
       logo_url: (formData.get("logo_url") as string) || null,
       notes: (formData.get("notes") as string) || null,
+      trade_name: (formData.get("trade_name") as string) || null,
+      main_activity: (formData.get("main_activity") as string) || null,
+      established_date: (formData.get("established_date") as string) || null,
+      compliance_status: (formData.get("compliance_status") as string) || "compliant",
+      office_address_line_1: (formData.get("office_address_line_1") as string) || null,
+      office_address_line_2: (formData.get("office_address_line_2") as string) || null,
+      office_emirate_id: officeEmirateId,
+      office_city_id: officeCityId,
     };
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -360,6 +430,51 @@ export function OrganizationWorkspaceForm({ organization, mode }: OrganizationWo
           </div>
         </ERPRecordSectionPanel>
 
+        <ERPRecordSectionPanel id="extended" activeId={activeSection} title="Extended Business Profile">
+          <div className="grid grid-cols-12 gap-4">
+            <div className="col-span-6 space-y-1.5">
+              <Label htmlFor="trade_name" className="text-muted-foreground text-xs">Trade Name</Label>
+              <Input id="trade_name" name="trade_name" defaultValue={getDraftDefault("trade_name", ((organization as Record<string, unknown>)?.trade_name as string) ?? "")} disabled={disabled} placeholder="Common trading name" />
+            </div>
+            <div className="col-span-6 space-y-1.5">
+              <Label htmlFor="main_activity" className="text-muted-foreground text-xs">Main Business Activity</Label>
+              <Input id="main_activity" name="main_activity" defaultValue={getDraftDefault("main_activity", ((organization as Record<string, unknown>)?.main_activity as string) ?? "")} disabled={disabled} placeholder="e.g., General Contracting" />
+            </div>
+            <div className="col-span-6 space-y-1.5">
+              <Label htmlFor="established_date" className="text-muted-foreground text-xs">Established Date</Label>
+              <Input type="date" id="established_date" name="established_date" defaultValue={getDraftDefault("established_date", ((organization as Record<string, unknown>)?.established_date as string) ?? "")} disabled={disabled} />
+            </div>
+            <div className="col-span-6 space-y-1.5">
+              <Label htmlFor="compliance_status" className="text-muted-foreground text-xs">Compliance Status</Label>
+              <select id="compliance_status" name="compliance_status" defaultValue={getDraftDefault("compliance_status", ((organization as Record<string, unknown>)?.compliance_status as string) ?? "compliant")} disabled={disabled} className="flex h-9 w-full rounded-md border border-input bg-background text-foreground px-3 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40">
+                <option value="compliant">Compliant</option>
+                <option value="non_compliant">Non-Compliant</option>
+                <option value="under_review">Under Review</option>
+                <option value="suspended">Suspended</option>
+              </select>
+            </div>
+            <div className="col-span-12 border-t pt-3">
+              <p className="text-xs font-medium text-muted-foreground mb-3">Office Address</p>
+            </div>
+            <div className="col-span-6 space-y-1.5">
+              <Label className="text-muted-foreground text-xs">Office Emirate</Label>
+              <EmirateSelect value={officeEmirateId} onValueChange={(v) => { setOfficeEmirateId(v); setOfficeCityId(null); writeDraftField("office_emirate_id", v ?? ""); }} placeholder="Select Emirate" disabled={disabled} />
+            </div>
+            <div className="col-span-6 space-y-1.5">
+              <Label className="text-muted-foreground text-xs">Office City</Label>
+              <CitySelect value={officeCityId} onValueChange={(v) => { setOfficeCityId(v); writeDraftField("office_city_id", v ?? ""); }} emirateId={officeEmirateId} placeholder="Select City" disabled={disabled || !officeEmirateId} />
+            </div>
+            <div className="col-span-12 space-y-1.5">
+              <Label htmlFor="office_address_line_1" className="text-muted-foreground text-xs">Office Address Line 1</Label>
+              <Input id="office_address_line_1" name="office_address_line_1" defaultValue={getDraftDefault("office_address_line_1", ((organization as Record<string, unknown>)?.office_address_line_1 as string) ?? "")} disabled={disabled} />
+            </div>
+            <div className="col-span-12 space-y-1.5">
+              <Label htmlFor="office_address_line_2" className="text-muted-foreground text-xs">Office Address Line 2</Label>
+              <Input id="office_address_line_2" name="office_address_line_2" defaultValue={getDraftDefault("office_address_line_2", ((organization as Record<string, unknown>)?.office_address_line_2 as string) ?? "")} disabled={disabled} />
+            </div>
+          </div>
+        </ERPRecordSectionPanel>
+
         <ERPRecordSectionPanel id="notes" activeId={activeSection} title="Notes & Corporate Logo">
           <div className="grid grid-cols-12 gap-4">
             <div className="col-span-12 space-y-1.5">
@@ -373,6 +488,100 @@ export function OrganizationWorkspaceForm({ organization, mode }: OrganizationWo
           </div>
         </ERPRecordSectionPanel>
       </form>
+
+      {/* Signatories — child records, managed independently of main form */}
+      <ERPRecordSectionPanel id="signatories" activeId={activeSection} title="Authorized Signatories">
+        {!companyId ? (
+          <p className="text-sm text-muted-foreground">Save the organization first to manage signatories.</p>
+        ) : (
+          <div className="space-y-3">
+            {!disabled && (
+              <div className="flex justify-end">
+                <Button size="sm" variant="outline" onClick={() => setSignatoryDialog({ open: true, editing: null })}>
+                  <PlusCircle className="h-4 w-4 mr-1" /> Add Signatory
+                </Button>
+              </div>
+            )}
+            {(signatories ?? []).length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">No signatories added yet.</p>
+            ) : (
+              <div className="divide-y border rounded-md">
+                {(signatories ?? []).map((s) => (
+                  <div key={s.id} className="flex items-center justify-between px-4 py-3">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2 text-sm font-medium">
+                        {s.full_name}
+                        {s.is_primary && <Badge variant="secondary" className="text-[10px]">Primary</Badge>}
+                        {!s.is_active && <Badge variant="destructive" className="text-[10px]">Inactive</Badge>}
+                      </div>
+                      {s.designation && <p className="text-xs text-muted-foreground">{s.designation}</p>}
+                      {s.signature_scope && <p className="text-xs text-muted-foreground">{s.signature_scope}</p>}
+                    </div>
+                    {!disabled && (
+                      <div className="flex gap-1">
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setSignatoryDialog({ open: true, editing: s as unknown as Record<string, unknown> })}><Pencil className="h-3.5 w-3.5" /></Button>
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleDeleteSignatory(s.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {signatoryDialog.open && (
+          <form onSubmit={async (e) => { e.preventDefault(); await handleSaveSignatory(new FormData(e.currentTarget)); }} className="mt-4 border rounded-md p-4 space-y-3 bg-muted/30">
+            <p className="text-sm font-medium">{signatoryDialog.editing ? "Edit Signatory" : "Add Signatory"}</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="sig_full_name" className="text-xs">Full Name *</Label>
+                <Input id="sig_full_name" name="full_name" defaultValue={(signatoryDialog.editing?.full_name as string) ?? ""} required />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="sig_designation" className="text-xs">Designation</Label>
+                <Input id="sig_designation" name="designation" defaultValue={(signatoryDialog.editing?.designation as string) ?? ""} />
+              </div>
+              <div className="col-span-2 space-y-1">
+                <Label htmlFor="sig_scope" className="text-xs">Signature Scope</Label>
+                <Input id="sig_scope" name="signature_scope" defaultValue={(signatoryDialog.editing?.signature_scope as string) ?? ""} placeholder="e.g., Financial documents up to AED 500K" />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="sig_from" className="text-xs">Effective From</Label>
+                <Input type="date" id="sig_from" name="effective_from" defaultValue={(signatoryDialog.editing?.effective_from as string) ?? ""} />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="sig_to" className="text-xs">Effective To</Label>
+                <Input type="date" id="sig_to" name="effective_to" defaultValue={(signatoryDialog.editing?.effective_to as string) ?? ""} />
+              </div>
+              <div className="flex items-center gap-2 pt-2">
+                <Checkbox id="sig_primary" name="is_primary" defaultChecked={(signatoryDialog.editing?.is_primary as boolean) ?? false} />
+                <Label htmlFor="sig_primary" className="text-xs cursor-pointer">Primary Signatory</Label>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" size="sm" variant="ghost" onClick={() => setSignatoryDialog({ open: false, editing: null })}>Cancel</Button>
+              <Button type="submit" size="sm" disabled={sigSaving}>{sigSaving ? "Saving..." : "Save"}</Button>
+            </div>
+          </form>
+        )}
+      </ERPRecordSectionPanel>
+
+      {/* DMS Documents tab — entityType: company */}
+      <ERPRecordSectionPanel id="documents" activeId={activeSection} title="Documents">
+        {!companyId ? (
+          <p className="text-sm text-muted-foreground">Save the organization first to manage documents.</p>
+        ) : (
+          <DmsEntityDocumentsTab
+            entityType="company"
+            entityId={companyId}
+            entityLabel="Organization"
+            canUpload={!disabled}
+            canLinkExisting={!disabled}
+            canUnlink={!disabled}
+            showComplianceCards
+          />
+        )}
+      </ERPRecordSectionPanel>
     </ERPRecordWorkspaceForm>
   );
 }

@@ -2,7 +2,7 @@
 
 **Phase:** ERP COMMON MD.1  
 **Title:** Cross-Module Master Data Foundation  
-**Status:** PLAN ONLY — Awaiting Sameer/ChatGPT review and approval before implementation  
+**Status:** PLAN ONLY — Corrections applied 2026-06-16. Approved for implementation prompt after Sameer/ChatGPT final review.  
 **Date:** 2026-06-16  
 **Prepared by:** Cursor AI based on live codebase audit  
 
@@ -165,16 +165,44 @@ CREATE TABLE owner_company_signatories (
   - **DMS Documents tab** — `<DmsEntityDocumentsTab entityType="company" entityId={orgId} canUpload canLinkExisting canUnlink />`
 
 ### 2.6 DMS Integration
-- Entity type: **`company`** (already in registry)
+- Entity type: **`company`** (already in registry — do NOT add `organization`)
 - Documents to link: Trade License, VAT Certificate, Chamber Certificate, Company Profile, Bank Confirmation Letter, Insurance Certificates, ISO Certificates, Power of Attorney, Tenancy Contract, Authorized Signatory Passport/EID
-- Workflow: Open Organization record → Documents tab → Upload New (opens DMS inbox with `?entityType=company&entityId={id}`) → AI intake → document saved + linked to organization
+
+**Document workflow from Organization record:**
+```text
+Organization Record Form
+  → Documents tab (DmsEntityDocumentsTab, entityType="company", entityId=orgId)
+  → "Upload New" button
+    → Opens DMS Upload Inbox with ?entityType=company&entityId={orgId}
+    → User uploads file → AI intake → DMS document created
+    → dms_document_links row: (document_id, entity_type="company", entity_id=orgId)
+    → Document appears on Organization's Documents tab
+  → "Attach Existing" button
+    → Opens attach dialog (search existing DMS documents)
+    → Links selected document via dms_document_links
+  → "Unlink" button
+    → Soft-deletes dms_document_links row only — DMS document is NOT deleted
+  → Document row → "Open" icon
+    → Navigates to /dms/documents/record/{documentId}
+```
+
+> ⚠️ **Note on auto-linking from Upload Inbox:** The current DMS.15 implementation passes entity context via URL params (`?entityType=&entityId=`) but the upload inbox does not yet auto-link the document to the entity on approval. This is a known gap. Full auto-linking requires a small DMS enhancement (DMS.16 scope — not part of COMMON MD.1). For v1, users can use "Attach Existing" after upload to link the document.
 
 ### 2.7 Permissions
 ```
-common_md.organizations.view    (replaces/extends existing: organizations.view)
-common_md.organizations.manage  (replaces/extends: organizations.edit + organizations.create)
+common_md.organizations.view    (new — additive, alongside existing)
+common_md.organizations.manage  (new — additive, alongside existing)
 ```
-Decision: **Deprecate** `organizations.view` / `organizations.edit` / `organizations.create` in favor of `common_md.organizations.*` in this phase. Add the new permission codes to the `erp_permissions` table.
+**Decision: Do NOT deprecate** existing `organizations.view` / `organizations.edit` / `organizations.create` / `organizations.delete` in COMMON MD.1. Both old and new permission codes must continue to work in parallel.
+
+Implementation server actions should accept either old or new permission:
+```ts
+if (!hasPermission(ctx, "organizations.view") && !hasPermission(ctx, "common_md.organizations.view") && !hasPermission(ctx, "common_md.view")) {
+  return { success: false, error: "Permission denied" };
+}
+```
+
+> Future permission cleanup may consolidate organization/branch permissions under `common_md.*`, but that is a separate cleanup phase, not part of COMMON MD.1.
 
 ### 2.8 RLS Approach
 ```sql
@@ -240,10 +268,10 @@ ALTER TABLE branches
 
 ### 3.6 Permissions
 ```
-common_md.branches.view
-common_md.branches.manage
+common_md.branches.view    (new — additive, alongside existing)
+common_md.branches.manage  (new — additive, alongside existing)
 ```
-Deprecate `branches.view` / `branches.edit` in favor of these.
+**Do NOT deprecate** existing `branches.view` / `branches.create` / `branches.edit` / `branches.delete` permissions. Both permission sets must coexist. Future cleanup phase will consolidate if needed.
 
 ---
 
@@ -266,6 +294,7 @@ CREATE TABLE departments (
   branch_id             BIGINT REFERENCES branches(id) ON DELETE SET NULL,
   parent_department_id  BIGINT REFERENCES departments(id) ON DELETE SET NULL,
   cost_center_id        BIGINT REFERENCES cost_centers(id) ON DELETE SET NULL,
+  department_head_user_id BIGINT REFERENCES user_profiles(id) ON DELETE SET NULL,  -- v1: user FK only; HR phase adds employee FK
   description           TEXT,
   is_active             BOOLEAN NOT NULL DEFAULT true,
   effective_from        DATE,
@@ -290,8 +319,9 @@ CREATE INDEX idx_departments_active ON departments(is_active) WHERE deleted_at I
 ### 4.5 Notes
 - `parent_department_id` enables hierarchy (max recommended depth: 5 levels)
 - `branch_id` is optional — some departments span multiple branches
-- Department head will be an FK to `employees` (future HR table) — not added now; FK will be added in HR phase
-- No DMS Documents tab required for department by default, but `entityType="department"` should be added to `dms-entity-types.ts` if compliance documents per department are needed (e.g. safety certificates, departmental ISO certs)
+- **Department head in COMMON MD.1:** Add `department_head_user_id BIGINT REFERENCES user_profiles(id) ON DELETE SET NULL` — this references `user_profiles` (not employees, which doesn't exist yet). Nullable. Optional.
+- **Future HR phase** may add `department_head_employee_id` once the `employees` table is implemented. That FK will be added via a separate HR migration, not here.
+- No DMS Documents tab required for department by default, but `entityType="department"` can be added to `dms-entity-types.ts` if compliance documents per department are needed (e.g. safety/ISO certificates). Decision: optional — implement only if business need is confirmed during implementation.
 
 ### 4.6 UI Route
 ```
@@ -468,7 +498,7 @@ CREATE INDEX idx_work_sites_active ON work_sites(status) WHERE deleted_at IS NUL
 ```
 
 ### 6.5 DMS Integration
-- Entity type: **`site`** (already in registry as `"site"`)
+- Entity type: **`site`** (already in registry — do NOT add `work_site` as a duplicate)
 - Documents: Site Access Approval, CICPA/ADNOC Access Approval, Lease/Tenancy Contract, Site Insurance, Municipality Approval, HSE Site Approval, Site Layout Plan, Emergency Contact List
 
 ### 6.6 UI Route
@@ -604,6 +634,14 @@ Common workflow foundation. Defines who can approve what, at what level, and wit
 ### 8.2 Why Cross-Module
 Every module with approval workflows (leave requests, purchase orders, job cards, project budgets, HSE permits) needs a common role/authority model to route approvals consistently.
 
+> ⚠️ **SCOPE BOUNDARY — COMMON MD.1 is master data only:**
+> - Do **not** implement a workflow engine
+> - Do **not** implement approval requests or approval assignments
+> - Do **not** implement approval routing logic
+> - Do **not** enforce approvals in any module
+>
+> Future modules (HR, Finance, Procurement, Workshop, Projects, HSE) or a dedicated global workflow phase will consume `approval_roles` and build the actual workflow engine on top of this master data.
+
 ### 8.3 New Table: `approval_roles`
 ```sql
 CREATE TABLE approval_roles (
@@ -702,27 +740,55 @@ CREATE INDEX idx_dms_req_rules_doc_type ON dms_required_document_rules(document_
 CREATE INDEX idx_dms_req_rules_active ON dms_required_document_rules(is_active) WHERE deleted_at IS NULL;
 ```
 
-### 9.5 Seed Data Examples
+### 9.5 Seed Data — Safe Seeding Rules
+
+> ⚠️ **CRITICAL SEEDING SAFETY RULE:** Before seeding any `dms_required_document_rules` rows, the implementation **must** query `dms_document_types` to verify exact `type_code` values. Do not invent codes. Do not seed rules for document types that do not exist in the live `dms_document_types` table.
+
+**Safe seeding procedure for COMMON MD.1 implementation:**
+
+1. Run: `SELECT type_code, name_en FROM dms_document_types WHERE is_active = true ORDER BY type_code;`
+2. Match each intended rule's document type against existing codes
+3. Seed **only** rules where a matching `document_type_id` exists
+4. Document any missing document types as prerequisites requiring admin setup
+5. **Do NOT seed** employee or vehicle rules in COMMON MD.1 — HR and Fleet modules are not implemented yet
+
+**Example seed structure (codes must be verified against live DB at migration time):**
 ```sql
--- Company required documents
-INSERT INTO dms_required_document_rules (rule_code, rule_name, entity_type, document_type_name, is_required, requires_expiry_date, blocks_activation)
-VALUES
-  ('RDR-COMP-001', 'Company Trade License',       'company', 'TRADE_LICENSE', true, true, false),
-  ('RDR-COMP-002', 'Company VAT Certificate',     'company', 'VAT_CERTIFICATE', false, false, false),
-  ('RDR-COMP-003', 'Company Insurance',           'company', 'INSURANCE_POLICY', false, true, false),
-  ('RDR-BRNCH-001','Branch Tenancy Contract',     'branch',  'TENANCY_CONTRACT', false, true, false),
-  ('RDR-BRNCH-002','Branch Municipality Approval','branch',  'MUNICIPALITY_APPROVAL', false, false, false);
--- Employee rules (seeded but entity not built yet — enables compliance check readiness)
-  ('RDR-EMP-001',  'Employee Emirates ID',        'employee','EMIRATES_ID', true, true, true),
-  ('RDR-EMP-002',  'Employee Passport',           'employee','PASSPORT', true, true, false),
-  ('RDR-EMP-003',  'Employee UAE Visa',           'employee','UAE_VISA', false, true, false),
--- Vehicle rules
-  ('RDR-VEH-001',  'Vehicle Registration',        'vehicle', 'VEHICLE_REGISTRATION', true, true, true),
-  ('RDR-VEH-002',  'Vehicle Insurance',           'vehicle', 'VEHICLE_INSURANCE', true, true, true);
+-- Seed ONLY if the document_type_id for the code exists in dms_document_types
+-- Replace the code values below with actual verified codes from the live database
+-- Company rules (seed if matching document types found)
+INSERT INTO dms_required_document_rules 
+  (rule_code, rule_name, entity_type, document_type_id, is_required, requires_expiry_date, blocks_activation)
+SELECT 
+  'RDR-COMP-001', 'Company Trade License', 'company', id, true, true, false
+FROM dms_document_types WHERE type_code = '<VERIFIED_TRADE_LICENSE_CODE>' AND is_active = true;
+
+-- Branch rules (seed if matching document types found)
+INSERT INTO dms_required_document_rules 
+  (rule_code, rule_name, entity_type, document_type_id, is_required, requires_expiry_date, blocks_activation)
+SELECT 
+  'RDR-BRNCH-001', 'Branch Tenancy Contract', 'branch', id, false, true, false
+FROM dms_document_types WHERE type_code = '<VERIFIED_TENANCY_CONTRACT_CODE>' AND is_active = true;
 ```
 
-### 9.6 How This Upgrades `getDmsEntityDocumentComplianceSummary`
-After this table is populated, the `getDmsEntityDocumentComplianceSummary` server action (DMS.15) can query `dms_required_document_rules` to calculate `missingRequiredDocuments` accurately. Currently it returns 0. This is the data that makes it functional.
+**Employee and vehicle rules — FUTURE ONLY (do not seed in COMMON MD.1):**
+- `RDR-EMP-001` (Emirates ID), `RDR-EMP-002` (Passport), `RDR-EMP-003` (UAE Visa) → seed in HR Module phase
+- `RDR-VEH-001` (Registration), `RDR-VEH-002` (Insurance) → seed in Fleet Module phase
+
+### 9.6 Blocking Enforcement — NOT in COMMON MD.1
+
+> ⚠️ **IMPORTANT:** COMMON MD.1 creates the `dms_required_document_rules` **master data table and UI only**. It does **not** enforce blocking behavior.
+>
+> The `blocks_activation` field is stored but **not acted upon** in COMMON MD.1.
+> Blocking enforcement (cannot onboard employee, cannot assign vehicle, etc.) must be implemented inside the specific operational modules:
+> - HR module → enforce for employee onboarding
+> - Fleet module → enforce for vehicle activation
+> - Projects/HSE → enforce for site access
+>
+> This prevents premature workflow interference before those modules are built.
+
+### 9.7 How This Upgrades `getDmsEntityDocumentComplianceSummary`
+After `dms_required_document_rules` is populated by admins, the `getDmsEntityDocumentComplianceSummary` server action (DMS.15) can query it to calculate `missingRequiredDocuments` accurately. Currently it returns 0. This table is the data that makes it functional — but the query update to use it is a **post-COMMON MD.1 enhancement**, not part of this phase.
 
 ### 9.7 UI Route
 ```
@@ -749,20 +815,37 @@ common_md.dms_required_documents.manage
 
 ## 10. DMS Entity Type Registry — Additions Required
 
-Add these to `src/lib/dms/dms-entity-types.ts`:
+### 10.1 Existing Types to Use (No Changes Needed)
+
+| Master Record | Entity Type to Use | Already in Registry? |
+|---|---|---|
+| Organization / Owner Company | `company` | ✅ Yes |
+| Branch | `branch` | ✅ Yes |
+| Work Site / Operational Location | `site` | ✅ Yes |
+
+**Do NOT add** `organization` or `work_site` — these would duplicate existing types. Use the existing canonical codes.
+
+### 10.2 New Entity Types to Add
+
+Add only `department` to `src/lib/dms/dms-entity-types.ts` if departments require document attachments (e.g. ISO/safety certificates per department):
 
 ```ts
 DEPARTMENT: "department",
-DESIGNATION: "designation",       // optional — only if dept-level documents needed
-WORK_SITE: "work_site",           // preferred over "site" for clarity; "site" already exists
-WORK_CALENDAR: "work_calendar",   // optional — document storage for approved schedules
-APPROVAL_ROLE: "approval_role",   // optional
 ```
 
-**Recommendation:**
-- Add `DEPARTMENT: "department"` — departments may have safety/compliance certificates
-- Add `WORK_SITE: "work_site"` as alias alongside existing `SITE: "site"` — or simply rename "site" to "work_site" for clarity. Use `site` as the canonical code (already in DB) and add `WORK_SITE` as an alias pointing to same code.
-- `DESIGNATION`, `WORK_CALENDAR`, `APPROVAL_ROLE` — add but don't show DMS tab in v1
+**Do NOT add** entity types for `designation`, `work_calendar`, or `approval_role` in COMMON MD.1. These entities do not need a DMS Documents tab in v1. They can be added in a future phase if a clear business need arises.
+
+### 10.3 DMS Tab Presence Per Entity
+
+| Entity | DMS Tab in v1? | Entity Type |
+|---|---|---|
+| Organization | ✅ Yes | `company` |
+| Branch | ✅ Yes | `branch` |
+| Work Site | ✅ Yes | `site` |
+| Department | Optional (add only if compliance documents needed) | `department` |
+| Designation | ❌ No | — |
+| Work Calendar | ❌ No | — |
+| Approval Role | ❌ No | — |
 
 ---
 
@@ -859,21 +942,27 @@ Organizations and Branches remain in their current sidebar positions (already pr
 ### 14.1 Migration Approach
 Single migration file: `YYYYMMDDHHMMSS_erp_common_md_1_cross_module_master_data_foundation`
 
-### 14.2 Migration Contents (in order)
-1. Extend `owner_companies` (ALTER TABLE — add columns)
-2. Extend `branches` (ALTER TABLE — add columns)
-3. Create `owner_company_signatories`
-4. Create `departments`
-5. Create `designations`
-6. Create `work_calendars`
-7. Create `work_shifts`
-8. Create `work_sites`
-9. Create `approval_roles`
-10. Create `dms_required_document_rules`
-11. Add all RLS policies
-12. Add all indexes
-13. Seed common_md permission codes into `erp_permissions`
-14. Seed example DMS required document rules (company + branch rules only — other entities deferred)
+### 14.2 Migration Contents (in dependency-safe order)
+
+> ⚠️ **Order is critical** — `branches.default_work_calendar_id` FK requires `work_calendars` to exist first.
+
+```text
+1.  Extend owner_companies          (ALTER TABLE — add nullable columns, no FK risk)
+2.  Create work_calendars           (needed before branches FK and work_sites FK)
+3.  Create work_shifts              (child of work_calendars)
+4.  Extend branches                 (ALTER TABLE — includes default_work_calendar_id FK to work_calendars)
+5.  Create owner_company_signatories
+6.  Create departments              (references owner_companies, branches — both now exist)
+7.  Create designations             (references owner_companies, departments — both now exist)
+8.  Create work_sites               (references owner_companies, branches, work_calendars — all now exist)
+9.  Create approval_roles           (references owner_companies — exists; self-FK escalation_role_id safe with DEFERRABLE or NULL)
+10. Create dms_required_document_rules  (references owner_companies, branches, departments, dms_document_types)
+11. Add RLS ENABLE + FORCE on all new tables
+12. Add all RLS policies
+13. Add all indexes
+14. Seed common_md.* permission codes into erp_permissions
+15. Seed DMS required document rules ONLY for verified document type codes (company + branch only)
+```
 
 ### 14.3 Migration Risk Level: **LOW**
 - `ALTER TABLE` adds nullable columns only — no data loss risk
@@ -928,26 +1017,30 @@ Single migration file: `YYYYMMDDHHMMSS_erp_common_md_1_cross_module_master_data_
 
 ## 16. Out-of-Scope Confirmation
 
-The following remain in their respective future modules:
+> ⚠️ **HARD RULE:** COMMON MD.1 must not include any module-specific master data. The following items are explicitly excluded and must be created inside their respective future modules only.
 
 | Item | Module |
 |---|---|
-| Employee categories, probation types | HR |
-| Payroll groups, salary grades | HR |
-| Vehicle types, makes, models | Fleet |
-| Equipment types, categories | Fleet |
-| Maintenance types, service types | Workshop |
-| Workshop job categories | Workshop |
-| HSE incident types, hazard codes | HSE |
-| Training types, course categories | HSE |
-| Inventory item categories | Inventory |
-| Spare part categories | Inventory |
-| Procurement request types | Procurement |
-| Transport route master | Transport |
-| Fuel types, dispensing categories | Fleet/Transport |
-| Weighbridge transaction types | Weighbridge |
-| Project work package types | Projects |
+| Employee categories, employment types, probation types | HR |
+| Payroll groups, salary grades, allowance types | HR |
+| Visa types, residency category codes | HR |
+| Employee leave types, leave policies | HR |
+| Vehicle types, makes, models, specifications | Fleet |
+| Equipment types, categories, classifications | Fleet |
+| Maintenance types, service types, service intervals | Workshop |
+| Workshop job categories, technician grades | Workshop |
+| HSE incident types, hazard codes, severity classifications | HSE |
+| Training types, course categories, certification levels | HSE |
+| Inventory item categories, item classifications | Inventory |
+| Spare part categories, bin types | Inventory |
+| Procurement request types, supplier categories | Procurement |
+| Transport route master, vehicle route assignments | Transport |
+| Fuel types, dispensing categories, fuel card categories | Fleet / Transport |
+| Weighbridge transaction types, waste stream classifications | Weighbridge |
+| Project work package types, project phase categories | Projects |
 | Module-specific compliance classifications | Each module |
+| Approval workflow engine, approval routing logic | Dedicated workflow phase |
+| Holiday calendar management | COMMON MD.2 or HR module |
 
 ---
 
@@ -966,25 +1059,35 @@ All COMMON MD.1 implementation must comply with:
 
 ## 18. Future Modification Notes
 
-- This is **version 1** of common master data. Not frozen.
-- HR module will likely require adding `department_head_employee_id` FK to `departments` (after employees table exists)
-- Work Calendars v1 does not include public holiday management — Holiday Calendar feature is planned for COMMON MD.2 or within the HR module
-- Approval Roles v1 has no workflow engine; approval request routing tables are planned within the first module that needs workflow (likely HR or Finance)
-- `dms_required_document_rules.entity_subtype` is not enforced in v1 — the HR module will define enforcement logic per employee nationality/type
-- Organization signatories are manual entries in v1; future HR integration will auto-derive from employee designations with `is_authorized_signatory = true`
+> After implementation, the Source of Truth must record:
+
+- **COMMON MD.1 is the first controlled version of cross-module master data. It is intentionally not frozen.**
+- Future operational modules (HR, Fleet, Workshop, Projects, Finance, HSE) may extend common masters with module-specific fields or child tables. Those adjustments are expected and acceptable.
+- Module-specific master data remains inside each module. It must NOT be backported into COMMON MD.1 tables.
+- Adjustments between COMMON MD.1 and HR/Fleet implementation are expected and acceptable — departments and designations will grow as HR is built.
+- **HR phase:** add `department_head_employee_id` FK to `departments` once `employees` table exists
+- **COMMON MD.2 or HR phase:** public holiday calendar management (`work_calendar_holidays` table)
+- **Future workflow phase:** approval requests + approval routing tables consuming `approval_roles`
+- **DMS.16:** auto-linking uploaded documents to entity on approval (removing the manual "Attach Existing" workaround)
+- **DMS compliance upgrade:** update `getDmsEntityDocumentComplianceSummary` to query `dms_required_document_rules` for real `missingRequiredDocuments` counts
+- `dms_required_document_rules.entity_subtype` enforcement is deferred — HR module defines enforcement per employee nationality/type
+- Organization signatories are manual entries in v1; future HR integration auto-derives from employees with `is_authorized_signatory = true` designation
 
 ---
 
-## 19. Open Questions for Sameer/ChatGPT Review
+## 19. Open Questions — Answered After Sameer/ChatGPT Review
 
-1. **Permission strategy:** Replace old `organizations.view/edit` codes with `common_md.organizations.*`? Or keep both?
-2. **Organization "trade name":** Is `short_name` sufficient, or should a separate `trade_name` field be added?
-3. **Holiday calendar:** Should it be in COMMON MD.1 or deferred to HR module?
-4. **Branch geography FKs:** `branches` uses text fields for emirate/city/area — should we add FK columns (`emirate_id`, `city_id`, `area_zone_id`) to branches in COMMON MD.1? (Same pattern as `owner_companies`)
-5. **Work Calendar → Work Site relationship:** Should `work_sites` have a `work_calendar_id` FK in COMMON MD.1, or defer that to Fleet/Workshop?
-6. **Organization DMS Documents tab:** Should the Documents tab on the Organization record show `entityType="company"` documents, or should it use a new `entityType="organization"` for clarity? (Current registry has `"company"` — recommend using it as-is.)
-7. **DMS Required Document Rules:** Seed company + branch rules in migration, or leave empty for admin to populate?
-8. **`/admin/common-master-data` landing page:** Simple link grid or full dashboard with record counts?
+| Question | Recommended Answer | Status |
+|---|---|---|
+| Permission strategy | Keep old `organizations.*` + `branches.*` AND add new `common_md.*` in parallel. No deprecation in COMMON MD.1. | ✅ **Answered** |
+| Organization "trade name" | Add separate `trade_name` column to `owner_companies` | ✅ **Answered** |
+| Holiday calendar | Defer from COMMON MD.1 — add in COMMON MD.2 or HR module | ✅ **Answered** |
+| Branch geography FKs | Add `emirate_id`, `city_id`, `area_zone_id` FK columns to `branches` in COMMON MD.1 | ✅ **Answered** |
+| Work Calendar → Work Site | Add `work_calendar_id` FK on `work_sites` in COMMON MD.1 | ✅ **Answered** |
+| Organization DMS entity type | Use existing `company` — do NOT add `organization` | ✅ **Answered** |
+| Work Site DMS entity type | Use existing `site` — do NOT add `work_site` | ✅ **Answered** |
+| DMS Required Document Rules seeding | Seed only if exact document type codes exist in live DB. Company + branch rules only. Audit before seed. | ✅ **Answered** |
+| Landing page style | Simple link grid with record counts | ✅ **Answered** |
 
 ---
 

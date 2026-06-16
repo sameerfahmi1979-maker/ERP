@@ -21,6 +21,7 @@ import { hashOcrText, PROMPT_VERSION } from "@/lib/dms/ai/prompt-builders";
 import { extractFileContent } from "@/lib/dms/file-content-extractor";
 import { revalidatePath } from "next/cache";
 import { writeDocumentContentTextSystem } from "@/server/actions/dms/document-content";
+import { persistFileOcrResult } from "@/lib/dms/ocr/persist-file-ocr-result";
 import type {
   DmsAiDocumentTypeCandidate,
   DmsAiImageFile,
@@ -609,8 +610,15 @@ export async function startAiIntakeFromUploadSession(
         reviewed_by: null,
         reviewed_at: null,
         raw_response_json: sanitizedResponse,
-        // Store extracted text so it can be synced to dms_document_content on approval
-        raw_ocr_text: ocrText && ocrText.trim().length > 0 ? ocrText.slice(0, 100_000) : null,
+        // For image-based docs (passports, Emirates IDs, certificates, scanned PDFs)
+        // local OCR produces no text — use the AI's full_text_transcription instead.
+        // For digital PDFs/DOCX, use the locally extracted text (more reliable).
+        raw_ocr_text: (() => {
+          const localText = ocrText && ocrText.trim().length > 0 ? ocrText.trim() : null;
+          const aiTranscription = aiOutput.extraction.fullTextTranscription ?? null;
+          const best = localText ?? aiTranscription;
+          return best ? best.slice(0, 100_000) : null;
+        })(),
         created_at: completedAt,
       })
       .select("id")
@@ -1248,7 +1256,7 @@ export async function approveAiIntakeAndCreateDocument(
         .eq("id", effectiveAiResultId);
     }
 
-    // ── Sync content text (DMS 12.1 — non-fatal) ─────────────────────────
+    // ── Sync content text — with vision fallback when raw_ocr_text is empty ──
 
     try {
       let rawOcrText: string | null = null;
@@ -1261,40 +1269,80 @@ export async function approveAiIntakeAndCreateDocument(
         rawOcrText = (aiRawRow as Record<string, unknown> | null)?.raw_ocr_text as string | null ?? null;
       }
 
-      if (rawOcrText && rawOcrText.trim().length > 0) {
-        // 1. Write content text to dms_document_content
+      // If raw_ocr_text is empty (JSON truncation or scanned doc with no local text),
+      // run vision OCR fallback on the uploaded file before finalising content sync.
+      if (!rawOcrText?.trim() && fileRecord?.storage_path && fileRecord?.storage_bucket) {
+        try {
+          const adminCl = await createAdminClient();
+          const { data: blob } = await adminCl.storage
+            .from(fileRecord.storage_bucket as string)
+            .download(fileRecord.storage_path as string);
+          if (blob) {
+            const buffer = Buffer.from(await blob.arrayBuffer());
+            const content = await extractFileContent(
+              buffer,
+              fileRecord.mime_type as string,
+              fileRecord.file_name as string
+            );
+            if (content.hasContent) {
+              const { provider: aiProvider } = await getDmsAiProvider();
+              if (aiProvider.isConfigured()) {
+                const fallbackOutput = await aiProvider.analyze({
+                  ocrText: content.text,
+                  imageFiles: content.images,
+                  currentTypeCode: null,
+                  typeCandidates: [],
+                  metadataFields: [],
+                  originalFilename: fileRecord.file_name as string,
+                });
+                const transcription = fallbackOutput.extraction?.fullTextTranscription;
+                const fallbackText = transcription?.trim() || content.text?.trim() || null;
+                if (fallbackText) {
+                  rawOcrText = fallbackText;
+                  // Update the AI result record with the salvaged text
+                  if (effectiveAiResultId) {
+                    await supabase
+                      .from("dms_ai_extraction_results")
+                      .update({ raw_ocr_text: fallbackText.slice(0, 100_000) })
+                      .eq("id", effectiveAiResultId);
+                  }
+                }
+              }
+            }
+          }
+        } catch {
+          // Vision fallback failed — continue without text; not fatal
+        }
+      }
+
+      const fileId = (fileRecord as { id?: number } | null)?.id ?? null;
+
+      if (rawOcrText && rawOcrText.trim().length > 0 && fileId) {
+        await persistFileOcrResult({
+          supabase,
+          fileId,
+          documentId,
+          text: rawOcrText,
+          provider: "ai_intake",
+          model: null,
+          performedBy: userId,
+          source: "ai_intake",
+        });
+      } else if (rawOcrText && rawOcrText.trim().length > 0) {
+        // No file record available — write content text directly
         await writeDocumentContentTextSystem({
           documentId,
           text: rawOcrText,
           source: "ai_intake",
           performedBy: userId,
         });
-
-        // 2. Mark the file as OCR-complete so resync + extracted text UI work
-        if (fileRecord?.id) {
-          await supabase
-            .from("dms_document_files")
-            .update({
-              ocr_status: "complete",
-              ocr_text: rawOcrText.slice(0, 500_000),
-              ocr_completed_at: new Date().toISOString(),
-              ocr_provider: "ai_intake",
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", (fileRecord as { id: number }).id);
-        }
-
-        // 3. Mark document so ocr_text_available = true
         await supabase
           .from("dms_documents")
-          .update({
-            ocr_text_available: true,
-            updated_at: new Date().toISOString(),
-          })
+          .update({ ocr_text_available: true, updated_at: new Date().toISOString() })
           .eq("id", documentId);
       }
     } catch (contentSyncErr) {
-      console.warn("[DMS 12.1] Content text sync failed (non-fatal):", String(contentSyncErr));
+      console.warn("[DMS OCR-AI FIX.1] Content text sync (non-fatal):", String(contentSyncErr));
     }
 
     // ── Update upload session ─────────────────────────────────────────────

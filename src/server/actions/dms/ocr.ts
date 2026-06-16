@@ -13,11 +13,11 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
-import { getOcrProvider, isOcrSupported } from "@/lib/dms/ocr/factory";
-import type { OcrStatus } from "@/lib/dms/ocr/types";
+import type { OcrStatus, OcrProviderCode } from "@/lib/dms/ocr/types";
 import { revalidatePath } from "next/cache";
-import { writeDocumentContentTextSystem } from "@/server/actions/dms/document-content";
-import { normalizeDmsContentText, contentTextFileSeparator } from "@/lib/dms/content-text";
+import { extractFileContent } from "@/lib/dms/file-content-extractor";
+import { getDmsAiProvider } from "@/lib/dms/ai/factory";
+import { persistFileOcrResult } from "@/lib/dms/ocr/persist-file-ocr-result";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -290,8 +290,7 @@ export async function triggerDmsOcrForFile(
       return { success: false, error: "OCR is already processing for this file." };
     }
 
-    const provider = getOcrProvider(file.mime_type as string);
-    const supported = isOcrSupported(file.mime_type as string);
+    const ocrProviderCode: OcrProviderCode = "vision";
 
     // 3. Create OCR job record (pending)
     const { data: job, error: jobErr } = await supabase
@@ -300,8 +299,8 @@ export async function triggerDmsOcrForFile(
         document_id: documentId,
         file_id: fileId,
         job_type: "ocr",
-        provider: provider.providerCode,
-        model: provider.providerName,
+        provider: ocrProviderCode,
+        model: "gpt-4.1",
         status: "pending",
         created_by: ctx.profile.id,
       })
@@ -312,25 +311,10 @@ export async function triggerDmsOcrForFile(
 
     const jobId: number = job.id as number;
 
-    // 4. If mime type not supported, mark immediately
-    if (!supported) {
-      const skipStatus: OcrStatus = "not_supported";
-      await supabase
-        .from("dms_document_files")
-        .update({ ocr_status: skipStatus, ocr_provider: provider.providerCode, ocr_error_message: `MIME type not supported: ${file.mime_type}` })
-        .eq("id", fileId);
-      await supabase
-        .from("dms_ai_extraction_jobs")
-        .update({ status: "cancelled", error_message: `MIME type not supported: ${file.mime_type}`, completed_at: new Date().toISOString() })
-        .eq("id", jobId);
-      await insertDocumentEvent(supabase, documentId, fileId, "ocr_skipped", ctx.profile.id, { reason: "not_supported", mime_type: file.mime_type });
-      return { success: true, data: { job_id: jobId, status: skipStatus, message: `File type ${file.mime_type} is not supported for OCR` } };
-    }
-
-    // 5. Mark processing
+    // 4. Mark processing
     await supabase
       .from("dms_document_files")
-      .update({ ocr_status: "processing", ocr_provider: provider.providerCode, ocr_started_at: new Date().toISOString(), ocr_error_message: null })
+      .update({ ocr_status: "processing", ocr_provider: ocrProviderCode, ocr_started_at: new Date().toISOString(), ocr_error_message: null })
       .eq("id", fileId);
     await supabase
       .from("dms_ai_extraction_jobs")
@@ -338,7 +322,7 @@ export async function triggerDmsOcrForFile(
       .eq("id", jobId);
 
     await insertDocumentEvent(supabase, documentId, fileId, "ocr_started", ctx.profile.id, {
-      provider: provider.providerCode,
+      provider: ocrProviderCode,
       file_name: file.file_name,
       mime_type: file.mime_type,
     });
@@ -349,10 +333,10 @@ export async function triggerDmsOcrForFile(
       entity_id: fileId,
       entity_reference: `FILE-${fileId}`,
       action: "update",
-      new_values: { event: "ocr_started", provider: provider.providerCode, job_id: jobId },
+      new_values: { event: "ocr_started", provider: ocrProviderCode, job_id: jobId },
     });
 
-    // 6. Download the file from storage
+    // 5. Download the file from storage
     const startMs = Date.now();
     let fileBuffer: Buffer;
     try {
@@ -368,26 +352,50 @@ export async function triggerDmsOcrForFile(
       return { success: false, error: `Failed to download file for OCR: ${msg}` };
     }
 
-    // 7. Run OCR
+    // 6. Run AI vision OCR — handles all file types: PDF (text layer + scanned pages),
+    //    JPEG/PNG/WebP/TIFF images, DOCX, XLSX. GPT-4.1 is the sole OCR engine.
     let finalStatus: OcrStatus = "complete";
     let extractedText = "";
-    let pageCount: number | undefined;
-    let confidence: number | undefined;
-    let language: string | undefined;
     let model: string | undefined;
     let ocrError: string | null = null;
 
     try {
-      const result = await provider.extractText({
-        buffer: fileBuffer,
-        mimeType: file.mime_type as string,
-        fileName: file.file_name as string,
-      });
-      extractedText = result.text ?? "";
-      pageCount = result.pageCount;
-      confidence = result.confidence;
-      language = result.language;
-      model = result.model;
+      // 6a. Extract content — text from digital files, or rendered images from scanned/image files
+      const content = await extractFileContent(
+        fileBuffer,
+        file.mime_type as string,
+        file.file_name as string
+      );
+
+      if (!content.hasContent) {
+        // Nothing extractable (e.g. empty or corrupted file) — complete with empty text
+        extractedText = "";
+      } else {
+        // 6b. Send to GPT-4.1 for full text transcription
+        const { provider: aiProvider } = await getDmsAiProvider();
+        if (!aiProvider.isConfigured()) {
+          throw new Error("No AI provider configured. Add an OpenAI API key in AI Settings.");
+        }
+
+        const aiOutput = await aiProvider.analyze({
+          ocrText: content.text,       // text extracted from digital PDFs / DOCX / XLSX
+          imageFiles: content.images,  // rendered pages from scanned PDFs / image files
+          currentTypeCode: null,
+          typeCandidates: [],
+          metadataFields: [],
+          originalFilename: file.file_name as string,
+        });
+
+        // Prefer AI full transcription; fall back to locally-extracted text for digital docs
+        const transcription = aiOutput.extraction?.fullTextTranscription;
+        if (transcription && transcription.trim().length > 0) {
+          extractedText = transcription.trim();
+        } else if (content.text && content.text.trim().length > 0) {
+          extractedText = content.text.trim();
+        }
+
+        model = (aiProvider.modelId ?? "gpt-4.1").toLowerCase();
+      }
     } catch (ocrEx) {
       ocrError = String(ocrEx);
       finalStatus = "failed";
@@ -396,41 +404,27 @@ export async function triggerDmsOcrForFile(
     const durationMs = Date.now() - startMs;
     const completedAt = new Date().toISOString();
 
-    // 8. Save results
+    // 7. Save results via shared persist helper
     if (finalStatus === "complete") {
-      await supabase
-        .from("dms_document_files")
-        .update({
-          ocr_status: "complete",
-          ocr_text: extractedText || null,
-          ocr_model: model ?? null,
-          ocr_completed_at: completedAt,
-          ocr_page_count: pageCount ?? null,
-          ocr_confidence: confidence ?? null,
-          ocr_language: language ?? null,
-          ocr_error_message: null,
-        })
-        .eq("id", fileId);
+      await persistFileOcrResult({
+        supabase,
+        fileId,
+        documentId,
+        text: extractedText || null,
+        provider: ocrProviderCode,
+        model: model ?? null,
+        performedBy: ctx.profile.id,
+        source: "ocr",
+      });
 
       await supabase
         .from("dms_ai_extraction_jobs")
-        .update({ status: "completed", completed_at: completedAt, duration_ms: durationMs, model })
+        .update({ status: "completed", completed_at: completedAt, duration_ms: durationMs, model, provider: ocrProviderCode })
         .eq("id", jobId);
 
-      // Update document-level OCR summary
-      await supabase
-        .from("dms_documents")
-        .update({
-          ocr_status: "complete",
-          ocr_last_run_at: completedAt,
-          ocr_text_available: (extractedText?.trim().length ?? 0) > 0,
-        })
-        .eq("id", documentId);
-
       await insertDocumentEvent(supabase, documentId, fileId, "ocr_completed", ctx.profile.id, {
-        provider: provider.providerCode,
+        provider: ocrProviderCode,
         duration_ms: durationMs,
-        page_count: pageCount,
         has_text: (extractedText?.trim().length ?? 0) > 0,
       });
 
@@ -440,56 +434,8 @@ export async function triggerDmsOcrForFile(
         entity_id: fileId,
         entity_reference: `FILE-${fileId}`,
         action: "update",
-        new_values: { event: "ocr_completed", job_id: jobId, provider: provider.providerCode, duration_ms: durationMs, page_count: pageCount },
+        new_values: { event: "ocr_completed", job_id: jobId, provider: ocrProviderCode, duration_ms: durationMs },
       });
-
-      // ── Sync content text for parent document (DMS 12.1 — non-fatal) ──
-      if (extractedText && extractedText.trim().length > 0) {
-        try {
-          // Consolidate all complete OCR text for this document
-          const { data: allFiles } = await supabase
-            .from("dms_document_files")
-            .select("id, file_name, ocr_text, version_id, created_at")
-            .eq("document_id", documentId)
-            .eq("ocr_status", "complete")
-            .is("deleted_at", null)
-            .order("created_at", { ascending: true });
-
-          const { data: docInfo } = await supabase
-            .from("dms_documents")
-            .select("current_version_id")
-            .eq("id", documentId)
-            .single();
-
-          const currentVersionId = (docInfo as Record<string, unknown> | null)?.current_version_id as number | null ?? null;
-
-          const usableFiles = (allFiles ?? []).filter((f) => {
-            if (!(f.ocr_text as string | null)?.trim()) return false;
-            if (currentVersionId) return f.version_id === currentVersionId;
-            return true;
-          });
-
-          if (usableFiles.length > 0) {
-            const consolidatedText = usableFiles
-              .map((f, i) =>
-                i === 0
-                  ? normalizeDmsContentText((f.ocr_text as string) ?? "")
-                  : contentTextFileSeparator(f.file_name as string) +
-                    normalizeDmsContentText((f.ocr_text as string) ?? "")
-              )
-              .join("");
-
-            await writeDocumentContentTextSystem({
-              documentId,
-              text: consolidatedText,
-              source: "ocr",
-              performedBy: ctx.profile.id,
-            });
-          }
-        } catch (contentSyncErr) {
-          console.warn("[DMS 12.1] Content text sync after OCR failed (non-fatal):", String(contentSyncErr));
-        }
-      }
     } else {
       await markOcrFailed(supabase, fileId, jobId, documentId, ctx.profile.id, ocrError ?? "Unknown error", durationMs);
     }

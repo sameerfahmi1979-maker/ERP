@@ -58,6 +58,53 @@ function safeConfidenceLabel(val: unknown, score: number): ConfidenceLabel {
   return confidenceLabelFromScore(score);
 }
 
+/**
+ * When the AI response JSON is truncated or malformed (common for long transcriptions),
+ * attempt to regex-extract full_text_transcription so OCR text is not lost.
+ * Returns the transcription string, or null if not found.
+ */
+function salvageTranscription(text: string): string | null {
+  // Match the JSON string value — may be unclosed due to truncation
+  const m = text.match(/"full_text_transcription"\s*:\s*"((?:[^"\\]|\\[\s\S])*)(?:"|$)/);
+  if (m?.[1]) {
+    try {
+      return JSON.parse(`"${m[1]}"`);
+    } catch {
+      return m[1].slice(0, 200_000); // return raw string without JSON unescaping
+    }
+  }
+  return null;
+}
+
+/** Build a minimal DmsAiOutput for when full parse fails but we salvaged a transcription. */
+function buildPartialOutput(rawText: string, transcription: string): DmsAiOutput {
+  const score = 0;
+  const classification: DmsClassificationResult = {
+    suggestedTypeCode: null,
+    suggestedTypeId: null,
+    confidenceScore: score,
+    confidenceLabel: "needs_manual_review",
+    reason: "AI response was truncated; classification could not be extracted.",
+  };
+  const extraction: DmsExtractionResult = {
+    fields: [],
+    additionalFields: [],
+    suggestedTitle: null,
+    suggestedDescription: null,
+    issueDateSuggestion: null,
+    expiryDateSuggestion: null,
+    fullTextTranscription: transcription.slice(0, 200_000),
+  };
+  return {
+    classification,
+    extraction,
+    suggestedLinks: [],
+    detectedEntities: [],
+    warnings: ["AI response JSON was truncated. Classification and field extraction skipped; transcription salvaged."],
+    rawResponse: { _salvaged: true, _rawLength: rawText.length },
+  };
+}
+
 export function validateAiOutput(rawText: string): ValidateResult {
   const jsonStr = extractJson(rawText);
 
@@ -65,6 +112,16 @@ export function validateAiOutput(rawText: string): ValidateResult {
   try {
     parsed = JSON.parse(jsonStr) as Record<string, unknown>;
   } catch (e) {
+    // Before giving up: attempt to salvage full_text_transcription from the raw text.
+    // This rescues OCR results when the JSON is truncated by token limits.
+    const salvaged = salvageTranscription(rawText);
+    if (salvaged && salvaged.trim().length > 10) {
+      return {
+        ok: true,
+        output: buildPartialOutput(rawText, salvaged),
+        rawText,
+      };
+    }
     return {
       ok: false,
       error: `JSON parse failed: ${String(e).slice(0, 200)}`,
@@ -140,9 +197,14 @@ export function validateAiOutput(rawText: string): ValidateResult {
       typeof parsed.suggested_description === "string" && parsed.suggested_description
         ? parsed.suggested_description.slice(0, 500)
         : null,
-    // 1. Try top-level date fields (new prompt v1.1)
+    // 1. Try top-level date fields
     issueDateSuggestion: parseDate(parsed.suggested_issue_date),
     expiryDateSuggestion: parseDate(parsed.suggested_expiry_date),
+    // Full text transcription from the AI (primary OCR output for image-based docs)
+    fullTextTranscription:
+      typeof parsed.full_text_transcription === "string" && parsed.full_text_transcription.trim()
+        ? parsed.full_text_transcription.slice(0, 200_000)
+        : null,
   };
 
   // 2. Fall back: look for issue date in the fields array

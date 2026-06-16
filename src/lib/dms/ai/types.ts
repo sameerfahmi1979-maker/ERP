@@ -52,6 +52,13 @@ export interface DmsExtractionResult {
   issueDateSuggestion: string | null;
   /** Extracted expiry/end date from the document (YYYY-MM-DD). */
   expiryDateSuggestion: string | null;
+  /**
+   * Full verbatim text transcription of the document as read by the vision/AI
+   * model. Populated for image-based documents (passports, Emirates IDs,
+   * certificates, scanned PDFs) where local OCR produces no text. Used as
+   * raw_ocr_text for search, content display, and future re-analysis.
+   */
+  fullTextTranscription: string | null;
 }
 
 /** A person/company/organization detected in the document, for DB matching. */

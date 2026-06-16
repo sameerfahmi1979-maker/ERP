@@ -22,32 +22,8 @@ import type {
   DmsAiOutput,
 } from "@/lib/dms/ai/types";
 import { revalidatePath } from "next/cache";
-
-// ── Supported MIME types ──────────────────────────────────────────────────────
-
-const PDF_MIME_TYPES = new Set(["application/pdf"]);
-const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"]);
-
-function isPdf(mime: string) { return PDF_MIME_TYPES.has(mime.toLowerCase().split(";")[0].trim()); }
-function isImage(mime: string) { return IMAGE_MIME_TYPES.has(mime.toLowerCase().split(";")[0].trim()); }
-
-/**
- * Extracts text from a PDF buffer using pdf-parse v1.
- * Returns empty string if no text layer is present (scanned PDF).
- */
-async function extractPdfText(buffer: Buffer): Promise<string> {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pdfParse = require("pdf-parse/lib/pdf-parse.js") as (
-      buffer: Buffer,
-      options?: Record<string, unknown>
-    ) => Promise<{ text: string; numpages: number }>;
-    const parsed = await pdfParse(buffer);
-    return (parsed.text ?? "").trim();
-  } catch {
-    return "";
-  }
-}
+import { extractFileContent } from "@/lib/dms/file-content-extractor";
+import { persistFileOcrResult } from "@/lib/dms/ocr/persist-file-ocr-result";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -338,6 +314,8 @@ export async function runDmsAiAnalysisForDocument(
     const adminClient = await createAdminClient();
     const ocrParts: string[] = [];
     const imageFiles: DmsAiImageFile[] = [];
+    // Track files that contributed images (to persist transcription after AI call)
+    const imageOnlyFileIds: number[] = [];
 
     for (const file of allFiles) {
       const mimeType = (file.mime_type as string ?? "").toLowerCase().split(";")[0].trim();
@@ -346,64 +324,54 @@ export async function runDmsAiAnalysisForDocument(
 
       if (!storagePath) continue;
 
-      // ── PDF: try to extract text layer, cache result ─────────────────────────
-      if (isPdf(mimeType)) {
-        // Use cached OCR text if already complete
-        if (file.ocr_status === "complete" && typeof file.ocr_text === "string" && file.ocr_text.trim()) {
-          ocrParts.push(`--- ${file.file_name} ---\n${file.ocr_text}`);
-          continue;
+      // ── Use cached OCR text when available (any file type) ───────────────────
+      if (file.ocr_status === "complete" && typeof file.ocr_text === "string" && file.ocr_text.trim()) {
+        ocrParts.push(`--- ${file.file_name} ---\n${file.ocr_text}`);
+        continue;
+      }
+
+      // ── Download and extract via unified extractor ────────────────────────────
+      try {
+        const { data: blob } = await adminClient.storage.from(storageBucket).download(storagePath);
+        if (!blob) continue;
+        const buffer = Buffer.from(await blob.arrayBuffer());
+
+        const content = await extractFileContent(buffer, mimeType, file.file_name as string);
+        if (!content.hasContent) continue;
+
+        if (content.text) {
+          ocrParts.push(`--- ${file.file_name} ---\n${content.text}`);
+          // Cache text immediately (no AI needed for digital text)
+          await persistFileOcrResult({
+            supabase,
+            fileId: file.id as number,
+            documentId,
+            text: content.text,
+            provider: "vision",
+            model: content.method ?? "pdf-text-layer",
+            performedBy: ctx.profile.id,
+            source: "ocr",
+          });
         }
 
-        // Download and extract
-        try {
-          const { data: blob } = await adminClient.storage.from(storageBucket).download(storagePath);
-          if (!blob) continue;
-          const buffer = Buffer.from(await blob.arrayBuffer());
-          const text = await extractPdfText(buffer);
-
-          if (text) {
-            // Store extracted text as side-effect (populates OCR tab too)
-            await supabase.from("dms_document_files").update({
-              ocr_status: "complete",
-              ocr_text: text,
-              ocr_model: "pdf-parse@text-layer",
-              ocr_completed_at: new Date().toISOString(),
-            }).eq("id", file.id);
-            ocrParts.push(`--- ${file.file_name} ---\n${text}`);
-          } else {
-            // Scanned PDF — no text layer; mark so OCR tab shows accurate status
-            await supabase.from("dms_document_files").update({
-              ocr_status: "complete",
-              ocr_text: null,
-              ocr_model: "pdf-parse@text-layer",
-              ocr_completed_at: new Date().toISOString(),
-            }).eq("id", file.id);
+        // Collect up to 4 images per file for vision (avoids token overload)
+        if (content.images.length > 0) {
+          const pagesToUse = content.images.slice(0, 4);
+          for (const img of pagesToUse) {
+            imageFiles.push({ fileName: img.fileName, base64: img.base64, mimeType: img.mimeType });
           }
-        } catch { /* skip this file on download error */ }
-        continue;
-      }
-
-      // ── Image: encode as base64 for AI vision ─────────────────────────────────
-      if (isImage(mimeType)) {
-        try {
-          const { data: blob } = await adminClient.storage.from(storageBucket).download(storagePath);
-          if (!blob) continue;
-          const buffer = Buffer.from(await blob.arrayBuffer());
-          imageFiles.push({
-            fileName: file.file_name as string,
-            base64: buffer.toString("base64"),
-            mimeType,
-          });
-        } catch { /* skip on download error */ }
-        continue;
-      }
-      // Other file types (DOCX, XLSX, etc.) — not supported yet; skip silently
+          imageOnlyFileIds.push(file.id as number);
+          if (content.images.length > 4) {
+            // Warn about capped pages (non-fatal, handled in AI prompt warnings)
+          }
+        }
+      } catch { /* skip this file on download/extract error */ }
     }
 
     if (ocrParts.length === 0 && imageFiles.length === 0) {
       return {
         success: false,
-        error: "No supported file content found. Supported types: PDF (with text layer), and images (JPG, PNG, WEBP). Scanned PDFs with no text layer require vision AI — ensure your AI provider supports image inputs.",
+        error: "No supported file content found. Supported types: PDF (text layer or scanned pages), images (JPG, PNG, WebP, TIFF), DOCX, and XLSX.",
       };
     }
 
@@ -634,13 +602,51 @@ export async function runDmsAiAnalysisForDocument(
       .update({ status: "completed", completed_at: completedAt, duration_ms: durationMs, model: provider.modelId ?? null })
       .eq("id", jobId);
 
+    // ── Persist fullTextTranscription from vision to files/content (non-fatal) ──
+    // When images were sent to vision (scanned PDFs, image files), the AI returns
+    // a full_text_transcription. Persist it to dms_document_files + content_text.
+    if (aiOutput?.extraction?.fullTextTranscription && imageOnlyFileIds.length > 0) {
+      const transcription = aiOutput.extraction.fullTextTranscription;
+      try {
+        // Store transcription in the first image-only file (single-file documents)
+        // or skip per-file storage for multi-file docs (complex to split).
+        const targetFileId = imageOnlyFileIds.length === 1 ? imageOnlyFileIds[0] : null;
+        if (targetFileId) {
+          await persistFileOcrResult({
+            supabase,
+            fileId: targetFileId,
+            documentId,
+            text: transcription,
+            provider: "vision",
+            model: provider.modelId ?? "gpt-4.1",
+            performedBy: ctx.profile.id,
+            source: "ocr",
+          });
+        } else {
+          // Multi-file: update document content text directly without per-file write
+          const { writeDocumentContentTextSystem } = await import("@/server/actions/dms/document-content");
+          await writeDocumentContentTextSystem({
+            documentId,
+            text: transcription,
+            source: "ocr",
+            performedBy: ctx.profile.id,
+          });
+          await supabase
+            .from("dms_documents")
+            .update({ ocr_text_available: true, updated_at: new Date().toISOString() })
+            .eq("id", documentId);
+        }
+      } catch { /* non-fatal */ }
+    }
+
     // Update document ai_status + ocr_text_available flag (side-effect of auto-extraction)
+    const hasTextAfterAnalysis = ocrParts.length > 0 || (imageOnlyFileIds.length > 0 && !!(aiOutput?.extraction?.fullTextTranscription));
     await supabase
       .from("dms_documents")
       .update({
         ai_status: "completed",
-        ocr_text_available: ocrParts.length > 0,
-        ocr_last_run_at: ocrParts.length > 0 ? new Date().toISOString() : undefined,
+        ocr_text_available: hasTextAfterAnalysis,
+        ocr_last_run_at: hasTextAfterAnalysis ? new Date().toISOString() : undefined,
       })
       .eq("id", documentId);
 

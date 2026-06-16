@@ -33,6 +33,9 @@ import {
   retryAiIntake,
 } from "@/server/actions/dms/ai-intake";
 import { writeDocumentContentTextSystem } from "@/server/actions/dms/document-content";
+import { persistFileOcrResult } from "@/lib/dms/ocr/persist-file-ocr-result";
+import { extractFileContent } from "@/lib/dms/file-content-extractor";
+import { getDmsAiProvider } from "@/lib/dms/ai/factory";
 import { DMS_MAX_BATCH_FILES } from "@/features/dms/upload/dms-upload-constants";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -887,19 +890,69 @@ export async function finalizeDraftIntake(
           .select("raw_ocr_text")
           .eq("id", effectiveAiResultId)
           .single();
-        const rawOcrText = (aiRaw as Record<string, unknown> | null)?.raw_ocr_text as string | null;
-        if (rawOcrText && rawOcrText.trim().length > 0) {
-          await writeDocumentContentTextSystem({ documentId, text: rawOcrText, source: "ai_intake", performedBy: userId });
-          if (fileRecordId) {
-            await supabase
+        let rawOcrText = (aiRaw as Record<string, unknown> | null)?.raw_ocr_text as string | null;
+
+        // Vision fallback: if raw_ocr_text is empty, download the file and run vision OCR
+        if (!rawOcrText?.trim() && fileRecordId) {
+          try {
+            const { data: fileRow } = await supabase
               .from("dms_document_files")
-              .update({ ocr_status: "complete", ocr_text: rawOcrText.slice(0, 500_000), ocr_completed_at: nowIso, ocr_provider: "ai_intake", updated_at: nowIso })
-              .eq("id", fileRecordId);
+              .select("storage_bucket, storage_path, file_name, mime_type")
+              .eq("id", fileRecordId)
+              .single();
+            if (fileRow?.storage_path) {
+              const { data: blob } = await admin.storage
+                .from((fileRow.storage_bucket as string | null) ?? "dms-documents")
+                .download(fileRow.storage_path as string);
+              if (blob) {
+                const buffer = Buffer.from(await blob.arrayBuffer());
+                const content = await extractFileContent(buffer, fileRow.mime_type as string, fileRow.file_name as string);
+                if (content.hasContent) {
+                  const { provider: aiProvider } = await getDmsAiProvider();
+                  if (aiProvider.isConfigured()) {
+                    const fallbackOutput = await aiProvider.analyze({
+                      ocrText: content.text,
+                      imageFiles: content.images,
+                      currentTypeCode: null,
+                      typeCandidates: [],
+                      metadataFields: [],
+                      originalFilename: fileRow.file_name as string,
+                    });
+                    const transcription = fallbackOutput.extraction?.fullTextTranscription;
+                    const fallbackText = transcription?.trim() || content.text?.trim() || null;
+                    if (fallbackText) {
+                      rawOcrText = fallbackText;
+                      await supabase
+                        .from("dms_ai_extraction_results")
+                        .update({ raw_ocr_text: fallbackText.slice(0, 100_000) })
+                        .eq("id", effectiveAiResultId);
+                    }
+                  }
+                }
+              }
+            }
+          } catch { /* fallback failed — continue without text */ }
+        }
+
+        if (rawOcrText && rawOcrText.trim().length > 0) {
+          if (fileRecordId) {
+            await persistFileOcrResult({
+              supabase,
+              fileId: fileRecordId,
+              documentId,
+              text: rawOcrText,
+              provider: "ai_intake",
+              model: null,
+              performedBy: userId,
+              source: "ai_intake",
+            });
+          } else {
+            await writeDocumentContentTextSystem({ documentId, text: rawOcrText, source: "ai_intake", performedBy: userId });
+            await supabase.from("dms_documents").update({ ocr_text_available: true, updated_at: nowIso }).eq("id", documentId);
           }
-          await supabase.from("dms_documents").update({ ocr_text_available: true, updated_at: nowIso }).eq("id", documentId);
         }
       } catch (contentErr) {
-        console.warn("[DMS 13] content text sync failed (non-fatal):", String(contentErr));
+        console.warn("[DMS OCR-AI FIX.1] batch content text sync (non-fatal):", String(contentErr));
       }
     }
 

@@ -18,8 +18,8 @@ import type {
 import { buildCombinedPrompt } from "./prompt-builders";
 import { validateAiOutput } from "./result-validator";
 
-const COMPLETION_TIMEOUT_MS = 90_000; // 90 seconds — vision requests take longer
-const MAX_TOKENS = 4000;             // increased for detailed field extraction
+const COMPLETION_TIMEOUT_MS = 120_000; // 120 seconds — vision + full transcription requests take longer
+const MAX_TOKENS = 16_000;            // GPT-4.1 supports up to 16,384 output tokens — raised to capture long transcriptions
 const SUMMARY_TIMEOUT_MS = 45_000;   // 45 seconds — text-only requests are faster
 const SUMMARY_MAX_TOKENS = 800;      // 3-5 sentence summary
 const STRUCTURED_TIMEOUT_MS = 30_000; // 30 seconds — intent/QA/suggestions
@@ -38,7 +38,7 @@ export class OpenAiDmsAdapter implements IDmsAiProvider {
     this.config = config;
     this.providerCode = config.providerType;
     this.providerName = config.providerName;
-    this.modelId = config.modelId ?? "gpt-4o-mini";
+    this.modelId = config.modelId ?? "gpt-4.1";
   }
 
   isConfigured(): boolean {
@@ -70,7 +70,8 @@ export class OpenAiDmsAdapter implements IDmsAiProvider {
 
     const baseUrl =
       this.config.apiEndpoint?.replace(/\/$/, "") ?? "https://api.openai.com/v1";
-    const model = this.modelId ?? "gpt-4o-mini";
+    // OpenAI model IDs are case-sensitive — always lowercase (e.g. gpt-4.1, not GPT-4.1)
+    const model = (this.modelId ?? "gpt-4.1").toLowerCase();
 
     // Use multimodal content array when images are present;
     // fall back to plain string for text-only (wider model compatibility).
@@ -141,7 +142,8 @@ export class OpenAiDmsAdapter implements IDmsAiProvider {
 
     const baseUrl =
       this.config.apiEndpoint?.replace(/\/$/, "") ?? "https://api.openai.com/v1";
-    const model = this.modelId ?? "gpt-4o-mini";
+    // OpenAI model IDs are case-sensitive — always lowercase (e.g. gpt-4.1, not GPT-4.1)
+    const model = (this.modelId ?? "gpt-4.1").toLowerCase();
 
     const requestBody = {
       model,
@@ -203,7 +205,8 @@ export class OpenAiDmsAdapter implements IDmsAiProvider {
 
     const baseUrl =
       this.config.apiEndpoint?.replace(/\/$/, "") ?? "https://api.openai.com/v1";
-    const model = this.modelId ?? "gpt-4o-mini";
+    // OpenAI model IDs are case-sensitive — always lowercase (e.g. gpt-4.1, not GPT-4.1)
+    const model = (this.modelId ?? "gpt-4.1").toLowerCase();
 
     const requestBody = {
       model,

@@ -134,7 +134,7 @@ export function DmsDocumentOcrSection({
   const hasAnyComplete = files.some((f) => f.ocr_status === "complete");
   const hasAnyFailed = files.some((f) => f.ocr_status === "failed");
   const supportedFiles = files.filter((f) =>
-    ["not_started", "failed", "complete"].includes(f.ocr_status)
+    !["processing"].includes(f.ocr_status)
   );
 
   return (
@@ -171,10 +171,22 @@ export function DmsDocumentOcrSection({
             {triggering
               ? <div className="h-3.5 w-3.5 animate-spin rounded-full border border-current border-t-transparent" />
               : <ScanText className="h-3.5 w-3.5" />}
-            {triggering ? "Running OCR…" : "Run OCR on All Files"}
+            {triggering ? "Running OCR (AI)…" : "Run OCR (AI) on All Files"}
           </Button>
         )}
       </div>
+
+      {/* ── Warning: OCR complete but no text extracted ── */}
+      {hasAnyComplete && !ocrStatus?.ocr_text_available && (
+        <div className="flex items-start gap-2 rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30 px-3 py-2.5">
+          <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+          <div className="text-xs text-amber-800 dark:text-amber-300">
+            <strong>OCR completed but no text was extracted.</strong> This usually happens for scanned PDFs or images
+            processed by the old engine. Click <strong>Re-run OCR (AI)</strong> on the file below to extract text
+            using GPT-4.1 vision.
+          </div>
+        </div>
+      )}
 
       {/* ── Files table ── */}
       {files.length === 0 ? (
@@ -324,9 +336,8 @@ export function DmsDocumentOcrSection({
       <div className="flex items-start gap-2 rounded-md border border-border/50 bg-muted/20 px-3 py-2">
         <Info className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
         <p className="text-xs text-muted-foreground">
-          OCR extracts text from digital PDFs (text layer). Scanned images and image-only PDFs may return no text.
-          Once OCR is complete, use the <strong>AI Analysis</strong> tab to classify this document and suggest metadata field values.
-          OCR text is only sent to AI when you explicitly trigger AI analysis.
+          OCR uses GPT-4.1 vision to extract text from any document — PDFs (text layer or scanned), images (passport, Emirates ID, certificates), DOCX, and XLSX.
+          Once OCR is complete, use the <strong>AI Analysis</strong> tab to classify and extract metadata.
         </p>
       </div>
     </div>
@@ -365,7 +376,7 @@ function OcrFileRow({ file, canTrigger, canViewText, documentId, onViewText, que
     }
   };
 
-  const isRunnable = !["processing", "not_supported"].includes(file.ocr_status ?? "");
+  const isRunnable = file.ocr_status !== "processing";
 
   return (
     <tr className="hover:bg-muted/20 transition-colors">
@@ -391,7 +402,7 @@ function OcrFileRow({ file, canTrigger, canViewText, documentId, onViewText, que
       </td>
       <td className="px-3 py-2">
         <div className="flex items-center gap-1">
-          {canViewText && file.ocr_status === "complete" && (
+          {canViewText && file.ocr_status === "complete" && file.has_text && (
             <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={onViewText}>
               <ScanText className="h-3 w-3" />
               View Text
@@ -400,15 +411,17 @@ function OcrFileRow({ file, canTrigger, canViewText, documentId, onViewText, que
           {canTrigger && isRunnable && (
             <Button
               size="sm"
-              variant="ghost"
-              className="h-7 text-xs gap-1"
+              variant={file.ocr_status === "complete" && !file.has_text ? "outline" : "ghost"}
+              className={`h-7 text-xs gap-1 ${file.ocr_status === "complete" && !file.has_text ? "border-amber-400 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30" : ""}`}
               disabled={running}
               onClick={handleRun}
             >
               {running
                 ? <div className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
                 : <RefreshCw className="h-3 w-3" />}
-              {file.ocr_status === "complete" ? "Re-run" : "Run OCR"}
+              {file.ocr_status === "complete"
+                ? file.has_text ? "Re-run OCR (AI)" : "Re-run OCR (AI) ⚠"
+                : "Run OCR (AI)"}
             </Button>
           )}
         </div>

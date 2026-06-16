@@ -1,57 +1,37 @@
 /**
  * DMS.9 — OCR Provider Factory
  *
- * Returns the best available OCR provider for a given MIME type.
- * Priority order:
- *   1. PDF text-layer provider  (application/pdf)
- *   2. No-op provider           (all other / not configured)
+ * All OCR now goes through GPT-4.1 vision (via triggerDmsOcrForFile).
+ * This factory only provides isOcrSupported() for MIME-type checks used in the UI.
  *
- * Future phases may add Tesseract and Azure Document Intelligence
- * by inserting them into the priority chain here.
+ * Supported types mirror what extractFileContent handles:
+ *   - PDF (text layer + scanned page rendering)
+ *   - JPEG / PNG / WebP / GIF / TIFF (native vision)
+ *   - DOCX / DOC / XLSX / XLS (text extraction → AI)
  */
 
-import type { IOcrProvider } from "./types";
-import { PdfTextProvider } from "./pdf-text-provider";
-import { NoopOcrProvider } from "./noop-provider";
-
-let _pdfProvider: PdfTextProvider | null = null;
-let _noopProvider: NoopOcrProvider | null = null;
-
-function getPdfProvider(): PdfTextProvider {
-  if (!_pdfProvider) _pdfProvider = new PdfTextProvider();
-  return _pdfProvider;
-}
-
-function getNoopProvider(): NoopOcrProvider {
-  if (!_noopProvider) _noopProvider = new NoopOcrProvider();
-  return _noopProvider;
-}
-
-/**
- * Returns the most capable OCR provider that supports the given MIME type.
- * Never throws — always returns at least the noop provider.
- */
-export function getOcrProvider(mimeType: string): IOcrProvider {
-  const normalizedMime = mimeType.toLowerCase().split(";")[0].trim();
-
-  const pdf = getPdfProvider();
-  if (pdf.supports(normalizedMime)) return pdf;
-
-  return getNoopProvider();
-}
+/** MIME types that AI vision OCR can process. */
+const VISION_OCR_SUPPORTED_MIMES = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/tiff",
+  "image/tif",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // DOCX
+  "application/msword",                                                       // DOC
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",        // XLSX
+  "application/vnd.ms-excel",                                                 // XLS
+]);
 
 /**
- * Returns true if any real (non-noop) provider supports this MIME type.
+ * Returns true if the AI vision OCR pipeline supports this MIME type.
+ * Always returns true for all types above — regardless of provider config.
+ * The actual provider check happens at runtime inside triggerDmsOcrForFile.
  */
 export function isOcrSupported(mimeType: string): boolean {
-  const provider = getOcrProvider(mimeType);
-  return provider.providerCode !== "noop" && provider.isConfigured();
-}
-
-/**
- * Returns all provider codes that are available and configured in this environment.
- */
-export function getAvailableOcrProviders(): IOcrProvider[] {
-  const pdf = getPdfProvider();
-  return pdf.isConfigured() ? [pdf] : [];
+  const normalized = mimeType.toLowerCase().split(";")[0].trim();
+  return VISION_OCR_SUPPORTED_MIMES.has(normalized);
 }

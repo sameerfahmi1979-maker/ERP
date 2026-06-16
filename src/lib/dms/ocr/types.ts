@@ -22,6 +22,7 @@ export type OcrStatus =
 
 export type OcrProviderCode =
   | "pdf_text"         // Text-layer extraction from digital PDFs (pdf-parse)
+  | "vision"           // GPT-4.1 vision fallback for scanned/image-based documents
   | "tesseract"        // Tesseract OCR (deferred — not implemented in DMS.9)
   | "azure_doc_intel"  // Azure Document Intelligence (deferred)
   | "noop";            // No-op fallback — always returns provider_not_configured

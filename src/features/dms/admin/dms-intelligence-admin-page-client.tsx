@@ -26,6 +26,7 @@ import { adminBackfillDmsContentText } from "@/server/actions/dms/document-conte
 import { bulkGenerateMissingSummaries } from "@/server/actions/dms/ai-summary";
 import { bulkEvaluateDmsDocuments } from "@/server/actions/dms/ai-intelligence";
 import { bulkGenerateMissingDmsEmbeddings } from "@/server/actions/dms/semantic-search";
+import { adminBackfillMissingOcrText } from "@/server/actions/dms/intelligence-admin";
 import type { DmsIntelligenceAdminStats } from "@/server/actions/dms/intelligence-admin";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -413,6 +414,34 @@ export function DmsIntelligenceAdminPageClient({ stats }: Props) {
     }
   };
 
+  // ── OCR backfill handler ──────────────────────────────────────────────────
+
+  const [ocrBackfillResult, setOcrBackfillResult] = useState<Record<string, unknown> | null>(null);
+  const [ocrBackfillLoading, setOcrBackfillLoading] = useState(false);
+  const [ocrBackfillBatch, setOcrBackfillBatch] = useState(10);
+  const [ocrBackfillResume, setOcrBackfillResume] = useState("");
+  const [ocrBackfillTargetDoc, setOcrBackfillTargetDoc] = useState("");
+  const [ocrBackfillDry, setOcrBackfillDry] = useState(false);
+
+  const runOcrBackfill = async () => {
+    setOcrBackfillLoading(true);
+    setOcrBackfillResult(null);
+    const res = await adminBackfillMissingOcrText({
+      batchSize: Math.min(Math.max(1, ocrBackfillBatch), 50),
+      resumeFromId: ocrBackfillResume ? parseInt(ocrBackfillResume, 10) : undefined,
+      targetDocumentId: ocrBackfillTargetDoc ? parseInt(ocrBackfillTargetDoc, 10) : undefined,
+      dryRun: ocrBackfillDry,
+    });
+    setOcrBackfillLoading(false);
+    if (res.success && res.data) {
+      toast.success("OCR backfill completed.");
+      setOcrBackfillResult(res.data as unknown as Record<string, unknown>);
+    } else {
+      toast.error(`OCR backfill failed: ${res.error}`);
+      setOcrBackfillResult({ error: res.error });
+    }
+  };
+
   // ── Summary bulk card handler ─────────────────────────────────────────────
 
   const [summaryResult, setSummaryResult] = useState<Record<
@@ -605,6 +634,81 @@ export function DmsIntelligenceAdminPageClient({ stats }: Props) {
                 result={backfillResult}
                 onClear={() => setBackfillResult(null)}
               />
+            )}
+          </div>
+
+          {/* OCR Backfill / Repair Missing Text */}
+          <div className="rounded-lg border border-border/50 bg-card p-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-md shrink-0 text-sky-600 bg-sky-50 dark:bg-sky-950/30">
+                <FileSearch className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-foreground">OCR Backfill / Repair Missing Text</div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  Runs AI vision OCR (GPT-4.1) on files that have no extracted text.
+                  Repairs documents where OCR was run with the old pdf-parse engine and returned nothing.
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-2.5 text-amber-800 dark:text-amber-300 text-xs">
+              <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+              <span>Calls GPT-4.1 per file. May use significant API credits for large batches. Never logs document content.</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Batch Size (max 50)</Label>
+                <Input
+                  type="number" min={1} max={50}
+                  value={ocrBackfillBatch}
+                  onChange={(e) => setOcrBackfillBatch(parseInt(e.target.value, 10) || 10)}
+                  className="h-8 text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Resume from Document ID</Label>
+                <Input
+                  type="number" min={1} placeholder="optional"
+                  value={ocrBackfillResume}
+                  onChange={(e) => setOcrBackfillResume(e.target.value)}
+                  className="h-8 text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">Target specific Document ID (leave blank for all broken)</Label>
+              <Input
+                type="number" min={1} placeholder="optional — e.g. 13"
+                value={ocrBackfillTargetDoc}
+                onChange={(e) => setOcrBackfillTargetDoc(e.target.value)}
+                className="h-8 text-xs"
+              />
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="ocr-backfill-dry"
+                  checked={ocrBackfillDry}
+                  onCheckedChange={(v) => setOcrBackfillDry(!!v)}
+                />
+                <Label htmlFor="ocr-backfill-dry" className="text-xs cursor-pointer">Dry run (no writes)</Label>
+              </div>
+              <Button size="sm" className="h-8 text-xs" onClick={runOcrBackfill} disabled={ocrBackfillLoading}>
+                {ocrBackfillLoading ? (
+                  <RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                ) : (
+                  <Zap className="h-3.5 w-3.5 mr-1.5" />
+                )}
+                {ocrBackfillLoading ? "Running…" : ocrBackfillDry ? "Dry Run" : "Run OCR Backfill"}
+              </Button>
+            </div>
+
+            {ocrBackfillResult && (
+              <ResultPanel result={ocrBackfillResult} onClear={() => setOcrBackfillResult(null)} />
             )}
           </div>
 

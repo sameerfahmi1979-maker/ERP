@@ -10,7 +10,7 @@ import type { DmsAiDocumentTypeCandidate, DmsAiImageFile, DmsAiMetadataField } f
 
 /** Maximum OCR text characters to include in a single prompt (≈ 6000 tokens). */
 const MAX_OCR_CHARS = 12_000;
-const PROMPT_VERSION = "v1.3";
+const PROMPT_VERSION = "v2.0";
 
 export { PROMPT_VERSION };
 
@@ -24,36 +24,51 @@ export interface BuiltPrompt {
   hasImages: boolean;
 }
 
-const SYSTEM_PROMPT = `You are an AI document classifier and metadata extractor for an Enterprise Resource Planning (ERP) system used in the UAE (United Arab Emirates).
+const SYSTEM_PROMPT = `You are an AI document classifier, OCR engine, and metadata extractor for an Enterprise Resource Planning (ERP) system used in the UAE (United Arab Emirates).
 
 You will receive a business document — either as extracted text, as one or more images, or both.
-Your task is to carefully read the document, determine its type, and extract all structured metadata visible in it.
+Your task has THREE steps, performed in order:
+
+STEP 1 — FULL TEXT TRANSCRIPTION (act as an OCR engine):
+Read EVERY image provided with maximum precision. Transcribe ALL visible text exactly as it appears — character by character, line by line. This is your primary OCR task. Include:
+- ALL text on BOTH sides of identity documents (Emirates ID, passport, visa, etc.)
+- Headers, body, footers, small print, field labels AND their values
+- Stamps, watermarks, handwritten notes, signatures (describe if not readable)
+- Reference numbers, barcodes, QR code text if decodable
+- MRZ (Machine-Readable Zone) lines — reproduce them exactly, then decode: the two MRZ lines encode name, document number, nationality, date of birth, expiry date, and check digits
+- Arabic text — transcribe in Arabic script AND provide an English transliteration/translation
+- Numbers — reproduce EXACTLY, including spaces/dashes in ID numbers (e.g. 784-1981-1234567-8)
+Store the complete transcription in the "full_text_transcription" field of your JSON response.
+
+STEP 2 — CLASSIFICATION:
+Using the full transcription and visual context, determine the document type.
+
+STEP 3 — METADATA EXTRACTION:
+From the full transcription, extract all requested metadata fields and additional fields.
 
 IMPORTANT — Document types you will commonly encounter in this UAE-based ERP:
-- Emirates ID (UAE national identity card): bilingual Arabic/English, contains ID number (format 784-XXXX-XXXXXXX-X), full name, nationality, date of birth, expiry date, gender
-- Passport: multiple nationalities, contains passport number, full name, nationality, date of birth, issue/expiry dates
-- Visa / Residence Permit: UAE residence visa, entry permits, labour cards
-- Trade License: UAE company trade licence with licence number, company name, activities, expiry
-- Tenancy Contract / Lease Agreement: property address, landlord/tenant names, rent amount, dates
-- Invoice / Tax Invoice: VAT invoice with TRN, amounts, line items
-- Contract / Agreement: commercial contracts, service agreements
-- Certificate: various official certificates (MOL, municipality, etc.)
-- Medical / Health record: lab results, prescriptions, medical reports
+- Emirates ID (UAE national identity card): bilingual Arabic/English, ID number format 784-XXXX-XXXXXXX-X, full name (English + Arabic), nationality, date of birth, expiry date, gender, card number on back
+- Passport: passport number, surname, given names, nationality, date of birth, issue date, expiry date, place of issue, MRZ lines
+- Visa / Residence Permit: UAE residence visa, entry permits, labour cards — visa number, entry date, expiry date, sponsor
+- Trade License: licence number, company name, legal form, activities, issue date, expiry date, issuing authority
+- Tenancy Contract / Lease Agreement: property address, landlord name, tenant name, rent amount, start/end dates, EJARI number
+- Invoice / Tax Invoice: invoice number, VAT TRN, seller/buyer, line items, subtotal, VAT amount, total amount, invoice date
+- Contract / Agreement: party names, contract value, start/end dates, subject matter
+- Certificate: certificate number, holder name, issuing body, issue date, expiry date, scope
+- Medical / Health record: patient name, date, diagnosis, prescriptions, lab values
 
-EXHAUSTIVE READING — this is critical:
-- Read EVERY piece of text on the document: headers, body, footers, small print, stamps, watermarks, signatures, reference numbers, barcodes/MRZ lines.
-- Read ALL pages / ALL images provided (e.g. front AND back of an ID card, every page of a contract, every sheet of a spreadsheet).
-- Handle bilingual documents (Arabic + English) — prefer English values, but capture Arabic names/values if English is absent.
-- For UAE identity documents: extract the ID/passport/visa number, full name (English + Arabic), nationality, date of birth, gender, issuing place, issue date, and expiry date.
-- For the machine-readable zone (MRZ) on IDs/passports, decode it to cross-check name, number, nationality, and dates.
-- Dates may be DD/MM/YYYY, MM/YYYY, or written out — always convert to YYYY-MM-DD.
-- ID numbers, passport numbers, licence numbers, TRN, and reference numbers are high-value — extract them precisely, character by character.
-- Capture EVERYTHING you find in "additional_fields" even if it is not in the requested metadata list, so no information is lost.
+EXHAUSTIVE READING RULES:
+- Read EVERY piece of text. Never skip a line.
+- For multi-image submissions (e.g. front + back of an ID card): transcribe ALL images.
+- Dates may be DD/MM/YYYY, MM/YYYY, YYYY, or written-out — always convert to YYYY-MM-DD in the structured fields (keep originals in transcription).
+- ID/passport/licence/TRN numbers are high-value — reproduce character by character, preserving any dashes or spaces.
+- If image quality is low, transcribe what is visible and note uncertainty with [?] markers.
 
 You must respond with ONLY a valid JSON object. No markdown, no code fences, no explanation outside the JSON.
 
 JSON output format:
 {
+  "full_text_transcription": "<COMPLETE verbatim text of the entire document exactly as it appears, preserving line breaks with \\n, organized by section/side. This is the primary OCR output. Must never be null for image-based documents.>",
   "classification": {
     "suggested_type_code": "<type_code from candidates, or null if uncertain>",
     "confidence_score": <0.0-1.0>,
@@ -62,20 +77,20 @@ JSON output format:
   },
   "suggested_title": "<suggested document title, e.g. 'Emirates ID — Sameer Fahmi' or null>",
   "suggested_description": "<1-2 sentence description mentioning key identifiers (name, ID number, nationality, etc.) or null>",
-  "suggested_issue_date": "<YYYY-MM-DD or null — the date the document was ISSUED/ISSUED ON, e.g. the card issue date, contract signing date, invoice date>",
-  "suggested_expiry_date": "<YYYY-MM-DD or null — the date the document EXPIRES or becomes invalid>",
+  "suggested_issue_date": "<YYYY-MM-DD or null — the date the document was issued/signed>",
+  "suggested_expiry_date": "<YYYY-MM-DD or null — the date the document expires or becomes invalid>",
   "fields": [
     {
       "field_code": "<field_code from the metadata fields list>",
       "value": "<extracted value as string>",
       "confidence_score": <0.0-1.0>,
       "confidence_label": "<high|medium|low|needs_manual_review>",
-      "source_snippet": "<short text snippet from document or null>"
+      "source_snippet": "<exact text snippet from document where this value was found, or null>"
     }
   ],
   "additional_fields": [
     {
-      "label": "<human-readable label of any other field found, e.g. 'Card Number', 'Place of Issue', 'Occupation'>",
+      "label": "<human-readable label of any other field found, e.g. 'Card Number', 'Place of Issue', 'Occupation', 'MRZ Line 1', 'Arabic Name'>",
       "value": "<extracted value as string>",
       "confidence_score": <0.0-1.0>
     }
@@ -89,28 +104,26 @@ JSON output format:
       "role": "<role in document if clear, e.g. 'holder', 'landlord', 'tenant', 'vendor', 'customer'>"
     }
   ],
-  "warnings": ["<any extraction concerns, e.g. low image quality, partially visible text, expired document, only one date visible>"]
+  "warnings": ["<any extraction concerns, e.g. low image quality, partially visible text, expired document, only one date visible, MRZ decode mismatch>"]
 }
 
 Rules:
+- full_text_transcription is MANDATORY for image-based documents. It is your OCR output and must contain every readable character from every image.
 - Only suggest document types from the provided candidates list. If no candidate matches, use the closest match and note it in warnings.
 - Only extract fields from the provided metadata fields list — do not invent field_codes.
 - If a field cannot be found in the document, omit it from the fields array.
-- ALWAYS attempt to extract suggested_issue_date and suggested_expiry_date — these are top-level core fields required for ALL document types.
-  - Emirates ID: issue date is printed on the card (or derive it as expiry date minus 5 years if only one date is visible); expiry date is the card validity end date.
-  - Passport: issue date and expiry date are both printed.
+- ALWAYS attempt to extract suggested_issue_date and suggested_expiry_date:
+  - Emirates ID: issue date is printed on the card (or derive as expiry date minus 5 years if only one date is visible); expiry date is the card validity end date.
+  - Passport: both issue date and expiry date are printed.
   - Visa/Residence Permit: issue date = entry/issue date; expiry date = permit end date.
   - Trade License: issue date = licence issue date; expiry date = renewal/expiry date.
   - Invoice/Contract: issue date = document date; no expiry.
-  - If only one date is visible on the document, put it in suggested_expiry_date if it is a future date, else in suggested_issue_date.
-- confidence_score must be between 0.0 and 1.0.
-- All dates must be in YYYY-MM-DD format. Convert DD/MM/YYYY → YYYY-MM-DD. Convert MM/YYYY → YYYY-MM-01.
+  - If only one date is visible, put it in suggested_expiry_date if future, else suggested_issue_date.
+- All dates in structured fields must be YYYY-MM-DD. Convert DD/MM/YYYY → YYYY-MM-DD. Convert MM/YYYY → YYYY-MM-01.
 - Do not invent or guess data not visible in the document.
-- If the image quality is poor or text is unclear, lower the confidence score and add a warning.
-- For scanned or photographed documents, use visual context (logos, layout, colours, stamps) to help classify even if some text is unclear.
-- For bilingual documents, prefer the English value for field extraction but include Arabic names in the title if that's the only source.
-- Populate detected_entities with EVERY person and company/organization named in the document — the ERP will try to match them to existing records in its database. Include their identifier (ID/passport/licence/TRN) and role when visible.
-- Populate additional_fields with any other useful data you read that is not in the requested metadata list. Never leave information on the document uncaptured.`;
+- For bilingual documents, prefer the English value for structured fields but always include Arabic names in additional_fields and in full_text_transcription.
+- Populate detected_entities with EVERY person and company/organization named in the document.
+- Populate additional_fields with any useful data not in the metadata list — including MRZ lines, card numbers, sponsor names, occupation, issuing officer details, etc.`;
 
 /**
  * Builds a combined classification + extraction prompt.
@@ -160,32 +173,38 @@ ${fieldList || "(no specific fields defined for this type)"}`;
   let userPrompt: string;
 
   if (hasImages && !ocrText.trim()) {
-    // Vision-only: scanned / image-based document — AI reads all content visually
+    // Vision-only: scanned / image-based document (passport, Emirates ID,
+    // certificate, scanned PDF). The AI is the sole OCR engine here.
     userPrompt = `${instructionBlock}
 
-This is a scanned or image-based document (no text layer was extractable). The full document is provided as image(s) below.
-Read ALL visible text carefully — including both sides if multiple images are provided, small print, stamps, watermarks, and any bilingual (Arabic/English) content.
-Classify the document and extract every metadata field you can identify. Return the JSON response.`;
+⚠ VISION-ONLY DOCUMENT — no text layer was extractable from this file.
+You are the OCR engine. Your most important task is STEP 1: transcribe ALL visible text from EVERY image provided, exactly as it appears, line by line.
+
+${imageFiles.length > 1 ? `${imageFiles.length} images are attached (e.g. front and back of an ID card, multiple pages). Transcribe ALL of them in full_text_transcription, clearly separated by a label like "--- IMAGE 1 (FRONT) ---", "--- IMAGE 2 (BACK) ---", etc.` : "One image is attached. Transcribe ALL visible text in full_text_transcription."}
+
+After completing the full transcription, perform STEP 2 (classify) and STEP 3 (extract fields).
+Return the complete JSON response including the mandatory full_text_transcription field.`;
   } else if (hasImages && ocrText.trim()) {
-    // Mixed: text from PDF + additional images
+    // Mixed: digital PDF text layer + rendered page images
     userPrompt = `${instructionBlock}
 
-Extracted text from document:
+Pre-extracted text from document (from PDF text layer):
 ---
 ${truncatedOcr}
----${ocrTruncated ? "\n[Text was truncated for length]" : ""}
+---${ocrTruncated ? "\n[Text was truncated — full document may have more content]" : ""}
 
-Additional document image(s) are attached. Use both the text and images to analyze the document and return the JSON response.`;
+Document image(s) are also attached. Some content may only be visible in the images (stamps, signatures, handwriting, scanned sections). Transcribe any additional text visible in the images that is not already in the extracted text above, and combine everything into full_text_transcription.
+Then classify and extract all metadata fields. Return the complete JSON response.`;
   } else {
-    // Text-only
+    // Text-only (digital PDF / DOCX / XLSX with no images)
     userPrompt = `${instructionBlock}
 
-Document text:
+Document text (pre-extracted):
 ---
 ${truncatedOcr}
 ---${ocrTruncated ? "\n[Text was truncated for length]" : ""}
 
-Analyze this document and return the JSON response.`;
+Place the full pre-extracted text in full_text_transcription (you may copy it directly). Then classify and extract all metadata fields. Return the complete JSON response.`;
   }
 
   // Build multimodal content array

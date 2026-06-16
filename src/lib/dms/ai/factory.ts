@@ -9,7 +9,7 @@
  * Never throws — always returns a provider (may be unconfigured).
  */
 
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { AiProviderConfig } from "@/lib/ai/providers/types";
 import type {
   IDmsAiProvider,
@@ -118,7 +118,10 @@ export async function getDmsAiProvider(): Promise<{
   configId: number | null;
 }> {
   try {
-    const supabase = await createClient();
+    // Use admin client: erp_ai_provider_configs requires settings.ai.view which
+    // regular DMS users don't have. Reading provider config is an internal
+    // server-side operation — the API key secret_ref is never returned to clients.
+    const supabase = createAdminClient();
 
     const { data, error } = await supabase
       .from("erp_ai_provider_configs")
@@ -173,7 +176,8 @@ export async function getDmsEmbeddingProvider(): Promise<{
 }> {
   const FALLBACK_EMBEDDING_MODEL = "text-embedding-3-small";
   try {
-    const supabase = await createClient();
+    // Use admin client for the same reason as getDmsAiProvider.
+    const supabase = createAdminClient();
 
     const { data, error } = await supabase
       .from("erp_ai_provider_configs")

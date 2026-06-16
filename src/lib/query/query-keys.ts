@@ -157,9 +157,13 @@ export const queryKeys = {
     documentFiles: (documentId: number) => ["dms", "documents", documentId, "files"] as const,
     documentVersions: (documentId: number) => ["dms", "documents", documentId, "versions"] as const,
 
-    // DMS.6 — Entity links + Party integration
+    // DMS.6 / DMS.15 — Entity links + Party integration + Integration Readiness
     entityDocuments: (entityType: string, entityId: number) =>
       ["dms", "entity-documents", entityType, entityId] as const,
+    entityDocumentCompliance: (entityType: string, entityId: number) =>
+      ["dms", "entity-document-compliance", entityType, entityId] as const,
+    attachableDocuments: (entityType: string, entityId: number, search?: string) =>
+      ["dms", "attachable-documents", entityType, entityId, search ?? ""] as const,
     partyDmsDocuments: (partyId: number) => ["dms", "entity-documents", "party", partyId] as const,
     availableForLink: (filters?: Record<string, unknown>) =>
       filters

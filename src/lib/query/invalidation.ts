@@ -243,6 +243,8 @@ export function invalidateDmsEntityDocuments(
   entityId: number
 ): void {
   queryClient.invalidateQueries({ queryKey: ["dms", "entity-documents", entityType, entityId] });
+  queryClient.invalidateQueries({ queryKey: ["dms", "entity-document-compliance", entityType, entityId] });
+  queryClient.invalidateQueries({ queryKey: ["dms", "attachable-documents", entityType, entityId] });
 }
 
 export function invalidatePartyDmsDocuments(

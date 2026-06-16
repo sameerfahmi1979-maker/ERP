@@ -49,40 +49,11 @@ export const DMS_CONFIDENTIALITY_LABELS: Record<DmsConfidentialityLevel, string>
   executive: "Executive",
 };
 
-export const DMS_ENTITY_TYPES = [
-  "party",
-  "party_license",
-  "party_tax_registration",
-  "employee",
-  "vehicle",
-  "equipment",
-  "project",
-  "contract",
-  "purchase_order",
-  "invoice",
-  "job_card",
-  "hse_incident",
-  "company",
-  "branch",
-  "bank",
-] as const;
-
-export type DmsEntityType = (typeof DMS_ENTITY_TYPES)[number];
-
-export const DMS_ENTITY_TYPE_LABELS: Record<DmsEntityType, string> = {
-  party: "Party",
-  party_license: "Party License",
-  party_tax_registration: "Tax Registration",
-  employee: "Employee",
-  vehicle: "Vehicle",
-  equipment: "Equipment",
-  project: "Project",
-  contract: "Contract",
-  purchase_order: "Purchase Order",
-  invoice: "Invoice",
-  job_card: "Job Card",
-  hse_incident: "HSE Incident",
-  company: "Company",
-  branch: "Branch",
-  bank: "Bank",
-};
+// DMS.15 — Re-export from canonical lib so existing imports continue to work.
+export {
+  DMS_ENTITY_TYPE_CODES as DMS_ENTITY_TYPES,
+  DMS_ENTITY_TYPE_LABELS,
+  getDmsEntityTypeLabel,
+  isValidDmsEntityType,
+} from "@/lib/dms/dms-entity-types";
+export type { DmsEntityTypeValue as DmsEntityType } from "@/lib/dms/dms-entity-types";

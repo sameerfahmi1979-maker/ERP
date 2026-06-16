@@ -383,13 +383,26 @@ export async function startAiIntakeAndCreateDraft(
     // Load the session.
     const { data: session, error: sessErr } = await supabase
       .from("dms_upload_sessions")
-      .select("id, session_code, batch_id, document_id, intake_status, original_filename, entity_type, entity_id")
+      .select("id, session_code, batch_id, document_id, intake_status, original_filename")
       .eq("id", uploadSessionId)
       .is("deleted_at", null)
       .single();
     if (sessErr || !session) return { success: false, error: "Upload session not found" };
 
     const batchId = session.batch_id as number | null;
+
+    // entity_type/entity_id are stored on the batch, not on individual sessions.
+    let batchEntityType: string | null = null;
+    let batchEntityId: number | null = null;
+    if (batchId) {
+      const { data: batchRow } = await supabase
+        .from("dms_upload_batches")
+        .select("entity_type, entity_id")
+        .eq("id", batchId)
+        .single();
+      batchEntityType = (batchRow?.entity_type as string | null) ?? null;
+      batchEntityId = (batchRow?.entity_id as number | null) ?? null;
+    }
 
     // Idempotency: draft already created for this session.
     if (session.document_id) {
@@ -514,11 +527,8 @@ export async function startAiIntakeAndCreateDraft(
     const title = (suggestedTitle && suggestedTitle.trim()) || stripExtension(filename) || documentNo;
     const confidentiality = typeDefaultConfidentiality ?? "internal";
 
-    // Entity-context carry-through (party only at draft stage; other links may be
-    // added during the individual review). NEVER writes metadata tables.
-    const entityType = (session.entity_type as string | null) ?? null;
-    const entityId = (session.entity_id as number | null) ?? null;
-    const partyId = entityType === "party" && entityId ? entityId : null;
+    // Entity-context carry-through from the parent batch (party only at draft stage).
+    const partyId = batchEntityType === "party" && batchEntityId ? batchEntityId : null;
 
     // Create the DRAFT document (pending_ai_review). No file copied yet; the
     // file stays in dms-temp until the user approves this single draft, exactly

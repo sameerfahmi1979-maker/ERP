@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit, createAuditDiff } from "@/server/actions/audit";
+import { getDefaultEmailProvider } from "@/lib/email/providers/factory";
 import {
   adminUpdateUserProfileSchema,
   userRoleAssignmentSchema,
@@ -45,21 +46,27 @@ export async function createUser(
     const adminClient = createAdminClient();
     
     let authUser;
+    let inviteLink: string | null = null;
+
     if (validated.send_invite_email) {
-      // Use invite email method (requires SMTP configured)
-      const { data, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
-        validated.email,
-        {
-          data: {
-            full_name: validated.full_name,
-          },
-        }
-      );
-      if (inviteError) {
-        console.error("inviteUserByEmail error", inviteError);
-        return { success: false, error: `Failed to send invite: ${inviteError.message}` };
+      // Generate invite link WITHOUT Supabase sending the email (avoids SMTP rate limits).
+      // We send the invite ourselves via the ERP email provider (Microsoft Graph).
+      // redirectTo must match one of the allowed redirect URLs in Supabase Auth settings.
+      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://erp.algt.net";
+      const { data, error: linkError } = await adminClient.auth.admin.generateLink({
+        type: "invite",
+        email: validated.email,
+        options: {
+          data: { full_name: validated.full_name },
+          redirectTo: `${siteUrl}/auth/confirm`,
+        },
+      });
+      if (linkError || !data) {
+        console.error("generateLink invite error", linkError);
+        return { success: false, error: `Failed to generate invite link: ${linkError?.message}` };
       }
       authUser = data.user;
+      inviteLink = data.properties?.action_link ?? null;
     } else {
       // Use createUser with temporary password
       if (!validated.temporary_password) {
@@ -69,7 +76,7 @@ export async function createUser(
       const { data, error: createError } = await adminClient.auth.admin.createUser({
         email: validated.email,
         password: validated.temporary_password,
-        email_confirm: true, // Auto-confirm email
+        email_confirm: true,
         user_metadata: {
           full_name: validated.full_name,
         },
@@ -86,26 +93,29 @@ export async function createUser(
       return { success: false, error: "Failed to create Auth user" };
     }
 
-    // 4. Create user profile
+    // 4. Create user profile (upsert — the auth trigger may have already inserted a minimal row)
     const supabase = await createClient();
-    const { data: profile, error: profileError } = await supabase
+    const { data: profile, error: profileError } = await adminClient
       .from("user_profiles")
-      .insert({
-        auth_user_id: authUser.id,
-        full_name: validated.full_name,
-        display_name: validated.display_name,
-        phone: validated.phone,
-        job_title: validated.job_title,
-        department: validated.department,
-        owner_company_id: validated.owner_company_id,
-        branch_id: validated.branch_id,
-        status: validated.status,
-      })
+      .upsert(
+        {
+          auth_user_id: authUser.id,
+          full_name: validated.full_name,
+          display_name: validated.display_name,
+          phone: validated.phone,
+          job_title: validated.job_title,
+          department: validated.department,
+          owner_company_id: validated.owner_company_id,
+          branch_id: validated.branch_id,
+          status: validated.status,
+        },
+        { onConflict: "auth_user_id" }
+      )
       .select("id")
       .single();
 
     if (profileError || !profile) {
-      console.error("user_profiles insert error", profileError);
+      console.error("user_profiles upsert error", profileError);
       // Cleanup: delete Auth user if profile creation fails
       await adminClient.auth.admin.deleteUser(authUser.id);
       return { success: false, error: `Failed to create user profile: ${profileError?.message}` };
@@ -130,7 +140,28 @@ export async function createUser(
       }
     }
 
-    // 6. Log audit
+    // 6. Send invite email via ERP email provider (Microsoft Graph)
+    let inviteEmailWarning: string | undefined;
+    if (validated.send_invite_email && inviteLink) {
+      try {
+        const emailProvider = await getDefaultEmailProvider();
+        const displayName = validated.full_name || validated.email;
+        await emailProvider.sendEmail({
+          to: [validated.email],
+          subject: "You have been invited to ALGT ERP",
+          htmlBody: buildInviteEmailHtml({ displayName, inviteLink }),
+          textBody: buildInviteEmailText({ displayName, inviteLink }),
+          metadata: { feature: "USER_INVITE", user_profile_id: profile.id },
+        });
+      } catch (emailErr) {
+        // Don't fail the user creation — the admin can resend manually
+        const msg = emailErr instanceof Error ? emailErr.message : String(emailErr);
+        console.warn("Invite email send failed:", msg);
+        inviteEmailWarning = `User created but invite email could not be sent: ${msg}`;
+      }
+    }
+
+    // 7. Log audit
     await logAudit({
       module_code: "users",
       entity_name: "user_profiles",
@@ -143,15 +174,20 @@ export async function createUser(
         full_name: validated.full_name,
         status: validated.status,
         auth_method: validated.send_invite_email ? "invite_email" : "temporary_password",
+        invite_email_sent: validated.send_invite_email && !inviteEmailWarning,
       },
       owner_company_id: validated.owner_company_id ?? undefined,
       branch_id: validated.branch_id ?? undefined,
     });
 
-    // 7. Revalidate
+    // 8. Revalidate
     revalidatePath("/admin/users");
 
-    return { success: true, data: { user_profile_id: profile.id } };
+    return {
+      success: true,
+      data: { user_profile_id: profile.id },
+      ...(inviteEmailWarning ? { error: inviteEmailWarning } : {}),
+    };
   } catch (error) {
     console.error("createUser exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
@@ -381,4 +417,151 @@ export async function removeRoleFromUser(
     console.error("removeRoleFromUser exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
+}
+
+/**
+ * Delete user (Admin only — irreversible)
+ * Deletes the Supabase Auth user (cascades to user_profiles via FK trigger).
+ * Cannot delete your own account.
+ */
+export async function deleteUser(
+  userProfileId: number,
+): Promise<ActionResult> {
+  try {
+    // 1. Check permissions
+    const ctx = await getAuthContext();
+    if (!hasPermission(ctx, "users.manage")) {
+      return { success: false, error: "You do not have permission to delete users" };
+    }
+
+    // 2. Fetch the target user profile — use adminClient to bypass RLS
+    const adminClient = createAdminClient();
+    const { data: profile, error: fetchError } = await adminClient
+      .from("user_profiles")
+      .select("id, user_code, auth_user_id, full_name, display_name, owner_company_id, branch_id")
+      .eq("id", userProfileId)
+      .single();
+
+    if (fetchError || !profile) {
+      return { success: false, error: `User not found (id: ${userProfileId}${fetchError ? ` — ${fetchError.message}` : ""})` };
+    }
+
+    // 3. Prevent self-deletion
+    if (ctx.profile?.id === userProfileId) {
+      return { success: false, error: "You cannot delete your own account" };
+    }
+
+    // 4. Log audit before deletion (so we have a record)
+    await logAudit({
+      module_code: "users",
+      entity_name: "user_profiles",
+      entity_id: userProfileId,
+      entity_reference: profile.user_code || `user-${userProfileId}`,
+      action: "delete",
+      old_values: {
+        user_code: profile.user_code,
+        full_name: profile.full_name,
+        display_name: profile.display_name,
+        auth_user_id: profile.auth_user_id,
+      },
+      new_values: null,
+      owner_company_id: profile.owner_company_id ?? undefined,
+      branch_id: profile.branch_id ?? undefined,
+    });
+
+    // 5. Delete the Auth user — cascades to user_profiles via FK
+
+    if (profile.auth_user_id) {
+      const { error: deleteAuthError } = await adminClient.auth.admin.deleteUser(
+        profile.auth_user_id,
+      );
+      if (deleteAuthError) {
+        console.error("deleteUser auth error", deleteAuthError);
+        return { success: false, error: `Failed to delete auth user: ${deleteAuthError.message}` };
+      }
+    } else {
+      // No auth user linked — delete the profile row directly
+      const { error: deleteProfileError } = await adminClient
+        .from("user_profiles")
+        .delete()
+        .eq("id", userProfileId);
+      if (deleteProfileError) {
+        return { success: false, error: `Failed to delete user profile: ${deleteProfileError.message}` };
+      }
+    }
+
+    // 6. Revalidate
+    revalidatePath("/admin/users");
+
+    return { success: true };
+  } catch (error) {
+    console.error("deleteUser exception", error);
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Email template helpers (invite only — plain, no external assets)
+// ---------------------------------------------------------------------------
+
+function buildInviteEmailHtml({
+  displayName,
+  inviteLink,
+}: {
+  displayName: string;
+  inviteLink: string;
+}): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 0;">
+    <tr><td align="center">
+      <table width="520" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);">
+        <tr><td style="background:#0f172a;padding:24px 32px;">
+          <span style="color:#f8fafc;font-size:20px;font-weight:700;letter-spacing:.5px;">ALGT ERP</span>
+        </td></tr>
+        <tr><td style="padding:32px;">
+          <p style="margin:0 0 12px;font-size:16px;color:#1e293b;font-weight:600;">Hello, ${displayName}</p>
+          <p style="margin:0 0 20px;font-size:14px;color:#475569;line-height:1.6;">
+            You have been invited to access the <strong>ALGT ERP</strong> system. Click the button below to accept your invitation and set your password.
+          </p>
+          <p style="margin:0 0 28px;text-align:center;">
+            <a href="${inviteLink}" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:6px;font-size:14px;font-weight:600;">
+              Accept Invitation
+            </a>
+          </p>
+          <p style="margin:0 0 8px;font-size:12px;color:#94a3b8;">
+            If the button doesn't work, copy and paste this link into your browser:
+          </p>
+          <p style="margin:0 0 24px;font-size:11px;color:#94a3b8;word-break:break-all;">${inviteLink}</p>
+          <hr style="border:none;border-top:1px solid #e2e8f0;margin:0 0 16px;">
+          <p style="margin:0;font-size:12px;color:#94a3b8;">
+            This link expires in 24 hours. If you did not expect this invitation, you can safely ignore this email.
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+function buildInviteEmailText({
+  displayName,
+  inviteLink,
+}: {
+  displayName: string;
+  inviteLink: string;
+}): string {
+  return `Hello, ${displayName}
+
+You have been invited to access the ALGT ERP system.
+
+Accept your invitation here:
+${inviteLink}
+
+This link expires in 24 hours.
+
+If you did not expect this invitation, you can safely ignore this email.`;
 }

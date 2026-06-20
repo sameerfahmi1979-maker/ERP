@@ -38,7 +38,7 @@ export function UserWorkspaceForm({
   branches = [],
   roles = [],
 }: UserWorkspaceFormProps) {
-  const { closeTab, activeTab, markDirty } = useWorkspace();
+  const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSection, setActiveSection] = useState(mode === "add" ? "auth" : "profile");
@@ -104,8 +104,13 @@ export function UserWorkspaceForm({
           employee_reference: (formData.get("employee_reference") as string) || null,
         };
         const result = await adminUpdateUserProfile(data);
-        if (result.success) { toast.success("User profile updated"); clearDraft(); resetDirty(); return true; }
-        else { toast.error(result.error || "Failed to update user profile"); return false; }
+        if (result.success) {
+          toast.success("User profile updated");
+          clearDraft();
+          resetDirty();
+          if (activeTab?.id) markDirty(activeTab.id, false);
+          return true;
+        } else { toast.error(result.error || "Failed to update user profile"); return false; }
       } else {
         const data = {
           email: formData.get("email") as string,
@@ -124,8 +129,17 @@ export function UserWorkspaceForm({
           initial_role_scope_branch_id: formData.get("initial_role_scope_branch_id") ? Number(formData.get("initial_role_scope_branch_id")) : null,
         };
         const result = await createUser(data);
-        if (result.success) { toast.success("User created successfully"); form.reset(); setSendInvite(true); setSelectedCompanyId(null); clearDraft(); resetDirty(); return true; }
-        else { toast.error(result.error || "Failed to create user"); return false; }
+        if (result.success) {
+          toast.success("User created successfully");
+          if (result.error) toast.warning(result.error); // invite email warning
+          form.reset();
+          setSendInvite(true);
+          setSelectedCompanyId(null);
+          clearDraft();
+          resetDirty();
+          if (activeTab?.id) markDirty(activeTab.id, false);
+          return true;
+        } else { toast.error(result.error || "Failed to create user"); return false; }
       }
     } catch { toast.error("An unexpected error occurred"); return false; }
     finally { setIsSubmitting(false); }
@@ -133,7 +147,7 @@ export function UserWorkspaceForm({
 
   const handleSaveAndClose = async () => {
     const success = await handleSave();
-    if (success) handleRequestClose();
+    if (success) forceCloseActiveTab();
   };
 
   const selectClass = "flex h-9 w-full rounded-md border border-input bg-background text-foreground px-3 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40";

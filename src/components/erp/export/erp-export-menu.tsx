@@ -1,9 +1,11 @@
 /**
  * ERP Export Menu Component
- * Phase 002E.2 - Export Engine Foundation
+ * Phase 002E.2  - Export Engine Foundation
  * Phase 002E.3D - Email Integration
- * 
- * Reusable dropdown menu for Print, PDF, Excel, CSV, and Email exports
+ * Phase REPORT.3 - Template / Branding / Output Adapter Engine
+ *
+ * Reusable dropdown menu for Print, PDF, Excel, CSV, and Email exports.
+ * REPORT.3 adds optional branding/template props — all existing callers remain unaffected.
  */
 
 "use client";
@@ -31,6 +33,7 @@ import {
   generatePDFAttachment,
   type ERPExportColumn,
   type ERPExportOptions,
+  type ExportBrandingContext,
 } from "@/lib/export";
 import { ERPSendEmailDialog } from "@/components/erp/email/erp-send-email-dialog";
 import type { AttachmentOption, PreparedEmailInput } from "@/components/erp/email/email-types-ui";
@@ -66,6 +69,22 @@ export interface ERPExportMenuProps<T = any> {
   moduleCode?: string;
   /** Export mode for tracking (Phase 002E.3D) */
   exportMode?: "selected" | "filtered" | "all";
+  // ── REPORT.3: optional branding/template props ──────────────────────────────
+  /** Report code from the global registry (e.g. "HR_EMPLOYEE_LIST") */
+  reportCode?: string;
+  /** Resolved branding context — when present, output is branded */
+  resolvedTemplate?: ExportBrandingContext | null;
+  /** Owner company IDs present in the data set */
+  ownerCompanyIds?: number[];
+  /**
+   * When true, PDF/Print/Excel/Email export is blocked until the caller
+   * provides a template selection. Call `onRequireTemplateSelection` before proceeding.
+   */
+  requiresTemplateSelection?: boolean;
+  /** Called when export is triggered but requires a template to be selected first */
+  onRequireTemplateSelection?: () => void;
+  /** ID of the currently selected template (used for audit) */
+  selectedTemplateId?: number;
 }
 
 export function ERPExportMenu<T = any>({
@@ -83,6 +102,11 @@ export function ERPExportMenu<T = any>({
   orientation = "portrait",
   moduleCode,
   exportMode = "all",
+  reportCode,
+  resolvedTemplate,
+  requiresTemplateSelection = false,
+  onRequireTemplateSelection,
+  selectedTemplateId,
 }: ERPExportMenuProps<T>) {
   const [isExporting, setIsExporting] = useState(false);
   const [exportType, setExportType] = useState<string | null>(null);
@@ -96,16 +120,25 @@ export function ERPExportMenu<T = any>({
   const isDisabled = disabled || !hasData || isExporting || isSendingEmail;
 
   /**
-   * Handle export action
+   * Handle export action.
+   * If requiresTemplateSelection=true and the export format requires branding
+   * (pdf / print / excel / email), we block and call onRequireTemplateSelection instead.
    */
   const handleExport = async (type: "csv" | "excel" | "pdf" | "print") => {
     if (isDisabled) return;
+
+    // REPORT.3: block branded exports when template selection is required
+    const templateRequiredFormats: Array<typeof type> = ["pdf", "print", "excel"];
+    if (requiresTemplateSelection && templateRequiredFormats.includes(type)) {
+      onRequireTemplateSelection?.();
+      return;
+    }
 
     setIsExporting(true);
     setExportType(type);
 
     try {
-      // Prepare export options
+      // Prepare export options (branding forwarded if present)
       const options: ERPExportOptions<T> = {
         title,
         subtitle,
@@ -118,6 +151,7 @@ export function ERPExportMenu<T = any>({
         orientation,
         exportMode,
         rowCount: data.length,
+        branding: resolvedTemplate ? { ...resolvedTemplate, reportCode } : undefined,
       };
 
       // Execute export based on type
@@ -285,7 +319,13 @@ export function ERPExportMenu<T = any>({
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              onClick={() => setIsEmailDialogOpen(true)}
+              onClick={() => {
+                if (requiresTemplateSelection) {
+                  onRequireTemplateSelection?.();
+                  return;
+                }
+                setIsEmailDialogOpen(true);
+              }}
               disabled={isExporting || isSendingEmail}
               className="cursor-pointer"
             >
@@ -332,6 +372,7 @@ Best Regards`}
                 orientation,
                 exportMode,
                 rowCount: data.length,
+                branding: resolvedTemplate ? { ...resolvedTemplate, reportCode } : undefined,
               }),
           },
           {
@@ -351,6 +392,7 @@ Best Regards`}
                 orientation,
                 exportMode,
                 rowCount: data.length,
+                branding: resolvedTemplate ? { ...resolvedTemplate, reportCode } : undefined,
               }),
           },
           {

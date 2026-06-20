@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Building2, Plus } from "lucide-react";
 import { listDepartments } from "@/server/actions/common-master-data/departments";
 import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
+import { DepartmentsListClient } from "@/features/common-master-data/departments/departments-list-client";
 
 export default async function DepartmentsPage() {
   const ctx = await getAuthContext();
@@ -34,27 +34,16 @@ export default async function DepartmentsPage() {
           </Link>
         ) : null}
       />
-      <ERPSectionCard title="All Departments" description="Departments across all organizations" noPadding
+      <ERPSectionCard
+        title="All Departments"
+        description="Departments across all organizations"
+        noPadding
         actions={<span className="text-xs text-muted-foreground">{departments.length} total</span>}
       >
         {departments.length === 0 ? (
           <ERPEmptyState icon={Building2} title="No departments yet" description="Create your first department." />
         ) : (
-          <div className="divide-y">
-            {departments.map((d) => (
-              <Link key={d.id} href={`/admin/common-master-data/departments/record/${d.id}`} className="flex items-center justify-between px-4 py-3 hover:bg-muted/40 transition-colors">
-                <div>
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    {d.department_name_en}
-                    <span className="text-xs text-muted-foreground">({d.department_code})</span>
-                    {!d.is_active && <Badge variant="destructive" className="text-[10px]">Inactive</Badge>}
-                  </div>
-                  {d.owner_company && <p className="text-xs text-muted-foreground">{(d.owner_company as {legal_name_en: string}).legal_name_en}</p>}
-                </div>
-                <span className="text-xs text-muted-foreground">→</span>
-              </Link>
-            ))}
-          </div>
+          <DepartmentsListClient departments={departments} canManage={canManage} />
         )}
       </ERPSectionCard>
     </div>

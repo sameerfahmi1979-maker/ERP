@@ -28,7 +28,7 @@ type PortWorkspaceFormProps = {
 const FORM_ID = "port-workspace-form";
 
 export function PortWorkspaceForm({ port, mode }: PortWorkspaceFormProps) {
-  const { closeTab, activeTab, markDirty } = useWorkspace();
+  const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSection, setActiveSection] = useState("basic");
@@ -119,7 +119,7 @@ export function PortWorkspaceForm({ port, mode }: PortWorkspaceFormProps) {
 
   const handleSaveAndClose = async () => {
     const success = await handleSave();
-    if (success) handleRequestClose();
+    if (success) forceCloseActiveTab();
   };
 
   return (

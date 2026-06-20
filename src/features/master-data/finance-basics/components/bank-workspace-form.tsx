@@ -31,7 +31,7 @@ type BankWorkspaceFormProps = {
 const FORM_ID = "bank-workspace-form";
 
 export function BankWorkspaceForm({ bank, mode }: BankWorkspaceFormProps) {
-  const { closeTab, activeTab, markDirty } = useWorkspace();
+  const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const queryClient = useQueryClient();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -111,7 +111,7 @@ export function BankWorkspaceForm({ bank, mode }: BankWorkspaceFormProps) {
 
   const handleSaveAndClose = async () => {
     const success = await handleSave();
-    if (success) handleRequestClose();
+    if (success) forceCloseActiveTab();
   };
 
   return (

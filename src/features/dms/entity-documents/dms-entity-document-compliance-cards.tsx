@@ -5,7 +5,7 @@ import { queryKeys } from "@/lib/query/query-keys";
 import { getDmsEntityDocumentComplianceSummary } from "@/server/actions/dms/entity-documents";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FileText, AlertTriangle, Clock, ShieldAlert, ShieldX } from "lucide-react";
+import { FileText, AlertTriangle, Clock, ShieldAlert, ShieldX, FileX, Scale } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -67,8 +67,8 @@ export function DmsEntityDocumentComplianceCards({ entityType, entityId, classNa
 
   if (isLoading) {
     return (
-      <div className={cn("grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2", className)}>
-        {Array.from({ length: 5 }).map((_, i) => (
+      <div className={cn("grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2", className)}>
+        {Array.from({ length: 7 }).map((_, i) => (
           <Skeleton key={i} className="h-16 rounded-md" />
         ))}
       </div>
@@ -78,7 +78,7 @@ export function DmsEntityDocumentComplianceCards({ entityType, entityId, classNa
   if (!summary) return null;
 
   return (
-    <div className={cn("grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2", className)}>
+    <div className={cn("grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2", className)}>
       <ComplianceCard
         icon={<FileText className="h-4 w-4" />}
         label="Total Documents"
@@ -95,6 +95,18 @@ export function DmsEntityDocumentComplianceCards({ entityType, entityId, classNa
         label="Expiring Soon"
         value={summary.expiringSoonDocuments}
         variant={summary.expiringSoonDocuments > 0 ? "warn" : undefined}
+      />
+      <ComplianceCard
+        icon={<FileX className="h-4 w-4" />}
+        label="Missing Required"
+        value={summary.missingRequiredDocuments}
+        variant={summary.missingRequiredDocuments > 0 ? "danger" : undefined}
+      />
+      <ComplianceCard
+        icon={<Scale className="h-4 w-4" />}
+        label="Open Findings"
+        value={summary.openComplianceFindings}
+        variant={summary.openComplianceFindings > 0 ? "warn" : undefined}
       />
       <ComplianceCard
         icon={<ShieldAlert className="h-4 w-4" />}

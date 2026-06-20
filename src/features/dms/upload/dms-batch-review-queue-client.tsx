@@ -28,6 +28,8 @@ import {
   type DmsUploadBatchRow,
   type DmsBatchDraftRow,
 } from "@/server/actions/dms/batch-intake";
+import { runDmsBatchOrchestration } from "@/server/actions/dms/orchestration";
+import { Sparkles } from "lucide-react";
 
 interface Props {
   batch: DmsUploadBatchRow;
@@ -72,9 +74,34 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
   const discardableIds = drafts.filter(isDiscardable).map((d) => d.sessionId);
   const allDiscardableSelected = discardableIds.length > 0 && discardableIds.every((id) => selected.has(id));
 
+  const [isOrchRunning, setIsOrchRunning] = useState(false);
+
   const refresh = useCallback(() => {
     startTransition(() => router.refresh());
   }, [router]);
+
+  const handleRunBatchOrchestration = useCallback(async () => {
+    setIsOrchRunning(true);
+    try {
+      const result = await runDmsBatchOrchestration({ batchCode: batch.batch_code });
+      if (result.success && result.data) {
+        const { processedCount, results } = result.data;
+        const completed = results.filter((r) => r.orchestrationStatus === "complete").length;
+        const warnings = results.filter((r) => r.orchestrationStatus === "complete_with_warnings").length;
+        const failed = results.filter((r) => r.orchestrationStatus === "failed").length;
+        toast.success(`AI pipeline: ${processedCount} draft(s) processed. ${completed} complete, ${warnings} with warnings, ${failed} failed.`);
+        refresh();
+      } else if (result.error?.includes("not enabled")) {
+        toast.info("DMS AI Orchestration is not enabled. Contact your administrator.");
+      } else {
+        toast.error(result.error ?? "Batch orchestration failed.");
+      }
+    } catch {
+      toast.error("Batch AI pipeline failed.");
+    } finally {
+      setIsOrchRunning(false);
+    }
+  }, [batch.batch_code, refresh]);
 
   const toggleOne = useCallback((sessionId: number, checked: boolean) => {
     setSelected((prev) => {
@@ -175,6 +202,22 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
             </Badge>
           </div>
           <div className="flex items-center gap-2">
+            {/* AI Pipeline button (ORCH.1) — runs best-effort AI on all drafts */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleRunBatchOrchestration}
+              disabled={isOrchRunning || isPending}
+              className="border-violet-200 text-violet-700 hover:bg-violet-50 gap-1.5"
+              title="Run full AI pipeline (summary, intelligence, embedding, tags, links) on all pending drafts. One-by-one approval is still required."
+            >
+              {isOrchRunning
+                ? <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                : <Sparkles className="h-3.5 w-3.5" />
+              }
+              {isOrchRunning ? "Running AI…" : "Run AI Pipeline"}
+            </Button>
+
             {selected.size > 0 && (
               <Button
                 size="sm"

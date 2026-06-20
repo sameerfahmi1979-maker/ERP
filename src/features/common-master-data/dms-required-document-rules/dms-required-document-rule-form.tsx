@@ -28,7 +28,7 @@ const FORM_ID = "dms-req-doc-rule-form";
 const ENTITY_TYPES = ['company','branch','site','employee','vehicle','project','department','party','equipment','contract'];
 
 export function DmsRequiredDocumentRuleForm({ rule, mode, documentTypes = [], companies = [] }: Props) {
-  const { closeTab, activeTab, markDirty } = useWorkspace();
+  const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSection, setActiveSection] = useState("basic");
   const isEditing = mode === "edit";
@@ -71,13 +71,13 @@ export function DmsRequiredDocumentRuleForm({ rule, mode, documentTypes = [], co
       const result = isEditing && rule
         ? await updateDmsRequiredDocumentRule({ ...data, id: rule.id })
         : await createDmsRequiredDocumentRule(data);
-      if (result.success) { toast.success(isEditing ? "Rule updated" : "Rule created"); clearDraft(); resetDirty(); return true; }
+      if (result.success) { toast.success(isEditing ? "Rule updated" : "Rule created"); clearDraft(); resetDirty(); if (activeTab?.id) markDirty(activeTab.id, false); return true; }
       toast.error(result.error ?? "Failed to save"); return false;
     } catch { toast.error("An unexpected error occurred"); return false; }
     finally { setIsSubmitting(false); }
   };
 
-  const handleSaveAndClose = async () => { const ok = await handleSave(); if (ok) handleRequestClose(); };
+  const handleSaveAndClose = async () => { const ok = await handleSave(); if (ok) forceCloseActiveTab(); };
 
   return (
     <ERPRecordWorkspaceForm

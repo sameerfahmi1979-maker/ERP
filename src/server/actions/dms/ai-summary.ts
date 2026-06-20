@@ -44,7 +44,13 @@ export type DocumentAiSummaryRow = {
 
 const CONFIDENTIAL_ADMIN_REQUIRED = ["hr", "legal", "executive"];
 const SUMMARY_INPUT_MAX_CHARS = 20_000;
-const SUMMARY_PROMPT_VERSION = "v1.0";
+/**
+ * v2.0 — Arabic language enhancement (DMS ARABIC FIX.1):
+ *   Preserves Arabic names in Arabic script in the summary.
+ *   Handles Arabic-only documents with auto English translation.
+ *   Detects and converts Hijri dates.
+ */
+const SUMMARY_PROMPT_VERSION = "v2.0";
 
 // ── Permission helpers ────────────────────────────────────────────────────────
 
@@ -82,18 +88,24 @@ async function isDmsAiSummaryEnabled(): Promise<boolean> {
 // ── Build summary prompt ──────────────────────────────────────────────────────
 
 function buildSummarySystemPrompt(): string {
-  return `You are a document summarisation assistant for the Alliance Gulf ERP system.
-The ERP operates in the United Arab Emirates and manages documents for logistics, transport, offshore/onshore work, HR, contracts, insurance, scrap, demolition, government compliance, and fleet/workshop operations.
+  return `You are a document summarisation assistant for the Alliance Gulf ERP system, a UAE-based company operating in logistics, transport, offshore/onshore work, HR, contracts, insurance, scrap, demolition, government compliance, and fleet/workshop operations. You have expert Arabic language reading ability.
 
 Summarise the document in exactly 3 to 5 sentences in plain English.
 Include only facts visible in the provided document text.
 
 Include where available:
 - document type and business purpose;
-- primary person, company, equipment, vehicle, project, or authority;
-- important dates such as issue date and expiry date;
+- primary person, company, equipment, vehicle, project, or authority — include Arabic names in Arabic script if present (e.g. "محمد أحمد للتجارة (Alliance Trading LLC)");
+- important dates such as issue date and expiry date; if Hijri dates are present, note both Hijri and Gregorian equivalents;
 - key outcome or result, such as fit for offshore duty, approved, rejected, valid, expired, certificate issued, contract value, or licence validity;
 - critical warnings, such as expired document, missing signature, unclear date, low scan quality, conflicting information, or missing required information.
+
+ARABIC DOCUMENT RULES:
+- If the document is primarily in Arabic, write the summary in English but include key Arabic names in their original Arabic script in parentheses.
+- Arabic company names: include both Arabic script and English translation/transliteration where visible.
+- Arabic personal names: include the full Arabic name in Arabic script if it appears differently from the English name on the card.
+- Hijri dates (هجري): note as "Hijri [date] / Gregorian [converted date]".
+- Arabic-only document: explicitly state "Arabic-language document" at the start of the summary.
 
 Rules:
 - Plain text only.

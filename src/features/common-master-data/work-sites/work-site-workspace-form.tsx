@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -31,12 +31,18 @@ const FORM_ID = "work-site-workspace-form";
 const SITE_TYPES = ['office','yard','workshop','camp','warehouse','project_site','client_site','weighbridge','fuel_point','storage_area','other'];
 
 export function WorkSiteWorkspaceForm({ site, mode, companies = [] }: Props) {
-  const { closeTab, activeTab, markDirty } = useWorkspace();
+  const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSection, setActiveSection] = useState("basic");
   const [countryId, setCountryId] = useState<number | null>(site?.country_id ?? null);
   const [emirateId, setEmirateId] = useState<number | null>(site?.emirate_id ?? null);
   const [cityId, setCityId] = useState<number | null>(site?.city_id ?? null);
+
+  // After a successful create in mode="add", track the new record ID so
+  // subsequent "Save" clicks update instead of trying to create again.
+  const [createdId, setCreatedId] = useState<number | null>(site?.id ?? null);
+  const isSavingRef = useRef(false);
+
   const isEditing = mode === "edit";
   const isViewing = mode === "view";
   const disabled = isViewing;
@@ -56,46 +62,77 @@ export function WorkSiteWorkspaceForm({ site, mode, companies = [] }: Props) {
 
   const handleSave = async (): Promise<boolean> => {
     if (isViewing) return false;
+    // Synchronous guard — prevents double-save from rapid clicks or Enter + button
+    if (isSavingRef.current) return false;
+    isSavingRef.current = true;
     setIsSubmitting(true);
-    const form = document.getElementById(FORM_ID) as HTMLFormElement;
-    const fd = new FormData(form);
-    const data = {
-      site_code: fd.get("site_code") as string,
-      site_name: fd.get("site_name") as string,
-      site_type: fd.get("site_type") as "office" | "yard" | "workshop" | "camp" | "warehouse" | "project_site" | "client_site" | "weighbridge" | "fuel_point" | "storage_area" | "other",
-      owner_company_id: parseInt(fd.get("owner_company_id") as string),
-      country_id: countryId,
-      emirate_id: emirateId,
-      city_id: cityId,
-      address_line_1: (fd.get("address_line_1") as string) || null,
-      address_line_2: (fd.get("address_line_2") as string) || null,
-      po_box: (fd.get("po_box") as string) || null,
-      makani_number: (fd.get("makani_number") as string) || null,
-      latitude: fd.get("latitude") ? Number(fd.get("latitude")) : null,
-      longitude: fd.get("longitude") ? Number(fd.get("longitude")) : null,
-      site_contact_name: (fd.get("site_contact_name") as string) || null,
-      site_contact_phone: (fd.get("site_contact_phone") as string) || null,
-      site_contact_email: (fd.get("site_contact_email") as string) || null,
-      is_restricted_area: fd.get("is_restricted_area") === "on",
-      cicpa_required: fd.get("cicpa_required") === "on",
-      adnoc_required: fd.get("adnoc_required") === "on",
-      access_notes: (fd.get("access_notes") as string) || null,
-      status: (fd.get("status") as "active" | "inactive" | "closed" | "decommissioned") || "active",
-      opening_date: (fd.get("opening_date") as string) || null,
-      closing_date: (fd.get("closing_date") as string) || null,
-      description: (fd.get("description") as string) || null,
-    };
     try {
-      const result = isEditing && site
-        ? await updateWorkSite({ ...data, id: site.id })
+      const form = document.getElementById(FORM_ID) as HTMLFormElement;
+      const fd = new FormData(form);
+
+      const ownerCompanyIdRaw = parseInt(fd.get("owner_company_id") as string, 10);
+      if (isNaN(ownerCompanyIdRaw) || ownerCompanyIdRaw <= 0) {
+        toast.error("Please select an organization");
+        return false;
+      }
+
+      const data = {
+        site_code: fd.get("site_code") as string,
+        site_name: fd.get("site_name") as string,
+        site_type: fd.get("site_type") as "office" | "yard" | "workshop" | "camp" | "warehouse" | "project_site" | "client_site" | "weighbridge" | "fuel_point" | "storage_area" | "other",
+        owner_company_id: ownerCompanyIdRaw,
+        country_id: countryId,
+        emirate_id: emirateId,
+        city_id: cityId,
+        address_line_1: (fd.get("address_line_1") as string) || null,
+        address_line_2: (fd.get("address_line_2") as string) || null,
+        po_box: (fd.get("po_box") as string) || null,
+        makani_number: (fd.get("makani_number") as string) || null,
+        latitude: fd.get("latitude") ? Number(fd.get("latitude")) : null,
+        longitude: fd.get("longitude") ? Number(fd.get("longitude")) : null,
+        site_contact_name: (fd.get("site_contact_name") as string) || null,
+        site_contact_phone: (fd.get("site_contact_phone") as string) || null,
+        site_contact_email: (fd.get("site_contact_email") as string) || null,
+        is_restricted_area: fd.get("is_restricted_area") === "on",
+        cicpa_required: fd.get("cicpa_required") === "on",
+        adnoc_required: fd.get("adnoc_required") === "on",
+        access_notes: (fd.get("access_notes") as string) || null,
+        status: (fd.get("status") as "active" | "inactive" | "closed" | "decommissioned") || "active",
+        opening_date: (fd.get("opening_date") as string) || null,
+        closing_date: (fd.get("closing_date") as string) || null,
+        description: (fd.get("description") as string) || null,
+      };
+
+      // If we already created this record in this session (mode="add" → first Save),
+      // or if we're explicitly editing, use updateWorkSite to avoid duplicate key errors.
+      const existingId = createdId ?? (isEditing ? site?.id : null);
+      const result = existingId
+        ? await updateWorkSite({ ...data, id: existingId })
         : await createWorkSite(data);
-      if (result.success) { toast.success(isEditing ? "Work site updated" : "Work site created"); clearDraft(); resetDirty(); return true; }
-      toast.error(result.error ?? "Failed to save"); return false;
-    } catch { toast.error("An unexpected error occurred"); return false; }
-    finally { setIsSubmitting(false); }
+
+      if (result.success) {
+        toast.success(existingId ? "Work site updated" : "Work site created");
+        // Track the newly created ID so subsequent saves within this session update correctly
+        if (!existingId && result.data && typeof (result.data as { id?: number }).id === "number") {
+          setCreatedId((result.data as { id: number }).id);
+        }
+        clearDraft();
+        resetDirty();
+        if (activeTab?.id) markDirty(activeTab.id, false);
+        return true;
+      }
+      toast.error(result.error ?? "Failed to save");
+      return false;
+    } catch {
+      toast.error("An unexpected error occurred");
+      return false;
+    } finally {
+      setIsSubmitting(false);
+      isSavingRef.current = false;
+    }
   };
 
-  const handleSaveAndClose = async () => { const ok = await handleSave(); if (ok) handleRequestClose(); };
+  const handleSaveAndClose = async () => { const ok = await handleSave(); if (ok) forceCloseActiveTab(); };
 
   return (
     <ERPRecordWorkspaceForm

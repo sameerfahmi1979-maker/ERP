@@ -27,7 +27,7 @@ type CityWorkspaceFormProps = {
 const FORM_ID = "city-workspace-form";
 
 export function CityWorkspaceForm({ city, mode }: CityWorkspaceFormProps) {
-  const { closeTab, activeTab, markDirty } = useWorkspace();
+  const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSection, setActiveSection] = useState("basic");
@@ -107,7 +107,7 @@ export function CityWorkspaceForm({ city, mode }: CityWorkspaceFormProps) {
 
   const handleSaveAndClose = async () => {
     const success = await handleSave();
-    if (success) handleRequestClose();
+    if (success) forceCloseActiveTab();
   };
 
   return (

@@ -27,9 +27,19 @@ export const DMS_ENTITY_TYPES = {
   BRANCH: "branch",
   BANK: "bank",
 
-  // HR (Roadmap 004 — future)
+  // HR (HR.2 — active, HR.3 compliance types added)
   EMPLOYEE: "employee",
   EMPLOYEE_COMPLIANCE: "employee_compliance",
+  EMPLOYEE_IDENTITY_DOCUMENT: "employee_identity_document",
+  EMPLOYEE_MEDICAL_INSURANCE: "employee_medical_insurance",
+  EMPLOYEE_DEPENDENT: "employee_dependent",
+  EMPLOYEE_ACCESS_CARD: "employee_access_card",
+  EMPLOYEE_TRAINING_CERTIFICATE: "employee_training_certificate",
+  EMPLOYEE_MEDICAL_RECORD: "employee_medical_record",
+  EMPLOYEE_CONTRACT: "employee_contract",
+
+  // HR Time (HR.4)
+  EMPLOYEE_LEAVE_REQUEST: "employee_leave_request",
 
   // Fleet / Equipment (Roadmap 005 — future)
   VEHICLE: "vehicle",
@@ -82,6 +92,14 @@ export const DMS_ENTITY_TYPE_LABELS: Record<DmsEntityTypeValue, string> = {
   bank: "Bank",
   employee: "Employee",
   employee_compliance: "Employee Compliance",
+  employee_identity_document: "Employee Identity Document",
+  employee_medical_insurance: "Employee Medical Insurance",
+  employee_dependent: "Employee Dependent",
+  employee_access_card: "Employee Access Card",
+  employee_training_certificate: "Employee Training Certificate",
+  employee_medical_record: "Employee Medical Record",
+  employee_contract: "Employee Contract",
+  employee_leave_request: "Employee Leave Request",
   vehicle: "Vehicle",
   equipment: "Equipment",
   fleet_asset: "Fleet Asset",

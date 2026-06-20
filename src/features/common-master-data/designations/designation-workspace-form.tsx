@@ -35,7 +35,7 @@ const MGMT_LEVELS = [
 ];
 
 export function DesignationWorkspaceForm({ designation, mode, companies = [] }: Props) {
-  const { closeTab, activeTab, markDirty } = useWorkspace();
+  const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSection, setActiveSection] = useState("basic");
   const isEditing = mode === "edit";
@@ -76,13 +76,13 @@ export function DesignationWorkspaceForm({ designation, mode, companies = [] }: 
       const result = isEditing && designation
         ? await updateDesignation({ ...data, management_level: data.management_level as "staff" | "supervisor" | "manager" | "senior_manager" | "director" | "executive" | "c_level" | null | undefined, id: designation.id })
         : await createDesignation({ ...data, management_level: data.management_level as "staff" | "supervisor" | "manager" | "senior_manager" | "director" | "executive" | "c_level" | null | undefined });
-      if (result.success) { toast.success(isEditing ? "Designation updated" : "Designation created"); clearDraft(); resetDirty(); return true; }
+      if (result.success) { toast.success(isEditing ? "Designation updated" : "Designation created"); clearDraft(); resetDirty(); if (activeTab?.id) markDirty(activeTab.id, false); return true; }
       toast.error(result.error ?? "Failed to save"); return false;
     } catch { toast.error("An unexpected error occurred"); return false; }
     finally { setIsSubmitting(false); }
   };
 
-  const handleSaveAndClose = async () => { const ok = await handleSave(); if (ok) handleRequestClose(); };
+  const handleSaveAndClose = async () => { const ok = await handleSave(); if (ok) forceCloseActiveTab(); };
 
   return (
     <ERPRecordWorkspaceForm

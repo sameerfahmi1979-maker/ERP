@@ -1,0 +1,97 @@
+# ERP Report Template & Branding Standard
+
+## Phase
+
+```
+REPORT.2 — Global Report Engine + Registry + Security Foundation (2026-06-19)
+```
+
+---
+
+## Rules
+
+### 1. All branding must resolve from erp_report_branding_profiles.
+
+```typescript
+// ✅ Correct
+const branding = await resolveReportBranding({ ownerCompanyIds, registryEntry });
+
+// ❌ Never — inline company branding
+const logoUrl = "https://cdn.algt.net/logo.png";
+const companyName = "Alliance Gulf";
+```
+
+### 2. Template seeding convention for new companies.
+
+When a new owner company is created, seed:
+```sql
+COMPANY_{id}_DEFAULT         -- erp_report_branding_profiles
+COMPANY_{id}_REPORT_TEMPLATE -- erp_report_templates
+COMPANY_{id}_LETTER_TEMPLATE -- erp_report_templates
+```
+
+Then update:
+```sql
+owner_companies.default_report_template_id
+owner_companies.default_letter_template_id
+```
+
+### 3. Template types and their correct usage.
+
+| Type | Correct Use | Wrong Use |
+|---|---|---|
+| `report` | Data lists, summaries | Letters or certificates |
+| `letter` | Employee letters, HR notifications | Data reports |
+| `certificate` | Training cert, employment cert | List reports |
+| `badge` | ID badge, access card | Data reports |
+| `group_summary` | Multi-company consolidated | Single company report |
+
+### 4. Stamp and signature fields require reports.sign permission.
+
+```typescript
+// Template flag
+requires_stamp_permission: true
+
+// Caller must have
+callerPermissionCodes.includes('reports.sign')
+
+// If permission missing, stamp_url and signature_url must NOT be exposed
+```
+
+### 5. Never create branding profiles with hardcoded company-specific names.
+
+```typescript
+// ❌ Never
+profile_code: 'ALGT_BRANDING'
+profile_name: 'Alliance Gulf Transport Branding'
+
+// ✅ Correct — use dynamic company-based code
+profile_code: `COMPANY_${ownerCompanyId}_DEFAULT`
+profile_name: `${company.legal_name_en} — Default`
+```
+
+### 6. Language mode rules.
+
+| Mode | When to use |
+|---|---|
+| `en` | English-only output |
+| `ar` | Arabic-only output (RTL) |
+| `bilingual` | Side-by-side EN+AR on same page |
+
+Bilingual mode is only supported in REPORT.3+ (requires template renderer upgrade).
+
+### 7. Custom CSS must be minimal and safe.
+
+- `custom_css` in `erp_report_templates` is for minor layout overrides only.
+- Must not inject `<script>`, `eval()`, or external `@import` rules.
+- Applied server-side only by the PDF renderer (REPORT.3+).
+
+---
+
+## Reference Files
+
+```
+src/lib/report-center/branding-resolver.ts
+docs/standards/ERP_REPORT_TEMPLATE_BRANDING_STANDARD.md
+supabase/migrations/20260619130000_report_2_global_report_engine_registry_security_foundation.sql
+```

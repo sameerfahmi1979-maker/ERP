@@ -101,7 +101,7 @@ function buildLinkSystemPrompt(
     .map((p) => `  - ID ${p.id}: ${p.display_name} (code: ${p.party_code})`)
     .join("\n");
 
-  return `You are a document entity-link suggestion assistant for the Alliance Gulf ERP system (UAE).
+  return `You are a document entity-link suggestion assistant for the Alliance Gulf ERP system (UAE). You have expert Arabic reading ability and understand Arabic-English bilingual UAE business documents.
 
 AVAILABLE PARTIES (ERP records you may suggest linking to):
 ${partyList}
@@ -115,6 +115,13 @@ RULES:
 - Confidence must be between 0.0 and 1.0.
 - Only suggest links where there is clear evidence in the document content or summary.
 - Return ONLY a JSON object with a "suggestions" array. No markdown. No explanation.
+
+ARABIC MATCHING RULES:
+- Match Arabic company names and English names as equivalent (محمد أحمد للتجارة = Mohammed Ahmed Trading).
+- Common Arabic transliteration variants are the same person/company (محمد = Mohammad = Mohammed = Muhammad).
+- Match partial Arabic names (الخليج = Gulf may match "Alliance Gulf" party).
+- If the document has Arabic names not matching English display names exactly, still suggest if semantically equivalent.
+- Confidence should be 0.7+ for Arabic name matches that appear phonetically equivalent.
 
 Each suggestion: entityType (always "party"), entityId (number from list), entityName (string), confidence (0.0-1.0), reason (string).`;
 }
@@ -221,36 +228,51 @@ export async function suggestDmsDocumentLinks(
       : null;
 
     // Load available parties — name-match first to improve relevance
-    // Step 1: extract search terms from document title + summary (words ≥ 4 chars)
+    // Step 1: extract search terms from document (English + Arabic)
     const searchText = [
       docRow.title,
       docRow.ai_summary?.substring(0, 400) ?? "",
       contentSnippet?.substring(0, 300) ?? "",
-    ]
-      .join(" ")
-      .toLowerCase();
+    ].join(" ");
 
+    // English terms (≥ 4 chars, alphanumeric only)
     const termSet = new Set<string>();
-    for (const word of searchText.split(/\s+/)) {
+    for (const word of searchText.toLowerCase().split(/\s+/)) {
       const clean = word.replace(/[^a-z0-9]/g, "");
       if (clean.length >= 4) termSet.add(clean);
     }
-    const terms = Array.from(termSet).slice(0, 12); // cap to 12 search terms
+    const terms = Array.from(termSet).slice(0, 12);
 
-    // Step 2: find parties whose display_name matches any extracted term
+    // Arabic terms (≥ 3 Arabic chars) — DMS ARABIC FIX.1: include Arabic name matching
+    const arabicTermSet = new Set<string>();
+    for (const word of searchText.split(/\s+/)) {
+      // Match Arabic Unicode range (U+0600–U+06FF)
+      if (/[\u0600-\u06FF]{3,}/.test(word)) {
+        arabicTermSet.add(word.replace(/[^\u0600-\u06FF]/g, "").substring(0, 30));
+      }
+    }
+    const arabicTerms = Array.from(arabicTermSet).slice(0, 8);
+
+    // Step 2: find parties whose display_name OR legal_name_ar matches any extracted term
     let matchedPartyIds = new Set<number>();
-    if (terms.length > 0) {
-      const orFilter = terms
-        .map((t) => `display_name.ilike.%${t}%`)
-        .join(",");
-      const { data: nameMatched } = await supabase
-        .from("parties")
-        .select("id, party_code, display_name")
-        .is("deleted_at", null)
-        .or(orFilter)
-        .limit(NAME_MATCH_FILL_LIMIT);
-      for (const p of nameMatched ?? []) {
-        matchedPartyIds.add((p as { id: number }).id);
+    if (terms.length > 0 || arabicTerms.length > 0) {
+      const englishFilters = terms.map((t) => `display_name.ilike.%${t}%`);
+      // Arabic name matching against legal_name_ar and display_name
+      const arabicFilters = arabicTerms.map((t) => `legal_name_ar.ilike.%${t}%`);
+      const arabicDisplayFilters = arabicTerms.map((t) => `display_name.ilike.%${t}%`);
+      const allFilters = [...englishFilters, ...arabicFilters, ...arabicDisplayFilters];
+
+      if (allFilters.length > 0) {
+        const orFilter = allFilters.join(",");
+        const { data: nameMatched } = await supabase
+          .from("parties")
+          .select("id, party_code, display_name")
+          .is("deleted_at", null)
+          .or(orFilter)
+          .limit(NAME_MATCH_FILL_LIMIT);
+        for (const p of nameMatched ?? []) {
+          matchedPartyIds.add((p as { id: number }).id);
+        }
       }
     }
 

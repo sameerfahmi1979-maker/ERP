@@ -26,7 +26,7 @@ type Props = {
 const FORM_ID = "department-workspace-form";
 
 export function DepartmentWorkspaceForm({ department, mode, companies = [] }: Props) {
-  const { closeTab, activeTab, markDirty } = useWorkspace();
+  const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSection, setActiveSection] = useState("basic");
   const isEditing = mode === "edit";
@@ -70,7 +70,7 @@ export function DepartmentWorkspaceForm({ department, mode, companies = [] }: Pr
         : await createDepartment(data);
       if (result.success) {
         toast.success(isEditing ? "Department updated" : "Department created");
-        clearDraft(); resetDirty();
+        clearDraft(); resetDirty(); if (activeTab?.id) markDirty(activeTab.id, false);
         if (!isEditing && (result as { data?: { id: number } }).data?.id) {
           window.history.replaceState(null, "", `/admin/common-master-data/departments/record/${(result as { data?: { id: number } }).data!.id}`);
         }
@@ -82,7 +82,7 @@ export function DepartmentWorkspaceForm({ department, mode, companies = [] }: Pr
     finally { setIsSubmitting(false); }
   };
 
-  const handleSaveAndClose = async () => { const ok = await handleSave(); if (ok) handleRequestClose(); };
+  const handleSaveAndClose = async () => { const ok = await handleSave(); if (ok) forceCloseActiveTab(); };
 
   return (
     <ERPRecordWorkspaceForm

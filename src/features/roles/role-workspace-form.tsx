@@ -26,7 +26,7 @@ type RoleWorkspaceFormProps = {
 const FORM_ID = "role-workspace-form";
 
 export function RoleWorkspaceForm({ role, mode }: RoleWorkspaceFormProps) {
-  const { closeTab, activeTab, markDirty } = useWorkspace();
+  const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSection, setActiveSection] = useState("basic");
@@ -84,7 +84,7 @@ export function RoleWorkspaceForm({ role, mode }: RoleWorkspaceFormProps) {
 
   const handleSaveAndClose = async () => {
     const success = await handleSave();
-    if (success) handleRequestClose();
+    if (success) forceCloseActiveTab();
   };
 
   return (

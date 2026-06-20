@@ -33,7 +33,7 @@ type Props = {
 const FORM_ID = "work-calendar-workspace-form";
 
 export function WorkCalendarWorkspaceForm({ calendar, mode, companies = [] }: Props) {
-  const { closeTab, activeTab, markDirty } = useWorkspace();
+  const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSection, setActiveSection] = useState("basic");
   const [workingDays, setWorkingDays] = useState<string[]>(calendar?.working_days ?? ['mon','tue','wed','thu','fri']);
@@ -89,13 +89,13 @@ export function WorkCalendarWorkspaceForm({ calendar, mode, companies = [] }: Pr
       const result = isEditing && calendar
         ? await updateWorkCalendar({ ...data, id: calendar.id })
         : await createWorkCalendar(data);
-      if (result.success) { toast.success(isEditing ? "Calendar updated" : "Calendar created"); clearDraft(); resetDirty(); return true; }
+      if (result.success) { toast.success(isEditing ? "Calendar updated" : "Calendar created"); clearDraft(); resetDirty(); if (activeTab?.id) markDirty(activeTab.id, false); return true; }
       toast.error(result.error ?? "Failed to save"); return false;
     } catch { toast.error("An unexpected error occurred"); return false; }
     finally { setIsSubmitting(false); }
   };
 
-  const handleSaveAndClose = async () => { const ok = await handleSave(); if (ok) handleRequestClose(); };
+  const handleSaveAndClose = async () => { const ok = await handleSave(); if (ok) forceCloseActiveTab(); };
 
   const handleSaveShift = async (fd: FormData) => {
     if (!calendarId) { toast.error("Save calendar first"); return; }

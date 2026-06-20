@@ -37,7 +37,7 @@ type LookupCategoryWorkspaceFormProps = {
 const FORM_ID = "lookup-category-workspace-form";
 
 export function LookupCategoryWorkspaceForm({ category, mode }: LookupCategoryWorkspaceFormProps) {
-  const { closeTab, activeTab, markDirty } = useWorkspace();
+  const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const queryClient = useQueryClient();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -112,7 +112,7 @@ export function LookupCategoryWorkspaceForm({ category, mode }: LookupCategoryWo
 
   const handleSaveAndClose = async () => {
     const success = await handleSave();
-    if (success) handleRequestClose();
+    if (success) forceCloseActiveTab();
   };
 
   return (

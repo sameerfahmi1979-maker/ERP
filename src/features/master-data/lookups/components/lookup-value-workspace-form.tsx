@@ -41,7 +41,7 @@ type LookupValueWorkspaceFormProps = {
 const FORM_ID = "lookup-value-workspace-form";
 
 export function LookupValueWorkspaceForm({ value, categories, mode }: LookupValueWorkspaceFormProps) {
-  const { closeTab, activeTab, markDirty } = useWorkspace();
+  const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const queryClient = useQueryClient();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -165,7 +165,7 @@ export function LookupValueWorkspaceForm({ value, categories, mode }: LookupValu
 
   const handleSaveAndClose = async () => {
     const success = await handleSave();
-    if (success) handleRequestClose();
+    if (success) forceCloseActiveTab();
   };
 
   return (

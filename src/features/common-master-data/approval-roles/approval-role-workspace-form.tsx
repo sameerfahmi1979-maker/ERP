@@ -28,7 +28,7 @@ const FORM_ID = "approval-role-workspace-form";
 const SCOPES = ['company','branch','department','site','module','global'];
 
 export function ApprovalRoleWorkspaceForm({ role, mode, companies = [], allRoles = [] }: Props) {
-  const { closeTab, activeTab, markDirty } = useWorkspace();
+  const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSection, setActiveSection] = useState("basic");
   const isEditing = mode === "edit";
@@ -71,13 +71,13 @@ export function ApprovalRoleWorkspaceForm({ role, mode, companies = [], allRoles
       const result = isEditing && role
         ? await updateApprovalRole({ ...data, id: role.id })
         : await createApprovalRole(data);
-      if (result.success) { toast.success(isEditing ? "Approval role updated" : "Approval role created"); clearDraft(); resetDirty(); return true; }
+      if (result.success) { toast.success(isEditing ? "Approval role updated" : "Approval role created"); clearDraft(); resetDirty(); if (activeTab?.id) markDirty(activeTab.id, false); return true; }
       toast.error(result.error ?? "Failed to save"); return false;
     } catch { toast.error("An unexpected error occurred"); return false; }
     finally { setIsSubmitting(false); }
   };
 
-  const handleSaveAndClose = async () => { const ok = await handleSave(); if (ok) handleRequestClose(); };
+  const handleSaveAndClose = async () => { const ok = await handleSave(); if (ok) forceCloseActiveTab(); };
 
   return (
     <ERPRecordWorkspaceForm

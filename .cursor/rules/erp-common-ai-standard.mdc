@@ -1,0 +1,134 @@
+---
+description: ALGT ERP Common AI Engine Standard — Applies when creating, editing, or reviewing Common AI engine code, field suggestions, AI governance, or any cross-module AI capability outside DMS-specific features.
+globs:
+  - "src/lib/ai/common/**"
+  - "src/server/actions/ai/**"
+  - "src/features/ai/**"
+  - "docs/standards/ERP_COMMON_AI_ENGINE_STANDARD.md"
+  - "supabase/migrations/*common_ai*"
+alwaysApply: false
+---
+
+# ALGT ERP Common AI Engine Standard
+
+**Phase:** ERP COMMON AI.0 (Governance Baseline)  
+**Standard:** `docs/standards/ERP_COMMON_AI_ENGINE_STANDARD.md`  
+**Roadmap:** `implementation_Review/AI_Phases/Phase_AI_Roadmap_Planning/ERP_AI_ROADMAP_AND_COMMON_AI_FOUNDATION_PLAN.md`
+
+---
+
+## 1. Architecture Decisions (Locked)
+
+- **Internal ERP AI only** — no MCP server, no public AI API, no third-party AI connectors.
+- **OpenAI API** through existing server-side provider layer only.
+- **Registry-based** — AI can only update explicitly registered AI-eligible fields.
+- **DMS-linked documents** are the only evidence source for form updates.
+- **Human review required** before applying AI suggestions — no auto-apply in v1.
+- **Finance AI, Projects AI, HSE AI** are deferred — do not implement.
+
+---
+
+## 2. Provider and API Key Rules
+
+```typescript
+// CORRECT — use shared provider layer
+import { getDmsAiProvider } from "@/lib/dms/ai/factory";
+// Future: import from @/lib/ai/common/provider-bridge
+
+// WRONG — never in feature modules
+import OpenAI from "openai";
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+```
+
+- API keys must **never** be exposed to client or stored directly in DB.
+- `secret_ref` in `erp_ai_provider_configs` stores env var name only.
+- All OpenAI calls must go through `src/lib/ai/` or `src/lib/dms/ai/` — never direct SDK in features.
+
+---
+
+## 3. Logging and Sensitive Data
+
+**Never log:**
+- Raw prompt text
+- Raw OCR text
+- Raw AI response JSON
+- API keys
+- Full document content or sensitive extracted values
+
+**Safe to log:** feature area, operation, model, token counts, duration, prompt_version, entity_type, entity_id, suggestion counts, status transitions.
+
+Suggestion table columns (`current_value`, `suggested_value`, `source_excerpt`, `ai_reason`) store **minimal sanitized business-safe text only**. Full content stays in DMS.
+
+---
+
+## 4. Non-Updatable Fields
+
+AI must **never** update:
+
+- Primary keys, unregistered foreign keys
+- System codes, numbering fields (`party_code`, `site_code`, `document_no`)
+- Audit fields (`created_at`, `created_by`, `updated_at`, `updated_by`, `deleted_at`)
+- Status fields unless explicitly registered
+- Any field with `isAiEligible: false` or not in registry
+
+---
+
+## 5. Server Action Pattern
+
+All Common AI server actions must follow:
+
+```typescript
+getAuthContext() → hasPermission() → Zod validate → business logic → logAudit() → revalidatePath()
+```
+
+Permission gates:
+- **Generate:** `dms.documents.view` + `ai.field_suggestions.generate` + target record view
+- **Apply:** `ai.field_suggestions.apply` + target record manage
+
+---
+
+## 6. RLS and Entity Permissions
+
+Phase 1 v1: **explicit pilot mapping only** for `company`, `branch`, `site`, `party`.
+
+- No broad dynamic entity resolver
+- No dynamic SQL from user input
+- No unregistered entity types
+- New AI tables: RLS ENABLED + FORCED, BIGINT PKs only — **no UUIDs**
+
+---
+
+## 7. Feature Flags
+
+Check `erp_ai_feature_flags` before any Common AI operation:
+
+```
+ERP_AI_FORM_FILL, ERP_AI_DOC_UNDERSTANDING, ERP_AI_DUPLICATE_DETECT,
+ERP_AI_COMPLIANCE, ERP_AI_RISK_SCORE, ERP_AI_ERP_SEARCH, ERP_AI_ACTIONS,
+ERP_AI_DAILY_BRIEF, ERP_AI_AUDIT_EXPLAINER, ERP_AI_DATA_QUALITY
+```
+
+Do not enable flags without Sameer confirmation. Do not alter existing DMS flags.
+
+---
+
+## 8. Phase 1 Implementation Rules
+
+- Do **not** build full Phase 1 in one Cursor run — follow sub-phases 1A–1G.
+- **Stage 1 UAT:** Organization + Party only.
+- **Stage 2 UAT:** Branch + Work Site — after Stage 1 passes.
+- Do not add AI Review & Update tab until Phase 1F prompt is approved.
+
+---
+
+## 9. Forbidden in All Common AI Phases (Until Explicitly Approved)
+
+- MCP server
+- Public/external ERP AI API routes
+- Auto-apply AI suggestions without user action
+- Direct OpenAI SDK calls in feature modules
+- Client-side DB access
+- Storing file bytes in DB
+- Bypassing RLS
+- UUID primary keys
+- Finance / Projects / HSE AI modules

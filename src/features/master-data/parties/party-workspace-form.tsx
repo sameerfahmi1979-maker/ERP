@@ -31,7 +31,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { AlertTriangle, Lock, Building2, Tag, Shield, DollarSign, Users, MapPin, Landmark, FileText } from "lucide-react";
+import { AlertTriangle, Lock, Building2, Tag, Shield, DollarSign, Users, MapPin, Landmark, FileText, Brain } from "lucide-react";
 import type { Party, DuplicateMatch } from "@/features/master-data/parties/party-types";
 import type { AuthContext } from "@/lib/rbac/check";
 import { createParty, updateParty, detectPartyDuplicates } from "@/server/actions/master-data/parties";
@@ -55,6 +55,10 @@ import { PartyDmsDocumentsTab } from "./party-dms-documents-tab";
 import { PartyServicesTab } from "./party-services-tab";
 import { PartyNotesTab } from "./party-notes-tab";
 import { PartyAuditTab } from "./party-audit-tab";
+import { AiFieldSuggestionsPanel } from "@/features/ai/common/field-suggestions";
+import { DuplicateCandidateAlert } from "@/features/ai/common/duplicate-detection";
+import { ComplianceFindingAlert } from "@/features/ai/common/compliance-checker";
+import { RiskScoreAlert } from "@/features/ai/common/risk-scoring";
 import { useQuery } from "@tanstack/react-query";
 import { getPartyNatures, getPartyStatuses } from "@/server/actions/master-data/parties";
 import { PartySelect } from "@/components/erp/party-select";
@@ -108,7 +112,7 @@ function PartyWorkspaceFormInner({
   defaultTypeCode,
 }: PartyWorkspaceFormProps) {
   const router = useRouter();
-  const { closeTab, activeTab, renameTab, updateTabRoute, markDirty } = useWorkspace();
+  const { closeTab, activeTab, renameTab, updateTabRoute, markDirty, forceCloseActiveTab } = useWorkspace();
 
   // â”€â”€ Mode state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [currentMode, setCurrentMode] = useState<"add" | "edit" | "view">(mode);
@@ -233,6 +237,7 @@ function PartyWorkspaceFormInner({
     { id: "documents",  label: "Documents",              icon: <FileText className="h-3.5 w-3.5" />, disabled: childTabLocked },
     { id: "services",   label: "Services / Categories",  icon: <Tag className="h-3.5 w-3.5" />, disabled: childTabLocked },
     { id: "notes",      label: "Notes & Activity",       icon: <FileText className="h-3.5 w-3.5" />, disabled: childTabLocked },
+    { id: "ai_review",  label: "AI Review & Update",     icon: <Brain className="h-3.5 w-3.5" />, disabled: childTabLocked },
     { id: "audit",      label: "Audit",                  icon: <Lock className="h-3.5 w-3.5" />, disabled: childTabLocked },
     { id: "compliance", label: "Compliance & Approval",  icon: <Shield className="h-3.5 w-3.5" />, disabled: true },
   ], [childTabLocked]);
@@ -294,6 +299,7 @@ function PartyWorkspaceFormInner({
         toast.success(`Party ${isEditing ? "updated" : "created"} successfully`);
         clearDraft();
         resetDirty();
+        if (activeTab?.id) markDirty(activeTab.id, false);
 
         if (!isEditing && result.data && "id" in result.data) {
           const newId = (result.data as { id: number }).id;
@@ -384,11 +390,7 @@ function PartyWorkspaceFormInner({
 
       const success = await performSave();
       if (success) {
-        // Explicitly clear workspace dirty before close to bypass the 4B dirty dialog
-        if (activeTab?.id) {
-          markDirty(activeTab.id, false);
-        }
-        closeTab(activeTab?.id ?? "");
+        forceCloseActiveTab();
       }
     } finally {
       setIsSubmitting(false);
@@ -452,6 +454,13 @@ function PartyWorkspaceFormInner({
           onChange={syncDraft}
           className="contents"
         >
+          {effectivePartyId ? (
+            <>
+              <DuplicateCandidateAlert entityType="party" entityId={effectivePartyId} />
+              <ComplianceFindingAlert entityType="party" entityId={effectivePartyId} />
+              <RiskScoreAlert entityType="party" entityId={effectivePartyId} />
+            </>
+          ) : null}
           {/* â”€â”€â”€â”€â”€â”€â”€â”€ Section 1: Basic Information â”€â”€â”€â”€â”€â”€â”€â”€ */}
           <ERPRecordSectionPanel id="basic" activeId={activeSection}>
             {/* A. Identity */}
@@ -732,6 +741,19 @@ function PartyWorkspaceFormInner({
           {/* â”€â”€â”€â”€â”€â”€â”€â”€ Section 12: Compliance (deferred) â”€â”€â”€â”€â”€â”€â”€â”€ */}
           <ERPRecordSectionPanel id="compliance" activeId={activeSection} lazyMount>
             <DeferredTabMessage phase="5A.4" />
+          </ERPRecordSectionPanel>
+
+          {/* AI Review & Update — COMMON AI.1F Stage 1 pilot */}
+          <ERPRecordSectionPanel id="ai_review" activeId={activeSection} lazyMount>
+            {childTabLocked ? <LockedTabMessage /> : (
+              <AiFieldSuggestionsPanel
+                entityType="party"
+                entityId={effectivePartyId ?? 0}
+                entityLabel={party?.display_name ?? "Party"}
+                canGenerate={!isViewing}
+                canApply={!isViewing}
+              />
+            )}
           </ERPRecordSectionPanel>
         </form>
       </ERPRecordWorkspaceForm>

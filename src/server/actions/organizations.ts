@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit, createAuditDiff } from "@/server/actions/audit";
+import { ensureReportBrandingForOwnerCompany } from "@/lib/report-center/company-onboarding";
 import {
   createOrganizationSchema,
   updateOrganizationSchema,
@@ -159,6 +160,15 @@ export async function createOrganization(
 
     // 6. Revalidate
     revalidatePath("/admin/organizations");
+
+    // 7. REPORT.3: Ensure report branding/templates for the new company.
+    // Non-blocking: if this fails, company creation still succeeds.
+    ensureReportBrandingForOwnerCompany(data.id).catch((err) => {
+      console.warn(
+        `[createOrganization] Report branding onboarding failed for company ${data.id}:`,
+        err
+      );
+    });
 
     return { success: true, data: { id: data.id } };
   } catch (error) {

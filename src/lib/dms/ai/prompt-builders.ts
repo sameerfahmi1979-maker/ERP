@@ -10,7 +10,16 @@ import type { DmsAiDocumentTypeCandidate, DmsAiImageFile, DmsAiMetadataField } f
 
 /** Maximum OCR text characters to include in a single prompt (≈ 6000 tokens). */
 const MAX_OCR_CHARS = 12_000;
-const PROMPT_VERSION = "v2.0";
+/**
+ * v3.0 — Arabic language enhancement (DMS ARABIC FIX.1):
+ *   - Added comprehensive Arabic OCR, extraction, and name-normalization rules.
+ *   - Hijri date detection + Gregorian conversion.
+ *   - Arabic numerals (Eastern Arabic) normalization.
+ *   - Legal Arabic company name (legal_name_ar) extraction.
+ *   - Arabic transliteration consistency rules.
+ *   - UAE-specific Arabic term glossary.
+ */
+const PROMPT_VERSION = "v3.0";
 
 export { PROMPT_VERSION };
 
@@ -24,7 +33,7 @@ export interface BuiltPrompt {
   hasImages: boolean;
 }
 
-const SYSTEM_PROMPT = `You are an AI document classifier, OCR engine, and metadata extractor for an Enterprise Resource Planning (ERP) system used in the UAE (United Arab Emirates).
+const SYSTEM_PROMPT = `You are an AI document classifier, OCR engine, and metadata extractor for an Enterprise Resource Planning (ERP) system used in the UAE (United Arab Emirates). You have expert-level Arabic language reading ability.
 
 You will receive a business document — either as extracted text, as one or more images, or both.
 Your task has THREE steps, performed in order:
@@ -36,9 +45,40 @@ Read EVERY image provided with maximum precision. Transcribe ALL visible text ex
 - Stamps, watermarks, handwritten notes, signatures (describe if not readable)
 - Reference numbers, barcodes, QR code text if decodable
 - MRZ (Machine-Readable Zone) lines — reproduce them exactly, then decode: the two MRZ lines encode name, document number, nationality, date of birth, expiry date, and check digits
-- Arabic text — transcribe in Arabic script AND provide an English transliteration/translation
+- Arabic text — transcribe EXACTLY in Arabic Unicode script (right-to-left). Preserve Tashkeel (diacritics: ـَ ـِ ـُ ـً ـٌ ـٍ ـّ ـْ) if visible. Do NOT transliterate in the transcription — keep Arabic script.
 - Numbers — reproduce EXACTLY, including spaces/dashes in ID numbers (e.g. 784-1981-1234567-8)
+- Arabic-Indic (Eastern Arabic) numerals: ٠١٢٣٤٥٦٧٨٩ — convert to Western Arabic (0-9) in structured output fields, keep original in full_text_transcription
 Store the complete transcription in the "full_text_transcription" field of your JSON response.
+
+ARABIC DOCUMENT RULES — MANDATORY (applies to all bilingual UAE documents):
+- Emirates ID: ALWAYS extract BOTH English name AND Arabic name (اسم بالعربية). The Arabic name appears on the front of the card.
+- Trade License / Commercial Register: extract both Arabic company name (الاسم التجاري بالعربية) AND English company name.
+- Labor/Employment documents: extract Arabic employer name (صاحب العمل), position (المسمى الوظيفي), and department (القسم).
+- Hijri dates: if a Hijri calendar date appears (e.g. ١٤٤٥/٠٧/١٤ or 1445/07/14), note it in additional_fields["hijri_date"] and convert to approximate Gregorian date. Use formula: Gregorian ≈ Hijri year × 0.970 + 621.5.
+- Arabic-only documents: if the document has NO English text, generate an English translation of the key fields in suggested_description. Add full English translation in additional_fields["english_translation"].
+- Mixed RTL/LTR: maintain field values in their correct language. Arabic names → Arabic script. English names → English.
+- Tashkeel: if visible, include diacritics (e.g. مَدِينَة not مدينة). They distinguish words (e.g. مَدرسة=school vs مُدرِّس=teacher).
+
+UAE ARABIC DOCUMENT GLOSSARY (for classification and extraction):
+- رخصة تجارية / سجل تجاري = Trade License / Commercial Register
+- بطاقة الهوية الإماراتية = Emirates ID
+- جواز سفر = Passport
+- تأشيرة / إقامة = Visa / Residency Permit
+- عقد عمل = Labor/Employment Contract
+- تصريح عمل = Work Permit
+- شهادة راتب = Salary Certificate
+- عقد إيجار = Tenancy Contract / Lease Agreement
+- رقم التسجيل الضريبي (TRN) = Tax Registration Number
+- فاتورة ضريبية = Tax Invoice
+- وكالة قانونية / توكيل = Power of Attorney
+- شهادة صحية / لياقة طبية = Medical / Fitness Certificate
+- بوليصة تأمين = Insurance Policy
+- شهادة إتمام = Completion Certificate
+- عقد مقاولة = Contractor Agreement
+- صاحب العمل = Employer
+- الموظف = Employee
+- المستأجر = Tenant
+- المؤجر = Landlord / Lessor
 
 STEP 2 — CLASSIFICATION:
 Using the full transcription and visual context, determine the document type.
@@ -121,9 +161,17 @@ Rules:
   - If only one date is visible, put it in suggested_expiry_date if future, else suggested_issue_date.
 - All dates in structured fields must be YYYY-MM-DD. Convert DD/MM/YYYY → YYYY-MM-DD. Convert MM/YYYY → YYYY-MM-01.
 - Do not invent or guess data not visible in the document.
-- For bilingual documents, prefer the English value for structured fields but always include Arabic names in additional_fields and in full_text_transcription.
-- Populate detected_entities with EVERY person and company/organization named in the document.
-- Populate additional_fields with any useful data not in the metadata list — including MRZ lines, card numbers, sponsor names, occupation, issuing officer details, etc.`;
+- For bilingual documents, prefer the English value for structured fields. ALWAYS include Arabic name in detected_entities.name_ar. If only Arabic is available, provide your best English transliteration and note it in warnings.
+- Populate detected_entities with EVERY person and company/organization named in the document. For Arabic names: populate both name (English or transliteration) and name_ar (Arabic script).
+- Populate additional_fields with any useful data including:
+  MRZ lines, card numbers, sponsor names, occupation, issuing officer details,
+  "arabic_company_name" (الاسم القانوني للشركة بالعربية),
+  "arabic_holder_name" (اسم الحامل بالعربية),
+  "arabic_address" (العنوان بالعربية),
+  "arabic_activities" (الأنشطة التجارية بالعربية),
+  "hijri_date" (if Hijri date found),
+  "english_translation" (for Arabic-only documents).
+- If the document contains ONLY Arabic text with no English: set suggested_title to your English translation in brackets, e.g. "[Trade License — محمد للتجارة]".`;
 
 /**
  * Builds a combined classification + extraction prompt.

@@ -1,0 +1,1967 @@
+[
+  {
+    "display_name": "Yas Takaful",
+    "legal_name_en": "Yas Takaful PJSC",
+    "cbuae_reg_no": "084",
+    "cbuae_category": "Takaful",
+    "official_website": {
+      "value": "http://www.yastakaful.ae",
+      "source_url": "https://www.cbuae.gov.ae",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "800 889",
+      "source_url": "https://www.cbuae.gov.ae",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "customerinfo@yastakaful.ae",
+      "source_url": "https://www.cbuae.gov.ae",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "111644",
+      "source_url": "https://www.cbuae.gov.ae",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "Abu Dhabi, UAE",
+      "source_url": "https://www.cbuae.gov.ae",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Abu Dhabi",
+      "lookup_id": 1,
+      "source_url": "https://www.cbuae.gov.ae",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Abu Dhabi City",
+      "lookup_id": 1,
+      "source_url": "https://www.cbuae.gov.ae",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Takaful"
+      ],
+      "source_url": "https://www.cbuae.gov.ae",
+      "confidence": "High"
+    },
+    "contact_department": null,
+    "include_in_sql": false,
+    "notes": "License suspended by CBUAE. Excluded from SQL enrichment pending human approval."
+  },
+  {
+    "display_name": "Salama Takaful",
+    "legal_name_en": "Islamic Arab Insurance Company 'SALAMA' PJSC",
+    "cbuae_reg_no": "017",
+    "cbuae_category": "Takaful",
+    "official_website": {
+      "value": "https://www.salama.ae",
+      "source_url": "https://www.salama.ae",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "800 725262",
+      "source_url": "https://www.salama.ae",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "info@salama.ae",
+      "source_url": "https://www.salama.ae/contact-us",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "10214",
+      "source_url": "https://www.salama.ae/contact-us",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "4th Floor, Block A, Spectrum Building, Oud Metha, Sheikh Rashid Road, Dubai, UAE",
+      "source_url": "https://www.salama.ae/contact-us",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Dubai",
+      "lookup_id": 2,
+      "source_url": "https://www.salama.ae/contact-us",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Dubai City",
+      "lookup_id": 4,
+      "source_url": "https://www.salama.ae/contact-us",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Motor",
+        "Health",
+        "Home",
+        "Travel",
+        "Corporate"
+      ],
+      "source_url": "https://www.salama.ae",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Service",
+      "designation": "Official Department Contact",
+      "phone": "800 725262",
+      "email": "info@salama.ae",
+      "source_url": "https://www.salama.ae/contact-us",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active insurer."
+  },
+  {
+    "display_name": "Sukoon Takaful",
+    "legal_name_en": "Sukoon Takaful PJSC",
+    "cbuae_reg_no": "006",
+    "cbuae_category": "Takaful",
+    "official_website": {
+      "value": "https://www.sukoontakaful.com",
+      "source_url": "https://www.sukoontakaful.com",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "+971 4 282 4403",
+      "source_url": "https://www.sukoontakaful.com/contact-us",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "customercare@sukoontakaful.com",
+      "source_url": "https://www.sukoontakaful.com/contact-us",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "1993",
+      "source_url": "https://www.sukoontakaful.com/contact-us",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "Al Garhoud, 3rd Floor, Al Kazim Building, Dubai, UAE",
+      "source_url": "https://www.sukoontakaful.com/contact-us",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Dubai",
+      "lookup_id": 2,
+      "source_url": "https://www.sukoontakaful.com/contact-us",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Dubai City",
+      "lookup_id": 4,
+      "source_url": "https://www.sukoontakaful.com/contact-us",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Takaful",
+        "Motor",
+        "Medical",
+        "Home",
+        "SME"
+      ],
+      "source_url": "https://www.sukoontakaful.com",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Care",
+      "designation": "Official Department Contact",
+      "phone": "+971 4 282 4403",
+      "email": "customercare@sukoontakaful.com",
+      "source_url": "https://www.sukoontakaful.com/contact-us",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active insurer."
+  },
+  {
+    "display_name": "National General Insurance",
+    "legal_name_en": "National General Insurance Co PSC",
+    "cbuae_reg_no": "061",
+    "cbuae_category": "National",
+    "official_website": {
+      "value": "https://www.ngi.ae",
+      "source_url": "https://www.ngi.ae",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "+971 4 211 5800",
+      "source_url": "https://www.ngi.ae/contact-us",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "customerservice@ngiuae.com",
+      "source_url": "https://www.ngi.ae/contact-us",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "154",
+      "source_url": "https://www.ngi.ae/contact-us",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "NGI House, Port Saeed Street, Deira, Dubai, UAE",
+      "source_url": "https://www.ngi.ae/contact-us",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Dubai",
+      "lookup_id": 2,
+      "source_url": "https://www.ngi.ae/contact-us",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Dubai City",
+      "lookup_id": 4,
+      "source_url": "https://www.ngi.ae/contact-us",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Motor",
+        "Medical",
+        "Home",
+        "Travel",
+        "Corporate"
+      ],
+      "source_url": "https://www.ngi.ae",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Service",
+      "designation": "Official Department Contact",
+      "phone": "+971 4 211 5800",
+      "email": "customerservice@ngiuae.com",
+      "source_url": "https://www.ngi.ae/contact-us",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active insurer."
+  },
+  {
+    "display_name": "Daman Insurance",
+    "legal_name_en": "The National Health Insurance Company (Daman) PJSC",
+    "cbuae_reg_no": "073",
+    "cbuae_category": "National",
+    "official_website": {
+      "value": "https://www.damanhealth.ae",
+      "source_url": "https://www.damanhealth.ae",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "600 532626",
+      "source_url": "https://www.damanhealth.ae/en/contact-us",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "customerinfo@damanhealth.ae",
+      "source_url": "https://www.damanhealth.ae/en/contact-us",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "128888",
+      "source_url": "https://www.damanhealth.ae/en/contact-us",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "Abu Dhabi, UAE",
+      "source_url": "https://www.damanhealth.ae/en/contact-us",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Abu Dhabi",
+      "lookup_id": 1,
+      "source_url": "https://www.damanhealth.ae/en/contact-us",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Abu Dhabi City",
+      "lookup_id": 1,
+      "source_url": "https://www.damanhealth.ae/en/contact-us",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Health"
+      ],
+      "source_url": "https://www.damanhealth.ae",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Service",
+      "designation": "Official Department Contact",
+      "phone": "600 532626",
+      "email": "customerinfo@damanhealth.ae",
+      "source_url": "https://www.damanhealth.ae/en/contact-us",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active health insurer."
+  },
+  {
+    "display_name": "Alliance Insurance",
+    "legal_name_en": "Alliance Insurance PSC",
+    "cbuae_reg_no": "018",
+    "cbuae_category": "National",
+    "official_website": {
+      "value": "https://www.alliance-uae.com",
+      "source_url": "https://www.alliance-uae.com",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "+971 4 605 1111",
+      "source_url": "https://www.alliance-uae.com/contact-us/",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "care@alliance-uae.com",
+      "source_url": "https://www.alliance-uae.com/contact-us/",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "5501",
+      "source_url": "https://www.alliance-uae.com/contact-us/",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "Alliance Building, Warba Street, Deira, Dubai, UAE",
+      "source_url": "https://www.alliance-uae.com/contact-us/",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Dubai",
+      "lookup_id": 2,
+      "source_url": "https://www.alliance-uae.com/contact-us/",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Dubai City",
+      "lookup_id": 4,
+      "source_url": "https://www.alliance-uae.com/contact-us/",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Motor",
+        "Medical",
+        "Life",
+        "Property",
+        "Marine",
+        "Engineering"
+      ],
+      "source_url": "https://www.alliance-uae.com",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Care",
+      "designation": "Official Department Contact",
+      "phone": "+971 4 605 1111",
+      "email": "care@alliance-uae.com",
+      "source_url": "https://www.alliance-uae.com/contact-us/",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active insurer."
+  },
+  {
+    "display_name": "Takaful Emarat",
+    "legal_name_en": "Takaful Emarat - Insurance PSC",
+    "cbuae_reg_no": "086",
+    "cbuae_category": "Takaful",
+    "official_website": {
+      "value": "http://www.takafulemarat.com",
+      "source_url": "http://www.takafulemarat.com",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "600 522550",
+      "source_url": "http://www.takafulemarat.com/contact-us/",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "customerrelations@takafulemarat.com",
+      "source_url": "http://www.takafulemarat.com/contact-us/",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "57589",
+      "source_url": "http://www.takafulemarat.com/contact-us/",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "Dubai, UAE",
+      "source_url": "http://www.takafulemarat.com/contact-us/",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Dubai",
+      "lookup_id": 2,
+      "source_url": "http://www.takafulemarat.com/contact-us/",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Dubai City",
+      "lookup_id": 4,
+      "source_url": "http://www.takafulemarat.com/contact-us/",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Takaful",
+        "Health",
+        "Life"
+      ],
+      "source_url": "http://www.takafulemarat.com",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Relations",
+      "designation": "Official Department Contact",
+      "phone": "600 522550",
+      "email": "customerrelations@takafulemarat.com",
+      "source_url": "http://www.takafulemarat.com/contact-us/",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active insurer."
+  },
+  {
+    "display_name": "Insurance House",
+    "legal_name_en": "Insurance House PSC",
+    "cbuae_reg_no": "089",
+    "cbuae_category": "National",
+    "official_website": {
+      "value": "https://www.insurancehouse.ae",
+      "source_url": "https://www.insurancehouse.ae",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "600 511112",
+      "source_url": "https://www.insurancehouse.ae/contact-us/",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "customerservice@insurancehouse.ae",
+      "source_url": "https://www.insurancehouse.ae/contact-us/",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "129921",
+      "source_url": "https://www.insurancehouse.ae/contact-us/",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "Abu Dhabi, UAE",
+      "source_url": "https://www.insurancehouse.ae/contact-us/",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Abu Dhabi",
+      "lookup_id": 1,
+      "source_url": "https://www.insurancehouse.ae/contact-us/",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Abu Dhabi City",
+      "lookup_id": 1,
+      "source_url": "https://www.insurancehouse.ae/contact-us/",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Motor",
+        "Home",
+        "Health",
+        "Travel",
+        "Corporate"
+      ],
+      "source_url": "https://www.insurancehouse.ae",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Service",
+      "designation": "Official Department Contact",
+      "phone": "600 511112",
+      "email": "customerservice@insurancehouse.ae",
+      "source_url": "https://www.insurancehouse.ae/contact-us/",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active insurer."
+  },
+  {
+    "display_name": "Dubai National Insurance",
+    "legal_name_en": "Dubai National Insurance & Reinsurance P.S.C",
+    "cbuae_reg_no": "064",
+    "cbuae_category": "National",
+    "official_website": {
+      "value": "https://www.dni.ae",
+      "source_url": "https://www.dni.ae",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "600 5 80000",
+      "source_url": "https://www.dni.ae/contact-us/",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "info@dni.ae",
+      "source_url": "https://www.dni.ae/contact-us/",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "1806",
+      "source_url": "https://www.dni.ae/contact-us/",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "7th Floor, DNI House, Sheikh Zayed Road, Dubai, UAE",
+      "source_url": "https://www.dni.ae/contact-us/",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Dubai",
+      "lookup_id": 2,
+      "source_url": "https://www.dni.ae/contact-us/",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Dubai City",
+      "lookup_id": 4,
+      "source_url": "https://www.dni.ae/contact-us/",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Motor",
+        "Medical",
+        "Home",
+        "Travel",
+        "Group Life",
+        "Corporate"
+      ],
+      "source_url": "https://www.dni.ae",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Service",
+      "designation": "Official Department Contact",
+      "phone": "600 5 80000",
+      "email": "info@dni.ae",
+      "source_url": "https://www.dni.ae/contact-us/",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active insurer."
+  },
+  {
+    "display_name": "Sukoon Insurance",
+    "legal_name_en": "Sukoon Insurance PJSC",
+    "cbuae_reg_no": "009",
+    "cbuae_category": "National",
+    "official_website": {
+      "value": "https://www.sukoon.com",
+      "source_url": "https://www.sukoon.com",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "800 SUKOON (785666)",
+      "source_url": "https://www.sukoon.com/contact-us",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "service@sukoon.com",
+      "source_url": "https://www.sukoon.com/contact-us",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "5209",
+      "source_url": "https://www.sukoon.com/contact-us",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "Sukoon Building, Omar Bin Al Khattab Street, Next to Al Ghurair Mall, Deira, Dubai, UAE",
+      "source_url": "https://www.sukoon.com/contact-us",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Dubai",
+      "lookup_id": 2,
+      "source_url": "https://www.sukoon.com/contact-us",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Dubai City",
+      "lookup_id": 4,
+      "source_url": "https://www.sukoon.com/contact-us",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Motor",
+        "Medical",
+        "Home",
+        "Life",
+        "Corporate"
+      ],
+      "source_url": "https://www.sukoon.com",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Service",
+      "designation": "Official Department Contact",
+      "phone": "800 SUKOON (785666)",
+      "email": "service@sukoon.com",
+      "source_url": "https://www.sukoon.com/contact-us",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active insurer."
+  },
+  {
+    "display_name": "ADNIC",
+    "legal_name_en": "Abu Dhabi National Insurance Company PJSC",
+    "cbuae_reg_no": "001",
+    "cbuae_category": "National",
+    "official_website": {
+      "value": "https://www.adnic.ae",
+      "source_url": "https://www.adnic.ae",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "800 8040",
+      "source_url": "https://www.adnic.ae/contact-us",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "info@adnic.ae",
+      "source_url": "https://www.adnic.ae/contact-us",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "839",
+      "source_url": "https://www.adnic.ae/contact-us",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "Building No. 403, Khalifa Bin Zayed The First Street, Abu Dhabi, UAE",
+      "source_url": "https://www.adnic.ae/contact-us",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Abu Dhabi",
+      "lookup_id": 1,
+      "source_url": "https://www.adnic.ae/contact-us",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Abu Dhabi City",
+      "lookup_id": 1,
+      "source_url": "https://www.adnic.ae/contact-us",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Motor",
+        "Medical",
+        "Home",
+        "Travel",
+        "Commercial"
+      ],
+      "source_url": "https://www.adnic.ae",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Service",
+      "designation": "Official Department Contact",
+      "phone": "800 8040",
+      "email": "info@adnic.ae",
+      "source_url": "https://www.adnic.ae/contact-us",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active insurer."
+  },
+  {
+    "display_name": "Abu Dhabi Takaful",
+    "legal_name_en": "Abu Dhabi National Takaful Company PSC",
+    "cbuae_reg_no": "071",
+    "cbuae_category": "Takaful",
+    "official_website": {
+      "value": "https://www.takaful.ae",
+      "source_url": "https://www.takaful.ae",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "800 2244",
+      "source_url": "https://www.takaful.ae/en/contact-us/",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "customer.service@takaful.ae",
+      "source_url": "https://www.takaful.ae/en/contact-us/",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "35335",
+      "source_url": "https://www.takaful.ae/en/contact-us/",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "Tamouh Tower, 25th Floor, Marina Square, Al Reem Island, Abu Dhabi, UAE",
+      "source_url": "https://www.takaful.ae/en/contact-us/",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Abu Dhabi",
+      "lookup_id": 1,
+      "source_url": "https://www.takaful.ae/en/contact-us/",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Abu Dhabi City",
+      "lookup_id": 1,
+      "source_url": "https://www.takaful.ae/en/contact-us/",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Takaful",
+        "Motor",
+        "Medical",
+        "Family Takaful",
+        "Corporate"
+      ],
+      "source_url": "https://www.takaful.ae",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Service",
+      "designation": "Official Department Contact",
+      "phone": "800 2244",
+      "email": "customer.service@takaful.ae",
+      "source_url": "https://www.takaful.ae/en/contact-us/",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active insurer."
+  },
+  {
+    "display_name": "Union Insurance",
+    "legal_name_en": "Union Insurance Company PSC",
+    "cbuae_reg_no": "067",
+    "cbuae_category": "National",
+    "official_website": {
+      "value": "https://www.unioninsurance.ae",
+      "source_url": "https://www.unioninsurance.ae",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "+971 4 3787 777",
+      "source_url": "https://www.unioninsurance.ae/contact-us",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "info@unioninsurance.ae",
+      "source_url": "https://www.unioninsurance.ae/contact-us",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "119227",
+      "source_url": "https://www.unioninsurance.ae/contact-us",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "Single Business Tower, Sheikh Zayed Road, Dubai, UAE",
+      "source_url": "https://www.unioninsurance.ae/contact-us",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Dubai",
+      "lookup_id": 2,
+      "source_url": "https://www.unioninsurance.ae/contact-us",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Dubai City",
+      "lookup_id": 4,
+      "source_url": "https://www.unioninsurance.ae/contact-us",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Motor",
+        "Health",
+        "Home",
+        "Travel",
+        "Corporate"
+      ],
+      "source_url": "https://www.unioninsurance.ae",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Service",
+      "designation": "Official Department Contact",
+      "phone": "+971 4 3787 777",
+      "email": "info@unioninsurance.ae",
+      "source_url": "https://www.unioninsurance.ae/contact-us",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active insurer."
+  },
+  {
+    "display_name": "Emirates Insurance",
+    "legal_name_en": "Emirates Insurance Company (PSC)",
+    "cbuae_reg_no": "002",
+    "cbuae_category": "National",
+    "official_website": {
+      "value": "https://www.eminsco.com",
+      "source_url": "https://www.eminsco.com",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "800 98",
+      "source_url": "https://www.eminsco.com/contact-us.html",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "info@eminsco.com",
+      "source_url": "https://www.eminsco.com/contact-us.html",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "3856",
+      "source_url": "https://www.eminsco.com/contact-us.html",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "Abu Dhabi, UAE",
+      "source_url": "https://www.eminsco.com/contact-us.html",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Abu Dhabi",
+      "lookup_id": 1,
+      "source_url": "https://www.eminsco.com/contact-us.html",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Abu Dhabi City",
+      "lookup_id": 1,
+      "source_url": "https://www.eminsco.com/contact-us.html",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Motor",
+        "Medical",
+        "Home",
+        "Corporate"
+      ],
+      "source_url": "https://www.eminsco.com",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Service",
+      "designation": "Official Department Contact",
+      "phone": "800 98",
+      "email": "info@eminsco.com",
+      "source_url": "https://www.eminsco.com/contact-us.html",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active insurer."
+  },
+  {
+    "display_name": "Al Buhaira Insurance",
+    "legal_name_en": "Al Buhaira National Insurance Co PSC",
+    "cbuae_reg_no": "015",
+    "cbuae_category": "National",
+    "official_website": {
+      "value": "https://albuhaira.com",
+      "source_url": "https://albuhaira.com",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "06 517 4444",
+      "source_url": "https://albuhaira.com/contact-us/",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "care@albuhaira.com",
+      "source_url": "https://albuhaira.com/contact-us/",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "6000",
+      "source_url": "https://albuhaira.com/contact-us/",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "6th Floor, Buhaira Insurance Towers, Khalid Lagoon, Buhaira Corniche, Sharjah, UAE",
+      "source_url": "https://albuhaira.com/contact-us/",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Sharjah",
+      "lookup_id": 3,
+      "source_url": "https://albuhaira.com/contact-us/",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Sharjah City",
+      "lookup_id": 6,
+      "source_url": "https://albuhaira.com/contact-us/",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Motor",
+        "Medical",
+        "Home",
+        "Marine",
+        "Engineering"
+      ],
+      "source_url": "https://albuhaira.com",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Service",
+      "designation": "Official Department Contact",
+      "phone": "06 517 4444",
+      "email": "care@albuhaira.com",
+      "source_url": "https://albuhaira.com/contact-us/",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active insurer."
+  },
+  {
+    "display_name": "United Fidelity Insurance",
+    "legal_name_en": "United Fidelity Insurance Company PSC",
+    "cbuae_reg_no": "008",
+    "cbuae_category": "National",
+    "official_website": {
+      "value": "https://fidelityunited.ae",
+      "source_url": "https://fidelityunited.ae",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "800 842",
+      "source_url": "https://fidelityunited.ae/contact-us/",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "customercare@fidelityunited.ae",
+      "source_url": "https://fidelityunited.ae/contact-us/",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "1888",
+      "source_url": "https://fidelityunited.ae/contact-us/",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "The Opus Tower, Block B, Office B703, Business Bay, Dubai, UAE",
+      "source_url": "https://fidelityunited.ae/contact-us/",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Dubai",
+      "lookup_id": 2,
+      "source_url": "https://fidelityunited.ae/contact-us/",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Dubai City",
+      "lookup_id": 4,
+      "source_url": "https://fidelityunited.ae/contact-us/",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Motor",
+        "Medical",
+        "Property",
+        "Engineering",
+        "Marine"
+      ],
+      "source_url": "https://fidelityunited.ae",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Care",
+      "designation": "Official Department Contact",
+      "phone": "800 842",
+      "email": "customercare@fidelityunited.ae",
+      "source_url": "https://fidelityunited.ae/contact-us/",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active insurer."
+  },
+  {
+    "display_name": "Sharjah Insurance",
+    "legal_name_en": "Sharjah Insurance Company (P.S.C)",
+    "cbuae_reg_no": "012",
+    "cbuae_category": "National",
+    "official_website": {
+      "value": "https://www.shjins.com",
+      "source_url": "https://www.shjins.com",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "06 519 5666",
+      "source_url": "https://www.shjins.com/contact.html",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "sico@shjins.com",
+      "source_url": "https://www.shjins.com/contact.html",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "792",
+      "source_url": "https://www.shjins.com/contact.html",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "Al Boorj Building, Al Boorj Avenue (Bank Street), Rolla, Sharjah, UAE",
+      "source_url": "https://www.shjins.com/contact.html",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Sharjah",
+      "lookup_id": 3,
+      "source_url": "https://www.shjins.com/contact.html",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Sharjah City",
+      "lookup_id": 6,
+      "source_url": "https://www.shjins.com/contact.html",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Motor",
+        "Property",
+        "Marine",
+        "Medical"
+      ],
+      "source_url": "https://www.shjins.com",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Service",
+      "designation": "Official Department Contact",
+      "phone": "06 519 5666",
+      "email": "sico@shjins.com",
+      "source_url": "https://www.shjins.com/contact.html",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active insurer."
+  },
+  {
+    "display_name": "Al Sagr Insurance",
+    "legal_name_en": "Al Sagr National Insurance Co. (PSC)",
+    "cbuae_reg_no": "016",
+    "cbuae_category": "National",
+    "official_website": {
+      "value": "http://www.alsagrins.ae",
+      "source_url": "http://www.alsagrins.ae",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "+971 4 702 8500",
+      "source_url": "http://www.alsagrins.ae/contact-us/",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "asnic@alsagrins.ae",
+      "source_url": "http://www.alsagrins.ae/contact-us/",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "121828",
+      "source_url": "http://www.alsagrins.ae/contact-us/",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "Al Sagr Insurance Building, Diplomatic Area, Al Seef Road, Bur Dubai, Dubai, UAE",
+      "source_url": "http://www.alsagrins.ae/contact-us/",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Dubai",
+      "lookup_id": 2,
+      "source_url": "http://www.alsagrins.ae/contact-us/",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Dubai City",
+      "lookup_id": 4,
+      "source_url": "http://www.alsagrins.ae/contact-us/",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Motor",
+        "Medical",
+        "Home",
+        "SME",
+        "Corporate"
+      ],
+      "source_url": "http://www.alsagrins.ae",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Service",
+      "designation": "Official Department Contact",
+      "phone": "+971 4 702 8500",
+      "email": "asnic@alsagrins.ae",
+      "source_url": "http://www.alsagrins.ae/contact-us/",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active insurer."
+  },
+  {
+    "display_name": "Al Dhafra Insurance",
+    "legal_name_en": "Al Dhafra Insurance Company PSC",
+    "cbuae_reg_no": "005",
+    "cbuae_category": "National",
+    "official_website": {
+      "value": "http://www.aldhafrainsurance.ae",
+      "source_url": "http://www.aldhafrainsurance.ae",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "+971 2 694 9444",
+      "source_url": "http://www.aldhafrainsurance.ae/contact-us/",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "info@aldhafrainsurance.ae",
+      "source_url": "http://www.aldhafrainsurance.ae/contact-us/",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "319",
+      "source_url": "http://www.aldhafrainsurance.ae/contact-us/",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "Company Building, Zayed the First Street, Abu Dhabi, UAE",
+      "source_url": "http://www.aldhafrainsurance.ae/contact-us/",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Abu Dhabi",
+      "lookup_id": 1,
+      "source_url": "http://www.aldhafrainsurance.ae/contact-us/",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Abu Dhabi City",
+      "lookup_id": 1,
+      "source_url": "http://www.aldhafrainsurance.ae/contact-us/",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Motor",
+        "Medical",
+        "Property",
+        "Marine",
+        "Engineering"
+      ],
+      "source_url": "http://www.aldhafrainsurance.ae",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Service",
+      "designation": "Official Department Contact",
+      "phone": "+971 2 694 9444",
+      "email": "info@aldhafrainsurance.ae",
+      "source_url": "http://www.aldhafrainsurance.ae/contact-us/",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active insurer."
+  },
+  {
+    "display_name": "Al Ain Ahlia Insurance",
+    "legal_name_en": "Al Ain Ahlia Insurance Company PSC",
+    "cbuae_reg_no": "003",
+    "cbuae_category": "National",
+    "official_website": {
+      "value": "https://www.alaininsurance.com",
+      "source_url": "https://www.alaininsurance.com",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "+971 2 611 9999",
+      "source_url": "https://www.alaininsurance.com/contact-us/",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "info@alaininsurance.com",
+      "source_url": "https://www.alaininsurance.com/contact-us/",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "3077",
+      "source_url": "https://www.alaininsurance.com/contact-us/",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "Al Ain Ahlia Insurance Co. Building, Airport Road, Abu Dhabi, UAE",
+      "source_url": "https://www.alaininsurance.com/contact-us/",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Abu Dhabi",
+      "lookup_id": 1,
+      "source_url": "https://www.alaininsurance.com/contact-us/",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Abu Dhabi City",
+      "lookup_id": 1,
+      "source_url": "https://www.alaininsurance.com/contact-us/",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Motor",
+        "Medical",
+        "Property",
+        "Energy",
+        "Marine"
+      ],
+      "source_url": "https://www.alaininsurance.com",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Service",
+      "designation": "Official Department Contact",
+      "phone": "+971 2 611 9999",
+      "email": "info@alaininsurance.com",
+      "source_url": "https://www.alaininsurance.com/contact-us/",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active insurer."
+  },
+  {
+    "display_name": "Al Fujairah Insurance",
+    "legal_name_en": "Al Fujairah National Insurance Company PSC",
+    "cbuae_reg_no": "011",
+    "cbuae_category": "National",
+    "official_website": {
+      "value": "https://afnic.ae",
+      "source_url": "https://afnic.ae",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "+971 9 223 3355",
+      "source_url": "https://afnic.ae/contact/",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "callcenter@fujinsco.ae",
+      "source_url": "https://afnic.ae/contact/",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "277",
+      "source_url": "https://afnic.ae/contact/",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "8th Floor, Insurance Building, Hamad Bin Abdullah St., Fujairah, UAE",
+      "source_url": "https://afnic.ae/contact/",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Fujairah",
+      "lookup_id": 7,
+      "source_url": "https://afnic.ae/contact/",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Fujairah City",
+      "lookup_id": 14,
+      "source_url": "https://afnic.ae/contact/",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Motor",
+        "Medical",
+        "Property",
+        "Marine",
+        "SME"
+      ],
+      "source_url": "https://afnic.ae",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Call Center",
+      "designation": "Official Department Contact",
+      "phone": "+971 9 223 3355",
+      "email": "callcenter@fujinsco.ae",
+      "source_url": "https://afnic.ae/contact/",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active insurer."
+  },
+  {
+    "display_name": "Al Wathba Insurance",
+    "legal_name_en": "Al Wathba National Insurance Company PJSC",
+    "cbuae_reg_no": "010",
+    "cbuae_category": "National",
+    "official_website": {
+      "value": "https://awnic.com",
+      "source_url": "https://awnic.com",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "600 544 040",
+      "source_url": "https://awnic.com/contact-us/",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "customercare@awnic.com",
+      "source_url": "https://awnic.com/contact-us/",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "45154",
+      "source_url": "https://awnic.com/contact-us/",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "Al Wathba Tower, Mohammed Bin Butti Al Hamed St., Abu Dhabi, UAE",
+      "source_url": "https://awnic.com/contact-us/",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Abu Dhabi",
+      "lookup_id": 1,
+      "source_url": "https://awnic.com/contact-us/",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Abu Dhabi City",
+      "lookup_id": 1,
+      "source_url": "https://awnic.com/contact-us/",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Motor",
+        "Medical",
+        "Home",
+        "Travel",
+        "Corporate"
+      ],
+      "source_url": "https://awnic.com",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Care",
+      "designation": "Official Department Contact",
+      "phone": "600 544 040",
+      "email": "customercare@awnic.com",
+      "source_url": "https://awnic.com/contact-us/",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active insurer."
+  },
+  {
+    "display_name": "Orient Takaful",
+    "legal_name_en": "Orient Takaful (PJSC)",
+    "cbuae_reg_no": "092",
+    "cbuae_category": "Takaful",
+    "official_website": {
+      "value": "https://www.orienttakaful.ae",
+      "source_url": "https://www.orienttakaful.ae",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "+971 4 601 7500",
+      "source_url": "https://www.orienttakaful.ae/contact-us/",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "CustomerCare@orienttakaful.ae",
+      "source_url": "https://www.orienttakaful.ae/contact-us/",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "183368",
+      "source_url": "https://www.orienttakaful.ae/contact-us/",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "Al Futtaim Building, Deira, Dubai, UAE",
+      "source_url": "https://www.orienttakaful.ae/contact-us/",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Dubai",
+      "lookup_id": 2,
+      "source_url": "https://www.orienttakaful.ae/contact-us/",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Dubai City",
+      "lookup_id": 4,
+      "source_url": "https://www.orienttakaful.ae/contact-us/",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Takaful",
+        "Motor",
+        "Medical",
+        "Home",
+        "SME"
+      ],
+      "source_url": "https://www.orienttakaful.ae",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Care",
+      "designation": "Official Department Contact",
+      "phone": "+971 4 601 7500",
+      "email": "CustomerCare@orienttakaful.ae",
+      "source_url": "https://www.orienttakaful.ae/contact-us/",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active insurer."
+  },
+  {
+    "display_name": "Orient Insurance",
+    "legal_name_en": "Orient Insurance Company PJSC",
+    "cbuae_reg_no": "014",
+    "cbuae_category": "National",
+    "official_website": {
+      "value": "https://www.insuranceuae.com",
+      "source_url": "https://www.insuranceuae.com",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "+971 4 253 1300",
+      "source_url": "https://www.insuranceuae.com/contact-us/",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "orient@alfuttaim.ae",
+      "source_url": "https://www.insuranceuae.com/contact-us/",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "27966",
+      "source_url": "https://www.insuranceuae.com/contact-us/",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "Orient Building, Al Badia Business Park, Dubai Festival City, Dubai, UAE",
+      "source_url": "https://www.insuranceuae.com/contact-us/",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Dubai",
+      "lookup_id": 2,
+      "source_url": "https://www.insuranceuae.com/contact-us/",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Dubai City",
+      "lookup_id": 4,
+      "source_url": "https://www.insuranceuae.com/contact-us/",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Motor",
+        "Medical",
+        "Home",
+        "Travel",
+        "Commercial"
+      ],
+      "source_url": "https://www.insuranceuae.com",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Support",
+      "designation": "Official Department Contact",
+      "phone": "+971 4 253 1300",
+      "email": "orient@alfuttaim.ae",
+      "source_url": "https://www.insuranceuae.com/contact-us/",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active insurer."
+  },
+  {
+    "display_name": "HAYAH Insurance",
+    "legal_name_en": "HAYAH Insurance Company PJSC",
+    "cbuae_reg_no": "083",
+    "cbuae_category": "National",
+    "official_website": {
+      "value": "https://www.hayah.com",
+      "source_url": "https://www.hayah.com",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "800 42924",
+      "source_url": "https://www.hayah.com/contact/",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "contact@hayah.com",
+      "source_url": "https://www.hayah.com/contact/",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "63323",
+      "source_url": "https://www.hayah.com/contact/",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "Floor 16, Sheikh Sultan Bin Hamdan Building, Corniche Road, Abu Dhabi, UAE",
+      "source_url": "https://www.hayah.com/contact/",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Abu Dhabi",
+      "lookup_id": 1,
+      "source_url": "https://www.hayah.com/contact/",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Abu Dhabi City",
+      "lookup_id": 1,
+      "source_url": "https://www.hayah.com/contact/",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Life",
+        "Savings",
+        "Medical"
+      ],
+      "source_url": "https://www.hayah.com",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Support",
+      "designation": "Official Department Contact",
+      "phone": "800 42924",
+      "email": "contact@hayah.com",
+      "source_url": "https://www.hayah.com/contact/",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active insurer."
+  },
+  {
+    "display_name": "Aman Insurance",
+    "legal_name_en": "Dubai Islamic Insurance & Reinsurance Co. (Aman) PSC",
+    "cbuae_reg_no": "070",
+    "cbuae_category": "Takaful",
+    "official_website": {
+      "value": "https://www.aman.ae",
+      "source_url": "https://www.aman.ae",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "+971 4 319 3111",
+      "source_url": "https://www.aman.ae/index.php/en/contact-us",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "info@aman.ae",
+      "source_url": "https://www.aman.ae/index.php/en/contact-us",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "157",
+      "source_url": "https://www.aman.ae/index.php/en/contact-us",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "Gulf Towers, Block B1, Mezzanine Floor, Oud Metha, Dubai, UAE",
+      "source_url": "https://www.aman.ae/index.php/en/contact-us",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Dubai",
+      "lookup_id": 2,
+      "source_url": "https://www.aman.ae/index.php/en/contact-us",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Dubai City",
+      "lookup_id": 4,
+      "source_url": "https://www.aman.ae/index.php/en/contact-us",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Takaful",
+        "Motor",
+        "Medical",
+        "Home",
+        "SME"
+      ],
+      "source_url": "https://www.aman.ae",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Support",
+      "designation": "Official Department Contact",
+      "phone": "+971 4 319 3111",
+      "email": "info@aman.ae",
+      "source_url": "https://www.aman.ae/index.php/en/contact-us",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Transitioning to an investment holding company."
+  },
+  {
+    "display_name": "Dubai Insurance",
+    "legal_name_en": "Dubai Insurance Company (PSC)",
+    "cbuae_reg_no": "004",
+    "cbuae_category": "National",
+    "official_website": {
+      "value": "https://www.dubins.ae",
+      "source_url": "https://www.dubins.ae",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "800 DUBINS (382467)",
+      "source_url": "https://www.dubins.ae/index.php/contact-us/",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "info@dubins.ae",
+      "source_url": "https://www.dubins.ae/index.php/contact-us/",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "3027",
+      "source_url": "https://www.dubins.ae/index.php/contact-us/",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "Head Office, Al Riqqa Road, Deira, Dubai, UAE",
+      "source_url": "https://www.dubins.ae/index.php/contact-us/",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Dubai",
+      "lookup_id": 2,
+      "source_url": "https://www.dubins.ae/index.php/contact-us/",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Dubai City",
+      "lookup_id": 4,
+      "source_url": "https://www.dubins.ae/index.php/contact-us/",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Motor",
+        "Medical",
+        "Home",
+        "Marine",
+        "Group Life",
+        "Corporate"
+      ],
+      "source_url": "https://www.dubins.ae",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Support",
+      "designation": "Official Department Contact",
+      "phone": "800 DUBINS (382467)",
+      "email": "info@dubins.ae",
+      "source_url": "https://www.dubins.ae/index.php/contact-us/",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active insurer."
+  },
+  {
+    "display_name": "RAK Insurance",
+    "legal_name_en": "Ras Al Khaimah National Insurance Company P.S.C",
+    "cbuae_reg_no": "007",
+    "cbuae_category": "National",
+    "official_website": {
+      "value": "https://www.rakinsurance.com",
+      "source_url": "https://www.rakinsurance.com",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "800 7254",
+      "source_url": "https://www.rakinsurance.com/contact-us/",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "info@rakinsurance.com",
+      "source_url": "https://www.rakinsurance.com/contact-us/",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "506",
+      "source_url": "https://www.rakinsurance.com/contact-us/",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "6th Floor, RAKBANK Headquarters, Sheikh Saqr Bin Mohammad Al Qasimi R/18, Ras Al Khaimah, UAE",
+      "source_url": "https://www.rakinsurance.com/contact-us/",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Ras Al Khaimah",
+      "lookup_id": 6,
+      "source_url": "https://www.rakinsurance.com/contact-us/",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Ras Al Khaimah City",
+      "lookup_id": 12,
+      "source_url": "https://www.rakinsurance.com/contact-us/",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Motor",
+        "Medical",
+        "Home",
+        "Travel",
+        "Corporate"
+      ],
+      "source_url": "https://www.rakinsurance.com",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Support",
+      "designation": "Official Department Contact",
+      "phone": "800 7254",
+      "email": "info@rakinsurance.com",
+      "source_url": "https://www.rakinsurance.com/contact-us/",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active insurer."
+  },
+  {
+    "display_name": "Methaq Takaful",
+    "legal_name_en": "Methaq Takaful Insurance PSC",
+    "cbuae_reg_no": "082",
+    "cbuae_category": "Takaful",
+    "official_website": {
+      "value": "https://www.methaq.ae",
+      "source_url": "https://www.methaq.ae",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "600 565 695",
+      "source_url": "https://www.methaq.ae/EN/ContactUs.aspx",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "info@methaq.ae",
+      "source_url": "https://www.methaq.ae/EN/ContactUs.aspx",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "32774",
+      "source_url": "https://www.methaq.ae/EN/ContactUs.aspx",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "Liwa Tower, ADNEC Area, Abu Dhabi, UAE",
+      "source_url": "https://www.methaq.ae/EN/ContactUs.aspx",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Abu Dhabi",
+      "lookup_id": 1,
+      "source_url": "https://www.methaq.ae/EN/ContactUs.aspx",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Abu Dhabi City",
+      "lookup_id": 1,
+      "source_url": "https://www.methaq.ae/EN/ContactUs.aspx",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Takaful",
+        "Motor",
+        "Medical",
+        "Home",
+        "SME"
+      ],
+      "source_url": "https://www.methaq.ae",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Support",
+      "designation": "Official Department Contact",
+      "phone": "600 565 695",
+      "email": "info@methaq.ae",
+      "source_url": "https://www.methaq.ae/EN/ContactUs.aspx",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active insurer."
+  },
+  {
+    "display_name": "Watania General Takaful",
+    "legal_name_en": "Watania Takaful General PJSC",
+    "cbuae_reg_no": "085",
+    "cbuae_category": "Takaful",
+    "official_website": {
+      "value": "https://www.watania.ae",
+      "source_url": "https://www.watania.ae",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "800 928 2642",
+      "source_url": "https://www.watania.ae/contact-us",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "info@watania.ae",
+      "source_url": "https://www.watania.ae/contact-us",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "48883",
+      "source_url": "https://www.watania.ae/contact-us",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "The Galleries, Building 2, Level 13, Downtown Jebel Ali, Dubai, UAE",
+      "source_url": "https://www.watania.ae/contact-us",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Dubai",
+      "lookup_id": 2,
+      "source_url": "https://www.watania.ae/contact-us",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Dubai City",
+      "lookup_id": 4,
+      "source_url": "https://www.watania.ae/contact-us",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Takaful",
+        "Motor",
+        "Medical",
+        "Home",
+        "SME"
+      ],
+      "source_url": "https://www.watania.ae",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Support",
+      "designation": "Official Department Contact",
+      "phone": "800 928 2642",
+      "email": "info@watania.ae",
+      "source_url": "https://www.watania.ae/contact-us",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active insurer."
+  },
+  {
+    "display_name": "Watania Family Takaful",
+    "legal_name_en": "Watania Takaful Family Insurance Company PJSC",
+    "cbuae_reg_no": "078",
+    "cbuae_category": "Takaful",
+    "official_website": {
+      "value": "https://www.watania.ae",
+      "source_url": "https://www.watania.ae",
+      "confidence": "High"
+    },
+    "main_phone": {
+      "value": "800 928 2642",
+      "source_url": "https://www.watania.ae/contact-us",
+      "confidence": "High"
+    },
+    "main_email": {
+      "value": "info@watania.ae",
+      "source_url": "https://www.watania.ae/contact-us",
+      "confidence": "High"
+    },
+    "po_box": {
+      "value": "48883",
+      "source_url": "https://www.watania.ae/contact-us",
+      "confidence": "High"
+    },
+    "full_address_text": {
+      "value": "The Galleries, Building 2, Level 13, Downtown Jebel Ali, Dubai, UAE",
+      "source_url": "https://www.watania.ae/contact-us",
+      "confidence": "High"
+    },
+    "emirate": {
+      "value": "Dubai",
+      "lookup_id": 2,
+      "source_url": "https://www.watania.ae/contact-us",
+      "confidence": "High"
+    },
+    "city": {
+      "value": "Dubai City",
+      "lookup_id": 4,
+      "source_url": "https://www.watania.ae/contact-us",
+      "confidence": "High"
+    },
+    "products_verified": {
+      "value": [
+        "Takaful",
+        "Family Takaful",
+        "Life",
+        "Health"
+      ],
+      "source_url": "https://www.watania.ae",
+      "confidence": "High"
+    },
+    "contact_department": {
+      "full_name": "Customer Support",
+      "designation": "Official Department Contact",
+      "phone": "800 928 2642",
+      "email": "info@watania.ae",
+      "source_url": "https://www.watania.ae/contact-us",
+      "confidence": "High"
+    },
+    "include_in_sql": true,
+    "notes": "Active family/life insurer."
+  }
+]

@@ -26,7 +26,7 @@ type ConversionWorkspaceFormProps = {
 const FORM_ID = "conversion-workspace-form";
 
 export function ConversionWorkspaceForm({ conversion, mode }: ConversionWorkspaceFormProps) {
-  const { closeTab, activeTab, markDirty } = useWorkspace();
+  const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSection, setActiveSection] = useState("basic");
 
@@ -110,7 +110,7 @@ export function ConversionWorkspaceForm({ conversion, mode }: ConversionWorkspac
 
   const handleSaveAndClose = async () => {
     const success = await handleSave();
-    if (success) handleRequestClose();
+    if (success) forceCloseActiveTab();
   };
 
   const conversionTitle = conversion

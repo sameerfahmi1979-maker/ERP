@@ -1,0 +1,112 @@
+---
+description: ERP Workspace Save-and-Close + DropdownMenu button nesting standards
+globs: ["src/**/*.tsx", "src/**/*.ts"]
+alwaysApply: true
+---
+
+# ERP Workspace Save-and-Close Standard
+
+## Phase
+
+ERP GLOBAL UI.FIX.1 — Save-and-Close Dirty Dialog Race Condition Fix (2026-06-19)
+
+---
+
+## Rule 1 — Always use `forceCloseActiveTab` after a successful save
+
+After a successful save in a workspace form, **never** call `handleRequestClose()` or `closeTab(activeTab.id)` directly.
+Instead, always call `forceCloseActiveTab()`.
+
+### Why
+
+`resetDirty()` schedules a React state update (async). When `closeTab()` runs immediately after in the same async tick,
+the workspace store still sees `dirty: true` and shows the "Unsaved changes in this tab" confirmation dialog — even
+though data was just saved. `forceCloseActiveTab()` bypasses this race condition because the data is already persisted.
+
+### Correct pattern
+
+```tsx
+const { closeTab, activeTab, forceCloseActiveTab } = useWorkspace();
+
+// Cancel / X button — uses handleRequestClose (dirty guard applies)
+const handleRequestClose = () => closeTab(activeTab?.id ?? "");
+
+// Save & Close — always use forceCloseActiveTab
+const handleSaveAndClose = async () => {
+  const ok = await handleSave();
+  if (ok) forceCloseActiveTab(); // ← correct: bypasses stale dirty flag
+};
+```
+
+### Forbidden pattern
+
+```tsx
+// ❌ NEVER — shows spurious "Unsaved changes" dialog after save
+const handleSaveAndClose = async () => {
+  const ok = await handleSave();
+  if (ok) handleRequestClose();      // ← wrong
+  if (ok) closeTab(activeTab.id);    // ← wrong
+};
+
+// ❌ NEVER — markDirty hack doesn't work due to React 18 batching
+if (success) {
+  markDirty(activeTab.id, false);    // ← batched, doesn't update before closeTab reads state
+  closeTab(activeTab?.id ?? "");     // ← still sees old dirty=true
+}
+```
+
+### `{ force: true }` equivalence
+
+`forceCloseActiveTab()` is equivalent to `closeTab(activeTab.id, { force: true })`.
+You may also use the explicit form in special cases where the active tab is not the target.
+
+---
+
+## Rule 2 — Never nest `<Button>` inside `<DropdownMenuTrigger>`
+
+This ERP uses **Base UI** (`@base-ui/react/menu`), not Radix UI.
+`DropdownMenuTrigger` from `src/components/ui/dropdown-menu.tsx` renders its own `<button>` element and does NOT support `asChild`.
+
+Placing a `<Button>` component inside `<DropdownMenuTrigger>` creates a `<button><button>` nesting which is invalid HTML and causes a hydration error.
+
+### Correct pattern — style `DropdownMenuTrigger` directly
+
+```tsx
+<DropdownMenuTrigger className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground">
+  <span className="sr-only">Open menu</span>
+  <MoreHorizontal className="h-4 w-4" />
+</DropdownMenuTrigger>
+```
+
+### Forbidden patterns
+
+```tsx
+// ❌ NEVER — nested button, hydration error
+<DropdownMenuTrigger>
+  <Button variant="ghost" size="sm">
+    <MoreVertical className="h-4 w-4" />
+  </Button>
+</DropdownMenuTrigger>
+
+// ❌ NEVER — asChild does not exist on Base UI Menu.Trigger
+<DropdownMenuTrigger asChild>
+  <Button>...</Button>
+</DropdownMenuTrigger>
+```
+
+---
+
+## Rule 3 — `handleRequestClose` is for cancel/X only
+
+`handleRequestClose` (which calls `closeTab` without `force`) must only be used for cancel/close buttons where
+the dirty-state dialog should appear if the form has unsaved changes.
+
+```tsx
+// ✓ Cancel button — dirty dialog appears if form is dirty
+<Button variant="outline" onClick={handleRequestClose}>Cancel</Button>
+
+// ✓ X / close icon — dirty dialog appears if form is dirty
+<button onClick={handleRequestClose}><X /></button>
+```
+
+It must never be called from a save-success path.

@@ -27,7 +27,7 @@ type PaymentTermWorkspaceFormProps = {
 const FORM_ID = "payment-term-workspace-form";
 
 export function PaymentTermWorkspaceForm({ paymentTerm, mode }: PaymentTermWorkspaceFormProps) {
-  const { closeTab, activeTab, markDirty } = useWorkspace();
+  const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSection, setActiveSection] = useState("basic");
@@ -93,7 +93,7 @@ export function PaymentTermWorkspaceForm({ paymentTerm, mode }: PaymentTermWorks
 
   const handleSaveAndClose = async () => {
     const success = await handleSave();
-    if (success) handleRequestClose();
+    if (success) forceCloseActiveTab();
   };
 
   return (

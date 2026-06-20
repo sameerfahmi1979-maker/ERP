@@ -1,7 +1,8 @@
 /**
  * Email Server Actions
  * Phase 002E.3D - Export Menu Integration + Server Action
- * 
+ * Phase REPORT.5 - Report Email Delivery with delivery log
+ *
  * Server-only actions for sending emails via Microsoft Graph
  */
 
@@ -12,6 +13,7 @@ import { MicrosoftGraphProvider } from "@/lib/email/microsoft-graph-provider";
 import { parseEmailList, deduplicateRecipients, validateSendEmailInput } from "@/lib/email/email-validation";
 import { logAudit } from "./audit";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { SendEmailInput, SendEmailResult, EmailRecipient, EmailAttachment } from "@/lib/email/email-types";
 
 /**
@@ -273,4 +275,72 @@ export async function sendExportEmail(input: SendExportEmailInput): Promise<Send
       statusCode: 500,
     };
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// sendReportEmail — Report-specific email with delivery log
+// Phase REPORT.5
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type SendReportEmailInput = SendExportEmailInput & {
+  runId?: number;
+  attachmentFormat?: string;
+  attachmentFilename?: string;
+  attachmentSizeBytes?: number;
+};
+
+/**
+ * Send a report via email and log to erp_report_delivery_logs.
+ * Requires reports.email permission.
+ * Never sends sensitive data beyond the caller's permission level
+ * (redaction is already applied by the report runner before reaching here).
+ */
+export async function sendReportEmail(
+  input: SendReportEmailInput
+): Promise<SendEmailResult> {
+  const ctx = await getAuthContext();
+
+  if (!ctx.profile) {
+    return { success: false, provider: "microsoft_graph", error: "Authentication required.", statusCode: 401 };
+  }
+
+  if (!hasPermission(ctx, "reports.email")) {
+    return { success: false, provider: "microsoft_graph", error: "You do not have permission to email reports.", statusCode: 403 };
+  }
+
+  const result = await sendExportEmail({
+    to: input.to,
+    cc: input.cc,
+    bcc: input.bcc,
+    subject: input.subject,
+    body: input.body,
+    attachment: input.attachment,
+    // Use lowercase "reports" so sendExportEmail builds "reports.view" matching DB permissions.
+    context: { moduleCode: "reports", recordCount: input.context?.recordCount },
+  });
+
+  try {
+    const db = createAdminClient();
+    await db.from("erp_report_delivery_logs").insert({
+      run_id: input.runId ?? null,
+      delivery_type: "email",
+      recipient_to: input.to,
+      recipient_cc: input.cc ?? [],
+      subject: input.subject,
+      body_preview: input.body.substring(0, 200),
+      attachment_format: input.attachmentFormat ?? input.attachment.contentType,
+      attachment_filename: input.attachmentFilename ?? input.attachment.filename,
+      attachment_size_bytes: input.attachmentSizeBytes ?? input.attachment.sizeBytes,
+      provider: "microsoft_graph",
+      delivery_status: result.success ? "sent" : "failed",
+      success: result.success,
+      sent_at: result.success ? new Date().toISOString() : null,
+      error_message: result.success ? null : result.error,
+      created_by: ctx.profile.id,
+    });
+  } catch (logErr) {
+    console.error("[sendReportEmail] Failed to log delivery:", logErr);
+  }
+
+  return result;
 }

@@ -6,18 +6,30 @@ import { format } from "date-fns";
 import { useRouter } from "next/navigation";
 import { ERPDataTable } from "@/components/erp/table/erp-data-table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { MoreHorizontal, Pencil, UserPlus, Ban, Eye } from "lucide-react";
+import { MoreHorizontal, Pencil, UserPlus, Ban, Eye, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { UserWithRoles, Role, OwnerCompany, Branch } from "@/types/database";
 import { cn } from "@/lib/utils";
 import { AssignRoleDialog } from "./assign-role-dialog";
-import { adminUpdateUserProfile } from "@/server/actions/users";
+import { adminUpdateUserProfile, deleteUser } from "@/server/actions/users";
 import { toast } from "sonner";
 
 type UsersTableProps = {
@@ -44,6 +56,8 @@ export function UsersTable({
 }: UsersTableProps) {
   const router = useRouter();
   const [assigningRoleUser, setAssigningRoleUser] = useState<UserWithRoles | null>(null);
+  const [deletingUser, setDeletingUser] = useState<UserWithRoles | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleStatusChange = async (userId: number, newStatus: "active" | "inactive" | "suspended") => {
     const result = await adminUpdateUserProfile({ id: userId, status: newStatus });
@@ -51,6 +65,23 @@ export function UsersTable({
       toast.success(`User ${newStatus}`);
     } else {
       toast.error(result.error || "Failed to update status");
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deletingUser) return;
+    setIsDeleting(true);
+    try {
+      const result = await deleteUser(deletingUser.id);
+      if (result.success) {
+        toast.success(`User "${deletingUser.display_name ?? deletingUser.full_name ?? deletingUser.email}" deleted`);
+        setDeletingUser(null);
+        router.refresh();
+      } else {
+        toast.error(result.error || "Failed to delete user");
+      }
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -174,6 +205,14 @@ export function UsersTable({
                     Activate
                   </DropdownMenuItem>
                 )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => setDeletingUser(user)}
+                  className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-950/30"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete User
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -211,6 +250,44 @@ export function UsersTable({
           branches={branches}
         />
       )}
+
+      <AlertDialog
+        open={Boolean(deletingUser)}
+        onOpenChange={(open) => { if (!open && !isDeleting) setDeletingUser(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="h-5 w-5" />
+              Delete User
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to permanently delete{" "}
+              <span className="font-semibold text-foreground">
+                {deletingUser?.display_name ?? deletingUser?.full_name ?? deletingUser?.email ?? "this user"}
+              </span>
+              ?
+              <br />
+              <br />
+              This action <span className="font-semibold text-red-600">cannot be undone</span>. The
+              user account, profile, and all associated role assignments will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleDeleteConfirm();
+              }}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600 text-white"
+            >
+              {isDeleting ? "Deleting…" : "Delete User"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

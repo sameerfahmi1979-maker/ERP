@@ -20,6 +20,7 @@ import type {
   DmsEmbeddingOutput,
 } from "./types";
 import { OpenAiDmsAdapter } from "./openai-dms-adapter";
+import { AzureDocumentIntelligenceAdapter } from "./azure-document-intelligence-adapter";
 
 const CONFIG_PRIORITY = [
   "DEFAULT_DMS_CLASSIFIER",
@@ -104,7 +105,10 @@ function createDmsAdapter(config: AiProviderConfig): IDmsAiProvider {
   if (type === "openai" || type === "azure_openai") {
     return new OpenAiDmsAdapter(config);
   }
-  // Future: add Azure Document Intelligence, etc.
+  // DMS ARABIC FIX.1: Azure Document Intelligence — Arabic-optimized OCR
+  if (type === "azure_document_intelligence") {
+    return new AzureDocumentIntelligenceAdapter(config);
+  }
   return getNoopProvider();
 }
 
@@ -155,6 +159,49 @@ export async function getDmsAiProvider(): Promise<{
     return { provider: getNoopProvider(), configCode: null, configId: null };
   } catch {
     return { provider: getNoopProvider(), configCode: null, configId: null };
+  }
+}
+
+// ── Arabic OCR provider (DMS ARABIC FIX.1) ────────────────────────────────────
+
+const ARABIC_OCR_CONFIG_CODES = ["ARABIC_OCR_AZURE", "DEFAULT_ARABIC_OCR"] as const;
+
+/**
+ * Returns the Azure Document Intelligence provider if configured.
+ * Used for Arabic document OCR as a higher-accuracy alternative to GPT-4.1 vision.
+ * Falls back to null if not configured — caller falls back to GPT-4.1 vision.
+ */
+export async function getAzureDocumentIntelligenceProvider(): Promise<{
+  provider: AzureDocumentIntelligenceAdapter | null;
+  configCode: string | null;
+  configId: number | null;
+}> {
+  try {
+    const supabase = createAdminClient();
+    const { data, error } = await supabase
+      .from("erp_ai_provider_configs")
+      .select("*")
+      .in("config_code", ARABIC_OCR_CONFIG_CODES)
+      .eq("provider_type", "azure_document_intelligence")
+      .eq("is_active", true)
+      .eq("is_enabled", true)
+      .is("deleted_at", null)
+      .limit(1);
+
+    if (error || !data || data.length === 0) {
+      return { provider: null, configCode: null, configId: null };
+    }
+
+    const config = rowToConfig(data[0] as Record<string, unknown>);
+    const adapter = new AzureDocumentIntelligenceAdapter(config);
+
+    if (!adapter.isConfigured()) {
+      return { provider: null, configCode: null, configId: null };
+    }
+
+    return { provider: adapter, configCode: config.configCode, configId: config.id };
+  } catch {
+    return { provider: null, configCode: null, configId: null };
   }
 }
 

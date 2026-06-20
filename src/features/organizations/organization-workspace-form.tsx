@@ -16,7 +16,7 @@ import { CitySelect } from "@/components/erp/geography/city-select";
 import { AreaZoneSelect } from "@/components/erp/geography/area-zone-select";
 import { CurrencySelect } from "@/components/erp/finance-basics/currency-select";
 import { createClient } from "@/lib/supabase/client";
-import { Building2, MapPin, ShieldCheck, FileCode2, ScrollText, Briefcase, Files, PlusCircle, Pencil, Trash2 } from "lucide-react";
+import { Building2, MapPin, ShieldCheck, FileCode2, ScrollText, Briefcase, Files, PlusCircle, Pencil, Trash2, Brain } from "lucide-react";
 import type { AuthContext } from "@/lib/rbac/check";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
@@ -30,6 +30,10 @@ import { Badge } from "@/components/ui/badge";
 import { queryKeys } from "@/lib/query/query-keys";
 import { listCompanySignatories, createCompanySignatory, updateCompanySignatory, softDeleteCompanySignatory } from "@/server/actions/common-master-data/owner-company-signatories";
 import { DmsEntityDocumentsTab } from "@/features/dms/entity-documents";
+import { AiFieldSuggestionsPanel } from "@/features/ai/common/field-suggestions";
+import { DuplicateCandidateAlert } from "@/features/ai/common/duplicate-detection";
+import { ComplianceFindingAlert } from "@/features/ai/common/compliance-checker";
+import { RiskScoreAlert } from "@/features/ai/common/risk-scoring";
 
 type OrganizationWorkspaceFormProps = {
   organization?: OwnerCompany | null;
@@ -40,7 +44,7 @@ type OrganizationWorkspaceFormProps = {
 const FORM_ID = "organization-workspace-form";
 
 export function OrganizationWorkspaceForm({ organization, mode }: OrganizationWorkspaceFormProps) {
-  const { closeTab, activeTab, markDirty } = useWorkspace();
+  const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSection, setActiveSection] = useState("basic");
@@ -69,7 +73,7 @@ export function OrganizationWorkspaceForm({ organization, mode }: OrganizationWo
     if (activeTab?.id) markDirty(activeTab.id, isDirty);
   }, [isDirty, activeTab?.id, markDirty]);
 
-  // â”€â”€ Draft preservation (UI.4E.2) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Draft preservation (UI.4E.2) ──────────────────────────────────────────
   const { getDraftDefault, syncDraft, writeDraftField, clearDraft } = useWorkspaceFormDraft({
     formId: FORM_ID,
     enabled: !isViewing,
@@ -130,6 +134,7 @@ export function OrganizationWorkspaceForm({ organization, mode }: OrganizationWo
     { id: "notes", label: "Internal Notes", icon: ScrollText },
     { id: "signatories", label: "Signatories", icon: Pencil },
     { id: "documents", label: "Documents", icon: Files },
+    { id: "ai_review", label: "AI Review & Update", icon: Brain },
   ];
 
   const companyId = organization?.id ?? 0;
@@ -237,7 +242,7 @@ export function OrganizationWorkspaceForm({ organization, mode }: OrganizationWo
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = isEditing && organization ? await updateOrganization({ ...data, id: organization.id } as any) : await createOrganization({ ...data, company_code: formData.get("company_code") as string });
-      if (result.success) { toast.success(isEditing ? "Organization updated" : "Organization created"); clearDraft(); resetDirty(); return true; }
+      if (result.success) { toast.success(isEditing ? "Organization updated" : "Organization created"); clearDraft(); resetDirty(); if (activeTab?.id) markDirty(activeTab.id, false); return true; }
       else { toast.error(result.error ?? "Failed to save organization"); return false; }
     } catch { toast.error("An unexpected error occurred"); return false; }
     finally { setIsSubmitting(false); }
@@ -245,7 +250,7 @@ export function OrganizationWorkspaceForm({ organization, mode }: OrganizationWo
 
   const handleSaveAndClose = async () => {
     const success = await handleSave();
-    if (success) handleRequestClose();
+    if (success) forceCloseActiveTab();
   };
 
   const disabled = isViewing;
@@ -266,6 +271,13 @@ export function OrganizationWorkspaceForm({ organization, mode }: OrganizationWo
       isSubmitting={isSubmitting}
     >
       <form id={FORM_ID} onSubmit={(e) => { e.preventDefault(); handleSaveAndClose(); }} onInput={syncDraft} onChange={syncDraft}>
+        {companyId > 0 ? (
+          <>
+            <DuplicateCandidateAlert entityType="company" entityId={companyId} />
+            <ComplianceFindingAlert entityType="company" entityId={companyId} />
+            <RiskScoreAlert entityType="company" entityId={companyId} />
+          </>
+        ) : null}
         <ERPRecordSectionPanel id="basic" activeId={activeSection} title="Basic Identification">
           <div className="grid grid-cols-12 gap-4">
             <div className="col-span-6 space-y-1.5">
@@ -489,7 +501,7 @@ export function OrganizationWorkspaceForm({ organization, mode }: OrganizationWo
         </ERPRecordSectionPanel>
       </form>
 
-      {/* Signatories — child records, managed independently of main form */}
+      {/* Signatories � child records, managed independently of main form */}
       <ERPRecordSectionPanel id="signatories" activeId={activeSection} title="Authorized Signatories">
         {!companyId ? (
           <p className="text-sm text-muted-foreground">Save the organization first to manage signatories.</p>
@@ -566,7 +578,7 @@ export function OrganizationWorkspaceForm({ organization, mode }: OrganizationWo
         )}
       </ERPRecordSectionPanel>
 
-      {/* DMS Documents tab — entityType: company */}
+      {/* DMS Documents tab � entityType: company */}
       <ERPRecordSectionPanel id="documents" activeId={activeSection} title="Documents">
         {!companyId ? (
           <p className="text-sm text-muted-foreground">Save the organization first to manage documents.</p>
@@ -579,6 +591,21 @@ export function OrganizationWorkspaceForm({ organization, mode }: OrganizationWo
             canLinkExisting={!disabled}
             canUnlink={!disabled}
             showComplianceCards
+          />
+        )}
+      </ERPRecordSectionPanel>
+
+      {/* AI Review & Update � Stage 1 pilot (COMMON AI.1F) */}
+      <ERPRecordSectionPanel id="ai_review" activeId={activeSection} title="AI Review & Update">
+        {!companyId ? (
+          <p className="text-sm text-muted-foreground">Save the organization first to use AI suggestions.</p>
+        ) : (
+          <AiFieldSuggestionsPanel
+            entityType="company"
+            entityId={companyId}
+            entityLabel={(organization as Record<string, unknown>)?.trade_name as string | undefined ?? organization?.legal_name_en ?? "Organization"}
+            canGenerate={!disabled}
+            canApply={!disabled}
           />
         )}
       </ERPRecordSectionPanel>

@@ -30,13 +30,15 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/login") ||
     pathname.startsWith("/signup") ||
     pathname.startsWith("/forgot-password") ||
-    pathname.startsWith("/reset-password");
+    pathname.startsWith("/reset-password") ||
+    pathname.startsWith("/auth/confirm");
 
   const isProtected =
-    pathname.startsWith("/dashboard") ||
+    !pathname.startsWith("/auth/") &&
+    (pathname.startsWith("/dashboard") ||
     pathname.startsWith("/admin") ||
     pathname.startsWith("/settings") ||
-    pathname.startsWith("/profile");
+    pathname.startsWith("/profile"));
 
   // Try to get user session
   let user = null;

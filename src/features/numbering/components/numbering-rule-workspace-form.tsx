@@ -37,7 +37,7 @@ type NumberingRuleWorkspaceFormProps = {
 const FORM_ID = "numbering-rule-workspace-form";
 
 export function NumberingRuleWorkspaceForm({ rule, mode }: NumberingRuleWorkspaceFormProps) {
-  const { closeTab, activeTab, markDirty } = useWorkspace();
+  const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSection, setActiveSection] = useState("basic");
@@ -120,7 +120,7 @@ export function NumberingRuleWorkspaceForm({ rule, mode }: NumberingRuleWorkspac
       };
 
       const result = isEditing && rule ? await updateNumberingRule({ id: rule.id, ...data }) : await createNumberingRule(data);
-      if (result.success) { toast.success(`Numbering rule ${isEditing ? "updated" : "created"} successfully`); clearDraft(); resetDirty(); return true; }
+      if (result.success) { toast.success(`Numbering rule ${isEditing ? "updated" : "created"} successfully`); clearDraft(); resetDirty(); if (activeTab?.id) markDirty(activeTab.id, false); return true; }
       else { toast.error(result.error ?? "Failed to save numbering rule"); return false; }
     } catch { toast.error("An unexpected error occurred"); return false; }
     finally { setIsSubmitting(false); }
@@ -128,7 +128,7 @@ export function NumberingRuleWorkspaceForm({ rule, mode }: NumberingRuleWorkspac
 
   const handleSaveAndClose = async () => {
     const success = await handleSave();
-    if (success) handleRequestClose();
+    if (success) forceCloseActiveTab();
   };
 
   return (

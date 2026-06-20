@@ -2,6 +2,21 @@
 
 This folder contains all implementation reports, planning documents, and phase documentation organized by phase and sub-phase.
 
+> **Reorganized 2026-06-16:** Phase folders are grouped under category parent folders. If a path breaks, see [`FILE_INDEX.md`](./FILE_INDEX.md).
+
+### Category Folders (Top Level)
+
+| Folder | Contents |
+|---|---|
+| [`DMS_Phases/`](./DMS_Phases/) | All DMS phases (DMS.1–DMS.15, OCR-AI FIX, 12.x sub-phases) |
+| [`Party_Master_Phases/`](./Party_Master_Phases/) | Party Master 002F.5A database, UI, views, hotfixes |
+| [`Foundation_Phases/`](./Foundation_Phases/) | Phase 001–002F base ERP, master data, customers, future 003–005 |
+| [`Global_Phases/`](./Global_Phases/) | GLOBAL UI.2–4G workspace architecture + CLEANUP |
+| [`Platform_Phases/`](./Platform_Phases/) | Settings, Notifications, COMMON MD, Admin, Bank Master |
+| [`AI_Phases/`](./AI_Phases/) | AI roadmap planning |
+| [`Meta/`](./Meta/) | Trackers, guides, reorganization reports |
+| [`screenshots/`](./screenshots/) | Visual validation screenshots |
+
 ---
 
 ## Naming Convention
@@ -313,7 +328,8 @@ All implementations follow:
 
 ---
 
-**Last Updated**: Wednesday, June 10, 2026, 1:47 PM UTC+4  
-**Maintained By**: Cursor Agent (Claude Sonnet 4.5)  
-**Total Phases Completed**: 30+ phases and sub-phases  
-**Total Active Phases**: 1 (Phase 002F.3E.3B.2C pending user verification)
+**Last Updated**: Tuesday, June 16, 2026  
+**Maintained By**: Cursor Agent  
+**Category folders**: 7 (+ screenshots)  
+**Total phase subfolders**: 124  
+**Root files**: `README.md`, `FILE_INDEX.md`

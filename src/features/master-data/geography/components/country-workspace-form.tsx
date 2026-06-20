@@ -26,7 +26,7 @@ type CountryWorkspaceFormProps = {
 const FORM_ID = "country-workspace-form";
 
 export function CountryWorkspaceForm({ country, mode }: CountryWorkspaceFormProps) {
-  const { closeTab, activeTab, markDirty } = useWorkspace();
+  const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSection, setActiveSection] = useState("basic");
@@ -98,7 +98,7 @@ export function CountryWorkspaceForm({ country, mode }: CountryWorkspaceFormProp
 
   const handleSaveAndClose = async () => {
     const success = await handleSave();
-    if (success) handleRequestClose();
+    if (success) forceCloseActiveTab();
   };
 
   return (

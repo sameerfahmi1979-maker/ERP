@@ -26,6 +26,7 @@ import {
   Brain,
   Compass,
   FileText,
+  Sparkles,
 } from "lucide-react";
 import { ERPRecordWorkspaceForm, ERPRecordSectionPanel } from "@/components/workspace/erp-record-workspace-form";
 import { useFormDirty } from "@/hooks/use-form-dirty";
@@ -54,6 +55,7 @@ import { DmsDocumentCommentsSection } from "./sections/dms-document-comments-sec
 import { DmsDocumentAuditSection } from "./sections/dms-document-audit-section";
 import { DmsDocumentOcrSection } from "./sections/dms-document-ocr-section";
 import { DmsDocumentAiSection } from "./sections/dms-document-ai-section";
+import { DmsDocumentUnderstandingSection } from "./sections/dms-document-understanding-section";
 import { DmsDocumentContentSection } from "./sections/dms-document-content-section";
 import { DmsDocumentAiSummarySection } from "./sections/dms-document-ai-summary-section";
 import { DmsDocumentIntelligenceSection } from "./sections/dms-document-intelligence-section";
@@ -196,6 +198,7 @@ function DmsDocumentRecordFormInner({
       { id: "semantic", label: "Semantic", icon: <Compass className="h-3.5 w-3.5" />, disabled: childLocked },
       { id: "ask-ai", label: "Ask AI", icon: <Brain className="h-3.5 w-3.5" />, disabled: childLocked },
       { id: "ai", label: "AI Analysis", icon: <Brain className="h-3.5 w-3.5" />, disabled: childLocked },
+      { id: "understanding", label: "Understanding", icon: <Sparkles className="h-3.5 w-3.5" />, disabled: childLocked },
       { id: "approvals", label: "Approvals", icon: <ShieldCheck className="h-3.5 w-3.5" />, disabled: childLocked },
       { id: "comments", label: "Comments", icon: <MessageSquare className="h-3.5 w-3.5" />, disabled: childLocked },
       { id: "audit", label: "Audit", icon: <Activity className="h-3.5 w-3.5" />, disabled: childLocked },
@@ -590,6 +593,11 @@ function DmsDocumentRecordFormInner({
               Save the document first to use AI analysis.
             </div>
           )}
+        </ERPRecordSectionPanel>
+
+        {/* ── Understanding (COMMON AI.2) ── */}
+        <ERPRecordSectionPanel id="understanding" activeId={activeSection} lazyMount>
+          <DmsDocumentUnderstandingSection documentId={effectiveDocId ?? null} />
         </ERPRecordSectionPanel>
 
         {/* ── Expiry ── */}

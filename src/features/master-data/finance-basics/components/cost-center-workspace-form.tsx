@@ -30,7 +30,7 @@ type CostCenterWorkspaceFormProps = {
 const FORM_ID = "cost-center-workspace-form";
 
 export function CostCenterWorkspaceForm({ costCenter, mode }: CostCenterWorkspaceFormProps) {
-  const { closeTab, activeTab, markDirty } = useWorkspace();
+  const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSection, setActiveSection] = useState("basic");
@@ -112,7 +112,7 @@ export function CostCenterWorkspaceForm({ costCenter, mode }: CostCenterWorkspac
 
   const handleSaveAndClose = async () => {
     const success = await handleSave();
-    if (success) handleRequestClose();
+    if (success) forceCloseActiveTab();
   };
 
   return (

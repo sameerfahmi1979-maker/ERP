@@ -33,6 +33,7 @@ import {
   getIntakeSessionSignedUrl,
 } from "@/server/actions/dms/ai-intake";
 import { finalizeDraftIntake, discardDraftIntake } from "@/server/actions/dms/batch-intake";
+import { DmsOrchestrationProgressCard } from "@/features/dms/orchestration";
 
 // ── Format file size ──────────────────────────────────────────────────────────
 
@@ -358,6 +359,17 @@ export function DmsAiIntakePageClient({ session: initialSession }: DmsAiIntakePa
               Create Manually
             </Button>
           </div>
+        </div>
+      )}
+
+      {/* ── AI Orchestration Progress Card (ORCH.1) ───────────────────────────── */}
+      {isReady && session.document_id && (
+        <div className="mt-4">
+          <DmsOrchestrationProgressCard
+            sessionCode={session.session_code}
+            documentId={session.document_id}
+            autoTrigger
+          />
         </div>
       )}
 

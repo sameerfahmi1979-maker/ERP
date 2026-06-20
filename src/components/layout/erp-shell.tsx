@@ -17,7 +17,12 @@ export function ErpShell({ children, displayName, email }: ErpShellProps) {
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background">
-      <AppSidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />
+      <AppSidebar
+          collapsed={sidebarCollapsed}
+          onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+          displayName={displayName}
+          email={email}
+        />
       <div className="flex flex-1 flex-col overflow-hidden">
         <AppHeader displayName={displayName} email={email} />
         <WorkspaceTabBar />

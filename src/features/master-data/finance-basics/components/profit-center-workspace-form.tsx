@@ -30,7 +30,7 @@ type ProfitCenterWorkspaceFormProps = {
 const FORM_ID = "profit-center-workspace-form";
 
 export function ProfitCenterWorkspaceForm({ profitCenter, mode }: ProfitCenterWorkspaceFormProps) {
-  const { closeTab, activeTab, markDirty } = useWorkspace();
+  const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSection, setActiveSection] = useState("basic");
@@ -112,7 +112,7 @@ export function ProfitCenterWorkspaceForm({ profitCenter, mode }: ProfitCenterWo
 
   const handleSaveAndClose = async () => {
     const success = await handleSave();
-    if (success) handleRequestClose();
+    if (success) forceCloseActiveTab();
   };
 
   return (

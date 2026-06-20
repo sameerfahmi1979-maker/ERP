@@ -27,7 +27,7 @@ type UomCategoryWorkspaceFormProps = {
 const FORM_ID = "uom-category-workspace-form";
 
 export function UomCategoryWorkspaceForm({ category, mode, onSuccess }: UomCategoryWorkspaceFormProps) {
-  const { closeTab, activeTab, markDirty } = useWorkspace();
+  const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSection, setActiveSection] = useState("basic");
@@ -88,7 +88,7 @@ export function UomCategoryWorkspaceForm({ category, mode, onSuccess }: UomCateg
 
   const handleSaveAndClose = async () => {
     const success = await handleSave();
-    if (success) handleRequestClose();
+    if (success) forceCloseActiveTab();
   };
 
   return (

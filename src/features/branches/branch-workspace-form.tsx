@@ -35,7 +35,7 @@ type BranchWorkspaceFormProps = {
 const FORM_ID = "branch-workspace-form";
 
 export function BranchWorkspaceForm({ branch, companies = [], mode }: BranchWorkspaceFormProps) {
-  const { closeTab, activeTab, markDirty } = useWorkspace();
+  const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSection, setActiveSection] = useState("basic");
@@ -53,7 +53,7 @@ export function BranchWorkspaceForm({ branch, companies = [], mode }: BranchWork
     if (activeTab?.id) markDirty(activeTab.id, isDirty);
   }, [isDirty, activeTab?.id, markDirty]);
 
-  // â”€â”€ Draft preservation (UI.4E.2) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Draft preservation (UI.4E.2) ──────────────────────────────────────────
   const { getDraftDefault, syncDraft, writeDraftField, clearDraft } = useWorkspaceFormDraft({
     formId: FORM_ID,
     enabled: !isViewing,
@@ -165,7 +165,7 @@ export function BranchWorkspaceForm({ branch, companies = [], mode }: BranchWork
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = isEditing && branch ? await updateBranch({ ...data, id: branch.id } as any) : await createBranch({ ...data, branch_code: formData.get("branch_code") as string });
-      if (result.success) { toast.success(isEditing ? "Branch updated" : "Branch created"); clearDraft(); resetDirty(); return true; }
+      if (result.success) { toast.success(isEditing ? "Branch updated" : "Branch created"); clearDraft(); resetDirty(); if (activeTab?.id) markDirty(activeTab.id, false); return true; }
       else { toast.error(result.error ?? "Failed to save branch"); return false; }
     } catch { toast.error("An unexpected error occurred"); return false; }
     finally { setIsSubmitting(false); }
@@ -173,7 +173,7 @@ export function BranchWorkspaceForm({ branch, companies = [], mode }: BranchWork
 
   const handleSaveAndClose = async () => {
     const success = await handleSave();
-    if (success) handleRequestClose();
+    if (success) forceCloseActiveTab();
   };
 
   return (
@@ -373,7 +373,7 @@ export function BranchWorkspaceForm({ branch, companies = [], mode }: BranchWork
         </ERPRecordSectionPanel>
       </form>
 
-      {/* DMS Documents tab — entityType: branch */}
+      {/* DMS Documents tab � entityType: branch */}
       <ERPRecordSectionPanel id="documents" activeId={activeSection} title="Documents">
         {!branch?.id ? (
           <p className="text-sm text-muted-foreground">Save the branch first to manage documents.</p>

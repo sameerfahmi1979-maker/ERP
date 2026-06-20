@@ -28,7 +28,7 @@ type TaxTypeWorkspaceFormProps = {
 const FORM_ID = "tax-type-workspace-form";
 
 export function TaxTypeWorkspaceForm({ taxType, mode }: TaxTypeWorkspaceFormProps) {
-  const { closeTab, activeTab, markDirty } = useWorkspace();
+  const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSection, setActiveSection] = useState("basic");
@@ -91,7 +91,7 @@ export function TaxTypeWorkspaceForm({ taxType, mode }: TaxTypeWorkspaceFormProp
       }
       if (result.success) {
         toast.success(`Tax type ${isEditing ? "updated" : "created"} successfully`);
-        clearDraft(); resetDirty();
+        clearDraft(); resetDirty(); if (activeTab?.id) markDirty(activeTab.id, false);
         invalidateTaxTypes(queryClient);
         return true;
       } else {
@@ -108,7 +108,7 @@ export function TaxTypeWorkspaceForm({ taxType, mode }: TaxTypeWorkspaceFormProp
 
   const handleSaveAndClose = async () => {
     const success = await handleSave();
-    if (success) handleRequestClose();
+    if (success) forceCloseActiveTab();
   };
 
   return (

@@ -1,0 +1,203 @@
+/**
+ * HR.12 — HR AI Integration
+ * HR AI Output Types and Zod Schemas
+ *
+ * All HR AI actions return structured output matching these types.
+ * Schemas are used to validate AI responses before displaying to user.
+ * Human review is required before any data is copied/applied.
+ */
+
+import { z } from "zod";
+
+// ── Feature flag codes ────────────────────────────────────────────────────────
+
+export const HR_AI_FEATURE_FLAGS = {
+  EMPLOYEE_ASSIST: "ERP_AI_HR_EMPLOYEE_ASSIST",
+  FILL:            "ERP_AI_HR_FILL",
+  CORRECTIONS:     "ERP_AI_HR_CORRECTIONS",
+  DUPLICATES:      "ERP_AI_HR_DUPLICATES",
+  SEARCH_ASSIST:   "ERP_AI_HR_SEARCH_ASSIST",
+  COMPLIANCE_EXPLAIN: "ERP_AI_HR_COMPLIANCE_EXPLAIN",
+  READINESS_EXPLAIN:  "ERP_AI_HR_READINESS_EXPLAIN",
+  LETTER_DRAFT:    "ERP_AI_HR_LETTER_DRAFT",
+  EMAIL_DRAFT:     "ERP_AI_HR_EMAIL_DRAFT",
+} as const;
+
+export type HrAiFeatureFlagCode = (typeof HR_AI_FEATURE_FLAGS)[keyof typeof HR_AI_FEATURE_FLAGS];
+
+// ── Common result wrapper ──────────────────────────────────────────────────────
+
+export type HrAiActionResult<T> =
+  | { success: true; data: T; featureDisabled?: false }
+  | { success: false; error: string; featureDisabled?: boolean };
+
+// ── 1. HR AI Field Suggestion (Fill from Documents) ────────────────────────────
+
+export const HrAiFieldSuggestionSchema = z.object({
+  fieldName:       z.string().min(1).max(100),
+  fieldLabel:      z.string().min(1).max(200),
+  currentValue:    z.string().nullable(),
+  suggestedValue:  z.string().max(1000),
+  confidence:      z.number().min(0).max(1),
+  sourceDocumentId: z.number().nullable().optional(),
+  sourceDocumentName: z.string().nullable().optional(),
+  reason:          z.string().max(500),
+  isConflict:      z.boolean(),
+  requiresReview:  z.boolean(),
+});
+
+export const HrAiDocumentFillOutputSchema = z.object({
+  suggestions: z.array(HrAiFieldSuggestionSchema).max(30),
+  documentsReviewed: z.number().int().min(0),
+  warning: z.string().nullable().optional(),
+});
+
+export type HrAiFieldSuggestion = z.infer<typeof HrAiFieldSuggestionSchema>;
+export type HrAiDocumentFillOutput = z.infer<typeof HrAiDocumentFillOutputSchema>;
+
+// ── 2. HR AI Correction Suggestion ────────────────────────────────────────────
+
+export const HrAiCorrectionSuggestionSchema = z.object({
+  severity:   z.enum(["critical", "high", "medium", "low", "info"]),
+  category:   z.string().max(100),
+  fieldOrTable: z.string().max(200),
+  currentValue: z.string().nullable().optional(),
+  recommendedAction: z.string().max(500),
+  reason:     z.string().max(500),
+  source:     z.string().max(200).optional(),
+  isApplyable: z.boolean(),
+});
+
+export const HrAiCorrectionOutputSchema = z.object({
+  suggestions: z.array(HrAiCorrectionSuggestionSchema).max(25),
+  overallHealthScore: z.number().min(0).max(100).nullable().optional(),
+  summary: z.string().max(600),
+});
+
+export type HrAiCorrectionSuggestion = z.infer<typeof HrAiCorrectionSuggestionSchema>;
+export type HrAiCorrectionOutput = z.infer<typeof HrAiCorrectionOutputSchema>;
+
+// ── 3. HR AI Duplicate Suggestion ─────────────────────────────────────────────
+
+export const HrAiDuplicateSuggestionSchema = z.object({
+  possibleDuplicateType: z.enum(["exact_match", "fuzzy_name", "same_id_doc", "candidate_link"]),
+  recordAType: z.string(),
+  recordAId:   z.number().int(),
+  recordALabel: z.string().max(200),
+  recordBType: z.string(),
+  recordBId:   z.number().int(),
+  recordBLabel: z.string().max(200),
+  matchedFields: z.array(z.string()),
+  confidence:  z.number().min(0).max(1),
+  reason:      z.string().max(500),
+  recommendedAction: z.string().max(300),
+});
+
+export const HrAiDuplicateOutputSchema = z.object({
+  duplicates: z.array(HrAiDuplicateSuggestionSchema).max(10),
+  checksPerformed: z.array(z.string()),
+  summary: z.string().max(500),
+});
+
+export type HrAiDuplicateSuggestion = z.infer<typeof HrAiDuplicateSuggestionSchema>;
+export type HrAiDuplicateOutput = z.infer<typeof HrAiDuplicateOutputSchema>;
+
+// ── 4. HR AI Search Suggestion ────────────────────────────────────────────────
+
+export const HrAiSearchSuggestionSchema = z.object({
+  interpretedIntent: z.string().max(400),
+  proposedFilters: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])),
+  targetArea: z.enum(["employees", "candidates", "compliance", "time", "payroll", "operations", "actions", "onboarding"]),
+  targetReportCode: z.string().nullable().optional(),
+  warning: z.string().nullable().optional(),
+  confidence: z.number().min(0).max(1),
+});
+
+export type HrAiSearchSuggestion = z.infer<typeof HrAiSearchSuggestionSchema>;
+
+// ── 5. HR AI Compliance Explanation ───────────────────────────────────────────
+
+export const HrAiComplianceExplanationSchema = z.object({
+  summary: z.string().max(800),
+  blockingItems: z.array(z.object({
+    item: z.string().max(300),
+    reason: z.string().max(300),
+    priority: z.enum(["critical", "high", "medium"]),
+  })).max(15),
+  warningItems: z.array(z.object({
+    item: z.string().max(300),
+    reason: z.string().max(300),
+  })).max(15),
+  recommendedNextSteps: z.array(z.string().max(300)).max(8),
+  overallComplianceLevel: z.enum(["compliant", "partial", "non_compliant", "unknown"]),
+});
+
+export type HrAiComplianceExplanation = z.infer<typeof HrAiComplianceExplanationSchema>;
+
+// ── 6. HR AI Readiness Explanation ────────────────────────────────────────────
+
+export const HrAiReadinessExplanationSchema = z.object({
+  overallStatus: z.enum(["ready", "not_ready", "blocked", "expired", "needs_review", "unknown"]),
+  summary: z.string().max(800),
+  blockingItems: z.array(z.object({
+    item: z.string().max(300),
+    reason: z.string().max(300),
+    priority: z.enum(["critical", "high", "medium"]),
+  })).max(15),
+  recommendedNextSteps: z.array(z.string().max(300)).max(8),
+  estimatedClearanceSteps: z.number().int().min(0).max(20).nullable().optional(),
+});
+
+export type HrAiReadinessExplanation = z.infer<typeof HrAiReadinessExplanationSchema>;
+
+// ── 7. HR AI Draft Output (Letters / Emails) ──────────────────────────────────
+
+export const HrAiDraftOutputSchema = z.object({
+  draftType: z.enum([
+    "noc", "salary_certificate", "experience_letter",
+    "warning_letter", "hr_email", "offer_followup",
+    "missing_document_reminder", "general",
+  ]),
+  subject:        z.string().max(300).nullable().optional(),
+  draftText:      z.string().max(4000),
+  sourceContextUsed: z.array(z.string().max(200)).max(10),
+  warning:        z.string().max(400).nullable().optional(),
+  requiresPayrollView: z.boolean(),
+  requiresActionsView: z.boolean(),
+  isOfficialReady: z.boolean(),
+});
+
+export type HrAiDraftOutput = z.infer<typeof HrAiDraftOutputSchema>;
+
+// ── 8. HR AI Activity Record ──────────────────────────────────────────────────
+
+export interface HrAiActivityRecord {
+  id: number;
+  featureCode: string;
+  entityType: string;
+  entityId: number | null;
+  inputContextType: string;
+  redactionProfile: string;
+  sensitiveDataIncluded: boolean;
+  outputType: string;
+  status: string;
+  durationMs: number | null;
+  createdAt: string;
+  createdBy: number | null;
+  model: string | null;
+  promptTokens: number | null;
+  completionTokens: number | null;
+}
+
+// ── Draft type labels ─────────────────────────────────────────────────────────
+
+export const HR_LETTER_TYPES = [
+  { value: "noc", label: "NOC (No Objection Certificate)" },
+  { value: "salary_certificate", label: "Salary Certificate" },
+  { value: "experience_letter", label: "Experience Letter" },
+  { value: "warning_letter", label: "Warning Letter" },
+  { value: "hr_email", label: "HR Email" },
+  { value: "offer_followup", label: "Offer Follow-up" },
+  { value: "missing_document_reminder", label: "Missing Document Reminder" },
+  { value: "general", label: "General HR Draft" },
+] as const;

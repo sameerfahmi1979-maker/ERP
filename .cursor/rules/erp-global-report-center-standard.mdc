@@ -1,0 +1,141 @@
+# ERP Global Report Center Standard
+
+## Phase
+
+```
+REPORT.2 — Global Report Engine + Registry + Security Foundation (2026-06-19)
+```
+
+---
+
+## Rules
+
+### 1. All ERP reports must use the global Report Center engine.
+
+```typescript
+// ✅ Correct — use the global runner
+import { runReportAction } from "@/server/actions/reports/runner";
+
+// ❌ Never — custom per-module export bypassing the registry
+export async function exportToExcel() { /* raw db query + xlsx */ }
+```
+
+Every report goes through:
+```
+src/lib/report-center/report-runner.ts → runReport()
+src/server/actions/reports/runner.ts   → runReportAction()
+```
+
+### 2. No hardcoded company names, logos, or colors in report output code.
+
+```typescript
+// ❌ Never
+const companyName = "Alliance Gulf Transport";
+const logoUrl = "/logos/algt.png";
+const primaryColor = "#1e3a5f"; // ALGT blue
+
+// ✅ Correct — resolve from branding profile
+const branding = await resolveReportBranding({ ownerCompanyIds, registryEntry });
+const companyName = branding.resolvedBrandingProfile?.legal_name_en;
+```
+
+### 3. Report engine supports unlimited future companies through configuration.
+
+- Branding profiles are seeded dynamically from `owner_companies`.
+- New companies get `COMPANY_{id}_DEFAULT` profile automatically.
+- Adding a new company = insert into `owner_companies` + run seeding logic.
+
+### 4. Branding resolves from owner_company_id or selected template.
+
+```typescript
+// Resolver precedence (branding-resolver.ts):
+// 1. Explicit templateId provided → use that template
+// 2. Single owner company → load COMPANY_{id}_DEFAULT profile
+// 3. Multiple companies → requiresManualTemplateSelection = true
+// 4. No company → NEUTRAL_DEFAULT fallback
+```
+
+### 5. Mixed-company reports require template selection.
+
+If `ownerCompanyIds.length > 1`, the runner returns:
+```typescript
+{ requiresManualTemplateSelection: true }
+```
+The UI must stop and ask the user to select a template. This is not optional.
+
+### 6. All report center tables use BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY.
+
+```sql
+-- ✅ Correct
+id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY
+
+-- ❌ Never
+id BIGSERIAL PRIMARY KEY
+id SERIAL PRIMARY KEY
+id UUID DEFAULT gen_random_uuid() PRIMARY KEY
+```
+
+### 7. UUID, SERIAL, and BIGSERIAL are not allowed.
+
+Report center tables: `erp_report_branding_profiles`, `erp_report_templates`,
+`erp_report_registry`, `erp_report_runs`, `erp_report_delivery_logs`.
+
+All new child tables of the report center must also use `BIGINT GENERATED ALWAYS AS IDENTITY`.
+
+### 8. Sensitive data is redacted server-side before output.
+
+```typescript
+// ✅ Correct — apply redaction before returning to client
+const { sanitizedData, summary } = applyRedaction(rawData, {
+  profile: registryEntry.sensitive_profile,
+  permissionCodes: callerPermissionCodes,
+});
+
+// ❌ Never — pass raw payroll/medical data directly to PDF adapter
+pdfAdapter.render(rawQueryRows);
+```
+
+Double-layer approach:
+1. Fetcher respects permissions in the query
+2. `applyRedaction()` strips remaining sensitive fields
+
+### 9. Report run history stores metadata only, never raw report data.
+
+```typescript
+// ✅ Correct — erp_report_runs stores run metadata
+{ run_by, row_count, redaction_summary_json, duration_ms }
+
+// ❌ Never — do not store report rows in erp_report_runs
+{ rows: rawQueryResults }
+```
+
+### 10. HR.11 is a consumer of the engine, not a separate reporting system.
+
+HR.11 adds fetchers to `REPORT_FETCHERS`. It does NOT build a parallel runner.
+
+```typescript
+// ✅ Correct — HR.11 adds to the dispatch map
+export const REPORT_FETCHERS: Record<string, ReportFetcher> = {
+  ...existingFetchers,
+  HR_EMPLOYEE_LIST: hrEmployeeListFetcher,
+};
+
+// ❌ Never — separate HR export system
+export async function exportHrEmployeeList() { /* standalone */ }
+```
+
+---
+
+## Reference Files
+
+```
+src/lib/report-center/types.ts
+src/lib/report-center/constants.ts
+src/lib/report-center/branding-resolver.ts
+src/lib/report-center/redaction-engine.ts
+src/lib/report-center/report-runner.ts
+src/lib/report-center/report-fetchers.ts
+src/server/actions/reports/registry.ts
+src/server/actions/reports/runner.ts
+docs/standards/ERP_GLOBAL_REPORT_CENTER_STANDARD.md
+```

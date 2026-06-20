@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
@@ -10,6 +11,11 @@ import {
   isValidDmsEntityType,
   getDmsEntityTypeLabel,
 } from "@/lib/dms/dms-entity-types";
+import {
+  countMissingRequiredDocuments,
+  loadLinkedDocuments,
+  loadRulesForEntityType,
+} from "@/lib/ai/common/compliance-checker";
 
 export type ActionResult<T = unknown> = {
   success: boolean;
@@ -52,6 +58,7 @@ export type DmsEntityDocumentComplianceSummary = {
   expiredDocuments: number;
   expiringSoonDocuments: number;
   missingRequiredDocuments: number;
+  openComplianceFindings: number;
   highRiskDocuments: number;
   criticalRiskDocuments: number;
   latestExpiryDate: string | null;
@@ -330,6 +337,7 @@ export async function getDmsEntityDocumentComplianceSummary(
     }
 
     const supabase = await createClient();
+    const admin = createAdminClient();
 
     const { data, error } = await supabase
       .from("dms_document_links")
@@ -345,6 +353,30 @@ export async function getDmsEntityDocumentComplianceSummary(
       .is("deleted_at", null);
 
     if (error) return { success: false, error: error.message };
+
+    const rules = await loadRulesForEntityType(admin, entityType);
+    const linkedDocuments = await loadLinkedDocuments(admin, entityType, entityId);
+    const missingRequiredDocuments = countMissingRequiredDocuments({
+      entityType,
+      rules,
+      linkedDocuments,
+    });
+
+    let openComplianceFindings = 0;
+    if (
+      hasPermission(ctx, "ai.compliance.view") ||
+      hasPermission(ctx, "ai.common.admin") ||
+      ctx.roleCodes.includes("system_admin")
+    ) {
+      const { count } = await supabase
+        .from("erp_ai_compliance_findings")
+        .select("id", { count: "exact", head: true })
+        .eq("entity_type", entityType)
+        .eq("entity_id", entityId)
+        .eq("status", "open")
+        .is("deleted_at", null);
+      openComplianceFindings = count ?? 0;
+    }
 
     const now = new Date();
     const soonThreshold = new Date(now);
@@ -385,7 +417,8 @@ export async function getDmsEntityDocumentComplianceSummary(
         totalDocuments: (data ?? []).length,
         expiredDocuments,
         expiringSoonDocuments,
-        missingRequiredDocuments: 0, // Full implementation deferred to when module defines exact requirements
+        missingRequiredDocuments,
+        openComplianceFindings,
         highRiskDocuments,
         criticalRiskDocuments,
         latestExpiryDate,

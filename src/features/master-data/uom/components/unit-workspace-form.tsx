@@ -28,7 +28,7 @@ type UnitWorkspaceFormProps = {
 const FORM_ID = "unit-workspace-form";
 
 export function UnitWorkspaceForm({ unit, mode }: UnitWorkspaceFormProps) {
-  const { closeTab, activeTab, markDirty } = useWorkspace();
+  const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSection, setActiveSection] = useState("basic");
@@ -108,7 +108,7 @@ export function UnitWorkspaceForm({ unit, mode }: UnitWorkspaceFormProps) {
 
   const handleSaveAndClose = async () => {
     const success = await handleSave();
-    if (success) handleRequestClose();
+    if (success) forceCloseActiveTab();
   };
 
   return (

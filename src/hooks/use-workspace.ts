@@ -45,6 +45,24 @@ export function useWorkspace() {
     dispatch({ type: "UPDATE_TAB_ROUTE", tabId, route, entityId, formMode });
   }, [dispatch]);
 
+  /**
+   * Force-close the active tab immediately after a successful save.
+   *
+   * After save, `resetDirty()` schedules a React state update (async).
+   * Calling the standard `closeTab` in the same tick still sees `dirty:true`
+   * in the workspace store and shows the "Unsaved changes" dialog.
+   * This helper bypasses the dirty guard because the data is already persisted.
+   *
+   * Usage — always call this (not `closeTab`) in save-success handlers:
+   *   const ok = await handleSave();
+   *   if (ok) forceCloseActiveTab();
+   */
+  const forceCloseActiveTab = useCallback(() => {
+    if (activeTab) {
+      closeTab(activeTab.id, { force: true });
+    }
+  }, [activeTab, closeTab]);
+
   const closeOtherTabs = useCallback((tabId: string) => {
     const closing = state.tabs.filter((t) => t.closable && t.id !== tabId);
     closing.forEach((t) => draftStore?.clearDraftsForTab(t.id));
@@ -88,5 +106,11 @@ export function useWorkspace() {
     closeOtherTabs,
     /** Close all closable tabs */
     closeAllClosableTabs,
+    /**
+     * Force-close the active tab after a successful save.
+     * Bypasses the dirty-state dialog because data is already persisted.
+     * Always use this instead of closeTab() in save-success handlers.
+     */
+    forceCloseActiveTab,
   };
 }

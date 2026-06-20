@@ -15,6 +15,7 @@ import { Plus, Pencil, Building } from "lucide-react";
 import { toast } from "sonner";
 import { useOwnerCompaniesQuery } from "@/hooks/lookups/use-org-queries";
 import { useEmiratesQuery } from "@/hooks/lookups/use-geography-queries";
+import type { ERPComboboxOption } from "@/components/erp/combobox";
 import type {
   createHrMohreEstablishment,
   updateHrMohreEstablishment,
@@ -40,6 +41,18 @@ const blank: FormState = {
   emirate_id: null,
   status: "active",
 };
+
+/** MOHRE establishment name must match the owner company's legal English name. */
+function companyLegalNameEn(
+  companyId: number | null,
+  options: ERPComboboxOption[]
+): string {
+  if (!companyId) return "";
+  const opt = options.find((c) => c.value === companyId);
+  if (!opt) return "";
+  const raw = opt.raw as { legal_name_en?: string } | undefined;
+  return raw?.legal_name_en ?? opt.description ?? opt.label ?? "";
+}
 
 type Props = {
   initialData: MohreRow[];
@@ -68,20 +81,42 @@ export function HrMohreEstablishmentsPage({ initialData, canManage, onCreate, on
 
   function openEdit(row: MohreRow) {
     setEditing(row);
+    const companyId = row.owner_company_id ?? null;
     setForm({
-      owner_company_id: row.owner_company_id ?? null,
+      owner_company_id: companyId,
       establishment_number: row.establishment_number ?? "",
-      establishment_name: row.establishment_name ?? "",
+      establishment_name:
+        companyLegalNameEn(companyId, companyOptions) ||
+        row.establishment_name ||
+        (row.owner_company as { legal_name_en?: string } | null)?.legal_name_en ||
+        "",
       emirate_id: row.emirate_id ?? null,
       status: (row.status as "active" | "inactive") ?? "active",
     });
     setDialogOpen(true);
   }
 
+  function handleCompanyChange(value: string | number | null) {
+    const companyId = value ? Number(value) : null;
+    const legalName = companyLegalNameEn(companyId, companyOptions);
+    setForm((f) => ({
+      ...f,
+      owner_company_id: companyId,
+      establishment_name: legalName,
+    }));
+  }
+
   function handleSubmit() {
     if (!form.owner_company_id) { toast.error("Please select a company"); return; }
     if (!form.establishment_number.trim()) { toast.error("Establishment number is required"); return; }
-    if (!form.establishment_name.trim()) { toast.error("Establishment name is required"); return; }
+
+    const establishmentName =
+      companyLegalNameEn(form.owner_company_id, companyOptions).trim() ||
+      form.establishment_name.trim();
+    if (!establishmentName) {
+      toast.error("Could not resolve company legal name for establishment");
+      return;
+    }
 
     setIsSubmitting(true);
     startTransition(async () => {
@@ -89,7 +124,7 @@ export function HrMohreEstablishmentsPage({ initialData, canManage, onCreate, on
         const payload = {
           owner_company_id: form.owner_company_id!,
           establishment_number: form.establishment_number.trim(),
-          establishment_name: form.establishment_name.trim(),
+          establishment_name: establishmentName,
           emirate_id: form.emirate_id,
           status: form.status,
         };
@@ -147,7 +182,10 @@ export function HrMohreEstablishmentsPage({ initialData, canManage, onCreate, on
               <div key={row.id} className="flex items-center justify-between px-4 py-3">
                 <div className="flex flex-col gap-0.5">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">{row.establishment_name}</span>
+                    <span className="text-sm font-medium">
+                      {(row.owner_company as { legal_name_en?: string } | null)?.legal_name_en ??
+                        row.establishment_name}
+                    </span>
                     <Badge variant="outline" className="text-[10px] font-mono">
                       {row.establishment_number}
                     </Badge>
@@ -158,11 +196,6 @@ export function HrMohreEstablishmentsPage({ initialData, canManage, onCreate, on
                       {row.status}
                     </Badge>
                   </div>
-                  {row.owner_company && (
-                    <p className="text-xs text-muted-foreground">
-                      {(row.owner_company as { legal_name_en: string }).legal_name_en}
-                    </p>
-                  )}
                 </div>
                 {canManage && (
                   <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEdit(row)}>
@@ -189,16 +222,23 @@ export function HrMohreEstablishmentsPage({ initialData, canManage, onCreate, on
       >
         <div className="grid grid-cols-12 gap-4">
 
-          {/* Company */}
+          {/* Company — establishment name follows company legal name */}
           <div className="col-span-12">
             <Label>Company <span className="text-destructive">*</span></Label>
             <ERPCombobox
               value={form.owner_company_id}
-              onValueChange={(v) => setForm((f) => ({ ...f, owner_company_id: v ? Number(v) : null }))}
+              onValueChange={handleCompanyChange}
               options={companyOptions}
               placeholder="Select company..."
               required
             />
+            {form.owner_company_id && form.establishment_name && (
+              <p className="text-[11px] text-muted-foreground mt-1.5">
+                MOHRE establishment name:{" "}
+                <span className="font-medium text-foreground">{form.establishment_name}</span>
+                {" "}(same as company legal name)
+              </p>
+            )}
           </div>
 
           {/* Establishment Number */}
@@ -226,17 +266,6 @@ export function HrMohreEstablishmentsPage({ initialData, canManage, onCreate, on
                 { value: "inactive", label: "Inactive" },
               ]}
               placeholder="Select status..."
-            />
-          </div>
-
-          {/* Establishment Name */}
-          <div className="col-span-12">
-            <Label>Establishment Name <span className="text-destructive">*</span></Label>
-            <Input
-              value={form.establishment_name}
-              onChange={(e) => setForm((f) => ({ ...f, establishment_name: e.target.value }))}
-              placeholder="e.g. Alliance Group Tech LLC"
-              maxLength={200}
             />
           </div>
 

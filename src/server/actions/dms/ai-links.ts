@@ -254,7 +254,7 @@ export async function suggestDmsDocumentLinks(
     const arabicTerms = Array.from(arabicTermSet).slice(0, 8);
 
     // Step 2: find parties whose display_name OR legal_name_ar matches any extracted term
-    let matchedPartyIds = new Set<number>();
+    const matchedPartyIds = new Set<number>();
     if (terms.length > 0 || arabicTerms.length > 0) {
       const englishFilters = terms.map((t) => `display_name.ilike.%${t}%`);
       // Arabic name matching against legal_name_ar and display_name

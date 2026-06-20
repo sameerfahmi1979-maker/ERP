@@ -12,6 +12,7 @@
  */
 
 import { z } from "zod";
+import { logger } from "@/lib/logger";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
@@ -85,7 +86,7 @@ async function matchEntitiesToParties(
         });
       }
     } catch (err) {
-      console.warn("[ai-intake] party match failed for entity:", name, err);
+      logger.warn("[ai-intake] party match failed for entity", { name, err: String(err) });
     }
   }
 
@@ -403,7 +404,7 @@ export async function startAiIntakeFromUploadSession(
       // Universal extractor: PDF (text or rendered images), images, TIFF→PNG,
       // DOC/DOCX, XLS/XLSX — all handled in one place.
       const extracted = await extractFileContent(buffer, mimeType, originalFilename);
-      console.log(`[ai-intake] content extraction method: ${extracted.method} (text=${extracted.text.length} chars, images=${extracted.images.length})`);
+      logger.info(`[ai-intake] content extraction method: ${extracted.method} (text=${extracted.text.length} chars, images=${extracted.images.length})`);
 
       ocrText = extracted.text;
       for (const img of extracted.images) {
@@ -413,7 +414,7 @@ export async function startAiIntakeFromUploadSession(
       // Proceed even if extraction produced nothing — the AI will note the limitation.
       contentExtracted = true;
     } catch (err) {
-      console.error("[ai-intake] file content extraction error:", err);
+      logger.error("[ai-intake] file content extraction error:", err);
       // Don't block the pipeline — let the AI report it couldn't read the file.
       contentExtracted = true;
     }
@@ -678,7 +679,7 @@ export async function startAiIntakeFromUploadSession(
       data: { sessionCode, status: "review_pending", message: "AI analysis complete" },
     };
   } catch (e) {
-    console.error("startAiIntakeFromUploadSession error", e);
+    logger.error("startAiIntakeFromUploadSession error", e);
     return { success: false, error: String(e) };
   }
 }
@@ -1186,7 +1187,7 @@ export async function approveAiIntakeAndCreateDocument(
           .from("dms_document_metadata_values")
           .upsert(metaUpserts, { onConflict: "document_id,definition_id" });
         if (metaErr) {
-          console.error("metadata save error (non-fatal):", metaErr.message);
+          logger.error("metadata save error (non-fatal):", metaErr.message);
         }
       }
     }
@@ -1342,7 +1343,7 @@ export async function approveAiIntakeAndCreateDocument(
           .eq("id", documentId);
       }
     } catch (contentSyncErr) {
-      console.warn("[DMS OCR-AI FIX.1] Content text sync (non-fatal):", String(contentSyncErr));
+      logger.warn("[DMS OCR-AI FIX.1] Content text sync (non-fatal):", String(contentSyncErr));
     }
 
     // ── Update upload session ─────────────────────────────────────────────
@@ -1432,7 +1433,7 @@ export async function approveAiIntakeAndCreateDocument(
 
     return { success: true, data: { documentId, documentNo } };
   } catch (e) {
-    console.error("approveAiIntakeAndCreateDocument error", e);
+    logger.error("approveAiIntakeAndCreateDocument error", e);
     return { success: false, error: String(e) };
   }
 }

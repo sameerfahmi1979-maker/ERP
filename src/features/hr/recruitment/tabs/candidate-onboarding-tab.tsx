@@ -121,7 +121,7 @@ export function CandidateOnboardingTab({ candidateId, canManage, onChildOpen }: 
 
       if (res.success) {
         toast.success(editing ? "Task updated" : "Task created");
-        queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateOnboarding(candidateId) });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateOnboarding(candidateId) });
         closeDialog();
       } else {
         toast.error(res.error ?? "Failed to save task");
@@ -134,7 +134,7 @@ export function CandidateOnboardingTab({ candidateId, canManage, onChildOpen }: 
       const res = await completeOnboardingTask(id);
       if (res.success) {
         toast.success("Task completed");
-        queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateOnboarding(candidateId) });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateOnboarding(candidateId) });
       } else {
         toast.error(res.error ?? "Failed to complete task");
       }
@@ -146,7 +146,7 @@ export function CandidateOnboardingTab({ candidateId, canManage, onChildOpen }: 
       const res = await archiveOnboardingTask(id);
       if (res.success) {
         toast.success("Task removed");
-        queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateOnboarding(candidateId) });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateOnboarding(candidateId) });
       } else {
         toast.error(res.error ?? "Failed to remove task");
       }

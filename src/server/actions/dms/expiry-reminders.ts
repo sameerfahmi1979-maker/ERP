@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
@@ -349,7 +350,7 @@ export async function generateDmsExpiryRemindersForDocument(
     revalidatePath(`/dms/documents/record/${documentId}`);
     return { success: true, data: { created, skipped } };
   } catch (e) {
-    console.error("generateDmsExpiryRemindersForDocument", e);
+    logger.error("generateDmsExpiryRemindersForDocument", e);
     return { success: false, error: String(e) };
   }
 }

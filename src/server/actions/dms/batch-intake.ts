@@ -18,6 +18,7 @@
  */
 
 import { z } from "zod";
+import { logger } from "@/lib/logger";
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
@@ -343,7 +344,7 @@ export async function createDmsUploadBatch(
 
     return { success: true, data: { batchId, batchCode, sessions } };
   } catch (e) {
-    console.error("createDmsUploadBatch error", e);
+    logger.error("createDmsUploadBatch error", e);
     return { success: false, error: String(e) };
   }
 }
@@ -630,7 +631,7 @@ export async function startAiIntakeAndCreateDraft(
       data: { documentId, documentNo, status: "pending_ai_review", confidence: confidenceLabel },
     };
   } catch (e) {
-    console.error("startAiIntakeAndCreateDraft error", e);
+    logger.error("startAiIntakeAndCreateDraft error", e);
     return { success: false, error: String(e) };
   }
 }
@@ -962,7 +963,7 @@ export async function finalizeDraftIntake(
           }
         }
       } catch (contentErr) {
-        console.warn("[DMS OCR-AI FIX.1] batch content text sync (non-fatal):", String(contentErr));
+        logger.warn("[DMS OCR-AI FIX.1] batch content text sync (non-fatal):", String(contentErr));
       }
     }
 
@@ -1009,7 +1010,7 @@ export async function finalizeDraftIntake(
 
     return { success: true, data: { documentId, documentNo: doc.document_no as string } };
   } catch (e) {
-    console.error("finalizeDraftIntake error", e);
+    logger.error("finalizeDraftIntake error", e);
     return { success: false, error: String(e) };
   }
 }
@@ -1089,7 +1090,7 @@ async function performDraftDiscard(
       try {
         await admin.storage.from(bucket).remove(paths);
       } catch (storageErr) {
-        console.warn(`[DMS 13 discard] storage purge failed for "${bucket}":`, String(storageErr));
+        logger.warn(`[DMS 13 discard] storage purge failed for "${bucket}":`, String(storageErr));
       }
     }
   }
@@ -1150,7 +1151,7 @@ export async function discardDraftIntake(
 
     return { success: true };
   } catch (e) {
-    console.error("discardDraftIntake error", e);
+    logger.error("discardDraftIntake error", e);
     return { success: false, error: String(e) };
   }
 }
@@ -1219,7 +1220,7 @@ export async function discardDraftIntakeBulk(
 
     return { success: true, data: { discarded, failed, errors } };
   } catch (e) {
-    console.error("discardDraftIntakeBulk error", e);
+    logger.error("discardDraftIntakeBulk error", e);
     return { success: false, error: String(e) };
   }
 }

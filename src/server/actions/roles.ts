@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit, createAuditDiff } from "@/server/actions/audit";
@@ -29,11 +30,11 @@ export async function getRoleById(id: number): Promise<ActionResult<import("@/ty
       .select("*")
       .eq("id", id)
       .single();
-    if (error) { console.error("getRoleById error", error); return { success: false, error: error.message }; }
+    if (error) { logger.error("getRoleById error", error); return { success: false, error: error.message }; }
     if (!data) return { success: false, error: "Role not found" };
     return { success: true, data: data as import("@/types/database").Role };
   } catch (error) {
-    console.error("getRoleById exception", error);
+    logger.error("getRoleById exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
@@ -60,7 +61,7 @@ export async function createRole(input: CreateRoleInput): Promise<ActionResult<{
       .single();
 
     if (error) {
-      console.error("createRole error", error);
+      logger.error("createRole error", error);
       return { success: false, error: error.message };
     }
 
@@ -76,7 +77,7 @@ export async function createRole(input: CreateRoleInput): Promise<ActionResult<{
     revalidatePath("/admin/roles");
     return { success: true, data: { id: data.id } };
   } catch (error) {
-    console.error("createRole exception", error);
+    logger.error("createRole exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
@@ -110,7 +111,7 @@ export async function updateRole(input: UpdateRoleInput): Promise<ActionResult> 
     const { error } = await supabase.from("roles").update(dataToUpdate).eq("id", id);
 
     if (error) {
-      console.error("updateRole error", error);
+      logger.error("updateRole error", error);
       return { success: false, error: error.message };
     }
 
@@ -129,7 +130,7 @@ export async function updateRole(input: UpdateRoleInput): Promise<ActionResult> 
     revalidatePath("/admin/roles");
     return { success: true };
   } catch (error) {
-    console.error("updateRole exception", error);
+    logger.error("updateRole exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
@@ -156,7 +157,7 @@ export async function deleteRole(id: number): Promise<ActionResult> {
     const { error } = await supabase.from("roles").delete().eq("id", id);
 
     if (error) {
-      console.error("deleteRole error", error);
+      logger.error("deleteRole error", error);
       return {
         success: false,
         error: error.message.includes("violates foreign key constraint")
@@ -177,7 +178,7 @@ export async function deleteRole(id: number): Promise<ActionResult> {
     revalidatePath("/admin/roles");
     return { success: true };
   } catch (error) {
-    console.error("deleteRole exception", error);
+    logger.error("deleteRole exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
@@ -215,7 +216,7 @@ export async function getRoleWithUsersAction(
       .single();
 
     if (roleError || !role) {
-      console.error("getRoleWithUsersAction role error", roleError?.message);
+      logger.error("getRoleWithUsersAction role error", roleError?.message);
       return { success: false, error: "Role not found" };
     }
 
@@ -227,7 +228,7 @@ export async function getRoleWithUsersAction(
       .order("created_at", { ascending: false });
 
     if (userRolesError) {
-      console.error("getRoleWithUsersAction user_roles error", userRolesError.message);
+      logger.error("getRoleWithUsersAction user_roles error", userRolesError.message);
       return { success: true, data: { role, assigned_users: [] } };
     }
 
@@ -288,7 +289,7 @@ export async function getRoleWithUsersAction(
       },
     };
   } catch (error) {
-    console.error("getRoleWithUsersAction exception", error);
+    logger.error("getRoleWithUsersAction exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
@@ -314,7 +315,7 @@ export async function updateRoleStatus(id: number, isActive: boolean): Promise<A
       .eq("id", id);
 
     if (error) {
-      console.error("updateRoleStatus error", error);
+      logger.error("updateRoleStatus error", error);
       return { success: false, error: error.message };
     }
 
@@ -331,7 +332,7 @@ export async function updateRoleStatus(id: number, isActive: boolean): Promise<A
     revalidatePath("/admin/roles");
     return { success: true };
   } catch (error) {
-    console.error("updateRoleStatus exception", error);
+    logger.error("updateRoleStatus exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }

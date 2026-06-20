@@ -126,7 +126,7 @@ export async function evaluateDmsDocumentCompleteness(
     const requiredDefs = (metaDefs ?? []) as Array<{ id: number; field_code: string; field_label_en: string }>;
 
     // 3. Load existing metadata values for this document
-    let filledDefinitionIds = new Set<number>();
+    const filledDefinitionIds = new Set<number>();
     if (requiredDefs.length > 0) {
       const defIds = requiredDefs.map((d) => d.id);
       const { data: metaValues } = await supabase

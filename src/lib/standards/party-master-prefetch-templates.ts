@@ -103,7 +103,7 @@ export const RECRUITMENT_AGENCY_CHILD_TABLES = [
 ] as const;
 
 // ── FormPrefetchDeclaration templates ─────────────────────────────────────────
-// TODO when implementing each module: verify lookup category codes against the
+// NOTE: When implementing each module, verify lookup category codes against the
 // actual form fields and against live global_lookup_categories.
 
 /** Vendor form prefetch declaration template. */

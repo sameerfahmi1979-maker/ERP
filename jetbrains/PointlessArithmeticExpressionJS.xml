@@ -1,0 +1,14 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/search/result-merger.ts</file>
+  <line>45</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/search/result-merger.ts" />
+  <problem_class id="PointlessArithmeticExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless arithmetic expression</problem_class>
+  <description>openCompliance * 1 can be replaced with openCompliance</description>
+  <highlighted_element>openCompliance * 1</highlighted_element>
+  <language>TypeScript</language>
+  <offset>44</offset>
+  <length>18</length>
+</problem>
+</problems>

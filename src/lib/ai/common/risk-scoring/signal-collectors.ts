@@ -195,7 +195,7 @@ export function collectAllSignals(input: RiskCalculationInput): RiskSignal[] {
     coveredBuckets
   );
 
-  let signals = [...findingSignals, ...docSignals, ...summarySignals];
+  const signals = [...findingSignals, ...docSignals, ...summarySignals];
 
   if (!coveredBuckets.has("open_duplicate_conflict") && input.pendingDuplicateCount > 0) {
     signals.push({

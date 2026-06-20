@@ -1,0 +1,74 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/email/erp-send-email-dialog.tsx</file>
+  <line>158</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/email/erp-send-email-dialog.tsx" />
+  <problem_class id="ExceptionCaughtLocallyJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Exception used for local control-flow</problem_class>
+  <description>'throw' of exception caught locally</description>
+  <highlighted_element>throw</highlighted_element>
+  <language>JavaScript</language>
+  <offset>10</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/email/providers/microsoft-graph-provider.ts</file>
+  <line>150</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/email/providers/microsoft-graph-provider.ts" />
+  <problem_class id="ExceptionCaughtLocallyJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Exception used for local control-flow</problem_class>
+  <description>'throw' of exception caught locally</description>
+  <highlighted_element>throw</highlighted_element>
+  <language>JavaScript</language>
+  <offset>24</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/dms/ai-summary.ts</file>
+  <line>252</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/dms/ai-summary.ts" />
+  <problem_class id="ExceptionCaughtLocallyJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Exception used for local control-flow</problem_class>
+  <description>'throw' of exception caught locally</description>
+  <highlighted_element>throw</highlighted_element>
+  <language>JavaScript</language>
+  <offset>6</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/dms/ocr.ts</file>
+  <line>347</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/dms/ocr.ts" />
+  <problem_class id="ExceptionCaughtLocallyJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Exception used for local control-flow</problem_class>
+  <description>'throw' of exception caught locally</description>
+  <highlighted_element>throw</highlighted_element>
+  <language>JavaScript</language>
+  <offset>36</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/dms/ocr.ts</file>
+  <line>377</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/dms/ocr.ts" />
+  <problem_class id="ExceptionCaughtLocallyJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Exception used for local control-flow</problem_class>
+  <description>'throw' of exception caught locally</description>
+  <highlighted_element>throw</highlighted_element>
+  <language>JavaScript</language>
+  <offset>10</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/dms/semantic-search.ts</file>
+  <line>197</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/dms/semantic-search.ts" />
+  <problem_class id="ExceptionCaughtLocallyJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Exception used for local control-flow</problem_class>
+  <description>'throw' of exception caught locally</description>
+  <highlighted_element>throw</highlighted_element>
+  <language>JavaScript</language>
+  <offset>6</offset>
+  <length>5</length>
+</problem>
+</problems>

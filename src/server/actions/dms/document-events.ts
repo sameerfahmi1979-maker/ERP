@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 
 export type ActionResult<T = unknown> = {
@@ -41,7 +42,7 @@ export async function getDmsDocumentEvents(
 
     return { success: true, data: (data ?? []) as unknown as DmsDocumentEventRow[] };
   } catch (err) {
-    console.error("getDmsDocumentEvents error", err);
+    logger.error("getDmsDocumentEvents error", err);
     return { success: false, error: "Failed to load events" };
   }
 }

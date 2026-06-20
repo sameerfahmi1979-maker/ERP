@@ -119,7 +119,7 @@ export function WorkCalendarWorkspaceForm({ calendar, mode, companies = [] }: Pr
       if (!result.success) { toast.error(result.error ?? "Failed to save shift"); return; }
       toast.success("Shift saved");
       setShiftDialog({ open: false, editing: null });
-      queryClient.invalidateQueries({ queryKey: queryKeys.commonMd.workShifts(calendarId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.commonMd.workShifts(calendarId) });
     } finally { setShiftSaving(false); }
   };
 

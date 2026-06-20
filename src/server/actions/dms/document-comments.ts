@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
@@ -49,7 +50,7 @@ export async function getDmsDocumentComments(
 
     return { success: true, data: (data ?? []) as unknown as DmsDocumentCommentRow[] };
   } catch (err) {
-    console.error("getDmsDocumentComments error", err);
+    logger.error("getDmsDocumentComments error", err);
     return { success: false, error: "Failed to load comments" };
   }
 }
@@ -102,7 +103,7 @@ export async function addDmsDocumentComment(
 
     return { success: true, data: { id: data.id } };
   } catch (err) {
-    console.error("addDmsDocumentComment error", err);
+    logger.error("addDmsDocumentComment error", err);
     return { success: false, error: "Failed to add comment" };
   }
 }
@@ -150,7 +151,7 @@ export async function updateDmsDocumentComment(
 
     return { success: true };
   } catch (err) {
-    console.error("updateDmsDocumentComment error", err);
+    logger.error("updateDmsDocumentComment error", err);
     return { success: false, error: "Failed to update comment" };
   }
 }
@@ -191,7 +192,7 @@ export async function deleteDmsDocumentComment(
 
     return { success: true };
   } catch (err) {
-    console.error("deleteDmsDocumentComment error", err);
+    logger.error("deleteDmsDocumentComment error", err);
     return { success: false, error: "Failed to delete comment" };
   }
 }

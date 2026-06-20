@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
@@ -325,7 +326,7 @@ export async function getDmsDocuments(
 
     return { success: true, data: processed };
   } catch (err) {
-    console.error("getDmsDocuments error", err);
+    logger.error("getDmsDocuments error", err);
     return { success: false, error: "Failed to load documents" };
   }
 }
@@ -359,7 +360,7 @@ export async function getDmsDocument(
 
     return { success: true, data: data as DmsDocumentRow };
   } catch (err) {
-    console.error("getDmsDocument error", err);
+    logger.error("getDmsDocument error", err);
     return { success: false, error: "Failed to load document" };
   }
 }
@@ -482,7 +483,7 @@ export async function getDmsDocumentRecordData(
 
     return { success: true, data: record };
   } catch (err) {
-    console.error("getDmsDocumentRecordData error", err);
+    logger.error("getDmsDocumentRecordData error", err);
     return { success: false, error: "Failed to load document record" };
   }
 }
@@ -522,7 +523,7 @@ export async function getDmsNewDocumentDefaults(): Promise<
       },
     };
   } catch (err) {
-    console.error("getDmsNewDocumentDefaults error", err);
+    logger.error("getDmsNewDocumentDefaults error", err);
     return { success: false, error: "Failed to load defaults" };
   }
 }
@@ -611,7 +612,7 @@ export async function createDmsDocument(
 
     return { success: true, data: { id: doc.id, document_no: documentNo } };
   } catch (err) {
-    console.error("createDmsDocument error", err);
+    logger.error("createDmsDocument error", err);
     return { success: false, error: "Failed to create document" };
   }
 }
@@ -669,7 +670,7 @@ export async function updateDmsDocument(
 
     return { success: true, data: { id } };
   } catch (err) {
-    console.error("updateDmsDocument error", err);
+    logger.error("updateDmsDocument error", err);
     return { success: false, error: "Failed to update document" };
   }
 }
@@ -698,7 +699,7 @@ export async function archiveDmsDocument(id: number): Promise<ActionResult> {
 
     return { success: true };
   } catch (err) {
-    console.error("archiveDmsDocument error", err);
+    logger.error("archiveDmsDocument error", err);
     return { success: false, error: "Failed to archive document" };
   }
 }
@@ -727,7 +728,7 @@ export async function unarchiveDmsDocument(id: number): Promise<ActionResult> {
 
     return { success: true };
   } catch (err) {
-    console.error("unarchiveDmsDocument error", err);
+    logger.error("unarchiveDmsDocument error", err);
     return { success: false, error: "Failed to unarchive document" };
   }
 }
@@ -796,7 +797,7 @@ export async function deleteDmsDocument(id: number): Promise<ActionResult> {
         await adminClient.storage.from(bucket).remove(paths);
       } catch (storageErr) {
         // Non-fatal: DB is already soft-deleted. Log but don't fail the action.
-        console.warn(`[DMS delete] Storage purge failed for bucket "${bucket}":`, String(storageErr));
+        logger.warn(`[DMS delete] Storage purge failed for bucket "${bucket}":`, String(storageErr));
       }
     }
 
@@ -814,7 +815,7 @@ export async function deleteDmsDocument(id: number): Promise<ActionResult> {
 
     return { success: true };
   } catch (err) {
-    console.error("deleteDmsDocument error", err);
+    logger.error("deleteDmsDocument error", err);
     return { success: false, error: "Failed to delete document" };
   }
 }

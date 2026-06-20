@@ -198,15 +198,7 @@ export type EmployeeComplianceSummary = {
 
 // ── Helper: load employee for audit context ───────────────────────────────────
 
-async function loadEmployeeForAudit(employeeId: number) {
-  const admin = await createAdminClient();
-  const { data } = await admin
-    .from("employees")
-    .select("id, employee_code, full_name_en")
-    .eq("id", employeeId)
-    .single();
-  return data;
-}
+import { getEmployeeCtxAdmin as loadEmployeeForAudit } from "./_shared/employee-context";
 
 function revalidateEmployeePath(employeeId: number) {
   revalidatePath(`/admin/hr/employees/record/${employeeId}`);

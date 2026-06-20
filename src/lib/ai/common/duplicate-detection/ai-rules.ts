@@ -152,7 +152,7 @@ Prompt version: ${NAME_SIMILARITY_PROMPT_VERSION}`;
     temperature: 0,
   });
 
-  let aiCallsMade = ctx.aiCallsMade + 1;
+  const aiCallsMade = ctx.aiCallsMade + 1;
   if (!outcome.success) return { results: [], aiCallsMade };
 
   let parsed: z.infer<typeof nameSimilarityOutputSchema>;
@@ -285,7 +285,7 @@ Prompt version: ${LINK_MISMATCH_PROMPT_VERSION}`;
     { maxTokens: 1500, temperature: 0 }
   );
 
-  let aiCallsMade = ctx.aiCallsMade + 1;
+  const aiCallsMade = ctx.aiCallsMade + 1;
   if (!outcome.success) return { results: [], aiCallsMade };
 
   let parsed: z.infer<typeof linkMismatchOutputSchema>;

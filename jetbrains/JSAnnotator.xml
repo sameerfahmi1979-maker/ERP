@@ -1,0 +1,2450 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/AI_Module/CURSOR_PROMPT_ERP_COMMON_AI_1A_REGISTRY_TYPES_PROMPT_CONTRACT_OUTPUT_SCHEMA.md</file>
+  <line>336</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/AI_Module/CURSOR_PROMPT_ERP_COMMON_AI_1A_REGISTRY_TYPES_PROMPT_CONTRACT_OUTPUT_SCHEMA.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>isGloballyNonUpdatableField</highlighted_element>
+  <language>Markdown</language>
+  <offset>16</offset>
+  <length>27</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/AI_Module/CURSOR_PROMPT_ERP_COMMON_AI_1A_REGISTRY_TYPES_PROMPT_CONTRACT_OUTPUT_SCHEMA.md</file>
+  <line>337</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/AI_Module/CURSOR_PROMPT_ERP_COMMON_AI_1A_REGISTRY_TYPES_PROMPT_CONTRACT_OUTPUT_SCHEMA.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>assertAiFieldCanBeRegistered</highlighted_element>
+  <language>Markdown</language>
+  <offset>16</offset>
+  <length>28</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/DMS_Phases/CURSOR_PROMPT_ERP_DMS_12_1_IMPLEMENTATION_ONLY.md</file>
+  <line>424</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/DMS_Phases/CURSOR_PROMPT_ERP_DMS_12_1_IMPLEMENTATION_ONLY.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>updateDocumentContentText</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/DMS_Phases/CURSOR_PROMPT_ERP_DMS_12_1_IMPLEMENTATION_ONLY.md</file>
+  <line>459</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/DMS_Phases/CURSOR_PROMPT_ERP_DMS_12_1_IMPLEMENTATION_ONLY.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>resyncDocumentContentText</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/DMS_Phases/CURSOR_PROMPT_ERP_DMS_12_1_IMPLEMENTATION_ONLY.md</file>
+  <line>477</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/DMS_Phases/CURSOR_PROMPT_ERP_DMS_12_1_IMPLEMENTATION_ONLY.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>getDocumentContentText</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>22</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/DMS_Phases/CURSOR_PROMPT_ERP_DMS_12_1_IMPLEMENTATION_ONLY.md</file>
+  <line>503</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/DMS_Phases/CURSOR_PROMPT_ERP_DMS_12_1_IMPLEMENTATION_ONLY.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>adminBackfillDmsContentText</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>27</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/DMS_Phases/CURSOR_PROMPT_ERP_DMS_12_3_COMPLETENESS_RISK_ENHANCED_SEARCH_IMPLEMENTATION.md</file>
+  <line>201</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/DMS_Phases/CURSOR_PROMPT_ERP_DMS_12_3_COMPLETENESS_RISK_ENHANCED_SEARCH_IMPLEMENTATION.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>evaluateDmsDocumentCompleteness</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>31</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/DMS_Phases/CURSOR_PROMPT_ERP_DMS_12_3_COMPLETENESS_RISK_ENHANCED_SEARCH_IMPLEMENTATION.md</file>
+  <line>287</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/DMS_Phases/CURSOR_PROMPT_ERP_DMS_12_3_COMPLETENESS_RISK_ENHANCED_SEARCH_IMPLEMENTATION.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>evaluateDmsDocumentRisk</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>23</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/DMS_Phases/CURSOR_PROMPT_ERP_DMS_12_3_COMPLETENESS_RISK_ENHANCED_SEARCH_IMPLEMENTATION.md</file>
+  <line>366</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/DMS_Phases/CURSOR_PROMPT_ERP_DMS_12_3_COMPLETENESS_RISK_ENHANCED_SEARCH_IMPLEMENTATION.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>evaluateDmsDocumentIntelligence</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>31</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/DMS_Phases/CURSOR_PROMPT_ERP_DMS_12_3_COMPLETENESS_RISK_ENHANCED_SEARCH_IMPLEMENTATION.md</file>
+  <line>374</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/DMS_Phases/CURSOR_PROMPT_ERP_DMS_12_3_COMPLETENESS_RISK_ENHANCED_SEARCH_IMPLEMENTATION.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>bulkEvaluateDmsDocuments</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>24</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/DMS_Phases/ERP_NEW_CHAT_HANDOFF_FULL_PROJECT_GUIDE.md</file>
+  <line>470</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/DMS_Phases/ERP_NEW_CHAT_HANDOFF_FULL_PROJECT_GUIDE.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>generateAndSaveDmsAiSummary</highlighted_element>
+  <language>Markdown</language>
+  <offset>15</offset>
+  <length>27</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/ERP_GLOBAL_UI_4B_DIRTY_STATE_AND_SAFE_CLOSE_INTEGRATION_IMPLEMENTATION_PROMPT.md</file>
+  <line>257</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/ERP_GLOBAL_UI_4B_DIRTY_STATE_AND_SAFE_CLOSE_INTEGRATION_IMPLEMENTATION_PROMPT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>useWorkspaceTabDirty</highlighted_element>
+  <language>Markdown</language>
+  <offset>16</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/ERP_GLOBAL_UI_4C_WORKSPACE_RECORD_FORM_STANDARD_IMPLEMENTATION_PROMPT.md</file>
+  <line>426</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/ERP_GLOBAL_UI_4C_WORKSPACE_RECORD_FORM_STANDARD_IMPLEMENTATION_PROMPT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>useRecordWorkspaceForm</highlighted_element>
+  <language>Markdown</language>
+  <offset>16</offset>
+  <length>22</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/ERP_GLOBAL_UI_4E_2_WORKSPACE_UNSAVED_FORM_DRAFT_PRESERVATION_IMPLEMENTATION_PROMPT.md</file>
+  <line>460</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/ERP_GLOBAL_UI_4E_2_WORKSPACE_UNSAVED_FORM_DRAFT_PRESERVATION_IMPLEMENTATION_PROMPT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>useWorkspaceFormDraft</highlighted_element>
+  <language>Markdown</language>
+  <offset>16</offset>
+  <length>21</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/ERP_GLOBAL_UI_4E_SYSTEM_WIDE_WORKSPACE_CACHE_STATE_OVERLAY_AND_FORM_STANDARD_FIXES_IMPLEMENTATION_PROMPT.md</file>
+  <line>403</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/ERP_GLOBAL_UI_4E_SYSTEM_WIDE_WORKSPACE_CACHE_STATE_OVERLAY_AND_FORM_STANDARD_FIXES_IMPLEMENTATION_PROMPT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>useWorkspacePageState</highlighted_element>
+  <language>Markdown</language>
+  <offset>16</offset>
+  <length>21</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/ERP_GLOBAL_UI_4E_SYSTEM_WIDE_WORKSPACE_CACHE_STATE_OVERLAY_AND_FORM_STANDARD_FIXES_IMPLEMENTATION_PROMPT.md</file>
+  <line>482</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/ERP_GLOBAL_UI_4E_SYSTEM_WIDE_WORKSPACE_CACHE_STATE_OVERLAY_AND_FORM_STANDARD_FIXES_IMPLEMENTATION_PROMPT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>useWorkspaceScrollState</highlighted_element>
+  <language>Markdown</language>
+  <offset>16</offset>
+  <length>23</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/ERP_GLOBAL_UI_4E_SYSTEM_WIDE_WORKSPACE_CACHE_STATE_OVERLAY_AND_FORM_STANDARD_FIXES_IMPLEMENTATION_PROMPT.md</file>
+  <line>521</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/ERP_GLOBAL_UI_4E_SYSTEM_WIDE_WORKSPACE_CACHE_STATE_OVERLAY_AND_FORM_STANDARD_FIXES_IMPLEMENTATION_PROMPT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>useWorkspaceSectionState</highlighted_element>
+  <language>Markdown</language>
+  <offset>16</offset>
+  <length>24</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/ERP_GLOBAL_UI_4E_SYSTEM_WIDE_WORKSPACE_CACHE_STATE_OVERLAY_AND_FORM_STANDARD_FIXES_IMPLEMENTATION_PROMPT.md</file>
+  <line>545</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/ERP_GLOBAL_UI_4E_SYSTEM_WIDE_WORKSPACE_CACHE_STATE_OVERLAY_AND_FORM_STANDARD_FIXES_IMPLEMENTATION_PROMPT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>useWorkspaceTableState</highlighted_element>
+  <language>Markdown</language>
+  <offset>16</offset>
+  <length>22</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/PROMPT_ERP_BASE_002E_3A_MICROSOFT_GRAPH_PROVIDER_FOUNDATION.md</file>
+  <line>215</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/PROMPT_ERP_BASE_002E_3A_MICROSOFT_GRAPH_PROVIDER_FOUNDATION.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>getMicrosoftGraphConfig</highlighted_element>
+  <language>Markdown</language>
+  <offset>16</offset>
+  <length>23</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/PROMPT_ERP_BASE_002E_3A_MICROSOFT_GRAPH_PROVIDER_FOUNDATION.md</file>
+  <line>279</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/PROMPT_ERP_BASE_002E_3A_MICROSOFT_GRAPH_PROVIDER_FOUNDATION.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>constructor</highlighted_element>
+  <language>Markdown</language>
+  <offset>2</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/PROMPT_ERP_BASE_002E_3A_MICROSOFT_GRAPH_PROVIDER_FOUNDATION.md</file>
+  <line>281</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/PROMPT_ERP_BASE_002E_3A_MICROSOFT_GRAPH_PROVIDER_FOUNDATION.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>sendEmail</highlighted_element>
+  <language>Markdown</language>
+  <offset>2</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/PROMPT_ERP_BASE_002E_3A_MICROSOFT_GRAPH_PROVIDER_FOUNDATION.md</file>
+  <line>288</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/PROMPT_ERP_BASE_002E_3A_MICROSOFT_GRAPH_PROVIDER_FOUNDATION.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Modifier private cannot appear here #loc</description>
+  <highlighted_element>private</highlighted_element>
+  <language>Markdown</language>
+  <offset>0</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/PROMPT_ERP_BASE_002E_3A_MICROSOFT_GRAPH_PROVIDER_FOUNDATION.md</file>
+  <line>289</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/PROMPT_ERP_BASE_002E_3A_MICROSOFT_GRAPH_PROVIDER_FOUNDATION.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Modifier private cannot appear here #loc</description>
+  <highlighted_element>private</highlighted_element>
+  <language>Markdown</language>
+  <offset>0</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/PROMPT_ERP_BASE_002E_3A_MICROSOFT_GRAPH_PROVIDER_FOUNDATION.md</file>
+  <line>290</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/PROMPT_ERP_BASE_002E_3A_MICROSOFT_GRAPH_PROVIDER_FOUNDATION.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Modifier private cannot appear here #loc</description>
+  <highlighted_element>private</highlighted_element>
+  <language>Markdown</language>
+  <offset>0</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/PROMPT_ERP_BASE_002E_3D_EXPORT_MENU_INTEGRATION_SERVER_ACTION.md</file>
+  <line>231</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/PROMPT_ERP_BASE_002E_3D_EXPORT_MENU_INTEGRATION_SERVER_ACTION.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>sendExportEmail</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>15</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/PROMPT_ERP_BASE_002F_3E_3B_2A_IMPLEMENT_BASE_ERPCOMBOBOX_AND_LOOKUPSELECT_WRAPPER.md</file>
+  <line>409</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002/PROMPT_ERP_BASE_002F_3E_3B_2A_IMPLEMENT_BASE_ERPCOMBOBOX_AND_LOOKUPSELECT_WRAPPER.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>LookupSelect</highlighted_element>
+  <language>Markdown</language>
+  <offset>16</offset>
+  <length>12</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002F_3E_3B_Planning/ERP_BASE_002F_3E_3B_CUSTOMER_CLOSURE_UX_PERFORMANCE_PLAN.md</file>
+  <line>152</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002F_3E_3B_Planning/ERP_BASE_002F_3E_3B_CUSTOMER_CLOSURE_UX_PERFORMANCE_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>&lt;DialogPrimitive.Root data-slot</highlighted_element>
+  <language>Markdown</language>
+  <offset>0</offset>
+  <length>31</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002F_3E_3B_Planning/ERP_GLOBAL_UI_UX_FORM_TABLE_DRAWER_DEVELOPMENT_GUIDE.md</file>
+  <line>896</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002F_3E_3B_Planning/ERP_GLOBAL_UI_UX_FORM_TABLE_DRAWER_DEVELOPMENT_GUIDE.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot be redeclared #loc</description>
+  <highlighted_element>isDirty</highlighted_element>
+  <language>Markdown</language>
+  <offset>7</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002F_3E_3B_Planning/ERP_GLOBAL_UI_UX_FORM_TABLE_DRAWER_DEVELOPMENT_GUIDE.md</file>
+  <line>904</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/ChatGPT/Completed Phases/Phase_002F_3E_3B_Planning/ERP_GLOBAL_UI_UX_FORM_TABLE_DRAWER_DEVELOPMENT_GUIDE.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot be redeclared #loc</description>
+  <highlighted_element>isDirty</highlighted_element>
+  <language>Markdown</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/standards/ERP_GLOBAL_UI_UX_FORM_TABLE_DRAWER_DEVELOPMENT_GUIDE.md</file>
+  <line>896</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/standards/ERP_GLOBAL_UI_UX_FORM_TABLE_DRAWER_DEVELOPMENT_GUIDE.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot be redeclared #loc</description>
+  <highlighted_element>isDirty</highlighted_element>
+  <language>Markdown</language>
+  <offset>7</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/standards/ERP_GLOBAL_UI_UX_FORM_TABLE_DRAWER_DEVELOPMENT_GUIDE.md</file>
+  <line>904</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/standards/ERP_GLOBAL_UI_UX_FORM_TABLE_DRAWER_DEVELOPMENT_GUIDE.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot be redeclared #loc</description>
+  <highlighted_element>isDirty</highlighted_element>
+  <language>Markdown</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/standards/ERP_GLOBAL_WORKSPACE_OPEN_ELEMENT_CACHE_STANDARD.md</file>
+  <line>152</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/standards/ERP_GLOBAL_WORKSPACE_OPEN_ELEMENT_CACHE_STANDARD.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot be redeclared #loc</description>
+  <highlighted_element>activeSection</highlighted_element>
+  <language>Markdown</language>
+  <offset>7</offset>
+  <length>13</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/standards/ERP_GLOBAL_WORKSPACE_OPEN_ELEMENT_CACHE_STANDARD.md</file>
+  <line>152</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/standards/ERP_GLOBAL_WORKSPACE_OPEN_ELEMENT_CACHE_STANDARD.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot be redeclared #loc</description>
+  <highlighted_element>setActiveSection</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>16</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/standards/ERP_GLOBAL_WORKSPACE_OPEN_ELEMENT_CACHE_STANDARD.md</file>
+  <line>161</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/standards/ERP_GLOBAL_WORKSPACE_OPEN_ELEMENT_CACHE_STANDARD.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot be redeclared #loc</description>
+  <highlighted_element>activeSection</highlighted_element>
+  <language>Markdown</language>
+  <offset>7</offset>
+  <length>13</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/standards/ERP_GLOBAL_WORKSPACE_OPEN_ELEMENT_CACHE_STANDARD.md</file>
+  <line>161</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/standards/ERP_GLOBAL_WORKSPACE_OPEN_ELEMENT_CACHE_STANDARD.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot be redeclared #loc</description>
+  <highlighted_element>setActiveSection</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>16</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/DMS_Phases/Phase_DMS_10A_Investigation/ERP_DMS_10A_AI_FIRST_UPLOAD_TO_FILL_WORKFLOW_INVESTIGATION_AND_REDESIGN_REPORT.md</file>
+  <line>387</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/DMS_Phases/Phase_DMS_10A_Investigation/ERP_DMS_10A_AI_FIRST_UPLOAD_TO_FILL_WORKFLOW_INVESTIGATION_AND_REDESIGN_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>createDraftDocumentFromUpload</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>29</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/DMS_Phases/Phase_DMS_10A_Investigation/ERP_DMS_10A_AI_FIRST_UPLOAD_TO_FILL_WORKFLOW_INVESTIGATION_AND_REDESIGN_REPORT.md</file>
+  <line>409</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/DMS_Phases/Phase_DMS_10A_Investigation/ERP_DMS_10A_AI_FIRST_UPLOAD_TO_FILL_WORKFLOW_INVESTIGATION_AND_REDESIGN_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>applyAiResultToDocument</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>23</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/DMS_Phases/Phase_DMS_12_0_Implementation/ERP_DMS_12_0_PRE_ENHANCEMENT_BUG_FIX_IMPLEMENTATION_REPORT.md</file>
+  <line>54</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/DMS_Phases/Phase_DMS_12_0_Implementation/ERP_DMS_12_0_PRE_ENHANCEMENT_BUG_FIX_IMPLEMENTATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot be redeclared #loc</description>
+  <highlighted_element>documentNo</highlighted_element>
+  <language>Markdown</language>
+  <offset>6</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/DMS_Phases/Phase_DMS_12_0_Implementation/ERP_DMS_12_0_PRE_ENHANCEMENT_BUG_FIX_IMPLEMENTATION_REPORT.md</file>
+  <line>60</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/DMS_Phases/Phase_DMS_12_0_Implementation/ERP_DMS_12_0_PRE_ENHANCEMENT_BUG_FIX_IMPLEMENTATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot be redeclared #loc</description>
+  <highlighted_element>documentNo</highlighted_element>
+  <language>Markdown</language>
+  <offset>6</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/DMS_Phases/Phase_DMS_1_Planning/ERP_ENTERPRISE_DMS_ARCHITECTURE_STANDARD.md</file>
+  <line>190</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/DMS_Phases/Phase_DMS_1_Planning/ERP_ENTERPRISE_DMS_ARCHITECTURE_STANDARD.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>getOcrProvider</highlighted_element>
+  <language>Markdown</language>
+  <offset>16</offset>
+  <length>14</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/DMS_Phases/Phase_DMS_1_Planning/ERP_ENTERPRISE_DMS_ARCHITECTURE_STANDARD.md</file>
+  <line>191</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/DMS_Phases/Phase_DMS_1_Planning/ERP_ENTERPRISE_DMS_ARCHITECTURE_STANDARD.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>getAiClassifier</highlighted_element>
+  <language>Markdown</language>
+  <offset>16</offset>
+  <length>15</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/DMS_Phases/Phase_DMS_1_Planning/ERP_ENTERPRISE_DMS_ARCHITECTURE_STANDARD.md</file>
+  <line>192</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/DMS_Phases/Phase_DMS_1_Planning/ERP_ENTERPRISE_DMS_ARCHITECTURE_STANDARD.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>getAiExtractor</highlighted_element>
+  <language>Markdown</language>
+  <offset>16</offset>
+  <length>14</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/DMS_Phases/Phase_DMS_1_Planning/ERP_ENTERPRISE_DMS_ARCHITECTURE_STANDARD_V2.md</file>
+  <line>257</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/DMS_Phases/Phase_DMS_1_Planning/ERP_ENTERPRISE_DMS_ARCHITECTURE_STANDARD_V2.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>The 'await' operator can only be used in an 'async' function #loc</description>
+  <highlighted_element>await</highlighted_element>
+  <language>Markdown</language>
+  <offset>17</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/ERP_DMS_AI_ORCH_1_ONE_CLICK_UPLOAD_FULL_AI_PROCESSING_PIPELINE_PLAN.md</file>
+  <line>335</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/ERP_DMS_AI_ORCH_1_ONE_CLICK_UPLOAD_FULL_AI_PROCESSING_PIPELINE_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>runDmsAiOrchestrationPostDraft</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>30</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/ERP_DMS_AI_ORCH_1_ONE_CLICK_UPLOAD_FULL_AI_PROCESSING_PIPELINE_PLAN.md</file>
+  <line>340</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/ERP_DMS_AI_ORCH_1_ONE_CLICK_UPLOAD_FULL_AI_PROCESSING_PIPELINE_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>runDmsBatchOrchestration</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>24</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/ERP_DMS_AI_ORCH_1_ONE_CLICK_UPLOAD_FULL_AI_PROCESSING_PIPELINE_PLAN.md</file>
+  <line>344</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/ERP_DMS_AI_ORCH_1_ONE_CLICK_UPLOAD_FULL_AI_PROCESSING_PIPELINE_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>getDmsOrchestrationStatus</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/ERP_DMS_AI_ORCH_1_ONE_CLICK_UPLOAD_FULL_AI_PROCESSING_PIPELINE_PLAN.md</file>
+  <line>349</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/ERP_DMS_AI_ORCH_1_ONE_CLICK_UPLOAD_FULL_AI_PROCESSING_PIPELINE_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>runPipelineStepSafe</highlighted_element>
+  <language>Markdown</language>
+  <offset>15</offset>
+  <length>19</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002/ERP_BASE_002_INITIAL_REVIEW_REPORT.md</file>
+  <line>776</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002/ERP_BASE_002_INITIAL_REVIEW_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>logAudit</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>8</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002/ERP_BASE_002_USER_QUERY_FIX_REPORT.md</file>
+  <line>181</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002/ERP_BASE_002_USER_QUERY_FIX_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>role_code</highlighted_element>
+  <language>Markdown</language>
+  <offset>8</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002/ERP_BASE_002_USER_QUERY_FIX_REPORT.md</file>
+  <line>182</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002/ERP_BASE_002_USER_QUERY_FIX_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>role_name</highlighted_element>
+  <language>Markdown</language>
+  <offset>8</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_2/ERP_BASE_002E_2_INITIAL_REVIEW_REPORT.md</file>
+  <line>30</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_2/ERP_BASE_002E_2_INITIAL_REVIEW_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>{onExport}&gt; &lt;Download className</highlighted_element>
+  <language>Markdown</language>
+  <offset>78</offset>
+  <length>35</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_2/ERP_BASE_002E_2_INITIAL_REVIEW_REPORT.md</file>
+  <line>55</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_2/ERP_BASE_002E_2_INITIAL_REVIEW_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>&quot;Export and email actions will be enabled in Phase 002E.3&quot; &gt; &lt;Printer className</highlighted_element>
+  <language>Markdown</language>
+  <offset>8</offset>
+  <length>81</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_2A/ERP_BASE_002E_2A_INITIAL_REVIEW_REPORT.md</file>
+  <line>175</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_2A/ERP_BASE_002E_2A_INITIAL_REVIEW_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function name expected #loc</description>
+  <highlighted_element>true</highlighted_element>
+  <language>Markdown</language>
+  <offset>15</offset>
+  <length>4</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_2A/ERP_BASE_002E_2A_INITIAL_REVIEW_REPORT.md</file>
+  <line>190</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_2A/ERP_BASE_002E_2A_INITIAL_REVIEW_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function name expected #loc</description>
+  <highlighted_element>true</highlighted_element>
+  <language>Markdown</language>
+  <offset>14</offset>
+  <length>4</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_2B/ERP_BASE_002E_2B_EXPORT_STATE_INITIAL_REVIEW_REPORT.md</file>
+  <line>197</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_2B/ERP_BASE_002E_2B_EXPORT_STATE_INITIAL_REVIEW_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>enableColumnVisibility &amp;&amp; &lt;ERPColumnMenu table</highlighted_element>
+  <language>Markdown</language>
+  <offset>3</offset>
+  <length>46</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_2B/ERP_BASE_002E_2B_EXPORT_STATE_INITIAL_REVIEW_REPORT.md</file>
+  <line>648</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_2B/ERP_BASE_002E_2B_EXPORT_STATE_INITIAL_REVIEW_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>&quot;flex items-start gap-3&quot;&gt; &lt;Building2 className</highlighted_element>
+  <language>Markdown</language>
+  <offset>17</offset>
+  <length>50</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_2B/ERP_BASE_002E_2B_EXPORT_STATE_INITIAL_REVIEW_REPORT.md</file>
+  <line>671</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_2B/ERP_BASE_002E_2B_EXPORT_STATE_INITIAL_REVIEW_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>&quot;flex items-start gap-3&quot;&gt; &lt;Building2 className</highlighted_element>
+  <language>Markdown</language>
+  <offset>19</offset>
+  <length>52</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_2C/ERP_BASE_002E_2C_EXPORT_RUNTIME_FIX_REPORT.md</file>
+  <line>196</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_2C/ERP_BASE_002E_2C_EXPORT_RUNTIME_FIX_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>data</highlighted_element>
+  <language>Markdown</language>
+  <offset>6</offset>
+  <length>4</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_2C/ERP_BASE_002E_2C_EXPORT_RUNTIME_FIX_REPORT.md</file>
+  <line>197</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_2C/ERP_BASE_002E_2C_EXPORT_RUNTIME_FIX_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>mode</highlighted_element>
+  <language>Markdown</language>
+  <offset>6</offset>
+  <length>4</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_2C/ERP_BASE_002E_2C_EXPORT_RUNTIME_FIX_REPORT.md</file>
+  <line>198</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_2C/ERP_BASE_002E_2C_EXPORT_RUNTIME_FIX_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>count</highlighted_element>
+  <language>Markdown</language>
+  <offset>6</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_2C/ERP_BASE_002E_2C_EXPORT_RUNTIME_FIX_REPORT.md</file>
+  <line>205</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_2C/ERP_BASE_002E_2C_EXPORT_RUNTIME_FIX_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>data</highlighted_element>
+  <language>Markdown</language>
+  <offset>4</offset>
+  <length>4</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_2C/ERP_BASE_002E_2C_EXPORT_RUNTIME_FIX_REPORT.md</file>
+  <line>206</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_2C/ERP_BASE_002E_2C_EXPORT_RUNTIME_FIX_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>mode</highlighted_element>
+  <language>Markdown</language>
+  <offset>4</offset>
+  <length>4</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_2C/ERP_BASE_002E_2C_EXPORT_RUNTIME_FIX_REPORT.md</file>
+  <line>207</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_2C/ERP_BASE_002E_2C_EXPORT_RUNTIME_FIX_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>count</highlighted_element>
+  <language>Markdown</language>
+  <offset>4</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3A_Implementation/ERP_BASE_002E_3A_SECURITY_REVIEW_REPORT.md</file>
+  <line>108</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3A_Implementation/ERP_BASE_002E_3A_SECURITY_REVIEW_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Modifier private cannot appear here #loc</description>
+  <highlighted_element>private</highlighted_element>
+  <language>Markdown</language>
+  <offset>0</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3A_Implementation/ERP_BASE_002E_3A_SECURITY_REVIEW_REPORT.md</file>
+  <line>108</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3A_Implementation/ERP_BASE_002E_3A_SECURITY_REVIEW_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>TokenCacheEntry | null</highlighted_element>
+  <language>Markdown</language>
+  <offset>20</offset>
+  <length>22</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3A_Implementation/ERP_BASE_002E_3A_SECURITY_REVIEW_REPORT.md</file>
+  <line>145</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3A_Implementation/ERP_BASE_002E_3A_SECURITY_REVIEW_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Cannot determine target for 'break' #loc</description>
+  <highlighted_element>break;</highlighted_element>
+  <language>Markdown</language>
+  <offset>2</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3B_Implementation/ERP_BASE_002E_3B_SECURITY_REVIEW_REPORT.md</file>
+  <line>274</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3B_Implementation/ERP_BASE_002E_3B_SECURITY_REVIEW_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>generateCSVAttachment</highlighted_element>
+  <language>Markdown</language>
+  <offset>16</offset>
+  <length>21</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3C_Implementation/ERP_BASE_002E_3C_INITIAL_REVIEW_REPORT.md</file>
+  <line>110</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3C_Implementation/ERP_BASE_002E_3C_INITIAL_REVIEW_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>{onOpenChange}&gt; &lt;DialogContent className</highlighted_element>
+  <language>Markdown</language>
+  <offset>33</offset>
+  <length>42</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3D_Implementation/ERP_BASE_002E_3D_IMPLEMENTATION_REPORT.md</file>
+  <line>239</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3D_Implementation/ERP_BASE_002E_3D_IMPLEMENTATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot be redeclared #loc</description>
+  <highlighted_element>isDisabled</highlighted_element>
+  <language>Markdown</language>
+  <offset>6</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3D_Implementation/ERP_BASE_002E_3D_IMPLEMENTATION_REPORT.md</file>
+  <line>242</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3D_Implementation/ERP_BASE_002E_3D_IMPLEMENTATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot be redeclared #loc</description>
+  <highlighted_element>isDisabled</highlighted_element>
+  <language>Markdown</language>
+  <offset>6</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3D_Implementation/ERP_BASE_002E_3D_IMPLEMENTATION_REPORT.md</file>
+  <line>266</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3D_Implementation/ERP_BASE_002E_3D_IMPLEMENTATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>success</highlighted_element>
+  <language>Markdown</language>
+  <offset>13</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3D_Implementation/ERP_BASE_002E_3D_IMPLEMENTATION_REPORT.md</file>
+  <line>266</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3D_Implementation/ERP_BASE_002E_3D_IMPLEMENTATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>29</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3D_Implementation/ERP_BASE_002E_3D_IMPLEMENTATION_REPORT.md</file>
+  <line>303</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3D_Implementation/ERP_BASE_002E_3D_IMPLEMENTATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>success</highlighted_element>
+  <language>Markdown</language>
+  <offset>13</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3D_Implementation/ERP_BASE_002E_3D_IMPLEMENTATION_REPORT.md</file>
+  <line>303</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3D_Implementation/ERP_BASE_002E_3D_IMPLEMENTATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>29</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3D_Implementation/ERP_BASE_002E_3D_IMPLEMENTATION_REPORT.md</file>
+  <line>312</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3D_Implementation/ERP_BASE_002E_3D_IMPLEMENTATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>&lt;DropdownMenuSeparator /&gt; &lt;DropdownMenuItem onClick</highlighted_element>
+  <language>Markdown</language>
+  <offset>0</offset>
+  <length>53</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3D_Implementation/ERP_BASE_002E_3D_IMPLEMENTATION_REPORT.md</file>
+  <line>316</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3D_Implementation/ERP_BASE_002E_3D_IMPLEMENTATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>&quot;cursor-pointer&quot; &gt; &lt;MailPlus className</highlighted_element>
+  <language>Markdown</language>
+  <offset>12</offset>
+  <length>40</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3D_Implementation/ERP_BASE_002E_3D_INITIAL_REVIEW_REPORT.md</file>
+  <line>273</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3D_Implementation/ERP_BASE_002E_3D_INITIAL_REVIEW_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>logAudit</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>8</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3D_Implementation/ERP_BASE_002E_3D_INITIAL_REVIEW_REPORT.md</file>
+  <line>419</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3D_Implementation/ERP_BASE_002E_3D_INITIAL_REVIEW_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>sendExportEmail</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>15</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3D_Implementation/ERP_BASE_002E_3D_INITIAL_REVIEW_REPORT.md</file>
+  <line>481</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3D_Implementation/ERP_BASE_002E_3D_INITIAL_REVIEW_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>&lt;DropdownMenuSeparator /&gt; &lt;DropdownMenuItem onClick</highlighted_element>
+  <language>Markdown</language>
+  <offset>0</offset>
+  <length>62</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3D_Implementation/ERP_BASE_002E_3D_INITIAL_REVIEW_REPORT.md</file>
+  <line>485</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3D_Implementation/ERP_BASE_002E_3D_INITIAL_REVIEW_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>&quot;cursor-pointer&quot; &gt; &lt;MailPlus className</highlighted_element>
+  <language>Markdown</language>
+  <offset>15</offset>
+  <length>46</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3F_Live_Test/ERP_BASE_002E_3F_INITIAL_LIVE_TEST_REVIEW.md</file>
+  <line>69</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3F_Live_Test/ERP_BASE_002E_3F_INITIAL_LIVE_TEST_REVIEW.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Modifier private cannot appear here #loc</description>
+  <highlighted_element>private</highlighted_element>
+  <language>Markdown</language>
+  <offset>0</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3F_Live_Test/ERP_BASE_002E_3F_INITIAL_LIVE_TEST_REVIEW.md</file>
+  <line>69</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3F_Live_Test/ERP_BASE_002E_3F_INITIAL_LIVE_TEST_REVIEW.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Modifier async cannot appear here #loc</description>
+  <highlighted_element>async</highlighted_element>
+  <language>Markdown</language>
+  <offset>8</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3F_Live_Test/ERP_BASE_002E_3F_SECURITY_VALIDATION_REPORT.md</file>
+  <line>90</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3F_Live_Test/ERP_BASE_002E_3F_SECURITY_VALIDATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Modifier    private cannot appear here #loc</description>
+  <highlighted_element>private</highlighted_element>
+  <language>Markdown</language>
+  <offset>0</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3F_Live_Test/ERP_BASE_002E_3F_SECURITY_VALIDATION_REPORT.md</file>
+  <line>90</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3F_Live_Test/ERP_BASE_002E_3F_SECURITY_VALIDATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>TokenCacheEntry | null</highlighted_element>
+  <language>Markdown</language>
+  <offset>23</offset>
+  <length>22</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3F_Live_Test/ERP_BASE_002E_3F_SECURITY_VALIDATION_REPORT.md</file>
+  <line>92</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3F_Live_Test/ERP_BASE_002E_3F_SECURITY_VALIDATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Modifier    private cannot appear here #loc</description>
+  <highlighted_element>private</highlighted_element>
+  <language>Markdown</language>
+  <offset>0</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3F_Live_Test/ERP_BASE_002E_3F_SECURITY_VALIDATION_REPORT.md</file>
+  <line>92</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3F_Live_Test/ERP_BASE_002E_3F_SECURITY_VALIDATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Modifier async cannot appear here #loc</description>
+  <highlighted_element>async</highlighted_element>
+  <language>Markdown</language>
+  <offset>11</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3_Planning/ERP_BASE_002E_3_EMAIL_INITIAL_REVIEW_REPORT.md</file>
+  <line>379</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002E_3_Planning/ERP_BASE_002E_3_EMAIL_INITIAL_REVIEW_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Method sendEmail from interface EmailProvider is not implemented #loc</description>
+  <highlighted_element>MicrosoftGraphProvider</highlighted_element>
+  <language>Markdown</language>
+  <offset>6</offset>
+  <length>22</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C1_Implementation/ERP_BASE_002F_3C_1_GEOGRAPHY_GLOBAL_REGION_COMPLETION_FIX_REPORT.md</file>
+  <line>161</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C1_Implementation/ERP_BASE_002F_3C_1_GEOGRAPHY_GLOBAL_REGION_COMPLETION_FIX_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>&quot;Select country&quot; /&gt; &lt;EmirateSelect value</highlighted_element>
+  <language>Markdown</language>
+  <offset>14</offset>
+  <length>43</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C1_Implementation/ERP_BASE_002F_3C_1_GEOGRAPHY_GLOBAL_REGION_COMPLETION_FIX_REPORT.md</file>
+  <line>238</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C1_Implementation/ERP_BASE_002F_3C_1_GEOGRAPHY_GLOBAL_REGION_COMPLETION_FIX_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>&quot;Select country&quot; /&gt; &lt;LookupSelect categoryCode</highlighted_element>
+  <language>Markdown</language>
+  <offset>14</offset>
+  <length>49</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C1_Implementation/ERP_BASE_002F_3C_1_GEOGRAPHY_GLOBAL_REGION_IMPLEMENTATION_REPORT.md</file>
+  <line>415</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C1_Implementation/ERP_BASE_002F_3C_1_GEOGRAPHY_GLOBAL_REGION_IMPLEMENTATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>getEmirates</highlighted_element>
+  <language>Markdown</language>
+  <offset>25</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C1_Implementation/ERP_BASE_002F_3C_1_GEOGRAPHY_GLOBAL_REGION_IMPLEMENTATION_REPORT.md</file>
+  <line>430</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C1_Implementation/ERP_BASE_002F_3C_1_GEOGRAPHY_GLOBAL_REGION_IMPLEMENTATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>getCities</highlighted_element>
+  <language>Markdown</language>
+  <offset>25</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C1_Implementation/ERP_BASE_002F_3C_1_GEOGRAPHY_GLOBAL_REGION_IMPLEMENTATION_REPORT.md</file>
+  <line>441</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C1_Implementation/ERP_BASE_002F_3C_1_GEOGRAPHY_GLOBAL_REGION_IMPLEMENTATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>getPorts</highlighted_element>
+  <language>Markdown</language>
+  <offset>25</offset>
+  <length>8</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C1_Implementation/ERP_BASE_002F_3C_1_GEOGRAPHY_LOCK_UNLOCK_FIX_REPORT.md</file>
+  <line>80</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C1_Implementation/ERP_BASE_002F_3C_1_GEOGRAPHY_LOCK_UNLOCK_FIX_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>toggleCountryLock</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>17</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C2_Planning/ERP_BASE_002F_3C_2_FINANCE_BASICS_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1848</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C2_Planning/ERP_BASE_002F_3C_2_FINANCE_BASICS_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>&quot;flex flex-col gap-6&quot;&gt; &lt;ERPPageHeader title</highlighted_element>
+  <language>Markdown</language>
+  <offset>19</offset>
+  <length>57</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C2_Planning/ERP_BASE_002F_3C_2_FINANCE_BASICS_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>2023</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C2_Planning/ERP_BASE_002F_3C_2_FINANCE_BASICS_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>&quot;flex items-center gap-2&quot;&gt; &lt;Loader2 className</highlighted_element>
+  <language>Markdown</language>
+  <offset>21</offset>
+  <length>53</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C2_Planning/ERP_BASE_002F_3C_2_FINANCE_BASICS_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>2024</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C2_Planning/ERP_BASE_002F_3C_2_FINANCE_BASICS_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>&quot;h-4 w-4 animate-spin&quot; /&gt; &lt;span className</highlighted_element>
+  <language>Markdown</language>
+  <offset>27</offset>
+  <length>49</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C2_Planning/ERP_BASE_002F_3C_2_FINANCE_BASICS_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>2040</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C2_Planning/ERP_BASE_002F_3C_2_FINANCE_BASICS_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>{className}&gt; &lt;Select value</highlighted_element>
+  <language>Markdown</language>
+  <offset>19</offset>
+  <length>40</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C2_Planning/ERP_BASE_002F_3C_2_FINANCE_BASICS_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>2045</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C2_Planning/ERP_BASE_002F_3C_2_FINANCE_BASICS_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>{required} &gt; &lt;SelectTrigger className</highlighted_element>
+  <language>Markdown</language>
+  <offset>17</offset>
+  <length>51</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C2_Planning/ERP_BASE_002F_3C_2_FINANCE_BASICS_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>2047</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C2_Planning/ERP_BASE_002F_3C_2_FINANCE_BASICS_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>{error ? &quot;border-destructive&quot; : &quot;&quot;}&gt; &lt;SelectValue placeholder</highlighted_element>
+  <language>Markdown</language>
+  <offset>33</offset>
+  <length>71</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C2_Planning/ERP_BASE_002F_3C_2_FINANCE_BASICS_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>2059</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C2_Planning/ERP_BASE_002F_3C_2_FINANCE_BASICS_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>currency.is_base_currency &amp;&amp; &lt;span className</highlighted_element>
+  <language>Markdown</language>
+  <offset>17</offset>
+  <length>44</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C2_Planning/ERP_BASE_002F_3C_2_FINANCE_BASICS_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>2065</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C2_Planning/ERP_BASE_002F_3C_2_FINANCE_BASICS_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>error &amp;&amp; &lt;p className</highlighted_element>
+  <language>Markdown</language>
+  <offset>7</offset>
+  <length>21</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C2_Planning/ERP_BASE_002F_3C_2_FINANCE_BASICS_TECHNICAL_IMPLEMENTATION_PLAN_REV1.md</file>
+  <line>981</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C2_Planning/ERP_BASE_002F_3C_2_FINANCE_BASICS_TECHNICAL_IMPLEMENTATION_PLAN_REV1.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>getActiveCurrenciesForSelect</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>28</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C2_Planning/ERP_BASE_002F_3C_2_FINANCE_BASICS_TECHNICAL_IMPLEMENTATION_PLAN_REV1.md</file>
+  <line>982</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C2_Planning/ERP_BASE_002F_3C_2_FINANCE_BASICS_TECHNICAL_IMPLEMENTATION_PLAN_REV1.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>getActivePaymentTermsForSelect</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>30</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C3_Implementation/ERP_BASE_002F_3C_3_UOM_IMPLEMENTATION_REPORT.md</file>
+  <line>669</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C3_Implementation/ERP_BASE_002F_3C_3_UOM_IMPLEMENTATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>{true}&gt; &lt;SelectTrigger className</highlighted_element>
+  <language>Markdown</language>
+  <offset>21</offset>
+  <length>38</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C3_Implementation/ERP_BASE_002F_3C_3_UOM_IMPLEMENTATION_REPORT.md</file>
+  <line>670</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C3_Implementation/ERP_BASE_002F_3C_3_UOM_IMPLEMENTATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>{className}&gt; &lt;SelectValue placeholder</highlighted_element>
+  <language>Markdown</language>
+  <offset>31</offset>
+  <length>45</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C3_Implementation/ERP_BASE_002F_3C_3_UOM_IMPLEMENTATION_REPORT.md</file>
+  <line>680</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C3_Implementation/ERP_BASE_002F_3C_3_UOM_IMPLEMENTATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>{true}&gt; &lt;SelectTrigger className</highlighted_element>
+  <language>Markdown</language>
+  <offset>53</offset>
+  <length>38</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C3_Implementation/ERP_BASE_002F_3C_3_UOM_IMPLEMENTATION_REPORT.md</file>
+  <line>681</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C3_Implementation/ERP_BASE_002F_3C_3_UOM_IMPLEMENTATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>{className}&gt; &lt;SelectValue placeholder</highlighted_element>
+  <language>Markdown</language>
+  <offset>31</offset>
+  <length>45</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C3_Planning/ERP_BASE_002F_3C_3_UNITS_MEASUREMENTS_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>894</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C3_Planning/ERP_BASE_002F_3C_3_UNITS_MEASUREMENTS_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>&quot;flex-1 space-y-4 p-4 md:p-6&quot;&gt; &lt;ERPPageHeader title</highlighted_element>
+  <language>Markdown</language>
+  <offset>19</offset>
+  <length>65</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C4_Implementation/ERP_BASE_002F_3C_4A_2_SIDEBAR_MANUAL_MULTI_OPEN_LOGIN_DASHBOARD_FIX_REPORT.md</file>
+  <line>256</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3C4_Implementation/ERP_BASE_002F_3C_4A_2_SIDEBAR_MANUAL_MULTI_OPEN_LOGIN_DASHBOARD_FIX_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>&quot;h-screen flex flex-col border-r border-border/40 bg-card transition-all duration-300 shrink-0&quot;&gt; &lt;...</highlighted_element>
+  <language>Markdown</language>
+  <offset>17</offset>
+  <length>113</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_2B_Planning/ERP_BASE_002F_3E_2B_GLOBAL_MASTER_DATA_NUMBERING_READINESS_PLAN.md</file>
+  <line>984</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_2B_Planning/ERP_BASE_002F_3E_2B_GLOBAL_MASTER_DATA_NUMBERING_READINESS_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>29</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_2B_Planning/ERP_BASE_002F_3E_2B_GLOBAL_MASTER_DATA_NUMBERING_READINESS_PLAN.md</file>
+  <line>987</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_2B_Planning/ERP_BASE_002F_3E_2B_GLOBAL_MASTER_DATA_NUMBERING_READINESS_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>code</highlighted_element>
+  <language>Markdown</language>
+  <offset>26</offset>
+  <length>4</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B2A_Implementation/ERP_BASE_002F_3E_3B_2A_BASE_ERPCOMBOBOX_AND_LOOKUPSELECT_IMPLEMENTATION_REPORT.md</file>
+  <line>363</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B2A_Implementation/ERP_BASE_002F_3E_3B_2A_BASE_ERPCOMBOBOX_AND_LOOKUPSELECT_IMPLEMENTATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>val?.is_default &amp;&amp; &lt;Badge variant</highlighted_element>
+  <language>Markdown</language>
+  <offset>7</offset>
+  <length>33</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3D_Implementation/ERP_BASE_002F_3E_3B_3D_CORE_MASTER_DATA_FORMS_REQUIRED_FOOTER_IMPLEMENTATION_REPORT.md</file>
+  <line>145</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3D_Implementation/ERP_BASE_002F_3E_3B_3D_CORE_MASTER_DATA_FORMS_REQUIRED_FOOTER_IMPLEMENTATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot be redeclared #loc</description>
+  <highlighted_element>handleSave</highlighted_element>
+  <language>Markdown</language>
+  <offset>6</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3D_Implementation/ERP_BASE_002F_3E_3B_3D_CORE_MASTER_DATA_FORMS_REQUIRED_FOOTER_IMPLEMENTATION_REPORT.md</file>
+  <line>147</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3D_Implementation/ERP_BASE_002F_3E_3B_3D_CORE_MASTER_DATA_FORMS_REQUIRED_FOOTER_IMPLEMENTATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot share name with 'var' variables or parameters in the same block scope #loc</description>
+  <highlighted_element>formData</highlighted_element>
+  <language>Markdown</language>
+  <offset>8</offset>
+  <length>8</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3D_Implementation/ERP_BASE_002F_3E_3B_3D_CORE_MASTER_DATA_FORMS_REQUIRED_FOOTER_IMPLEMENTATION_REPORT.md</file>
+  <line>153</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3D_Implementation/ERP_BASE_002F_3E_3B_3D_CORE_MASTER_DATA_FORMS_REQUIRED_FOOTER_IMPLEMENTATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot be redeclared #loc</description>
+  <highlighted_element>handleSave</highlighted_element>
+  <language>Markdown</language>
+  <offset>6</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3D_Implementation/ERP_BASE_002F_3E_3B_3D_CORE_MASTER_DATA_FORMS_REQUIRED_FOOTER_IMPLEMENTATION_REPORT.md</file>
+  <line>221</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3D_Implementation/ERP_BASE_002F_3E_3B_3D_CORE_MASTER_DATA_FORMS_REQUIRED_FOOTER_IMPLEMENTATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>&quot;flex flex-1 overflow-hidden h-full&quot;&gt; // AFTER (correct pattern) &lt;form id</highlighted_element>
+  <language>Markdown</language>
+  <offset>33</offset>
+  <length>74</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3D_Implementation/ERP_BASE_002F_3E_3B_3D_CORE_MASTER_DATA_FORMS_REQUIRED_FOOTER_IMPLEMENTATION_REPORT.md</file>
+  <line>364</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3D_Implementation/ERP_BASE_002F_3E_3B_3D_CORE_MASTER_DATA_FORMS_REQUIRED_FOOTER_IMPLEMENTATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>data-state</highlighted_element>
+  <language>Markdown</language>
+  <offset>0</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3D_Implementation/ERP_BASE_002F_3E_3B_3D_CORE_MASTER_DATA_FORMS_REQUIRED_FOOTER_IMPLEMENTATION_REPORT.md</file>
+  <line>366</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3D_Implementation/ERP_BASE_002F_3E_3B_3D_CORE_MASTER_DATA_FORMS_REQUIRED_FOOTER_IMPLEMENTATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>data-state</highlighted_element>
+  <language>Markdown</language>
+  <offset>0</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_CUSTOMER_SAVE_BUTTONS_FINAL_QA_FIX_REPORT.md</file>
+  <line>795</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_CUSTOMER_SAVE_BUTTONS_FINAL_QA_FIX_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot be redeclared #loc</description>
+  <highlighted_element>isEditing</highlighted_element>
+  <language>Markdown</language>
+  <offset>6</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_CUSTOMER_SAVE_BUTTONS_FINAL_QA_FIX_REPORT.md</file>
+  <line>796</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_CUSTOMER_SAVE_BUTTONS_FINAL_QA_FIX_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot be redeclared #loc</description>
+  <highlighted_element>isViewing</highlighted_element>
+  <language>Markdown</language>
+  <offset>6</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_CUSTOMER_SAVE_BUTTONS_FINAL_QA_FIX_REPORT.md</file>
+  <line>802</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_CUSTOMER_SAVE_BUTTONS_FINAL_QA_FIX_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot be redeclared #loc</description>
+  <highlighted_element>isEditing</highlighted_element>
+  <language>Markdown</language>
+  <offset>6</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_CUSTOMER_SAVE_BUTTONS_FINAL_QA_FIX_REPORT.md</file>
+  <line>803</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_CUSTOMER_SAVE_BUTTONS_FINAL_QA_FIX_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot be redeclared #loc</description>
+  <highlighted_element>isViewing</highlighted_element>
+  <language>Markdown</language>
+  <offset>6</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_CUSTOMER_SAVE_BUTTONS_FINAL_QA_FIX_REPORT.md</file>
+  <line>810</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_CUSTOMER_SAVE_BUTTONS_FINAL_QA_FIX_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot be redeclared #loc</description>
+  <highlighted_element>countryId</highlighted_element>
+  <language>Markdown</language>
+  <offset>7</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_CUSTOMER_SAVE_BUTTONS_FINAL_QA_FIX_REPORT.md</file>
+  <line>810</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_CUSTOMER_SAVE_BUTTONS_FINAL_QA_FIX_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot be redeclared #loc</description>
+  <highlighted_element>setCountryId</highlighted_element>
+  <language>Markdown</language>
+  <offset>18</offset>
+  <length>12</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_CUSTOMER_SAVE_BUTTONS_FINAL_QA_FIX_REPORT.md</file>
+  <line>811</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_CUSTOMER_SAVE_BUTTONS_FINAL_QA_FIX_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot be redeclared #loc</description>
+  <highlighted_element>currencyId</highlighted_element>
+  <language>Markdown</language>
+  <offset>7</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_CUSTOMER_SAVE_BUTTONS_FINAL_QA_FIX_REPORT.md</file>
+  <line>811</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_CUSTOMER_SAVE_BUTTONS_FINAL_QA_FIX_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot be redeclared #loc</description>
+  <highlighted_element>setCurrencyId</highlighted_element>
+  <language>Markdown</language>
+  <offset>19</offset>
+  <length>13</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_CUSTOMER_SAVE_BUTTONS_FINAL_QA_FIX_REPORT.md</file>
+  <line>815</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_CUSTOMER_SAVE_BUTTONS_FINAL_QA_FIX_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot be redeclared #loc</description>
+  <highlighted_element>countryId</highlighted_element>
+  <language>Markdown</language>
+  <offset>7</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_CUSTOMER_SAVE_BUTTONS_FINAL_QA_FIX_REPORT.md</file>
+  <line>815</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_CUSTOMER_SAVE_BUTTONS_FINAL_QA_FIX_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot be redeclared #loc</description>
+  <highlighted_element>setCountryId</highlighted_element>
+  <language>Markdown</language>
+  <offset>18</offset>
+  <length>12</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_CUSTOMER_SAVE_BUTTONS_FINAL_QA_FIX_REPORT.md</file>
+  <line>816</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_CUSTOMER_SAVE_BUTTONS_FINAL_QA_FIX_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot be redeclared #loc</description>
+  <highlighted_element>currencyId</highlighted_element>
+  <language>Markdown</language>
+  <offset>7</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_CUSTOMER_SAVE_BUTTONS_FINAL_QA_FIX_REPORT.md</file>
+  <line>816</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_CUSTOMER_SAVE_BUTTONS_FINAL_QA_FIX_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot be redeclared #loc</description>
+  <highlighted_element>setCurrencyId</highlighted_element>
+  <language>Markdown</language>
+  <offset>19</offset>
+  <length>13</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_CUSTOMER_SAVE_BUTTONS_FINAL_QA_FIX_REPORT.md</file>
+  <line>824</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_CUSTOMER_SAVE_BUTTONS_FINAL_QA_FIX_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot be redeclared #loc</description>
+  <highlighted_element>handleSubmit</highlighted_element>
+  <language>Markdown</language>
+  <offset>6</offset>
+  <length>12</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_CUSTOMER_SAVE_BUTTONS_FINAL_QA_FIX_REPORT.md</file>
+  <line>912</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_CUSTOMER_SAVE_BUTTONS_FINAL_QA_FIX_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Block scoped variables cannot be redeclared #loc</description>
+  <highlighted_element>handleSubmit</highlighted_element>
+  <language>Markdown</language>
+  <offset>6</offset>
+  <length>12</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_REQUIRED_FOOTER_FINAL_QA_REPORT.md</file>
+  <line>137</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B3F_Implementation/ERP_BASE_002F_3E_3B_3F_REQUIRED_FOOTER_FINAL_QA_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>required &amp;&amp; &lt;span className</highlighted_element>
+  <language>Markdown</language>
+  <offset>1</offset>
+  <length>27</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B4_Implementation/ERP_BASE_002F_3E_3B_4_SAFE_CLOSE_UNSAVED_CHANGES_IMPLEMENTATION_REPORT.md</file>
+  <line>238</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B4_Implementation/ERP_BASE_002F_3E_3B_4_SAFE_CLOSE_UNSAVED_CHANGES_IMPLEMENTATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>{isDirty} &gt; // 4. Pass to ERPFormFooter &lt;ERPFormFooter // ... existing props hasUnsavedChanges</highlighted_element>
+  <language>Markdown</language>
+  <offset>10</offset>
+  <length>99</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B6E_Implementation/ERP_BASE_002F_3E_3B_6E_LAZY_LOAD_DRAWER_TABS_AND_CHILD_SECTIONS_REPORT.md</file>
+  <line>207</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3B6E_Implementation/ERP_BASE_002F_3E_3B_6E_LAZY_LOAD_DRAWER_TABS_AND_CHILD_SECTIONS_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>aria-hidden</highlighted_element>
+  <language>Markdown</language>
+  <offset>6</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>960</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>getCustomerContacts</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>19</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>961</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>createCustomerContact</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>21</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>962</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>updateCustomerContact</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>21</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>963</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>deactivateCustomerContact</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>964</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>deleteCustomerContact</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>21</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1028</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>getCustomerAddresses</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1029</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>createCustomerAddress</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>21</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1030</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>updateCustomerAddress</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>21</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1031</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>deactivateCustomerAddress</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1032</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>deleteCustomerAddress</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>21</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1091</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>getCustomerBankDetails</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>22</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1092</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>createCustomerBankDetail</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>24</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1093</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>updateCustomerBankDetail</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>24</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1094</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>deactivateCustomerBankDetail</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>28</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1095</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>deleteCustomerBankDetail</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>24</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1331</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>31</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1339</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>40</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1342</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>29</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1355</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>31</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1364</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>40</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1367</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>29</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1380</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>31</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1397</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>40</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1416</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>29</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1429</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>31</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1453</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>40</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1473</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>29</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1486</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>31</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1502</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>40</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1521</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>29</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1534</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>31</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1550</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>40</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1568</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>29</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1581</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>31</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1586</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>31</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1601</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>40</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1619</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>29</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1632</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>31</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1645</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>40</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1663</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>29</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1676</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>31</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1689</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>40</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1707</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>29</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1720</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>31</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1728</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>40</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1743</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_3_Planning/ERP_BASE_002F_3E_3_CUSTOMERS_MODULE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>error</highlighted_element>
+  <language>Markdown</language>
+  <offset>29</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>434</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>{className}&gt; &lt;SelectValue placeholder</highlighted_element>
+  <language>Markdown</language>
+  <offset>31</offset>
+  <length>45</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>439</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Assignment patterns must be on the left side of assignment #loc</description>
+  <highlighted_element>value={currency.id.toString()}&gt; {showCode ? `${currency.currency_code} — ` : &quot;&quot;}</highlighted_element>
+  <language>Markdown</language>
+  <offset>40</offset>
+  <length>92</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>3324</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>{required} &gt; &lt;SelectTrigger className</highlighted_element>
+  <language>Markdown</language>
+  <offset>15</offset>
+  <length>47</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>3326</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>{className}&gt; &lt;SelectValue placeholder</highlighted_element>
+  <language>Markdown</language>
+  <offset>31</offset>
+  <length>45</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>3395</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Invalid left-hand side in assignment expression #loc</description>
+  <highlighted_element>&quot;Select vendor type...&quot; /&gt; &lt;VendorSelect value</highlighted_element>
+  <language>Markdown</language>
+  <offset>14</offset>
+  <length>49</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4B_Implementation/ERP_GLOBAL_UI_4B_DIRTY_STATE_AND_SAFE_CLOSE_INTEGRATION_IMPLEMENTATION_REPORT.md</file>
+  <line>48</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4B_Implementation/ERP_GLOBAL_UI_4B_DIRTY_STATE_AND_SAFE_CLOSE_INTEGRATION_IMPLEMENTATION_REPORT.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Function implementation is missing or not immediately following the declaration #loc</description>
+  <highlighted_element>useWorkspaceTabDirty</highlighted_element>
+  <language>Markdown</language>
+  <offset>16</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md</file>
+  <line>363</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>route</highlighted_element>
+  <language>Markdown</language>
+  <offset>4</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md</file>
+  <line>363</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>title</highlighted_element>
+  <language>Markdown</language>
+  <offset>25</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md</file>
+  <line>363</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>icon</highlighted_element>
+  <language>Markdown</language>
+  <offset>45</offset>
+  <length>4</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md</file>
+  <line>363</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>tabKind</highlighted_element>
+  <language>Markdown</language>
+  <offset>70</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md</file>
+  <line>363</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>closable</highlighted_element>
+  <language>Markdown</language>
+  <offset>92</offset>
+  <length>8</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md</file>
+  <line>363</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>pinned</highlighted_element>
+  <language>Markdown</language>
+  <offset>109</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md</file>
+  <line>363</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>singleton</highlighted_element>
+  <language>Markdown</language>
+  <offset>123</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md</file>
+  <line>364</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>route</highlighted_element>
+  <language>Markdown</language>
+  <offset>4</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md</file>
+  <line>364</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>title</highlighted_element>
+  <language>Markdown</language>
+  <offset>41</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md</file>
+  <line>364</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>icon</highlighted_element>
+  <language>Markdown</language>
+  <offset>63</offset>
+  <length>4</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md</file>
+  <line>364</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>tabKind</highlighted_element>
+  <language>Markdown</language>
+  <offset>82</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md</file>
+  <line>364</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>singleton</highlighted_element>
+  <language>Markdown</language>
+  <offset>99</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md</file>
+  <line>365</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>route</highlighted_element>
+  <language>Markdown</language>
+  <offset>4</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md</file>
+  <line>365</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>title</highlighted_element>
+  <language>Markdown</language>
+  <offset>51</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md</file>
+  <line>365</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>icon</highlighted_element>
+  <language>Markdown</language>
+  <offset>71</offset>
+  <length>4</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md</file>
+  <line>365</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>tabKind</highlighted_element>
+  <language>Markdown</language>
+  <offset>86</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md</file>
+  <line>365</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Global_Phases/Phase_GLOBAL_UI_4_Planning/ERP_GLOBAL_UI_4_MULTI_TAB_WORKSPACE_AND_RECORD_FORM_ARCHITECTURE_PLAN.md" />
+  <problem_class id="JSAnnotator" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">ECMAScript specification is not followed</problem_class>
+  <description>Corresponding file is not included in tsconfig.json #loc</description>
+  <highlighted_element>singleton</highlighted_element>
+  <language>Markdown</language>
+  <offset>103</offset>
+  <length>9</length>
+</problem>
+</problems>

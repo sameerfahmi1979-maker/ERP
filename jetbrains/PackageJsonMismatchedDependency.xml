@@ -1,0 +1,746 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>12</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The installed version &quot;@hookform/resolvers@5.4.0&quot; doesn't match the version range &quot;^3.9.0&quot;</description>
+  <highlighted_element>^3.9.0</highlighted_element>
+  <language>JSON</language>
+  <offset>28</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>13</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@metagptx/vite-plugin-source-locator&quot; package is not installed</description>
+  <highlighted_element>latest</highlighted_element>
+  <language>JSON</language>
+  <offset>45</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>14</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@metagptx/web-sdk&quot; package is not installed</description>
+  <highlighted_element>latest</highlighted_element>
+  <language>JSON</language>
+  <offset>26</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>15</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@playwright/mcp&quot; package is not installed</description>
+  <highlighted_element>^0.0.36</highlighted_element>
+  <language>JSON</language>
+  <offset>24</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>16</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@radix-ui/react-accordion&quot; package is not installed</description>
+  <highlighted_element>^1.2.0</highlighted_element>
+  <language>JSON</language>
+  <offset>34</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>18</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@radix-ui/react-aspect-ratio&quot; package is not installed</description>
+  <highlighted_element>^1.1.0</highlighted_element>
+  <language>JSON</language>
+  <offset>37</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>19</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@radix-ui/react-avatar&quot; package is not installed</description>
+  <highlighted_element>^1.1.0</highlighted_element>
+  <language>JSON</language>
+  <offset>31</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>20</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@radix-ui/react-checkbox&quot; package is not installed</description>
+  <highlighted_element>^1.1.1</highlighted_element>
+  <language>JSON</language>
+  <offset>33</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>21</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@radix-ui/react-collapsible&quot; package is not installed</description>
+  <highlighted_element>^1.1.0</highlighted_element>
+  <language>JSON</language>
+  <offset>36</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>22</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@radix-ui/react-context-menu&quot; package is not installed</description>
+  <highlighted_element>^2.2.1</highlighted_element>
+  <language>JSON</language>
+  <offset>37</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>24</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@radix-ui/react-dropdown-menu&quot; package is not installed</description>
+  <highlighted_element>^2.1.1</highlighted_element>
+  <language>JSON</language>
+  <offset>38</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>25</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@radix-ui/react-hover-card&quot; package is not installed</description>
+  <highlighted_element>^1.1.1</highlighted_element>
+  <language>JSON</language>
+  <offset>35</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>27</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@radix-ui/react-menubar&quot; package is not installed</description>
+  <highlighted_element>^1.1.1</highlighted_element>
+  <language>JSON</language>
+  <offset>32</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>28</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@radix-ui/react-navigation-menu&quot; package is not installed</description>
+  <highlighted_element>^1.2.0</highlighted_element>
+  <language>JSON</language>
+  <offset>40</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>30</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@radix-ui/react-progress&quot; package is not installed</description>
+  <highlighted_element>^1.1.0</highlighted_element>
+  <language>JSON</language>
+  <offset>33</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>31</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@radix-ui/react-radio-group&quot; package is not installed</description>
+  <highlighted_element>^1.2.0</highlighted_element>
+  <language>JSON</language>
+  <offset>36</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>32</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@radix-ui/react-scroll-area&quot; package is not installed</description>
+  <highlighted_element>^1.1.0</highlighted_element>
+  <language>JSON</language>
+  <offset>36</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>33</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@radix-ui/react-select&quot; package is not installed</description>
+  <highlighted_element>^2.1.1</highlighted_element>
+  <language>JSON</language>
+  <offset>31</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>34</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@radix-ui/react-separator&quot; package is not installed</description>
+  <highlighted_element>^1.1.0</highlighted_element>
+  <language>JSON</language>
+  <offset>34</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>35</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@radix-ui/react-slider&quot; package is not installed</description>
+  <highlighted_element>^1.2.0</highlighted_element>
+  <language>JSON</language>
+  <offset>31</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>37</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@radix-ui/react-switch&quot; package is not installed</description>
+  <highlighted_element>^1.1.0</highlighted_element>
+  <language>JSON</language>
+  <offset>31</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>38</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@radix-ui/react-tabs&quot; package is not installed</description>
+  <highlighted_element>^1.1.0</highlighted_element>
+  <language>JSON</language>
+  <offset>29</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>39</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@radix-ui/react-toast&quot; package is not installed</description>
+  <highlighted_element>^1.2.1</highlighted_element>
+  <language>JSON</language>
+  <offset>30</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>40</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@radix-ui/react-toggle&quot; package is not installed</description>
+  <highlighted_element>^1.1.0</highlighted_element>
+  <language>JSON</language>
+  <offset>31</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>41</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@radix-ui/react-toggle-group&quot; package is not installed</description>
+  <highlighted_element>^1.1.0</highlighted_element>
+  <language>JSON</language>
+  <offset>37</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>42</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@radix-ui/react-tooltip&quot; package is not installed</description>
+  <highlighted_element>^1.1.4</highlighted_element>
+  <language>JSON</language>
+  <offset>32</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>44</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;axios&quot; package is not installed</description>
+  <highlighted_element>1.6.0</highlighted_element>
+  <language>JSON</language>
+  <offset>14</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>48</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The installed version &quot;date-fns@4.3.0&quot; doesn't match the version range &quot;^3.6.0&quot;</description>
+  <highlighted_element>^3.6.0</highlighted_element>
+  <language>JSON</language>
+  <offset>17</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>49</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;embla-carousel-react&quot; package is not installed</description>
+  <highlighted_element>^8.3.0</highlighted_element>
+  <language>JSON</language>
+  <offset>29</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>50</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;input-otp&quot; package is not installed</description>
+  <highlighted_element>^1.2.4</highlighted_element>
+  <language>JSON</language>
+  <offset>18</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>51</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The installed version &quot;lucide-react@1.16.0&quot; doesn't match the version range &quot;^0.462.0&quot;</description>
+  <highlighted_element>^0.462.0</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>8</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>52</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;markdown-to-jsx&quot; package is not installed</description>
+  <highlighted_element>^9.7.13</highlighted_element>
+  <language>JSON</language>
+  <offset>24</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>53</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The installed version &quot;next-themes@0.4.6&quot; doesn't match the version range &quot;^0.3.0&quot;</description>
+  <highlighted_element>^0.3.0</highlighted_element>
+  <language>JSON</language>
+  <offset>20</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>54</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The installed version &quot;react@19.2.4&quot; doesn't match the version range &quot;^18.3.1&quot;</description>
+  <highlighted_element>^18.3.1</highlighted_element>
+  <language>JSON</language>
+  <offset>14</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>55</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;react-day-picker&quot; package is not installed</description>
+  <highlighted_element>^8.10.1</highlighted_element>
+  <language>JSON</language>
+  <offset>25</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>56</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The installed version &quot;react-dom@19.2.4&quot; doesn't match the version range &quot;^18.3.1&quot;</description>
+  <highlighted_element>^18.3.1</highlighted_element>
+  <language>JSON</language>
+  <offset>18</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>58</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;react-resizable-panels&quot; package is not installed</description>
+  <highlighted_element>^2.1.3</highlighted_element>
+  <language>JSON</language>
+  <offset>31</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>59</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;react-router-dom&quot; package is not installed</description>
+  <highlighted_element>^6.30.0</highlighted_element>
+  <language>JSON</language>
+  <offset>25</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>60</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;recharts&quot; package is not installed</description>
+  <highlighted_element>^2.12.7</highlighted_element>
+  <language>JSON</language>
+  <offset>17</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>61</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The installed version &quot;sonner@2.0.7&quot; doesn't match the version range &quot;^1.7.4&quot;</description>
+  <highlighted_element>^1.7.4</highlighted_element>
+  <language>JSON</language>
+  <offset>15</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>62</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The installed version &quot;tailwind-merge@3.6.0&quot; doesn't match the version range &quot;^2.5.2&quot;</description>
+  <highlighted_element>^2.5.2</highlighted_element>
+  <language>JSON</language>
+  <offset>23</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>63</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;tailwindcss-animate&quot; package is not installed</description>
+  <highlighted_element>^1.0.7</highlighted_element>
+  <language>JSON</language>
+  <offset>28</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>64</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;vaul&quot; package is not installed</description>
+  <highlighted_element>^0.9.3</highlighted_element>
+  <language>JSON</language>
+  <offset>13</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>65</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;yaml&quot; package is not installed</description>
+  <highlighted_element>^2.8.2</highlighted_element>
+  <language>JSON</language>
+  <offset>13</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>66</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The installed version &quot;zod@4.4.3&quot; doesn't match the version range &quot;^3.23.8&quot;</description>
+  <highlighted_element>^3.23.8</highlighted_element>
+  <language>JSON</language>
+  <offset>12</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>70</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@playwright/test&quot; package is not installed</description>
+  <highlighted_element>^1.55.0</highlighted_element>
+  <language>JSON</language>
+  <offset>25</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>71</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@tailwindcss/aspect-ratio&quot; package is not installed</description>
+  <highlighted_element>^0.4.2</highlighted_element>
+  <language>JSON</language>
+  <offset>34</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>72</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@tailwindcss/typography&quot; package is not installed</description>
+  <highlighted_element>^0.5.15</highlighted_element>
+  <language>JSON</language>
+  <offset>32</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>73</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The installed version &quot;@types/node@20.19.41&quot; doesn't match the version range &quot;^22.5.5&quot;</description>
+  <highlighted_element>^22.5.5</highlighted_element>
+  <language>JSON</language>
+  <offset>20</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>74</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The installed version &quot;@types/react@19.2.15&quot; doesn't match the version range &quot;^18.3.3&quot;</description>
+  <highlighted_element>^18.3.3</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>75</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The installed version &quot;@types/react-dom@19.2.3&quot; doesn't match the version range &quot;^18.3.0&quot;</description>
+  <highlighted_element>^18.3.0</highlighted_element>
+  <language>JSON</language>
+  <offset>25</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>78</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;@vitejs/plugin-react-swc&quot; package is not installed</description>
+  <highlighted_element>^3.5.0</highlighted_element>
+  <language>JSON</language>
+  <offset>33</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>79</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;autoprefixer&quot; package is not installed</description>
+  <highlighted_element>^10.4.20</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>8</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>81</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The installed version &quot;eslint-plugin-react-hooks@7.1.1&quot; doesn't match the version range &quot;^5.1.0-rc.0&quot;</description>
+  <highlighted_element>^5.1.0-rc.0</highlighted_element>
+  <language>JSON</language>
+  <offset>34</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>82</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;eslint-plugin-react-refresh&quot; package is not installed</description>
+  <highlighted_element>^0.4.9</highlighted_element>
+  <language>JSON</language>
+  <offset>36</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>83</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The installed version &quot;globals@14.0.0&quot; doesn't match the version range &quot;^15.9.0&quot;</description>
+  <highlighted_element>^15.9.0</highlighted_element>
+  <language>JSON</language>
+  <offset>16</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>84</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;lovable-tagger&quot; package is not installed</description>
+  <highlighted_element>^1.1.7</highlighted_element>
+  <language>JSON</language>
+  <offset>23</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>85</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;playwright&quot; package is not installed</description>
+  <highlighted_element>^1.55.0</highlighted_element>
+  <language>JSON</language>
+  <offset>19</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>87</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The installed version &quot;tailwindcss@4.3.0&quot; doesn't match the version range &quot;^3.4.11&quot;</description>
+  <highlighted_element>^3.4.11</highlighted_element>
+  <language>JSON</language>
+  <offset>20</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>90</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;vite&quot; package is not installed</description>
+  <highlighted_element>^5.4.1</highlighted_element>
+  <language>JSON</language>
+  <offset>13</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>91</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;vite-plugin-sitemap&quot; package is not installed</description>
+  <highlighted_element>^0.8.2</highlighted_element>
+  <language>JSON</language>
+  <offset>28</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>92</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="PackageJsonMismatchedDependency" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched dependencies in package.json</problem_class>
+  <description>The &quot;vite-prerender-plugin&quot; package is not installed</description>
+  <highlighted_element>^0.5.13</highlighted_element>
+  <language>JSON</language>
+  <offset>30</offset>
+  <length>7</length>
+</problem>
+</problems>

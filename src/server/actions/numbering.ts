@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit, createAuditDiff } from "@/server/actions/audit";
@@ -43,13 +44,13 @@ export async function getNumberingRules(): Promise<ActionResult<NumberingRule[]>
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.error("getNumberingRules error", error);
+      logger.error("getNumberingRules error", error);
       return { success: false, error: error.message };
     }
 
     return { success: true, data: data as NumberingRule[] };
   } catch (error) {
-    console.error("getNumberingRules exception", error);
+    logger.error("getNumberingRules exception", error);
     return { success: false, error: "Failed to fetch numbering rules" };
   }
 }
@@ -72,13 +73,13 @@ export async function getNumberingRuleById(id: number): Promise<ActionResult<Num
       .single();
 
     if (error) {
-      console.error("getNumberingRuleById error", error);
+      logger.error("getNumberingRuleById error", error);
       return { success: false, error: error.message };
     }
 
     return { success: true, data: data as NumberingRule };
   } catch (error) {
-    console.error("getNumberingRuleById exception", error);
+    logger.error("getNumberingRuleById exception", error);
     return { success: false, error: "Failed to fetch numbering rule" };
   }
 }
@@ -126,7 +127,7 @@ export async function createNumberingRule(
       .single();
 
     if (error) {
-      console.error("createNumberingRule error", error);
+      logger.error("createNumberingRule error", error);
       return { success: false, error: error.message };
     }
 
@@ -144,7 +145,7 @@ export async function createNumberingRule(
 
     return { success: true, data: { id: data.id } };
   } catch (error) {
-    console.error("createNumberingRule exception", error);
+    logger.error("createNumberingRule exception", error);
     return { success: false, error: "Failed to create numbering rule" };
   }
 }
@@ -206,7 +207,7 @@ export async function updateNumberingRule(
       .single();
 
     if (error) {
-      console.error("updateNumberingRule error", error);
+      logger.error("updateNumberingRule error", error);
       return { success: false, error: error.message };
     }
 
@@ -226,7 +227,7 @@ export async function updateNumberingRule(
 
     return { success: true, data: { id: data.id } };
   } catch (error) {
-    console.error("updateNumberingRule exception", error);
+    logger.error("updateNumberingRule exception", error);
     return { success: false, error: "Failed to update numbering rule" };
   }
 }
@@ -270,7 +271,7 @@ export async function toggleNumberingRuleActive(
 
     return { success: true, data: { id: data.id } };
   } catch (error) {
-    console.error("toggleNumberingRuleActive exception", error);
+    logger.error("toggleNumberingRuleActive exception", error);
     return { success: false, error: "Failed to toggle rule status" };
   }
 }
@@ -314,7 +315,7 @@ export async function toggleNumberingRuleLock(
 
     return { success: true, data: { id: data.id } };
   } catch (error) {
-    console.error("toggleNumberingRuleLock exception", error);
+    logger.error("toggleNumberingRuleLock exception", error);
     return { success: false, error: "Failed to toggle rule lock" };
   }
 }
@@ -343,7 +344,7 @@ export async function previewNextReference(
     });
 
     if (error) {
-      console.error("previewNextReference error", error);
+      logger.error("previewNextReference error", error);
       return { success: false, error: error.message };
     }
 
@@ -363,7 +364,7 @@ export async function previewNextReference(
       },
     };
   } catch (error) {
-    console.error("previewNextReference exception", error);
+    logger.error("previewNextReference exception", error);
     return { success: false, error: "Failed to preview reference number" };
   }
 }
@@ -391,7 +392,7 @@ export async function generateNextReference(
     });
 
     if (error) {
-      console.error("generateNextReference error", error);
+      logger.error("generateNextReference error", error);
       return { success: false, error: error.message };
     }
 
@@ -423,7 +424,7 @@ export async function generateNextReference(
       },
     };
   } catch (error) {
-    console.error("generateNextReference exception", error);
+    logger.error("generateNextReference exception", error);
     return { success: false, error: "Failed to generate reference number" };
   }
 }

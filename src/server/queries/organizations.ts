@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 import type { OwnerCompany } from "@/types/database";
 
 /**
@@ -20,7 +21,7 @@ export async function listOrganizations(): Promise<OwnerCompany[]> {
     .order("id", { ascending: true });
 
   if (error) {
-    console.error("listOrganizations error", error.message);
+    logger.error("listOrganizations error", error.message);
     return [];
   }
 
@@ -41,7 +42,7 @@ export async function getOrganizationById(id: number): Promise<OwnerCompany | nu
     .single();
 
   if (error) {
-    console.error("getOrganizationById error", error.message);
+    logger.error("getOrganizationById error", error.message);
     return null;
   }
 

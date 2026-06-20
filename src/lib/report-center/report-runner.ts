@@ -12,6 +12,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logger } from "@/lib/logger";
 import type {
   ReportRunRequest,
   ReportRunResult,
@@ -91,14 +92,14 @@ export async function createReportRunLog(
       .single();
 
     if (error) {
-      console.error("[report-runner] createReportRunLog error:", error.message);
+      logger.error("[report-runner] createReportRunLog error:", error.message);
       return { runId: null, error: error.message };
     }
 
     return { runId: (data as { id: number }).id };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("[report-runner] createReportRunLog exception:", msg);
+    logger.error("[report-runner] createReportRunLog exception:", msg);
     return { runId: null, error: msg };
   }
 }
@@ -122,7 +123,7 @@ export async function completeReportRunLog(
       })
       .eq("id", runId);
   } catch (err) {
-    console.error("[report-runner] completeReportRunLog exception:", err);
+    logger.error("[report-runner] completeReportRunLog exception:", err);
   }
 }
 
@@ -143,7 +144,7 @@ export async function failReportRunLog(
       })
       .eq("id", runId);
   } catch (err) {
-    console.error("[report-runner] failReportRunLog exception:", err);
+    logger.error("[report-runner] failReportRunLog exception:", err);
   }
 }
 

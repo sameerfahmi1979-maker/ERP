@@ -1,0 +1,26 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/vite-env.d.ts</file>
+  <line>1</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/vite-env.d.ts" />
+  <problem_class id="JSFileReferences" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Unresolved file reference</problem_class>
+  <description>&lt;html&gt;Cannot resolve directory &lt;code&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;vite&lt;/span&gt;&lt;/code&gt;&lt;/html&gt;</description>
+  <highlighted_element>vite</highlighted_element>
+  <language>JavaScript</language>
+  <offset>22</offset>
+  <length>4</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/vite-env.d.ts</file>
+  <line>1</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/vite-env.d.ts" />
+  <problem_class id="JSFileReferences" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Unresolved file reference</problem_class>
+  <description>&lt;html&gt;Cannot resolve file &lt;code&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;client&lt;/span&gt;&lt;/code&gt;&lt;/html&gt;</description>
+  <highlighted_element>client</highlighted_element>
+  <language>JavaScript</language>
+  <offset>27</offset>
+  <length>6</length>
+</problem>
+</problems>

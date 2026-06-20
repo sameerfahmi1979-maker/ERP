@@ -9,6 +9,7 @@
  */
 
 import type { MicrosoftGraphConfig } from "./email-types";
+import { logger } from "@/lib/logger";
 
 /**
  * Configuration check result
@@ -54,7 +55,7 @@ const REQUIRED_ENV_VARS = [
  * ```typescript
  * const result = getMicrosoftGraphConfig();
  * if (!result.configured) {
- *   console.error("Missing env vars:", result.missing);
+ *   logger.error("Missing env vars:", result.missing);
  *   return { success: false, error: "Email service not configured" };
  * }
  * const provider = new MicrosoftGraphProvider(result.config);

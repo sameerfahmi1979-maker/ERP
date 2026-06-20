@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 import type { AuditLog } from "@/types/database";
 
 /**
@@ -30,7 +31,7 @@ export async function listAuditLogs(options?: {
   const { data, error } = await query;
 
   if (error) {
-    console.error("listAuditLogs error", error.message);
+    logger.error("listAuditLogs error", error.message);
     return [];
   }
 

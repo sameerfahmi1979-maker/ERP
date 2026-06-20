@@ -147,7 +147,7 @@ export function CandidateInterviewsTab({ candidateId, canManage, onChildOpen }: 
 
       if (res.success) {
         toast.success(editing ? "Interview updated" : "Interview scheduled");
-        queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateInterviews(candidateId) });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateInterviews(candidateId) });
         closeDialog();
       } else {
         toast.error(res.error ?? "Failed to save interview");
@@ -160,7 +160,7 @@ export function CandidateInterviewsTab({ candidateId, canManage, onChildOpen }: 
       const res = await archiveInterview(id);
       if (res.success) {
         toast.success("Interview removed");
-        queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateInterviews(candidateId) });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateInterviews(candidateId) });
       } else {
         toast.error(res.error ?? "Failed to remove");
       }

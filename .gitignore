@@ -37,6 +37,12 @@ yarn-error.log*
 # planning / AI prompt docs and personal test documents (not part of the app)
 ChatGPT/
 
+# Design archive — excluded from VCS; contains node_modules with flagged packages
+UIUX_Design/
+
+# Temporary scripts used for one-off migrations / fixes
+scripts/
+
 # vercel
 .vercel
 

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 import type { Role, UserProfile, OwnerCompany, Branch } from "@/types/database";
 
 type RoleWithUsers = Role & {
@@ -25,7 +26,7 @@ export async function listRoles(): Promise<Role[]> {
     .order("role_name", { ascending: true });
 
   if (error) {
-    console.error("listRoles error", error.message);
+    logger.error("listRoles error", error.message);
     return [];
   }
 
@@ -46,7 +47,7 @@ export async function getRoleById(id: number): Promise<Role | null> {
     .single();
 
   if (error) {
-    console.error("getRoleById error", error.message);
+    logger.error("getRoleById error", error.message);
     return null;
   }
 
@@ -69,7 +70,7 @@ export async function getRoleWithUsers(id: number): Promise<RoleWithUsers | null
     .single();
 
   if (roleError || !role) {
-    console.error("getRoleWithUsers role error", roleError?.message);
+    logger.error("getRoleWithUsers role error", roleError?.message);
     return null;
   }
 
@@ -81,7 +82,7 @@ export async function getRoleWithUsers(id: number): Promise<RoleWithUsers | null
     .order("created_at", { ascending: false });
 
   if (userRolesError) {
-    console.error("getRoleWithUsers user_roles error", userRolesError.message);
+    logger.error("getRoleWithUsers user_roles error", userRolesError.message);
     return { ...role, assigned_users: [] };
   }
 

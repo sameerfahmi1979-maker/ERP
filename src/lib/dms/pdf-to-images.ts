@@ -10,6 +10,7 @@
  */
 
 import path from "path";
+import { logger } from "@/lib/logger";
 
 export interface PdfPageImage {
   fileName: string;
@@ -89,7 +90,7 @@ export async function convertPdfPagesToImages(
         });
       } catch (pageErr) {
         // Skip individual bad pages rather than failing the whole document
-        console.warn(`[pdf-to-images] Failed to render page ${pageNum}:`, pageErr);
+        logger.warn(`[pdf-to-images] Failed to render page ${pageNum}:`, pageErr);
       }
     }
 
@@ -97,7 +98,7 @@ export async function convertPdfPagesToImages(
     try { loadingTask.destroy?.(); } catch { /* ignore */ }
     return images;
   } catch (err) {
-    console.error("[pdf-to-images] PDF rendering failed:", err);
+    logger.error("[pdf-to-images] PDF rendering failed:", err);
     return [];
   }
 }

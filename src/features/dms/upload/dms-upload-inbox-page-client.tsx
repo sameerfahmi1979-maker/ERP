@@ -28,10 +28,7 @@ import {
 } from "@/server/actions/dms/batch-intake";
 import type { DmsDocumentRow } from "@/server/actions/dms/documents";
 import type { DmsDocumentTypeOption, DmsEntityContext } from "./dms-create-document-from-upload-dialog";
-import { createClient } from "@supabase/supabase-js";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 
 interface Props {
   initialSessions: DmsUploadSessionRow[];
@@ -85,7 +82,7 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
     const { session, signedUrl, token, path, isDuplicate, duplicateDocument } = result.data;
 
     try {
-      const supabase = createClient(supabaseUrl, supabaseAnonKey);
+      const supabase = createSupabaseClient();
       const { error: uploadError } = await supabase.storage
         .from("dms-temp")
         .uploadToSignedUrl(path, token, file, { contentType: file.type });
@@ -172,7 +169,7 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
     const { batchCode, sessions: batchSessions } = createRes.data;
     setBatchState((s) => (s.phase === "running" ? { ...s, batchCode } : s));
 
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    const supabase = createSupabaseClient();
 
     for (let i = 0; i < batchSessions.length; i++) {
       const sess = batchSessions[i];

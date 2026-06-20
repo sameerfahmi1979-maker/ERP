@@ -11,6 +11,7 @@
  */
 
 import { z } from "zod";
+import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
@@ -634,7 +635,7 @@ async function executeScheduleRun(
 
   let attachment;
   try {
-    attachment = generateAttachmentByType(sched.output_format, exportOptions);
+    attachment = await generateAttachmentByType(sched.output_format, exportOptions);
   } catch (err) {
     return { success: false, error: `Attachment generation failed: ${err instanceof Error ? err.message : String(err)}` };
   }
@@ -711,7 +712,7 @@ async function markScheduleSkipped(
     })
     .eq("id", scheduleId);
 
-  console.warn(`[schedules] Schedule ${scheduleId} skipped: ${reason}`);
+  logger.warn(`[schedules] Schedule ${scheduleId} skipped: ${reason}`);
 }
 
 async function getCreatorPermissions(

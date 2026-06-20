@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
@@ -242,7 +243,7 @@ export async function listEmployees(params?: Partial<EmployeeListParams>): Promi
       .range(from, to);
 
     if (error) {
-      console.error("listEmployees error", error);
+      logger.error("listEmployees error", error);
       return { success: false, error: error.message };
     }
 
@@ -256,7 +257,7 @@ export async function listEmployees(params?: Partial<EmployeeListParams>): Promi
       },
     };
   } catch (err) {
-    console.error("listEmployees exception", err);
+    logger.error("listEmployees exception", err);
     return { success: false, error: "Failed to list employees" };
   }
 }
@@ -293,13 +294,13 @@ export async function getEmployee(employeeId: number): Promise<ActionResult<Empl
       .single();
 
     if (error) {
-      console.error("getEmployee error", error);
+      logger.error("getEmployee error", error);
       return { success: false, error: error.message };
     }
 
     return { success: true, data: data as unknown as EmployeeListRow };
   } catch (err) {
-    console.error("getEmployee exception", err);
+    logger.error("getEmployee exception", err);
     return { success: false, error: "Failed to get employee" };
   }
 }
@@ -339,7 +340,7 @@ export async function getEmployeeOverview(
       },
     };
   } catch (err) {
-    console.error("getEmployeeOverview exception", err);
+    logger.error("getEmployeeOverview exception", err);
     return { success: false, error: "Failed to get employee overview" };
   }
 }
@@ -379,7 +380,7 @@ export async function createEmployee(
     );
 
     if (numError || !numData || numData.length === 0) {
-      console.error("Employee code generation error", numError);
+      logger.error("Employee code generation error", numError);
       return { success: false, error: "Failed to generate employee code" };
     }
 
@@ -398,7 +399,7 @@ export async function createEmployee(
       .single();
 
     if (insertError) {
-      console.error("createEmployee insert error", insertError);
+      logger.error("createEmployee insert error", insertError);
       return { success: false, error: insertError.message };
     }
 
@@ -429,7 +430,7 @@ export async function createEmployee(
 
     return { success: true, data: { id: employee.id, employee_code: employee.employee_code } };
   } catch (err) {
-    console.error("createEmployee exception", err);
+    logger.error("createEmployee exception", err);
     return { success: false, error: "Failed to create employee" };
   }
 }
@@ -477,7 +478,7 @@ export async function updateEmployee(
       .is("deleted_at", null);
 
     if (updateError) {
-      console.error("updateEmployee error", updateError);
+      logger.error("updateEmployee error", updateError);
       return { success: false, error: updateError.message };
     }
 
@@ -525,7 +526,7 @@ export async function updateEmployee(
 
     return { success: true };
   } catch (err) {
-    console.error("updateEmployee exception", err);
+    logger.error("updateEmployee exception", err);
     return { success: false, error: "Failed to update employee" };
   }
 }
@@ -573,7 +574,7 @@ export async function archiveEmployee(
       .is("deleted_at", null);
 
     if (archiveError) {
-      console.error("archiveEmployee error", archiveError);
+      logger.error("archiveEmployee error", archiveError);
       return { success: false, error: archiveError.message };
     }
 
@@ -605,7 +606,7 @@ export async function archiveEmployee(
 
     return { success: true };
   } catch (err) {
-    console.error("archiveEmployee exception", err);
+    logger.error("archiveEmployee exception", err);
     return { success: false, error: "Failed to archive employee" };
   }
 }
@@ -649,7 +650,7 @@ export async function changeEmployeeStatus(
       .is("deleted_at", null);
 
     if (updateError) {
-      console.error("changeEmployeeStatus error", updateError);
+      logger.error("changeEmployeeStatus error", updateError);
       return { success: false, error: updateError.message };
     }
 
@@ -682,7 +683,7 @@ export async function changeEmployeeStatus(
 
     return { success: true };
   } catch (err) {
-    console.error("changeEmployeeStatus exception", err);
+    logger.error("changeEmployeeStatus exception", err);
     return { success: false, error: "Failed to change employee status" };
   }
 }
@@ -709,13 +710,13 @@ export async function getEmployeeStatusHistory(
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.error("getEmployeeStatusHistory error", error);
+      logger.error("getEmployeeStatusHistory error", error);
       return { success: false, error: error.message };
     }
 
     return { success: true, data: (data ?? []) as EmployeeStatusEvent[] };
   } catch (err) {
-    console.error("getEmployeeStatusHistory exception", err);
+    logger.error("getEmployeeStatusHistory exception", err);
     return { success: false, error: "Failed to get status history" };
   }
 }

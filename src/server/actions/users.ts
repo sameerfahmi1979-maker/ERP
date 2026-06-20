@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
@@ -62,7 +63,7 @@ export async function createUser(
         },
       });
       if (linkError || !data) {
-        console.error("generateLink invite error", linkError);
+        logger.error("generateLink invite error", linkError);
         return { success: false, error: `Failed to generate invite link: ${linkError?.message}` };
       }
       authUser = data.user;
@@ -83,7 +84,7 @@ export async function createUser(
       });
       
       if (createError) {
-        console.error("createUser error", createError);
+        logger.error("createUser error", createError);
         return { success: false, error: `Failed to create user: ${createError.message}` };
       }
       authUser = data.user;
@@ -115,7 +116,7 @@ export async function createUser(
       .single();
 
     if (profileError || !profile) {
-      console.error("user_profiles upsert error", profileError);
+      logger.error("user_profiles upsert error", profileError);
       // Cleanup: delete Auth user if profile creation fails
       await adminClient.auth.admin.deleteUser(authUser.id);
       return { success: false, error: `Failed to create user profile: ${profileError?.message}` };
@@ -134,9 +135,9 @@ export async function createUser(
         });
 
       if (roleError) {
-        console.error("user_roles insert error", roleError);
+        logger.error("user_roles insert error", roleError);
         // Don't fail the entire operation, just log warning
-        console.warn(`User created but role assignment failed: ${roleError.message}`);
+        logger.warn(`User created but role assignment failed: ${roleError.message}`);
       }
     }
 
@@ -156,7 +157,7 @@ export async function createUser(
       } catch (emailErr) {
         // Don't fail the user creation — the admin can resend manually
         const msg = emailErr instanceof Error ? emailErr.message : String(emailErr);
-        console.warn("Invite email send failed:", msg);
+        logger.warn("Invite email send failed:", msg);
         inviteEmailWarning = `User created but invite email could not be sent: ${msg}`;
       }
     }
@@ -189,7 +190,7 @@ export async function createUser(
       ...(inviteEmailWarning ? { error: inviteEmailWarning } : {}),
     };
   } catch (error) {
-    console.error("createUser exception", error);
+    logger.error("createUser exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
@@ -231,7 +232,7 @@ export async function adminUpdateUserProfile(
       .eq("id", id);
 
     if (error) {
-      console.error("adminUpdateUserProfile error", error);
+      logger.error("adminUpdateUserProfile error", error);
       return { success: false, error: error.message };
     }
 
@@ -255,7 +256,7 @@ export async function adminUpdateUserProfile(
 
     return { success: true };
   } catch (error) {
-    console.error("adminUpdateUserProfile exception", error);
+    logger.error("adminUpdateUserProfile exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
@@ -312,7 +313,7 @@ export async function assignRoleToUser(
       .single();
 
     if (error) {
-      console.error("assignRoleToUser error", error);
+      logger.error("assignRoleToUser error", error);
       // Check for unique constraint violation
       if (error.message.includes("user_roles_scope_unique")) {
         return { success: false, error: "This role assignment already exists for this user with the same scope" };
@@ -341,7 +342,7 @@ export async function assignRoleToUser(
 
     return { success: true, data: { id: data.id } };
   } catch (error) {
-    console.error("assignRoleToUser exception", error);
+    logger.error("assignRoleToUser exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
@@ -386,7 +387,7 @@ export async function removeRoleFromUser(
       .eq("id", validated.user_role_id);
 
     if (error) {
-      console.error("removeRoleFromUser error", error);
+      logger.error("removeRoleFromUser error", error);
       return { success: false, error: error.message };
     }
 
@@ -414,7 +415,7 @@ export async function removeRoleFromUser(
 
     return { success: true };
   } catch (error) {
-    console.error("removeRoleFromUser exception", error);
+    logger.error("removeRoleFromUser exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
@@ -476,7 +477,7 @@ export async function deleteUser(
         profile.auth_user_id,
       );
       if (deleteAuthError) {
-        console.error("deleteUser auth error", deleteAuthError);
+        logger.error("deleteUser auth error", deleteAuthError);
         return { success: false, error: `Failed to delete auth user: ${deleteAuthError.message}` };
       }
     } else {
@@ -495,7 +496,7 @@ export async function deleteUser(
 
     return { success: true };
   } catch (error) {
-    console.error("deleteUser exception", error);
+    logger.error("deleteUser exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }

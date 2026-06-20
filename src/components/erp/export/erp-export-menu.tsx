@@ -154,14 +154,14 @@ export function ERPExportMenu<T = any>({
         branding: resolvedTemplate ? { ...resolvedTemplate, reportCode } : undefined,
       };
 
-      // Execute export based on type
+      // Execute export based on type (exportToExcel is async; others are sync)
       let result;
       switch (type) {
         case "csv":
           result = exportToCSV(options);
           break;
         case "excel":
-          result = exportToExcel(options);
+          result = await exportToExcel(options);
           break;
         case "pdf":
           result = exportToPDF(options);

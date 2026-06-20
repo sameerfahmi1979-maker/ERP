@@ -1,0 +1,86 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/src/app/dev/performance-qa/performance-qa-client.tsx</file>
+  <line>52</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/app/dev/performance-qa/performance-qa-client.tsx" />
+  <problem_class id="UnnecessaryLocalVariableJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Redundant local variable</problem_class>
+  <description>&lt;html&gt;Local variable &lt;code&gt;&lt;span style=&quot;color:#a9b7c6;&quot;&gt;unsub&lt;/span&gt;&lt;/code&gt; is redundant&lt;/html&gt;</description>
+  <highlighted_element>unsub</highlighted_element>
+  <language>JavaScript</language>
+  <offset>10</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/erp-drawer-form.tsx</file>
+  <line>31</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/erp-drawer-form.tsx" />
+  <problem_class id="UnnecessaryLocalVariableJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Redundant local variable</problem_class>
+  <description>&lt;html&gt;Local variable &lt;code&gt;&lt;span style=&quot;color:#a9b7c6;&quot;&gt;context&lt;/span&gt;&lt;/code&gt; is redundant&lt;/html&gt;</description>
+  <highlighted_element>context</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/lookups/components/values-table.tsx</file>
+  <line>290</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/lookups/components/values-table.tsx" />
+  <problem_class id="UnnecessaryLocalVariableJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Redundant local variable</problem_class>
+  <description>&lt;html&gt;Local variable &lt;code&gt;&lt;span style=&quot;color:#a9b7c6;&quot;&gt;isDisabled&lt;/span&gt;&lt;/code&gt; is redundant&lt;/html&gt;</description>
+  <highlighted_element>isDisabled</highlighted_element>
+  <language>JavaScript</language>
+  <offset>14</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/audit-explainer/audit-collectors.ts</file>
+  <line>79</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/audit-explainer/audit-collectors.ts" />
+  <problem_class id="UnnecessaryLocalVariableJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Redundant local variable</problem_class>
+  <description>&lt;html&gt;Local variable &lt;code&gt;&lt;span style=&quot;color:#a9b7c6;&quot;&gt;auditItems&lt;/span&gt;&lt;/code&gt; is redundant&lt;/html&gt;</description>
+  <highlighted_element>auditItems</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/export/excel.ts</file>
+  <line>93</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/export/excel.ts" />
+  <problem_class id="UnnecessaryLocalVariableJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Redundant local variable</problem_class>
+  <description>&lt;html&gt;Local variable &lt;code&gt;&lt;span style=&quot;color:#a9b7c6;&quot;&gt;columnWidths&lt;/span&gt;&lt;/code&gt; is redundant&lt;/html&gt;</description>
+  <highlighted_element>columnWidths</highlighted_element>
+  <language>JavaScript</language>
+  <offset>10</offset>
+  <length>12</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/export/generate-attachment.ts</file>
+  <line>174</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/export/generate-attachment.ts" />
+  <problem_class id="UnnecessaryLocalVariableJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Redundant local variable</problem_class>
+  <description>&lt;html&gt;Local variable &lt;code&gt;&lt;span style=&quot;color:#a9b7c6;&quot;&gt;columnWidths&lt;/span&gt;&lt;/code&gt; is redundant&lt;/html&gt;</description>
+  <highlighted_element>columnWidths</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>12</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/export/generate-attachment.ts</file>
+  <line>378</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/export/generate-attachment.ts" />
+  <problem_class id="UnnecessaryLocalVariableJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Redundant local variable</problem_class>
+  <description>&lt;html&gt;Local variable &lt;code&gt;&lt;span style=&quot;color:#a9b7c6;&quot;&gt;_exhaustive&lt;/span&gt;&lt;/code&gt; is redundant&lt;/html&gt;</description>
+  <highlighted_element>_exhaustive</highlighted_element>
+  <language>JavaScript</language>
+  <offset>12</offset>
+  <length>11</length>
+</problem>
+</problems>

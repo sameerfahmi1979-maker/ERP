@@ -1,0 +1,854 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/blog/BlogArticleLayout.tsx</file>
+  <line>6</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/blog/BlogArticleLayout.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>12</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/layout/AppLayout.tsx</file>
+  <line>6</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/layout/AppLayout.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>12</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/theme-provider.tsx</file>
+  <line>6</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/theme-provider.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>12</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/resizable.tsx</file>
+  <line>9</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/resizable.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>3</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/resizable.tsx</file>
+  <line>25</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/resizable.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>3</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/skeleton.tsx</file>
+  <line>6</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/skeleton.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>3</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/sonner.tsx</file>
+  <line>4</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/sonner.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>20</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/pages/Login.tsx</file>
+  <line>26</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/pages/Login.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>27</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/erp_project/src/app/(auth)/layout.tsx</file>
+  <line>3</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/erp_project/src/app/(auth)/layout.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>61</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/erp_project/src/app/(protected)/layout.tsx</file>
+  <line>10</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/erp_project/src/app/(protected)/layout.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>12</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/erp_project/src/app/layout.tsx</file>
+  <line>26</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/erp_project/src/app/layout.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>12</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/erp_project/src/components/layout/app-providers.tsx</file>
+  <line>13</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/erp_project/src/components/layout/app-providers.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>55</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/erp_project/src/components/layout/erp-shell.tsx</file>
+  <line>6</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/erp_project/src/components/layout/erp-shell.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>12</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/erp_project/src/components/layout/theme-provider.tsx</file>
+  <line>5</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/erp_project/src/components/layout/theme-provider.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>56</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/erp_project/src/components/ui/skeleton.tsx</file>
+  <line>3</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/erp_project/src/components/ui/skeleton.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>43</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/erp_project/src/components/ui/sonner.tsx</file>
+  <line>37</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/erp_project/src/components/ui/sonner.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>13</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/app/(auth)/layout.tsx</file>
+  <line>3</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/app/(auth)/layout.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>61</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/app/(protected)/layout.tsx</file>
+  <line>10</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/app/(protected)/layout.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>12</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/app/layout.tsx</file>
+  <line>22</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/app/layout.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>12</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/table/erp-table-types.ts</file>
+  <line>107</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/table/erp-table-types.ts" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript</language>
+  <offset>16</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/table/erp-table-types.ts</file>
+  <line>123</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/table/erp-table-types.ts" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript</language>
+  <offset>16</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/table/erp-table-types.ts</file>
+  <line>125</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/table/erp-table-types.ts" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript</language>
+  <offset>15</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/table/erp-table-types.ts</file>
+  <line>127</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/table/erp-table-types.ts" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript</language>
+  <offset>19</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/layout/app-providers.tsx</file>
+  <line>12</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/layout/app-providers.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>55</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/layout/app-sidebar.tsx</file>
+  <line>334</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/layout/app-sidebar.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>68</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/layout/erp-shell.tsx</file>
+  <line>10</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/layout/erp-shell.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>12</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/layout/theme-provider.tsx</file>
+  <line>5</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/layout/theme-provider.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>56</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/ui/skeleton.tsx</file>
+  <line>3</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/ui/skeleton.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>43</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/ui/sonner.tsx</file>
+  <line>37</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/ui/sonner.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>13</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/workspace/workspace-provider.tsx</file>
+  <line>48</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/workspace/workspace-provider.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>12</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/ai/common/assistant/assistant-action-chips.tsx</file>
+  <line>8</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/ai/common/assistant/assistant-action-chips.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/ai/common/duplicate-detection/duplicate-candidates-page-client.tsx</file>
+  <line>300</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/ai/common/duplicate-detection/duplicate-candidates-page-client.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/ai/common/search/search-badges.tsx</file>
+  <line>23</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/ai/common/search/search-badges.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>15</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/ai/common/search/search-bar.tsx</file>
+  <line>25</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/ai/common/search/search-bar.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>28</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/ai/common/search/search-result-card.tsx</file>
+  <line>16</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/ai/common/search/search-result-card.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>57</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/admin/dms-intelligence-admin-page-client.tsx</file>
+  <line>44</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/admin/dms-intelligence-admin-page-client.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/admin/dms-intelligence-admin-page-client.tsx</file>
+  <line>169</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/admin/dms-intelligence-admin-page-client.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/admin/dms-overview-client.tsx</file>
+  <line>26</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/admin/dms-overview-client.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-intelligence-section.tsx</file>
+  <line>39</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-intelligence-section.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>80</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-understanding-section.tsx</file>
+  <line>81</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-understanding-section.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>23</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-understanding-section.tsx</file>
+  <line>81</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-understanding-section.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>50</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-understanding-section.tsx</file>
+  <line>457</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-understanding-section.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>42</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/entity-documents/dms-entity-document-compliance-cards.tsx</file>
+  <line>23</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/entity-documents/dms-entity-document-compliance-cards.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/expiry/dms-expiry-status-badge.tsx</file>
+  <line>23</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/expiry/dms-expiry-status-badge.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>78</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/expiry/dms-expiry-summary-cards.tsx</file>
+  <line>11</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/expiry/dms-expiry-summary-cards.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/expiry/dms-reminder-status-badge.tsx</file>
+  <line>11</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/expiry/dms-reminder-status-badge.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>52</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/intake/dms-ai-intake-field-row.tsx</file>
+  <line>20</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/intake/dms-ai-intake-field-row.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>12</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/renewals/dms-renewal-status-badge.tsx</file>
+  <line>11</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/renewals/dms-renewal-status-badge.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>52</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/upload/dms-batch-upload-progress.tsx</file>
+  <line>21</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/upload/dms-batch-upload-progress.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>64</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/upload/dms-file-integrity-badge.tsx</file>
+  <line>18</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/upload/dms-file-integrity-badge.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/upload/dms-upload-dropzone.tsx</file>
+  <line>161</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/upload/dms-upload-dropzone.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>43</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/upload/dms-upload-dropzone.tsx</file>
+  <line>171</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/upload/dms-upload-dropzone.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>41</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/upload/dms-upload-dropzone.tsx</file>
+  <line>178</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/upload/dms-upload-dropzone.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>45</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/upload/dms-upload-new-version-dialog.tsx</file>
+  <line>92</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/upload/dms-upload-new-version-dialog.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>31</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/upload/dms-upload-session-status-badge.tsx</file>
+  <line>32</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/upload/dms-upload-session-status-badge.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/ai/hr-ai-review-tab.tsx</file>
+  <line>60</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/ai/hr-ai-review-tab.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/employees-table.tsx</file>
+  <line>105</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/employees-table.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>27</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx</file>
+  <line>123</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>76</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-hr-actions-tab.tsx</file>
+  <line>129</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-hr-actions-tab.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-operations-tab.tsx</file>
+  <line>102</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-operations-tab.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-operations-tab.tsx</file>
+  <line>103</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-operations-tab.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>11</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-operations-tab.tsx</file>
+  <line>104</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-operations-tab.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>12</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-overview-tab.tsx</file>
+  <line>444</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-overview-tab.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/search/hr-search-bar.tsx</file>
+  <line>43</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/search/hr-search-bar.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>28</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/search/hr-search-result-card.tsx</file>
+  <line>12</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/search/hr-search-result-card.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>47</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/search/hr-search-result-group.tsx</file>
+  <line>13</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/search/hr-search-result-group.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>47</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-form-drawer.tsx</file>
+  <line>277</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-form-drawer.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>33</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/report-center/branding-profile-form.tsx</file>
+  <line>117</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/report-center/branding-profile-form.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>18</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/report-center/hr-letter-generator.tsx</file>
+  <line>13</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/report-center/hr-letter-generator.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/settings/ai/ai-settings-page-client.tsx</file>
+  <line>179</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/settings/ai/ai-settings-page-client.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/settings/email/email-send-log-table.tsx</file>
+  <line>12</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/settings/email/email-send-log-table.tsx" />
+  <problem_class id="TypeScriptUMDGlobal" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Referenced UMD global variable</problem_class>
+  <description>Referenced UMD global variable</description>
+  <highlighted_element>React</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>59</offset>
+  <length>5</length>
+</problem>
+</problems>

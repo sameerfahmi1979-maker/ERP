@@ -6,6 +6,7 @@
  */
 
 import type { ERPExportOptions, ERPExportResult } from "./export-types";
+import { logger } from "@/lib/logger";
 import { getColumnValue, escapeCsvField, generateFilename } from "./format-export-data";
 
 /**
@@ -54,7 +55,7 @@ export function exportToCSV<T>(options: ERPExportOptions<T>): ERPExportResult {
       filename: downloadFilename,
     };
   } catch (error) {
-    console.error("CSV export error:", error);
+    logger.error("CSV export error:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to export CSV",

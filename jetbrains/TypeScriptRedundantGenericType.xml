@@ -1,0 +1,182 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/table/erp-data-table.tsx</file>
+  <line>60</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/table/erp-data-table.tsx" />
+  <problem_class id="TypeScriptRedundantGenericType" severity="WEAK WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Redundant type arguments</problem_class>
+  <description>Explicit type argument TData, unknown can be replaced with TData</description>
+  <highlighted_element>unknown</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>58</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/operations.ts</file>
+  <line>302</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/operations.ts" />
+  <problem_class id="TypeScriptRedundantGenericType" severity="WEAK WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Redundant type arguments</problem_class>
+  <description>Explicit type argument undefined can be removed</description>
+  <highlighted_element>&lt;undefined&gt;</highlighted_element>
+  <language>TypeScript</language>
+  <offset>81</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/operations.ts</file>
+  <line>455</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/operations.ts" />
+  <problem_class id="TypeScriptRedundantGenericType" severity="WEAK WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Redundant type arguments</problem_class>
+  <description>Explicit type argument undefined can be removed</description>
+  <highlighted_element>&lt;undefined&gt;</highlighted_element>
+  <language>TypeScript</language>
+  <offset>86</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/operations.ts</file>
+  <line>496</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/operations.ts" />
+  <problem_class id="TypeScriptRedundantGenericType" severity="WEAK WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Redundant type arguments</problem_class>
+  <description>Explicit type argument undefined can be removed</description>
+  <highlighted_element>&lt;undefined&gt;</highlighted_element>
+  <language>TypeScript</language>
+  <offset>23</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/operations.ts</file>
+  <line>546</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/operations.ts" />
+  <problem_class id="TypeScriptRedundantGenericType" severity="WEAK WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Redundant type arguments</problem_class>
+  <description>Explicit type argument undefined can be removed</description>
+  <highlighted_element>&lt;undefined&gt;</highlighted_element>
+  <language>TypeScript</language>
+  <offset>23</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/operations.ts</file>
+  <line>769</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/operations.ts" />
+  <problem_class id="TypeScriptRedundantGenericType" severity="WEAK WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Redundant type arguments</problem_class>
+  <description>Explicit type argument undefined can be removed</description>
+  <highlighted_element>&lt;undefined&gt;</highlighted_element>
+  <language>TypeScript</language>
+  <offset>23</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/operations.ts</file>
+  <line>790</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/operations.ts" />
+  <problem_class id="TypeScriptRedundantGenericType" severity="WEAK WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Redundant type arguments</problem_class>
+  <description>Explicit type argument undefined can be removed</description>
+  <highlighted_element>&lt;undefined&gt;</highlighted_element>
+  <language>TypeScript</language>
+  <offset>23</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/operations.ts</file>
+  <line>926</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/operations.ts" />
+  <problem_class id="TypeScriptRedundantGenericType" severity="WEAK WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Redundant type arguments</problem_class>
+  <description>Explicit type argument undefined can be removed</description>
+  <highlighted_element>&lt;undefined&gt;</highlighted_element>
+  <language>TypeScript</language>
+  <offset>23</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/operations.ts</file>
+  <line>973</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/operations.ts" />
+  <problem_class id="TypeScriptRedundantGenericType" severity="WEAK WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Redundant type arguments</problem_class>
+  <description>Explicit type argument undefined can be removed</description>
+  <highlighted_element>&lt;undefined&gt;</highlighted_element>
+  <language>TypeScript</language>
+  <offset>87</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/operations.ts</file>
+  <line>1126</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/operations.ts" />
+  <problem_class id="TypeScriptRedundantGenericType" severity="WEAK WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Redundant type arguments</problem_class>
+  <description>Explicit type argument undefined can be removed</description>
+  <highlighted_element>&lt;undefined&gt;</highlighted_element>
+  <language>TypeScript</language>
+  <offset>23</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/operations.ts</file>
+  <line>1169</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/operations.ts" />
+  <problem_class id="TypeScriptRedundantGenericType" severity="WEAK WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Redundant type arguments</problem_class>
+  <description>Explicit type argument undefined can be removed</description>
+  <highlighted_element>&lt;undefined&gt;</highlighted_element>
+  <language>TypeScript</language>
+  <offset>76</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/operations.ts</file>
+  <line>1322</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/operations.ts" />
+  <problem_class id="TypeScriptRedundantGenericType" severity="WEAK WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Redundant type arguments</problem_class>
+  <description>Explicit type argument undefined can be removed</description>
+  <highlighted_element>&lt;undefined&gt;</highlighted_element>
+  <language>TypeScript</language>
+  <offset>23</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/operations.ts</file>
+  <line>1360</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/operations.ts" />
+  <problem_class id="TypeScriptRedundantGenericType" severity="WEAK WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Redundant type arguments</problem_class>
+  <description>Explicit type argument undefined can be removed</description>
+  <highlighted_element>&lt;undefined&gt;</highlighted_element>
+  <language>TypeScript</language>
+  <offset>79</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/operations.ts</file>
+  <line>1513</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/operations.ts" />
+  <problem_class id="TypeScriptRedundantGenericType" severity="WEAK WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Redundant type arguments</problem_class>
+  <description>Explicit type argument undefined can be removed</description>
+  <highlighted_element>&lt;undefined&gt;</highlighted_element>
+  <language>TypeScript</language>
+  <offset>23</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/operations.ts</file>
+  <line>1551</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/operations.ts" />
+  <problem_class id="TypeScriptRedundantGenericType" severity="WEAK WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Redundant type arguments</problem_class>
+  <description>Explicit type argument undefined can be removed</description>
+  <highlighted_element>&lt;undefined&gt;</highlighted_element>
+  <language>TypeScript</language>
+  <offset>90</offset>
+  <length>11</length>
+</problem>
+</problems>

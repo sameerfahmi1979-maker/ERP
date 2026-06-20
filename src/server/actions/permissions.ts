@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
@@ -45,7 +46,7 @@ export async function assignPermissionToRole(
       .insert({ role_id: roleId, permission_id: permissionId });
 
     if (error) {
-      console.error("assignPermissionToRole error", error);
+      logger.error("assignPermissionToRole error", error);
       if (error.message.includes("duplicate key")) {
         return { success: false, error: "Permission already assigned to this role" };
       }
@@ -67,7 +68,7 @@ export async function assignPermissionToRole(
 
     return { success: true };
   } catch (error) {
-    console.error("assignPermissionToRole exception", error);
+    logger.error("assignPermissionToRole exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
@@ -108,7 +109,7 @@ export async function removePermissionFromRole(
       .eq("permission_id", permissionId);
 
     if (error) {
-      console.error("removePermissionFromRole error", error);
+      logger.error("removePermissionFromRole error", error);
       return { success: false, error: error.message };
     }
 
@@ -127,7 +128,7 @@ export async function removePermissionFromRole(
 
     return { success: true };
   } catch (error) {
-    console.error("removePermissionFromRole exception", error);
+    logger.error("removePermissionFromRole exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }

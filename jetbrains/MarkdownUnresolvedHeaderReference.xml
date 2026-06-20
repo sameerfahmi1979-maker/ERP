@@ -1,0 +1,482 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md</file>
+  <line>39</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 12-finance--commercial-readiness-master-data-plan</description>
+  <highlighted_element>12-finance--commercial-readiness-master-data-plan</highlighted_element>
+  <language>Markdown</language>
+  <offset>55</offset>
+  <length>49</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md</file>
+  <line>40</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 13-crm--customer--vendor--business-partner-master-data-plan</description>
+  <highlighted_element>13-crm--customer--vendor--business-partner-master-data-plan</highlighted_element>
+  <language>Markdown</language>
+  <offset>67</offset>
+  <length>59</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md</file>
+  <line>41</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 14-hse--qhse--compliance-master-data-plan</description>
+  <highlighted_element>14-hse--qhse--compliance-master-data-plan</highlighted_element>
+  <language>Markdown</language>
+  <offset>48</offset>
+  <length>41</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md</file>
+  <line>42</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 15-dms--attachment--document-master-data-plan</description>
+  <highlighted_element>15-dms--attachment--document-master-data-plan</highlighted_element>
+  <language>Markdown</language>
+  <offset>52</offset>
+  <length>45</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md</file>
+  <line>43</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 16-project--task--workflow-master-data-plan</description>
+  <highlighted_element>16-project--task--workflow-master-data-plan</highlighted_element>
+  <language>Markdown</language>
+  <offset>50</offset>
+  <length>43</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md</file>
+  <line>44</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 17-waste--scrap--demolition-operations-master-data-plan</description>
+  <highlighted_element>17-waste--scrap--demolition-operations-master-data-plan</highlighted_element>
+  <language>Markdown</language>
+  <offset>62</offset>
+  <length>55</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md</file>
+  <line>45</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 18-system--admin--saas-master-data-plan</description>
+  <highlighted_element>18-system--admin--saas-master-data-plan</highlighted_element>
+  <language>Markdown</language>
+  <offset>46</offset>
+  <length>39</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md</file>
+  <line>46</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 19-roles-permissions-and-rls-integration-plan</description>
+  <highlighted_element>19-roles-permissions-and-rls-integration-plan</highlighted_element>
+  <language>Markdown</language>
+  <offset>52</offset>
+  <length>45</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md</file>
+  <line>47</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 20-uiux-plan-for-master-data-management</description>
+  <highlighted_element>20-uiux-plan-for-master-data-management</highlighted_element>
+  <language>Markdown</language>
+  <offset>45</offset>
+  <length>39</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md</file>
+  <line>48</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 21-integration-with-other-foundation-engines</description>
+  <highlighted_element>21-integration-with-other-foundation-engines</highlighted_element>
+  <language>Markdown</language>
+  <offset>49</offset>
+  <length>44</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md</file>
+  <line>49</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 22-data-governance-plan</description>
+  <highlighted_element>22-data-governance-plan</highlighted_element>
+  <language>Markdown</language>
+  <offset>28</offset>
+  <length>23</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md</file>
+  <line>50</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 23-implementation-phasing-plan</description>
+  <highlighted_element>23-implementation-phasing-plan</highlighted_element>
+  <language>Markdown</language>
+  <offset>35</offset>
+  <length>30</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md</file>
+  <line>51</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 24-required-master-data-inventory-matrix</description>
+  <highlighted_element>24-required-master-data-inventory-matrix</highlighted_element>
+  <language>Markdown</language>
+  <offset>45</offset>
+  <length>40</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md</file>
+  <line>52</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 25-required-hardcoded-dropdown-migration-matrix</description>
+  <highlighted_element>25-required-hardcoded-dropdown-migration-matrix</highlighted_element>
+  <language>Markdown</language>
+  <offset>52</offset>
+  <length>47</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md</file>
+  <line>53</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 26-required-database-design-recommendations</description>
+  <highlighted_element>26-required-database-design-recommendations</highlighted_element>
+  <language>Markdown</language>
+  <offset>48</offset>
+  <length>43</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md</file>
+  <line>54</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 27-required-testing-strategy</description>
+  <highlighted_element>27-required-testing-strategy</highlighted_element>
+  <language>Markdown</language>
+  <offset>33</offset>
+  <length>28</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md</file>
+  <line>55</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3A_GLOBAL_MASTER_DATA_ARCHITECTURE_AND_INVENTORY_PLAN.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 28-required-risks-and-decisions</description>
+  <highlighted_element>28-required-risks-and-decisions</highlighted_element>
+  <language>Markdown</language>
+  <offset>36</offset>
+  <length>31</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/AI_Phases/Phase_AI_Roadmap_Planning/ERP_AI_ROADMAP_AND_COMMON_AI_FOUNDATION_PLAN.md</file>
+  <line>41</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/AI_Phases/Phase_AI_Roadmap_Planning/ERP_AI_ROADMAP_AND_COMMON_AI_FOUNDATION_PLAN.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor phase-14--ai-audit-trainer-explainer</description>
+  <highlighted_element>phase-14--ai-audit-trainer-explainer</highlighted_element>
+  <language>Markdown</language>
+  <offset>43</offset>
+  <length>36</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md</file>
+  <line>43</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 8-contact--address--document-strategy</description>
+  <highlighted_element>8-contact--address--document-strategy</highlighted_element>
+  <language>Markdown</language>
+  <offset>44</offset>
+  <length>37</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md</file>
+  <line>44</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 9-bank-details-strategy</description>
+  <highlighted_element>9-bank-details-strategy</highlighted_element>
+  <language>Markdown</language>
+  <offset>28</offset>
+  <length>23</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md</file>
+  <line>45</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 10-crm-foundation-strategy</description>
+  <highlighted_element>10-crm-foundation-strategy</highlighted_element>
+  <language>Markdown</language>
+  <offset>31</offset>
+  <length>26</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md</file>
+  <line>46</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 11-master-data-reuse-and-dropdown-mapping-matrix</description>
+  <highlighted_element>11-master-data-reuse-and-dropdown-mapping-matrix</highlighted_element>
+  <language>Markdown</language>
+  <offset>53</offset>
+  <length>48</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md</file>
+  <line>47</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 12-rls--permission--role-assignment-plan</description>
+  <highlighted_element>12-rls--permission--role-assignment-plan</highlighted_element>
+  <language>Markdown</language>
+  <offset>47</offset>
+  <length>40</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md</file>
+  <line>48</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 13-audit-logging-plan</description>
+  <highlighted_element>13-audit-logging-plan</highlighted_element>
+  <language>Markdown</language>
+  <offset>26</offset>
+  <length>21</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md</file>
+  <line>49</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 14-server-actions-plan</description>
+  <highlighted_element>14-server-actions-plan</highlighted_element>
+  <language>Markdown</language>
+  <offset>27</offset>
+  <length>22</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md</file>
+  <line>50</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 15-validation-plan</description>
+  <highlighted_element>15-validation-plan</highlighted_element>
+  <language>Markdown</language>
+  <offset>23</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md</file>
+  <line>51</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 16-ui--screen-plan</description>
+  <highlighted_element>16-ui--screen-plan</highlighted_element>
+  <language>Markdown</language>
+  <offset>24</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md</file>
+  <line>52</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 17-reusable-select-component-plan</description>
+  <highlighted_element>17-reusable-select-component-plan</highlighted_element>
+  <language>Markdown</language>
+  <offset>38</offset>
+  <length>33</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md</file>
+  <line>53</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 18-sidebar--menu-plan</description>
+  <highlighted_element>18-sidebar--menu-plan</highlighted_element>
+  <language>Markdown</language>
+  <offset>27</offset>
+  <length>21</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md</file>
+  <line>54</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 19-seed-data-plan</description>
+  <highlighted_element>19-seed-data-plan</highlighted_element>
+  <language>Markdown</language>
+  <offset>22</offset>
+  <length>17</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md</file>
+  <line>55</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 20-data-migration--legacy-strategy</description>
+  <highlighted_element>20-data-migration--legacy-strategy</highlighted_element>
+  <language>Markdown</language>
+  <offset>40</offset>
+  <length>34</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md</file>
+  <line>56</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 21-testing-plan</description>
+  <highlighted_element>21-testing-plan</highlighted_element>
+  <language>Markdown</language>
+  <offset>20</offset>
+  <length>15</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md</file>
+  <line>57</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 22-risk-analysis-and-mitigation</description>
+  <highlighted_element>22-risk-analysis-and-mitigation</highlighted_element>
+  <language>Markdown</language>
+  <offset>36</offset>
+  <length>31</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md</file>
+  <line>58</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 23-acceptance-criteria</description>
+  <highlighted_element>23-acceptance-criteria</highlighted_element>
+  <language>Markdown</language>
+  <offset>27</offset>
+  <length>22</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md</file>
+  <line>59</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 24-future-integration-notes</description>
+  <highlighted_element>24-future-integration-notes</highlighted_element>
+  <language>Markdown</language>
+  <offset>32</offset>
+  <length>27</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md</file>
+  <line>60</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 25-implementation-phasing-recommendation</description>
+  <highlighted_element>25-implementation-phasing-recommendation</highlighted_element>
+  <language>Markdown</language>
+  <offset>45</offset>
+  <length>40</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md</file>
+  <line>61</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV2.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 26-final-recommendation</description>
+  <highlighted_element>26-final-recommendation</highlighted_element>
+  <language>Markdown</language>
+  <offset>28</offset>
+  <length>23</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV4.md</file>
+  <line>62</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV4.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 25-implementation-phasing-recommendation</description>
+  <highlighted_element>25-implementation-phasing-recommendation</highlighted_element>
+  <language>Markdown</language>
+  <offset>45</offset>
+  <length>40</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV4.md</file>
+  <line>63</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Foundation_Phases/Phase_002F_3E_Planning/ERP_BASE_002F_3E_PEOPLE_CONTACTS_CRM_FOUNDATION_TECHNICAL_IMPLEMENTATION_PLAN_REV4.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 26-final-recommendation</description>
+  <highlighted_element>26-final-recommendation</highlighted_element>
+  <language>Markdown</language>
+  <offset>28</offset>
+  <length>23</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/HR_Module/ALGT_ERP_HR_MODULE_FULL_MASTER_IMPLEMENTATION_PLAN.md</file>
+  <line>120</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/HR_Module/ALGT_ERP_HR_MODULE_FULL_MASTER_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="MarkdownUnresolvedHeaderReference" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved header reference</problem_class>
+  <description>Cannot resolve anchor 29-open-questions--decisions-needed-from-sameer</description>
+  <highlighted_element>29-open-questions--decisions-needed-from-sameer</highlighted_element>
+  <language>Markdown</language>
+  <offset>53</offset>
+  <length>47</length>
+</problem>
+</problems>

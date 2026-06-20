@@ -321,7 +321,7 @@ export function DmsDocumentFilesSection({
         if (selectedFileId === file.id) setSelectedFileId(null);
         invalidateDmsDocumentFiles(queryClient, documentId);
         invalidateDmsOcr(queryClient, documentId);
-        queryClient.invalidateQueries({ queryKey: queryKeys.dms.documentVersions(documentId) });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.dms.documentVersions(documentId) });
       } else {
         toast.error(result.error ?? "Failed to delete file");
       }

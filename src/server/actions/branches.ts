@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit, createAuditDiff } from "@/server/actions/audit";
@@ -29,11 +30,11 @@ export async function getBranchById(id: number): Promise<ActionResult<import("@/
       .select("*, owner_company:owner_companies(id, legal_name_en, company_code, status)")
       .eq("id", id)
       .single();
-    if (error) { console.error("getBranchById error", error); return { success: false, error: error.message }; }
+    if (error) { logger.error("getBranchById error", error); return { success: false, error: error.message }; }
     if (!data) return { success: false, error: "Branch not found" };
     return { success: true, data: data as import("@/types/database").BranchWithCompany };
   } catch (error) {
-    console.error("getBranchById exception", error);
+    logger.error("getBranchById exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
@@ -87,7 +88,7 @@ export async function createBranch(
       .single();
 
     if (error) {
-      console.error("createBranch error", error);
+      logger.error("createBranch error", error);
       return { success: false, error: error.message };
     }
 
@@ -107,7 +108,7 @@ export async function createBranch(
 
     return { success: true, data: { id: data.id } };
   } catch (error) {
-    console.error("createBranch exception", error);
+    logger.error("createBranch exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
@@ -170,7 +171,7 @@ export async function updateBranch(
       .eq("id", id);
 
     if (error) {
-      console.error("updateBranch error", error);
+      logger.error("updateBranch error", error);
       return { success: false, error: error.message };
     }
 
@@ -194,7 +195,7 @@ export async function updateBranch(
 
     return { success: true, data: { id } };
   } catch (error) {
-    console.error("updateBranch exception", error);
+    logger.error("updateBranch exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
@@ -228,7 +229,7 @@ export async function deleteBranch(id: number): Promise<ActionResult> {
     const { error } = await supabase.from("branches").delete().eq("id", id);
 
     if (error) {
-      console.error("deleteBranch error", error);
+      logger.error("deleteBranch error", error);
       return {
         success: false,
         error: error.message.includes("violates foreign key constraint")
@@ -254,7 +255,7 @@ export async function deleteBranch(id: number): Promise<ActionResult> {
 
     return { success: true };
   } catch (error) {
-    console.error("deleteBranch exception", error);
+    logger.error("deleteBranch exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
@@ -293,7 +294,7 @@ export async function updateBranchStatus(
       .eq("id", id);
 
     if (error) {
-      console.error("updateBranchStatus error", error);
+      logger.error("updateBranchStatus error", error);
       return { success: false, error: error.message };
     }
 
@@ -315,7 +316,7 @@ export async function updateBranchStatus(
 
     return { success: true };
   } catch (error) {
-    console.error("updateBranchStatus exception", error);
+    logger.error("updateBranchStatus exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }

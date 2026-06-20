@@ -130,7 +130,7 @@ export function CandidateOffersTab({ candidateId, canManage, onChildOpen }: Prop
 
       if (res.success) {
         toast.success(editing ? "Offer updated" : "Offer created");
-        queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateOffers(candidateId) });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateOffers(candidateId) });
         closeDialog();
       } else {
         toast.error(res.error ?? "Failed to save offer");
@@ -143,7 +143,7 @@ export function CandidateOffersTab({ candidateId, canManage, onChildOpen }: Prop
       const res = await changeOfferStatus(id, status);
       if (res.success) {
         toast.success(`Offer ${status}`);
-        queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateOffers(candidateId) });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateOffers(candidateId) });
       } else {
         toast.error(res.error ?? "Failed to update status");
       }
@@ -155,7 +155,7 @@ export function CandidateOffersTab({ candidateId, canManage, onChildOpen }: Prop
       const res = await archiveOffer(id);
       if (res.success) {
         toast.success("Offer removed");
-        queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateOffers(candidateId) });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateOffers(candidateId) });
       } else {
         toast.error(res.error ?? "Failed to remove");
       }

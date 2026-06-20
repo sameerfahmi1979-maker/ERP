@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
@@ -42,7 +43,7 @@ export async function getDmsDocumentTags(
 
     return { success: true, data: (data ?? []) as unknown as DmsDocumentTagRow[] };
   } catch (err) {
-    console.error("getDmsDocumentTags error", err);
+    logger.error("getDmsDocumentTags error", err);
     return { success: false, error: "Failed to load tags" };
   }
 }
@@ -102,7 +103,7 @@ export async function saveDmsDocumentTags(
 
     return { success: true };
   } catch (err) {
-    console.error("saveDmsDocumentTags error", err);
+    logger.error("saveDmsDocumentTags error", err);
     return { success: false, error: "Failed to save tags" };
   }
 }
@@ -132,7 +133,7 @@ export async function addDmsDocumentTag(
 
     return { success: true };
   } catch (err) {
-    console.error("addDmsDocumentTag error", err);
+    logger.error("addDmsDocumentTag error", err);
     return { success: false, error: "Failed to add tag" };
   }
 }
@@ -164,7 +165,7 @@ export async function removeDmsDocumentTag(
 
     return { success: true };
   } catch (err) {
-    console.error("removeDmsDocumentTag error", err);
+    logger.error("removeDmsDocumentTag error", err);
     return { success: false, error: "Failed to remove tag" };
   }
 }

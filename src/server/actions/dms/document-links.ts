@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
@@ -56,7 +57,7 @@ export async function getDmsDocumentLinks(
 
     return { success: true, data: (data ?? []) as DmsDocumentLinkRow[] };
   } catch (err) {
-    console.error("getDmsDocumentLinks error", err);
+    logger.error("getDmsDocumentLinks error", err);
     return { success: false, error: "Failed to load links" };
   }
 }
@@ -113,7 +114,7 @@ export async function addDmsDocumentLink(
 
     return { success: true, data: { id: data.id } };
   } catch (err) {
-    console.error("addDmsDocumentLink error", err);
+    logger.error("addDmsDocumentLink error", err);
     return { success: false, error: "Failed to add link" };
   }
 }
@@ -150,7 +151,7 @@ export async function removeDmsDocumentLink(
 
     return { success: true };
   } catch (err) {
-    console.error("removeDmsDocumentLink error", err);
+    logger.error("removeDmsDocumentLink error", err);
     return { success: false, error: "Failed to remove link" };
   }
 }

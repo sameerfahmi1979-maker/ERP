@@ -9,6 +9,7 @@
 "use server";
 
 import { getMicrosoftGraphConfig } from "@/lib/email/microsoft-graph-config";
+import { logger } from "@/lib/logger";
 import { MicrosoftGraphProvider } from "@/lib/email/microsoft-graph-provider";
 import { parseEmailList, deduplicateRecipients, validateSendEmailInput } from "@/lib/email/email-validation";
 import { logAudit } from "./audit";
@@ -86,7 +87,7 @@ export async function sendExportEmail(input: SendExportEmailInput): Promise<Send
     const ctx = await getAuthContext();
     
     if (!ctx.profile) {
-      console.error("[sendExportEmail] No authenticated user");
+      logger.error("[sendExportEmail] No authenticated user");
       return {
         success: false,
         provider: "microsoft_graph",
@@ -102,7 +103,7 @@ export async function sendExportEmail(input: SendExportEmailInput): Promise<Send
       : "erp.admin";
     
     if (!hasPermission(ctx, requiredPermission)) {
-      console.warn(`[sendExportEmail] Permission denied for user ${ctx.profile.id}: ${requiredPermission}`);
+      logger.warn(`[sendExportEmail] Permission denied for user ${ctx.profile.id}: ${requiredPermission}`);
       
       // Log denied attempt
       await logAudit({
@@ -115,7 +116,7 @@ export async function sendExportEmail(input: SendExportEmailInput): Promise<Send
           reason: "Permission denied",
           required_permission: requiredPermission,
         },
-      }).catch((err) => console.error("[sendExportEmail] Audit log failed:", err));
+      }).catch((err) => logger.error("[sendExportEmail] Audit log failed:", err));
       
       return {
         success: false,
@@ -128,7 +129,7 @@ export async function sendExportEmail(input: SendExportEmailInput): Promise<Send
     // 3. Load Microsoft Graph config
     const configResult = getMicrosoftGraphConfig();
     if (!configResult.configured) {
-      console.error("[sendExportEmail] Microsoft Graph not configured. Missing:", configResult.missing);
+      logger.error("[sendExportEmail] Microsoft Graph not configured. Missing:", configResult.missing);
       
       // Log configuration error
       await logAudit({
@@ -141,7 +142,7 @@ export async function sendExportEmail(input: SendExportEmailInput): Promise<Send
           reason: "Microsoft Graph not configured",
           // Do NOT log missing env var names (security)
         },
-      }).catch((err) => console.error("[sendExportEmail] Audit log failed:", err));
+      }).catch((err) => logger.error("[sendExportEmail] Audit log failed:", err));
       
       return {
         success: false,
@@ -185,7 +186,7 @@ export async function sendExportEmail(input: SendExportEmailInput): Promise<Send
     // 6. Validate input (server-side validation)
     const validation = validateSendEmailInput(emailInput, graphConfig);
     if (!validation.valid) {
-      console.warn("[sendExportEmail] Validation failed:", validation.errors);
+      logger.warn("[sendExportEmail] Validation failed:", validation.errors);
       
       // Log validation failure
       await logAudit({
@@ -197,7 +198,7 @@ export async function sendExportEmail(input: SendExportEmailInput): Promise<Send
         new_values: {
           errors: validation.errors,
         },
-      }).catch((err) => console.error("[sendExportEmail] Audit log failed:", err));
+      }).catch((err) => logger.error("[sendExportEmail] Audit log failed:", err));
       
       return {
         success: false,
@@ -214,7 +215,7 @@ export async function sendExportEmail(input: SendExportEmailInput): Promise<Send
     const provider = new MicrosoftGraphProvider(graphConfig);
     
     // 9. Send email
-    console.log(`[sendExportEmail] Sending email: ${input.subject} to ${deduplicatedInput.to.length} recipients`);
+    logger.info(`[sendExportEmail] Sending email: ${input.subject} to ${deduplicatedInput.to.length} recipients`);
     const result = await provider.sendEmail(deduplicatedInput);
     
     // 10. Log audit event
@@ -243,18 +244,18 @@ export async function sendExportEmail(input: SendExportEmailInput): Promise<Send
       },
     }).catch((err) => {
       // Audit failure should not fail email send
-      console.error("[sendExportEmail] Audit log failed:", err);
+      logger.error("[sendExportEmail] Audit log failed:", err);
     });
     
     if (result.success) {
-      console.log(`[sendExportEmail] Email sent successfully: ${input.subject}`);
+      logger.info(`[sendExportEmail] Email sent successfully: ${input.subject}`);
     } else {
-      console.error(`[sendExportEmail] Email send failed: ${result.error}`);
+      logger.error(`[sendExportEmail] Email send failed: ${result.error}`);
     }
     
     return result;
   } catch (error) {
-    console.error("[sendExportEmail] Unexpected error:", error);
+    logger.error("[sendExportEmail] Unexpected error:", error);
     
     // Log unexpected error
     await logAudit({
@@ -266,7 +267,7 @@ export async function sendExportEmail(input: SendExportEmailInput): Promise<Send
       new_values: {
         error: error instanceof Error ? error.message : String(error),
       },
-    }).catch((err) => console.error("[sendExportEmail] Audit log failed:", err));
+    }).catch((err) => logger.error("[sendExportEmail] Audit log failed:", err));
     
     return {
       success: false,
@@ -339,7 +340,7 @@ export async function sendReportEmail(
       created_by: ctx.profile.id,
     });
   } catch (logErr) {
-    console.error("[sendReportEmail] Failed to log delivery:", logErr);
+    logger.error("[sendReportEmail] Failed to log delivery:", logErr);
   }
 
   return result;

@@ -8,6 +8,7 @@
  */
 
 import jsPDF from "jspdf";
+import { logger } from "@/lib/logger";
 import autoTable from "jspdf-autotable";
 import type { ERPExportOptions, ERPExportResult, ExportBrandingContext } from "./export-types";
 import { getColumnValue, generateFilename, formatFilters } from "./format-export-data";
@@ -283,7 +284,7 @@ export function exportToPDF<T>(options: ERPExportOptions<T>): ERPExportResult {
 
     return { success: true, filename: downloadFilename };
   } catch (error) {
-    console.error("PDF export error:", error);
+    logger.error("PDF export error:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to export PDF",

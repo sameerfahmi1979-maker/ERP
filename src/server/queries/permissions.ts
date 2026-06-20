@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 import type { Permission } from "@/types/database";
 
 /**
@@ -15,7 +16,7 @@ export async function listPermissions(): Promise<Permission[]> {
     .order("permission_code", { ascending: true });
 
   if (error) {
-    console.error("listPermissions error", error.message);
+    logger.error("listPermissions error", error.message);
     return [];
   }
 
@@ -34,7 +35,7 @@ export async function getRolePermissions(roleId: number): Promise<number[]> {
     .eq("role_id", roleId);
 
   if (error) {
-    console.error("getRolePermissions error", error.message);
+    logger.error("getRolePermissions error", error.message);
     return [];
   }
 
@@ -52,7 +53,7 @@ export async function getAllRolePermissions(): Promise<Array<{ role_id: number; 
     .select("role_id, permission_id");
 
   if (error) {
-    console.error("getAllRolePermissions error", error.message);
+    logger.error("getAllRolePermissions error", error.message);
     return [];
   }
 

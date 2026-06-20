@@ -61,7 +61,7 @@ export async function getDmsTags(): Promise<ActionResult<DmsTagRow[]>> {
 
     // Get document counts per tag
     const tagIds = (data ?? []).map((t) => t.id);
-    let docCounts: Record<number, number> = {};
+    const docCounts: Record<number, number> = {};
     if (tagIds.length > 0) {
       const { data: countData } = await supabase
         .from("dms_document_tags")

@@ -6,6 +6,7 @@
 // ============================================================================
 
 import type { AiProviderInterface, AiProviderConfig, AiTestConnectionResult } from "./types";
+import { logger } from "@/lib/logger";
 
 export class LocalProvider implements AiProviderInterface {
   readonly providerType;
@@ -37,7 +38,12 @@ export class LocalProvider implements AiProviderInterface {
     }
 
     if (this.config.providerType === "local_ollama") {
-      const endpoint = this.config.apiEndpoint ?? (process.env[this.config.secretRef ?? "LOCAL_LLM_ENDPOINT"] ?? "http://localhost:11434");
+      const rawEndpoint = this.config.apiEndpoint ?? (process.env[this.config.secretRef ?? "LOCAL_LLM_ENDPOINT"] ?? "http://localhost:11434");
+      // Warn if a non-localhost endpoint uses plain HTTP (security risk in production)
+      const endpoint = rawEndpoint;
+      if (process.env.NODE_ENV === "production" && endpoint.startsWith("http://") && !endpoint.includes("localhost") && !endpoint.includes("127.0.0.1")) {
+        logger.warn("AI local provider: Ollama endpoint uses plain HTTP in production. Use HTTPS.", { endpoint: endpoint.replace(/^http:\/\//, "http://[redacted]/") });
+      }
       try {
         const response = await fetch(`${endpoint}/api/tags`, {
           signal: AbortSignal.timeout(5000),

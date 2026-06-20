@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit, createAuditDiff } from "@/server/actions/audit";
@@ -30,11 +31,11 @@ export async function getOrganizationById(id: number): Promise<ActionResult<impo
       .select("*")
       .eq("id", id)
       .single();
-    if (error) { console.error("getOrganizationById error", error); return { success: false, error: error.message }; }
+    if (error) { logger.error("getOrganizationById error", error); return { success: false, error: error.message }; }
     if (!data) return { success: false, error: "Organization not found" };
     return { success: true, data: data as import("@/types/database").OwnerCompany };
   } catch (error) {
-    console.error("getOrganizationById exception", error);
+    logger.error("getOrganizationById exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
@@ -143,7 +144,7 @@ export async function createOrganization(
       .single();
 
     if (error) {
-      console.error("createOrganization error", error);
+      logger.error("createOrganization error", error);
       return { success: false, error: error.message };
     }
 
@@ -164,7 +165,7 @@ export async function createOrganization(
     // 7. REPORT.3: Ensure report branding/templates for the new company.
     // Non-blocking: if this fails, company creation still succeeds.
     ensureReportBrandingForOwnerCompany(data.id).catch((err) => {
-      console.warn(
+      logger.warn(
         `[createOrganization] Report branding onboarding failed for company ${data.id}:`,
         err
       );
@@ -172,7 +173,7 @@ export async function createOrganization(
 
     return { success: true, data: { id: data.id } };
   } catch (error) {
-    console.error("createOrganization exception", error);
+    logger.error("createOrganization exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
@@ -304,7 +305,7 @@ export async function updateOrganization(
       .eq("id", id);
 
     if (error) {
-      console.error("updateOrganization error", error);
+      logger.error("updateOrganization error", error);
       return { success: false, error: error.message };
     }
 
@@ -327,7 +328,7 @@ export async function updateOrganization(
 
     return { success: true, data: { id } };
   } catch (error) {
-    console.error("updateOrganization exception", error);
+    logger.error("updateOrganization exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
@@ -361,7 +362,7 @@ export async function deleteOrganization(id: number): Promise<ActionResult> {
     const { error } = await supabase.from("owner_companies").delete().eq("id", id);
 
     if (error) {
-      console.error("deleteOrganization error", error);
+      logger.error("deleteOrganization error", error);
       return {
         success: false,
         error: error.message.includes("violates foreign key constraint")
@@ -386,7 +387,7 @@ export async function deleteOrganization(id: number): Promise<ActionResult> {
 
     return { success: true };
   } catch (error) {
-    console.error("deleteOrganization exception", error);
+    logger.error("deleteOrganization exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
@@ -425,7 +426,7 @@ export async function updateOrganizationStatus(
       .eq("id", id);
 
     if (error) {
-      console.error("updateOrganizationStatus error", error);
+      logger.error("updateOrganizationStatus error", error);
       return { success: false, error: error.message };
     }
 
@@ -446,7 +447,7 @@ export async function updateOrganizationStatus(
 
     return { success: true };
   } catch (error) {
-    console.error("updateOrganizationStatus exception", error);
+    logger.error("updateOrganizationStatus exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }

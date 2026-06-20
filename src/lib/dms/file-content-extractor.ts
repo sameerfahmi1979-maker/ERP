@@ -14,6 +14,7 @@
  */
 
 import { convertPdfPagesToImages, isPdfTextEmpty } from "./pdf-to-images";
+import { logger } from "@/lib/logger";
 
 export interface ExtractedImage {
   fileName: string;
@@ -55,7 +56,7 @@ async function extractDocxText(buffer: Buffer): Promise<string> {
     const result = await mammoth.extractRawText({ buffer });
     return (result.value ?? "").trim();
   } catch (err) {
-    console.warn("[file-extractor] DOCX extraction failed:", err);
+    logger.warn("[file-extractor] DOCX extraction failed:", err);
     return "";
   }
 }
@@ -92,7 +93,7 @@ async function extractExcelText(buffer: Buffer): Promise<string> {
     }
     return parts.join("\n\n").slice(0, 30_000);
   } catch (err) {
-    console.warn("[file-extractor] Excel extraction failed:", err);
+    logger.warn("[file-extractor] Excel extraction failed:", err);
     return "";
   }
 }
@@ -111,7 +112,7 @@ async function convertTiffToPng(buffer: Buffer, fileName: string): Promise<Extra
       mimeType: "image/png",
     };
   } catch (err) {
-    console.warn("[file-extractor] TIFF→PNG conversion failed:", err);
+    logger.warn("[file-extractor] TIFF→PNG conversion failed:", err);
     return null;
   }
 }

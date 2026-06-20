@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
@@ -55,7 +56,7 @@ export async function getParties(): Promise<ActionResult<Party[]>> {
       .order("display_name");
 
     if (error) {
-      console.error("getParties error", error);
+      logger.error("getParties error", error);
       return { success: false, error: error.message };
     }
 
@@ -71,7 +72,7 @@ export async function getParties(): Promise<ActionResult<Party[]>> {
 
     return { success: true, data: parties as Party[] };
   } catch (error) {
-    console.error("getParties exception", error);
+    logger.error("getParties exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
@@ -99,7 +100,7 @@ export async function getPartyById(id: number): Promise<ActionResult<Party>> {
       .single();
 
     if (error) {
-      console.error("getPartyById error", error);
+      logger.error("getPartyById error", error);
       return { success: false, error: error.message };
     }
 
@@ -116,7 +117,7 @@ export async function getPartyById(id: number): Promise<ActionResult<Party>> {
 
     return { success: true, data: party };
   } catch (error) {
-    console.error("getPartyById exception", error);
+    logger.error("getPartyById exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
@@ -323,7 +324,7 @@ export async function detectPartyDuplicates(params: {
     });
 
     if (error) {
-      console.error("detectPartyDuplicates error", error);
+      logger.error("detectPartyDuplicates error", error);
       return { success: false, error: error.message };
     }
 
@@ -376,7 +377,7 @@ export async function createParty(
       .single();
 
     if (error) {
-      console.error("createParty error", error);
+      logger.error("createParty error", error);
       return { success: false, error: error.message };
     }
 
@@ -392,7 +393,7 @@ export async function createParty(
     revalidatePath(REVALIDATE_PATH);
     return { success: true, data: { id: data.id, party_code: data.party_code } };
   } catch (error) {
-    console.error("createParty exception", error);
+    logger.error("createParty exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
@@ -426,7 +427,7 @@ export async function updateParty(
       .eq("id", id);
 
     if (error) {
-      console.error("updateParty error", error);
+      logger.error("updateParty error", error);
       return { success: false, error: error.message };
     }
 
@@ -443,7 +444,7 @@ export async function updateParty(
     revalidatePath(REVALIDATE_PATH);
     return { success: true, data: { id } };
   } catch (error) {
-    console.error("updateParty exception", error);
+    logger.error("updateParty exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }

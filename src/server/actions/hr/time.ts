@@ -261,17 +261,7 @@ const overtimeDecisionSchema = z.object({
 
 // ── Internal Helpers ───────────────────────────────────────────────────────────
 
-async function getEmployeeCtx(
-  employeeId: number,
-  admin: ReturnType<typeof createAdminClient>
-): Promise<{ employee_code: string; full_name_en: string; owner_company_id: number } | null> {
-  const { data } = await admin
-    .from("employees")
-    .select("employee_code, full_name_en, owner_company_id")
-    .eq("id", employeeId)
-    .single();
-  return data ?? null;
-}
+import { getEmployeeCtxAdmin as getEmployeeCtx } from "./_shared/employee-context";
 
 function empRevalidate(employeeId: number) {
   revalidatePath(`/admin/hr/employees/record/${employeeId}`);
@@ -318,7 +308,7 @@ export async function createEmployeeAttendancePunch(
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
   const admin = createAdminClient();
-  const emp = await getEmployeeCtx(employeeId, admin);
+  const emp = await getEmployeeCtx(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 
   const { data, error } = await admin
@@ -419,7 +409,7 @@ export async function createOrUpdateAttendanceDailySummary(
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
   const admin = createAdminClient();
-  const emp = await getEmployeeCtx(employeeId, admin);
+  const emp = await getEmployeeCtx(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 
   const payload = {
@@ -467,7 +457,7 @@ export async function approveAttendanceDailySummary(
 
   if (fetchErr || !summary) return { success: false, error: "Attendance record not found" };
 
-  const emp = await getEmployeeCtx(summary.employee_id, admin);
+  const emp = await getEmployeeCtx(summary.employee_id);
   if (!emp) return { success: false, error: "Employee not found" };
 
   const { error } = await admin
@@ -514,7 +504,7 @@ export async function queryAttendanceDailySummary(
 
   if (fetchErr || !summary) return { success: false, error: "Attendance record not found" };
 
-  const emp = await getEmployeeCtx(summary.employee_id, admin);
+  const emp = await getEmployeeCtx(summary.employee_id);
   if (!emp) return { success: false, error: "Employee not found" };
 
   const { error } = await admin
@@ -579,7 +569,7 @@ export async function correctAttendanceDailySummary(
 
   if (fetchErr || !oldSummary) return { success: false, error: "Attendance record not found" };
 
-  const emp = await getEmployeeCtx(oldSummary.employee_id, admin);
+  const emp = await getEmployeeCtx(oldSummary.employee_id);
   if (!emp) return { success: false, error: "Employee not found" };
 
   const { correction_reason, ...updateFields } = parsed.data;
@@ -701,7 +691,7 @@ export async function createEmployeeShiftAssignment(
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
   const admin = createAdminClient();
-  const emp = await getEmployeeCtx(employeeId, admin);
+  const emp = await getEmployeeCtx(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 
   const { data, error } = await admin
@@ -748,7 +738,7 @@ export async function updateEmployeeShiftAssignment(
 
   if (fetchErr || !existing) return { success: false, error: "Shift assignment not found" };
 
-  const emp = await getEmployeeCtx(existing.employee_id, admin);
+  const emp = await getEmployeeCtx(existing.employee_id);
   if (!emp) return { success: false, error: "Employee not found" };
 
   const { error } = await admin
@@ -788,7 +778,7 @@ export async function archiveEmployeeShiftAssignment(id: number): Promise<Action
 
   if (fetchErr || !existing) return { success: false, error: "Shift assignment not found" };
 
-  const emp = await getEmployeeCtx(existing.employee_id, admin);
+  const emp = await getEmployeeCtx(existing.employee_id);
   if (!emp) return { success: false, error: "Employee not found" };
 
   const { error } = await admin
@@ -888,7 +878,7 @@ export async function createLeaveRequest(
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
   const admin = createAdminClient();
-  const emp = await getEmployeeCtx(employeeId, admin);
+  const emp = await getEmployeeCtx(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 
   const totalDays = calculateLeaveDays(parsed.data.start_date, parsed.data.end_date);
@@ -941,7 +931,7 @@ export async function approveLeaveRequest(id: number): Promise<ActionResult> {
   if (req.approval_status !== "pending")
     return { success: false, error: `Cannot approve leave in '${req.approval_status}' status` };
 
-  const emp = await getEmployeeCtx(req.employee_id, admin);
+  const emp = await getEmployeeCtx(req.employee_id);
   if (!emp) return { success: false, error: "Employee not found" };
 
   const { error } = await admin
@@ -1010,7 +1000,7 @@ export async function rejectLeaveRequest(id: number, reason?: string): Promise<A
   if (req.approval_status !== "pending")
     return { success: false, error: `Cannot reject leave in '${req.approval_status}' status` };
 
-  const emp = await getEmployeeCtx(req.employee_id, admin);
+  const emp = await getEmployeeCtx(req.employee_id);
   if (!emp) return { success: false, error: "Employee not found" };
 
   const { error } = await admin
@@ -1060,7 +1050,7 @@ export async function cancelLeaveRequest(id: number, reason?: string): Promise<A
   if (!["pending", "approved"].includes(req.approval_status))
     return { success: false, error: `Cannot cancel leave in '${req.approval_status}' status` };
 
-  const emp = await getEmployeeCtx(req.employee_id, admin);
+  const emp = await getEmployeeCtx(req.employee_id);
   if (!emp) return { success: false, error: "Employee not found" };
 
   if (req.approval_status === "approved") {
@@ -1157,7 +1147,7 @@ export async function createOrUpdateLeaveBalance(
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
   const admin = createAdminClient();
-  const emp = await getEmployeeCtx(employeeId, admin);
+  const emp = await getEmployeeCtx(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 
   const { data, error } = await admin
@@ -1274,7 +1264,7 @@ export async function createOvertimeRecord(
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
   const admin = createAdminClient();
-  const emp = await getEmployeeCtx(employeeId, admin);
+  const emp = await getEmployeeCtx(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 
   const { data, error } = await admin
@@ -1320,7 +1310,7 @@ export async function updateOvertimeRecord(id: number, input: unknown): Promise<
   if (existing.approval_status !== "pending")
     return { success: false, error: "Only pending overtime records can be edited" };
 
-  const emp = await getEmployeeCtx(existing.employee_id, admin);
+  const emp = await getEmployeeCtx(existing.employee_id);
   if (!emp) return { success: false, error: "Employee not found" };
 
   const { error } = await admin
@@ -1362,7 +1352,7 @@ export async function approveOvertimeRecord(id: number): Promise<ActionResult> {
   if (existing.approval_status !== "pending")
     return { success: false, error: `Cannot approve overtime in '${existing.approval_status}' status` };
 
-  const emp = await getEmployeeCtx(existing.employee_id, admin);
+  const emp = await getEmployeeCtx(existing.employee_id);
   if (!emp) return { success: false, error: "Employee not found" };
 
   const { error } = await admin
@@ -1409,7 +1399,7 @@ export async function rejectOvertimeRecord(id: number, reason?: string): Promise
   if (existing.approval_status !== "pending")
     return { success: false, error: `Cannot reject overtime in '${existing.approval_status}' status` };
 
-  const emp = await getEmployeeCtx(existing.employee_id, admin);
+  const emp = await getEmployeeCtx(existing.employee_id);
   if (!emp) return { success: false, error: "Employee not found" };
 
   const { error } = await admin

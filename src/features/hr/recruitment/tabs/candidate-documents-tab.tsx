@@ -78,7 +78,7 @@ export function CandidateDocumentsTab({ candidateId, canManage, onChildOpen }: P
       });
       if (res.success) {
         toast.success("Document linked");
-        queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateDocuments(candidateId) });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateDocuments(candidateId) });
         closeDialog();
       } else {
         toast.error(res.error ?? "Failed to link document");
@@ -91,7 +91,7 @@ export function CandidateDocumentsTab({ candidateId, canManage, onChildOpen }: P
       const res = await verifyCandidateDocument(id);
       if (res.success) {
         toast.success("Document verified");
-        queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateDocuments(candidateId) });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateDocuments(candidateId) });
       } else {
         toast.error(res.error ?? "Failed to verify");
       }
@@ -103,7 +103,7 @@ export function CandidateDocumentsTab({ candidateId, canManage, onChildOpen }: P
       const res = await archiveCandidateDocument(id);
       if (res.success) {
         toast.success("Document removed");
-        queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateDocuments(candidateId) });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateDocuments(candidateId) });
       } else {
         toast.error(res.error ?? "Failed to remove");
       }

@@ -1,0 +1,74 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/table/erp-data-table.tsx</file>
+  <line>115</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/table/erp-data-table.tsx" />
+  <problem_class id="TrivialIfJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Redundant 'if' statement</problem_class>
+  <description>&lt;code&gt;if&lt;/code&gt; statement can be simplified</description>
+  <highlighted_element>if</highlighted_element>
+  <language>JavaScript</language>
+  <offset>6</offset>
+  <length>2</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/admin/dms-document-types-table.tsx</file>
+  <line>189</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/admin/dms-document-types-table.tsx" />
+  <problem_class id="TrivialIfJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Redundant 'if' statement</problem_class>
+  <description>&lt;code&gt;if&lt;/code&gt; statement can be simplified</description>
+  <highlighted_element>if</highlighted_element>
+  <language>JavaScript</language>
+  <offset>4</offset>
+  <length>2</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/ai/hr-ai-letter-panel.tsx</file>
+  <line>78</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/ai/hr-ai-letter-panel.tsx" />
+  <problem_class id="TrivialIfJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Redundant 'if' statement</problem_class>
+  <description>&lt;code&gt;if&lt;/code&gt; statement can be simplified</description>
+  <highlighted_element>if</highlighted_element>
+  <language>JavaScript</language>
+  <offset>4</offset>
+  <length>2</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/hr/operations/status.ts</file>
+  <line>68</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/hr/operations/status.ts" />
+  <problem_class id="TrivialIfJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Redundant 'if' statement</problem_class>
+  <description>&lt;code&gt;if&lt;/code&gt; statement can be simplified</description>
+  <highlighted_element>if</highlighted_element>
+  <language>JavaScript</language>
+  <offset>2</offset>
+  <length>2</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/hr/operations/status.ts</file>
+  <line>79</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/hr/operations/status.ts" />
+  <problem_class id="TrivialIfJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Redundant 'if' statement</problem_class>
+  <description>&lt;code&gt;if&lt;/code&gt; statement can be simplified</description>
+  <highlighted_element>if</highlighted_element>
+  <language>JavaScript</language>
+  <offset>2</offset>
+  <length>2</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/workspace/workspace-draft-types.ts</file>
+  <line>95</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/workspace/workspace-draft-types.ts" />
+  <problem_class id="TrivialIfJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Redundant 'if' statement</problem_class>
+  <description>&lt;code&gt;if&lt;/code&gt; statement can be simplified</description>
+  <highlighted_element>if</highlighted_element>
+  <language>JavaScript</language>
+  <offset>2</offset>
+  <length>2</length>
+</problem>
+</problems>

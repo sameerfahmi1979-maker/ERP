@@ -12,6 +12,7 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit, createAuditDiff } from "@/server/actions/audit";
@@ -99,7 +100,7 @@ export async function listLookupCategories(
     const { data, error } = await query;
 
     if (error) {
-      console.error("listLookupCategories error", error);
+      logger.error("listLookupCategories error", error);
       return { success: false, error: error.message };
     }
 
@@ -118,7 +119,7 @@ export async function listLookupCategories(
 
     return { success: true, data: categoriesWithStats };
   } catch (error) {
-    console.error("listLookupCategories exception", error);
+    logger.error("listLookupCategories exception", error);
     return { success: false, error: "Failed to fetch lookup categories" };
   }
 }
@@ -144,13 +145,13 @@ export async function getLookupCategoryById(
       .single();
 
     if (error) {
-      console.error("getLookupCategoryById error", error);
+      logger.error("getLookupCategoryById error", error);
       return { success: false, error: error.message };
     }
 
     return { success: true, data: data as LookupCategory };
   } catch (error) {
-    console.error("getLookupCategoryById exception", error);
+    logger.error("getLookupCategoryById exception", error);
     return { success: false, error: "Failed to fetch lookup category" };
   }
 }
@@ -193,7 +194,7 @@ export async function createLookupCategory(
       .single();
 
     if (error) {
-      console.error("createLookupCategory error", error);
+      logger.error("createLookupCategory error", error);
       return { success: false, error: error.message };
     }
 
@@ -214,7 +215,7 @@ export async function createLookupCategory(
 
     return { success: true, data: { id: data.id } };
   } catch (error) {
-    console.error("createLookupCategory exception", error);
+    logger.error("createLookupCategory exception", error);
     return { success: false, error: "Failed to create lookup category" };
   }
 }
@@ -272,7 +273,7 @@ export async function updateLookupCategory(
       .eq("id", id);
 
     if (updateError) {
-      console.error("updateLookupCategory error", updateError);
+      logger.error("updateLookupCategory error", updateError);
       return { success: false, error: updateError.message };
     }
 
@@ -295,7 +296,7 @@ export async function updateLookupCategory(
 
     return { success: true };
   } catch (error) {
-    console.error("updateLookupCategory exception", error);
+    logger.error("updateLookupCategory exception", error);
     return { success: false, error: "Failed to update lookup category" };
   }
 }
@@ -370,7 +371,7 @@ export async function toggleLookupCategoryStatus(
 
     return { success: true };
   } catch (error) {
-    console.error("toggleLookupCategoryStatus exception", error);
+    logger.error("toggleLookupCategoryStatus exception", error);
     return { success: false, error: "Failed to toggle category status" };
   }
 }
@@ -437,7 +438,7 @@ export async function toggleLookupCategoryLock(
 
     return { success: true };
   } catch (error) {
-    console.error("toggleLookupCategoryLock exception", error);
+    logger.error("toggleLookupCategoryLock exception", error);
     return { success: false, error: "Failed to toggle category lock" };
   }
 }
@@ -501,13 +502,13 @@ export async function listLookupValues(
     const { data, error } = await query;
 
     if (error) {
-      console.error("listLookupValues error", error);
+      logger.error("listLookupValues error", error);
       return { success: false, error: error.message };
     }
 
     return { success: true, data: data as LookupValueWithCategory[] };
   } catch (error) {
-    console.error("listLookupValues exception", error);
+    logger.error("listLookupValues exception", error);
     return { success: false, error: "Failed to fetch lookup values" };
   }
 }
@@ -533,13 +534,13 @@ export async function getLookupValueById(
       .single();
 
     if (error) {
-      console.error("getLookupValueById error", error);
+      logger.error("getLookupValueById error", error);
       return { success: false, error: error.message };
     }
 
     return { success: true, data: data as LookupValue };
   } catch (error) {
-    console.error("getLookupValueById exception", error);
+    logger.error("getLookupValueById exception", error);
     return { success: false, error: "Failed to fetch lookup value" };
   }
 }
@@ -597,7 +598,7 @@ export async function createLookupValue(
       .single();
 
     if (error) {
-      console.error("createLookupValue error", error);
+      logger.error("createLookupValue error", error);
       return { success: false, error: error.message };
     }
 
@@ -618,7 +619,7 @@ export async function createLookupValue(
 
     return { success: true, data: { id: data.id } };
   } catch (error) {
-    console.error("createLookupValue exception", error);
+    logger.error("createLookupValue exception", error);
     return { success: false, error: "Failed to create lookup value" };
   }
 }
@@ -676,7 +677,7 @@ export async function updateLookupValue(
       .eq("id", id);
 
     if (updateError) {
-      console.error("updateLookupValue error", updateError);
+      logger.error("updateLookupValue error", updateError);
       return { success: false, error: updateError.message };
     }
 
@@ -699,7 +700,7 @@ export async function updateLookupValue(
 
     return { success: true };
   } catch (error) {
-    console.error("updateLookupValue exception", error);
+    logger.error("updateLookupValue exception", error);
     return { success: false, error: "Failed to update lookup value" };
   }
 }
@@ -774,7 +775,7 @@ export async function toggleLookupValueStatus(
 
     return { success: true };
   } catch (error) {
-    console.error("toggleLookupValueStatus exception", error);
+    logger.error("toggleLookupValueStatus exception", error);
     return { success: false, error: "Failed to toggle value status" };
   }
 }
@@ -841,7 +842,7 @@ export async function toggleLookupValueLock(
 
     return { success: true };
   } catch (error) {
-    console.error("toggleLookupValueLock exception", error);
+    logger.error("toggleLookupValueLock exception", error);
     return { success: false, error: "Failed to toggle value lock" };
   }
 }
@@ -912,7 +913,7 @@ export async function setDefaultLookupValue(
 
     return { success: true };
   } catch (error) {
-    console.error("setDefaultLookupValue exception", error);
+    logger.error("setDefaultLookupValue exception", error);
     return { success: false, error: "Failed to set default value" };
   }
 }
@@ -1004,13 +1005,13 @@ export async function getActiveLookupValuesByCategoryCode(
     const { data, error } = await query;
 
     if (error) {
-      console.error("getActiveLookupValuesByCategoryCode error", error);
+      logger.error("getActiveLookupValuesByCategoryCode error", error);
       return { success: false, error: error.message };
     }
 
     return { success: true, data: data as LookupValue[] };
   } catch (error) {
-    console.error("getActiveLookupValuesByCategoryCode exception", error);
+    logger.error("getActiveLookupValuesByCategoryCode exception", error);
     return { success: false, error: "Failed to fetch lookup values" };
   }
 }
@@ -1067,7 +1068,7 @@ export async function getActiveLookupValuesByCategoryCodes(
 
     const { data: categories, error: catError } = await catQuery;
     if (catError) {
-      console.error("getActiveLookupValuesByCategoryCodes categories error", catError);
+      logger.error("getActiveLookupValuesByCategoryCodes categories error", catError);
       return { success: false, error: catError.message };
     }
 
@@ -1104,7 +1105,7 @@ export async function getActiveLookupValuesByCategoryCodes(
 
     const { data: values, error: valError } = await valQuery;
     if (valError) {
-      console.error("getActiveLookupValuesByCategoryCodes values error", valError);
+      logger.error("getActiveLookupValuesByCategoryCodes values error", valError);
       return { success: false, error: valError.message };
     }
 
@@ -1129,7 +1130,7 @@ export async function getActiveLookupValuesByCategoryCodes(
 
     return { success: true, data: result };
   } catch (error) {
-    console.error("getActiveLookupValuesByCategoryCodes exception", error);
+    logger.error("getActiveLookupValuesByCategoryCodes exception", error);
     return { success: false, error: "Failed to fetch lookup values" };
   }
 }
@@ -1186,7 +1187,7 @@ export async function getLookupDashboardStats(): Promise<ActionResult<LookupDash
       category_name: r.category?.category_name_en || "Unknown",
       value_label: r.value_label_en,
       updated_at: r.updated_at,
-      updated_by_name: null, // TODO: Join with user_profiles if needed
+      updated_by_name: null, // user_profiles join deferred — not displayed in current UI
     }));
 
     const stats: LookupDashboardStats = {
@@ -1203,7 +1204,7 @@ export async function getLookupDashboardStats(): Promise<ActionResult<LookupDash
 
     return { success: true, data: stats };
   } catch (error) {
-    console.error("getLookupDashboardStats exception", error);
+    logger.error("getLookupDashboardStats exception", error);
     return { success: false, error: "Failed to fetch dashboard stats" };
   }
 }

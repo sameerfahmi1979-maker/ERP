@@ -25,10 +25,7 @@ import {
   DMS_ALLOWED_EXTENSIONS,
   DMS_MAX_FILE_SIZE_BYTES,
 } from "./dms-upload-constants";
-import { createClient } from "@supabase/supabase-js";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 
 async function computeSha256(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
@@ -155,7 +152,7 @@ export function DmsUploadNewVersionDialog({
 
       // Step 3: Upload to dms-temp
       setPhaseMessage("Uploading file to secure staging…");
-      const supabase = createClient(supabaseUrl, supabaseAnonKey);
+      const supabase = createSupabaseClient();
       const { error: uploadError } = await supabase.storage
         .from("dms-temp")
         .uploadToSignedUrl(path, token, selectedFile, { contentType: selectedFile.type });

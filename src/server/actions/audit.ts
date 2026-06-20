@@ -5,7 +5,9 @@
  * Must be called from server actions only.
  */
 
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/rbac/check";
 
 export type AuditLogParams = {
@@ -46,7 +48,7 @@ export async function logAudit(params: AuditLogParams): Promise<AuditLogResult> 
 
     // If no authenticated user, cannot log (should not happen in server actions)
     if (!ctx.profile?.id) {
-      console.error("logAudit: No authenticated user profile found");
+      logger.error("logAudit: No authenticated user profile found");
       return { success: false, error: "No authenticated user" };
     }
 
@@ -62,22 +64,46 @@ export async function logAudit(params: AuditLogParams): Promise<AuditLogResult> 
       action: params.action,
       old_values: params.old_values ?? null,
       new_values: params.new_values ?? null,
-      ip_address: null, // TODO: Extract from request headers if needed
-      user_agent: null, // TODO: Extract from request headers if needed
+      ip_address: await extractIpAddress(),
+      user_agent: await extractUserAgent(),
     };
 
     // Insert audit log
     const { error } = await supabase.from("audit_logs").insert(auditEntry);
 
     if (error) {
-      console.error("logAudit: Failed to insert audit log", error);
+      logger.error("logAudit: Failed to insert audit log", error);
       return { success: false, error: error.message };
     }
 
     return { success: true };
   } catch (error) {
-    console.error("logAudit: Unexpected error", error);
+    logger.error("logAudit: Unexpected error", error);
     return { success: false, error: String(error) };
+  }
+}
+
+// ── Header extraction helpers ──────────────────────────────────────────────
+
+async function extractIpAddress(): Promise<string | null> {
+  try {
+    const h = await headers();
+    return (
+      h.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+      h.get("x-real-ip") ??
+      null
+    );
+  } catch {
+    return null;
+  }
+}
+
+async function extractUserAgent(): Promise<string | null> {
+  try {
+    const h = await headers();
+    return h.get("user-agent") ?? null;
+  } catch {
+    return null;
   }
 }
 

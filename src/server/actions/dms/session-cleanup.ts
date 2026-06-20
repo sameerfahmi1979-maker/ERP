@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
@@ -98,7 +99,7 @@ export async function markExpiredDmsUploadSessions(): Promise<ActionResult<{ mar
     revalidatePath("/dms/inbox");
     return { success: true, data: { marked: expiredIds.length } };
   } catch (err) {
-    console.error("markExpiredDmsUploadSessions error", err);
+    logger.error("markExpiredDmsUploadSessions error", err);
     return { success: false, error: String(err) };
   }
 }
@@ -126,7 +127,7 @@ export async function cleanupDmsExpiredUploadSessions(
 
     const eligibleStatuses = statusFilter ?? ["completed", "cancelled", "failed", "expired"];
 
-    let query = supabase
+    const query = supabase
       .from("dms_upload_sessions")
       .select(
         "id, session_code, status, original_filename, file_size_bytes, temp_storage_path, uploaded_at, expires_at, temp_cleaned_at"
@@ -240,7 +241,7 @@ export async function cleanupDmsExpiredUploadSessions(
     revalidatePath("/dms/inbox");
     return { success: true, data: result };
   } catch (err) {
-    console.error("cleanupDmsExpiredUploadSessions error", err);
+    logger.error("cleanupDmsExpiredUploadSessions error", err);
     return { success: false, error: String(err) };
   }
 }

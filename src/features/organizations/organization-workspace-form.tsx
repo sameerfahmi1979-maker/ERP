@@ -169,7 +169,7 @@ export function OrganizationWorkspaceForm({ organization, mode }: OrganizationWo
         toast.success("Signatory added");
       }
       setSignatoryDialog({ open: false, editing: null });
-      queryClient.invalidateQueries({ queryKey: queryKeys.commonMd.companySignatories(companyId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.commonMd.companySignatories(companyId) });
     } finally {
       setSigSaving(false);
     }
@@ -180,7 +180,7 @@ export function OrganizationWorkspaceForm({ organization, mode }: OrganizationWo
     const res = await softDeleteCompanySignatory(id, companyId);
     if (!res.success) { toast.error(res.error ?? "Failed to remove"); return; }
     toast.success("Signatory removed");
-    queryClient.invalidateQueries({ queryKey: queryKeys.commonMd.companySignatories(companyId) });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.commonMd.companySignatories(companyId) });
   };
 
   const handleRequestClose = () => closeTab(activeTab?.id ?? "");

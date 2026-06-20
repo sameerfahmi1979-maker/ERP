@@ -8,6 +8,7 @@
  */
 
 import type { ERPExportOptions, ERPExportResult, ExportBrandingContext } from "./export-types";
+import { logger } from "@/lib/logger";
 import { getColumnValue, formatFilters } from "./format-export-data";
 import { format } from "date-fns";
 
@@ -42,7 +43,7 @@ export function exportToPrint<T>(options: ERPExportOptions<T>): ERPExportResult 
 
     return { success: true };
   } catch (error) {
-    console.error("Print export error:", error);
+    logger.error("Print export error:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to open print view",

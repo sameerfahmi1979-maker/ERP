@@ -241,17 +241,7 @@ const wpsReadinessParamsSchema = z.object({
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-async function getEmployeeCtx(
-  employeeId: number,
-  admin: ReturnType<typeof createAdminClient>
-) {
-  const { data } = await admin
-    .from("employees")
-    .select("employee_code, full_name_en")
-    .eq("id", employeeId)
-    .single();
-  return data ?? null;
-}
+import { getEmployeeCtxAdmin as getEmployeeCtx } from "./_shared/employee-context";
 
 function empRevalidate(employeeId: number) {
   revalidatePath(`/admin/hr/employees/record/${employeeId}`);
@@ -292,7 +282,7 @@ export async function createOrUpdateEmployeePayrollProfile(
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
   const admin = createAdminClient();
-  const emp = await getEmployeeCtx(employeeId, admin);
+  const emp = await getEmployeeCtx(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 
   // Check for existing profile
@@ -357,7 +347,7 @@ export async function archiveEmployeePayrollProfile(
     .single();
   if (!row) return { success: false, error: "Payroll profile not found" };
 
-  const emp = await getEmployeeCtx(row.employee_id, admin);
+  const emp = await getEmployeeCtx(row.employee_id);
   const { error } = await admin
     .from("employee_payroll_profiles")
     .update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id })
@@ -416,7 +406,7 @@ export async function createEmployeeSalaryComponent(
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
   const admin = createAdminClient();
-  const emp = await getEmployeeCtx(employeeId, admin);
+  const emp = await getEmployeeCtx(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 
   const { data, error } = await admin
@@ -457,7 +447,7 @@ export async function updateEmployeeSalaryComponent(
     .single();
   if (!row) return { success: false, error: "Salary component not found" };
 
-  const emp = await getEmployeeCtx(row.employee_id, admin);
+  const emp = await getEmployeeCtx(row.employee_id);
   const { error } = await admin
     .from("employee_salary_components")
     .update({ ...parsed.data, updated_by: ctx.profile?.id })
@@ -489,7 +479,7 @@ export async function archiveEmployeeSalaryComponent(id: number): Promise<Action
     .single();
   if (!row) return { success: false, error: "Salary component not found" };
 
-  const emp = await getEmployeeCtx(row.employee_id, admin);
+  const emp = await getEmployeeCtx(row.employee_id);
   const { error } = await admin
     .from("employee_salary_components")
     .update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id, is_active: false })
@@ -572,7 +562,7 @@ export async function createEmployeeSalaryRevision(
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
   const admin = createAdminClient();
-  const emp = await getEmployeeCtx(employeeId, admin);
+  const emp = await getEmployeeCtx(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 
   const { data, error } = await admin
@@ -647,7 +637,7 @@ export async function placeEmployeePayrollHold(
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
   const admin = createAdminClient();
-  const emp = await getEmployeeCtx(employeeId, admin);
+  const emp = await getEmployeeCtx(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 
   const { data, error } = await admin
@@ -689,7 +679,7 @@ export async function releaseEmployeePayrollHold(id: number): Promise<ActionResu
     .single();
   if (!row) return { success: false, error: "Payroll hold not found" };
 
-  const emp = await getEmployeeCtx(row.employee_id, admin);
+  const emp = await getEmployeeCtx(row.employee_id);
   const { error } = await admin
     .from("employee_payroll_holds")
     .update({
@@ -743,7 +733,7 @@ export async function archiveEmployeePayrollHold(id: number): Promise<ActionResu
     .single();
   if (!row) return { success: false, error: "Payroll hold not found" };
 
-  const emp = await getEmployeeCtx(row.employee_id, admin);
+  const emp = await getEmployeeCtx(row.employee_id);
   const { error } = await admin
     .from("employee_payroll_holds")
     .update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id, is_active: false })
@@ -800,7 +790,7 @@ export async function createOrUpdateEmployeeWpsProfile(
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
   const admin = createAdminClient();
-  const emp = await getEmployeeCtx(employeeId, admin);
+  const emp = await getEmployeeCtx(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 
   const { data: existing } = await admin

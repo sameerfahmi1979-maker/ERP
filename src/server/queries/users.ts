@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 import type { UserWithRoles, OwnerCompany, Branch } from "@/types/database";
 
 export async function getUserById(id: number): Promise<UserWithRoles | null> {
@@ -54,7 +55,7 @@ export async function listUsers(): Promise<UserWithRoles[]> {
     .order("id", { ascending: true });
 
   if (profilesError) {
-    console.error("listUsers profiles error", profilesError.message);
+    logger.error("listUsers profiles error", profilesError.message);
     return [];
   }
 
@@ -78,7 +79,7 @@ export async function listUsers(): Promise<UserWithRoles[]> {
     .eq("is_active", true);
 
   if (rolesError) {
-    console.error("listUsers user_roles error", rolesError.message);
+    logger.error("listUsers user_roles error", rolesError.message);
     // Continue without roles rather than failing completely
   }
 

@@ -9,6 +9,7 @@
  */
 
 import type { EmailProvider } from "./email-provider";
+import { logger } from "@/lib/logger";
 import type { SendEmailInput, SendEmailResult, MicrosoftGraphConfig } from "./email-types";
 
 /**
@@ -121,7 +122,7 @@ export class MicrosoftGraphProvider implements EmailProvider {
 
     } catch (error) {
       // Network or unexpected errors
-      console.error("Microsoft Graph sendEmail error:", error);
+      logger.error("Microsoft Graph sendEmail error:", error);
       return {
         success: false,
         provider: "microsoft_graph",
@@ -170,7 +171,7 @@ export class MicrosoftGraphProvider implements EmailProvider {
       const errorCode = errorBody?.error || "unknown";
       const errorDesc = errorBody?.error_description || "Token acquisition failed";
       
-      console.error("OAuth token acquisition failed:", {
+      logger.error("OAuth token acquisition failed:", {
         status: response.status,
         error: errorCode,
         description: errorDesc,
@@ -266,7 +267,7 @@ export class MicrosoftGraphProvider implements EmailProvider {
     const errorMessage = isErrorBody(body) && body.error?.message ? body.error.message : "Unknown error";
 
     // Log error for debugging (no tokens logged)
-    console.error("Microsoft Graph API error:", {
+    logger.error("Microsoft Graph API error:", {
       status,
       errorCode,
       message: errorMessage,

@@ -1,0 +1,98 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/erp_project/scripts/bootstrap-admin.mjs</file>
+  <line>60</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/erp_project/scripts/bootstrap-admin.mjs" />
+  <problem_class id="JSUnresolvedReference" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved reference</problem_class>
+  <description>Unresolved variable id</description>
+  <highlighted_element>id</highlighted_element>
+  <language>JavaScript</language>
+  <offset>25</offset>
+  <length>2</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/erp_project/scripts/bootstrap-admin.mjs</file>
+  <line>79</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/erp_project/scripts/bootstrap-admin.mjs" />
+  <problem_class id="JSUnresolvedReference" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved reference</problem_class>
+  <description>Unresolved variable id</description>
+  <highlighted_element>id</highlighted_element>
+  <language>JavaScript</language>
+  <offset>22</offset>
+  <length>2</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/erp_project/scripts/bootstrap-admin.mjs</file>
+  <line>97</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/erp_project/scripts/bootstrap-admin.mjs" />
+  <problem_class id="JSUnresolvedReference" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved reference</problem_class>
+  <description>Unresolved variable id</description>
+  <highlighted_element>id</highlighted_element>
+  <language>JavaScript</language>
+  <offset>22</offset>
+  <length>2</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/erp_project/scripts/bootstrap-admin.mjs</file>
+  <line>113</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/erp_project/scripts/bootstrap-admin.mjs" />
+  <problem_class id="JSUnresolvedReference" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved reference</problem_class>
+  <description>Unresolved variable id</description>
+  <highlighted_element>id</highlighted_element>
+  <language>JavaScript</language>
+  <offset>18</offset>
+  <length>2</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/scripts/bootstrap-admin.mjs</file>
+  <line>60</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/scripts/bootstrap-admin.mjs" />
+  <problem_class id="JSUnresolvedReference" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved reference</problem_class>
+  <description>Unresolved variable id</description>
+  <highlighted_element>id</highlighted_element>
+  <language>JavaScript</language>
+  <offset>25</offset>
+  <length>2</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/scripts/bootstrap-admin.mjs</file>
+  <line>79</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/scripts/bootstrap-admin.mjs" />
+  <problem_class id="JSUnresolvedReference" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved reference</problem_class>
+  <description>Unresolved variable id</description>
+  <highlighted_element>id</highlighted_element>
+  <language>JavaScript</language>
+  <offset>22</offset>
+  <length>2</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/scripts/bootstrap-admin.mjs</file>
+  <line>97</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/scripts/bootstrap-admin.mjs" />
+  <problem_class id="JSUnresolvedReference" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved reference</problem_class>
+  <description>Unresolved variable id</description>
+  <highlighted_element>id</highlighted_element>
+  <language>JavaScript</language>
+  <offset>22</offset>
+  <length>2</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/scripts/bootstrap-admin.mjs</file>
+  <line>113</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/scripts/bootstrap-admin.mjs" />
+  <problem_class id="JSUnresolvedReference" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved reference</problem_class>
+  <description>Unresolved variable id</description>
+  <highlighted_element>id</highlighted_element>
+  <language>JavaScript</language>
+  <offset>18</offset>
+  <length>2</length>
+</problem>
+</problems>

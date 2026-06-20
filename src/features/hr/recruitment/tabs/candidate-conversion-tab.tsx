@@ -136,8 +136,8 @@ export function CandidateConversionTab({ candidate, canManage, canCreateEmployee
       if (res.success && res.data) {
         toast.success(`Candidate converted to employee ${res.data.employee_code}`);
         setConversionResult(res.data);
-        queryClient.invalidateQueries({ queryKey: ["recruitment", "conversion-prep", candidate.id] });
-        queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidates() });
+        void queryClient.invalidateQueries({ queryKey: ["recruitment", "conversion-prep", candidate.id] });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidates() });
         refetchPrep();
         closeDialog();
       } else {

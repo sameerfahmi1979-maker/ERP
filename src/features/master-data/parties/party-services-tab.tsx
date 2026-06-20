@@ -89,7 +89,7 @@ export function PartyServicesTab({ partyId, canManage, onChildOpen }: Props) {
     }
     toast.success("Service category assigned");
     setDialogOpen(false);
-    queryClient.invalidateQueries({ queryKey: ["child", "party_service_category_assignments", partyId] });
+    void queryClient.invalidateQueries({ queryKey: ["child", "party_service_category_assignments", partyId] });
   };
 
   const handleRemove = async (id: number) => {
@@ -100,7 +100,7 @@ export function PartyServicesTab({ partyId, canManage, onChildOpen }: Props) {
       return;
     }
     toast.success("Service category removed");
-    queryClient.invalidateQueries({ queryKey: ["child", "party_service_category_assignments", partyId] });
+    void queryClient.invalidateQueries({ queryKey: ["child", "party_service_category_assignments", partyId] });
   };
 
   if (isLoading) return <div className="flex items-center justify-center h-32 text-muted-foreground">Loading service categories…</div>;

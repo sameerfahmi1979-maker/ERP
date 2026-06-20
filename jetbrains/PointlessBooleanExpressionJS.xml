@@ -1,0 +1,470 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/table/erp-column-menu.tsx</file>
+  <line>87</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/table/erp-column-menu.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to value</description>
+  <highlighted_element>!!value</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>50</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/table/erp-data-table.tsx</file>
+  <line>179</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/table/erp-data-table.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to value</description>
+  <highlighted_element>!!value</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>72</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/table/erp-data-table.tsx</file>
+  <line>187</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/table/erp-data-table.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to value</description>
+  <highlighted_element>!!value</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>59</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/ai/common/compliance-checker/compliance-findings-page-client.tsx</file>
+  <line>223</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/ai/common/compliance-checker/compliance-findings-page-client.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to v</description>
+  <highlighted_element>v === true</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>87</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/ai/common/compliance-checker/compliance-findings-page-client.tsx</file>
+  <line>230</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/ai/common/compliance-checker/compliance-findings-page-client.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to v</description>
+  <highlighted_element>v === true</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>58</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/ai/common/duplicate-detection/duplicate-candidates-page-client.tsx</file>
+  <line>201</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/ai/common/duplicate-detection/duplicate-candidates-page-client.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to v</description>
+  <highlighted_element>v === true</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>87</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/ai/common/duplicate-detection/duplicate-candidates-page-client.tsx</file>
+  <line>205</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/ai/common/duplicate-detection/duplicate-candidates-page-client.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to v</description>
+  <highlighted_element>v === true</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>96</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/ai/common/field-suggestions/ai-field-suggestions-panel.tsx</file>
+  <line>377</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/ai/common/field-suggestions/ai-field-suggestions-panel.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to actionLoading[suggestion.id]</description>
+  <highlighted_element>!!actionLoading[suggestion.id]</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>25</offset>
+  <length>30</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/ai/common/risk-scoring/risk-scores-page-client.tsx</file>
+  <line>268</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/ai/common/risk-scoring/risk-scores-page-client.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to v</description>
+  <highlighted_element>v === true</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>50</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/admin/dms-intelligence-admin-page-client.tsx</file>
+  <line>260</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/admin/dms-intelligence-admin-page-client.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to v</description>
+  <highlighted_element>!!v</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>46</offset>
+  <length>3</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/admin/dms-intelligence-admin-page-client.tsx</file>
+  <line>608</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/admin/dms-intelligence-admin-page-client.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to v</description>
+  <highlighted_element>!!v</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>57</offset>
+  <length>3</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/admin/dms-intelligence-admin-page-client.tsx</file>
+  <line>696</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/admin/dms-intelligence-admin-page-client.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to v</description>
+  <highlighted_element>!!v</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>60</offset>
+  <length>3</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/admin/dms-intelligence-admin-page-client.tsx</file>
+  <line>772</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/admin/dms-intelligence-admin-page-client.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to v</description>
+  <highlighted_element>!!v</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>56</offset>
+  <length>3</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/admin/dms-intelligence-admin-page-client.tsx</file>
+  <line>854</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/admin/dms-intelligence-admin-page-client.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to v</description>
+  <highlighted_element>!!v</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>53</offset>
+  <length>3</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/admin/dms-intelligence-admin-page-client.tsx</file>
+  <line>938</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/admin/dms-intelligence-admin-page-client.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to v</description>
+  <highlighted_element>!!v</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>54</offset>
+  <length>3</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/upload/dms-batch-review-queue-client.tsx</file>
+  <line>275</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/upload/dms-batch-review-queue-client.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to checked</description>
+  <highlighted_element>checked === true</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>58</offset>
+  <length>16</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/upload/dms-batch-review-queue-client.tsx</file>
+  <line>308</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/upload/dms-batch-review-queue-client.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to checked</description>
+  <highlighted_element>checked === true</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>75</offset>
+  <length>16</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-addresses-tab.tsx</file>
+  <line>272</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-addresses-tab.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to c</description>
+  <highlighted_element>!!c</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>143</offset>
+  <length>3</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-bank-details-tab.tsx</file>
+  <line>355</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-bank-details-tab.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to c</description>
+  <highlighted_element>!!c</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>128</offset>
+  <length>3</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-bank-details-tab.tsx</file>
+  <line>359</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-bank-details-tab.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to c</description>
+  <highlighted_element>!!c</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>125</offset>
+  <length>3</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-contacts-tab.tsx</file>
+  <line>278</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-contacts-tab.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to c</description>
+  <highlighted_element>!!c</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>73</offset>
+  <length>3</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-documents-tab.tsx</file>
+  <line>250</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-documents-tab.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to c</description>
+  <highlighted_element>!!c</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>138</offset>
+  <length>3</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-licenses-tab.tsx</file>
+  <line>301</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-licenses-tab.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to c</description>
+  <highlighted_element>!!c</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>127</offset>
+  <length>3</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-licenses-tab.tsx</file>
+  <line>305</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-licenses-tab.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to c</description>
+  <highlighted_element>!!c</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>124</offset>
+  <length>3</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-tax-finance-tab.tsx</file>
+  <line>370</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-tax-finance-tab.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to c</description>
+  <highlighted_element>!!c</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>146</offset>
+  <length>3</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-tax-finance-tab.tsx</file>
+  <line>374</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-tax-finance-tab.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to c</description>
+  <highlighted_element>!!c</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>116</offset>
+  <length>3</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-tax-finance-tab.tsx</file>
+  <line>378</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-tax-finance-tab.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to c</description>
+  <highlighted_element>!!c</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>116</offset>
+  <length>3</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/settings/ai/ai-provider-config-list.tsx</file>
+  <line>208</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/settings/ai/ai-provider-config-list.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to liveResult?.ok</description>
+  <highlighted_element>liveResult?.ok === true</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>28</offset>
+  <length>23</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/settings/ai/ai-provider-config-list.tsx</file>
+  <line>208</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/settings/ai/ai-provider-config-list.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to !liveResult?.ok</description>
+  <highlighted_element>liveResult?.ok === false</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>66</offset>
+  <length>24</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/users/user-workspace-form.tsx</file>
+  <line>187</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/users/user-workspace-form.tsx" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to v</description>
+  <highlighted_element>v === true</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>104</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/field-suggestions/apply-engine.ts</file>
+  <line>179</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/field-suggestions/apply-engine.ts" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to f.isAiEligible</description>
+  <highlighted_element>f.isAiEligible === true</highlighted_element>
+  <language>TypeScript</language>
+  <offset>6</offset>
+  <length>23</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/field-suggestions/output-validator.ts</file>
+  <line>99</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/field-suggestions/output-validator.ts" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to f.isAiEligible</description>
+  <highlighted_element>f.isAiEligible === true</highlighted_element>
+  <language>TypeScript</language>
+  <offset>21</offset>
+  <length>23</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/field-suggestions/output-validator.ts</file>
+  <line>110</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/field-suggestions/output-validator.ts" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to f.isAiEligible</description>
+  <highlighted_element>f.isAiEligible === true</highlighted_element>
+  <language>TypeScript</language>
+  <offset>50</offset>
+  <length>23</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/field-suggestions/output-validator.ts</file>
+  <line>178</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/field-suggestions/output-validator.ts" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to f.isAiEligible</description>
+  <highlighted_element>f.isAiEligible === true</highlighted_element>
+  <language>TypeScript</language>
+  <offset>21</offset>
+  <length>23</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/field-suggestions/prompt-builder.ts</file>
+  <line>256</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/field-suggestions/prompt-builder.ts" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to f.isAiEligible</description>
+  <highlighted_element>f.isAiEligible === true</highlighted_element>
+  <language>TypeScript</language>
+  <offset>30</offset>
+  <length>23</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/registry/index.ts</file>
+  <line>65</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/registry/index.ts" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to f.isAiEligible</description>
+  <highlighted_element>f.isAiEligible === true</highlighted_element>
+  <language>TypeScript</language>
+  <offset>39</offset>
+  <length>23</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/registry/index.ts</file>
+  <line>146</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/registry/index.ts" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to !field.isAiEligible</description>
+  <highlighted_element>field.isAiEligible !== true</highlighted_element>
+  <language>TypeScript</language>
+  <offset>10</offset>
+  <length>27</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/ai/common/field-suggestions.ts</file>
+  <line>334</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/ai/common/field-suggestions.ts" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to f.isAiEligible</description>
+  <highlighted_element>f.isAiEligible === true</highlighted_element>
+  <language>TypeScript</language>
+  <offset>59</offset>
+  <length>23</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/ai/common/field-suggestions.ts</file>
+  <line>339</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/ai/common/field-suggestions.ts" />
+  <problem_class id="PointlessBooleanExpressionJS" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Pointless statement or boolean expression</problem_class>
+  <description>Can be simplified to ctx.roleCodes?.includes(&quot;system_admin&quot;)</description>
+  <highlighted_element>ctx.roleCodes?.includes(&quot;system_admin&quot;) === true</highlighted_element>
+  <language>TypeScript</language>
+  <offset>6</offset>
+  <length>48</length>
+</problem>
+</problems>

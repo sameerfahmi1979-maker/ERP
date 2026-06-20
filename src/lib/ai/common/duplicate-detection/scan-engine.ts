@@ -108,7 +108,7 @@ export async function runDuplicateScan(
   const { results: deterministicRaw, failedRules } = await runAllDeterministicRules(supabase, {
     limit: pairLimit,
   });
-  let deterministicRules = filterRulesForEntity(
+  const deterministicRules = filterRulesForEntity(
     deterministicRaw,
     input.entityType,
     input.entityId

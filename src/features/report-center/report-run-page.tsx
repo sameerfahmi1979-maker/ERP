@@ -266,7 +266,7 @@ export function ReportRunPage({ registryEntry, initialFilters = {} }: ReportRunP
       const dateStr = new Date().toISOString().split("T")[0];
 
       if (format === "excel") {
-        exportToExcel({
+        await exportToExcel({
           title: registryEntry.report_name_en,
           filename: `${registryEntry.report_code}_${dateStr}`,
           columns: exportColumns,

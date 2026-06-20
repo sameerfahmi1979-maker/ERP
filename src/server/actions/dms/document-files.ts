@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
@@ -267,7 +268,7 @@ export async function setDmsDocumentCurrentVersion(
 
     return { success: true };
   } catch (e) {
-    console.error("setDmsDocumentCurrentVersion error", e);
+    logger.error("setDmsDocumentCurrentVersion error", e);
     return { success: false, error: String(e) };
   }
 }
@@ -337,7 +338,7 @@ export async function adminDeleteDmsDocumentFile(
         if (msg.includes("not found") || msg.includes("does not exist") || msg.includes("404")) {
           result.storageAlreadyMissing = true;
         } else {
-          console.error(`Storage delete warning for ${storagePath}:`, storageError.message);
+          logger.error(`Storage delete warning for ${storagePath}:`, storageError.message);
           result.storageAlreadyMissing = true; // treat as missing, continue
         }
       } else {
@@ -475,7 +476,7 @@ export async function adminDeleteDmsDocumentFile(
 
     return { success: true, data: result };
   } catch (e) {
-    console.error("adminDeleteDmsDocumentFile error", e);
+    logger.error("adminDeleteDmsDocumentFile error", e);
     return { success: false, error: String(e) };
   }
 }
@@ -649,7 +650,7 @@ export async function adminHardDeleteDmsFile(
 
     return { success: true, data: { storageDeleted, aiResultsRemoved: aiCount ?? 0 } };
   } catch (e) {
-    console.error("adminHardDeleteDmsFile error", e);
+    logger.error("adminHardDeleteDmsFile error", e);
     return { success: false, error: String(e) };
   }
 }

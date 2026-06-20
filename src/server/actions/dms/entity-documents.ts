@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
@@ -180,7 +181,7 @@ export async function getDmsDocumentsByEntity(
 
     return { success: true, data: rows };
   } catch (err) {
-    console.error("getDmsDocumentsByEntity error", err);
+    logger.error("getDmsDocumentsByEntity error", err);
     return { success: false, error: "Failed to load entity documents" };
   }
 }
@@ -263,7 +264,7 @@ export async function linkDmsDocumentToEntity(
 
     return { success: true, data: { id: data.id } };
   } catch (err) {
-    console.error("linkDmsDocumentToEntity error", err);
+    logger.error("linkDmsDocumentToEntity error", err);
     return { success: false, error: "Failed to create document link" };
   }
 }
@@ -315,7 +316,7 @@ export async function unlinkDmsDocumentFromEntity(
 
     return { success: true };
   } catch (err) {
-    console.error("unlinkDmsDocumentFromEntity error", err);
+    logger.error("unlinkDmsDocumentFromEntity error", err);
     return { success: false, error: "Failed to unlink document" };
   }
 }
@@ -425,7 +426,7 @@ export async function getDmsEntityDocumentComplianceSummary(
       },
     };
   } catch (err) {
-    console.error("getDmsEntityDocumentComplianceSummary error", err);
+    logger.error("getDmsEntityDocumentComplianceSummary error", err);
     return { success: false, error: "Failed to load compliance summary" };
   }
 }
@@ -493,7 +494,7 @@ export async function getAvailableDmsDocumentsForLink(
 
     return { success: true, data: rows };
   } catch (err) {
-    console.error("getAvailableDmsDocumentsForLink error", err);
+    logger.error("getAvailableDmsDocumentsForLink error", err);
     return { success: false, error: "Failed to load available documents" };
   }
 }

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 import type { BranchWithCompany } from "@/types/database";
 
 /**
@@ -19,7 +20,7 @@ export async function listBranches(): Promise<BranchWithCompany[]> {
     .order("id", { ascending: true });
 
   if (error) {
-    console.error("listBranches error", error.message);
+    logger.error("listBranches error", error.message);
     return [];
   }
 
@@ -45,7 +46,7 @@ export async function getBranchById(id: number): Promise<BranchWithCompany | nul
     .single();
 
   if (error) {
-    console.error("getBranchById error", error.message);
+    logger.error("getBranchById error", error.message);
     return null;
   }
 

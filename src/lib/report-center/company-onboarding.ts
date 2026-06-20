@@ -8,6 +8,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logger } from "@/lib/logger";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -249,7 +250,7 @@ export async function ensureReportBrandingForOwnerCompany(
       wasAlreadyPresent,
     };
   } catch (error) {
-    console.error("[ensureReportBrandingForOwnerCompany] Exception:", error);
+    logger.error("[ensureReportBrandingForOwnerCompany] Exception:", error);
     return {
       success: false,
       wasAlreadyPresent: false,

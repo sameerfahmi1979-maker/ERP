@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
@@ -73,7 +74,7 @@ export async function getMetadataDefinitionsForType(
 
     return { success: true, data: (data ?? []) as DmsMetadataDefinitionRow[] };
   } catch (err) {
-    console.error("getMetadataDefinitionsForType error", err);
+    logger.error("getMetadataDefinitionsForType error", err);
     return { success: false, error: "Failed to load metadata definitions" };
   }
 }
@@ -104,7 +105,7 @@ export async function getDmsDocumentMetadataValues(
 
     return { success: true, data: (data ?? []) as unknown as DmsMetadataValueRow[] };
   } catch (err) {
-    console.error("getDmsDocumentMetadataValues error", err);
+    logger.error("getDmsDocumentMetadataValues error", err);
     return { success: false, error: "Failed to load metadata values" };
   }
 }
@@ -165,7 +166,7 @@ export async function saveDmsDocumentMetadataValues(
 
     return { success: true };
   } catch (err) {
-    console.error("saveDmsDocumentMetadataValues error", err);
+    logger.error("saveDmsDocumentMetadataValues error", err);
     return { success: false, error: "Failed to save metadata values" };
   }
 }

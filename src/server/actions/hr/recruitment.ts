@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
@@ -467,7 +468,7 @@ export async function listJobRequisitions(
     if (error) return { success: false, error: error.message };
     return { success: true, data: { rows: (data ?? []) as unknown as JobRequisitionRow[], totalCount: count ?? 0, page, pageSize } };
   } catch (err) {
-    console.error("listJobRequisitions error", err);
+    logger.error("listJobRequisitions error", err);
     return { success: false, error: "Failed to list job requisitions" };
   }
 }
@@ -488,7 +489,7 @@ export async function getJobRequisition(id: number): Promise<ActionResult<JobReq
     if (error || !data) return { success: false, error: "Requisition not found" };
     return { success: true, data: data as unknown as JobRequisitionRow };
   } catch (err) {
-    console.error("getJobRequisition error", err);
+    logger.error("getJobRequisition error", err);
     return { success: false, error: "Failed to get requisition" };
   }
 }
@@ -533,7 +534,7 @@ export async function createJobRequisition(
     revalidatePath("/admin/hr/recruitment/requisitions");
     return { success: true, data: { id: rec.id, requisition_code: requisitionCode } };
   } catch (err) {
-    console.error("createJobRequisition error", err);
+    logger.error("createJobRequisition error", err);
     return { success: false, error: "Failed to create job requisition" };
   }
 }
@@ -561,7 +562,7 @@ export async function updateJobRequisition(
     revalidatePath("/admin/hr/recruitment/requisitions");
     return { success: true };
   } catch (err) {
-    console.error("updateJobRequisition error", err);
+    logger.error("updateJobRequisition error", err);
     return { success: false, error: "Failed to update job requisition" };
   }
 }
@@ -583,7 +584,7 @@ export async function archiveJobRequisition(id: number): Promise<ActionResult<vo
     revalidatePath("/admin/hr/recruitment/requisitions");
     return { success: true };
   } catch (err) {
-    console.error("archiveJobRequisition error", err);
+    logger.error("archiveJobRequisition error", err);
     return { success: false, error: "Failed to archive job requisition" };
   }
 }
@@ -608,7 +609,7 @@ export async function changeJobRequisitionStatus(id: number, status: string, not
     revalidatePath("/admin/hr/recruitment/requisitions");
     return { success: true };
   } catch (err) {
-    console.error("changeJobRequisitionStatus error", err);
+    logger.error("changeJobRequisitionStatus error", err);
     return { success: false, error: "Failed to change status" };
   }
 }
@@ -650,7 +651,7 @@ export async function listCandidates(
     if (error) return { success: false, error: error.message };
     return { success: true, data: { rows: (data ?? []) as unknown as CandidateRow[], totalCount: count ?? 0, page, pageSize } };
   } catch (err) {
-    console.error("listCandidates error", err);
+    logger.error("listCandidates error", err);
     return { success: false, error: "Failed to list candidates" };
   }
 }
@@ -671,7 +672,7 @@ export async function getCandidate(id: number): Promise<ActionResult<CandidateRo
     if (error || !data) return { success: false, error: "Candidate not found" };
     return { success: true, data: data as unknown as CandidateRow };
   } catch (err) {
-    console.error("getCandidate error", err);
+    logger.error("getCandidate error", err);
     return { success: false, error: "Failed to get candidate" };
   }
 }
@@ -711,7 +712,7 @@ export async function createCandidate(
     revalidatePath("/admin/hr/recruitment/candidates");
     return { success: true, data: { id: rec.id, candidate_code: candidateCode } };
   } catch (err) {
-    console.error("createCandidate error", err);
+    logger.error("createCandidate error", err);
     return { success: false, error: "Failed to create candidate" };
   }
 }
@@ -737,7 +738,7 @@ export async function updateCandidate(id: number, input: z.infer<typeof candidat
     revalidatePath(`/admin/hr/recruitment/candidates/record/${id}`);
     return { success: true };
   } catch (err) {
-    console.error("updateCandidate error", err);
+    logger.error("updateCandidate error", err);
     return { success: false, error: "Failed to update candidate" };
   }
 }
@@ -759,7 +760,7 @@ export async function archiveCandidate(id: number): Promise<ActionResult<void>> 
     revalidatePath("/admin/hr/recruitment/candidates");
     return { success: true };
   } catch (err) {
-    console.error("archiveCandidate error", err);
+    logger.error("archiveCandidate error", err);
     return { success: false, error: "Failed to archive candidate" };
   }
 }
@@ -791,7 +792,7 @@ export async function changeCandidateStatus(
     revalidatePath("/admin/hr/recruitment/candidates");
     return { success: true };
   } catch (err) {
-    console.error("changeCandidateStatus error", err);
+    logger.error("changeCandidateStatus error", err);
     return { success: false, error: "Failed to change candidate status" };
   }
 }
@@ -816,7 +817,7 @@ export async function getCandidatePipelineSummary(
     }
     return { success: true, data: summary };
   } catch (err) {
-    console.error("getCandidatePipelineSummary error", err);
+    logger.error("getCandidatePipelineSummary error", err);
     return { success: false, error: "Failed to get pipeline summary" };
   }
 }
@@ -853,7 +854,7 @@ export async function listCandidateDocuments(candidateId: number): Promise<Actio
     if (error) return { success: false, error: error.message };
     return { success: true, data: (data ?? []) as unknown as CandidateDocumentRow[] };
   } catch (err) {
-    console.error("listCandidateDocuments error", err);
+    logger.error("listCandidateDocuments error", err);
     return { success: false, error: "Failed to list documents" };
   }
 }
@@ -885,7 +886,7 @@ export async function linkCandidateDmsDocument(
     revalidatePath(`/admin/hr/recruitment/candidates/record/${candidateId}`);
     return { success: true, data: { id: rec!.id } };
   } catch (err) {
-    console.error("linkCandidateDmsDocument error", err);
+    logger.error("linkCandidateDmsDocument error", err);
     return { success: false, error: "Failed to link document" };
   }
 }
@@ -901,7 +902,7 @@ export async function verifyCandidateDocument(id: number): Promise<ActionResult<
     if (error) return { success: false, error: error.message };
     return { success: true };
   } catch (err) {
-    console.error("verifyCandidateDocument error", err);
+    logger.error("verifyCandidateDocument error", err);
     return { success: false, error: "Failed to verify document" };
   }
 }
@@ -917,7 +918,7 @@ export async function archiveCandidateDocument(id: number): Promise<ActionResult
     if (error) return { success: false, error: error.message };
     return { success: true };
   } catch (err) {
-    console.error("archiveCandidateDocument error", err);
+    logger.error("archiveCandidateDocument error", err);
     return { success: false, error: "Failed to archive document" };
   }
 }
@@ -948,7 +949,7 @@ export async function listCandidateInterviews(candidateId: number): Promise<Acti
     if (error) return { success: false, error: error.message };
     return { success: true, data: (data ?? []) as unknown as InterviewRow[] };
   } catch (err) {
-    console.error("listCandidateInterviews error", err);
+    logger.error("listCandidateInterviews error", err);
     return { success: false, error: "Failed to list interviews" };
   }
 }
@@ -975,7 +976,7 @@ export async function listGlobalInterviews(
     if (error) return { success: false, error: error.message };
     return { success: true, data: { rows: (data ?? []) as unknown as InterviewRow[], totalCount: count ?? 0, page, pageSize } };
   } catch (err) {
-    console.error("listGlobalInterviews error", err);
+    logger.error("listGlobalInterviews error", err);
     return { success: false, error: "Failed to list interviews" };
   }
 }
@@ -1005,7 +1006,7 @@ export async function createInterview(candidateId: number, input: z.infer<typeof
     revalidatePath("/admin/hr/recruitment/interviews");
     return { success: true, data: { id: rec.id } };
   } catch (err) {
-    console.error("createInterview error", err);
+    logger.error("createInterview error", err);
     return { success: false, error: "Failed to create interview" };
   }
 }
@@ -1030,7 +1031,7 @@ export async function updateInterview(id: number, input: z.infer<typeof intervie
     revalidatePath("/admin/hr/recruitment/interviews");
     return { success: true };
   } catch (err) {
-    console.error("updateInterview error", err);
+    logger.error("updateInterview error", err);
     return { success: false, error: "Failed to update interview" };
   }
 }
@@ -1047,7 +1048,7 @@ export async function archiveInterview(id: number): Promise<ActionResult<void>> 
     revalidatePath("/admin/hr/recruitment/interviews");
     return { success: true };
   } catch (err) {
-    console.error("archiveInterview error", err);
+    logger.error("archiveInterview error", err);
     return { success: false, error: "Failed to archive interview" };
   }
 }
@@ -1073,7 +1074,7 @@ export async function completeInterview(id: number, input: z.infer<typeof interv
     revalidatePath("/admin/hr/recruitment/interviews");
     return { success: true };
   } catch (err) {
-    console.error("completeInterview error", err);
+    logger.error("completeInterview error", err);
     return { success: false, error: "Failed to complete interview" };
   }
 }
@@ -1095,7 +1096,7 @@ export async function cancelInterview(id: number, reason: string): Promise<Actio
     revalidatePath("/admin/hr/recruitment/interviews");
     return { success: true };
   } catch (err) {
-    console.error("cancelInterview error", err);
+    logger.error("cancelInterview error", err);
     return { success: false, error: "Failed to cancel interview" };
   }
 }
@@ -1127,7 +1128,7 @@ export async function listCandidateOffers(candidateId: number): Promise<ActionRe
     if (error) return { success: false, error: error.message };
     return { success: true, data: (data ?? []) as unknown as OfferRow[] };
   } catch (err) {
-    console.error("listCandidateOffers error", err);
+    logger.error("listCandidateOffers error", err);
     return { success: false, error: "Failed to list offers" };
   }
 }
@@ -1153,7 +1154,7 @@ export async function listGlobalOffers(
     if (error) return { success: false, error: error.message };
     return { success: true, data: { rows: (data ?? []) as unknown as OfferRow[], totalCount: count ?? 0, page, pageSize } };
   } catch (err) {
-    console.error("listGlobalOffers error", err);
+    logger.error("listGlobalOffers error", err);
     return { success: false, error: "Failed to list offers" };
   }
 }
@@ -1183,7 +1184,7 @@ export async function createOffer(candidateId: number, input: z.infer<typeof off
     revalidatePath("/admin/hr/recruitment/offers");
     return { success: true, data: { id: rec.id } };
   } catch (err) {
-    console.error("createOffer error", err);
+    logger.error("createOffer error", err);
     return { success: false, error: "Failed to create offer" };
   }
 }
@@ -1208,7 +1209,7 @@ export async function updateOffer(id: number, input: z.infer<typeof offerUpdateS
     revalidatePath("/admin/hr/recruitment/offers");
     return { success: true };
   } catch (err) {
-    console.error("updateOffer error", err);
+    logger.error("updateOffer error", err);
     return { success: false, error: "Failed to update offer" };
   }
 }
@@ -1225,7 +1226,7 @@ export async function archiveOffer(id: number): Promise<ActionResult<void>> {
     revalidatePath("/admin/hr/recruitment/offers");
     return { success: true };
   } catch (err) {
-    console.error("archiveOffer error", err);
+    logger.error("archiveOffer error", err);
     return { success: false, error: "Failed to archive offer" };
   }
 }
@@ -1253,7 +1254,7 @@ export async function changeOfferStatus(id: number, status: string, notes?: stri
     revalidatePath("/admin/hr/recruitment/offers");
     return { success: true };
   } catch (err) {
-    console.error("changeOfferStatus error", err);
+    logger.error("changeOfferStatus error", err);
     return { success: false, error: "Failed to change offer status" };
   }
 }
@@ -1287,7 +1288,7 @@ export async function listCandidateOnboardingTasks(candidateId: number): Promise
     if (error) return { success: false, error: error.message };
     return { success: true, data: (data ?? []) as unknown as OnboardingTaskRow[] };
   } catch (err) {
-    console.error("listCandidateOnboardingTasks error", err);
+    logger.error("listCandidateOnboardingTasks error", err);
     return { success: false, error: "Failed to list tasks" };
   }
 }
@@ -1308,7 +1309,7 @@ export async function listEmployeeOnboardingTasks(employeeId: number): Promise<A
     if (error) return { success: false, error: error.message };
     return { success: true, data: (data ?? []) as unknown as OnboardingTaskRow[] };
   } catch (err) {
-    console.error("listEmployeeOnboardingTasks error", err);
+    logger.error("listEmployeeOnboardingTasks error", err);
     return { success: false, error: "Failed to list tasks" };
   }
 }
@@ -1335,7 +1336,7 @@ export async function listGlobalOnboardingTasks(
     if (error) return { success: false, error: error.message };
     return { success: true, data: { rows: (data ?? []) as unknown as OnboardingTaskRow[], totalCount: count ?? 0, page, pageSize } };
   } catch (err) {
-    console.error("listGlobalOnboardingTasks error", err);
+    logger.error("listGlobalOnboardingTasks error", err);
     return { success: false, error: "Failed to list tasks" };
   }
 }
@@ -1361,7 +1362,7 @@ export async function createOnboardingTask(input: z.infer<typeof onboardingTaskC
     revalidatePath("/admin/hr/recruitment/onboarding");
     return { success: true, data: { id: rec.id } };
   } catch (err) {
-    console.error("createOnboardingTask error", err);
+    logger.error("createOnboardingTask error", err);
     return { success: false, error: "Failed to create task" };
   }
 }
@@ -1385,7 +1386,7 @@ export async function updateOnboardingTask(id: number, input: z.infer<typeof onb
     revalidatePath("/admin/hr/recruitment/onboarding");
     return { success: true };
   } catch (err) {
-    console.error("updateOnboardingTask error", err);
+    logger.error("updateOnboardingTask error", err);
     return { success: false, error: "Failed to update task" };
   }
 }
@@ -1409,7 +1410,7 @@ export async function completeOnboardingTask(id: number, notes?: string): Promis
     revalidatePath("/admin/hr/recruitment/onboarding");
     return { success: true };
   } catch (err) {
-    console.error("completeOnboardingTask error", err);
+    logger.error("completeOnboardingTask error", err);
     return { success: false, error: "Failed to complete task" };
   }
 }
@@ -1426,7 +1427,7 @@ export async function blockOnboardingTask(id: number, reason: string): Promise<A
     revalidatePath("/admin/hr/recruitment/onboarding");
     return { success: true };
   } catch (err) {
-    console.error("blockOnboardingTask error", err);
+    logger.error("blockOnboardingTask error", err);
     return { success: false, error: "Failed to block task" };
   }
 }
@@ -1442,7 +1443,7 @@ export async function markOnboardingTaskNotApplicable(id: number, reason: string
     if (error) return { success: false, error: error.message };
     return { success: true };
   } catch (err) {
-    console.error("markOnboardingTaskNotApplicable error", err);
+    logger.error("markOnboardingTaskNotApplicable error", err);
     return { success: false, error: "Failed to mark task not applicable" };
   }
 }
@@ -1458,7 +1459,7 @@ export async function archiveOnboardingTask(id: number): Promise<ActionResult<vo
     if (error) return { success: false, error: error.message };
     return { success: true };
   } catch (err) {
-    console.error("archiveOnboardingTask error", err);
+    logger.error("archiveOnboardingTask error", err);
     return { success: false, error: "Failed to archive task" };
   }
 }
@@ -1503,7 +1504,7 @@ export async function prepareCandidateEmployeeConversion(candidateId: number): P
 
     return { success: true, data: { candidate: candidate as unknown as CandidateRow, latest_offer: latestOffer as unknown as OfferRow | null, already_converted: false } };
   } catch (err) {
-    console.error("prepareCandidateEmployeeConversion error", err);
+    logger.error("prepareCandidateEmployeeConversion error", err);
     return { success: false, error: "Failed to prepare conversion" };
   }
 }
@@ -1607,7 +1608,7 @@ export async function convertCandidateToEmployee(
     revalidatePath(`/admin/hr/recruitment/candidates/record/${candidateId}`);
     return { success: true, data: { employee_id: employee.id, employee_code: employeeCode } };
   } catch (err) {
-    console.error("convertCandidateToEmployee error", err);
+    logger.error("convertCandidateToEmployee error", err);
     return { success: false, error: "Failed to convert candidate to employee" };
   }
 }
@@ -1627,7 +1628,7 @@ export async function getEmployeeRecruitmentLink(employeeId: number): Promise<Ac
     if (error) return { success: true, data: null };
     return { success: true, data: data as unknown as RecruitmentLinkRow };
   } catch (err) {
-    console.error("getEmployeeRecruitmentLink error", err);
+    logger.error("getEmployeeRecruitmentLink error", err);
     return { success: false, error: "Failed to get recruitment link" };
   }
 }
@@ -1685,7 +1686,7 @@ export async function getRecruitmentSummary(): Promise<ActionResult<{
       },
     };
   } catch (err) {
-    console.error("getRecruitmentSummary error", err);
+    logger.error("getRecruitmentSummary error", err);
     return { success: false, error: "Failed to get recruitment summary" };
   }
 }
@@ -1725,7 +1726,7 @@ export async function getCandidateSummary(candidateId: number): Promise<ActionRe
       },
     };
   } catch (err) {
-    console.error("getCandidateSummary error", err);
+    logger.error("getCandidateSummary error", err);
     return { success: false, error: "Failed to get candidate summary" };
   }
 }

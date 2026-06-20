@@ -118,7 +118,7 @@ export function PartyNotesTab({ partyId, canManage, currentUserProfileId, onChil
     }
     toast.success(editing ? "Note updated" : "Note added");
     setDialogOpen(false);
-    queryClient.invalidateQueries({ queryKey: ["child", "party_notes", partyId] });
+    void queryClient.invalidateQueries({ queryKey: ["child", "party_notes", partyId] });
   };
 
   const handleDelete = async (id: number) => {
@@ -129,7 +129,7 @@ export function PartyNotesTab({ partyId, canManage, currentUserProfileId, onChil
       return;
     }
     toast.success("Note deleted");
-    queryClient.invalidateQueries({ queryKey: ["child", "party_notes", partyId] });
+    void queryClient.invalidateQueries({ queryKey: ["child", "party_notes", partyId] });
   };
 
   if (isLoading) return <div className="flex items-center justify-center h-32 text-muted-foreground">Loading notes…</div>;

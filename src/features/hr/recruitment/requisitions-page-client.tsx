@@ -133,7 +133,7 @@ export function RequisitionsPageClient({ authContext }: Props) {
 
       if (res.success) {
         toast.success(editing ? "Requisition updated" : "Requisition created");
-        queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.requisitions() });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.requisitions() });
         setDialogOpen(false);
       } else {
         toast.error(res.error ?? "Failed to save requisition");
@@ -146,7 +146,7 @@ export function RequisitionsPageClient({ authContext }: Props) {
       const res = await archiveJobRequisition(id);
       if (res.success) {
         toast.success("Requisition archived");
-        queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.requisitions() });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.requisitions() });
       } else {
         toast.error(res.error ?? "Failed to archive");
       }

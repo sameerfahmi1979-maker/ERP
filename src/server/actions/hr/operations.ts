@@ -17,15 +17,7 @@ type ActionResult<T = undefined> =
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-async function getEmployeeContext(employeeId: number) {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("employees")
-    .select("id, employee_code, full_name_en")
-    .eq("id", employeeId)
-    .single();
-  return data;
-}
+import { getEmployeeCtx as getEmployeeContext } from "./_shared/employee-context";
 
 // ── Zod Schemas ────────────────────────────────────────────────────────────
 

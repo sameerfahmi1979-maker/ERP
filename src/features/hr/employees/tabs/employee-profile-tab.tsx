@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -146,12 +146,39 @@ export function EmployeeProfileTab({
   });
 
   const { data: mohreEstablishments } = useQuery({
-    queryKey: ["hr", "settings", "mohre-establishments"],
+    queryKey: ["hr", "settings", "mohre-establishments", form.owner_company_id],
     queryFn: async () => {
-      const r = await listHrMohreEstablishments({ status: "active" });
+      const r = await listHrMohreEstablishments({
+        status: "active",
+        owner_company_id: form.owner_company_id ?? undefined,
+        page_size: 200,
+      });
       return r.success && r.data ? r.data.data : [];
     },
+    enabled: !!form.owner_company_id,
   });
+
+  /** Always include the employee's currently linked establishment (even if inactive or filtered out). */
+  const mohreEstablishmentOptions = useMemo(() => {
+    const fromList = (mohreEstablishments ?? []).map((m) => ({
+      value: m.id,
+      label: m.establishment_name,
+      code: m.establishment_number,
+      description: m.establishment_number,
+    }));
+
+    const linked = employee?.mohre_establishment;
+    if (linked && !fromList.some((o) => o.value === linked.id)) {
+      fromList.unshift({
+        value: linked.id,
+        label: linked.establishment_name,
+        code: linked.establishment_number,
+        description: linked.establishment_number,
+      });
+    }
+
+    return fromList;
+  }, [mohreEstablishments, employee?.mohre_establishment]);
 
   const { data: relationshipTypes } = useQuery({
     queryKey: ["hr", "settings", "relationship-types"],
@@ -322,7 +349,14 @@ export function EmployeeProfileTab({
             <RequiredLabel htmlFor="owner_company_id">Employer Company</RequiredLabel>
             <OwnerCompanySelect
               value={form.owner_company_id}
-              onValueChange={(v) => setForm((p) => ({ ...p, owner_company_id: v }))}
+              onValueChange={(v) =>
+                setForm((p) => ({
+                  ...p,
+                  owner_company_id: v,
+                  // MOHRE establishment is company-scoped — clear when employer changes
+                  mohre_establishment_id: null,
+                }))
+              }
               disabled={disabled}
               required
             />
@@ -436,12 +470,32 @@ export function EmployeeProfileTab({
             <Label>MOHRE Establishment</Label>
             <ERPCombobox
               value={form.mohre_establishment_id}
-              onValueChange={(v) => setForm((p) => ({ ...p, mohre_establishment_id: Number(v) || null }))}
-              options={(mohreEstablishments ?? []).map((m) => ({ value: m.id, label: m.establishment_name }))}
-              placeholder="Select establishment..."
-              disabled={disabled}
+              onValueChange={(v) =>
+                setForm((p) => ({
+                  ...p,
+                  mohre_establishment_id: v ? Number(v) : null,
+                }))
+              }
+              options={mohreEstablishmentOptions}
+              placeholder={
+                form.owner_company_id
+                  ? "Select MOHRE establishment..."
+                  : "Select employer company first"
+              }
+              disabled={disabled || !form.owner_company_id}
               allowClear
+              showCode
             />
+            {!form.owner_company_id && (
+              <p className="text-[11px] text-muted-foreground">
+                Link this employee to an employer company, then choose a MOHRE establishment registered for that company in HR Settings.
+              </p>
+            )}
+            {form.owner_company_id && mohreEstablishmentOptions.length === 0 && (
+              <p className="text-[11px] text-muted-foreground">
+                No MOHRE establishments for this company. Add one under HR Settings → MOHRE Establishments.
+              </p>
+            )}
           </div>
         </div>
       </section>

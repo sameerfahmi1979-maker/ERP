@@ -86,6 +86,11 @@ export type EmployeeListRow = EmployeeRow & {
   employee_category?: { id: number; name_en: string } | null;
   employment_type?: { id: number; name_en: string } | null;
   primary_work_site?: { id: number; site_name: string } | null;
+  mohre_establishment?: {
+    id: number;
+    establishment_name: string;
+    establishment_number: string;
+  } | null;
 };
 
 export type EmployeeStatusEvent = {
@@ -213,6 +218,7 @@ export async function listEmployees(params?: Partial<EmployeeListParams>): Promi
       "employee_category:hr_employee_categories(id,name_en)",
       "employment_type:hr_employment_types(id,name_en)",
       "primary_work_site:work_sites(id,site_name)",
+      "mohre_establishment:hr_mohre_establishments!employees_mohre_establishment_id_fkey(id,establishment_name,establishment_number)",
     ].join(",");
 
     let query = supabase
@@ -284,6 +290,7 @@ export async function getEmployee(employeeId: number): Promise<ActionResult<Empl
       "employee_category:hr_employee_categories(id,name_en)",
       "employment_type:hr_employment_types(id,name_en)",
       "primary_work_site:work_sites(id,site_name)",
+      "mohre_establishment:hr_mohre_establishments!employees_mohre_establishment_id_fkey(id,establishment_name,establishment_number)",
     ].join(",");
 
     const { data, error } = await supabase

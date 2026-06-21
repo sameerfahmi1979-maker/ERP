@@ -34,8 +34,6 @@ import {
   Plus, MoreVertical, Eye, Edit, Archive, Search, ChevronLeft, ChevronRight,
   Users,
 } from "lucide-react";
-import { format } from "date-fns";
-
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
   active: "default",
   probation: "secondary",
@@ -205,14 +203,13 @@ export function EmployeesTable({ initialRows, initialTotal, authContext }: Props
               <TableHead>Company</TableHead>
               <TableHead>Branch</TableHead>
               <TableHead>Work Site</TableHead>
-              <TableHead>Joining Date</TableHead>
               <TableHead className="w-12" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={12} className="text-center py-12">
+                <TableCell colSpan={11} className="text-center py-12">
                   <div className="flex flex-col items-center gap-2 text-muted-foreground">
                     <Users className="h-8 w-8 opacity-40" />
                     <p className="text-sm">
@@ -272,11 +269,6 @@ export function EmployeesTable({ initialRows, initialTotal, authContext }: Props
                   </TableCell>
                   <TableCell className="text-sm">
                     {emp.primary_work_site?.site_name ?? "—"}
-                  </TableCell>
-                  <TableCell className="text-sm">
-                    {emp.joining_date
-                      ? format(new Date(emp.joining_date), "dd MMM yyyy")
-                      : "—"}
                   </TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <DropdownMenu>

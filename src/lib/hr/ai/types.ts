@@ -55,6 +55,71 @@ export const HrAiDocumentFillOutputSchema = z.object({
 export type HrAiFieldSuggestion = z.infer<typeof HrAiFieldSuggestionSchema>;
 export type HrAiDocumentFillOutput = z.infer<typeof HrAiDocumentFillOutputSchema>;
 
+// ── 1b. HR Identity Document Prefill (from DMS) ───────────────────────────────
+
+export const HrIdentityDocumentPrefillFieldsSchema = z.object({
+  document_type_code: z.string().max(50).nullable().optional(),
+  document_number: z.string().max(200).nullable().optional(),
+  issue_date: z.string().max(20).nullable().optional(),
+  expiry_date: z.string().max(20).nullable().optional(),
+  issuing_authority: z.string().max(300).nullable().optional(),
+  place_of_issue: z.string().max(300).nullable().optional(),
+  emirates_id_application_no: z.string().max(100).nullable().optional(),
+  visa_file_number: z.string().max(100).nullable().optional(),
+  uid_number: z.string().max(100).nullable().optional(),
+  labour_card_number: z.string().max(100).nullable().optional(),
+  work_permit_number: z.string().max(100).nullable().optional(),
+  mohre_person_code: z.string().max(100).nullable().optional(),
+  profession_on_document: z.string().max(300).nullable().optional(),
+});
+
+export const HrIdentityDocumentPrefillOutputSchema = z.object({
+  fields: HrIdentityDocumentPrefillFieldsSchema,
+  field_confidence: z.record(z.string(), z.number().min(0).max(1)).optional(),
+  warning: z.string().max(500).nullable().optional(),
+});
+
+export type HrIdentityDocumentPrefillFields = z.infer<typeof HrIdentityDocumentPrefillFieldsSchema>;
+export type HrIdentityDocumentPrefillOutput = z.infer<typeof HrIdentityDocumentPrefillOutputSchema>;
+
+export type IdentityDocumentPrefillResult = {
+  form: {
+    dms_document_id: number;
+    document_type_id: number | null;
+    document_number: string;
+    issue_date: string;
+    expiry_date: string;
+    issuing_authority_party_id: number | null;
+    issue_country_id: number | null;
+    issuing_emirate_id: number | null;
+    issue_city_id: number | null;
+    status: string;
+    verification_status: string;
+    renewal_status: string;
+    sponsor_company_id: number | null;
+    notes: string;
+    emirates_id_application_no: string;
+    visa_file_number: string;
+    uid_number: string;
+    labour_card_number: string;
+    work_permit_number: string;
+    mohre_person_code: string;
+    profession_on_document: string;
+  };
+  fieldConfidence: Record<string, number>;
+  sourceDocument: {
+    id: number;
+    title: string;
+    document_no: string;
+    document_type_code: string | null;
+    document_type_name: string | null;
+  };
+  prefillSource: "extraction" | "extraction_and_ai" | "document_metadata" | "ai_only";
+  warning: string | null;
+  alreadyLinked: boolean;
+  linkedToEmployee: boolean;
+};
+
 // ── 2. HR AI Correction Suggestion ────────────────────────────────────────────
 
 export const HrAiCorrectionSuggestionSchema = z.object({

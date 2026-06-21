@@ -1,0 +1,15 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/package.json</file>
+  <line>47</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/package.json" />
+  <problem_class id="VulnerableLibrariesLocal" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Vulnerable declared dependency</problem_class>
+  <description>&lt;html&gt;&lt;body&gt; Dependency npm:xlsx:0.18.5 is vulnerable &lt;ul&gt;&lt;li&gt;&lt;a href=&quot;https://www.mend.io/vulnerability-database/CVE-2023-30533?utm_source=JetBrains&quot;&gt;CVE-2023-30533&lt;/a&gt; 7.8 Improperly Controlled Modification of Object Prototype Attributes ('Prototype Pollution') &lt;/li&gt;&lt;li&gt;&lt;a href=&quot;https://www.mend.io/vulnerability-database/CVE-2024-22363?utm_source=JetBrains&quot;&gt;CVE-2024-22363&lt;/a&gt; 7.5 Inefficient Regular Expression Complexity &lt;/li&gt;&lt;/ul&gt; Results powered by &lt;a href=&quot;https://www.mend.io/jetbrains-lp/?utm_source=JetBrains&quot;&gt;Mend.io&lt;/a&gt;&lt;/body&gt; &lt;/html&gt;</description>
+  <highlighted_element>&quot;^0.18.5&quot;</highlighted_element>
+  <language>JSON</language>
+  <offset>12</offset>
+  <length>9</length>
+  <fingerprint sourcePackage="npm:xlsx:0.18.5" vulnerabilityIds="07637761-059e-45c2-9013-ac722f518f78,3a9baf15-f7ef-41c7-8dad-eeb32b6d2856" />
+</problem>
+</problems>

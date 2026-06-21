@@ -66,6 +66,7 @@ import {
   archiveOvertimeRecord,
   listWorkShiftsForTimeTab,
   type AttendanceDailySummaryRow,
+  listActiveLeaveTypesForForm,
   type AttendancePunchRow,
   type AttendanceCorrectionRow,
   type ShiftAssignmentRow,
@@ -73,10 +74,6 @@ import {
   type LeaveBalanceRow,
   type OvertimeRecordRow,
 } from "@/server/actions/hr/time";
-import {
-  listHrLeaveTypes,
-  type HrSettingsRow,
-} from "@/server/actions/hr/settings";
 import { getWorkCalendarComboboxOptions } from "@/server/actions/common-master-data/work-calendars";
 import type { AuthContext } from "@/lib/rbac/check";
 
@@ -841,12 +838,14 @@ function LeaveSection({
     onChildOpen?.(open);
   }, [onChildOpen]);
 
-  const { data: leaveData, isLoading: leaveLoading } = useQuery({
+  const { data: leaveData, isLoading: leaveLoading, isError: leaveError, error: leaveQueryError } = useQuery({
     queryKey: queryKeys.hr.time.leaveRequests(employeeId),
     queryFn: async () => {
       const r = await listEmployeeLeaveRequests(employeeId, { page_size: 30 });
-      return r.success ? r.data : null;
+      if (!r.success) throw new Error(r.error ?? "Failed to load leave requests");
+      return r.data;
     },
+    refetchOnMount: "always",
   });
 
   const { data: balData } = useQuery({
@@ -857,13 +856,13 @@ function LeaveSection({
     },
   });
 
-  const { data: leaveTypeOptions } = useQuery({
-    queryKey: queryKeys.hr.leaveTypes(),
+  const { data: leaveTypeOptions, refetch: refetchLeaveTypes } = useQuery({
+    queryKey: queryKeys.hr.time.activeLeaveTypes(),
     queryFn: async () => {
-      const r = await listHrLeaveTypes({ page: 1, page_size: 100, is_active: true });
-      return r.success ? (r.data?.data ?? []).map((lt: HrSettingsRow) => ({ value: String(lt.id), label: lt.name_en })) : [];
+      const r = await listActiveLeaveTypesForForm();
+      return r.success ? (r.data?.data ?? []).map((lt) => ({ value: String(lt.id), label: lt.name_en })) : [];
     },
-    staleTime: 5 * 60 * 1000,
+    enabled: canManage,
   });
 
   const totalDays = form.start_date && form.end_date ? calculateLeaveDays(form.start_date, form.end_date) : 0;
@@ -946,12 +945,14 @@ function LeaveSection({
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={() => {
               setBalForm({ leave_type_id: "", leave_year: String(currentYear), entitled_days: "", used_days: "0", carry_forward: "0" });
+              void refetchLeaveTypes();
               openDialog(true, setBalanceDialogOpen);
             }}>
               <Plus className="h-3.5 w-3.5 mr-1" /> Update Balance
             </Button>
             <Button size="sm" variant="outline" onClick={() => {
               setForm({ leave_type_id: "", start_date: new Date().toISOString().slice(0, 10), end_date: new Date().toISOString().slice(0, 10), reason: "", notes: "" });
+              void refetchLeaveTypes();
               openDialog(true, setDialogOpen);
             }}>
               <Plus className="h-3.5 w-3.5 mr-1" /> Leave Request
@@ -965,7 +966,7 @@ function LeaveSection({
         <div className="mb-4 grid grid-cols-2 gap-2 md:grid-cols-4">
           {balances.filter(b => b.leave_year === currentYear).map((b) => (
             <div key={b.id} className="border rounded-md p-3 text-xs">
-              <p className="font-medium text-muted-foreground">{b.leave_type?.leave_type_name ?? "—"}</p>
+              <p className="font-medium text-muted-foreground">{b.leave_type?.name_en ?? "—"}</p>
               <p className="text-lg font-bold mt-1">{b.balance_days ?? 0}<span className="text-xs font-normal text-muted-foreground ml-1">days</span></p>
               <p className="text-muted-foreground">{b.used_days}/{b.entitled_days} used</p>
             </div>
@@ -976,6 +977,10 @@ function LeaveSection({
       {/* Leave Requests */}
       {leaveLoading ? (
         <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
+      ) : leaveError ? (
+        <div className="text-sm text-destructive py-6 text-center border rounded-md">
+          {leaveQueryError instanceof Error ? leaveQueryError.message : "Failed to load leave requests"}
+        </div>
       ) : leaves.length === 0 ? (
         <div className="text-sm text-muted-foreground py-6 text-center border rounded-md">No leave requests yet.</div>
       ) : (
@@ -985,7 +990,7 @@ function LeaveSection({
             return (
               <div key={row.id} className="px-4 py-2.5 flex items-center gap-3 text-sm">
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium">{row.leave_type?.leave_type_name ?? "—"}</p>
+                  <p className="font-medium">{row.leave_type?.name_en ?? "—"}</p>
                   <p className="text-xs text-muted-foreground">{fmtDate(row.start_date)} → {fmtDate(row.end_date)} · {row.total_days ?? 0} day(s)</p>
                 </div>
                 <Badge variant={badge.variant} className="text-xs">{badge.label}</Badge>

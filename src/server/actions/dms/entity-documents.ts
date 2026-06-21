@@ -269,6 +269,114 @@ export async function linkDmsDocumentToEntity(
   }
 }
 
+function canLinkDocumentToEntity(ctx: Awaited<ReturnType<typeof getAuthContext>>, entityType: string): boolean {
+  if (hasPermission(ctx, "dms.documents.edit") || hasPermission(ctx, "dms.admin")) return true;
+  if (
+    entityType === "employee"
+    && (hasPermission(ctx, "hr.compliance.manage") || hasPermission(ctx, "hr.admin"))
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Idempotent link — returns success if already linked or after creating the link.
+ * HR compliance managers may link to employee without dms.documents.edit.
+ */
+export async function ensureDmsDocumentLinkedToEntity(
+  documentId: number,
+  entityType: string,
+  entityId: number,
+  options?: { is_primary?: boolean; link_role?: string | null; notes?: string | null }
+): Promise<ActionResult<{ id: number; created: boolean }>> {
+  try {
+    const ctx = await getAuthContext();
+    if (!ctx.profile?.id) return { success: false, error: "Not authenticated" };
+    if (!canLinkDocumentToEntity(ctx, entityType)) {
+      return { success: false, error: "Permission denied" };
+    }
+
+    if (!isValidDmsEntityType(entityType)) {
+      return { success: false, error: `Unknown entity type: ${entityType}` };
+    }
+
+    const parsed = linkSchema.safeParse({
+      entity_type: entityType,
+      entity_id: entityId,
+      is_primary: options?.is_primary ?? false,
+      link_role: options?.link_role ?? null,
+      notes: options?.notes ?? null,
+    });
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.issues[0]?.message ?? "Validation failed" };
+    }
+
+    const admin = createAdminClient();
+
+    const { data: doc } = await admin
+      .from("dms_documents")
+      .select("id")
+      .eq("id", documentId)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (!doc) return { success: false, error: "DMS document not found" };
+
+    const { data: existing } = await admin
+      .from("dms_document_links")
+      .select("id")
+      .eq("document_id", documentId)
+      .eq("entity_type", entityType)
+      .eq("entity_id", entityId)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (existing) {
+      return { success: true, data: { id: existing.id as number, created: false } };
+    }
+
+    const { data, error } = await admin
+      .from("dms_document_links")
+      .insert({
+        document_id: documentId,
+        entity_type: parsed.data.entity_type,
+        entity_id: parsed.data.entity_id,
+        is_primary: parsed.data.is_primary,
+        link_role: parsed.data.link_role ?? null,
+        notes: parsed.data.notes ?? null,
+        linked_by: ctx.profile.id,
+      })
+      .select("id")
+      .single();
+
+    if (error) return { success: false, error: error.message };
+
+    await admin.from("dms_document_events").insert({
+      document_id: documentId,
+      event_type: "party_document_link_created",
+      description: `Linked to ${entityType} #${entityId}`,
+      performed_by: ctx.profile.id,
+    });
+
+    await logAudit({
+      module_code: "DMS",
+      entity_name: "dms_document_links",
+      entity_id: documentId,
+      entity_reference: String(documentId),
+      action: "create",
+      new_values: { entity_type: entityType, entity_id: entityId, auto_linked: true },
+    });
+
+    revalidatePath("/dms/documents");
+    revalidatePath(`/dms/documents/record/${documentId}`);
+
+    return { success: true, data: { id: data.id as number, created: true } };
+  } catch (err) {
+    logger.error("ensureDmsDocumentLinkedToEntity error", err);
+    return { success: false, error: "Failed to link document to entity" };
+  }
+}
+
 // ── unlinkDmsDocumentFromEntity ────────────────────────────────────────────────
 
 export async function unlinkDmsDocumentFromEntity(

@@ -43,8 +43,10 @@ export type EmployeeIdentityDocumentRow = {
   issue_date: string | null;
   expiry_date: string | null;
   issuing_authority: string | null;
+  issuing_authority_party_id: number | null;
   issue_country_id: number | null;
   issuing_emirate_id: number | null;
+  issue_city_id: number | null;
   status: string;
   verification_status: string;
   verified_by: number | null;
@@ -66,6 +68,8 @@ export type EmployeeIdentityDocumentRow = {
   document_type?: { id: number; name_en: string } | null;
   issue_country?: { id: number; name_en: string } | null;
   issuing_emirate?: { id: number; name_en: string } | null;
+  issue_city?: { id: number; name_en: string } | null;
+  issuing_authority_party?: { id: number; display_name: string; party_code: string } | null;
   sponsor_company?: { id: number; legal_name_en: string } | null;
 };
 
@@ -199,10 +203,52 @@ export type EmployeeComplianceSummary = {
 // ── Helper: load employee for audit context ───────────────────────────────────
 
 import { getEmployeeCtxAdmin as loadEmployeeForAudit } from "./_shared/employee-context";
+import { ensureDmsDocumentLinkedToEntity } from "@/server/actions/dms/entity-documents";
 
 function revalidateEmployeePath(employeeId: number) {
   revalidatePath(`/admin/hr/employees/record/${employeeId}`);
   revalidatePath("/admin/hr/employees");
+}
+
+async function validateIdentityDocumentGeography(input: {
+  issue_country_id?: number | null;
+  issuing_emirate_id?: number | null;
+  issue_city_id?: number | null;
+}): Promise<string | null> {
+  const admin = await createAdminClient();
+
+  if (input.issue_city_id && !input.issuing_emirate_id) {
+    return "Place of issue (city) requires an issuing region to be selected";
+  }
+  if (input.issuing_emirate_id && !input.issue_country_id) {
+    return "Issuing region requires an issue country to be selected";
+  }
+
+  if (input.issuing_emirate_id && input.issue_country_id) {
+    const { data: emirate } = await admin
+      .from("emirates")
+      .select("id, country_id")
+      .eq("id", input.issuing_emirate_id)
+      .maybeSingle();
+    if (!emirate) return "Selected issuing region was not found";
+    if (emirate.country_id !== input.issue_country_id) {
+      return "Issuing region does not belong to the selected issue country";
+    }
+  }
+
+  if (input.issue_city_id && input.issuing_emirate_id) {
+    const { data: city } = await admin
+      .from("cities")
+      .select("id, emirate_id")
+      .eq("id", input.issue_city_id)
+      .maybeSingle();
+    if (!city) return "Selected place of issue (city) was not found";
+    if (city.emirate_id !== input.issuing_emirate_id) {
+      return "Place of issue does not belong to the selected issuing region";
+    }
+  }
+
+  return null;
 }
 
 // ── IDENTITY DOCUMENTS ────────────────────────────────────────────────────────
@@ -213,8 +259,10 @@ const identityDocumentSchema = z.object({
   issue_date: z.string().nullish(),
   expiry_date: z.string().nullish(),
   issuing_authority: z.string().nullish(),
+  issuing_authority_party_id: z.number().int().positive().nullish(),
   issue_country_id: z.number().int().positive().nullish(),
   issuing_emirate_id: z.number().int().positive().nullish(),
+  issue_city_id: z.number().int().positive().nullish(),
   status: z.enum(["active", "expired", "cancelled", "pending"]).default("active"),
   verification_status: z.enum(["unverified", "verified", "failed"]).default("unverified"),
   renewal_status: z.enum(["not_required", "pending", "in_progress", "complete"]).default("not_required"),
@@ -228,6 +276,7 @@ const identityDocumentSchema = z.object({
   sponsor_company_id: z.number().int().positive().nullish(),
   place_of_issue: z.string().nullish(),
   notes: z.string().nullish(),
+  dms_document_id: z.number().int().positive().nullish(),
 });
 
 export async function listEmployeeIdentityDocuments(
@@ -242,7 +291,7 @@ export async function listEmployeeIdentityDocuments(
     const { data, error } = await supabase
       .from("employee_identity_documents")
       .select(
-        "*,document_type:hr_identity_document_types(id,name_en),issue_country:countries(id,name_en),issuing_emirate:emirates(id,name_en),sponsor_company:owner_companies!employee_identity_documents_sponsor_company_id_fkey(id,legal_name_en)"
+        "*,document_type:hr_identity_document_types(id,name_en),issue_country:countries(id,name_en),issuing_emirate:emirates(id,name_en),issue_city:cities(id,name_en),issuing_authority_party:parties(id,display_name,party_code),sponsor_company:owner_companies!employee_identity_documents_sponsor_company_id_fkey(id,legal_name_en)"
       )
       .eq("employee_id", employeeId)
       .is("deleted_at", null)
@@ -257,7 +306,7 @@ export async function listEmployeeIdentityDocuments(
 export async function createEmployeeIdentityDocument(
   employeeId: number,
   input: unknown
-): Promise<ActionResult<{ id: number }>> {
+): Promise<ActionResult<{ id: number; dmsLinkCreated?: boolean }>> {
   try {
     const ctx = await getAuthContext();
     if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
@@ -266,8 +315,26 @@ export async function createEmployeeIdentityDocument(
     const parsed = identityDocumentSchema.safeParse(input);
     if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
+    const geoError = await validateIdentityDocumentGeography(parsed.data);
+    if (geoError) return { success: false, error: geoError };
+
     const emp = await loadEmployeeForAudit(employeeId);
     if (!emp) return { success: false, error: "Employee not found" };
+
+    let dmsLinkCreated = false;
+    if (parsed.data.dms_document_id) {
+      const linkResult = await ensureDmsDocumentLinkedToEntity(
+        parsed.data.dms_document_id,
+        "employee",
+        employeeId,
+        {
+          link_role: "compliance",
+          notes: "Auto-linked from HR legal document (compliance)",
+        }
+      );
+      if (!linkResult.success) return { success: false, error: linkResult.error };
+      dmsLinkCreated = linkResult.data?.created ?? false;
+    }
 
     const admin = await createAdminClient();
     const { data, error } = await admin
@@ -286,7 +353,7 @@ export async function createEmployeeIdentityDocument(
       new_values: { document_type_id: parsed.data.document_type_id, status: parsed.data.status },
     });
     revalidateEmployeePath(employeeId);
-    return { success: true, data: { id: data.id } };
+    return { success: true, data: { id: data.id, dmsLinkCreated } };
   } catch {
     return { success: false, error: "Failed to create identity document" };
   }
@@ -307,11 +374,34 @@ export async function updateEmployeeIdentityDocument(
     const admin = await createAdminClient();
     const { data: existing } = await admin
       .from("employee_identity_documents")
-      .select("id, employee_id, document_number")
+      .select("id, employee_id, document_number, issue_country_id, issuing_emirate_id, issue_city_id")
       .eq("id", id)
       .is("deleted_at", null)
       .single();
     if (!existing) return { success: false, error: "Record not found" };
+
+    const mergedGeo = {
+      issue_country_id: parsed.data.issue_country_id ?? existing.issue_country_id,
+      issuing_emirate_id: parsed.data.issuing_emirate_id ?? existing.issuing_emirate_id,
+      issue_city_id: parsed.data.issue_city_id ?? existing.issue_city_id,
+    };
+    const geoError = await validateIdentityDocumentGeography(mergedGeo);
+    if (geoError) return { success: false, error: geoError };
+
+    let dmsLinkCreated = false;
+    if (parsed.data.dms_document_id) {
+      const linkResult = await ensureDmsDocumentLinkedToEntity(
+        parsed.data.dms_document_id,
+        "employee",
+        existing.employee_id,
+        {
+          link_role: "compliance",
+          notes: "Auto-linked from HR legal document (compliance)",
+        }
+      );
+      if (!linkResult.success) return { success: false, error: linkResult.error };
+      dmsLinkCreated = linkResult.data?.created ?? false;
+    }
 
     const emp = await loadEmployeeForAudit(existing.employee_id);
     const { error } = await admin

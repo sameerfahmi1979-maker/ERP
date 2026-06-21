@@ -28,7 +28,7 @@ export const leaveBalanceFetcher: ReportFetcher = {
     let balQ = db
       .from("employee_leave_balances")
       .select(`employee_id, leave_year, entitled_days, used_days, balance_days, carry_forward,
-               leave_type:hr_leave_types(leave_type_name, leave_type_code)`)
+               leave_type:hr_leave_types(name_en, code)`)
       .in("employee_id", empIds)
       .order("leave_year", { ascending: false });
 
@@ -44,7 +44,7 @@ export const leaveBalanceFetcher: ReportFetcher = {
         employee_code: emp?.employee_code ?? "",
         employee_name: emp?.full_name_en ?? "",
         company: (emp?.owner_company as unknown as { legal_name_en: string } | null)?.legal_name_en ?? "",
-        leave_type: (b.leave_type as unknown as { leave_type_name: string } | null)?.leave_type_name ?? "",
+        leave_type: (b.leave_type as unknown as { name_en: string } | null)?.name_en ?? "",
         leave_year: b.leave_year,
         entitled_days: b.entitled_days,
         carry_forward: b.carry_forward,

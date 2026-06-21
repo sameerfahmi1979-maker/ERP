@@ -93,7 +93,7 @@ export type SalaryRevisionRow = {
   approved_by: number | null;
   created_at: string;
   created_by: number | null;
-  approver?: { full_name_en: string } | null;
+  approver?: { display_name: string } | null;
 };
 
 export type PayrollHoldRow = {
@@ -108,7 +108,7 @@ export type PayrollHoldRow = {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
-  releaser?: { full_name_en: string } | null;
+  releaser?: { display_name: string } | null;
 };
 
 export type WpsProfileRow = {
@@ -538,7 +538,7 @@ export async function listEmployeeSalaryRevisions(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("employee_salary_revisions")
-    .select("*, approver:user_profiles!employee_salary_revisions_approved_by_fkey(full_name_en)")
+    .select("*, approver:user_profiles!employee_salary_revisions_approved_by_fkey(display_name)")
     .eq("employee_id", employeeId)
     .order("effective_date", { ascending: false });
 
@@ -596,7 +596,7 @@ export async function listEmployeePayrollHolds(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("employee_payroll_holds")
-    .select("*, releaser:user_profiles!employee_payroll_holds_released_by_fkey(full_name_en)")
+    .select("*, releaser:user_profiles!employee_payroll_holds_released_by_fkey(display_name)")
     .eq("employee_id", employeeId)
     .is("deleted_at", null)
     .order("hold_date", { ascending: false });

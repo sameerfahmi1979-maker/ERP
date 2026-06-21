@@ -365,16 +365,16 @@ async function searchTime(
 
   // Leave requests — search by leave type or employee name
   const { data: leaves } = await admin.from("employee_leave_requests")
-    .select("id, employee_id, leave_status, start_date, end_date, leave_type_id, hr_leave_types(leave_type_name)")
+    .select("id, employee_id, approval_status, start_date, end_date, leave_type_id, hr_leave_types(name_en)")
     .in("employee_id", empIds)
     .is("deleted_at", null)
     .limit(15);
 
-  for (const lv of (leaves ?? []) as { id: number; employee_id: number; leave_status: string; start_date: string; end_date: string; hr_leave_types: { leave_type_name: string }[] | { leave_type_name: string } | null }[]) {
+  for (const lv of (leaves ?? []) as { id: number; employee_id: number; approval_status: string; start_date: string; end_date: string; hr_leave_types: { name_en: string }[] | { name_en: string } | null }[]) {
     const emp = empMap.get(lv.employee_id);
     const typeName = Array.isArray(lv.hr_leave_types)
-      ? lv.hr_leave_types[0]?.leave_type_name
-      : (lv.hr_leave_types as { leave_type_name: string } | null)?.leave_type_name;
+      ? lv.hr_leave_types[0]?.name_en
+      : (lv.hr_leave_types as { name_en: string } | null)?.name_en;
     if (!typeName?.toLowerCase().includes(q) && !emp?.full_name_en?.toLowerCase().includes(q) && !emp?.employee_code?.toLowerCase().includes(q)) continue;
     results.push({
       id: `time-leave-${lv.id}`,
@@ -384,8 +384,8 @@ async function searchTime(
       title: `Leave: ${typeName ?? "—"}`,
       subtitle: emp ? `${emp.full_name_en} (${emp.employee_code})` : `Employee #${lv.employee_id}`,
       description: `${lv.start_date} → ${lv.end_date}`,
-      status: lv.leave_status,
-      statusVariant: lv.leave_status === "approved" ? "success" : lv.leave_status === "rejected" ? "danger" : "warning",
+      status: lv.approval_status,
+      statusVariant: lv.approval_status === "approved" ? "success" : lv.approval_status === "rejected" ? "danger" : "warning",
       employeeId: lv.employee_id,
       employeeCode: emp?.employee_code,
       employeeName: emp?.full_name_en,

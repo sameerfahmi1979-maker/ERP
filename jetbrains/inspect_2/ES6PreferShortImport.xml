@@ -1,0 +1,158 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/field-suggestions/apply-engine.ts</file>
+  <line>18</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/field-suggestions/apply-engine.ts" />
+  <problem_class id="ES6PreferShortImport" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Import can be shortened</problem_class>
+  <description>Import can be shortened</description>
+  <highlighted_element>&quot;../non-updatable-fields&quot;</highlighted_element>
+  <language>JavaScript</language>
+  <offset>44</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/field-suggestions/apply-engine.ts</file>
+  <line>19</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/field-suggestions/apply-engine.ts" />
+  <problem_class id="ES6PreferShortImport" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Import can be shortened</problem_class>
+  <description>Import can be shortened</description>
+  <highlighted_element>&quot;../registry/index&quot;</highlighted_element>
+  <language>JavaScript</language>
+  <offset>42</offset>
+  <length>19</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/field-suggestions/evidence-loader.ts</file>
+  <line>29</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/field-suggestions/evidence-loader.ts" />
+  <problem_class id="ES6PreferShortImport" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Import can be shortened</problem_class>
+  <description>Import can be shortened</description>
+  <highlighted_element>&quot;./evidence-sanitizer&quot;</highlighted_element>
+  <language>JavaScript</language>
+  <offset>7</offset>
+  <length>22</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/field-suggestions/output-validator.ts</file>
+  <line>20</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/field-suggestions/output-validator.ts" />
+  <problem_class id="ES6PreferShortImport" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Import can be shortened</problem_class>
+  <description>Import can be shortened</description>
+  <highlighted_element>&quot;../non-updatable-fields&quot;</highlighted_element>
+  <language>JavaScript</language>
+  <offset>44</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/registry/branch-registry.ts</file>
+  <line>10</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/registry/branch-registry.ts" />
+  <problem_class id="ES6PreferShortImport" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Import can be shortened</problem_class>
+  <description>Import can be shortened</description>
+  <highlighted_element>&quot;../non-updatable-fields&quot;</highlighted_element>
+  <language>JavaScript</language>
+  <offset>45</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/registry/company-registry.ts</file>
+  <line>15</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/registry/company-registry.ts" />
+  <problem_class id="ES6PreferShortImport" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Import can be shortened</problem_class>
+  <description>Import can be shortened</description>
+  <highlighted_element>&quot;../non-updatable-fields&quot;</highlighted_element>
+  <language>JavaScript</language>
+  <offset>45</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/registry/index.ts</file>
+  <line>15</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/registry/index.ts" />
+  <problem_class id="ES6PreferShortImport" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Import can be shortened</problem_class>
+  <description>Import can be shortened</description>
+  <highlighted_element>&quot;../non-updatable-fields&quot;</highlighted_element>
+  <language>JavaScript</language>
+  <offset>44</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/registry/party-registry.ts</file>
+  <line>14</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/registry/party-registry.ts" />
+  <problem_class id="ES6PreferShortImport" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Import can be shortened</problem_class>
+  <description>Import can be shortened</description>
+  <highlighted_element>&quot;../non-updatable-fields&quot;</highlighted_element>
+  <language>JavaScript</language>
+  <offset>45</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/registry/site-registry.ts</file>
+  <line>11</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/registry/site-registry.ts" />
+  <problem_class id="ES6PreferShortImport" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Import can be shortened</problem_class>
+  <description>Import can be shortened</description>
+  <highlighted_element>&quot;../non-updatable-fields&quot;</highlighted_element>
+  <language>JavaScript</language>
+  <offset>45</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/export/generate-attachment.ts</file>
+  <line>17</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/export/generate-attachment.ts" />
+  <problem_class id="ES6PreferShortImport" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Import can be shortened</problem_class>
+  <description>Import can be shortened</description>
+  <highlighted_element>&quot;../email/email-types&quot;</highlighted_element>
+  <language>JavaScript</language>
+  <offset>37</offset>
+  <length>22</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/export/generate-attachment.ts</file>
+  <line>27</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/export/generate-attachment.ts" />
+  <problem_class id="ES6PreferShortImport" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Import can be shortened</problem_class>
+  <description>Import can be shortened</description>
+  <highlighted_element>&quot;../email/attachment-utils&quot;</highlighted_element>
+  <language>JavaScript</language>
+  <offset>7</offset>
+  <length>27</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/ai/common/field-suggestions.ts</file>
+  <line>26</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/ai/common/field-suggestions.ts" />
+  <problem_class id="ES6PreferShortImport" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Import can be shortened</problem_class>
+  <description>Import can be shortened</description>
+  <highlighted_element>&quot;@/lib/ai/common/registry/index&quot;</highlighted_element>
+  <language>JavaScript</language>
+  <offset>7</offset>
+  <length>32</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/dms/document-understanding.ts</file>
+  <line>24</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/dms/document-understanding.ts" />
+  <problem_class id="ES6PreferShortImport" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Import can be shortened</problem_class>
+  <description>Import can be shortened</description>
+  <highlighted_element>&quot;@/lib/ai/common/registry/index&quot;</highlighted_element>
+  <language>JavaScript</language>
+  <offset>7</offset>
+  <length>32</length>
+</problem>
+</problems>

@@ -1,0 +1,110 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/table/erp-table-preferences.ts</file>
+  <line>42</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/table/erp-table-preferences.ts" />
+  <problem_class id="JSCommentMatchesSignature" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched JSDoc and function signature</problem_class>
+  <description>Parameter userProfileId is not described in JSDoc</description>
+  <highlighted_element>userProfileId: number | string</highlighted_element>
+  <language>TypeScript</language>
+  <offset>2</offset>
+  <length>30</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/table/erp-table-preferences.ts</file>
+  <line>43</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/table/erp-table-preferences.ts" />
+  <problem_class id="JSCommentMatchesSignature" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched JSDoc and function signature</problem_class>
+  <description>Parameter tableId is not described in JSDoc</description>
+  <highlighted_element>tableId: string</highlighted_element>
+  <language>TypeScript</language>
+  <offset>2</offset>
+  <length>15</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/table/erp-table-preferences.ts</file>
+  <line>74</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/table/erp-table-preferences.ts" />
+  <problem_class id="JSCommentMatchesSignature" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched JSDoc and function signature</problem_class>
+  <description>Parameter userProfileId is not described in JSDoc</description>
+  <highlighted_element>userProfileId: number | string</highlighted_element>
+  <language>TypeScript</language>
+  <offset>2</offset>
+  <length>30</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/table/erp-table-preferences.ts</file>
+  <line>75</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/table/erp-table-preferences.ts" />
+  <problem_class id="JSCommentMatchesSignature" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched JSDoc and function signature</problem_class>
+  <description>Parameter tableId is not described in JSDoc</description>
+  <highlighted_element>tableId: string</highlighted_element>
+  <language>TypeScript</language>
+  <offset>2</offset>
+  <length>15</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/table/erp-table-preferences.ts</file>
+  <line>76</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/table/erp-table-preferences.ts" />
+  <problem_class id="JSCommentMatchesSignature" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched JSDoc and function signature</problem_class>
+  <description>Parameter preferences is not described in JSDoc</description>
+  <highlighted_element>preferences: ERPTablePreferences</highlighted_element>
+  <language>TypeScript</language>
+  <offset>2</offset>
+  <length>32</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/table/erp-table-preferences.ts</file>
+  <line>99</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/table/erp-table-preferences.ts" />
+  <problem_class id="JSCommentMatchesSignature" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched JSDoc and function signature</problem_class>
+  <description>Parameter userProfileId is not described in JSDoc</description>
+  <highlighted_element>userProfileId: number | string</highlighted_element>
+  <language>TypeScript</language>
+  <offset>2</offset>
+  <length>30</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/table/erp-table-preferences.ts</file>
+  <line>100</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/table/erp-table-preferences.ts" />
+  <problem_class id="JSCommentMatchesSignature" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched JSDoc and function signature</problem_class>
+  <description>Parameter tableId is not described in JSDoc</description>
+  <highlighted_element>tableId: string</highlighted_element>
+  <language>TypeScript</language>
+  <offset>2</offset>
+  <length>15</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/field-suggestions/persistence.ts</file>
+  <line>113</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/field-suggestions/persistence.ts" />
+  <problem_class id="JSCommentMatchesSignature" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched JSDoc and function signature</problem_class>
+  <description>Parameter registry_targetTable described in JSDoc does not appear in function signature</description>
+  <highlighted_element>registry_targetTable</highlighted_element>
+  <language>TypeScript</language>
+  <offset>10</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/field-suggestions/persistence.ts</file>
+  <line>123</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/field-suggestions/persistence.ts" />
+  <problem_class id="JSCommentMatchesSignature" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Mismatched JSDoc and function signature</problem_class>
+  <description>Parameter targetTableByField is not described in JSDoc</description>
+  <highlighted_element>targetTableByField: Map&lt;string, string&gt;</highlighted_element>
+  <language>TypeScript</language>
+  <offset>2</offset>
+  <length>39</length>
+</problem>
+</problems>

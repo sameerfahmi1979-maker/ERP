@@ -1,0 +1,974 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Party_Master_Phases/ERP_BASE_002F_5A_1_Party_Master_Database_Foundation/execute_seed.js</file>
+  <line>11</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Party_Master_Phases/ERP_BASE_002F_5A_1_Party_Master_Database_Foundation/execute_seed.js" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant headers</description>
+  <highlighted_element>headers</highlighted_element>
+  <language>JavaScript</language>
+  <offset>6</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Party_Master_Phases/ERP_BASE_002F_5A_1_Party_Master_Database_Foundation/generate_seed.js</file>
+  <line>2</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Party_Master_Phases/ERP_BASE_002F_5A_1_Party_Master_Database_Foundation/generate_seed.js" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant https</description>
+  <highlighted_element>https</highlighted_element>
+  <language>JavaScript</language>
+  <offset>6</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/erp-drawer-form.tsx</file>
+  <line>171</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/erp-drawer-form.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused parameter onPrint</description>
+  <highlighted_element>onPrint</highlighted_element>
+  <language>JavaScript</language>
+  <offset>2</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/erp-drawer-form.tsx</file>
+  <line>172</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/erp-drawer-form.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused parameter onExportPDF</description>
+  <highlighted_element>onExportPDF</highlighted_element>
+  <language>JavaScript</language>
+  <offset>2</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/erp-drawer-form.tsx</file>
+  <line>173</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/erp-drawer-form.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused parameter onExportExcel</description>
+  <highlighted_element>onExportExcel</highlighted_element>
+  <language>JavaScript</language>
+  <offset>2</offset>
+  <length>13</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/erp-drawer-form.tsx</file>
+  <line>174</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/erp-drawer-form.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused parameter onExportCSV</description>
+  <highlighted_element>onExportCSV</highlighted_element>
+  <language>JavaScript</language>
+  <offset>2</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/erp-drawer-form.tsx</file>
+  <line>175</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/erp-drawer-form.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused parameter onSendEmail</description>
+  <highlighted_element>onSendEmail</highlighted_element>
+  <language>JavaScript</language>
+  <offset>2</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/export/erp-export-menu.tsx</file>
+  <line>109</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/export/erp-export-menu.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused parameter selectedTemplateId</description>
+  <highlighted_element>selectedTemplateId</highlighted_element>
+  <language>JavaScript</language>
+  <offset>2</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/ai/common/assistant/assistant-page-client.tsx</file>
+  <line>151</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/ai/common/assistant/assistant-page-client.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused parameter prompt</description>
+  <highlighted_element>prompt</highlighted_element>
+  <language>JavaScript</language>
+  <offset>27</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/ai/common/audit-explainer/audit-timeline-card.tsx</file>
+  <line>16</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/ai/common/audit-explainer/audit-timeline-card.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused parameter onExplainGroup</description>
+  <highlighted_element>onExplainGroup</highlighted_element>
+  <language>JavaScript</language>
+  <offset>87</offset>
+  <length>14</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/auth/login-form.tsx</file>
+  <line>24</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/auth/login-form.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant searchParams</description>
+  <highlighted_element>searchParams</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>12</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/common-master-data/departments/department-workspace-form.tsx</file>
+  <line>39</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/common-master-data/departments/department-workspace-form.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant writeDraftField</description>
+  <highlighted_element>writeDraftField</highlighted_element>
+  <language>JavaScript</language>
+  <offset>38</offset>
+  <length>15</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/admin/dms-intelligence-admin-page-client.tsx</file>
+  <line>181</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/admin/dms-intelligence-admin-page-client.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused function AdminBulkCard</description>
+  <highlighted_element>AdminBulkCard</highlighted_element>
+  <language>JavaScript</language>
+  <offset>9</offset>
+  <length>13</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/documents/dms-document-record-form.tsx</file>
+  <line>180</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/documents/dms-document-record-form.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant setChildDialogOpen</description>
+  <highlighted_element>setChildDialogOpen</highlighted_element>
+  <language>JavaScript</language>
+  <offset>26</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-ocr-section.tsx</file>
+  <line>70</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-ocr-section.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant refetchText</description>
+  <highlighted_element>refetchText</highlighted_element>
+  <language>JavaScript</language>
+  <offset>62</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-ocr-section.tsx</file>
+  <line>135</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-ocr-section.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant hasAnyFailed</description>
+  <highlighted_element>hasAnyFailed</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>12</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-understanding-section.tsx</file>
+  <line>42</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-understanding-section.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused parameter variant</description>
+  <highlighted_element>variant</highlighted_element>
+  <language>JavaScript</language>
+  <offset>34</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-understanding-section.tsx</file>
+  <line>104</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-understanding-section.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant barColors</description>
+  <highlighted_element>barColors</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-versions-section.tsx</file>
+  <line>155</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-versions-section.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant primaryFile</description>
+  <highlighted_element>primaryFile</highlighted_element>
+  <language>JavaScript</language>
+  <offset>18</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/upload/dms-upload-inbox-page-client.tsx</file>
+  <line>82</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/upload/dms-upload-inbox-page-client.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant signedUrl</description>
+  <highlighted_element>signedUrl</highlighted_element>
+  <language>JavaScript</language>
+  <offset>21</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/upload/dms-upload-new-version-dialog.tsx</file>
+  <line>144</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/upload/dms-upload-new-version-dialog.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant signedUrl</description>
+  <highlighted_element>signedUrl</highlighted_element>
+  <language>JavaScript</language>
+  <offset>23</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/actions/hr-disciplinary-page-client.tsx</file>
+  <line>26</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/actions/hr-disciplinary-page-client.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused parameter authContext</description>
+  <highlighted_element>authContext</highlighted_element>
+  <language>JavaScript</language>
+  <offset>43</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/actions/hr-eos-page-client.tsx</file>
+  <line>21</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/actions/hr-eos-page-client.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused parameter authContext</description>
+  <highlighted_element>authContext</highlighted_element>
+  <language>JavaScript</language>
+  <offset>34</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/actions/hr-pro-processes-page-client.tsx</file>
+  <line>25</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/actions/hr-pro-processes-page-client.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused parameter authContext</description>
+  <highlighted_element>authContext</highlighted_element>
+  <language>JavaScript</language>
+  <offset>43</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/dashboard/hr-dashboard-page-client.tsx</file>
+  <line>75</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/dashboard/hr-dashboard-page-client.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant filtersKey</description>
+  <highlighted_element>filtersKey</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/employee-workspace-form.tsx</file>
+  <line>62</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/employee-workspace-form.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant DRAFT_DENYLIST</description>
+  <highlighted_element>DRAFT_DENYLIST</highlighted_element>
+  <language>JavaScript</language>
+  <offset>6</offset>
+  <length>14</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/employee-workspace-form.tsx</file>
+  <line>137</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/employee-workspace-form.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant markDirty</description>
+  <highlighted_element>markDirty</highlighted_element>
+  <language>JavaScript</language>
+  <offset>31</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/employee-workspace-form.tsx</file>
+  <line>148</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/employee-workspace-form.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant disabled</description>
+  <highlighted_element>disabled</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>8</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/employees-table.tsx</file>
+  <line>68</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/employees-table.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant router</description>
+  <highlighted_element>router</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-hr-actions-tab.tsx</file>
+  <line>74</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-hr-actions-tab.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused parameter type</description>
+  <highlighted_element>type</highlighted_element>
+  <language>JavaScript</language>
+  <offset>37</offset>
+  <length>4</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-profile-tab.tsx</file>
+  <line>98</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-profile-tab.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused parameter formId</description>
+  <highlighted_element>formId</highlighted_element>
+  <language>JavaScript</language>
+  <offset>2</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-profile-tab.tsx</file>
+  <line>100</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-profile-tab.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused parameter syncDraft</description>
+  <highlighted_element>syncDraft</highlighted_element>
+  <language>JavaScript</language>
+  <offset>2</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-profile-tab.tsx</file>
+  <line>164</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-profile-tab.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant f</description>
+  <highlighted_element>f</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>1</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/operations/blocks/hr-blocks-page-client.tsx</file>
+  <line>21</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/operations/blocks/hr-blocks-page-client.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused parameter canManage</description>
+  <highlighted_element>canManage</highlighted_element>
+  <language>JavaScript</language>
+  <offset>37</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/candidate-workspace-form.tsx</file>
+  <line>116</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/candidate-workspace-form.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant canView</description>
+  <highlighted_element>canView</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/global-onboarding-page-client.tsx</file>
+  <line>25</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/global-onboarding-page-client.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant CATEGORY_OPTIONS</description>
+  <highlighted_element>CATEGORY_OPTIONS</highlighted_element>
+  <language>JavaScript</language>
+  <offset>6</offset>
+  <length>16</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/global-onboarding-page-client.tsx</file>
+  <line>47</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/global-onboarding-page-client.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused parameter authContext</description>
+  <highlighted_element>authContext</highlighted_element>
+  <language>JavaScript</language>
+  <offset>45</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/interviews-page-client.tsx</file>
+  <line>40</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/interviews-page-client.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused parameter authContext</description>
+  <highlighted_element>authContext</highlighted_element>
+  <language>JavaScript</language>
+  <offset>39</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-conversion-tab.tsx</file>
+  <line>70</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-conversion-tab.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant linkRes</description>
+  <highlighted_element>linkRes</highlighted_element>
+  <language>JavaScript</language>
+  <offset>16</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-conversion-tab.tsx</file>
+  <line>70</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-conversion-tab.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant linkLoading</description>
+  <highlighted_element>linkLoading</highlighted_element>
+  <language>JavaScript</language>
+  <offset>36</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-onboarding-tab.tsx</file>
+  <line>156</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-onboarding-tab.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant pendingCount</description>
+  <highlighted_element>pendingCount</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>12</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-overview-tab.tsx</file>
+  <line>38</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-overview-tab.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused parameter canManage</description>
+  <highlighted_element>canManage</highlighted_element>
+  <language>JavaScript</language>
+  <offset>50</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/search/hr-search-filters.tsx</file>
+  <line>38</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/search/hr-search-filters.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant isActive</description>
+  <highlighted_element>isActive</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>8</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/parties-table.tsx</file>
+  <line>56</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/parties-table.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused parameter pageTitle</description>
+  <highlighted_element>pageTitle</highlighted_element>
+  <language>JavaScript</language>
+  <offset>81</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-form-drawer.tsx</file>
+  <line>89</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-form-drawer.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant mountedSections</description>
+  <highlighted_element>mountedSections</highlighted_element>
+  <language>JavaScript</language>
+  <offset>9</offset>
+  <length>15</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-form-drawer.tsx</file>
+  <line>173</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-form-drawer.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant lockedMessage</description>
+  <highlighted_element>lockedMessage</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>13</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/uom/components/uom-category-workspace-form.tsx</file>
+  <line>31</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/uom/components/uom-category-workspace-form.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant queryClient</description>
+  <highlighted_element>queryClient</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/notifications/admin/email-queue-page-client.tsx</file>
+  <line>17</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/notifications/admin/email-queue-page-client.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused parameter canManage</description>
+  <highlighted_element>canManage</highlighted_element>
+  <language>JavaScript</language>
+  <offset>53</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/organizations/organization-workspace-form.tsx</file>
+  <line>141</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/organizations/organization-workspace-form.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant refetchSignatories</description>
+  <highlighted_element>refetchSignatories</highlighted_element>
+  <language>JavaScript</language>
+  <offset>38</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/report-center/report-run-page.tsx</file>
+  <line>77</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/report-center/report-run-page.tsx" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant setResolvedBranding</description>
+  <highlighted_element>setResolvedBranding</highlighted_element>
+  <language>JavaScript</language>
+  <offset>27</offset>
+  <length>19</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/dashboard/dashboard-collectors.ts</file>
+  <line>84</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/dashboard/dashboard-collectors.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused parameter scope</description>
+  <highlighted_element>scope</highlighted_element>
+  <language>JavaScript</language>
+  <offset>44</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/dashboard/dashboard-collectors.ts</file>
+  <line>132</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/dashboard/dashboard-collectors.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused parameter scope</description>
+  <highlighted_element>scope</highlighted_element>
+  <language>JavaScript</language>
+  <offset>43</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/data-quality/finding-builder.ts</file>
+  <line>37</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/data-quality/finding-builder.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant now</description>
+  <highlighted_element>now</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>3</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/data-quality/safe-evidence.ts</file>
+  <line>35</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/data-quality/safe-evidence.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused parameter value</description>
+  <highlighted_element>value</highlighted_element>
+  <language>JavaScript</language>
+  <offset>35</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/dms/ai/azure-document-intelligence-adapter.ts</file>
+  <line>110</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/dms/ai/azure-document-intelligence-adapter.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused parameter mimeType</description>
+  <highlighted_element>mimeType</highlighted_element>
+  <language>JavaScript</language>
+  <offset>4</offset>
+  <length>8</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/dms/ai/azure-document-intelligence-adapter.ts</file>
+  <line>145</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/dms/ai/azure-document-intelligence-adapter.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant errText</description>
+  <highlighted_element>errText</highlighted_element>
+  <language>JavaScript</language>
+  <offset>12</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/dms/pdf-to-images.ts</file>
+  <line>72</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/dms/pdf-to-images.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant context</description>
+  <highlighted_element>context</highlighted_element>
+  <language>JavaScript</language>
+  <offset>14</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/email/providers/microsoft-graph-provider.ts</file>
+  <line>101</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/email/providers/microsoft-graph-provider.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant errText</description>
+  <highlighted_element>errText</highlighted_element>
+  <language>JavaScript</language>
+  <offset>16</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/export/print.ts</file>
+  <line>80</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/export/print.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant isRtl</description>
+  <highlighted_element>isRtl</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/export/print.ts</file>
+  <line>113</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/export/print.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant primaryColor</description>
+  <highlighted_element>primaryColor</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>12</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/ai/common/audit-explainer.ts</file>
+  <line>98</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/ai/common/audit-explainer.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant ExplainInputSchema</description>
+  <highlighted_element>ExplainInputSchema</highlighted_element>
+  <language>JavaScript</language>
+  <offset>6</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/ai/common/risk-scoring.ts</file>
+  <line>414</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/ai/common/risk-scoring.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant isRecalc</description>
+  <highlighted_element>isRecalc</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>8</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/dms/ai-intake.ts</file>
+  <line>309</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/dms/ai-intake.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant allowDuplicate</description>
+  <highlighted_element>allowDuplicate</highlighted_element>
+  <language>JavaScript</language>
+  <offset>29</offset>
+  <length>14</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/dms/ai-intake.ts</file>
+  <line>978</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/dms/ai-intake.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant allowDuplicate</description>
+  <highlighted_element>allowDuplicate</highlighted_element>
+  <language>JavaScript</language>
+  <offset>6</offset>
+  <length>14</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/dms/document-upload-attach.ts</file>
+  <line>94</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/dms/document-upload-attach.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant allowDuplicate</description>
+  <highlighted_element>allowDuplicate</highlighted_element>
+  <language>JavaScript</language>
+  <offset>68</offset>
+  <length>14</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/dms/document-upload-attach.ts</file>
+  <line>268</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/dms/document-upload-attach.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant allowDuplicate</description>
+  <highlighted_element>allowDuplicate</highlighted_element>
+  <language>JavaScript</language>
+  <offset>50</offset>
+  <length>14</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/ai/employee-ai-review.ts</file>
+  <line>126</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/ai/employee-ai-review.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant profile</description>
+  <highlighted_element>profile</highlighted_element>
+  <language>JavaScript</language>
+  <offset>25</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/ai/hr-ai-duplicates.ts</file>
+  <line>166</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/ai/hr-ai-duplicates.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant candidateLink</description>
+  <highlighted_element>candidateLink</highlighted_element>
+  <language>JavaScript</language>
+  <offset>18</offset>
+  <length>13</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/compliance.ts</file>
+  <line>316</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/compliance.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant emp</description>
+  <highlighted_element>emp</highlighted_element>
+  <language>JavaScript</language>
+  <offset>10</offset>
+  <length>3</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/compliance.ts</file>
+  <line>353</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/compliance.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant emp</description>
+  <highlighted_element>emp</highlighted_element>
+  <language>JavaScript</language>
+  <offset>10</offset>
+  <length>3</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/dashboard.ts</file>
+  <line>431</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/dashboard.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused parameter filters</description>
+  <highlighted_element>filters</highlighted_element>
+  <language>JavaScript</language>
+  <offset>2</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/dashboard.ts</file>
+  <line>706</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/dashboard.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant today</description>
+  <highlighted_element>today</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/recruitment.ts</file>
+  <line>236</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/recruitment.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant offerStatusSchema</description>
+  <highlighted_element>offerStatusSchema</highlighted_element>
+  <language>JavaScript</language>
+  <offset>6</offset>
+  <length>17</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/search.ts</file>
+  <line>52</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/search.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused function maskDocNumber</description>
+  <highlighted_element>maskDocNumber</highlighted_element>
+  <language>JavaScript</language>
+  <offset>9</offset>
+  <length>13</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/search.ts</file>
+  <line>58</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/search.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused function safeStr</description>
+  <highlighted_element>safeStr</highlighted_element>
+  <language>JavaScript</language>
+  <offset>9</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/time.ts</file>
+  <line>235</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/time.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant leaveRequestUpdateSchema</description>
+  <highlighted_element>leaveRequestUpdateSchema</highlighted_element>
+  <language>JavaScript</language>
+  <offset>6</offset>
+  <length>24</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/time.ts</file>
+  <line>237</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/time.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant leaveDecisionSchema</description>
+  <highlighted_element>leaveDecisionSchema</highlighted_element>
+  <language>JavaScript</language>
+  <offset>6</offset>
+  <length>19</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/time.ts</file>
+  <line>258</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/time.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant overtimeDecisionSchema</description>
+  <highlighted_element>overtimeDecisionSchema</highlighted_element>
+  <language>JavaScript</language>
+  <offset>6</offset>
+  <length>22</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/master-data/parties.ts</file>
+  <line>662</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/master-data/parties.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant entityNames</description>
+  <highlighted_element>entityNames</highlighted_element>
+  <language>JavaScript</language>
+  <offset>10</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/numbering.ts</file>
+  <line>215</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/numbering.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused constant changes</description>
+  <highlighted_element>changes</highlighted_element>
+  <language>JavaScript</language>
+  <offset>10</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/reports/templates.ts</file>
+  <line>164</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/reports/templates.ts" />
+  <problem_class id="JSUnusedLocalSymbols" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused local symbol</problem_class>
+  <description>Unused parameter input</description>
+  <highlighted_element>input</highlighted_element>
+  <language>JavaScript</language>
+  <offset>54</offset>
+  <length>5</length>
+</problem>
+</problems>

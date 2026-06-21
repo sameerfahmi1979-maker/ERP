@@ -629,6 +629,7 @@ export function invalidateHrMedicalRecordTypes(queryClient: QueryClient): void {
 }
 export function invalidateHrLeaveTypes(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: ["hr", "settings", "leave-types"] });
+  void queryClient.invalidateQueries({ queryKey: ["hr", "time", "active-leave-types"] });
 }
 export function invalidateHrRelationshipTypes(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: ["hr", "settings", "relationship-types"] });

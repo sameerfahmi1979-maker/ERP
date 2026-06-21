@@ -583,7 +583,7 @@ function SalaryRevisionSection({ employeeId, canManage, onChildOpen }: { employe
               <div><span className="text-muted-foreground">Date:</span> <span className="font-medium">{fmtDate(rev.effective_date)}</span></div>
               <div><span className="text-muted-foreground">Old Gross:</span> <span>{fmtMoney(rev.old_gross)}</span></div>
               <div><span className="text-muted-foreground">New Gross:</span> <span className="text-green-700 font-semibold">{fmtMoney(rev.new_gross)}</span></div>
-              <div><span className="text-muted-foreground">By:</span> <span>{rev.approver?.full_name_en ?? "—"}</span></div>
+              <div><span className="text-muted-foreground">By:</span> <span>{rev.approver?.display_name ?? "—"}</span></div>
               {rev.revision_reason && <div className="col-span-4 text-muted-foreground">{rev.revision_reason}</div>}
             </div>
           ))}
@@ -989,7 +989,7 @@ function PayrollHoldsSection({ employeeId, canManage, onChildOpen }: { employeeI
                 <div className="text-muted-foreground text-xs mt-0.5">
                   Placed: {fmtDate(hold.hold_date)}
                   {hold.release_date && ` • Released: ${fmtDate(hold.release_date)}`}
-                  {hold.releaser && ` by ${hold.releaser.full_name_en}`}
+                  {hold.releaser && ` by ${hold.releaser.display_name}`}
                 </div>
                 {hold.notes && <div className="text-xs text-muted-foreground mt-0.5">{hold.notes}</div>}
               </div>

@@ -1,0 +1,38 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/HR_Module/_hr_plan_for_docx.md</file>
+  <line>955</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/HR_Module/_hr_plan_for_docx.md" />
+  <problem_class id="MarkdownUnresolvedLinkLabel" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved link label</problem_class>
+  <description>Cannot resolve link label [Expiring]</description>
+  <highlighted_element>[Expiring]</highlighted_element>
+  <language>Markdown</language>
+  <offset>27</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/HR_Module/_hr_plan_for_docx.md</file>
+  <line>955</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/HR_Module/_hr_plan_for_docx.md" />
+  <problem_class id="MarkdownUnresolvedLinkLabel" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved link label</problem_class>
+  <description>Cannot resolve link label [Hold]</description>
+  <highlighted_element>[Hold]</highlighted_element>
+  <language>Markdown</language>
+  <offset>48</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/HR_Module/_hr_plan_for_docx.md</file>
+  <line>955</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/HR_Module/_hr_plan_for_docx.md" />
+  <problem_class id="MarkdownUnresolvedLinkLabel" severity="WARNING" attribute_key="INFO_ATTRIBUTES">Unresolved link label</problem_class>
+  <description>Cannot resolve link label [Missing Doc]</description>
+  <highlighted_element>[Missing Doc]</highlighted_element>
+  <language>Markdown</language>
+  <offset>66</offset>
+  <length>13</length>
+</problem>
+</problems>

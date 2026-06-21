@@ -1,0 +1,62 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3B_GLOBAL_LOOKUP_DROPDOWN_ENGINE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1440</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3B_GLOBAL_LOOKUP_DROPDOWN_ENGINE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="HtmlUnknownAttribute" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Unknown attribute</problem_class>
+  <description>Attribute className is not allowed here</description>
+  <highlighted_element>className</highlighted_element>
+  <language>XML</language>
+  <offset>5</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3B_GLOBAL_LOOKUP_DROPDOWN_ENGINE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1452</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3B_GLOBAL_LOOKUP_DROPDOWN_ENGINE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="HtmlUnknownAttribute" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Unknown attribute</problem_class>
+  <description>Attribute className is not allowed here</description>
+  <highlighted_element>className</highlighted_element>
+  <language>XML</language>
+  <offset>7</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3B_GLOBAL_LOOKUP_DROPDOWN_ENGINE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1492</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3B_GLOBAL_LOOKUP_DROPDOWN_ENGINE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="HtmlUnknownAttribute" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Unknown attribute</problem_class>
+  <description>Attribute className is not allowed here</description>
+  <highlighted_element>className</highlighted_element>
+  <language>XML</language>
+  <offset>7</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3B_GLOBAL_LOOKUP_DROPDOWN_ENGINE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1596</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3B_GLOBAL_LOOKUP_DROPDOWN_ENGINE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="HtmlUnknownAttribute" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Unknown attribute</problem_class>
+  <description>Attribute className is not allowed here</description>
+  <highlighted_element>className</highlighted_element>
+  <language>XML</language>
+  <offset>5</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3B_GLOBAL_LOOKUP_DROPDOWN_ENGINE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1602</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3B_GLOBAL_LOOKUP_DROPDOWN_ENGINE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="HtmlUnknownAttribute" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Unknown attribute</problem_class>
+  <description>Attribute className is not allowed here</description>
+  <highlighted_element>className</highlighted_element>
+  <language>XML</language>
+  <offset>7</offset>
+  <length>9</length>
+</problem>
+</problems>

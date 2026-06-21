@@ -1,0 +1,38 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3B_GLOBAL_LOOKUP_DROPDOWN_ENGINE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1493</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3B_GLOBAL_LOOKUP_DROPDOWN_ENGINE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="CheckEmptyScriptTag" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Empty tag</problem_class>
+  <description>Empty tag doesn't work in some browsers</description>
+  <highlighted_element>&lt;LinkCard href=&quot;/admin/master-data/lookups/categories&quot; icon={FolderOpen} title=&quot;Manage Categories&quot; /...</highlighted_element>
+  <language>HTML</language>
+  <offset>4</offset>
+  <length>101</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3B_GLOBAL_LOOKUP_DROPDOWN_ENGINE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1494</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3B_GLOBAL_LOOKUP_DROPDOWN_ENGINE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="CheckEmptyScriptTag" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Empty tag</problem_class>
+  <description>Empty tag doesn't work in some browsers</description>
+  <highlighted_element>&lt;LinkCard href=&quot;/admin/master-data/lookups/values&quot; icon={List} title=&quot;Manage Values&quot; /&gt;</highlighted_element>
+  <language>HTML</language>
+  <offset>4</offset>
+  <length>87</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3B_GLOBAL_LOOKUP_DROPDOWN_ENGINE_TECHNICAL_IMPLEMENTATION_PLAN.md</file>
+  <line>1495</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/Phase_002F_3A_Master_Data_Inventory/ERP_BASE_002F_3B_GLOBAL_LOOKUP_DROPDOWN_ENGINE_TECHNICAL_IMPLEMENTATION_PLAN.md" />
+  <problem_class id="CheckEmptyScriptTag" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Empty tag</problem_class>
+  <description>Empty tag doesn't work in some browsers</description>
+  <highlighted_element>&lt;LinkCard href=&quot;/admin/master-data/lookups/system&quot; icon={Lock} title=&quot;System Locked Values&quot; /&gt;</highlighted_element>
+  <language>HTML</language>
+  <offset>4</offset>
+  <length>94</length>
+</problem>
+</problems>

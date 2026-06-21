@@ -1,0 +1,38 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/erp_project/src/app/globals.css</file>
+  <line>11</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/erp_project/src/app/globals.css" />
+  <problem_class id="CssUnresolvedCustomProperty" severity="ERROR" attribute_key="ERRORS_ATTRIBUTES">Unresolved custom property</problem_class>
+  <description>Cannot resolve &lt;code&gt;--font-geist-mono&lt;/code&gt; custom property</description>
+  <highlighted_element>--font-geist-mono</highlighted_element>
+  <language>CSS</language>
+  <offset>19</offset>
+  <length>17</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/app/globals.css</file>
+  <line>10</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/app/globals.css" />
+  <problem_class id="CssUnresolvedCustomProperty" severity="ERROR" attribute_key="ERRORS_ATTRIBUTES">Unresolved custom property</problem_class>
+  <description>Cannot resolve &lt;code&gt;--font-inter&lt;/code&gt; custom property</description>
+  <highlighted_element>--font-inter</highlighted_element>
+  <language>CSS</language>
+  <offset>19</offset>
+  <length>12</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/app/globals.css</file>
+  <line>12</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/app/globals.css" />
+  <problem_class id="CssUnresolvedCustomProperty" severity="ERROR" attribute_key="ERRORS_ATTRIBUTES">Unresolved custom property</problem_class>
+  <description>Cannot resolve &lt;code&gt;--font-inter&lt;/code&gt; custom property</description>
+  <highlighted_element>--font-inter</highlighted_element>
+  <language>CSS</language>
+  <offset>22</offset>
+  <length>12</length>
+</problem>
+</problems>

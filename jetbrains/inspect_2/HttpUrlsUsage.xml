@@ -1,0 +1,578 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>8</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>16</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>378</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>16</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>379</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>384</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>389</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>394</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>399</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>405</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>411</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>420</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>428</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>1079</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>16</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>1080</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>1085</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>1090</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>1095</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>1100</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>1106</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>1112</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>1123</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>1131</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>1143</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>16</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>1144</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>1149</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>1154</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>1159</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>1164</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>1170</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>1176</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>1187</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json</file>
+  <line>1195</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/docs/seed/UAE_INSURANCE_PARTIES_ENRICHED_DATASET.json" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>JSON</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/registry/party-registry.ts</file>
+  <line>124</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/registry/party-registry.ts" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>TypeScript</language>
+  <offset>64</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/providers/local-provider.ts</file>
+  <line>44</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/providers/local-provider.ts" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>TypeScript</language>
+  <offset>72</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/providers/local-provider.ts</file>
+  <line>45</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/providers/local-provider.ts" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>TypeScript</language>
+  <offset>144</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/supabase/manual_sql/seed_uae_insurance_parties_enriched_contacts_addresses.sql</file>
+  <line>126</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/supabase/manual_sql/seed_uae_insurance_parties_enriched_contacts_addresses.sql" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>GenericSQL</language>
+  <offset>88</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/supabase/manual_sql/seed_uae_insurance_parties_enriched_contacts_addresses.sql</file>
+  <line>126</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/supabase/manual_sql/seed_uae_insurance_parties_enriched_contacts_addresses.sql" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>GenericSQL</language>
+  <offset>344</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/supabase/manual_sql/seed_uae_insurance_parties_enriched_contacts_addresses.sql</file>
+  <line>132</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/supabase/manual_sql/seed_uae_insurance_parties_enriched_contacts_addresses.sql" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>GenericSQL</language>
+  <offset>105</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/supabase/manual_sql/seed_uae_insurance_parties_enriched_contacts_addresses.sql</file>
+  <line>132</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/supabase/manual_sql/seed_uae_insurance_parties_enriched_contacts_addresses.sql" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>GenericSQL</language>
+  <offset>454</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/supabase/manual_sql/seed_uae_insurance_parties_enriched_contacts_addresses.sql</file>
+  <line>143</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/supabase/manual_sql/seed_uae_insurance_parties_enriched_contacts_addresses.sql" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>GenericSQL</language>
+  <offset>114</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/supabase/manual_sql/seed_uae_insurance_parties_enriched_contacts_addresses.sql</file>
+  <line>143</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/supabase/manual_sql/seed_uae_insurance_parties_enriched_contacts_addresses.sql" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>GenericSQL</language>
+  <offset>504</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/supabase/manual_sql/seed_uae_insurance_parties_enriched_contacts_addresses.sql</file>
+  <line>144</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/supabase/manual_sql/seed_uae_insurance_parties_enriched_contacts_addresses.sql" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>GenericSQL</language>
+  <offset>111</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/supabase/manual_sql/seed_uae_insurance_parties_enriched_contacts_addresses.sql</file>
+  <line>144</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/supabase/manual_sql/seed_uae_insurance_parties_enriched_contacts_addresses.sql" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>GenericSQL</language>
+  <offset>496</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/supabase/manual_sql/seed_uae_insurance_parties_enriched_contacts_addresses_REVIEWED.sql</file>
+  <line>149</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/supabase/manual_sql/seed_uae_insurance_parties_enriched_contacts_addresses_REVIEWED.sql" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>GenericSQL</language>
+  <offset>105</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/supabase/manual_sql/seed_uae_insurance_parties_enriched_contacts_addresses_REVIEWED.sql</file>
+  <line>149</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/supabase/manual_sql/seed_uae_insurance_parties_enriched_contacts_addresses_REVIEWED.sql" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>GenericSQL</language>
+  <offset>454</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/supabase/manual_sql/seed_uae_insurance_parties_enriched_contacts_addresses_REVIEWED.sql</file>
+  <line>160</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/supabase/manual_sql/seed_uae_insurance_parties_enriched_contacts_addresses_REVIEWED.sql" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>GenericSQL</language>
+  <offset>114</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/supabase/manual_sql/seed_uae_insurance_parties_enriched_contacts_addresses_REVIEWED.sql</file>
+  <line>160</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/supabase/manual_sql/seed_uae_insurance_parties_enriched_contacts_addresses_REVIEWED.sql" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>GenericSQL</language>
+  <offset>504</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/supabase/manual_sql/seed_uae_insurance_parties_enriched_contacts_addresses_REVIEWED.sql</file>
+  <line>161</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/supabase/manual_sql/seed_uae_insurance_parties_enriched_contacts_addresses_REVIEWED.sql" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>GenericSQL</language>
+  <offset>111</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/supabase/manual_sql/seed_uae_insurance_parties_enriched_contacts_addresses_REVIEWED.sql</file>
+  <line>161</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/supabase/manual_sql/seed_uae_insurance_parties_enriched_contacts_addresses_REVIEWED.sql" />
+  <problem_class id="HttpUrlsUsage" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Link with unencrypted protocol</problem_class>
+  <description>HTTP links are not secure</description>
+  <highlighted_element>http://</highlighted_element>
+  <language>GenericSQL</language>
+  <offset>496</offset>
+  <length>7</length>
+</problem>
+</problems>

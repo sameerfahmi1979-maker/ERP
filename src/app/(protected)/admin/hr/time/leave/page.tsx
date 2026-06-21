@@ -18,7 +18,7 @@ export default async function GlobalLeavePage() {
     redirect("/admin/hr/time");
   }
 
-  const result = await listLeaveRequests({ page: 1, page_size: 50 });
+  const result = await listLeaveRequests({ page: 1, page_size: 50, approval_status: "pending" });
   const rows = result.success && result.data ? result.data.data : [];
   const count = result.success && result.data ? result.data.count : 0;
 

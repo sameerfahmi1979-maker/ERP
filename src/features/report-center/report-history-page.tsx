@@ -45,8 +45,7 @@ interface ReportRun {
     module_code: string;
   };
   runner?: {
-    full_name_en: string | null;
-    email: string | null;
+    display_name: string | null;
   };
 }
 
@@ -72,7 +71,7 @@ export function ReportHistoryPage() {
         .select(`
           *,
           report:erp_report_registry(report_name_en, module_code),
-          runner:user_profiles!run_by(full_name_en, email)
+          runner:user_profiles!run_by(display_name)
         `)
         .order("started_at", { ascending: false })
         .limit(200);
@@ -93,7 +92,7 @@ export function ReportHistoryPage() {
       r.report_code.toLowerCase().includes(q) ||
       r.report?.report_name_en?.toLowerCase().includes(q) ||
       r.run_reference?.toLowerCase().includes(q) ||
-      r.runner?.full_name_en?.toLowerCase().includes(q)
+      r.runner?.display_name?.toLowerCase().includes(q)
     );
   });
 
@@ -203,7 +202,7 @@ export function ReportHistoryPage() {
                         : "—"}
                     </td>
                     <td className="px-3 py-2.5 text-muted-foreground text-xs">
-                      {run.runner?.full_name_en ?? run.runner?.email ?? String(run.run_by)}
+                      {run.runner?.display_name ?? String(run.run_by)}
                     </td>
                     <td className="px-3 py-2.5 text-muted-foreground text-xs">
                       <span title={run.started_at}>

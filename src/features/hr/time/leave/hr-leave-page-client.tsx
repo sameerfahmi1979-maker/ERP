@@ -58,14 +58,14 @@ export function HrLeavePageClient({ initialRows, initialCount, authContext }: Pr
     ...(dateTo ? { date_to: dateTo } : {}),
   };
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: queryKeys.hr.time.globalLeaveRequests(params),
     queryFn: async () => {
       const r = await listLeaveRequests(params);
-      return r.success && r.data ? r.data : { data: initialRows, count: initialCount };
+      if (!r.success) throw new Error(r.error ?? "Failed to load leave requests");
+      return r.data ?? { data: [], count: 0 };
     },
-    initialData: { data: initialRows, count: initialCount },
-    staleTime: 30_000,
+    refetchOnMount: "always",
   });
 
   function handleApprove(id: number) {
@@ -122,6 +122,10 @@ export function HrLeavePageClient({ initialRows, initialCount, authContext }: Pr
 
       {isLoading ? (
         <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
+      ) : isError ? (
+        <div className="text-center py-16 text-destructive text-sm">
+          {error instanceof Error ? error.message : "Failed to load leave requests"}
+        </div>
       ) : rows.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground text-sm">No leave requests found.</div>
       ) : (
@@ -139,8 +143,11 @@ export function HrLeavePageClient({ initialRows, initialCount, authContext }: Pr
             const badge = getLeaveApprovalStatusBadge(row.approval_status);
             return (
               <div key={row.id} className="px-4 py-2.5 grid grid-cols-12 items-center text-sm gap-2">
-                <span className="col-span-2 text-xs text-muted-foreground">EMP-{row.employee_id}</span>
-                <span className="col-span-2 text-xs">{row.leave_type?.leave_type_name ?? "—"}</span>
+                <div className="col-span-2 min-w-0">
+                  <p className="text-xs font-medium truncate">{row.employee?.full_name_en ?? "—"}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">{row.employee?.employee_code ?? `EMP-${row.employee_id}`}</p>
+                </div>
+                <span className="col-span-2 text-xs">{row.leave_type?.name_en ?? "—"}</span>
                 <span className="col-span-2 text-xs">{fmtDate(row.start_date)}</span>
                 <span className="col-span-2 text-xs">{fmtDate(row.end_date)}</span>
                 <span className="col-span-1 text-xs">{row.total_days ?? "—"}</span>

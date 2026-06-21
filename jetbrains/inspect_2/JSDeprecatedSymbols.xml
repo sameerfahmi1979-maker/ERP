@@ -1,0 +1,1550 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/accordion.tsx</file>
+  <line>10</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/accordion.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/accordion.tsx</file>
+  <line>22</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/accordion.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/accordion.tsx</file>
+  <line>42</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/accordion.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/alert-dialog.tsx</file>
+  <line>14</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/alert-dialog.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/alert-dialog.tsx</file>
+  <line>29</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/alert-dialog.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/alert-dialog.tsx</file>
+  <line>75</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/alert-dialog.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/alert-dialog.tsx</file>
+  <line>87</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/alert-dialog.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/alert-dialog.tsx</file>
+  <line>100</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/alert-dialog.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/alert-dialog.tsx</file>
+  <line>112</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/alert-dialog.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/avatar.tsx</file>
+  <line>7</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/avatar.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/avatar.tsx</file>
+  <line>22</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/avatar.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/avatar.tsx</file>
+  <line>34</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/avatar.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/checkbox.tsx</file>
+  <line>8</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/checkbox.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/command.tsx</file>
+  <line>10</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/command.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/command.tsx</file>
+  <line>37</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/command.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/command.tsx</file>
+  <line>56</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/command.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/command.tsx</file>
+  <line>69</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/command.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/command.tsx</file>
+  <line>82</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/command.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/command.tsx</file>
+  <line>98</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/command.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/command.tsx</file>
+  <line>110</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/command.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/context-menu.tsx</file>
+  <line>20</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/context-menu.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/context-menu.tsx</file>
+  <line>41</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/context-menu.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/context-menu.tsx</file>
+  <line>56</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/context-menu.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/context-menu.tsx</file>
+  <line>73</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/context-menu.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/context-menu.tsx</file>
+  <line>91</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/context-menu.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/context-menu.tsx</file>
+  <line>115</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/context-menu.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/context-menu.tsx</file>
+  <line>137</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/context-menu.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/context-menu.tsx</file>
+  <line>155</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/context-menu.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/dialog.tsx</file>
+  <line>16</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/dialog.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/dialog.tsx</file>
+  <line>31</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/dialog.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/dialog.tsx</file>
+  <line>83</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/dialog.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/dialog.tsx</file>
+  <line>98</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/dialog.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/drawer.tsx</file>
+  <line>24</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/drawer.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/drawer.tsx</file>
+  <line>36</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/drawer.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/drawer.tsx</file>
+  <line>79</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/drawer.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/drawer.tsx</file>
+  <line>94</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/drawer.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/dropdown-menu.tsx</file>
+  <line>20</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/dropdown-menu.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/dropdown-menu.tsx</file>
+  <line>42</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/dropdown-menu.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/dropdown-menu.tsx</file>
+  <line>58</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/dropdown-menu.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/dropdown-menu.tsx</file>
+  <line>76</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/dropdown-menu.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/dropdown-menu.tsx</file>
+  <line>94</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/dropdown-menu.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/dropdown-menu.tsx</file>
+  <line>118</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/dropdown-menu.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/dropdown-menu.tsx</file>
+  <line>140</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/dropdown-menu.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/dropdown-menu.tsx</file>
+  <line>158</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/dropdown-menu.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/form.tsx</file>
+  <line>88</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/form.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/form.tsx</file>
+  <line>105</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/form.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/hover-card.tsx</file>
+  <line>11</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/hover-card.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/input-otp.tsx</file>
+  <line>8</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/input-otp.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/input-otp.tsx</file>
+  <line>24</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/input-otp.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/input-otp.tsx</file>
+  <line>32</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/input-otp.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/input-otp.tsx</file>
+  <line>60</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/input-otp.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/label.tsx</file>
+  <line>12</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/label.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/menubar.tsx</file>
+  <line>18</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/menubar.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/menubar.tsx</file>
+  <line>33</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/menubar.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/menubar.tsx</file>
+  <line>48</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/menubar.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/menubar.tsx</file>
+  <line>69</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/menubar.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/menubar.tsx</file>
+  <line>84</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/menubar.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/menubar.tsx</file>
+  <line>109</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/menubar.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/menubar.tsx</file>
+  <line>127</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/menubar.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/menubar.tsx</file>
+  <line>150</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/menubar.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/menubar.tsx</file>
+  <line>172</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/menubar.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/menubar.tsx</file>
+  <line>190</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/menubar.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/navigation-menu.tsx</file>
+  <line>9</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/navigation-menu.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/navigation-menu.tsx</file>
+  <line>27</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/navigation-menu.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/navigation-menu.tsx</file>
+  <line>48</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/navigation-menu.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/navigation-menu.tsx</file>
+  <line>66</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/navigation-menu.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/navigation-menu.tsx</file>
+  <line>83</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/navigation-menu.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/navigation-menu.tsx</file>
+  <line>101</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/navigation-menu.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/popover.tsx</file>
+  <line>11</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/popover.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/progress.tsx</file>
+  <line>7</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/progress.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/radio-group.tsx</file>
+  <line>8</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/radio-group.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/radio-group.tsx</file>
+  <line>22</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/radio-group.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/scroll-area.tsx</file>
+  <line>7</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/scroll-area.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/scroll-area.tsx</file>
+  <line>25</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/scroll-area.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/select.tsx</file>
+  <line>14</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/select.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/select.tsx</file>
+  <line>34</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/select.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/select.tsx</file>
+  <line>51</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/select.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/select.tsx</file>
+  <line>69</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/select.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/select.tsx</file>
+  <line>101</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/select.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/select.tsx</file>
+  <line>113</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/select.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/select.tsx</file>
+  <line>136</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/select.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/separator.tsx</file>
+  <line>7</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/separator.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/sheet.tsx</file>
+  <line>17</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/sheet.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/sheet.tsx</file>
+  <line>55</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/sheet.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/sheet.tsx</file>
+  <line>104</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/sheet.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/sheet.tsx</file>
+  <line>116</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/sheet.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/sidebar.tsx</file>
+  <line>259</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/sidebar.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/sidebar.tsx</file>
+  <line>332</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/sidebar.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/sidebar.tsx</file>
+  <line>380</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/sidebar.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/slider.tsx</file>
+  <line>7</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/slider.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/switch.tsx</file>
+  <line>7</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/switch.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/tabs.tsx</file>
+  <line>9</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/tabs.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/tabs.tsx</file>
+  <line>24</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/tabs.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/tabs.tsx</file>
+  <line>39</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/tabs.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/toast.tsx</file>
+  <line>11</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/toast.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/toast.tsx</file>
+  <line>42</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/toast.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/toast.tsx</file>
+  <line>57</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/toast.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/toast.tsx</file>
+  <line>72</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/toast.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/toast.tsx</file>
+  <line>90</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/toast.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/toast.tsx</file>
+  <line>102</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/toast.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/toggle-group.tsx</file>
+  <line>16</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/toggle-group.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/toggle-group.tsx</file>
+  <line>34</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/toggle-group.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/toggle.tsx</file>
+  <line>30</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/toggle.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/tooltip.tsx</file>
+  <line>13</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/components/ui/tooltip.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/pages/Login.tsx</file>
+  <line>26</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/pages/Login.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>FormEvent</highlighted_element>
+  <language>JavaScript</language>
+  <offset>33</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/erp-drawer-form.tsx</file>
+  <line>375</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/erp-drawer-form.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>onSubmit</highlighted_element>
+  <language>JavaScript</language>
+  <offset>2</offset>
+  <length>8</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/erp-drawer-form.tsx</file>
+  <line>385</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/erp-drawer-form.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>onSubmit</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>8</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/erp-drawer-form.tsx</file>
+  <line>386</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/erp-drawer-form.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>onSubmit</highlighted_element>
+  <language>JavaScript</language>
+  <offset>6</offset>
+  <length>8</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/ui/alert-dialog.tsx</file>
+  <line>14</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/ui/alert-dialog.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/ui/alert-dialog.tsx</file>
+  <line>29</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/ui/alert-dialog.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/ui/alert-dialog.tsx</file>
+  <line>75</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/ui/alert-dialog.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/ui/alert-dialog.tsx</file>
+  <line>87</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/ui/alert-dialog.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/ui/alert-dialog.tsx</file>
+  <line>100</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/ui/alert-dialog.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/ui/alert-dialog.tsx</file>
+  <line>112</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/ui/alert-dialog.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/ui/command.tsx</file>
+  <line>10</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/ui/command.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/ui/command.tsx</file>
+  <line>37</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/ui/command.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/ui/command.tsx</file>
+  <line>56</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/ui/command.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/ui/command.tsx</file>
+  <line>69</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/ui/command.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/ui/command.tsx</file>
+  <line>82</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/ui/command.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/ui/command.tsx</file>
+  <line>98</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/ui/command.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/ui/command.tsx</file>
+  <line>110</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/ui/command.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/ui/form.tsx</file>
+  <line>88</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/ui/form.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/ui/form.tsx</file>
+  <line>105</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/ui/form.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/ui/popover.tsx</file>
+  <line>11</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/ui/popover.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>ElementRef</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/workspace/workspace-provider.tsx</file>
+  <line>117</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/workspace/workspace-provider.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>returnValue</highlighted_element>
+  <language>JavaScript</language>
+  <offset>8</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/employees-table.tsx</file>
+  <line>105</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/employees-table.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>FormEvent</highlighted_element>
+  <language>JavaScript</language>
+  <offset>33</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-form-drawer.tsx</file>
+  <line>277</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-form-drawer.tsx" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>FormEvent</highlighted_element>
+  <language>JavaScript</language>
+  <offset>39</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/email/attachment-utils.ts</file>
+  <line>38</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/email/attachment-utils.ts" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>unescape</highlighted_element>
+  <language>JavaScript</language>
+  <offset>14</offset>
+  <length>8</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/export/print.ts</file>
+  <line>37</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/export/print.ts" />
+  <problem_class id="JSDeprecatedSymbols" severity="WEAK WARNING" attribute_key="DEPRECATED_ATTRIBUTES">Deprecated symbol used</problem_class>
+  <description>Deprecated symbol used, consult docs for better alternative</description>
+  <highlighted_element>write</highlighted_element>
+  <language>JavaScript</language>
+  <offset>25</offset>
+  <length>5</length>
+</problem>
+</problems>

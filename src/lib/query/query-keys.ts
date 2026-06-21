@@ -422,6 +422,7 @@ export const queryKeys = {
         year
           ? (["hr", "time", "leave-balances", employeeId, year] as const)
           : (["hr", "time", "leave-balances", employeeId] as const),
+      activeLeaveTypes: () => ["hr", "time", "active-leave-types"] as const,
       overtimeRecords: (employeeId: number, params?: Record<string, unknown>) =>
         params
           ? (["hr", "time", "overtime-records", employeeId, params] as const)

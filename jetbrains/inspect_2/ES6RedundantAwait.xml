@@ -1,0 +1,14 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/email/erp-send-email-dialog.tsx</file>
+  <line>161</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/email/erp-send-email-dialog.tsx" />
+  <problem_class id="ES6RedundantAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Redundant 'await' expression</problem_class>
+  <description>Redundant 'await Promise.resolve()'</description>
+  <highlighted_element>await Promise.resolve(option.generateAttachment())</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>23</offset>
+  <length>50</length>
+</problem>
+</problems>

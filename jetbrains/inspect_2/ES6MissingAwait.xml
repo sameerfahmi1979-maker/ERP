@@ -1,0 +1,1226 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/ai/common/compliance-checker/compliance-findings-page-client.tsx</file>
+  <line>130</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/ai/common/compliance-checker/compliance-findings-page-client.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>refetch</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>6</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/ai/common/compliance-checker/compliance-findings-page-client.tsx</file>
+  <line>154</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/ai/common/compliance-checker/compliance-findings-page-client.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>refetch</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>6</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/ai/common/duplicate-detection/duplicate-candidates-page-client.tsx</file>
+  <line>128</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/ai/common/duplicate-detection/duplicate-candidates-page-client.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>refetch</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>6</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/ai/common/duplicate-detection/duplicate-candidates-page-client.tsx</file>
+  <line>147</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/ai/common/duplicate-detection/duplicate-candidates-page-client.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>refetch</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>6</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/ai/common/duplicate-detection/duplicate-candidates-page-client.tsx</file>
+  <line>164</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/ai/common/duplicate-detection/duplicate-candidates-page-client.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>refetch</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>6</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/ai/common/risk-scoring/risk-scores-page-client.tsx</file>
+  <line>147</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/ai/common/risk-scoring/risk-scores-page-client.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>refetch</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>6</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/ai/common/risk-scoring/risk-scores-page-client.tsx</file>
+  <line>166</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/ai/common/risk-scoring/risk-scores-page-client.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>refetch</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>6</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/ai/common/risk-scoring/risk-scores-page-client.tsx</file>
+  <line>186</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/ai/common/risk-scoring/risk-scores-page-client.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>refetch</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>6</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/common-master-data/work-calendars/work-calendar-workspace-form.tsx</file>
+  <line>237</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/common-master-data/work-calendars/work-calendar-workspace-form.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>queryClient.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>204</offset>
+  <length>29</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-comments-section.tsx</file>
+  <line>41</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-comments-section.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-comments-section.tsx</file>
+  <line>54</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-comments-section.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>6</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-links-section.tsx</file>
+  <line>93</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-links-section.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-links-section.tsx</file>
+  <line>139</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-links-section.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-links-section.tsx</file>
+  <line>153</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-links-section.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>6</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-tags-section.tsx</file>
+  <line>94</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-tags-section.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-tags-section.tsx</file>
+  <line>136</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-tags-section.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx</file>
+  <line>301</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx</file>
+  <line>302</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx</file>
+  <line>314</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>6</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx</file>
+  <line>315</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>6</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx</file>
+  <line>323</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>6</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx</file>
+  <line>548</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx</file>
+  <line>549</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx</file>
+  <line>557</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>63</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx</file>
+  <line>563</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>53</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx</file>
+  <line>685</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx</file>
+  <line>686</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx</file>
+  <line>694</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>53</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx</file>
+  <line>809</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>74</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx</file>
+  <line>809</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>159</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx</file>
+  <line>816</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>48</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx</file>
+  <line>927</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>74</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx</file>
+  <line>927</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>168</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx</file>
+  <line>934</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>48</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx</file>
+  <line>940</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>48</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx</file>
+  <line>1062</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>74</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx</file>
+  <line>1062</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>162</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx</file>
+  <line>1069</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>48</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-operations-tab.tsx</file>
+  <line>196</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-operations-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>updateEmployeeAssignment</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>10</offset>
+  <length>24</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-operations-tab.tsx</file>
+  <line>197</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-operations-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>createEmployeeAssignment</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>10</offset>
+  <length>24</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-operations-tab.tsx</file>
+  <line>469</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-operations-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>updateEmployeeRoleRequirement</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>10</offset>
+  <length>29</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-operations-tab.tsx</file>
+  <line>470</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-operations-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>createEmployeeRoleRequirement</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>10</offset>
+  <length>29</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-operations-tab.tsx</file>
+  <line>853</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-operations-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>updateEmployeeAsset</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>31</offset>
+  <length>19</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-operations-tab.tsx</file>
+  <line>853</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-operations-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>createEmployeeAsset</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>81</offset>
+  <length>19</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-operations-tab.tsx</file>
+  <line>1000</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-operations-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>updateEmployeePpeIssue</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>31</offset>
+  <length>22</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-operations-tab.tsx</file>
+  <line>1000</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-operations-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>createEmployeePpeIssue</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>84</offset>
+  <length>22</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-operations-tab.tsx</file>
+  <line>1143</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-operations-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>updateEmployeeAccommodationRecord</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>10</offset>
+  <length>33</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-operations-tab.tsx</file>
+  <line>1144</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-operations-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>createEmployeeAccommodationRecord</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>10</offset>
+  <length>33</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>255</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>267</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>288</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>304</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>323</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>324</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>679</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>680</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>691</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>692</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>883</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>884</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>894</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>895</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>896</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>911</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>912</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>929</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>930</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>1197</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>1198</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>1208</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>1209</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>1222</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>1233</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-conversion-tab.tsx</file>
+  <line>141</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-conversion-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>refetchPrep</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/time/attendance/hr-attendance-page-client.tsx</file>
+  <line>74</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/time/attendance/hr-attendance-page-client.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/time/leave/hr-leave-page-client.tsx</file>
+  <line>76</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/time/leave/hr-leave-page-client.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/time/leave/hr-leave-page-client.tsx</file>
+  <line>88</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/time/leave/hr-leave-page-client.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>qc.invalidateQueries</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts</file>
+  <line>43</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>queryClient.prefetchQuery</highlighted_element>
+  <language>TypeScript</language>
+  <offset>4</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts</file>
+  <line>44</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>queryClient.prefetchQuery</highlighted_element>
+  <language>TypeScript</language>
+  <offset>4</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts</file>
+  <line>45</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>queryClient.prefetchQuery</highlighted_element>
+  <language>TypeScript</language>
+  <offset>4</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts</file>
+  <line>46</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>queryClient.prefetchQuery</highlighted_element>
+  <language>TypeScript</language>
+  <offset>4</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts</file>
+  <line>49</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>queryClient.prefetchQuery</highlighted_element>
+  <language>TypeScript</language>
+  <offset>4</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts</file>
+  <line>50</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>queryClient.prefetchQuery</highlighted_element>
+  <language>TypeScript</language>
+  <offset>4</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts</file>
+  <line>51</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>queryClient.prefetchQuery</highlighted_element>
+  <language>TypeScript</language>
+  <offset>4</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts</file>
+  <line>52</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>queryClient.prefetchQuery</highlighted_element>
+  <language>TypeScript</language>
+  <offset>4</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts</file>
+  <line>53</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>queryClient.prefetchQuery</highlighted_element>
+  <language>TypeScript</language>
+  <offset>4</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts</file>
+  <line>54</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>queryClient.prefetchQuery</highlighted_element>
+  <language>TypeScript</language>
+  <offset>4</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts</file>
+  <line>55</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>queryClient.prefetchQuery</highlighted_element>
+  <language>TypeScript</language>
+  <offset>4</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts</file>
+  <line>56</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>queryClient.prefetchQuery</highlighted_element>
+  <language>TypeScript</language>
+  <offset>4</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts</file>
+  <line>57</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>queryClient.prefetchQuery</highlighted_element>
+  <language>TypeScript</language>
+  <offset>4</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts</file>
+  <line>58</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>queryClient.prefetchQuery</highlighted_element>
+  <language>TypeScript</language>
+  <offset>4</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts</file>
+  <line>59</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>queryClient.prefetchQuery</highlighted_element>
+  <language>TypeScript</language>
+  <offset>4</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts</file>
+  <line>60</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>queryClient.prefetchQuery</highlighted_element>
+  <language>TypeScript</language>
+  <offset>4</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts</file>
+  <line>61</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>queryClient.prefetchQuery</highlighted_element>
+  <language>TypeScript</language>
+  <offset>4</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts</file>
+  <line>62</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-form-prefetch.ts" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>queryClient.prefetchQuery</highlighted_element>
+  <language>TypeScript</language>
+  <offset>4</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-types-tab.tsx</file>
+  <line>104</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-types-tab.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>refetch</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/report-center/report-run-page.tsx</file>
+  <line>161</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/report-center/report-run-page.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>loadSavedFilters</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>16</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/report-center/report-run-page.tsx</file>
+  <line>174</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/report-center/report-run-page.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>loadSavedFilters</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>6</offset>
+  <length>16</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/report-center/report-run-page.tsx</file>
+  <line>184</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/report-center/report-run-page.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>loadSavedFilters</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>6</offset>
+  <length>16</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/report-center/report-schedules-page.tsx</file>
+  <line>68</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/report-center/report-schedules-page.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>load</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>6</offset>
+  <length>4</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/report-center/report-schedules-page.tsx</file>
+  <line>78</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/report-center/report-schedules-page.tsx" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>load</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>8</offset>
+  <length>4</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/dms/pdf-to-images.ts</file>
+  <line>98</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/dms/pdf-to-images.ts" />
+  <problem_class id="ES6MissingAwait" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing await for an async function call</problem_class>
+  <description>Missing await for an async function call</description>
+  <highlighted_element>loadingTask.destroy</highlighted_element>
+  <language>TypeScript</language>
+  <offset>10</offset>
+  <length>19</length>
+</problem>
+</problems>

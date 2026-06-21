@@ -1,0 +1,1694 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/pages/AuditLogs.tsx</file>
+  <line>7</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/pages/AuditLogs.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;ERPStatusBadge&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/components/erp/status-badge&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { ERPStatusBadge } from &quot;@/components/erp/status-badge&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>63</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/pages/Organizations.tsx</file>
+  <line>10</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/pages/Organizations.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;Card,&amp;#32;CardContent&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/components/ui/card&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { Card, CardContent } from &quot;@/components/ui/card&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>57</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/app/(protected)/admin/branches/page.tsx</file>
+  <line>4</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/app/(protected)/admin/branches/page.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;Button&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/components/ui/button&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { Button } from &quot;@/components/ui/button&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>48</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/app/(protected)/admin/branches/page.tsx</file>
+  <line>7</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/app/(protected)/admin/branches/page.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier Plus</description>
+  <highlighted_element>Plus</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>9</offset>
+  <length>4</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/app/(protected)/admin/dms/page.tsx</file>
+  <line>7</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/app/(protected)/admin/dms/page.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;FolderOpen&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;lucide-react&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { FolderOpen } from &quot;lucide-react&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>42</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/app/(protected)/admin/hr/recruitment/page.tsx</file>
+  <line>5</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/app/(protected)/admin/hr/recruitment/page.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier CardHeader</description>
+  <highlighted_element>CardHeader</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>28</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/app/(protected)/admin/hr/recruitment/page.tsx</file>
+  <line>5</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/app/(protected)/admin/hr/recruitment/page.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier CardTitle</description>
+  <highlighted_element>CardTitle</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>40</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/app/(protected)/admin/hr/recruitment/page.tsx</file>
+  <line>6</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/app/(protected)/admin/hr/recruitment/page.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;Button&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/components/ui/button&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { Button } from &quot;@/components/ui/button&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>48</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/app/(protected)/admin/hr/time/page.tsx</file>
+  <line>4</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/app/(protected)/admin/hr/time/page.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier CardContent</description>
+  <highlighted_element>CardContent</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>15</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/app/(protected)/admin/master-data/uom/categories/page.tsx</file>
+  <line>1</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/app/(protected)/admin/master-data/uom/categories/page.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier type AuthContext</description>
+  <highlighted_element>type AuthContext</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>40</offset>
+  <length>16</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/app/(protected)/admin/master-data/uom/conversions/page.tsx</file>
+  <line>1</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/app/(protected)/admin/master-data/uom/conversions/page.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier type AuthContext</description>
+  <highlighted_element>type AuthContext</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>40</offset>
+  <length>16</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/app/(protected)/admin/master-data/uom/units/page.tsx</file>
+  <line>1</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/app/(protected)/admin/master-data/uom/units/page.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier type AuthContext</description>
+  <highlighted_element>type AuthContext</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>40</offset>
+  <length>16</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/app/(protected)/admin/organizations/page.tsx</file>
+  <line>5</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/app/(protected)/admin/organizations/page.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;Button&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/components/ui/button&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { Button } from &quot;@/components/ui/button&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>48</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/app/(protected)/admin/organizations/page.tsx</file>
+  <line>8</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/app/(protected)/admin/organizations/page.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier Plus</description>
+  <highlighted_element>Plus</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>9</offset>
+  <length>4</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/app/(protected)/admin/permissions/page.tsx</file>
+  <line>9</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/app/(protected)/admin/permissions/page.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;type&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;ERPExportColumn&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/lib/export&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import type { ERPExportColumn } from &quot;@/lib/export&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>52</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/app/(protected)/admin/permissions/page.tsx</file>
+  <line>10</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/app/(protected)/admin/permissions/page.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;type&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;Permission&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/types/database&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import type { Permission } from &quot;@/types/database&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>51</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/email/erp-send-email-dialog.tsx</file>
+  <line>18</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/email/erp-send-email-dialog.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier DialogHeader</description>
+  <highlighted_element>DialogHeader</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>2</offset>
+  <length>12</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/email/erp-send-email-dialog.tsx</file>
+  <line>25</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/email/erp-send-email-dialog.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;Badge&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/components/ui/badge&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { Badge } from &quot;@/components/ui/badge&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>46</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/erp-drawer-form.tsx</file>
+  <line>4</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/erp-drawer-form.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier SheetHeader</description>
+  <highlighted_element>SheetHeader</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>30</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/export/erp-export-menu.tsx</file>
+  <line>14</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/export/erp-export-menu.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;Button&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/components/ui/button&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { Button } from &quot;@/components/ui/button&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>48</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/export/erp-export-menu.tsx</file>
+  <line>39</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/export/erp-export-menu.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier AttachmentOption</description>
+  <highlighted_element>AttachmentOption</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>14</offset>
+  <length>16</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/table/erp-table-types.ts</file>
+  <line>7</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/table/erp-table-types.ts" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier RowSelectionState</description>
+  <highlighted_element>RowSelectionState</highlighted_element>
+  <language>TypeScript</language>
+  <offset>75</offset>
+  <length>17</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/report-center/report-preview-header.tsx</file>
+  <line>13</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/report-center/report-preview-header.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier Globe</description>
+  <highlighted_element>Globe</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>39</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/ai/common/assistant/assistant-page-client.tsx</file>
+  <line>10</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/ai/common/assistant/assistant-page-client.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier archiveAssistantSession</description>
+  <highlighted_element>archiveAssistantSession</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>2</offset>
+  <length>23</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/ai/common/search/search-recent-panel.tsx</file>
+  <line>3</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/ai/common/search/search-recent-panel.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier X</description>
+  <highlighted_element>X</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>24</offset>
+  <length>1</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/common-master-data/departments/departments-list-client.tsx</file>
+  <line>7</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/common-master-data/departments/departments-list-client.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;Button&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/components/ui/button&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { Button } from &quot;@/components/ui/button&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>48</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/documents/dms-document-record-form.tsx</file>
+  <line>43</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/documents/dms-document-record-form.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;DmsDocumentStatusBadge&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;./dms-document-status-badge&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { DmsDocumentStatusBadge } from &quot;./dms-document-status-badge&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>69</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/documents/dms-document-record-form.tsx</file>
+  <line>44</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/documents/dms-document-record-form.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;DmsConfidentialityBadge&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;./dms-confidentiality-badge&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { DmsConfidentialityBadge } from &quot;./dms-confidentiality-badge&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>70</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/documents/dms-document-record-form.tsx</file>
+  <line>45</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/documents/dms-document-record-form.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;DmsExpiryBadge&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;./dms-expiry-badge&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { DmsExpiryBadge } from &quot;./dms-expiry-badge&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>52</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-understanding-section.tsx</file>
+  <line>29</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-understanding-section.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier DmsDocumentUnderstanding</description>
+  <highlighted_element>DmsDocumentUnderstanding</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>2</offset>
+  <length>24</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/expiry/dms-expiring-documents-table.tsx</file>
+  <line>9</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/expiry/dms-expiring-documents-table.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier CheckCircle2</description>
+  <highlighted_element>CheckCircle2</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>40</offset>
+  <length>12</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/expiry/dms-expiring-documents-table.tsx</file>
+  <line>9</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/expiry/dms-expiring-documents-table.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier XCircle</description>
+  <highlighted_element>XCircle</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>54</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/notifications/dms-notifications-page-client.tsx</file>
+  <line>7</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/notifications/dms-notifications-page-client.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier Mail</description>
+  <highlighted_element>Mail</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>24</offset>
+  <length>4</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/renewals/dms-renewal-requests-page-client.tsx</file>
+  <line>3</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/renewals/dms-renewal-requests-page-client.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;useState&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;react&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { useState } from &quot;react&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>33</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/actions/hr-pro-processes-page-client.tsx</file>
+  <line>7</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/actions/hr-pro-processes-page-client.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;Badge&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/components/ui/badge&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { Badge } from &quot;@/components/ui/badge&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>46</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/ai/hr-ai-compliance-panel.tsx</file>
+  <line>10</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/ai/hr-ai-compliance-panel.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;Badge&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/components/ui/badge&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { Badge } from &quot;@/components/ui/badge&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>46</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/ai/hr-ai-suggestion-card.tsx</file>
+  <line>12</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/ai/hr-ai-suggestion-card.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier CheckCircle</description>
+  <highlighted_element>CheckCircle</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>30</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/dashboard/hr-dashboard-alerts.tsx</file>
+  <line>3</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/dashboard/hr-dashboard-alerts.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;Badge&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/components/ui/badge&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { Badge } from &quot;@/components/ui/badge&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>46</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/dashboard/hr-dashboard-page-client.tsx</file>
+  <line>5</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/dashboard/hr-dashboard-page-client.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;Link&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;next/link&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/html&gt;</description>
+  <highlighted_element>import Link from &quot;next/link&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>29</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/dashboard/hr-dashboard-page-client.tsx</file>
+  <line>11</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/dashboard/hr-dashboard-page-client.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;Card,&amp;#32;CardContent&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/components/ui/card&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { Card, CardContent } from &quot;@/components/ui/card&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>57</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/employee-workspace-form.tsx</file>
+  <line>23</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/employee-workspace-form.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;useRouter&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;next/navigation&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { useRouter } from &quot;next/navigation&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>44</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/employee-workspace-form.tsx</file>
+  <line>46</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/employee-workspace-form.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;Badge&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/components/ui/badge&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { Badge } from &quot;@/components/ui/badge&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>46</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx</file>
+  <line>20</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier RefreshCw</description>
+  <highlighted_element>RefreshCw</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>37</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx</file>
+  <line>20</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier ExternalLink</description>
+  <highlighted_element>ExternalLink</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>48</offset>
+  <length>12</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx</file>
+  <line>41</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier getRenewalStatusBadge</description>
+  <highlighted_element>getRenewalStatusBadge</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>2</offset>
+  <length>21</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx</file>
+  <line>93</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-compliance-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;cn&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/lib/utils&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { cn } from &quot;@/lib/utils&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>33</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-hr-actions-tab.tsx</file>
+  <line>21</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-hr-actions-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier ChevronDown</description>
+  <highlighted_element>ChevronDown</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>46</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-hr-actions-tab.tsx</file>
+  <line>22</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-hr-actions-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier Clock</description>
+  <highlighted_element>Clock</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>15</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-hr-actions-tab.tsx</file>
+  <line>22</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-hr-actions-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier Flag</description>
+  <highlighted_element>Flag</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>22</offset>
+  <length>4</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-hr-actions-tab.tsx</file>
+  <line>22</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-hr-actions-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier FileText</description>
+  <highlighted_element>FileText</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>28</offset>
+  <length>8</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-hr-actions-tab.tsx</file>
+  <line>25</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-hr-actions-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;Badge&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/components/ui/badge&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { Badge } from &quot;@/components/ui/badge&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>46</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-hr-actions-tab.tsx</file>
+  <line>46</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-hr-actions-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier changeEmployeeProProcessStatus</description>
+  <highlighted_element>changeEmployeeProProcessStatus</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>29</offset>
+  <length>30</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-hr-actions-tab.tsx</file>
+  <line>48</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-hr-actions-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier cancelEmployeeHrAction</description>
+  <highlighted_element>cancelEmployeeHrAction</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>50</offset>
+  <length>22</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-hr-actions-tab.tsx</file>
+  <line>57</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-hr-actions-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier changeEmployeeEosCaseStatus</description>
+  <highlighted_element>changeEmployeeEosCaseStatus</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>2</offset>
+  <length>27</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-hr-actions-tab.tsx</file>
+  <line>60</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-hr-actions-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier type HrNoteRow</description>
+  <highlighted_element>type HrNoteRow</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>2</offset>
+  <length>14</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-hr-actions-tab.tsx</file>
+  <line>60</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-hr-actions-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier type ApprovalRequestRow</description>
+  <highlighted_element>type ApprovalRequestRow</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>18</offset>
+  <length>23</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-hr-actions-tab.tsx</file>
+  <line>60</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-hr-actions-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier type ClearanceItemRow</description>
+  <highlighted_element>type ClearanceItemRow</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>60</offset>
+  <length>21</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-payroll-tab.tsx</file>
+  <line>25</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-payroll-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier CreditCard</description>
+  <highlighted_element>CreditCard</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>14</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-payroll-tab.tsx</file>
+  <line>27</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-payroll-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier Eye</description>
+  <highlighted_element>Eye</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>2</offset>
+  <length>3</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-payroll-tab.tsx</file>
+  <line>48</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-payroll-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier archiveEmployeePayrollProfile</description>
+  <highlighted_element>archiveEmployeePayrollProfile</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>2</offset>
+  <length>29</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-payroll-tab.tsx</file>
+  <line>66</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-payroll-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier type PayrollProfileRow</description>
+  <highlighted_element>type PayrollProfileRow</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>2</offset>
+  <length>22</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-payroll-tab.tsx</file>
+  <line>68</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-payroll-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier type SalaryRevisionRow</description>
+  <highlighted_element>type SalaryRevisionRow</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>2</offset>
+  <length>22</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-payroll-tab.tsx</file>
+  <line>69</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-payroll-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier type PayrollHoldRow</description>
+  <highlighted_element>type PayrollHoldRow</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>2</offset>
+  <length>19</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-payroll-tab.tsx</file>
+  <line>70</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-payroll-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier type WpsProfileRow</description>
+  <highlighted_element>type WpsProfileRow</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>2</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-profile-tab.tsx</file>
+  <line>3</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-profile-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;useState,&amp;#32;useEffect,&amp;#32;useCallback&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;react&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { useState, useEffect, useCallback } from &quot;react&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>57</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>40</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier formatMinutes</description>
+  <highlighted_element>formatMinutes</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>22</offset>
+  <length>13</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>69</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier type AttendancePunchRow</description>
+  <highlighted_element>type AttendancePunchRow</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>2</offset>
+  <length>23</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>70</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier type AttendanceCorrectionRow</description>
+  <highlighted_element>type AttendanceCorrectionRow</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>2</offset>
+  <length>28</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>72</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier type LeaveRequestRow</description>
+  <highlighted_element>type LeaveRequestRow</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>2</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx</file>
+  <line>73</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/tabs/employee-time-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier type LeaveBalanceRow</description>
+  <highlighted_element>type LeaveBalanceRow</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>2</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/operations/blocks/hr-blocks-page-client.tsx</file>
+  <line>4</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/operations/blocks/hr-blocks-page-client.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier useQueryClient</description>
+  <highlighted_element>useQueryClient</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>19</offset>
+  <length>14</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/payroll/salaries/hr-salaries-page-client.tsx</file>
+  <line>3</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/payroll/salaries/hr-salaries-page-client.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier useTransition</description>
+  <highlighted_element>useTransition</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>19</offset>
+  <length>13</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/candidates-page-client.tsx</file>
+  <line>10</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/candidates-page-client.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;Badge&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/components/ui/badge&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { Badge } from &quot;@/components/ui/badge&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>46</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/interviews-page-client.tsx</file>
+  <line>8</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/interviews-page-client.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;Input&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/components/ui/input&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { Input } from &quot;@/components/ui/input&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>46</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/interviews-page-client.tsx</file>
+  <line>11</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/interviews-page-client.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier ArrowRight</description>
+  <highlighted_element>ArrowRight</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>19</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/requisitions-page-client.tsx</file>
+  <line>6</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/requisitions-page-client.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier changeJobRequisitionStatus</description>
+  <highlighted_element>changeJobRequisitionStatus</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>97</offset>
+  <length>26</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/requisitions-page-client.tsx</file>
+  <line>15</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/requisitions-page-client.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;Badge&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/components/ui/badge&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { Badge } from &quot;@/components/ui/badge&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>46</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/requisitions-page-client.tsx</file>
+  <line>17</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/requisitions-page-client.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier ArrowUpDown</description>
+  <highlighted_element>ArrowUpDown</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>42</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-conversion-tab.tsx</file>
+  <line>6</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-conversion-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier getEmployeeRecruitmentLink</description>
+  <highlighted_element>getEmployeeRecruitmentLink</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>73</offset>
+  <length>26</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-conversion-tab.tsx</file>
+  <line>14</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-conversion-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier CardHeader</description>
+  <highlighted_element>CardHeader</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>28</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-conversion-tab.tsx</file>
+  <line>14</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-conversion-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier CardTitle</description>
+  <highlighted_element>CardTitle</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>40</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-conversion-tab.tsx</file>
+  <line>15</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-conversion-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;Badge&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/components/ui/badge&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { Badge } from &quot;@/components/ui/badge&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>46</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-conversion-tab.tsx</file>
+  <line>17</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-conversion-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier ArrowRight</description>
+  <highlighted_element>ArrowRight</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>20</offset>
+  <length>10</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-conversion-tab.tsx</file>
+  <line>21</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-conversion-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;useQuery&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;as&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;useOwnerQuery&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@tanstack/react-query&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { useQuery as useOwnerQuery } from &quot;@tanstack/react-query&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>66</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-documents-tab.tsx</file>
+  <line>7</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-documents-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;type&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;CandidateDocumentRow&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/server/actions/hr/recruitment&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import type { CandidateDocumentRow } from &quot;@/server/actions/hr/recruitment&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>76</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-documents-tab.tsx</file>
+  <line>16</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-documents-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier Plus</description>
+  <highlighted_element>Plus</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>9</offset>
+  <length>4</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-interviews-tab.tsx</file>
+  <line>6</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-interviews-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier completeInterview</description>
+  <highlighted_element>completeInterview</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>86</offset>
+  <length>17</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-interviews-tab.tsx</file>
+  <line>6</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-interviews-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier cancelInterview</description>
+  <highlighted_element>cancelInterview</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>105</offset>
+  <length>15</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-interviews-tab.tsx</file>
+  <line>11</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-interviews-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;Badge&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/components/ui/badge&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { Badge } from &quot;@/components/ui/badge&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>46</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-interviews-tab.tsx</file>
+  <line>16</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-interviews-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier CheckCircle</description>
+  <highlighted_element>CheckCircle</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>25</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-interviews-tab.tsx</file>
+  <line>16</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-interviews-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier XCircle</description>
+  <highlighted_element>XCircle</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>38</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-offers-tab.tsx</file>
+  <line>15</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-offers-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier AlertTriangle</description>
+  <highlighted_element>AlertTriangle</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>59</offset>
+  <length>13</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-onboarding-tab.tsx</file>
+  <line>6</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-onboarding-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier blockOnboardingTask</description>
+  <highlighted_element>blockOnboardingTask</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>107</offset>
+  <length>19</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-onboarding-tab.tsx</file>
+  <line>6</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-onboarding-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier markOnboardingTaskNotApplicable</description>
+  <highlighted_element>markOnboardingTaskNotApplicable</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>128</offset>
+  <length>31</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-onboarding-tab.tsx</file>
+  <line>15</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-onboarding-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier XCircle</description>
+  <highlighted_element>XCircle</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>41</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-onboarding-tab.tsx</file>
+  <line>15</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-onboarding-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier AlertTriangle</description>
+  <highlighted_element>AlertTriangle</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>50</offset>
+  <length>13</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-overview-tab.tsx</file>
+  <line>10</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/recruitment/tabs/candidate-overview-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier Briefcase</description>
+  <highlighted_element>Briefcase</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>69</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/search/hr-search-result-card.tsx</file>
+  <line>8</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/search/hr-search-result-card.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;Badge&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/components/ui/badge&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { Badge } from &quot;@/components/ui/badge&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>46</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/time/attendance/hr-attendance-page-client.tsx</file>
+  <line>6</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/time/attendance/hr-attendance-page-client.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier Clock</description>
+  <highlighted_element>Clock</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>9</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/time/attendance/hr-attendance-page-client.tsx</file>
+  <line>6</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/time/attendance/hr-attendance-page-client.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier AlertTriangle</description>
+  <highlighted_element>AlertTriangle</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>29</offset>
+  <length>13</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/lookups/components/categories-table.tsx</file>
+  <line>3</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/lookups/components/categories-table.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;useState&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;react&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { useState } from &quot;react&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>33</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/lookups/components/values-table.tsx</file>
+  <line>35</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/lookups/components/values-table.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;cn&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/lib/utils&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { cn } from &quot;@/lib/utils&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>33</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-dms-documents-tab.tsx</file>
+  <line>11</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-dms-documents-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier Plus</description>
+  <highlighted_element>Plus</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>2</offset>
+  <length>4</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-form-drawer.tsx</file>
+  <line>9</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-form-drawer.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;Badge&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/components/ui/badge&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { Badge } from &quot;@/components/ui/badge&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>46</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-form-drawer.tsx</file>
+  <line>20</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-form-drawer.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;CurrencySelect,&amp;#32;PaymentTermSelect&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/components/erp/finance-basics&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { CurrencySelect, PaymentTermSelect } from &quot;@/components/erp/finance-basics&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>84</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-licenses-tab.tsx</file>
+  <line>12</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-licenses-tab.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier AlertTriangle</description>
+  <highlighted_element>AlertTriangle</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>29</offset>
+  <length>13</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/parties/party-workspace-form.tsx</file>
+  <line>28</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/parties/party-workspace-form.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;cn&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/lib/utils&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { cn } from &quot;@/lib/utils&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>33</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/uom/actions.ts</file>
+  <line>25</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/uom/actions.ts" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier UnitOfMeasure</description>
+  <highlighted_element>UnitOfMeasure</highlighted_element>
+  <language>TypeScript</language>
+  <offset>2</offset>
+  <length>13</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/uom/actions.ts</file>
+  <line>27</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/uom/actions.ts" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier UomConversion</description>
+  <highlighted_element>UomConversion</highlighted_element>
+  <language>TypeScript</language>
+  <offset>2</offset>
+  <length>13</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/uom/components/conversions-table.tsx</file>
+  <line>47</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/uom/components/conversions-table.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;format&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;date-fns&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { format } from &quot;date-fns&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>34</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/uom/components/units-table.tsx</file>
+  <line>47</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/uom/components/units-table.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;format&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;date-fns&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { format } from &quot;date-fns&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>34</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/notifications/admin/admin-notifications-page-client.tsx</file>
+  <line>6</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/notifications/admin/admin-notifications-page-client.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;MyNotificationsTable&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/features/notifications/my-notifications-table&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { MyNotificationsTable } from &quot;@/features/notifications/my-notifications-table&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>87</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/report-center/hr-letter-generator.tsx</file>
+  <line>3</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/report-center/hr-letter-generator.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;useState&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;react&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { useState } from &quot;react&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>33</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/report-center/report-history-page.tsx</file>
+  <line>13</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/report-center/report-history-page.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier Mail</description>
+  <highlighted_element>Mail</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>2</offset>
+  <length>4</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/report-center/report-run-page.tsx</file>
+  <line>54</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/report-center/report-run-page.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier ReportDataResult</description>
+  <highlighted_element>ReportDataResult</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>35</offset>
+  <length>16</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/report-center/report-schedule-form.tsx</file>
+  <line>6</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/report-center/report-schedule-form.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;Button&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/components/ui/button&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { Button } from &quot;@/components/ui/button&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>48</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/settings/email/email-provider-config-list.tsx</file>
+  <line>13</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/settings/email/email-provider-config-list.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier Clock</description>
+  <highlighted_element>Clock</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>31</offset>
+  <length>5</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/settings/email/email-provider-config-list.tsx</file>
+  <line>13</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/settings/email/email-provider-config-list.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier AlertTriangle</description>
+  <highlighted_element>AlertTriangle</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>38</offset>
+  <length>13</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/settings/email/email-settings-page-client.tsx</file>
+  <line>4</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/settings/email/email-settings-page-client.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;toast&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;sonner&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { toast } from &quot;sonner&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>31</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/settings/email/email-settings-page-client.tsx</file>
+  <line>7</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/settings/email/email-settings-page-client.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier ShieldCheck</description>
+  <highlighted_element>ShieldCheck</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>32</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/users/users-table.tsx</file>
+  <line>9</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/users/users-table.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;Button&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/components/ui/button&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { Button } from &quot;@/components/ui/button&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>48</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/data-quality/entity-rules.ts</file>
+  <line>2</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/data-quality/entity-rules.ts" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier buildFindingKey</description>
+  <highlighted_element>buildFindingKey</highlighted_element>
+  <language>TypeScript</language>
+  <offset>34</offset>
+  <length>15</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/data-quality/entity-rules.ts</file>
+  <line>2</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/data-quality/entity-rules.ts" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier type FindingInput</description>
+  <highlighted_element>type FindingInput</highlighted_element>
+  <language>TypeScript</language>
+  <offset>51</offset>
+  <length>17</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/data-quality/scan-engine.ts</file>
+  <line>3</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/data-quality/scan-engine.ts" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;buildFindingKey&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;'./finding-builder'&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { buildFindingKey } from './finding-builder';</highlighted_element>
+  <language>TypeScript</language>
+  <offset>0</offset>
+  <length>52</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/dms/ai/azure-document-intelligence-adapter.ts</file>
+  <line>36</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/dms/ai/azure-document-intelligence-adapter.ts" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier DmsAiImageFile</description>
+  <highlighted_element>DmsAiImageFile</highlighted_element>
+  <language>TypeScript</language>
+  <offset>2</offset>
+  <length>14</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/email/microsoft-graph-config.ts</file>
+  <line>12</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/email/microsoft-graph-config.ts" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;logger&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/lib/logger&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { logger } from &quot;@/lib/logger&quot;;</highlighted_element>
+  <language>TypeScript</language>
+  <offset>0</offset>
+  <length>38</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/ai/common/audit-explainer.ts</file>
+  <line>20</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/ai/common/audit-explainer.ts" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier collectDmsEventTimeline</description>
+  <highlighted_element>collectDmsEventTimeline</highlighted_element>
+  <language>TypeScript</language>
+  <offset>2</offset>
+  <length>23</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/ai/common/audit-explainer.ts</file>
+  <line>30</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/ai/common/audit-explainer.ts" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier softDeleteAuditExplanation</description>
+  <highlighted_element>softDeleteAuditExplanation</highlighted_element>
+  <language>TypeScript</language>
+  <offset>2</offset>
+  <length>26</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/ai/common/audit-explainer.ts</file>
+  <line>34</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/ai/common/audit-explainer.ts" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier AuditExplainerSourceType</description>
+  <highlighted_element>AuditExplainerSourceType</highlighted_element>
+  <language>TypeScript</language>
+  <offset>2</offset>
+  <length>24</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/ai/common/field-suggestions.ts</file>
+  <line>25</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/ai/common/field-suggestions.ts" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier isCommonAiEntityType</description>
+  <highlighted_element>isCommonAiEntityType</highlighted_element>
+  <language>TypeScript</language>
+  <offset>2</offset>
+  <length>20</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/ai/common/search.ts</file>
+  <line>12</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/ai/common/search.ts" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;createAdminClient&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/lib/supabase/admin&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { createAdminClient } from &quot;@/lib/supabase/admin&quot;;</highlighted_element>
+  <language>TypeScript</language>
+  <offset>0</offset>
+  <length>57</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/dms/dms-email-bridge.ts</file>
+  <line>18</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/dms/dms-email-bridge.ts" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier processEmailQueueItem</description>
+  <highlighted_element>processEmailQueueItem</highlighted_element>
+  <language>TypeScript</language>
+  <offset>9</offset>
+  <length>21</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/dms/entity-documents.ts</file>
+  <line>13</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/dms/entity-documents.ts" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier getDmsEntityTypeLabel</description>
+  <highlighted_element>getDmsEntityTypeLabel</highlighted_element>
+  <language>TypeScript</language>
+  <offset>2</offset>
+  <length>21</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/email.ts</file>
+  <line>14</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/email.ts" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier parseEmailList</description>
+  <highlighted_element>parseEmailList</highlighted_element>
+  <language>TypeScript</language>
+  <offset>9</offset>
+  <length>14</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/ai/employee-ai-fill.ts</file>
+  <line>25</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/ai/employee-ai-fill.ts" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;maskDocumentNumber&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/lib/hr/ai/hr-ai-redaction&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { maskDocumentNumber } from &quot;@/lib/hr/ai/hr-ai-redaction&quot;;</highlighted_element>
+  <language>TypeScript</language>
+  <offset>0</offset>
+  <length>65</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/ai/hr-ai-duplicates.ts</file>
+  <line>18</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/ai/hr-ai-duplicates.ts" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;callCommonAiStructuredCompletion&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/lib/ai/common/provider-bridge&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { callCommonAiStructuredCompletion } from &quot;@/lib/ai/common/provider-bridge&quot;;</highlighted_element>
+  <language>TypeScript</language>
+  <offset>0</offset>
+  <length>83</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/ai/hr-ai-duplicates.ts</file>
+  <line>20</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/ai/hr-ai-duplicates.ts" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier HrAiDuplicateOutputSchema</description>
+  <highlighted_element>HrAiDuplicateOutputSchema</highlighted_element>
+  <language>TypeScript</language>
+  <offset>30</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/ai/hr-ai-duplicates.ts</file>
+  <line>22</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/ai/hr-ai-duplicates.ts" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;maskDocumentNumber&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/lib/hr/ai/hr-ai-redaction&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { maskDocumentNumber } from &quot;@/lib/hr/ai/hr-ai-redaction&quot;;</highlighted_element>
+  <language>TypeScript</language>
+  <offset>0</offset>
+  <length>65</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/operations.ts</file>
+  <line>10</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/operations.ts" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>Unused import specifier isCurrentAssignment</description>
+  <highlighted_element>isCurrentAssignment</highlighted_element>
+  <language>TypeScript</language>
+  <offset>24</offset>
+  <length>19</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/uiux_prototypes/002E/app-settings-prototype.tsx</file>
+  <line>7</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/uiux_prototypes/002E/app-settings-prototype.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;Textarea&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/components/ui/textarea&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { Textarea } from &quot;@/components/ui/textarea&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>52</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/uiux_prototypes/002E/numbering-settings-prototype.tsx</file>
+  <line>7</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/uiux_prototypes/002E/numbering-settings-prototype.tsx" />
+  <problem_class id="ES6UnusedImports" severity="WARNING" attribute_key="NOT_USED_ELEMENT_ATTRIBUTES">Unused import</problem_class>
+  <description>&lt;html&gt;Unused &lt;pre&gt;&lt;code&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;import&amp;#32;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;{&amp;#32;Badge&amp;#32;}&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#cf8e6d;&quot;&gt;from&amp;#32;&lt;/span&gt;&lt;span style=&quot;color:#6aab73;&quot;&gt;&quot;@/components/ui/badge&quot;&lt;/span&gt;&lt;span style=&quot;&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/html&gt;</description>
+  <highlighted_element>import { Badge } from &quot;@/components/ui/badge&quot;;</highlighted_element>
+  <language>TypeScript JSX</language>
+  <offset>0</offset>
+  <length>46</length>
+</problem>
+</problems>

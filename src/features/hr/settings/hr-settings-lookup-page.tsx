@@ -27,6 +27,8 @@ type Props = {
   onCreate: (input: { code: string; name_en: string; name_ar?: string | null; description?: string | null; is_active: boolean; sort_order: number }) => Promise<ActionResult<{ id: number }>>;
   onUpdate: (id: number, input: Partial<{ code: string; name_en: string; name_ar?: string | null; description?: string | null; is_active: boolean; sort_order: number }>) => Promise<ActionResult>;
   onToggle?: (id: number, is_active: boolean) => Promise<ActionResult>;
+  /** Called after successful create, update, or toggle — e.g. invalidate TanStack Query caches. */
+  onAfterMutate?: () => void;
 };
 
 type FormState = {
@@ -50,6 +52,7 @@ export function HrSettingsLookupPage({
   onCreate,
   onUpdate,
   onToggle,
+  onAfterMutate,
 }: Props) {
   const [rows, setRows] = useState<LookupRecord[]>(initialData);
   const [search, setSearch] = useState("");
@@ -111,6 +114,7 @@ export function HrSettingsLookupPage({
         toast.success(editing ? "Updated successfully" : "Created successfully");
         setDialogOpen(false);
         refresh();
+        onAfterMutate?.();
       } else {
         toast.error(res.error ?? "An error occurred");
       }
@@ -125,6 +129,7 @@ export function HrSettingsLookupPage({
     if (res.success) {
       toast.success(!row.is_active ? "Activated" : "Deactivated");
       refresh();
+      onAfterMutate?.();
     } else {
       toast.error(res.error ?? "Failed to toggle status");
     }

@@ -1,0 +1,74 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/erp_project/scripts/bootstrap-admin.mjs</file>
+  <line>102</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/erp_project/scripts/bootstrap-admin.mjs" />
+  <problem_class id="JSUnusedAssignment" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Unused assignment</problem_class>
+  <description>Variable initializer is redundant</description>
+  <highlighted_element>null</highlighted_element>
+  <language>ECMAScript 6</language>
+  <offset>18</offset>
+  <length>4</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/scripts/bootstrap-admin.mjs</file>
+  <line>102</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/scripts/bootstrap-admin.mjs" />
+  <problem_class id="JSUnusedAssignment" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Unused assignment</problem_class>
+  <description>Variable initializer is redundant</description>
+  <highlighted_element>null</highlighted_element>
+  <language>ECMAScript 6</language>
+  <offset>18</offset>
+  <length>4</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/ai/common/assistant/assistant-engine.ts</file>
+  <line>163</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/ai/common/assistant/assistant-engine.ts" />
+  <problem_class id="JSUnusedAssignment" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Unused assignment</problem_class>
+  <description>Variable initializer is redundant</description>
+  <highlighted_element>{}</highlighted_element>
+  <language>TypeScript</language>
+  <offset>95</offset>
+  <length>2</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/lib/export/pdf.ts</file>
+  <line>48</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/lib/export/pdf.ts" />
+  <problem_class id="JSUnusedAssignment" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Unused assignment</problem_class>
+  <description>Variable initializer is redundant</description>
+  <highlighted_element>startY</highlighted_element>
+  <language>TypeScript</language>
+  <offset>17</offset>
+  <length>6</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/dms/ai-analysis.ts</file>
+  <line>594</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/dms/ai-analysis.ts" />
+  <problem_class id="JSUnusedAssignment" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Unused assignment</problem_class>
+  <description>The value assigned to 'aiError' is never used</description>
+  <highlighted_element>aiError</highlighted_element>
+  <language>TypeScript</language>
+  <offset>6</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/server/actions/hr/operations.ts</file>
+  <line>1703</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/server/actions/hr/operations.ts" />
+  <problem_class id="JSUnusedAssignment" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Unused assignment</problem_class>
+  <description>Variable initializer is redundant</description>
+  <highlighted_element>&quot;not_ready&quot;</highlighted_element>
+  <language>TypeScript</language>
+  <offset>22</offset>
+  <length>11</length>
+</problem>
+</problems>

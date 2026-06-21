@@ -1,0 +1,62 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/eslint.config.js</file>
+  <line>4</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/eslint.config.js" />
+  <problem_class id="NpmUsedModulesInstalled" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing module dependency</problem_class>
+  <description>Module is not installed</description>
+  <highlighted_element>'eslint-plugin-react-refresh'</highlighted_element>
+  <language>JavaScript</language>
+  <offset>25</offset>
+  <length>29</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/prerender/blog.js</file>
+  <line>3</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/prerender/blog.js" />
+  <problem_class id="NpmUsedModulesInstalled" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing module dependency</problem_class>
+  <description>Module is not installed</description>
+  <highlighted_element>'react-router-dom'</highlighted_element>
+  <language>JavaScript</language>
+  <offset>30</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/prerender/blog.js</file>
+  <line>4</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/prerender/blog.js" />
+  <problem_class id="NpmUsedModulesInstalled" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing module dependency</problem_class>
+  <description>Module is not installed</description>
+  <highlighted_element>'react-router-dom/server'</highlighted_element>
+  <language>JavaScript</language>
+  <offset>29</offset>
+  <length>25</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Party_Master_Phases/ERP_BASE_002F_5A_1_Party_Master_Database_Foundation/execute_seed.js</file>
+  <line>2</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Party_Master_Phases/ERP_BASE_002F_5A_1_Party_Master_Database_Foundation/execute_seed.js" />
+  <problem_class id="NpmUsedModulesInstalled" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing module dependency</problem_class>
+  <description>Module is not listed in package.json dependencies</description>
+  <highlighted_element>'dotenv'</highlighted_element>
+  <language>ECMAScript 6</language>
+  <offset>8</offset>
+  <length>8</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Party_Master_Phases/ERP_BASE_002F_5A_1_Party_Master_Database_Foundation/generate_seed.js</file>
+  <line>3</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Party_Master_Phases/ERP_BASE_002F_5A_1_Party_Master_Database_Foundation/generate_seed.js" />
+  <problem_class id="NpmUsedModulesInstalled" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Missing module dependency</problem_class>
+  <description>Module is not listed in package.json dependencies</description>
+  <highlighted_element>'dotenv'</highlighted_element>
+  <language>ECMAScript 6</language>
+  <offset>8</offset>
+  <length>8</length>
+</problem>
+</problems>

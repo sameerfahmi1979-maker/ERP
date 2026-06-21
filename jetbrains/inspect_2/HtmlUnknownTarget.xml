@@ -1,0 +1,26 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/index.html</file>
+  <line>5</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/index.html" />
+  <problem_class id="HtmlUnknownTarget" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Unresolved file in a link</problem_class>
+  <description>Cannot resolve file '%VITE_APP_LOGO_URL%'</description>
+  <highlighted_element>%VITE_APP_LOGO_URL%</highlighted_element>
+  <language>HTML</language>
+  <offset>47</offset>
+  <length>19</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/index.html</file>
+  <line>18</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/index.html" />
+  <problem_class id="HtmlUnknownTarget" severity="WARNING" attribute_key="WARNING_ATTRIBUTES">Unresolved file in a link</problem_class>
+  <description>Cannot resolve file 'main.tsx'</description>
+  <highlighted_element>main.tsx</highlighted_element>
+  <language>HTML</language>
+  <offset>36</offset>
+  <length>8</length>
+</problem>
+</problems>

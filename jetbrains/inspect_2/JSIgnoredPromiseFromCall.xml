@@ -1,0 +1,746 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/main.tsx</file>
+  <line>34</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/src/main.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from initializeApp is ignored</description>
+  <highlighted_element>initializeApp</highlighted_element>
+  <language>JavaScript</language>
+  <offset>0</offset>
+  <length>13</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/implementation_Review/Party_Master_Phases/ERP_BASE_002F_5A_1_Party_Master_Database_Foundation/execute_seed.js</file>
+  <line>129</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/implementation_Review/Party_Master_Phases/ERP_BASE_002F_5A_1_Party_Master_Database_Foundation/execute_seed.js" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from seedRecords is ignored</description>
+  <highlighted_element>seedRecords</highlighted_element>
+  <language>JavaScript</language>
+  <offset>0</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/components/erp/email/erp-send-email-dialog.tsx</file>
+  <line>173</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/components/erp/email/erp-send-email-dialog.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from generateAttachment is ignored</description>
+  <highlighted_element>generateAttachment</highlighted_element>
+  <language>JavaScript</language>
+  <offset>4</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/ai/common/assistant/assistant-page-client.tsx</file>
+  <line>66</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/ai/common/assistant/assistant-page-client.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from loadSession is ignored</description>
+  <highlighted_element>loadSession</highlighted_element>
+  <language>JavaScript</language>
+  <offset>6</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/ai/common/data-quality/data-quality-page-client.tsx</file>
+  <line>61</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/ai/common/data-quality/data-quality-page-client.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from refetch is ignored</description>
+  <highlighted_element>refetch</highlighted_element>
+  <language>JavaScript</language>
+  <offset>20</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/ai/common/data-quality/data-quality-page-client.tsx</file>
+  <line>66</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/ai/common/data-quality/data-quality-page-client.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from refetch is ignored</description>
+  <highlighted_element>refetch</highlighted_element>
+  <language>JavaScript</language>
+  <offset>18</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/branches/branch-workspace-form.tsx</file>
+  <line>97</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/branches/branch-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from initGeography is ignored</description>
+  <highlighted_element>initGeography</highlighted_element>
+  <language>JavaScript</language>
+  <offset>4</offset>
+  <length>13</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/branches/branch-workspace-form.tsx</file>
+  <line>194</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/branches/branch-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveAndClose is ignored</description>
+  <highlighted_element>handleSaveAndClose</highlighted_element>
+  <language>JavaScript</language>
+  <offset>64</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/common-master-data/approval-roles/approval-role-workspace-form.tsx</file>
+  <line>97</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/common-master-data/approval-roles/approval-role-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveAndClose is ignored</description>
+  <highlighted_element>handleSaveAndClose</highlighted_element>
+  <language>JavaScript</language>
+  <offset>64</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/common-master-data/departments/department-workspace-form.tsx</file>
+  <line>102</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/common-master-data/departments/department-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveAndClose is ignored</description>
+  <highlighted_element>handleSaveAndClose</highlighted_element>
+  <language>JavaScript</language>
+  <offset>64</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/common-master-data/designations/designation-workspace-form.tsx</file>
+  <line>102</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/common-master-data/designations/designation-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveAndClose is ignored</description>
+  <highlighted_element>handleSaveAndClose</highlighted_element>
+  <language>JavaScript</language>
+  <offset>64</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/common-master-data/dms-required-document-rules/dms-required-document-rule-form.tsx</file>
+  <line>97</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/common-master-data/dms-required-document-rules/dms-required-document-rule-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveAndClose is ignored</description>
+  <highlighted_element>handleSaveAndClose</highlighted_element>
+  <language>JavaScript</language>
+  <offset>64</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/common-master-data/work-calendars/work-calendar-workspace-form.tsx</file>
+  <line>145</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/common-master-data/work-calendars/work-calendar-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveAndClose is ignored</description>
+  <highlighted_element>handleSaveAndClose</highlighted_element>
+  <language>JavaScript</language>
+  <offset>64</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/common-master-data/work-sites/work-site-workspace-form.tsx</file>
+  <line>152</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/common-master-data/work-sites/work-site-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveAndClose is ignored</description>
+  <highlighted_element>handleSaveAndClose</highlighted_element>
+  <language>JavaScript</language>
+  <offset>64</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/admin/dms-admin-file-storage-panel.tsx</file>
+  <line>47</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/admin/dms-admin-file-storage-panel.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from loadFiles is ignored</description>
+  <highlighted_element>loadFiles</highlighted_element>
+  <language>JavaScript</language>
+  <offset>21</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/admin/dms-admin-file-storage-panel.tsx</file>
+  <line>53</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/admin/dms-admin-file-storage-panel.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from loadFiles is ignored</description>
+  <highlighted_element>loadFiles</highlighted_element>
+  <language>JavaScript</language>
+  <offset>20</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/admin/dms-admin-file-storage-panel.tsx</file>
+  <line>114</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/admin/dms-admin-file-storage-panel.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from loadFiles is ignored</description>
+  <highlighted_element>loadFiles</highlighted_element>
+  <language>JavaScript</language>
+  <offset>53</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-ask-ai-section.tsx</file>
+  <line>210</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-ask-ai-section.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleAsk is ignored</description>
+  <highlighted_element>handleAsk</highlighted_element>
+  <language>JavaScript</language>
+  <offset>20</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-comments-section.tsx</file>
+  <line>124</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/documents/sections/dms-document-comments-section.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleAddComment is ignored</description>
+  <highlighted_element>handleAddComment</highlighted_element>
+  <language>JavaScript</language>
+  <offset>48</offset>
+  <length>16</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/dms/upload/dms-upload-inbox-page-client.tsx</file>
+  <line>113</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/dms/upload/dms-upload-inbox-page-client.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleCancelSession is ignored</description>
+  <highlighted_element>handleCancelSession</highlighted_element>
+  <language>JavaScript</language>
+  <offset>6</offset>
+  <length>19</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/ai/hr-ai-search-assist.tsx</file>
+  <line>85</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/ai/hr-ai-search-assist.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSearch is ignored</description>
+  <highlighted_element>handleSearch</highlighted_element>
+  <language>JavaScript</language>
+  <offset>53</offset>
+  <length>12</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/dashboard/hr-dashboard-page-client.tsx</file>
+  <line>153</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/dashboard/hr-dashboard-page-client.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from refetch is ignored</description>
+  <highlighted_element>refetch</highlighted_element>
+  <language>JavaScript</language>
+  <offset>17</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/dashboard/hr-dashboard-page-client.tsx</file>
+  <line>154</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/dashboard/hr-dashboard-page-client.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from refetch is ignored</description>
+  <highlighted_element>refetch</highlighted_element>
+  <language>JavaScript</language>
+  <offset>18</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/dashboard/hr-dashboard-page-client.tsx</file>
+  <line>155</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/dashboard/hr-dashboard-page-client.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from refetch is ignored</description>
+  <highlighted_element>refetch</highlighted_element>
+  <language>JavaScript</language>
+  <offset>20</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/dashboard/hr-dashboard-page-client.tsx</file>
+  <line>156</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/dashboard/hr-dashboard-page-client.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from refetch is ignored</description>
+  <highlighted_element>refetch</highlighted_element>
+  <language>JavaScript</language>
+  <offset>14</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/dashboard/hr-dashboard-page-client.tsx</file>
+  <line>157</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/dashboard/hr-dashboard-page-client.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from refetch is ignored</description>
+  <highlighted_element>refetch</highlighted_element>
+  <language>JavaScript</language>
+  <offset>17</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/dashboard/hr-dashboard-page-client.tsx</file>
+  <line>158</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/dashboard/hr-dashboard-page-client.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from refetch is ignored</description>
+  <highlighted_element>refetch</highlighted_element>
+  <language>JavaScript</language>
+  <offset>20</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/dashboard/hr-dashboard-page-client.tsx</file>
+  <line>159</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/dashboard/hr-dashboard-page-client.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from refetch is ignored</description>
+  <highlighted_element>refetch</highlighted_element>
+  <language>JavaScript</language>
+  <offset>17</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/dashboard/hr-dashboard-page-client.tsx</file>
+  <line>160</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/dashboard/hr-dashboard-page-client.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from refetch is ignored</description>
+  <highlighted_element>refetch</highlighted_element>
+  <language>JavaScript</language>
+  <offset>21</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/dashboard/hr-dashboard-page-client.tsx</file>
+  <line>161</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/dashboard/hr-dashboard-page-client.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from refetch is ignored</description>
+  <highlighted_element>refetch</highlighted_element>
+  <language>JavaScript</language>
+  <offset>19</offset>
+  <length>7</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/hr/employees/employee-workspace-form.tsx</file>
+  <line>308</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/hr/employees/employee-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveAndClose is ignored</description>
+  <highlighted_element>handleSaveAndClose</highlighted_element>
+  <language>JavaScript</language>
+  <offset>10</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/finance-basics/components/bank-workspace-form.tsx</file>
+  <line>132</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/finance-basics/components/bank-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveAndClose is ignored</description>
+  <highlighted_element>handleSaveAndClose</highlighted_element>
+  <language>JavaScript</language>
+  <offset>64</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/finance-basics/components/cost-center-workspace-form.tsx</file>
+  <line>133</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/finance-basics/components/cost-center-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveAndClose is ignored</description>
+  <highlighted_element>handleSaveAndClose</highlighted_element>
+  <language>JavaScript</language>
+  <offset>64</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/finance-basics/components/currency-workspace-form.tsx</file>
+  <line>125</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/finance-basics/components/currency-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveAndClose is ignored</description>
+  <highlighted_element>handleSaveAndClose</highlighted_element>
+  <language>JavaScript</language>
+  <offset>64</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/finance-basics/components/payment-term-workspace-form.tsx</file>
+  <line>114</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/finance-basics/components/payment-term-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveAndClose is ignored</description>
+  <highlighted_element>handleSaveAndClose</highlighted_element>
+  <language>JavaScript</language>
+  <offset>64</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/finance-basics/components/profit-center-workspace-form.tsx</file>
+  <line>133</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/finance-basics/components/profit-center-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveAndClose is ignored</description>
+  <highlighted_element>handleSaveAndClose</highlighted_element>
+  <language>JavaScript</language>
+  <offset>64</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/finance-basics/components/tax-type-workspace-form.tsx</file>
+  <line>129</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/finance-basics/components/tax-type-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveAndClose is ignored</description>
+  <highlighted_element>handleSaveAndClose</highlighted_element>
+  <language>JavaScript</language>
+  <offset>64</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/geography/components/area-workspace-form.tsx</file>
+  <line>120</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/geography/components/area-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveAndClose is ignored</description>
+  <highlighted_element>handleSaveAndClose</highlighted_element>
+  <language>JavaScript</language>
+  <offset>64</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/geography/components/city-workspace-form.tsx</file>
+  <line>128</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/geography/components/city-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveAndClose is ignored</description>
+  <highlighted_element>handleSaveAndClose</highlighted_element>
+  <language>JavaScript</language>
+  <offset>64</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/geography/components/country-workspace-form.tsx</file>
+  <line>119</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/geography/components/country-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveAndClose is ignored</description>
+  <highlighted_element>handleSaveAndClose</highlighted_element>
+  <language>JavaScript</language>
+  <offset>64</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/geography/components/emirate-workspace-form.tsx</file>
+  <line>121</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/geography/components/emirate-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveAndClose is ignored</description>
+  <highlighted_element>handleSaveAndClose</highlighted_element>
+  <language>JavaScript</language>
+  <offset>64</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/geography/components/port-workspace-form.tsx</file>
+  <line>140</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/geography/components/port-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveAndClose is ignored</description>
+  <highlighted_element>handleSaveAndClose</highlighted_element>
+  <language>JavaScript</language>
+  <offset>64</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/lookups/components/lookup-category-workspace-form.tsx</file>
+  <line>133</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/lookups/components/lookup-category-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveAndClose is ignored</description>
+  <highlighted_element>handleSaveAndClose</highlighted_element>
+  <language>JavaScript</language>
+  <offset>64</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/lookups/components/lookup-value-workspace-form.tsx</file>
+  <line>186</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/lookups/components/lookup-value-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveAndClose is ignored</description>
+  <highlighted_element>handleSaveAndClose</highlighted_element>
+  <language>JavaScript</language>
+  <offset>64</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/lookups/hooks/use-lookup-values.ts</file>
+  <line>74</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/lookups/hooks/use-lookup-values.ts" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from fetchValues is ignored</description>
+  <highlighted_element>fetchValues</highlighted_element>
+  <language>JavaScript</language>
+  <offset>4</offset>
+  <length>11</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/uom/components/conversion-workspace-form.tsx</file>
+  <line>134</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/uom/components/conversion-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveAndClose is ignored</description>
+  <highlighted_element>handleSaveAndClose</highlighted_element>
+  <language>JavaScript</language>
+  <offset>64</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/uom/components/unit-workspace-form.tsx</file>
+  <line>129</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/uom/components/unit-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveAndClose is ignored</description>
+  <highlighted_element>handleSaveAndClose</highlighted_element>
+  <language>JavaScript</language>
+  <offset>64</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/master-data/uom/components/uom-category-workspace-form.tsx</file>
+  <line>109</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/master-data/uom/components/uom-category-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveAndClose is ignored</description>
+  <highlighted_element>handleSaveAndClose</highlighted_element>
+  <language>JavaScript</language>
+  <offset>64</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/numbering/components/numbering-rule-workspace-form.tsx</file>
+  <line>149</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/numbering/components/numbering-rule-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveAndClose is ignored</description>
+  <highlighted_element>handleSaveAndClose</highlighted_element>
+  <language>JavaScript</language>
+  <offset>64</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/organizations/organization-workspace-form.tsx</file>
+  <line>102</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/organizations/organization-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from loadCurrency is ignored</description>
+  <highlighted_element>loadCurrency</highlighted_element>
+  <language>JavaScript</language>
+  <offset>4</offset>
+  <length>12</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/organizations/organization-workspace-form.tsx</file>
+  <line>273</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/organizations/organization-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveAndClose is ignored</description>
+  <highlighted_element>handleSaveAndClose</highlighted_element>
+  <language>JavaScript</language>
+  <offset>64</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/report-center/report-history-page.tsx</file>
+  <line>87</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/report-center/report-history-page.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from loadRuns is ignored</description>
+  <highlighted_element>loadRuns</highlighted_element>
+  <language>JavaScript</language>
+  <offset>20</offset>
+  <length>8</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/report-center/report-run-page.tsx</file>
+  <line>100</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/report-center/report-run-page.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from loadSavedFilters is ignored</description>
+  <highlighted_element>loadSavedFilters</highlighted_element>
+  <language>JavaScript</language>
+  <offset>4</offset>
+  <length>16</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/report-center/report-run-page.tsx</file>
+  <line>310</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/report-center/report-run-page.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleExport is ignored</description>
+  <highlighted_element>handleExport</highlighted_element>
+  <language>JavaScript</language>
+  <offset>6</offset>
+  <length>12</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/report-center/report-run-page.tsx</file>
+  <line>312</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/report-center/report-run-page.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from runReport is ignored</description>
+  <highlighted_element>runReport</highlighted_element>
+  <language>JavaScript</language>
+  <offset>6</offset>
+  <length>9</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/report-center/report-run-page.tsx</file>
+  <line>418</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/report-center/report-run-page.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSetDefaultFilter is ignored</description>
+  <highlighted_element>handleSetDefaultFilter</highlighted_element>
+  <language>JavaScript</language>
+  <offset>65</offset>
+  <length>22</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/report-center/report-run-page.tsx</file>
+  <line>425</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/report-center/report-run-page.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleDeleteSavedFilter is ignored</description>
+  <highlighted_element>handleDeleteSavedFilter</highlighted_element>
+  <language>JavaScript</language>
+  <offset>65</offset>
+  <length>23</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/report-center/report-run-page.tsx</file>
+  <line>459</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/report-center/report-run-page.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveFilter is ignored</description>
+  <highlighted_element>handleSaveFilter</highlighted_element>
+  <language>JavaScript</language>
+  <offset>55</offset>
+  <length>16</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/report-center/report-schedules-page.tsx</file>
+  <line>55</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/report-center/report-schedules-page.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from load is ignored</description>
+  <highlighted_element>load</highlighted_element>
+  <language>JavaScript</language>
+  <offset>20</offset>
+  <length>4</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/roles/role-workspace-form.tsx</file>
+  <line>105</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/roles/role-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveAndClose is ignored</description>
+  <highlighted_element>handleSaveAndClose</highlighted_element>
+  <language>JavaScript</language>
+  <offset>64</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/users/user-workspace-form.tsx</file>
+  <line>176</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/users/user-workspace-form.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleSaveAndClose is ignored</description>
+  <highlighted_element>handleSaveAndClose</highlighted_element>
+  <language>JavaScript</language>
+  <offset>66</offset>
+  <length>18</length>
+</problem>
+<problem>
+  <file>file://$PROJECT_DIR$/src/features/users/users-table.tsx</file>
+  <line>281</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/src/features/users/users-table.tsx" />
+  <problem_class id="JSIgnoredPromiseFromCall" severity="WEAK WARNING" attribute_key="INFO_ATTRIBUTES">Result of method call returning a promise is ignored</problem_class>
+  <description>Promise returned from handleDeleteConfirm is ignored</description>
+  <highlighted_element>handleDeleteConfirm</highlighted_element>
+  <language>JavaScript</language>
+  <offset>16</offset>
+  <length>19</length>
+</problem>
+</problems>

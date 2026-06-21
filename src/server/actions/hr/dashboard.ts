@@ -290,8 +290,8 @@ export async function getHrDashboardTimeOverview(
   const [pendingAtt, missingPunch, approvedLeave, pendingLeave, pendingOt] = await Promise.all([
     canAttendance ? admin.from("employee_attendance_daily_summary").select("id", { count: "exact", head: true }).in("employee_id", empIds).eq("approval_status", "pending") : Promise.resolve(zero),
     canAttendance ? admin.from("employee_attendance_daily_summary").select("id", { count: "exact", head: true }).in("employee_id", empIds).eq("attendance_date", today).eq("is_missing_punch", true) : Promise.resolve(zero),
-    canLeave ? admin.from("employee_leave_requests").select("id", { count: "exact", head: true }).in("employee_id", empIds).eq("leave_status", "approved").lte("start_date", today).gte("end_date", today).is("deleted_at", null) : Promise.resolve(zero),
-    canLeave ? admin.from("employee_leave_requests").select("id", { count: "exact", head: true }).in("employee_id", empIds).eq("leave_status", "pending").is("deleted_at", null) : Promise.resolve(zero),
+    canLeave ? admin.from("employee_leave_requests").select("id", { count: "exact", head: true }).in("employee_id", empIds).eq("approval_status", "approved").lte("start_date", today).gte("end_date", today).is("deleted_at", null) : Promise.resolve(zero),
+    canLeave ? admin.from("employee_leave_requests").select("id", { count: "exact", head: true }).in("employee_id", empIds).eq("approval_status", "pending").is("deleted_at", null) : Promise.resolve(zero),
     canAttendance ? admin.from("employee_overtime_records").select("id", { count: "exact", head: true }).in("employee_id", empIds).eq("approval_status", "pending").is("deleted_at", null) : Promise.resolve(zero),
   ]);
 

@@ -13,14 +13,16 @@
  *   - getEmployeeTimeSummary
  *
  * Security model:
- *   - All reads use createClient() (RLS enforced: hr.attendance.view / hr.leave.view)
+ *   - Most reads use createClient() (RLS enforced: hr.attendance.view / hr.leave.view)
+ *   - Leave request/balance lists use createAdminClient() after app permission + employee access checks
+ *     (avoids RLS read/write asymmetry where manage can create but RLS blocks list)
  *   - All writes use createAdminClient() + explicit hasPermission + employee-access check
  *   - No payroll/WPS/AI implementation
  */
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
@@ -67,7 +69,7 @@ export type AttendanceDailySummaryRow = {
   created_by: number | null;
   updated_by: number | null;
   work_site?: { site_name: string } | null;
-  approver?: { full_name_en: string } | null;
+  approver?: { display_name: string } | null;
 };
 
 export type AttendanceCorrectionRow = {
@@ -79,7 +81,7 @@ export type AttendanceCorrectionRow = {
   new_values_json: Record<string, unknown> | null;
   corrected_by: number;
   created_at: string;
-  corrector?: { full_name_en: string } | null;
+  corrector?: { display_name: string } | null;
 };
 
 export type ShiftAssignmentRow = {
@@ -122,8 +124,9 @@ export type LeaveRequestRow = {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
-  leave_type?: { leave_type_name: string; leave_type_code: string } | null;
-  approver?: { full_name_en: string } | null;
+  leave_type?: { name_en: string; code: string } | null;
+  approver?: { display_name: string } | null;
+  employee?: { full_name_en: string; employee_code: string } | null;
 };
 
 export type LeaveBalanceRow = {
@@ -137,7 +140,7 @@ export type LeaveBalanceRow = {
   carry_forward: number;
   updated_at: string;
   created_at: string;
-  leave_type?: { leave_type_name: string; leave_type_code: string } | null;
+  leave_type?: { name_en: string; code: string } | null;
 };
 
 export type OvertimeRecordRow = {
@@ -153,7 +156,7 @@ export type OvertimeRecordRow = {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
-  approver?: { full_name_en: string } | null;
+  approver?: { display_name: string } | null;
 };
 
 export type EmployeeTimeSummary = {
@@ -261,7 +264,30 @@ const overtimeDecisionSchema = z.object({
 
 // ── Internal Helpers ───────────────────────────────────────────────────────────
 
-import { getEmployeeCtxAdmin as getEmployeeCtx } from "./_shared/employee-context";
+import { getEmployeeCtx as getEmployeeCtxRls, getEmployeeCtxAdmin as getEmployeeCtx } from "./_shared/employee-context";
+
+const LEAVE_REQUEST_LIST_SELECT =
+  "*, leave_type:hr_leave_types!employee_leave_requests_leave_type_id_fkey(name_en,code), approver:user_profiles!employee_leave_requests_approved_by_fkey(display_name), employee:employees!employee_leave_requests_employee_id_fkey(full_name_en,employee_code)";
+
+function canViewLeave(ctx: Awaited<ReturnType<typeof getAuthContext>>): boolean {
+  return (
+    hasPermission(ctx, "hr.leave.view") ||
+    hasPermission(ctx, "hr.leave.manage") ||
+    hasPermission(ctx, "hr.admin") ||
+    isGlobalAdmin(ctx)
+  );
+}
+
+/** Employee IDs visible to the current user via employees RLS; null = unrestricted (global admin). */
+async function getAccessibleEmployeeIdsForLeave(
+  ctx: Awaited<ReturnType<typeof getAuthContext>>
+): Promise<number[] | null> {
+  if (isGlobalAdmin(ctx) || hasPermission(ctx, "hr.admin")) return null;
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("employees").select("id").is("deleted_at", null);
+  if (error) return [];
+  return (data ?? []).map((row) => row.id as number);
+}
 
 function empRevalidate(employeeId: number) {
   revalidatePath(`/admin/hr/employees/record/${employeeId}`);
@@ -347,7 +373,7 @@ export async function listEmployeeAttendanceDailySummary(
   let q = supabase
     .from("employee_attendance_daily_summary")
     .select(
-      "*, work_site:work_sites!employee_attendance_daily_summary_work_site_id_fkey(site_name), approver:user_profiles!employee_attendance_daily_summary_approved_by_fkey(full_name_en)",
+      "*, work_site:work_sites!employee_attendance_daily_summary_work_site_id_fkey(site_name), approver:user_profiles!employee_attendance_daily_summary_approved_by_fkey(display_name)",
       { count: "exact" }
     )
     .eq("employee_id", employeeId)
@@ -380,7 +406,7 @@ export async function listDailyAttendance(params?: {
   let q = supabase
     .from("employee_attendance_daily_summary")
     .select(
-      "*, work_site:work_sites!employee_attendance_daily_summary_work_site_id_fkey(site_name), approver:user_profiles!employee_attendance_daily_summary_approved_by_fkey(full_name_en)",
+      "*, work_site:work_sites!employee_attendance_daily_summary_work_site_id_fkey(site_name), approver:user_profiles!employee_attendance_daily_summary_approved_by_fkey(display_name)",
       { count: "exact" }
     )
     .order("attendance_date", { ascending: false })
@@ -540,7 +566,7 @@ export async function listAttendanceCorrections(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("employee_attendance_corrections")
-    .select("*, corrector:user_profiles!employee_attendance_corrections_corrected_by_fkey(full_name_en)")
+    .select("*, corrector:user_profiles!employee_attendance_corrections_corrected_by_fkey(display_name)")
     .eq("summary_id", summaryId)
     .order("created_at", { ascending: false });
 
@@ -808,17 +834,20 @@ export async function listEmployeeLeaveRequests(
   employeeId: number,
   params?: { page?: number; page_size?: number; approval_status?: string; date_from?: string; date_to?: string }
 ): Promise<ActionResult<{ data: LeaveRequestRow[]; count: number }>> {
-  const supabase = await createClient();
+  const ctx = await getAuthContext();
+  if (!canViewLeave(ctx)) return { success: false, error: "Permission denied: hr.leave.view required" };
+
+  const emp = await getEmployeeCtxRls(employeeId);
+  if (!emp) return { success: false, error: "Employee not found or access denied" };
+
+  const admin = createAdminClient();
   const { page = 1, page_size = 50, approval_status, date_from, date_to } = params ?? {};
   const from = (page - 1) * page_size;
   const to = from + page_size - 1;
 
-  let q = supabase
+  let q = admin
     .from("employee_leave_requests")
-    .select(
-      "*, leave_type:hr_leave_types!employee_leave_requests_leave_type_id_fkey(leave_type_name,leave_type_code), approver:user_profiles!employee_leave_requests_approved_by_fkey(full_name_en)",
-      { count: "exact" }
-    )
+    .select(LEAVE_REQUEST_LIST_SELECT, { count: "exact" })
     .eq("employee_id", employeeId)
     .is("deleted_at", null)
     .order("start_date", { ascending: false })
@@ -841,25 +870,38 @@ export async function listLeaveRequests(params?: {
   date_to?: string;
   employee_id?: number;
 }): Promise<ActionResult<{ data: LeaveRequestRow[]; count: number }>> {
-  const supabase = await createClient();
+  const ctx = await getAuthContext();
+  if (!canViewLeave(ctx)) return { success: false, error: "Permission denied: hr.leave.view required" };
+
+  const admin = createAdminClient();
   const { page = 1, page_size = 50, approval_status, date_from, date_to, employee_id } = params ?? {};
   const from = (page - 1) * page_size;
   const to = from + page_size - 1;
 
-  let q = supabase
+  let q = admin
     .from("employee_leave_requests")
-    .select(
-      "*, leave_type:hr_leave_types!employee_leave_requests_leave_type_id_fkey(leave_type_name,leave_type_code), approver:user_profiles!employee_leave_requests_approved_by_fkey(full_name_en)",
-      { count: "exact" }
-    )
+    .select(LEAVE_REQUEST_LIST_SELECT, { count: "exact" })
     .is("deleted_at", null)
     .order("start_date", { ascending: false })
     .range(from, to);
 
+  if (employee_id) {
+    const emp = await getEmployeeCtxRls(employee_id);
+    if (!emp) return { success: false, error: "Employee not found or access denied" };
+    q = q.eq("employee_id", employee_id);
+  } else {
+    const accessibleIds = await getAccessibleEmployeeIdsForLeave(ctx);
+    if (accessibleIds !== null) {
+      if (accessibleIds.length === 0) {
+        return { success: true, data: { data: [], count: 0 } };
+      }
+      q = q.in("employee_id", accessibleIds);
+    }
+  }
+
   if (approval_status) q = q.eq("approval_status", approval_status);
   if (date_from) q = q.gte("start_date", date_from);
   if (date_to) q = q.lte("end_date", date_to);
-  if (employee_id) q = q.eq("employee_id", employee_id);
 
   const { data, error, count } = await q;
   if (error) return { success: false, error: error.message };
@@ -1116,14 +1158,48 @@ export async function archiveLeaveRequest(id: number): Promise<ActionResult> {
 
 // ── Leave Balances ─────────────────────────────────────────────────────────────
 
+export type ActiveLeaveTypeOption = { id: number; name_en: string; code: string };
+
+/** Active leave types for employee leave request / balance forms (RLS: hr.leave.view). */
+export async function listActiveLeaveTypesForForm(): Promise<
+  ActionResult<{ data: ActiveLeaveTypeOption[] }>
+> {
+  const ctx = await getAuthContext();
+  if (
+    !hasPermission(ctx, "hr.leave.view") &&
+    !hasPermission(ctx, "hr.leave.manage") &&
+    !hasPermission(ctx, "hr.admin")
+  ) {
+    return { success: false, error: "Permission denied" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("hr_leave_types")
+    .select("id, name_en, code")
+    .eq("is_active", true)
+    .is("deleted_at", null)
+    .order("sort_order", { ascending: true })
+    .order("name_en", { ascending: true });
+
+  if (error) return { success: false, error: error.message };
+  return { success: true, data: { data: (data ?? []) as ActiveLeaveTypeOption[] } };
+}
+
 export async function listEmployeeLeaveBalances(
   employeeId: number,
   year?: number
 ): Promise<ActionResult<{ data: LeaveBalanceRow[] }>> {
-  const supabase = await createClient();
-  let q = supabase
+  const ctx = await getAuthContext();
+  if (!canViewLeave(ctx)) return { success: false, error: "Permission denied: hr.leave.view required" };
+
+  const emp = await getEmployeeCtxRls(employeeId);
+  if (!emp) return { success: false, error: "Employee not found or access denied" };
+
+  const admin = createAdminClient();
+  let q = admin
     .from("employee_leave_balances")
-    .select("*, leave_type:hr_leave_types!employee_leave_balances_leave_type_id_fkey(leave_type_name,leave_type_code)")
+    .select("*, leave_type:hr_leave_types!employee_leave_balances_leave_type_id_fkey(name_en,code)")
     .eq("employee_id", employeeId)
     .order("leave_year", { ascending: false })
     .order("leave_type_id");
@@ -1235,7 +1311,7 @@ export async function listEmployeeOvertimeRecords(
   let q = supabase
     .from("employee_overtime_records")
     .select(
-      "*, approver:user_profiles!employee_overtime_records_approved_by_fkey(full_name_en)",
+      "*, approver:user_profiles!employee_overtime_records_approved_by_fkey(display_name)",
       { count: "exact" }
     )
     .eq("employee_id", employeeId)
@@ -1483,7 +1559,7 @@ export async function getEmployeeTimeSummary(
 
     supabase
       .from("employee_leave_balances")
-      .select("*, leave_type:hr_leave_types!employee_leave_balances_leave_type_id_fkey(leave_type_name,leave_type_code)")
+      .select("*, leave_type:hr_leave_types!employee_leave_balances_leave_type_id_fkey(name_en,code)")
       .eq("employee_id", employeeId)
       .eq("leave_year", currentYear),
 

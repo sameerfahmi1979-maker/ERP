@@ -1,7 +1,7 @@
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { redirect } from "next/navigation";
 import { listHrLeaveTypes, createHrLeaveType, updateHrLeaveType, toggleHrSettingsRowActive } from "@/server/actions/hr/settings";
-import { HrSettingsLookupPage } from "@/features/hr/settings/hr-settings-lookup-page";
+import { HrLeaveTypesSettingsPageClient } from "@/features/hr/settings/hr-leave-types-settings-page-client";
 
 export default async function HrLeaveTypesPage() {
   const ctx = await getAuthContext();
@@ -28,10 +28,7 @@ export default async function HrLeaveTypesPage() {
   }
 
   return (
-    <HrSettingsLookupPage
-      title="Leave Types"
-      description="Types of employee leave: annual, sick, emergency, maternity, paternity, etc."
-      breadcrumbs={[{ label: "Dashboard", href: "/dashboard" }, { label: "HR Settings", href: "/admin/hr/settings" }, { label: "Leave Types" }]}
+    <HrLeaveTypesSettingsPageClient
       initialData={data}
       canManage={canManage}
       onList={listHrLeaveTypes}

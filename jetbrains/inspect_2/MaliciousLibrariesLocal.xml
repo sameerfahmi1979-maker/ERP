@@ -1,0 +1,14 @@
+<problems>
+<problem>
+  <file>file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json</file>
+  <line>44</line>
+  <module>agt-erp</module>
+  <entry_point TYPE="file" FQNAME="file://$PROJECT_DIR$/UIUX_Design/v0_extracted/app/frontend/package.json" />
+  <problem_class id="MaliciousLibrariesLocal" severity="ERROR" attribute_key="WRONG_REFERENCES_ATTRIBUTES">Malicious dependency</problem_class>
+  <description>&lt;html&gt;&lt;body&gt; Dependency npm:axios:0.0.0-ANY is malicious &lt;ul&gt;&lt;li&gt;&lt;a href=&quot;https://www.mend.io/vulnerability-database/MSC-2026-3522?utm_source=Jetbrains&quot;&gt;MSC-2026-3522&lt;/a&gt; 9.6 Embedded Malicious Code &lt;/li&gt;&lt;li&gt;&lt;a href=&quot;https://osv.dev/vulnerability/MAL-2026-2307&quot;&gt;MAL-2026-2307&lt;/a&gt; 10.0 Malicious code in axios (npm) &lt;/li&gt;&lt;/ul&gt; Results powered by &lt;a href=&quot;https://www.mend.io/jetbrains-lp/?utm_source=JetBrains&quot;&gt;Mend.io&lt;/a&gt;&lt;/body&gt; &lt;/html&gt;</description>
+  <highlighted_element>&quot;1.6.0&quot;</highlighted_element>
+  <language>JSON</language>
+  <offset>13</offset>
+  <length>7</length>
+</problem>
+</problems>

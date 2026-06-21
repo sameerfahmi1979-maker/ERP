@@ -26,7 +26,7 @@ export const leaveRequestsFetcher: ReportFetcher = {
       .select(
         `id, employee_id, start_date, end_date, total_days, reason, approval_status,
          approved_at, request_date,
-         leave_type:hr_leave_types(leave_type_name),
+         leave_type:hr_leave_types(name_en),
          approver:profiles!approved_by(display_name),
          employee:employees(
            employee_code, full_name_en, owner_company_id,
@@ -50,7 +50,7 @@ export const leaveRequestsFetcher: ReportFetcher = {
         employee_code: emp?.employee_code ?? "",
         employee_name: emp?.full_name_en ?? "",
         company: emp?.owner_company?.legal_name_en ?? "",
-        leave_type: (r.leave_type as unknown as { leave_type_name: string } | null)?.leave_type_name ?? "",
+        leave_type: (r.leave_type as unknown as { name_en: string } | null)?.name_en ?? "",
         request_date: r.request_date,
         start_date: r.start_date,
         end_date: r.end_date,

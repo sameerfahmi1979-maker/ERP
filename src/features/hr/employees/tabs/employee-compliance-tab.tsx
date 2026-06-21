@@ -43,7 +43,6 @@ import {
 } from "@/lib/hr/compliance/expiry";
 import {
   listEmployeeIdentityDocuments,
-  createEmployeeIdentityDocument,
   updateEmployeeIdentityDocument,
   archiveEmployeeIdentityDocument,
   verifyEmployeeIdentityDocument,
@@ -90,7 +89,14 @@ import {
   type HrTrainingTypeRow,
   type HrMedicalRecordTypeRow,
 } from "@/server/actions/hr/settings";
-import { cn } from "@/lib/utils";
+import { invalidateDmsEntityDocuments } from "@/lib/query/invalidation";
+import { IdentityDocumentAddDialog } from "@/features/hr/employees/compliance/identity-document-add-dialog";
+import { IdentityDocumentFormFields } from "@/features/hr/employees/compliance/identity-document-form-fields";
+import {
+  createEmptyIdentityDocumentForm,
+  identityDocumentFormToPayload,
+  type IdentityDocumentFormState,
+} from "@/lib/hr/compliance/identity-document-form";
 
 // ── Prop Types ────────────────────────────────────────────────────────────────
 
@@ -192,39 +198,22 @@ const VERIFICATION_OPTIONS = [
 
 function IdentityDocumentsSection({ employeeId, canManageDoc, onChildOpen }: { employeeId: number; canManageDoc: boolean; onChildOpen?: (open: boolean) => void }) {
   const qc = useQueryClient();
-  const [dialogOpen, setDialogOpenRaw] = useState(false);
+  const [addDialogOpen, setAddDialogOpenRaw] = useState(false);
+  const [editDialogOpen, setEditDialogOpenRaw] = useState(false);
   const [editing, setEditing] = useState<EmployeeIdentityDocumentRow | null>(null);
   const [isSubmitting, startTransition] = useTransition();
 
-  const setDialogOpen = useCallback((open: boolean) => {
-    setDialogOpenRaw(open);
+  const setAddDialogOpen = useCallback((open: boolean) => {
+    setAddDialogOpenRaw(open);
     onChildOpen?.(open);
   }, [onChildOpen]);
 
-  const initialForm = () => ({
-    document_type_id: null as number | null,
-    document_number: "",
-    issue_date: "",
-    expiry_date: "",
-    issuing_authority: "",
-    issue_country_id: null as number | null,
-    issuing_emirate_id: null as number | null,
-    status: "active" as string,
-    verification_status: "unverified" as string,
-    renewal_status: "not_required" as string,
-    sponsor_company_id: null as number | null,
-    place_of_issue: "",
-    notes: "",
-    emirates_id_application_no: "",
-    visa_file_number: "",
-    uid_number: "",
-    labour_card_number: "",
-    work_permit_number: "",
-    mohre_person_code: "",
-    profession_on_document: "",
-  });
+  const setEditDialogOpen = useCallback((open: boolean) => {
+    setEditDialogOpenRaw(open);
+    onChildOpen?.(open);
+  }, [onChildOpen]);
 
-  const [form, setForm] = useState(initialForm);
+  const [form, setForm] = useState<IdentityDocumentFormState>(() => createEmptyIdentityDocumentForm());
 
   const { data: docs, isLoading } = useQuery({
     queryKey: queryKeys.hr.compliance.identityDocuments(employeeId),
@@ -243,26 +232,25 @@ function IdentityDocumentsSection({ employeeId, canManageDoc, onChildOpen }: { e
   });
 
   const openAdd = () => {
-    setEditing(null);
-    setForm(initialForm());
-    setDialogOpen(true);
+    setAddDialogOpen(true);
   };
 
   const openEdit = (doc: EmployeeIdentityDocumentRow) => {
     setEditing(doc);
     setForm({
+      dms_document_id: doc.dms_document_id,
       document_type_id: doc.document_type_id,
       document_number: doc.document_number,
       issue_date: doc.issue_date ?? "",
       expiry_date: doc.expiry_date ?? "",
-      issuing_authority: doc.issuing_authority ?? "",
+      issuing_authority_party_id: doc.issuing_authority_party_id ?? null,
       issue_country_id: doc.issue_country_id,
       issuing_emirate_id: doc.issuing_emirate_id,
+      issue_city_id: doc.issue_city_id ?? null,
       status: doc.status,
       verification_status: doc.verification_status,
       renewal_status: doc.renewal_status,
       sponsor_company_id: doc.sponsor_company_id,
-      place_of_issue: doc.place_of_issue ?? "",
       notes: doc.notes ?? "",
       emirates_id_application_no: doc.emirates_id_application_no ?? "",
       visa_file_number: doc.visa_file_number ?? "",
@@ -272,39 +260,31 @@ function IdentityDocumentsSection({ employeeId, canManageDoc, onChildOpen }: { e
       mohre_person_code: doc.mohre_person_code ?? "",
       profession_on_document: doc.profession_on_document ?? "",
     });
-    setDialogOpen(true);
+    setEditDialogOpen(true);
   };
 
-  const handleSubmit = () => {
+  const handleEditSubmit = () => {
+    if (!editing) return;
     startTransition(async () => {
-      const payload = {
-        ...form,
-        document_type_id: form.document_type_id!,
-        issue_date: form.issue_date || null,
-        expiry_date: form.expiry_date || null,
-        issuing_authority: form.issuing_authority || null,
-        place_of_issue: form.place_of_issue || null,
-        notes: form.notes || null,
-        emirates_id_application_no: form.emirates_id_application_no || null,
-        visa_file_number: form.visa_file_number || null,
-        uid_number: form.uid_number || null,
-        labour_card_number: form.labour_card_number || null,
-        work_permit_number: form.work_permit_number || null,
-        mohre_person_code: form.mohre_person_code || null,
-        profession_on_document: form.profession_on_document || null,
-      };
-      const result = editing
-        ? await updateEmployeeIdentityDocument(editing.id, payload)
-        : await createEmployeeIdentityDocument(employeeId, payload);
+      const payload = identityDocumentFormToPayload(form);
+      const result = await updateEmployeeIdentityDocument(editing.id, payload);
       if (result.success) {
-        toast.success(editing ? "Document updated" : "Document added");
-        qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.identityDocuments(employeeId) });
-        qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.summary(employeeId) });
-        setDialogOpen(false);
+        toast.success("Document updated");
+        void qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.identityDocuments(employeeId) });
+        void qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.summary(employeeId) });
+        setEditDialogOpen(false);
       } else {
         toast.error(result.error ?? "Failed to save document");
       }
     });
+  };
+
+  const handleAddSaved = (opts?: { dmsLinkCreated?: boolean; hasDmsDocument?: boolean }) => {
+    void qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.identityDocuments(employeeId) });
+    void qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.summary(employeeId) });
+    if (opts?.hasDmsDocument) {
+      invalidateDmsEntityDocuments(qc, "employee", employeeId);
+    }
   };
 
   const handleArchive = async (id: number) => {
@@ -345,7 +325,17 @@ function IdentityDocumentsSection({ employeeId, canManageDoc, onChildOpen }: { e
                 <div className="text-xs text-muted-foreground mt-0.5">{doc.document_number}</div>
                 <div className="flex items-center gap-3 mt-1 flex-wrap">
                   <ExpiryBadge expiryDate={doc.expiry_date} />
+                  {(doc.issuing_authority_party?.display_name ?? doc.issuing_authority) && (
+                    <span className="text-xs text-muted-foreground">
+                      {doc.issuing_authority_party?.display_name ?? doc.issuing_authority}
+                    </span>
+                  )}
                   {doc.issue_country?.name_en && <span className="text-xs text-muted-foreground">{doc.issue_country.name_en}</span>}
+                  {(doc.issue_city?.name_en ?? doc.place_of_issue) && (
+                    <span className="text-xs text-muted-foreground">
+                      {doc.issue_city?.name_en ?? doc.place_of_issue}
+                    </span>
+                  )}
                 </div>
               </div>
               {canManageDoc && (
@@ -368,108 +358,30 @@ function IdentityDocumentsSection({ employeeId, canManageDoc, onChildOpen }: { e
         </div>
       )}
 
+      <IdentityDocumentAddDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        employeeId={employeeId}
+        docTypes={docTypes ?? []}
+        onSaved={handleAddSaved}
+      />
+
       <ERPChildDialogForm
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        title={editing ? "Edit Identity Document" : "Add Identity Document"}
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        title="Edit Identity Document"
         subtitle="Legal and identity documents for this employee"
         icon={<FileText className="h-5 w-5" />}
-        mode={editing ? "edit" : "add"}
+        mode="edit"
         size="xl"
         isSubmitting={isSubmitting}
-        onSubmit={handleSubmit}
+        onSubmit={handleEditSubmit}
       >
-        <div className="grid grid-cols-12 gap-4">
-          <div className="col-span-6">
-            <Label>Document Type <span className="text-destructive">*</span></Label>
-            <ERPCombobox
-              value={form.document_type_id}
-              onValueChange={(v) => setForm((p) => ({ ...p, document_type_id: Number(v) }))}
-              options={docTypeOptions}
-              placeholder="Select document type..."
-              required
-            />
-          </div>
-          <div className="col-span-6">
-            <Label>Document Number <span className="text-destructive">*</span></Label>
-            <Input value={form.document_number} onChange={(e) => setForm((p) => ({ ...p, document_number: e.target.value }))} placeholder="Document number" />
-          </div>
-          <div className="col-span-6">
-            <Label>Issue Date</Label>
-            <Input type="date" value={form.issue_date} onChange={(e) => setForm((p) => ({ ...p, issue_date: e.target.value }))} />
-          </div>
-          <div className="col-span-6">
-            <Label>Expiry Date</Label>
-            <Input type="date" value={form.expiry_date} onChange={(e) => setForm((p) => ({ ...p, expiry_date: e.target.value }))} />
-          </div>
-          <div className="col-span-6">
-            <Label>Issuing Authority</Label>
-            <Input value={form.issuing_authority} onChange={(e) => setForm((p) => ({ ...p, issuing_authority: e.target.value }))} placeholder="e.g. ICP, MOHRE" />
-          </div>
-          <div className="col-span-6">
-            <Label>Place of Issue</Label>
-            <Input value={form.place_of_issue} onChange={(e) => setForm((p) => ({ ...p, place_of_issue: e.target.value }))} placeholder="City or location" />
-          </div>
-          <div className="col-span-6">
-            <Label>Issue Country</Label>
-            <CountrySelect value={form.issue_country_id} onValueChange={(v) => setForm((p) => ({ ...p, issue_country_id: v }))} />
-          </div>
-          <div className="col-span-6">
-            <Label>Issuing Emirate</Label>
-            <EmirateSelect value={form.issuing_emirate_id} onValueChange={(v) => setForm((p) => ({ ...p, issuing_emirate_id: v }))} />
-          </div>
-          <div className="col-span-4">
-            <Label>Status</Label>
-            <ERPCombobox value={form.status} onValueChange={(v) => setForm((p) => ({ ...p, status: String(v) }))} options={DOC_STATUS_OPTIONS} placeholder="Status..." />
-          </div>
-          <div className="col-span-4">
-            <Label>Verification</Label>
-            <ERPCombobox value={form.verification_status} onValueChange={(v) => setForm((p) => ({ ...p, verification_status: String(v) }))} options={VERIFICATION_OPTIONS} placeholder="Verification..." />
-          </div>
-          <div className="col-span-4">
-            <Label>Renewal Status</Label>
-            <ERPCombobox value={form.renewal_status} onValueChange={(v) => setForm((p) => ({ ...p, renewal_status: String(v) }))} options={RENEWAL_STATUS_OPTIONS} placeholder="Renewal..." />
-          </div>
-          <div className="col-span-12 border-t pt-4">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">UAE-Specific Fields</p>
-          </div>
-          <div className="col-span-6">
-            <Label>Emirates ID Application No</Label>
-            <Input value={form.emirates_id_application_no} onChange={(e) => setForm((p) => ({ ...p, emirates_id_application_no: e.target.value }))} />
-          </div>
-          <div className="col-span-6">
-            <Label>UID Number</Label>
-            <Input value={form.uid_number} onChange={(e) => setForm((p) => ({ ...p, uid_number: e.target.value }))} />
-          </div>
-          <div className="col-span-6">
-            <Label>Visa File Number</Label>
-            <Input value={form.visa_file_number} onChange={(e) => setForm((p) => ({ ...p, visa_file_number: e.target.value }))} />
-          </div>
-          <div className="col-span-6">
-            <Label>Labour Card Number</Label>
-            <Input value={form.labour_card_number} onChange={(e) => setForm((p) => ({ ...p, labour_card_number: e.target.value }))} />
-          </div>
-          <div className="col-span-6">
-            <Label>Work Permit Number</Label>
-            <Input value={form.work_permit_number} onChange={(e) => setForm((p) => ({ ...p, work_permit_number: e.target.value }))} />
-          </div>
-          <div className="col-span-6">
-            <Label>MOHRE Person Code</Label>
-            <Input value={form.mohre_person_code} onChange={(e) => setForm((p) => ({ ...p, mohre_person_code: e.target.value }))} />
-          </div>
-          <div className="col-span-6">
-            <Label>Profession on Document</Label>
-            <Input value={form.profession_on_document} onChange={(e) => setForm((p) => ({ ...p, profession_on_document: e.target.value }))} />
-          </div>
-          <div className="col-span-6">
-            <Label>Sponsor Company</Label>
-            <OwnerCompanySelect value={form.sponsor_company_id} onValueChange={(v) => setForm((p) => ({ ...p, sponsor_company_id: v }))} />
-          </div>
-          <div className="col-span-12">
-            <Label>Notes</Label>
-            <Textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} rows={2} />
-          </div>
-        </div>
+        <IdentityDocumentFormFields
+          form={form}
+          setForm={setForm}
+          docTypeOptions={docTypeOptions}
+        />
       </ERPChildDialogForm>
     </div>
   );

@@ -310,8 +310,8 @@ export function EmployeeWorkspaceForm({ employee, mode, authContext }: Props) {
         onInput={syncDraft}
         onChange={syncDraft}
       >
-        {/* Overview */}
-        <ERPRecordSectionPanel id="overview" activeId={activeSection} title="Overview">
+        {/* Overview — lazyMount: many useQuery hooks; mounts on first paint (default section) */}
+        <ERPRecordSectionPanel id="overview" activeId={activeSection} title="Overview" lazyMount>
           {employee ? (
             <EmployeeOverviewTab
               employee={employee}
@@ -335,7 +335,7 @@ export function EmployeeWorkspaceForm({ employee, mode, authContext }: Props) {
         </ERPRecordSectionPanel>
 
         {/* Compliance — HR.3 */}
-        <ERPRecordSectionPanel id="compliance" activeId={activeSection} title="Compliance">
+        <ERPRecordSectionPanel id="compliance" activeId={activeSection} title="Compliance" lazyMount>
           {employee ? (
             <EmployeeComplianceTab
               employeeId={employee.id}
@@ -350,7 +350,7 @@ export function EmployeeWorkspaceForm({ employee, mode, authContext }: Props) {
         </ERPRecordSectionPanel>
 
         {/* Time — HR.4 */}
-        <ERPRecordSectionPanel id="time" activeId={activeSection} title="Time">
+        <ERPRecordSectionPanel id="time" activeId={activeSection} title="Time" lazyMount>
           {employee ? (
             <EmployeeTimeTab
               employeeId={employee.id}
@@ -365,7 +365,7 @@ export function EmployeeWorkspaceForm({ employee, mode, authContext }: Props) {
         </ERPRecordSectionPanel>
 
         {/* Payroll & WPS — HR.5 */}
-        <ERPRecordSectionPanel id="payroll" activeId={activeSection} title="Payroll & WPS">
+        <ERPRecordSectionPanel id="payroll" activeId={activeSection} title="Payroll & WPS" lazyMount>
           {employee ? (
             <EmployeePayrollTab
               employeeId={employee.id}
@@ -380,7 +380,7 @@ export function EmployeeWorkspaceForm({ employee, mode, authContext }: Props) {
         </ERPRecordSectionPanel>
 
         {/* Operations — HR.6 */}
-        <ERPRecordSectionPanel id="operations" activeId={activeSection} title="Operations">
+        <ERPRecordSectionPanel id="operations" activeId={activeSection} title="Operations" lazyMount>
           {employee ? (
             <EmployeeOperationsTab
               employeeId={employee.id}
@@ -395,7 +395,7 @@ export function EmployeeWorkspaceForm({ employee, mode, authContext }: Props) {
         </ERPRecordSectionPanel>
 
         {/* HR Actions — HR.7 */}
-        <ERPRecordSectionPanel id="hr-actions" activeId={activeSection} title="HR Actions">
+        <ERPRecordSectionPanel id="hr-actions" activeId={activeSection} title="HR Actions" lazyMount>
           {employee ? (
             <EmployeeHrActionsTab
               employeeId={employee.id}
@@ -410,7 +410,7 @@ export function EmployeeWorkspaceForm({ employee, mode, authContext }: Props) {
         </ERPRecordSectionPanel>
 
         {/* Documents — HR.3 */}
-        <ERPRecordSectionPanel id="documents" activeId={activeSection} title="Documents">
+        <ERPRecordSectionPanel id="documents" activeId={activeSection} title="Documents" lazyMount>
           {employee ? (
             <DmsEntityDocumentsTab
               entityType="employee"
@@ -428,7 +428,7 @@ export function EmployeeWorkspaceForm({ employee, mode, authContext }: Props) {
         </ERPRecordSectionPanel>
 
         {/* Letters & Forms — HR.11 / REPORT.4 */}
-        <ERPRecordSectionPanel id="letters" activeId={activeSection} title="Generate Letters & Forms">
+        <ERPRecordSectionPanel id="letters" activeId={activeSection} title="Generate Letters & Forms" lazyMount>
           {employee ? (
             <div className="p-4">
               <p className="text-xs text-muted-foreground mb-3">
@@ -448,7 +448,7 @@ export function EmployeeWorkspaceForm({ employee, mode, authContext }: Props) {
         </ERPRecordSectionPanel>
 
         {/* AI Review — HR.12 */}
-        <ERPRecordSectionPanel id="ai-review" activeId={activeSection} title="AI Review">
+        <ERPRecordSectionPanel id="ai-review" activeId={activeSection} title="AI Review" lazyMount>
           {employee ? (
             <HrAiReviewTab
               employeeId={employee.id}
@@ -462,7 +462,7 @@ export function EmployeeWorkspaceForm({ employee, mode, authContext }: Props) {
         </ERPRecordSectionPanel>
 
         {/* Audit */}
-        <ERPRecordSectionPanel id="audit" activeId={activeSection} title="Audit">
+        <ERPRecordSectionPanel id="audit" activeId={activeSection} title="Audit" lazyMount>
           <EmployeePlaceholderTab
             title="Employee Audit Timeline"
             description="Employee audit timeline will be expanded in later phases. HR.2 logs employee create/update/archive/status events."

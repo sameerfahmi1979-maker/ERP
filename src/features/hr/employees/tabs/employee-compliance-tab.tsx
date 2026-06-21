@@ -12,7 +12,7 @@
  *   6. Medical & Health Records (employee_medical_records — restricted: hr.medical.view)
  */
 
-import { useState, useTransition, useCallback } from "react";
+import { useState, useTransition, useCallback, type Dispatch, type SetStateAction } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -91,6 +91,8 @@ import {
 } from "@/server/actions/hr/settings";
 import { invalidateDmsEntityDocuments } from "@/lib/query/invalidation";
 import { IdentityDocumentAddDialog } from "@/features/hr/employees/compliance/identity-document-add-dialog";
+import { ComplianceDmsAddDialog } from "@/features/hr/employees/compliance/compliance-dms-add-dialog";
+import { ComplianceDmsPrefillBanner } from "@/features/hr/employees/compliance/compliance-dms-prefill-banner";
 import { IdentityDocumentFormFields } from "@/features/hr/employees/compliance/identity-document-form-fields";
 import {
   createEmptyIdentityDocumentForm,
@@ -387,20 +389,40 @@ function IdentityDocumentsSection({ employeeId, canManageDoc, onChildOpen }: { e
   );
 }
 
+function handleComplianceAddSaved(
+  qc: ReturnType<typeof useQueryClient>,
+  employeeId: number,
+  queryKey: readonly unknown[],
+  opts?: { dmsLinkCreated?: boolean; hasDmsDocument?: boolean }
+) {
+  void qc.invalidateQueries({ queryKey });
+  void qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.summary(employeeId) });
+  if (opts?.hasDmsDocument) {
+    invalidateDmsEntityDocuments(qc, "employee", employeeId);
+  }
+}
+
 // ── 2. MEDICAL INSURANCE SECTION ──────────────────────────────────────────────
 
 function MedicalInsurancesSection({ employeeId, canManageDoc, onChildOpen }: { employeeId: number; canManageDoc: boolean; onChildOpen?: (open: boolean) => void }) {
   const qc = useQueryClient();
-  const [dialogOpen, setDialogOpenRaw] = useState(false);
+  const [addDialogOpen, setAddDialogOpenRaw] = useState(false);
+  const [editDialogOpen, setEditDialogOpenRaw] = useState(false);
   const [editing, setEditing] = useState<EmployeeMedicalInsuranceRow | null>(null);
   const [isSubmitting, startTransition] = useTransition();
 
-  const setDialogOpen = useCallback((open: boolean) => {
-    setDialogOpenRaw(open);
+  const setAddDialogOpen = useCallback((open: boolean) => {
+    setAddDialogOpenRaw(open);
+    onChildOpen?.(open);
+  }, [onChildOpen]);
+
+  const setEditDialogOpen = useCallback((open: boolean) => {
+    setEditDialogOpenRaw(open);
     onChildOpen?.(open);
   }, [onChildOpen]);
 
   const initialForm = () => ({
+    dms_document_id: null as number | null,
     insurance_provider: "",
     tpa: "",
     policy_number: "",
@@ -417,6 +439,8 @@ function MedicalInsurancesSection({ employeeId, canManageDoc, onChildOpen }: { e
     notes: "",
   });
 
+  type MedicalInsuranceForm = ReturnType<typeof initialForm>;
+
   const [form, setForm] = useState(initialForm);
 
   const { data: records, isLoading } = useQuery({
@@ -427,10 +451,11 @@ function MedicalInsurancesSection({ employeeId, canManageDoc, onChildOpen }: { e
     },
   });
 
-  const openAdd = () => { setEditing(null); setForm(initialForm()); setDialogOpen(true); };
+  const openAdd = () => setAddDialogOpen(true);
   const openEdit = (r: EmployeeMedicalInsuranceRow) => {
     setEditing(r);
     setForm({
+      dms_document_id: r.dms_document_id,
       insurance_provider: r.insurance_provider,
       tpa: r.tpa ?? "",
       policy_number: r.policy_number,
@@ -446,22 +471,43 @@ function MedicalInsurancesSection({ employeeId, canManageDoc, onChildOpen }: { e
       renewal_status: r.renewal_status,
       notes: r.notes ?? "",
     });
-    setDialogOpen(true);
+    setEditDialogOpen(true);
   };
 
-  const handleSubmit = () => {
+  const buildPayload = (f: MedicalInsuranceForm) => ({
+    ...f,
+    dms_document_id: f.dms_document_id,
+    tpa: f.tpa || null,
+    insurance_card_number: f.insurance_card_number || null,
+    network_class: f.network_class || null,
+    issue_date: f.issue_date || null,
+    notes: f.notes || null,
+  });
+
+  const validateMedicalInsurance = (f: MedicalInsuranceForm) => {
+    if (!f.insurance_provider.trim()) return "Insurance provider is required";
+    if (!f.policy_number.trim()) return "Policy number is required";
+    if (!f.expiry_date) return "Expiry date is required";
+    return null;
+  };
+
+  const handleEditSubmit = () => {
+    if (!editing) return;
+    const err = validateMedicalInsurance(form);
+    if (err) { toast.error(err); return; }
     startTransition(async () => {
-      const payload = { ...form, tpa: form.tpa || null, insurance_card_number: form.insurance_card_number || null, network_class: form.network_class || null, issue_date: form.issue_date || null, notes: form.notes || null };
-      const result = editing
-        ? await updateEmployeeMedicalInsurance(editing.id, payload)
-        : await createEmployeeMedicalInsurance(employeeId, payload);
+      const result = await updateEmployeeMedicalInsurance(editing.id, buildPayload(form));
       if (result.success) {
-        toast.success(editing ? "Insurance updated" : "Insurance added");
+        toast.success("Insurance updated");
         qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.medicalInsurances(employeeId) });
         qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.summary(employeeId) });
-        setDialogOpen(false);
+        setEditDialogOpen(false);
       } else toast.error(result.error ?? "Failed to save");
     });
+  };
+
+  const handleAddSaved = (opts?: { dmsLinkCreated?: boolean; hasDmsDocument?: boolean }) => {
+    handleComplianceAddSaved(qc, employeeId, queryKeys.hr.compliance.medicalInsurances(employeeId), opts);
   };
 
   const handleArchive = async (id: number) => {
@@ -506,7 +552,40 @@ function MedicalInsurancesSection({ employeeId, canManageDoc, onChildOpen }: { e
         </div>
       )}
 
-      <ERPChildDialogForm open={dialogOpen} onOpenChange={setDialogOpen} title={editing ? "Edit Medical Insurance" : "Add Medical Insurance"} icon={<Heart className="h-5 w-5" />} mode={editing ? "edit" : "add"} size="lg" isSubmitting={isSubmitting} onSubmit={handleSubmit}>
+      <ComplianceDmsAddDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        employeeId={employeeId}
+        recordKind="medical_insurance"
+        icon={<Heart className="h-5 w-5" />}
+        recordLabel="Medical Insurance"
+        submitLabel="Save Medical Insurance"
+        createEmptyForm={initialForm}
+        validate={validateMedicalInsurance}
+        save={async (f) => createEmployeeMedicalInsurance(employeeId, buildPayload(f))}
+        onSaved={handleAddSaved}
+        renderReview={({ form: addForm, setForm: setAddForm, prefillMeta }) => (
+          <div className="grid grid-cols-12 gap-4">
+            <ComplianceDmsPrefillBanner prefillMeta={prefillMeta} />
+            <div className="col-span-6"><Label>Insurance Provider <span className="text-destructive">*</span></Label><Input value={addForm.insurance_provider} onChange={(e) => setAddForm((p) => ({ ...p, insurance_provider: e.target.value }))} /></div>
+            <div className="col-span-6"><Label>TPA</Label><Input value={addForm.tpa} onChange={(e) => setAddForm((p) => ({ ...p, tpa: e.target.value }))} placeholder="Third-party administrator" /></div>
+            <div className="col-span-6"><Label>Policy Number <span className="text-destructive">*</span></Label><Input value={addForm.policy_number} onChange={(e) => setAddForm((p) => ({ ...p, policy_number: e.target.value }))} /></div>
+            <div className="col-span-6"><Label>Insurance Card Number</Label><Input value={addForm.insurance_card_number} onChange={(e) => setAddForm((p) => ({ ...p, insurance_card_number: e.target.value }))} /></div>
+            <div className="col-span-6"><Label>Network Class</Label><Input value={addForm.network_class} onChange={(e) => setAddForm((p) => ({ ...p, network_class: e.target.value }))} placeholder="e.g. Silver, Gold, Platinum" /></div>
+            <div className="col-span-3"><Label>Issue Date</Label><Input type="date" value={addForm.issue_date} onChange={(e) => setAddForm((p) => ({ ...p, issue_date: e.target.value }))} /></div>
+            <div className="col-span-3"><Label>Expiry Date <span className="text-destructive">*</span></Label><Input type="date" value={addForm.expiry_date} onChange={(e) => setAddForm((p) => ({ ...p, expiry_date: e.target.value }))} /></div>
+            <div className="col-span-4"><Label>Status</Label><ERPCombobox value={addForm.status} onValueChange={(v) => setAddForm((p) => ({ ...p, status: String(v) }))} options={DOC_STATUS_OPTIONS} placeholder="Status..." /></div>
+            <div className="col-span-4"><Label>Verification</Label><ERPCombobox value={addForm.verification_status} onValueChange={(v) => setAddForm((p) => ({ ...p, verification_status: String(v) }))} options={VERIFICATION_OPTIONS} placeholder="Verification..." /></div>
+            <div className="col-span-4"><Label>Renewal</Label><ERPCombobox value={addForm.renewal_status} onValueChange={(v) => setAddForm((p) => ({ ...p, renewal_status: String(v) }))} options={RENEWAL_STATUS_OPTIONS} placeholder="Renewal..." /></div>
+            <div className="col-span-4 flex items-center gap-2 pt-5"><Switch checked={addForm.employee_covered} onCheckedChange={(v) => setAddForm((p) => ({ ...p, employee_covered: v }))} /><Label>Employee Covered</Label></div>
+            <div className="col-span-4 flex items-center gap-2 pt-5"><Switch checked={addForm.dependent_coverage_included} onCheckedChange={(v) => setAddForm((p) => ({ ...p, dependent_coverage_included: v }))} /><Label>Dependent Coverage</Label></div>
+            <div className="col-span-4"><Label>Dependents Covered</Label><Input type="number" min={0} value={addForm.dependent_count_covered ?? ""} onChange={(e) => setAddForm((p) => ({ ...p, dependent_count_covered: e.target.value ? parseInt(e.target.value) : null }))} /></div>
+            <div className="col-span-12"><Label>Notes</Label><Textarea value={addForm.notes} onChange={(e) => setAddForm((p) => ({ ...p, notes: e.target.value }))} rows={2} /></div>
+          </div>
+        )}
+      />
+
+      <ERPChildDialogForm open={editDialogOpen} onOpenChange={setEditDialogOpen} title="Edit Medical Insurance" icon={<Heart className="h-5 w-5" />} mode="edit" size="lg" isSubmitting={isSubmitting} onSubmit={handleEditSubmit}>
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-6"><Label>Insurance Provider <span className="text-destructive">*</span></Label><Input value={form.insurance_provider} onChange={(e) => setForm((p) => ({ ...p, insurance_provider: e.target.value }))} /></div>
           <div className="col-span-6"><Label>TPA</Label><Input value={form.tpa} onChange={(e) => setForm((p) => ({ ...p, tpa: e.target.value }))} placeholder="Third-party administrator" /></div>
@@ -532,13 +611,16 @@ function MedicalInsurancesSection({ employeeId, canManageDoc, onChildOpen }: { e
 
 function DependentsSection({ employeeId, canManageDoc, onChildOpen }: { employeeId: number; canManageDoc: boolean; onChildOpen?: (open: boolean) => void }) {
   const qc = useQueryClient();
-  const [dialogOpen, setDialogOpenRaw] = useState(false);
+  const [addDialogOpen, setAddDialogOpenRaw] = useState(false);
+  const [editDialogOpen, setEditDialogOpenRaw] = useState(false);
   const [editing, setEditing] = useState<EmployeeDependentRow | null>(null);
   const [isSubmitting, startTransition] = useTransition();
 
-  const setDialogOpen = useCallback((open: boolean) => { setDialogOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
+  const setAddDialogOpen = useCallback((open: boolean) => { setAddDialogOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
+  const setEditDialogOpen = useCallback((open: boolean) => { setEditDialogOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
 
   const initialForm = () => ({
+    dms_document_id: null as number | null,
     dependent_name_en: "", dependent_name_ar: "", relationship_type_id: null as number | null,
     date_of_birth: "", nationality_id: null as number | null,
     passport_number: "", passport_expiry: "", emirates_id_number: "", emirates_id_expiry: "",
@@ -546,6 +628,8 @@ function DependentsSection({ employeeId, canManageDoc, onChildOpen }: { employee
     medical_insurance_policy: "", medical_insurance_card: "", medical_insurance_expiry: "",
     sponsored_by: "" as string, is_active: true, notes: "",
   });
+
+  type DependentForm = ReturnType<typeof initialForm>;
 
   const [form, setForm] = useState(initialForm);
 
@@ -562,10 +646,65 @@ function DependentsSection({ employeeId, canManageDoc, onChildOpen }: { employee
     },
   });
 
-  const openAdd = () => { setEditing(null); setForm(initialForm()); setDialogOpen(true); };
+  const relTypeOptions = (relTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }));
+
+  const buildPayload = (f: DependentForm) => ({
+    ...f,
+    dms_document_id: f.dms_document_id,
+    relationship_type_id: f.relationship_type_id!,
+    date_of_birth: f.date_of_birth || null, passport_number: f.passport_number || null,
+    passport_expiry: f.passport_expiry || null, emirates_id_number: f.emirates_id_number || null,
+    emirates_id_expiry: f.emirates_id_expiry || null, residence_visa_number: f.residence_visa_number || null,
+    residence_visa_expiry: f.residence_visa_expiry || null, medical_insurance_provider: f.medical_insurance_provider || null,
+    medical_insurance_policy: f.medical_insurance_policy || null, medical_insurance_card: f.medical_insurance_card || null,
+    medical_insurance_expiry: f.medical_insurance_expiry || null, sponsored_by: f.sponsored_by || null,
+    notes: f.notes || null, dependent_name_ar: f.dependent_name_ar || null,
+  });
+
+  const validateDependent = (f: DependentForm) => {
+    if (!f.dependent_name_en.trim()) return "Dependent name is required";
+    if (!f.relationship_type_id) return "Relationship type is required";
+    return null;
+  };
+
+  const renderDependentFields = (
+    f: DependentForm,
+    setF: Dispatch<SetStateAction<DependentForm>>,
+    prefillMeta: { documentTitle: string; documentNo: string; prefillSource: string; warning?: string | null; linkedToEmployee?: boolean } | null
+  ) => (
+    <div className="grid grid-cols-12 gap-4">
+      <ComplianceDmsPrefillBanner prefillMeta={prefillMeta} />
+      <div className="col-span-6"><Label>Name (English) <span className="text-destructive">*</span></Label><Input value={f.dependent_name_en} onChange={(e) => setF((p) => ({ ...p, dependent_name_en: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Name (Arabic)</Label><Input value={f.dependent_name_ar} onChange={(e) => setF((p) => ({ ...p, dependent_name_ar: e.target.value }))} dir="rtl" /></div>
+      <div className="col-span-6"><Label>Relationship <span className="text-destructive">*</span></Label><ERPCombobox value={f.relationship_type_id} onValueChange={(v) => setF((p) => ({ ...p, relationship_type_id: Number(v) }))} options={relTypeOptions} placeholder="Select relationship..." required /></div>
+      <div className="col-span-3"><Label>Date of Birth</Label><Input type="date" value={f.date_of_birth} onChange={(e) => setF((p) => ({ ...p, date_of_birth: e.target.value }))} /></div>
+      <div className="col-span-3"><Label>Nationality</Label><CountrySelect value={f.nationality_id} onValueChange={(v) => setF((p) => ({ ...p, nationality_id: v }))} /></div>
+      <div className="col-span-12 border-t pt-3"><p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Document Details</p></div>
+      <div className="col-span-6"><Label>Passport Number</Label><Input value={f.passport_number} onChange={(e) => setF((p) => ({ ...p, passport_number: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Passport Expiry</Label><Input type="date" value={f.passport_expiry} onChange={(e) => setF((p) => ({ ...p, passport_expiry: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Emirates ID Number</Label><Input value={f.emirates_id_number} onChange={(e) => setF((p) => ({ ...p, emirates_id_number: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Emirates ID Expiry</Label><Input type="date" value={f.emirates_id_expiry} onChange={(e) => setF((p) => ({ ...p, emirates_id_expiry: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Residence Visa Number</Label><Input value={f.residence_visa_number} onChange={(e) => setF((p) => ({ ...p, residence_visa_number: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Residence Visa Expiry</Label><Input type="date" value={f.residence_visa_expiry} onChange={(e) => setF((p) => ({ ...p, residence_visa_expiry: e.target.value }))} /></div>
+      <div className="col-span-12 border-t pt-3"><p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Medical Insurance</p></div>
+      <div className="col-span-6"><Label>Insurance Provider</Label><Input value={f.medical_insurance_provider} onChange={(e) => setF((p) => ({ ...p, medical_insurance_provider: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Insurance Policy</Label><Input value={f.medical_insurance_policy} onChange={(e) => setF((p) => ({ ...p, medical_insurance_policy: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Insurance Card</Label><Input value={f.medical_insurance_card} onChange={(e) => setF((p) => ({ ...p, medical_insurance_card: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Insurance Expiry</Label><Input type="date" value={f.medical_insurance_expiry} onChange={(e) => setF((p) => ({ ...p, medical_insurance_expiry: e.target.value }))} /></div>
+      <div className="col-span-6">
+        <Label>Sponsored By</Label>
+        <ERPCombobox value={f.sponsored_by || null} onValueChange={(v) => setF((p) => ({ ...p, sponsored_by: v ? String(v) : "" }))} options={[{ value: "employee", label: "Employee" }, { value: "company", label: "Company" }]} placeholder="Select..." />
+      </div>
+      <div className="col-span-6 flex items-center gap-2 pt-5"><Switch checked={f.is_active} onCheckedChange={(v) => setF((p) => ({ ...p, is_active: v }))} /><Label>Active</Label></div>
+      <div className="col-span-12"><Label>Notes</Label><Textarea value={f.notes} onChange={(e) => setF((p) => ({ ...p, notes: e.target.value }))} rows={2} /></div>
+    </div>
+  );
+
+  const openAdd = () => setAddDialogOpen(true);
   const openEdit = (r: EmployeeDependentRow) => {
     setEditing(r);
     setForm({
+      dms_document_id: r.dms_document_id,
       dependent_name_en: r.dependent_name_en, dependent_name_ar: r.dependent_name_ar ?? "",
       relationship_type_id: r.relationship_type_id, date_of_birth: r.date_of_birth ?? "",
       nationality_id: r.nationality_id, passport_number: r.passport_number ?? "",
@@ -576,29 +715,26 @@ function DependentsSection({ employeeId, canManageDoc, onChildOpen }: { employee
       medical_insurance_expiry: r.medical_insurance_expiry ?? "", sponsored_by: r.sponsored_by ?? "",
       is_active: r.is_active, notes: r.notes ?? "",
     });
-    setDialogOpen(true);
+    setEditDialogOpen(true);
   };
 
-  const handleSubmit = () => {
+  const handleEditSubmit = () => {
+    if (!editing) return;
+    const err = validateDependent(form);
+    if (err) { toast.error(err); return; }
     startTransition(async () => {
-      const payload = {
-        ...form, relationship_type_id: form.relationship_type_id!,
-        date_of_birth: form.date_of_birth || null, passport_number: form.passport_number || null,
-        passport_expiry: form.passport_expiry || null, emirates_id_number: form.emirates_id_number || null,
-        emirates_id_expiry: form.emirates_id_expiry || null, residence_visa_number: form.residence_visa_number || null,
-        residence_visa_expiry: form.residence_visa_expiry || null, medical_insurance_provider: form.medical_insurance_provider || null,
-        medical_insurance_policy: form.medical_insurance_policy || null, medical_insurance_card: form.medical_insurance_card || null,
-        medical_insurance_expiry: form.medical_insurance_expiry || null, sponsored_by: form.sponsored_by || null,
-        notes: form.notes || null, dependent_name_ar: form.dependent_name_ar || null,
-      };
-      const result = editing ? await updateEmployeeDependent(editing.id, payload) : await createEmployeeDependent(employeeId, payload);
+      const result = await updateEmployeeDependent(editing.id, buildPayload(form));
       if (result.success) {
-        toast.success(editing ? "Dependent updated" : "Dependent added");
+        toast.success("Dependent updated");
         qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.dependents(employeeId) });
         qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.summary(employeeId) });
-        setDialogOpen(false);
+        setEditDialogOpen(false);
       } else toast.error(result.error ?? "Failed to save");
     });
+  };
+
+  const handleAddSaved = (opts?: { dmsLinkCreated?: boolean; hasDmsDocument?: boolean }) => {
+    handleComplianceAddSaved(qc, employeeId, queryKeys.hr.compliance.dependents(employeeId), opts);
   };
 
   const handleArchive = async (id: number) => {
@@ -606,8 +742,6 @@ function DependentsSection({ employeeId, canManageDoc, onChildOpen }: { employee
     if (result.success) { toast.success("Archived"); qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.dependents(employeeId) }); }
     else toast.error(result.error);
   };
-
-  const relTypeOptions = (relTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }));
 
   return (
     <div className="mb-8">
@@ -645,32 +779,24 @@ function DependentsSection({ employeeId, canManageDoc, onChildOpen }: { employee
         </div>
       )}
 
-      <ERPChildDialogForm open={dialogOpen} onOpenChange={setDialogOpen} title={editing ? "Edit Dependent" : "Add Dependent"} icon={<Users className="h-5 w-5" />} mode={editing ? "edit" : "add"} size="xl" isSubmitting={isSubmitting} onSubmit={handleSubmit}>
-        <div className="grid grid-cols-12 gap-4">
-          <div className="col-span-6"><Label>Name (English) <span className="text-destructive">*</span></Label><Input value={form.dependent_name_en} onChange={(e) => setForm((p) => ({ ...p, dependent_name_en: e.target.value }))} /></div>
-          <div className="col-span-6"><Label>Name (Arabic)</Label><Input value={form.dependent_name_ar} onChange={(e) => setForm((p) => ({ ...p, dependent_name_ar: e.target.value }))} dir="rtl" /></div>
-          <div className="col-span-6"><Label>Relationship <span className="text-destructive">*</span></Label><ERPCombobox value={form.relationship_type_id} onValueChange={(v) => setForm((p) => ({ ...p, relationship_type_id: Number(v) }))} options={relTypeOptions} placeholder="Select relationship..." required /></div>
-          <div className="col-span-3"><Label>Date of Birth</Label><Input type="date" value={form.date_of_birth} onChange={(e) => setForm((p) => ({ ...p, date_of_birth: e.target.value }))} /></div>
-          <div className="col-span-3"><Label>Nationality</Label><CountrySelect value={form.nationality_id} onValueChange={(v) => setForm((p) => ({ ...p, nationality_id: v }))} /></div>
-          <div className="col-span-12 border-t pt-3"><p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Document Details</p></div>
-          <div className="col-span-6"><Label>Passport Number</Label><Input value={form.passport_number} onChange={(e) => setForm((p) => ({ ...p, passport_number: e.target.value }))} /></div>
-          <div className="col-span-6"><Label>Passport Expiry</Label><Input type="date" value={form.passport_expiry} onChange={(e) => setForm((p) => ({ ...p, passport_expiry: e.target.value }))} /></div>
-          <div className="col-span-6"><Label>Emirates ID Number</Label><Input value={form.emirates_id_number} onChange={(e) => setForm((p) => ({ ...p, emirates_id_number: e.target.value }))} /></div>
-          <div className="col-span-6"><Label>Emirates ID Expiry</Label><Input type="date" value={form.emirates_id_expiry} onChange={(e) => setForm((p) => ({ ...p, emirates_id_expiry: e.target.value }))} /></div>
-          <div className="col-span-6"><Label>Residence Visa Number</Label><Input value={form.residence_visa_number} onChange={(e) => setForm((p) => ({ ...p, residence_visa_number: e.target.value }))} /></div>
-          <div className="col-span-6"><Label>Residence Visa Expiry</Label><Input type="date" value={form.residence_visa_expiry} onChange={(e) => setForm((p) => ({ ...p, residence_visa_expiry: e.target.value }))} /></div>
-          <div className="col-span-12 border-t pt-3"><p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Medical Insurance</p></div>
-          <div className="col-span-6"><Label>Insurance Provider</Label><Input value={form.medical_insurance_provider} onChange={(e) => setForm((p) => ({ ...p, medical_insurance_provider: e.target.value }))} /></div>
-          <div className="col-span-6"><Label>Insurance Policy</Label><Input value={form.medical_insurance_policy} onChange={(e) => setForm((p) => ({ ...p, medical_insurance_policy: e.target.value }))} /></div>
-          <div className="col-span-6"><Label>Insurance Card</Label><Input value={form.medical_insurance_card} onChange={(e) => setForm((p) => ({ ...p, medical_insurance_card: e.target.value }))} /></div>
-          <div className="col-span-6"><Label>Insurance Expiry</Label><Input type="date" value={form.medical_insurance_expiry} onChange={(e) => setForm((p) => ({ ...p, medical_insurance_expiry: e.target.value }))} /></div>
-          <div className="col-span-6">
-            <Label>Sponsored By</Label>
-            <ERPCombobox value={form.sponsored_by || null} onValueChange={(v) => setForm((p) => ({ ...p, sponsored_by: v ? String(v) : "" }))} options={[{ value: "employee", label: "Employee" }, { value: "company", label: "Company" }]} placeholder="Select..." />
-          </div>
-          <div className="col-span-6 flex items-center gap-2 pt-5"><Switch checked={form.is_active} onCheckedChange={(v) => setForm((p) => ({ ...p, is_active: v }))} /><Label>Active</Label></div>
-          <div className="col-span-12"><Label>Notes</Label><Textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} rows={2} /></div>
-        </div>
+      <ComplianceDmsAddDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        employeeId={employeeId}
+        recordKind="dependent"
+        icon={<Users className="h-5 w-5" />}
+        recordLabel="Dependent"
+        submitLabel="Save Dependent"
+        size="xl"
+        createEmptyForm={initialForm}
+        validate={validateDependent}
+        save={async (f) => createEmployeeDependent(employeeId, buildPayload(f))}
+        onSaved={handleAddSaved}
+        renderReview={({ form: addForm, setForm: setAddForm, prefillMeta }) => renderDependentFields(addForm, setAddForm, prefillMeta)}
+      />
+
+      <ERPChildDialogForm open={editDialogOpen} onOpenChange={setEditDialogOpen} title="Edit Dependent" icon={<Users className="h-5 w-5" />} mode="edit" size="xl" isSubmitting={isSubmitting} onSubmit={handleEditSubmit}>
+        {renderDependentFields(form, setForm, null)}
       </ERPChildDialogForm>
     </div>
   );
@@ -680,17 +806,22 @@ function DependentsSection({ employeeId, canManageDoc, onChildOpen }: { employee
 
 function AccessCardsSection({ employeeId, canManageDoc, onChildOpen }: { employeeId: number; canManageDoc: boolean; onChildOpen?: (open: boolean) => void }) {
   const qc = useQueryClient();
-  const [dialogOpen, setDialogOpenRaw] = useState(false);
+  const [addDialogOpen, setAddDialogOpenRaw] = useState(false);
+  const [editDialogOpen, setEditDialogOpenRaw] = useState(false);
   const [editing, setEditing] = useState<EmployeeAccessCardRow | null>(null);
   const [isSubmitting, startTransition] = useTransition();
 
-  const setDialogOpen = useCallback((open: boolean) => { setDialogOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
+  const setAddDialogOpen = useCallback((open: boolean) => { setAddDialogOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
+  const setEditDialogOpen = useCallback((open: boolean) => { setEditDialogOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
 
   const initialForm = () => ({
+    dms_document_id: null as number | null,
     access_type_id: null as number | null, client_authority: "", work_site_id: null as number | null,
     card_number: "", application_reference: "", issue_date: "", expiry_date: "",
     status: "pending" as string, access_level: "", renewal_status: "not_required" as string, notes: "",
   });
+
+  type AccessCardForm = ReturnType<typeof initialForm>;
 
   const [form, setForm] = useState(initialForm);
 
@@ -707,20 +838,80 @@ function AccessCardsSection({ employeeId, canManageDoc, onChildOpen }: { employe
     },
   });
 
-  const openAdd = () => { setEditing(null); setForm(initialForm()); setDialogOpen(true); };
-  const openEdit = (r: EmployeeAccessCardRow) => {
-    setEditing(r);
-    setForm({ access_type_id: r.access_type_id, client_authority: r.client_authority ?? "", work_site_id: r.work_site_id, card_number: r.card_number ?? "", application_reference: r.application_reference ?? "", issue_date: r.issue_date ?? "", expiry_date: r.expiry_date ?? "", status: r.status, access_level: r.access_level ?? "", renewal_status: r.renewal_status, notes: r.notes ?? "" });
-    setDialogOpen(true);
+  const cardTypeOptions = (cardTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }));
+  const accessStatusOptions = [
+    { value: "active", label: "Active" }, { value: "expired", label: "Expired" }, { value: "cancelled", label: "Cancelled" },
+    { value: "suspended", label: "Suspended" }, { value: "pending", label: "Pending" }, { value: "in_application", label: "In Application" },
+  ];
+
+  const buildPayload = (f: AccessCardForm) => ({
+    ...f,
+    dms_document_id: f.dms_document_id,
+    access_type_id: f.access_type_id!,
+    client_authority: f.client_authority || null,
+    card_number: f.card_number || null,
+    application_reference: f.application_reference || null,
+    issue_date: f.issue_date || null,
+    expiry_date: f.expiry_date || null,
+    access_level: f.access_level || null,
+    notes: f.notes || null,
+  });
+
+  const validateAccessCard = (f: AccessCardForm) => {
+    if (!f.access_type_id) return "Access type is required";
+    return null;
   };
 
-  const handleSubmit = () => {
-    startTransition(async () => {
-      const payload = { ...form, access_type_id: form.access_type_id!, client_authority: form.client_authority || null, card_number: form.card_number || null, application_reference: form.application_reference || null, issue_date: form.issue_date || null, expiry_date: form.expiry_date || null, access_level: form.access_level || null, notes: form.notes || null };
-      const result = editing ? await updateEmployeeAccessCard(editing.id, payload) : await createEmployeeAccessCard(employeeId, payload);
-      if (result.success) { toast.success(editing ? "Updated" : "Added"); qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.accessCards(employeeId) }); qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.summary(employeeId) }); setDialogOpen(false); }
-      else toast.error(result.error ?? "Failed to save");
+  const renderAccessCardFields = (
+    f: AccessCardForm,
+    setF: Dispatch<SetStateAction<AccessCardForm>>,
+    prefillMeta: Parameters<typeof ComplianceDmsPrefillBanner>[0]["prefillMeta"]
+  ) => (
+    <div className="grid grid-cols-12 gap-4">
+      <ComplianceDmsPrefillBanner prefillMeta={prefillMeta} />
+      <div className="col-span-6"><Label>Access Type <span className="text-destructive">*</span></Label><ERPCombobox value={f.access_type_id} onValueChange={(v) => setF((p) => ({ ...p, access_type_id: Number(v) }))} options={cardTypeOptions} placeholder="Select type..." required /></div>
+      <div className="col-span-6"><Label>Client / Authority</Label><Input value={f.client_authority} onChange={(e) => setF((p) => ({ ...p, client_authority: e.target.value }))} placeholder="e.g. CICPA, ADNOC" /></div>
+      <div className="col-span-6"><Label>Card Number</Label><Input value={f.card_number} onChange={(e) => setF((p) => ({ ...p, card_number: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Application Reference</Label><Input value={f.application_reference} onChange={(e) => setF((p) => ({ ...p, application_reference: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Issue Date</Label><Input type="date" value={f.issue_date} onChange={(e) => setF((p) => ({ ...p, issue_date: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Expiry Date</Label><Input type="date" value={f.expiry_date} onChange={(e) => setF((p) => ({ ...p, expiry_date: e.target.value }))} /></div>
+      <div className="col-span-4"><Label>Status</Label><ERPCombobox value={f.status} onValueChange={(v) => setF((p) => ({ ...p, status: String(v) }))} options={accessStatusOptions} placeholder="Status..." /></div>
+      <div className="col-span-4"><Label>Access Level</Label><Input value={f.access_level} onChange={(e) => setF((p) => ({ ...p, access_level: e.target.value }))} placeholder="e.g. Level 1, Zone A" /></div>
+      <div className="col-span-4"><Label>Renewal</Label><ERPCombobox value={f.renewal_status} onValueChange={(v) => setF((p) => ({ ...p, renewal_status: String(v) }))} options={RENEWAL_STATUS_OPTIONS} placeholder="Renewal..." /></div>
+      <div className="col-span-12"><Label>Notes</Label><Textarea value={f.notes} onChange={(e) => setF((p) => ({ ...p, notes: e.target.value }))} rows={2} /></div>
+    </div>
+  );
+
+  const openAdd = () => setAddDialogOpen(true);
+  const openEdit = (r: EmployeeAccessCardRow) => {
+    setEditing(r);
+    setForm({
+      dms_document_id: r.dms_document_id,
+      access_type_id: r.access_type_id, client_authority: r.client_authority ?? "", work_site_id: r.work_site_id,
+      card_number: r.card_number ?? "", application_reference: r.application_reference ?? "",
+      issue_date: r.issue_date ?? "", expiry_date: r.expiry_date ?? "", status: r.status,
+      access_level: r.access_level ?? "", renewal_status: r.renewal_status, notes: r.notes ?? "",
     });
+    setEditDialogOpen(true);
+  };
+
+  const handleEditSubmit = () => {
+    if (!editing) return;
+    const err = validateAccessCard(form);
+    if (err) { toast.error(err); return; }
+    startTransition(async () => {
+      const result = await updateEmployeeAccessCard(editing.id, buildPayload(form));
+      if (result.success) {
+        toast.success("Updated");
+        qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.accessCards(employeeId) });
+        qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.summary(employeeId) });
+        setEditDialogOpen(false);
+      } else toast.error(result.error ?? "Failed to save");
+    });
+  };
+
+  const handleAddSaved = (opts?: { dmsLinkCreated?: boolean; hasDmsDocument?: boolean }) => {
+    handleComplianceAddSaved(qc, employeeId, queryKeys.hr.compliance.accessCards(employeeId), opts);
   };
 
   const handleArchive = async (id: number) => {
@@ -728,12 +919,6 @@ function AccessCardsSection({ employeeId, canManageDoc, onChildOpen }: { employe
     if (r.success) { toast.success("Archived"); qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.accessCards(employeeId) }); }
     else toast.error(r.error);
   };
-
-  const cardTypeOptions = (cardTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }));
-  const accessStatusOptions = [
-    { value: "active", label: "Active" }, { value: "expired", label: "Expired" }, { value: "cancelled", label: "Cancelled" },
-    { value: "suspended", label: "Suspended" }, { value: "pending", label: "Pending" }, { value: "in_application", label: "In Application" },
-  ];
 
   return (
     <div className="mb-8">
@@ -767,19 +952,23 @@ function AccessCardsSection({ employeeId, canManageDoc, onChildOpen }: { employe
         </div>
       )}
 
-      <ERPChildDialogForm open={dialogOpen} onOpenChange={setDialogOpen} title={editing ? "Edit Access Card" : "Add Access Card"} icon={<CreditCard className="h-5 w-5" />} mode={editing ? "edit" : "add"} size="lg" isSubmitting={isSubmitting} onSubmit={handleSubmit}>
-        <div className="grid grid-cols-12 gap-4">
-          <div className="col-span-6"><Label>Access Type <span className="text-destructive">*</span></Label><ERPCombobox value={form.access_type_id} onValueChange={(v) => setForm((p) => ({ ...p, access_type_id: Number(v) }))} options={cardTypeOptions} placeholder="Select type..." required /></div>
-          <div className="col-span-6"><Label>Client / Authority</Label><Input value={form.client_authority} onChange={(e) => setForm((p) => ({ ...p, client_authority: e.target.value }))} placeholder="e.g. CICPA, ADNOC" /></div>
-          <div className="col-span-6"><Label>Card Number</Label><Input value={form.card_number} onChange={(e) => setForm((p) => ({ ...p, card_number: e.target.value }))} /></div>
-          <div className="col-span-6"><Label>Application Reference</Label><Input value={form.application_reference} onChange={(e) => setForm((p) => ({ ...p, application_reference: e.target.value }))} /></div>
-          <div className="col-span-6"><Label>Issue Date</Label><Input type="date" value={form.issue_date} onChange={(e) => setForm((p) => ({ ...p, issue_date: e.target.value }))} /></div>
-          <div className="col-span-6"><Label>Expiry Date</Label><Input type="date" value={form.expiry_date} onChange={(e) => setForm((p) => ({ ...p, expiry_date: e.target.value }))} /></div>
-          <div className="col-span-4"><Label>Status</Label><ERPCombobox value={form.status} onValueChange={(v) => setForm((p) => ({ ...p, status: String(v) }))} options={accessStatusOptions} placeholder="Status..." /></div>
-          <div className="col-span-4"><Label>Access Level</Label><Input value={form.access_level} onChange={(e) => setForm((p) => ({ ...p, access_level: e.target.value }))} placeholder="e.g. Level 1, Zone A" /></div>
-          <div className="col-span-4"><Label>Renewal</Label><ERPCombobox value={form.renewal_status} onValueChange={(v) => setForm((p) => ({ ...p, renewal_status: String(v) }))} options={RENEWAL_STATUS_OPTIONS} placeholder="Renewal..." /></div>
-          <div className="col-span-12"><Label>Notes</Label><Textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} rows={2} /></div>
-        </div>
+      <ComplianceDmsAddDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        employeeId={employeeId}
+        recordKind="access_card"
+        icon={<CreditCard className="h-5 w-5" />}
+        recordLabel="Access Card"
+        submitLabel="Save Access Card"
+        createEmptyForm={initialForm}
+        validate={validateAccessCard}
+        save={async (f) => createEmployeeAccessCard(employeeId, buildPayload(f))}
+        onSaved={handleAddSaved}
+        renderReview={({ form: addForm, setForm: setAddForm, prefillMeta }) => renderAccessCardFields(addForm, setAddForm, prefillMeta)}
+      />
+
+      <ERPChildDialogForm open={editDialogOpen} onOpenChange={setEditDialogOpen} title="Edit Access Card" icon={<CreditCard className="h-5 w-5" />} mode="edit" size="lg" isSubmitting={isSubmitting} onSubmit={handleEditSubmit}>
+        {renderAccessCardFields(form, setForm, null)}
       </ERPChildDialogForm>
     </div>
   );
@@ -789,18 +978,23 @@ function AccessCardsSection({ employeeId, canManageDoc, onChildOpen }: { employe
 
 function TrainingCertificatesSection({ employeeId, canManageDoc, onChildOpen }: { employeeId: number; canManageDoc: boolean; onChildOpen?: (open: boolean) => void }) {
   const qc = useQueryClient();
-  const [dialogOpen, setDialogOpenRaw] = useState(false);
+  const [addDialogOpen, setAddDialogOpenRaw] = useState(false);
+  const [editDialogOpen, setEditDialogOpenRaw] = useState(false);
   const [editing, setEditing] = useState<EmployeeTrainingCertificateRow | null>(null);
   const [isSubmitting, startTransition] = useTransition();
 
-  const setDialogOpen = useCallback((open: boolean) => { setDialogOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
+  const setAddDialogOpen = useCallback((open: boolean) => { setAddDialogOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
+  const setEditDialogOpen = useCallback((open: boolean) => { setEditDialogOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
 
   const initialForm = () => ({
+    dms_document_id: null as number | null,
     training_category_id: null as number | null, training_type_id: null as number | null,
     provider: "", approval_body: "", certificate_number: "", issue_date: "", expiry_date: "",
     validity_months: null as number | null, required_for_designation: false, required_for_site: false,
     status: "valid" as string, verification_status: "unverified" as string, renewal_status: "not_required" as string, notes: "",
   });
+
+  type TrainingForm = ReturnType<typeof initialForm>;
 
   const [form, setForm] = useState(initialForm);
 
@@ -825,20 +1019,83 @@ function TrainingCertificatesSection({ employeeId, canManageDoc, onChildOpen }: 
     },
   });
 
-  const openAdd = () => { setEditing(null); setForm(initialForm()); setDialogOpen(true); };
-  const openEdit = (r: EmployeeTrainingCertificateRow) => {
-    setEditing(r);
-    setForm({ training_category_id: r.training_category_id, training_type_id: r.training_type_id, provider: r.provider ?? "", approval_body: r.approval_body ?? "", certificate_number: r.certificate_number ?? "", issue_date: r.issue_date ?? "", expiry_date: r.expiry_date ?? "", validity_months: r.validity_months, required_for_designation: r.required_for_designation, required_for_site: r.required_for_site, status: r.status, verification_status: r.verification_status, renewal_status: r.renewal_status, notes: r.notes ?? "" });
-    setDialogOpen(true);
+  const catOptions = (trainCategories ?? []).map((t) => ({ value: t.id, label: t.name_en }));
+  const typeOptions = (trainTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }));
+  const trainStatusOptions = [{ value: "valid", label: "Valid" }, { value: "expired", label: "Expired" }, { value: "pending", label: "Pending" }, { value: "in_progress", label: "In Progress" }];
+
+  const buildPayload = (f: TrainingForm) => ({
+    ...f,
+    dms_document_id: f.dms_document_id,
+    training_type_id: f.training_type_id!,
+    provider: f.provider || null,
+    approval_body: f.approval_body || null,
+    certificate_number: f.certificate_number || null,
+    issue_date: f.issue_date || null,
+    expiry_date: f.expiry_date || null,
+    notes: f.notes || null,
+  });
+
+  const validateTraining = (f: TrainingForm) => {
+    if (!f.training_type_id) return "Training type is required";
+    return null;
   };
 
-  const handleSubmit = () => {
-    startTransition(async () => {
-      const payload = { ...form, training_type_id: form.training_type_id!, provider: form.provider || null, approval_body: form.approval_body || null, certificate_number: form.certificate_number || null, issue_date: form.issue_date || null, expiry_date: form.expiry_date || null, notes: form.notes || null };
-      const result = editing ? await updateEmployeeTrainingCertificate(editing.id, payload) : await createEmployeeTrainingCertificate(employeeId, payload);
-      if (result.success) { toast.success(editing ? "Updated" : "Added"); qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.trainingCertificates(employeeId) }); qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.summary(employeeId) }); setDialogOpen(false); }
-      else toast.error(result.error ?? "Failed to save");
+  const renderTrainingFields = (
+    f: TrainingForm,
+    setF: Dispatch<SetStateAction<TrainingForm>>,
+    prefillMeta: Parameters<typeof ComplianceDmsPrefillBanner>[0]["prefillMeta"]
+  ) => (
+    <div className="grid grid-cols-12 gap-4">
+      <ComplianceDmsPrefillBanner prefillMeta={prefillMeta} />
+      <div className="col-span-6"><Label>Training Category</Label><ERPCombobox value={f.training_category_id} onValueChange={(v) => setF((p) => ({ ...p, training_category_id: Number(v) }))} options={catOptions} placeholder="Select category..." /></div>
+      <div className="col-span-6"><Label>Training Type <span className="text-destructive">*</span></Label><ERPCombobox value={f.training_type_id} onValueChange={(v) => setF((p) => ({ ...p, training_type_id: Number(v) }))} options={typeOptions} placeholder="Select type..." required /></div>
+      <div className="col-span-6"><Label>Provider</Label><Input value={f.provider} onChange={(e) => setF((p) => ({ ...p, provider: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Approval Body</Label><Input value={f.approval_body} onChange={(e) => setF((p) => ({ ...p, approval_body: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Certificate Number</Label><Input value={f.certificate_number} onChange={(e) => setF((p) => ({ ...p, certificate_number: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Validity Months</Label><Input type="number" min={0} value={f.validity_months ?? ""} onChange={(e) => setF((p) => ({ ...p, validity_months: e.target.value ? parseInt(e.target.value) : null }))} /></div>
+      <div className="col-span-6"><Label>Issue Date</Label><Input type="date" value={f.issue_date} onChange={(e) => setF((p) => ({ ...p, issue_date: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Expiry Date</Label><Input type="date" value={f.expiry_date} onChange={(e) => setF((p) => ({ ...p, expiry_date: e.target.value }))} /></div>
+      <div className="col-span-4"><Label>Status</Label><ERPCombobox value={f.status} onValueChange={(v) => setF((p) => ({ ...p, status: String(v) }))} options={trainStatusOptions} placeholder="Status..." /></div>
+      <div className="col-span-4"><Label>Verification</Label><ERPCombobox value={f.verification_status} onValueChange={(v) => setF((p) => ({ ...p, verification_status: String(v) }))} options={VERIFICATION_OPTIONS} placeholder="Verification..." /></div>
+      <div className="col-span-4"><Label>Renewal</Label><ERPCombobox value={f.renewal_status} onValueChange={(v) => setF((p) => ({ ...p, renewal_status: String(v) }))} options={RENEWAL_STATUS_OPTIONS} placeholder="Renewal..." /></div>
+      <div className="col-span-6 flex items-center gap-2 pt-5"><Switch checked={f.required_for_designation} onCheckedChange={(v) => setF((p) => ({ ...p, required_for_designation: v }))} /><Label>Required for Designation</Label></div>
+      <div className="col-span-6 flex items-center gap-2 pt-5"><Switch checked={f.required_for_site} onCheckedChange={(v) => setF((p) => ({ ...p, required_for_site: v }))} /><Label>Required for Site</Label></div>
+      <div className="col-span-12"><Label>Notes</Label><Textarea value={f.notes} onChange={(e) => setF((p) => ({ ...p, notes: e.target.value }))} rows={2} /></div>
+    </div>
+  );
+
+  const openAdd = () => setAddDialogOpen(true);
+  const openEdit = (r: EmployeeTrainingCertificateRow) => {
+    setEditing(r);
+    setForm({
+      dms_document_id: r.dms_document_id,
+      training_category_id: r.training_category_id, training_type_id: r.training_type_id,
+      provider: r.provider ?? "", approval_body: r.approval_body ?? "",
+      certificate_number: r.certificate_number ?? "", issue_date: r.issue_date ?? "", expiry_date: r.expiry_date ?? "",
+      validity_months: r.validity_months, required_for_designation: r.required_for_designation,
+      required_for_site: r.required_for_site, status: r.status, verification_status: r.verification_status,
+      renewal_status: r.renewal_status, notes: r.notes ?? "",
     });
+    setEditDialogOpen(true);
+  };
+
+  const handleEditSubmit = () => {
+    if (!editing) return;
+    const err = validateTraining(form);
+    if (err) { toast.error(err); return; }
+    startTransition(async () => {
+      const result = await updateEmployeeTrainingCertificate(editing.id, buildPayload(form));
+      if (result.success) {
+        toast.success("Updated");
+        qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.trainingCertificates(employeeId) });
+        qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.summary(employeeId) });
+        setEditDialogOpen(false);
+      } else toast.error(result.error ?? "Failed to save");
+    });
+  };
+
+  const handleAddSaved = (opts?: { dmsLinkCreated?: boolean; hasDmsDocument?: boolean }) => {
+    handleComplianceAddSaved(qc, employeeId, queryKeys.hr.compliance.trainingCertificates(employeeId), opts);
   };
 
   const handleArchive = async (id: number) => {
@@ -852,10 +1109,6 @@ function TrainingCertificatesSection({ employeeId, canManageDoc, onChildOpen }: 
     if (r.success) { toast.success("Verified"); qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.trainingCertificates(employeeId) }); }
     else toast.error(r.error);
   };
-
-  const catOptions = (trainCategories ?? []).map((t) => ({ value: t.id, label: t.name_en }));
-  const typeOptions = (trainTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }));
-  const trainStatusOptions = [{ value: "valid", label: "Valid" }, { value: "expired", label: "Expired" }, { value: "pending", label: "Pending" }, { value: "in_progress", label: "In Progress" }];
 
   return (
     <div className="mb-8">
@@ -891,23 +1144,23 @@ function TrainingCertificatesSection({ employeeId, canManageDoc, onChildOpen }: 
         </div>
       )}
 
-      <ERPChildDialogForm open={dialogOpen} onOpenChange={setDialogOpen} title={editing ? "Edit Certificate" : "Add Certificate"} icon={<GraduationCap className="h-5 w-5" />} mode={editing ? "edit" : "add"} size="lg" isSubmitting={isSubmitting} onSubmit={handleSubmit}>
-        <div className="grid grid-cols-12 gap-4">
-          <div className="col-span-6"><Label>Training Category</Label><ERPCombobox value={form.training_category_id} onValueChange={(v) => setForm((p) => ({ ...p, training_category_id: Number(v) }))} options={catOptions} placeholder="Select category..." /></div>
-          <div className="col-span-6"><Label>Training Type <span className="text-destructive">*</span></Label><ERPCombobox value={form.training_type_id} onValueChange={(v) => setForm((p) => ({ ...p, training_type_id: Number(v) }))} options={typeOptions} placeholder="Select type..." required /></div>
-          <div className="col-span-6"><Label>Provider</Label><Input value={form.provider} onChange={(e) => setForm((p) => ({ ...p, provider: e.target.value }))} /></div>
-          <div className="col-span-6"><Label>Approval Body</Label><Input value={form.approval_body} onChange={(e) => setForm((p) => ({ ...p, approval_body: e.target.value }))} /></div>
-          <div className="col-span-6"><Label>Certificate Number</Label><Input value={form.certificate_number} onChange={(e) => setForm((p) => ({ ...p, certificate_number: e.target.value }))} /></div>
-          <div className="col-span-6"><Label>Validity Months</Label><Input type="number" min={0} value={form.validity_months ?? ""} onChange={(e) => setForm((p) => ({ ...p, validity_months: e.target.value ? parseInt(e.target.value) : null }))} /></div>
-          <div className="col-span-6"><Label>Issue Date</Label><Input type="date" value={form.issue_date} onChange={(e) => setForm((p) => ({ ...p, issue_date: e.target.value }))} /></div>
-          <div className="col-span-6"><Label>Expiry Date</Label><Input type="date" value={form.expiry_date} onChange={(e) => setForm((p) => ({ ...p, expiry_date: e.target.value }))} /></div>
-          <div className="col-span-4"><Label>Status</Label><ERPCombobox value={form.status} onValueChange={(v) => setForm((p) => ({ ...p, status: String(v) }))} options={trainStatusOptions} placeholder="Status..." /></div>
-          <div className="col-span-4"><Label>Verification</Label><ERPCombobox value={form.verification_status} onValueChange={(v) => setForm((p) => ({ ...p, verification_status: String(v) }))} options={VERIFICATION_OPTIONS} placeholder="Verification..." /></div>
-          <div className="col-span-4"><Label>Renewal</Label><ERPCombobox value={form.renewal_status} onValueChange={(v) => setForm((p) => ({ ...p, renewal_status: String(v) }))} options={RENEWAL_STATUS_OPTIONS} placeholder="Renewal..." /></div>
-          <div className="col-span-6 flex items-center gap-2 pt-5"><Switch checked={form.required_for_designation} onCheckedChange={(v) => setForm((p) => ({ ...p, required_for_designation: v }))} /><Label>Required for Designation</Label></div>
-          <div className="col-span-6 flex items-center gap-2 pt-5"><Switch checked={form.required_for_site} onCheckedChange={(v) => setForm((p) => ({ ...p, required_for_site: v }))} /><Label>Required for Site</Label></div>
-          <div className="col-span-12"><Label>Notes</Label><Textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} rows={2} /></div>
-        </div>
+      <ComplianceDmsAddDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        employeeId={employeeId}
+        recordKind="training_certificate"
+        icon={<GraduationCap className="h-5 w-5" />}
+        recordLabel="Training Certificate"
+        submitLabel="Save Certificate"
+        createEmptyForm={initialForm}
+        validate={validateTraining}
+        save={async (f) => createEmployeeTrainingCertificate(employeeId, buildPayload(f))}
+        onSaved={handleAddSaved}
+        renderReview={({ form: addForm, setForm: setAddForm, prefillMeta }) => renderTrainingFields(addForm, setAddForm, prefillMeta)}
+      />
+
+      <ERPChildDialogForm open={editDialogOpen} onOpenChange={setEditDialogOpen} title="Edit Certificate" icon={<GraduationCap className="h-5 w-5" />} mode="edit" size="lg" isSubmitting={isSubmitting} onSubmit={handleEditSubmit}>
+        {renderTrainingFields(form, setForm, null)}
       </ERPChildDialogForm>
     </div>
   );
@@ -917,19 +1170,24 @@ function TrainingCertificatesSection({ employeeId, canManageDoc, onChildOpen }: 
 
 function MedicalRecordsSection({ employeeId, canMedView, canMedManage, onChildOpen }: { employeeId: number; canMedView: boolean; canMedManage: boolean; onChildOpen?: (open: boolean) => void }) {
   const qc = useQueryClient();
-  const [dialogOpen, setDialogOpenRaw] = useState(false);
+  const [addDialogOpen, setAddDialogOpenRaw] = useState(false);
+  const [editDialogOpen, setEditDialogOpenRaw] = useState(false);
   const [editing, setEditing] = useState<EmployeeMedicalRecordRow | null>(null);
   const [isSubmitting, startTransition] = useTransition();
 
-  const setDialogOpen = useCallback((open: boolean) => { setDialogOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
+  const setAddDialogOpen = useCallback((open: boolean) => { setAddDialogOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
+  const setEditDialogOpen = useCallback((open: boolean) => { setEditDialogOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
 
   const initialForm = () => ({
+    dms_document_id: null as number | null,
     medical_record_type_id: null as number | null, medical_center: "", report_number: "",
     examination_date: "", result: "under_review" as string, fit_for_work: false,
     work_restrictions: false, restriction_details: "", expiry_date: "",
     required_for_visa: false, required_for_site: false, required_for_offshore: false,
     confidentiality_level: "restricted" as string, notes: "",
   });
+
+  type MedicalRecordForm = ReturnType<typeof initialForm>;
 
   const [form, setForm] = useState(initialForm);
 
@@ -960,20 +1218,57 @@ function MedicalRecordsSection({ employeeId, canMedView, canMedManage, onChildOp
     );
   }
 
-  const openAdd = () => { setEditing(null); setForm(initialForm()); setDialogOpen(true); };
+  const openAdd = () => setAddDialogOpen(true);
   const openEdit = (r: EmployeeMedicalRecordRow) => {
     setEditing(r);
-    setForm({ medical_record_type_id: r.medical_record_type_id, medical_center: r.medical_center ?? "", report_number: r.report_number ?? "", examination_date: r.examination_date, result: r.result, fit_for_work: r.fit_for_work, work_restrictions: r.work_restrictions, restriction_details: r.restriction_details ?? "", expiry_date: r.expiry_date ?? "", required_for_visa: r.required_for_visa, required_for_site: r.required_for_site, required_for_offshore: r.required_for_offshore, confidentiality_level: r.confidentiality_level, notes: r.notes ?? "" });
-    setDialogOpen(true);
+    setForm({
+      dms_document_id: r.dms_document_id,
+      medical_record_type_id: r.medical_record_type_id, medical_center: r.medical_center ?? "",
+      report_number: r.report_number ?? "", examination_date: r.examination_date, result: r.result,
+      fit_for_work: r.fit_for_work, work_restrictions: r.work_restrictions,
+      restriction_details: r.restriction_details ?? "", expiry_date: r.expiry_date ?? "",
+      required_for_visa: r.required_for_visa, required_for_site: r.required_for_site,
+      required_for_offshore: r.required_for_offshore, confidentiality_level: r.confidentiality_level,
+      notes: r.notes ?? "",
+    });
+    setEditDialogOpen(true);
   };
 
-  const handleSubmit = () => {
+  const buildPayload = (f: MedicalRecordForm) => ({
+    ...f,
+    dms_document_id: f.dms_document_id,
+    medical_record_type_id: f.medical_record_type_id!,
+    medical_center: f.medical_center || null,
+    report_number: f.report_number || null,
+    restriction_details: f.restriction_details || null,
+    expiry_date: f.expiry_date || null,
+    notes: f.notes || null,
+  });
+
+  const validateMedicalRecord = (f: MedicalRecordForm) => {
+    if (!f.medical_record_type_id) return "Medical record type is required";
+    if (!f.examination_date) return "Examination date is required";
+    if (!f.result) return "Result is required";
+    return null;
+  };
+
+  const handleEditSubmit = () => {
+    if (!editing) return;
+    const err = validateMedicalRecord(form);
+    if (err) { toast.error(err); return; }
     startTransition(async () => {
-      const payload = { ...form, medical_record_type_id: form.medical_record_type_id!, medical_center: form.medical_center || null, report_number: form.report_number || null, restriction_details: form.restriction_details || null, expiry_date: form.expiry_date || null, notes: form.notes || null };
-      const result = editing ? await updateEmployeeMedicalRecord(editing.id, payload) : await createEmployeeMedicalRecord(employeeId, payload);
-      if (result.success) { toast.success(editing ? "Updated" : "Added"); qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.medicalRecords(employeeId) }); qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.summary(employeeId) }); setDialogOpen(false); }
-      else toast.error(result.error ?? "Failed to save");
+      const result = await updateEmployeeMedicalRecord(editing.id, buildPayload(form));
+      if (result.success) {
+        toast.success("Updated");
+        qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.medicalRecords(employeeId) });
+        qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.summary(employeeId) });
+        setEditDialogOpen(false);
+      } else toast.error(result.error ?? "Failed to save");
     });
+  };
+
+  const handleAddSaved = (opts?: { dmsLinkCreated?: boolean; hasDmsDocument?: boolean }) => {
+    handleComplianceAddSaved(qc, employeeId, queryKeys.hr.compliance.medicalRecords(employeeId), opts);
   };
 
   const handleArchive = async (id: number) => {
@@ -985,6 +1280,30 @@ function MedicalRecordsSection({ employeeId, canMedView, canMedManage, onChildOp
   const recTypeOptions = (recTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }));
   const resultOptions = [{ value: "fit", label: "Fit" }, { value: "unfit", label: "Unfit" }, { value: "conditionally_fit", label: "Conditionally Fit" }, { value: "under_review", label: "Under Review" }];
   const confidentialityOptions = [{ value: "internal", label: "Internal" }, { value: "restricted", label: "Restricted" }, { value: "medical_only", label: "Medical Only" }];
+
+  const renderMedicalRecordFields = (
+    f: MedicalRecordForm,
+    setF: Dispatch<SetStateAction<MedicalRecordForm>>,
+    prefillMeta: Parameters<typeof ComplianceDmsPrefillBanner>[0]["prefillMeta"]
+  ) => (
+    <div className="grid grid-cols-12 gap-4">
+      <ComplianceDmsPrefillBanner prefillMeta={prefillMeta} />
+      <div className="col-span-6"><Label>Medical Record Type <span className="text-destructive">*</span></Label><ERPCombobox value={f.medical_record_type_id} onValueChange={(v) => setF((p) => ({ ...p, medical_record_type_id: Number(v) }))} options={recTypeOptions} placeholder="Select type..." required /></div>
+      <div className="col-span-6"><Label>Medical Center</Label><Input value={f.medical_center} onChange={(e) => setF((p) => ({ ...p, medical_center: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Report Number</Label><Input value={f.report_number} onChange={(e) => setF((p) => ({ ...p, report_number: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Examination Date <span className="text-destructive">*</span></Label><Input type="date" value={f.examination_date} onChange={(e) => setF((p) => ({ ...p, examination_date: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Result <span className="text-destructive">*</span></Label><ERPCombobox value={f.result} onValueChange={(v) => setF((p) => ({ ...p, result: String(v) }))} options={resultOptions} placeholder="Result..." required /></div>
+      <div className="col-span-6"><Label>Expiry Date</Label><Input type="date" value={f.expiry_date} onChange={(e) => setF((p) => ({ ...p, expiry_date: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Confidentiality Level</Label><ERPCombobox value={f.confidentiality_level} onValueChange={(v) => setF((p) => ({ ...p, confidentiality_level: String(v) }))} options={confidentialityOptions} placeholder="Level..." /></div>
+      <div className="col-span-6 flex items-center gap-2 pt-5"><Switch checked={f.fit_for_work} onCheckedChange={(v) => setF((p) => ({ ...p, fit_for_work: v }))} /><Label>Fit for Work</Label></div>
+      <div className="col-span-6 flex items-center gap-2 pt-5"><Switch checked={f.work_restrictions} onCheckedChange={(v) => setF((p) => ({ ...p, work_restrictions: v }))} /><Label>Work Restrictions</Label></div>
+      {f.work_restrictions && <div className="col-span-12"><Label>Restriction Details</Label><Textarea value={f.restriction_details} onChange={(e) => setF((p) => ({ ...p, restriction_details: e.target.value }))} rows={2} /></div>}
+      <div className="col-span-4 flex items-center gap-2 pt-5"><Switch checked={f.required_for_visa} onCheckedChange={(v) => setF((p) => ({ ...p, required_for_visa: v }))} /><Label>Required for Visa</Label></div>
+      <div className="col-span-4 flex items-center gap-2 pt-5"><Switch checked={f.required_for_site} onCheckedChange={(v) => setF((p) => ({ ...p, required_for_site: v }))} /><Label>Required for Site</Label></div>
+      <div className="col-span-4 flex items-center gap-2 pt-5"><Switch checked={f.required_for_offshore} onCheckedChange={(v) => setF((p) => ({ ...p, required_for_offshore: v }))} /><Label>Required for Offshore</Label></div>
+      <div className="col-span-12"><Label>Notes</Label><Textarea value={f.notes} onChange={(e) => setF((p) => ({ ...p, notes: e.target.value }))} rows={2} /></div>
+    </div>
+  );
 
   return (
     <div className="mb-8">
@@ -1023,24 +1342,26 @@ function MedicalRecordsSection({ employeeId, canMedView, canMedManage, onChildOp
       )}
 
       {canMedManage && (
-        <ERPChildDialogForm open={dialogOpen} onOpenChange={setDialogOpen} title={editing ? "Edit Medical Record" : "Add Medical Record"} icon={<Activity className="h-5 w-5" />} mode={editing ? "edit" : "add"} size="lg" isSubmitting={isSubmitting} onSubmit={handleSubmit}>
-          <div className="grid grid-cols-12 gap-4">
-            <div className="col-span-6"><Label>Medical Record Type <span className="text-destructive">*</span></Label><ERPCombobox value={form.medical_record_type_id} onValueChange={(v) => setForm((p) => ({ ...p, medical_record_type_id: Number(v) }))} options={recTypeOptions} placeholder="Select type..." required /></div>
-            <div className="col-span-6"><Label>Medical Center</Label><Input value={form.medical_center} onChange={(e) => setForm((p) => ({ ...p, medical_center: e.target.value }))} /></div>
-            <div className="col-span-6"><Label>Report Number</Label><Input value={form.report_number} onChange={(e) => setForm((p) => ({ ...p, report_number: e.target.value }))} /></div>
-            <div className="col-span-6"><Label>Examination Date <span className="text-destructive">*</span></Label><Input type="date" value={form.examination_date} onChange={(e) => setForm((p) => ({ ...p, examination_date: e.target.value }))} /></div>
-            <div className="col-span-6"><Label>Result <span className="text-destructive">*</span></Label><ERPCombobox value={form.result} onValueChange={(v) => setForm((p) => ({ ...p, result: String(v) }))} options={resultOptions} placeholder="Result..." required /></div>
-            <div className="col-span-6"><Label>Expiry Date</Label><Input type="date" value={form.expiry_date} onChange={(e) => setForm((p) => ({ ...p, expiry_date: e.target.value }))} /></div>
-            <div className="col-span-6"><Label>Confidentiality Level</Label><ERPCombobox value={form.confidentiality_level} onValueChange={(v) => setForm((p) => ({ ...p, confidentiality_level: String(v) }))} options={confidentialityOptions} placeholder="Level..." /></div>
-            <div className="col-span-6 flex items-center gap-2 pt-5"><Switch checked={form.fit_for_work} onCheckedChange={(v) => setForm((p) => ({ ...p, fit_for_work: v }))} /><Label>Fit for Work</Label></div>
-            <div className="col-span-6 flex items-center gap-2 pt-5"><Switch checked={form.work_restrictions} onCheckedChange={(v) => setForm((p) => ({ ...p, work_restrictions: v }))} /><Label>Work Restrictions</Label></div>
-            {form.work_restrictions && <div className="col-span-12"><Label>Restriction Details</Label><Textarea value={form.restriction_details} onChange={(e) => setForm((p) => ({ ...p, restriction_details: e.target.value }))} rows={2} /></div>}
-            <div className="col-span-4 flex items-center gap-2 pt-5"><Switch checked={form.required_for_visa} onCheckedChange={(v) => setForm((p) => ({ ...p, required_for_visa: v }))} /><Label>Required for Visa</Label></div>
-            <div className="col-span-4 flex items-center gap-2 pt-5"><Switch checked={form.required_for_site} onCheckedChange={(v) => setForm((p) => ({ ...p, required_for_site: v }))} /><Label>Required for Site</Label></div>
-            <div className="col-span-4 flex items-center gap-2 pt-5"><Switch checked={form.required_for_offshore} onCheckedChange={(v) => setForm((p) => ({ ...p, required_for_offshore: v }))} /><Label>Required for Offshore</Label></div>
-            <div className="col-span-12"><Label>Notes</Label><Textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} rows={2} /></div>
-          </div>
-        </ERPChildDialogForm>
+        <>
+          <ComplianceDmsAddDialog
+            open={addDialogOpen}
+            onOpenChange={setAddDialogOpen}
+            employeeId={employeeId}
+            recordKind="medical_record"
+            icon={<Activity className="h-5 w-5" />}
+            recordLabel="Medical Record"
+            submitLabel="Save Medical Record"
+            createEmptyForm={initialForm}
+            validate={validateMedicalRecord}
+            save={async (f) => createEmployeeMedicalRecord(employeeId, buildPayload(f))}
+            onSaved={handleAddSaved}
+            renderReview={({ form: addForm, setForm: setAddForm, prefillMeta }) => renderMedicalRecordFields(addForm, setAddForm, prefillMeta)}
+          />
+
+          <ERPChildDialogForm open={editDialogOpen} onOpenChange={setEditDialogOpen} title="Edit Medical Record" icon={<Activity className="h-5 w-5" />} mode="edit" size="lg" isSubmitting={isSubmitting} onSubmit={handleEditSubmit}>
+            {renderMedicalRecordFields(form, setForm, null)}
+          </ERPChildDialogForm>
+        </>
       )}
     </div>
   );

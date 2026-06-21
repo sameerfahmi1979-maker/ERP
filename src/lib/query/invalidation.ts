@@ -798,6 +798,8 @@ export function invalidateHrEmployeePayroll(
 ): void {
   void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "profile", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "salary-components", employeeId] });
+  void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "gross-salary", employeeId] });
+  void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "basic-salary", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "holds", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "wps-profile", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "wps-readiness", employeeId] });
@@ -809,6 +811,8 @@ export function invalidateHrEmployeeSalaryComponents(
   employeeId: number
 ): void {
   void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "salary-components", employeeId] });
+  void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "gross-salary", employeeId] });
+  void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "basic-salary", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "summary", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "wps-readiness", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "global-salary-profiles"] });

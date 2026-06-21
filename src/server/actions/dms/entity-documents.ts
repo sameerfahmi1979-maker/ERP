@@ -127,6 +127,26 @@ export async function getDmsDocumentsByEntity(
     const isAdmin = hasPermission(ctx, "dms.admin");
     const CONFIDENTIAL_LEVELS = ["hr", "legal", "executive"];
 
+    const documentIds = (data ?? [])
+      .map((link) => link.document_id)
+      .filter((id): id is number => id != null);
+
+    const filesCountByDocId = new Map<number, number>();
+    if (documentIds.length > 0) {
+      const { data: fileRows, error: fileError } = await supabase
+        .from("dms_document_files")
+        .select("document_id")
+        .in("document_id", documentIds)
+        .is("deleted_at", null);
+
+      if (fileError) return { success: false, error: fileError.message };
+
+      for (const row of fileRows ?? []) {
+        const docId = row.document_id as number;
+        filesCountByDocId.set(docId, (filesCountByDocId.get(docId) ?? 0) + 1);
+      }
+    }
+
     const rows: DmsEntityDocumentRow[] = [];
     for (const link of data ?? []) {
       const doc = link.document as unknown as Record<string, unknown> | null;
@@ -136,12 +156,7 @@ export async function getDmsDocumentsByEntity(
       const confidentiality = doc.confidentiality_level as string;
       const isConfidential = CONFIDENTIAL_LEVELS.includes(confidentiality);
 
-      // Fetch file count
-      const { count: filesCount } = await supabase
-        .from("dms_document_files")
-        .select("id", { count: "exact", head: true })
-        .eq("document_id", link.document_id)
-        .is("deleted_at", null);
+      const filesCount = filesCountByDocId.get(link.document_id) ?? 0;
 
       rows.push({
         link_id: link.id,
@@ -160,8 +175,8 @@ export async function getDmsDocumentsByEntity(
         migrated_from_table: doc.migrated_from_table as string | null,
         document_type_name: docType?.name_en ?? null,
         document_type_code: docType?.type_code ?? null,
-        has_files: (filesCount ?? 0) > 0,
-        files_count: filesCount ?? 0,
+        has_files: filesCount > 0,
+        files_count: filesCount,
         // Redact AI summary for restricted documents unless user is admin
         ai_summary:
           isConfidential && !isAdmin

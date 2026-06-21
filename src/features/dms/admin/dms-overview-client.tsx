@@ -14,6 +14,7 @@ import {
   Brain,
 } from "lucide-react";
 import type { DmsAdminOverviewStats } from "@/server/actions/dms/overview";
+import { DmsStandardFileNameBulkRenamePanel } from "@/features/dms/admin/dms-standard-file-name-bulk-rename-panel";
 
 type Props = {
   stats: DmsAdminOverviewStats;
@@ -161,6 +162,8 @@ export function DmsOverviewClient({ stats }: Props) {
           ))}
         </div>
       </div>
+
+      <DmsStandardFileNameBulkRenamePanel />
 
       {/* Quick Links */}
       <div className="rounded-lg border border-border/50 bg-card p-4">

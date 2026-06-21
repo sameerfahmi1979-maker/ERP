@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import type { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { ListTree, PlusCircle, Pencil, Power, Brain } from "lucide-react";
 import { toast } from "sonner";
@@ -91,6 +93,21 @@ function canManage(ctx: AuthContext) {
   );
 }
 
+function buildSearchText(row: DmsMetadataDefinitionRow): string {
+  return [
+    row.field_code,
+    row.field_label_en,
+    row.field_label_ar ?? "",
+    row.document_type?.name_en ?? "",
+    row.document_type?.type_code ?? "",
+    row.field_type,
+    row.ai_field_hint ?? "",
+    FIELD_TYPE_LABELS[row.field_type] ?? row.field_type,
+  ]
+    .join(" ")
+    .toLowerCase();
+}
+
 export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }: Props) {
   const router = useRouter();
   const manage = canManage(authContext);
@@ -99,7 +116,26 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
   const [editing, setEditing] = useState<DmsMetadataDefinitionRow | null>(null);
   const [form, setForm] = useState<FormState>({ ...emptyForm });
   const [isSubmitting, setIsSubmitting] = useState(false);
+
   const [filterTypeId, setFilterTypeId] = useState<string>("all");
+  const [filterFieldType, setFilterFieldType] = useState<string>("all");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterRequired, setFilterRequired] = useState<string>("all");
+  const [filterAi, setFilterAi] = useState<string>("all");
+
+  const filteredRows = useMemo(() => {
+    return rows.filter((row) => {
+      if (filterTypeId !== "all" && String(row.document_type_id) !== filterTypeId) return false;
+      if (filterFieldType !== "all" && row.field_type !== filterFieldType) return false;
+      if (filterStatus === "active" && !row.is_active) return false;
+      if (filterStatus === "inactive" && row.is_active) return false;
+      if (filterRequired === "yes" && !row.is_required) return false;
+      if (filterRequired === "no" && row.is_required) return false;
+      if (filterAi === "yes" && !row.is_ai_extractable) return false;
+      if (filterAi === "no" && row.is_ai_extractable) return false;
+      return true;
+    });
+  }, [rows, filterTypeId, filterFieldType, filterStatus, filterRequired, filterAi]);
 
   const openAdd = () => {
     setEditing(null);
@@ -176,106 +212,262 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
     router.refresh();
   };
 
-  const filteredRows = filterTypeId === "all"
-    ? rows
-    : rows.filter((r) => String(r.document_type_id) === filterTypeId);
+  const columns: ColumnDef<DmsMetadataDefinitionRow>[] = useMemo(
+    () => [
+      {
+        id: "document_type",
+        accessorFn: (row) => row.document_type?.name_en ?? `Type #${row.document_type_id}`,
+        header: "Document Type",
+        cell: ({ row }) => (
+          <div>
+            <div className="font-medium text-sm">
+              {row.original.document_type?.name_en ?? `Type #${row.original.document_type_id}`}
+            </div>
+            <div className="font-mono text-[10px] text-muted-foreground">
+              {row.original.document_type?.type_code ?? "—"}
+            </div>
+          </div>
+        ),
+        meta: {
+          exportHeader: "Document Type",
+          exportValue: (row) => row.document_type?.name_en ?? String(row.document_type_id),
+        },
+      },
+      {
+        accessorKey: "field_code",
+        accessorFn: (row) => buildSearchText(row),
+        sortingFn: (rowA, rowB) =>
+          rowA.original.field_code.localeCompare(rowB.original.field_code),
+        header: "Field Code",
+        cell: ({ row }) => <span className="font-mono text-xs">{row.original.field_code}</span>,
+        meta: { exportHeader: "Field Code", exportValue: (row) => row.field_code },
+      },
+      {
+        accessorKey: "field_label_en",
+        header: "Label",
+        cell: ({ row }) => (
+          <div>
+            <div className="text-sm">{row.original.field_label_en}</div>
+            {row.original.field_label_ar && (
+              <div className="text-xs text-muted-foreground" dir="rtl">
+                {row.original.field_label_ar}
+              </div>
+            )}
+          </div>
+        ),
+        meta: {
+          exportHeader: "Label (EN)",
+          exportValue: (row) => row.field_label_en,
+        },
+      },
+      {
+        accessorKey: "field_type",
+        header: "Type",
+        cell: ({ row }) => (
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
+            {row.original.field_type}
+          </Badge>
+        ),
+        meta: { exportHeader: "Field Type", exportValue: (row) => row.field_type },
+      },
+      {
+        accessorKey: "sort_order",
+        header: "Order",
+        cell: ({ row }) => (
+          <span className="text-xs text-muted-foreground tabular-nums">{row.original.sort_order}</span>
+        ),
+        meta: { exportHeader: "Sort Order", exportValue: (row) => row.sort_order },
+      },
+      {
+        accessorKey: "is_required",
+        header: "Req.",
+        cell: ({ row }) =>
+          row.original.is_required ? (
+            <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 text-[10px] px-1.5 py-0">
+              Req
+            </Badge>
+          ) : (
+            <span className="text-muted-foreground text-xs">—</span>
+          ),
+        meta: {
+          exportHeader: "Required",
+          exportValue: (row) => (row.is_required ? "Yes" : "No"),
+        },
+      },
+      {
+        accessorKey: "is_ai_extractable",
+        header: "AI",
+        cell: ({ row }) =>
+          row.original.is_ai_extractable ? (
+            <span title={row.original.ai_field_hint ?? "AI Extractable"}>
+              <Brain className="h-3.5 w-3.5 mx-auto text-purple-500" />
+            </span>
+          ) : (
+            <span className="text-muted-foreground text-xs">—</span>
+          ),
+        meta: {
+          exportHeader: "AI Extractable",
+          exportValue: (row) => (row.is_ai_extractable ? "Yes" : "No"),
+        },
+      },
+      {
+        accessorKey: "is_active",
+        header: "Status",
+        cell: ({ row }) => (
+          <Badge
+            className={`text-[10px] px-1.5 py-0 ${
+              row.original.is_active
+                ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+            }`}
+          >
+            {row.original.is_active ? "Active" : "Inactive"}
+          </Badge>
+        ),
+        meta: {
+          exportHeader: "Status",
+          exportValue: (row) => (row.is_active ? "Active" : "Inactive"),
+        },
+      },
+      ...(manage
+        ? [
+            {
+              id: "actions",
+              header: "",
+              enableSorting: false,
+              cell: ({ row }: { row: { original: DmsMetadataDefinitionRow } }) => (
+                <div className="flex items-center gap-1 justify-end">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7"
+                    onClick={() => openEdit(row.original)}
+                    title="Edit"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7"
+                    onClick={() => handleToggle(row.original)}
+                    title={row.original.is_active ? "Deactivate" : "Activate"}
+                  >
+                    <Power className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ),
+              meta: { exportable: false },
+            } satisfies ColumnDef<DmsMetadataDefinitionRow>,
+          ]
+        : []),
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [manage]
+  );
+
+  const toolbarFilters = (
+    <div className="flex flex-wrap items-center gap-2">
+      <Select value={filterTypeId} onValueChange={(v) => setFilterTypeId(v ?? "all")}>
+        <SelectTrigger className="h-8 w-48 text-xs">
+          <SelectValue placeholder="Document type" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All document types</SelectItem>
+          {documentTypes.map((dt) => (
+            <SelectItem key={dt.id} value={String(dt.id)}>
+              {dt.name_en}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Select value={filterFieldType} onValueChange={(v) => setFilterFieldType(v ?? "all")}>
+        <SelectTrigger className="h-8 w-40 text-xs">
+          <SelectValue placeholder="Field type" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All field types</SelectItem>
+          {ALLOWED_FIELD_TYPES.map((t) => (
+            <SelectItem key={t} value={t}>
+              {FIELD_TYPE_LABELS[t] ?? t}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v ?? "all")}>
+        <SelectTrigger className="h-8 w-32 text-xs">
+          <SelectValue placeholder="Status" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All status</SelectItem>
+          <SelectItem value="active">Active</SelectItem>
+          <SelectItem value="inactive">Inactive</SelectItem>
+        </SelectContent>
+      </Select>
+      <Select value={filterRequired} onValueChange={(v) => setFilterRequired(v ?? "all")}>
+        <SelectTrigger className="h-8 w-32 text-xs">
+          <SelectValue placeholder="Required" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All required</SelectItem>
+          <SelectItem value="yes">Required only</SelectItem>
+          <SelectItem value="no">Optional only</SelectItem>
+        </SelectContent>
+      </Select>
+      <Select value={filterAi} onValueChange={(v) => setFilterAi(v ?? "all")}>
+        <SelectTrigger className="h-8 w-36 text-xs">
+          <SelectValue placeholder="AI extractable" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All AI flags</SelectItem>
+          <SelectItem value="yes">AI extractable</SelectItem>
+          <SelectItem value="no">Not AI extractable</SelectItem>
+        </SelectContent>
+      </Select>
+      {manage && (
+        <Button onClick={openAdd} size="sm">
+          <PlusCircle className="mr-2 h-4 w-4" />
+          Add Field
+        </Button>
+      )}
+    </div>
+  );
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <p className="text-sm text-muted-foreground">
-            {filteredRows.length} of {rows.length} fields
-          </p>
-          <Select value={filterTypeId} onValueChange={(v) => setFilterTypeId(v ?? "all")}>
-            <SelectTrigger className="w-56 h-8 text-xs">
-              <SelectValue placeholder="Filter by document type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All document types</SelectItem>
-              {documentTypes.map((dt) => (
-                <SelectItem key={dt.id} value={String(dt.id)}>
-                  {dt.name_en}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        {manage && (
-          <Button onClick={openAdd} size="sm">
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Add Field
-          </Button>
-        )}
-      </div>
+      <p className="text-sm text-muted-foreground">
+        {filteredRows.length} of {rows.length} metadata fields
+        {(filterTypeId !== "all" ||
+          filterFieldType !== "all" ||
+          filterStatus !== "all" ||
+          filterRequired !== "all" ||
+          filterAi !== "all") &&
+          " (filtered)"}
+      </p>
 
       <div className="rounded-md border overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50 border-b">
-            <tr>
-              <th className="text-left px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">Document Type</th>
-              <th className="text-left px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">Field Code</th>
-              <th className="text-left px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">Label</th>
-              <th className="text-center px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">Type</th>
-              <th className="text-center px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">Req.</th>
-              <th className="text-center px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">AI</th>
-              <th className="text-center px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">Status</th>
-              {manage && <th className="px-4 py-2.5 w-24" />}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border/50">
-            {filteredRows.length === 0 && (
-              <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground text-sm">No metadata fields found</td>
-              </tr>
-            )}
-            {filteredRows.map((row) => (
-              <tr key={row.id} className="hover:bg-muted/25 transition-colors">
-                <td className="px-4 py-2.5 text-xs">
-                  <div className="font-medium">{row.document_type?.name_en ?? `Type #${row.document_type_id}`}</div>
-                  <div className="font-mono text-muted-foreground text-[10px]">{row.document_type?.type_code}</div>
-                </td>
-                <td className="px-4 py-2.5 font-mono text-xs">{row.field_code}</td>
-                <td className="px-4 py-2.5">
-                  <div className="text-sm">{row.field_label_en}</div>
-                  {row.field_label_ar && <div className="text-xs text-muted-foreground" dir="rtl">{row.field_label_ar}</div>}
-                </td>
-                <td className="px-4 py-2.5 text-center">
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
-                    {row.field_type}
-                  </Badge>
-                </td>
-                <td className="px-4 py-2.5 text-center">
-                  {row.is_required ? (
-                    <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 text-[10px] px-1.5 py-0">Req</Badge>
-                  ) : <span className="text-muted-foreground text-xs">—</span>}
-                </td>
-                <td className="px-4 py-2.5 text-center">
-                  {row.is_ai_extractable ? (
-                    <span title="AI Extractable"><Brain className="h-3.5 w-3.5 mx-auto text-purple-500" /></span>
-                  ) : <span className="text-muted-foreground text-xs">—</span>}
-                </td>
-                <td className="px-4 py-2.5 text-center">
-                  <Badge className={`text-[10px] px-1.5 py-0 ${row.is_active ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"}`}>
-                    {row.is_active ? "Active" : "Inactive"}
-                  </Badge>
-                </td>
-                {manage && (
-                  <td className="px-4 py-2.5">
-                    <div className="flex items-center gap-1 justify-end">
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(row)} title="Edit">
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleToggle(row)} title={row.is_active ? "Deactivate" : "Activate"}>
-                        <Power className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <ERPDataTable<DmsMetadataDefinitionRow>
+          tableId="dms_metadata_definitions"
+          columns={columns}
+          data={filteredRows}
+          enableSorting
+          enableColumnResizing
+          enableRowSelection={false}
+          enableColumnVisibility
+          enablePreferences
+          searchPlaceholder="Search by code, label, document type, field type, or AI hint..."
+          emptyMessage="No metadata fields found"
+          initialPageSize={25}
+          pageSizeOptions={[10, 25, 50, 100]}
+          enableGlobalFilter
+          exportConfig={{
+            title: "DMS Metadata Definitions",
+            subtitle: `${filteredRows.length} metadata field${filteredRows.length !== 1 ? "s" : ""}`,
+            filename: "dms-metadata-definitions",
+            orientation: "landscape",
+          }}
+          toolbarSlot={toolbarFilters}
+        />
       </div>
 
       <ERPChildDialogForm

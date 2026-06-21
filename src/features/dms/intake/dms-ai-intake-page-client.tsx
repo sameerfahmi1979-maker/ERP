@@ -33,6 +33,8 @@ import {
   getIntakeSessionSignedUrl,
 } from "@/server/actions/dms/ai-intake";
 import { finalizeDraftIntake, discardDraftIntake } from "@/server/actions/dms/batch-intake";
+import { previewDmsStandardFileName } from "@/server/actions/dms/standard-file-name";
+import type { DmsDocumentTypeRow } from "@/server/actions/dms/document-types";
 import { DmsOrchestrationProgressCard } from "@/features/dms/orchestration";
 
 // ── Format file size ──────────────────────────────────────────────────────────
@@ -47,11 +49,15 @@ function formatBytes(bytes: number): string {
 
 interface DmsAiIntakePageClientProps {
   session: IntakeSessionData;
+  documentTypes: DmsDocumentTypeRow[];
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function DmsAiIntakePageClient({ session: initialSession }: DmsAiIntakePageClientProps) {
+export function DmsAiIntakePageClient({
+  session: initialSession,
+  documentTypes,
+}: DmsAiIntakePageClientProps) {
   const router = useRouter();
   const { activeTab, updateTabRoute, renameTab } = useWorkspace();
   const [session] = useState<IntakeSessionData>(initialSession);
@@ -77,9 +83,32 @@ export function DmsAiIntakePageClient({ session: initialSession }: DmsAiIntakePa
 
   // ── Validate before approve ───────────────────────────────────────────────
 
-  const validate = (): string | null => {
+  const validate = async (): Promise<string | null> => {
     if (!formValues.title.trim()) return "Title is required";
     if (!formValues.documentTypeId) return "Document type is required";
+    if (!formValues.standardFileName.trim()) return "Standard file name is required";
+
+    const docType = documentTypes.find((t) => t.id === formValues.documentTypeId);
+    if (docType) {
+      const preview = await previewDmsStandardFileName({
+        typeCode: docType.type_code,
+        requiresExpiryTracking: docType.requires_expiry_tracking,
+        expiryDate: formValues.expiryDate || null,
+        originalFilename: session.original_filename,
+        extractedFields: session.ai_result?.extracted_fields_json ?? null,
+        metadataValues: Object.entries(formValues.metadataValues).map(([id, v]) => ({
+          definitionId: parseInt(id, 10),
+          rawValue: v.rawValue,
+        })),
+        uploadSessionId: session.id,
+        standardFileNameOverride: formValues.standardFileName,
+        suggestedDescription: formValues.description || session.ai_result?.suggested_description || null,
+        suggestedTitle: formValues.title || session.ai_result?.suggested_title || null,
+      });
+      if (preview.success && preview.data && !preview.data.validation.valid) {
+        return `Standard file name is incomplete (missing: ${preview.data.validation.missing.join(", ")})`;
+      }
+    }
     return null;
   };
 
@@ -100,16 +129,17 @@ export function DmsAiIntakePageClient({ session: initialSession }: DmsAiIntakePa
   // ── Approve & Save ────────────────────────────────────────────────────────
 
   const handleApprove = () => {
-    const error = validate();
-    if (error) {
-      toast.error(error);
-      return;
-    }
-
     startTransition(async () => {
+      const error = await validate();
+      if (error) {
+        toast.error(error);
+        return;
+      }
+
       const sharedPayload = {
         uploadSessionId: session.id,
         title: formValues.title,
+        standardFileName: formValues.standardFileName.trim(),
         documentTypeId: formValues.documentTypeId!,
         description: formValues.description || null,
         issueDate: formValues.issueDate || null,
@@ -574,6 +604,7 @@ export function DmsAiIntakePageClient({ session: initialSession }: DmsAiIntakePa
                 session={session}
                 values={formValues}
                 onChange={handleFormChange}
+                initialDocTypes={documentTypes}
               />
             </div>
           </div>
@@ -647,6 +678,7 @@ function buildDraftPayload(values: ReviewFormValues) {
   };
 
   addField("title", values.title);
+  addField("standard_file_name", values.standardFileName);
   addField("document_type_id", values.documentTypeId, values.documentTypeId, "number");
   addField("description", values.description);
   addField("issue_date", values.issueDate, null, "date");

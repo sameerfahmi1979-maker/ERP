@@ -19,10 +19,14 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
 import { getDmsAiProvider } from "@/lib/dms/ai/factory";
 import { hashOcrText, PROMPT_VERSION } from "@/lib/dms/ai/prompt-builders";
+import { resolveSuggestedDocumentType } from "@/lib/dms/ai/classification-resolver";
+import { loadMetadataFieldsForDocumentType } from "@/lib/dms/ai/load-metadata-fields";
 import { extractFileContent } from "@/lib/dms/file-content-extractor";
 import { revalidatePath } from "next/cache";
 import { writeDocumentContentTextSystem } from "@/server/actions/dms/document-content";
 import { persistFileOcrResult } from "@/lib/dms/ocr/persist-file-ocr-result";
+import { resolveStandardFileNameForIntakeApprove } from "@/server/actions/dms/standard-file-name";
+import { validateStandardFileName } from "@/lib/dms/standard-file-name";
 import type {
   DmsAiDocumentTypeCandidate,
   DmsAiImageFile,
@@ -235,6 +239,7 @@ export type ApproveIntakeInput = {
   }[];
   aiResultId?: number | null;
   allowDuplicate?: boolean;
+  standardFileName?: string | null;
 };
 
 // ── Validation schemas ────────────────────────────────────────────────────────
@@ -269,6 +274,7 @@ const ApproveIntakeSchema = z.object({
   })).optional().default([]),
   aiResultId: z.number().int().positive().nullable().optional(),
   allowDuplicate: z.boolean().optional().default(false),
+  standardFileName: z.string().min(1).max(200).nullable().optional(),
 });
 
 // ── Helper: resolve metadata value columns by field type ─────────────────────
@@ -482,7 +488,7 @@ export async function startAiIntakeFromUploadSession(
       categoryName: null,
     }));
 
-    // For intake, no current type — pass all fields as potential extraction targets
+    // For intake pass 1, classify with all candidates; metadata loaded after type is known.
     const metadataFields: DmsAiMetadataField[] = [];
 
     // ── Mark job processing ────────────────────────────────────────────────
@@ -534,17 +540,81 @@ export async function startAiIntakeFromUploadSession(
       return { success: false, error: aiError ?? "AI analysis failed" };
     }
 
-    // ── Resolve type ID from suggested code ────────────────────────────────
+    // ── Pass 2: type-specific metadata extraction (when type resolved) ─────
 
-    const suggestedTypeCode = aiOutput.classification.suggestedTypeCode;
-    let suggestedTypeId: number | null = null;
-    if (suggestedTypeCode) {
-      const matched = typeRows?.find((t) => t.type_code === suggestedTypeCode);
-      if (matched) {
-        suggestedTypeId = matched.id as number;
-        aiOutput.classification.suggestedTypeId = suggestedTypeId;
+    const pass1Transcription =
+      aiOutput.extraction.fullTextTranscription ?? ocrText ?? "";
+
+    const typeResolution = resolveSuggestedDocumentType(
+      aiOutput.classification.suggestedTypeCode,
+      (typeRows ?? []) as Array<{ id: number; type_code: string; name_en?: string }>,
+      pass1Transcription,
+      aiOutput.classification.confidenceScore
+    );
+
+    let suggestedTypeId = typeResolution.typeId;
+    let suggestedTypeCode = typeResolution.typeCode;
+
+    if (typeResolution.source !== "ai" && typeResolution.typeCode) {
+      aiOutput.classification.suggestedTypeCode = typeResolution.typeCode;
+      aiOutput.classification.suggestedTypeId = typeResolution.typeId;
+      if (typeResolution.overrideReason) {
+        aiOutput.warnings = [
+          ...(aiOutput.warnings ?? []),
+          `Classification adjusted: ${typeResolution.overrideReason}`,
+        ];
       }
     }
+
+    if (suggestedTypeId) {
+      const typeSpecificFields = await loadMetadataFieldsForDocumentType(supabase, suggestedTypeId);
+      if (typeSpecificFields.length > 0) {
+        try {
+          const extractOutput = await provider.analyze({
+            ocrText: pass1Transcription || ocrText,
+            imageFiles,
+            currentTypeCode: suggestedTypeCode,
+            typeCandidates,
+            metadataFields: typeSpecificFields,
+            originalFilename,
+          });
+          // Merge pass-2 extraction; keep pass-1 classification + transcription
+          aiOutput.extraction.fields = extractOutput.extraction.fields;
+          aiOutput.extraction.additionalFields = [
+            ...aiOutput.extraction.additionalFields,
+            ...extractOutput.extraction.additionalFields,
+          ];
+          if (!aiOutput.extraction.suggestedTitle && extractOutput.extraction.suggestedTitle) {
+            aiOutput.extraction.suggestedTitle = extractOutput.extraction.suggestedTitle;
+          }
+          if (!aiOutput.extraction.suggestedDescription && extractOutput.extraction.suggestedDescription) {
+            aiOutput.extraction.suggestedDescription = extractOutput.extraction.suggestedDescription;
+          }
+          if (!aiOutput.extraction.issueDateSuggestion && extractOutput.extraction.issueDateSuggestion) {
+            aiOutput.extraction.issueDateSuggestion = extractOutput.extraction.issueDateSuggestion;
+          }
+          if (!aiOutput.extraction.expiryDateSuggestion && extractOutput.extraction.expiryDateSuggestion) {
+            aiOutput.extraction.expiryDateSuggestion = extractOutput.extraction.expiryDateSuggestion;
+          }
+          if (!aiOutput.extraction.fullTextTranscription && extractOutput.extraction.fullTextTranscription) {
+            aiOutput.extraction.fullTextTranscription = extractOutput.extraction.fullTextTranscription;
+          }
+          if (extractOutput.detectedEntities.length > 0) {
+            aiOutput.detectedEntities = extractOutput.detectedEntities;
+          }
+        } catch (err) {
+          logger.warn("[ai-intake] pass-2 type-specific extraction failed (non-fatal)", {
+            typeCode: suggestedTypeCode,
+            err: String(err).slice(0, 200),
+          });
+        }
+      }
+    }
+
+    // ── Finalize classification on output ──────────────────────────────────
+
+    aiOutput.classification.suggestedTypeCode = suggestedTypeCode;
+    aiOutput.classification.suggestedTypeId = suggestedTypeId;
 
     // ── Build extracted fields JSON ────────────────────────────────────────
 
@@ -976,6 +1046,7 @@ export async function approveAiIntakeAndCreateDocument(
       links,
       aiResultId,
       allowDuplicate,
+      standardFileName,
     } = parsed.data;
 
     const supabase = await createClient();
@@ -1030,12 +1101,14 @@ export async function approveAiIntakeAndCreateDocument(
 
     const { data: docType, error: typeError } = await supabase
       .from("dms_document_types")
-      .select("id, type_code, category_id, default_confidentiality, is_active")
+      .select("id, type_code, category_id, default_confidentiality, is_active, requires_expiry_tracking")
       .eq("id", documentTypeId)
       .single();
 
     if (typeError || !docType) return { success: false, error: "Document type not found" };
     if (!(docType.is_active as boolean)) return { success: false, error: "Selected document type is not active" };
+
+    const requiresExpiryTracking = (docType.requires_expiry_tracking as boolean) ?? false;
 
     // ── Generate document number ───────────────────────────────────────────
 
@@ -1053,6 +1126,29 @@ export async function approveAiIntakeAndCreateDocument(
     const ext = getExtension(typedSession.original_filename as string);
     const userId = ctx.profile.id;
     const confidentiality = confidentialityLevel ?? (docType.default_confidentiality as string | null) ?? "internal";
+
+    const resolvedFileName = await resolveStandardFileNameForIntakeApprove({
+      uploadSessionId,
+      documentTypeId,
+      expiryDate: expiryDate ?? null,
+      documentNo,
+      partyId: partyId ?? null,
+      links: links?.map((l) => ({ entityType: l.entityType, entityId: l.entityId })),
+      metadataValues,
+      standardFileName: standardFileName ?? null,
+      originalFilename: typedSession.original_filename as string,
+      aiResultId: aiResultId ?? null,
+      description: description ?? null,
+      title,
+    });
+
+    const nameValidation = validateStandardFileName(resolvedFileName, { requiresExpiryTracking });
+    if (!nameValidation.valid) {
+      return {
+        success: false,
+        error: `Standard file name is incomplete (missing: ${nameValidation.missing.join(", ")}). Fix on the review screen before approving.`,
+      };
+    }
 
     // ── Create dms_documents record ────────────────────────────────────────
 
@@ -1147,7 +1243,7 @@ export async function approveAiIntakeAndCreateDocument(
         file_role: "original",
         storage_bucket: "dms-documents",
         storage_path: finalPath,
-        file_name: typedSession.original_filename,
+        file_name: resolvedFileName,
         mime_type: typedSession.mime_type,
         file_size_bytes: typedSession.file_size_bytes,
         sha256_hash: typedSession.sha256_hash ?? null,

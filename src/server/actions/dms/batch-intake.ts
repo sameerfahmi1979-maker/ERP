@@ -38,6 +38,8 @@ import { persistFileOcrResult } from "@/lib/dms/ocr/persist-file-ocr-result";
 import { extractFileContent } from "@/lib/dms/file-content-extractor";
 import { getDmsAiProvider } from "@/lib/dms/ai/factory";
 import { DMS_MAX_BATCH_FILES } from "@/features/dms/upload/dms-upload-constants";
+import { resolveStandardFileNameForIntakeApprove } from "@/server/actions/dms/standard-file-name";
+import { validateStandardFileName } from "@/lib/dms/standard-file-name";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type ActionResult<T = unknown> = {
@@ -663,6 +665,7 @@ const FinalizeSchema = z
       .optional()
       .default([]),
     aiResultId: z.number().int().positive().nullable().optional(),
+    standardFileName: z.string().min(1).max(200).nullable().optional(),
   })
   .refine(
     (v) => (v.uploadSessionId != null) !== (v.documentId != null),
@@ -726,11 +729,36 @@ export async function finalizeDraftIntake(
     // Validate the chosen type is active and resolve its category.
     const { data: docType, error: typeError } = await supabase
       .from("dms_document_types")
-      .select("id, type_code, category_id, default_confidentiality, is_active")
+      .select("id, type_code, category_id, default_confidentiality, is_active, requires_expiry_tracking")
       .eq("id", v.documentTypeId)
       .single();
     if (typeError || !docType) return { success: false, error: "Document type not found" };
     if (!docType.is_active) return { success: false, error: "Selected document type is not active" };
+
+    const requiresExpiryTracking = (docType.requires_expiry_tracking as boolean) ?? false;
+
+    const resolvedFileName = await resolveStandardFileNameForIntakeApprove({
+      uploadSessionId,
+      documentTypeId: v.documentTypeId,
+      expiryDate: v.expiryDate ?? null,
+      documentNo: doc.document_no as string,
+      partyId: v.partyId ?? null,
+      links: v.links?.map((l) => ({ entityType: l.entityType, entityId: l.entityId })),
+      metadataValues: v.metadataValues,
+      standardFileName: v.standardFileName ?? null,
+      originalFilename: session.original_filename as string,
+      aiResultId: v.aiResultId ?? (session.ai_result_id as number | null),
+      description: v.description ?? null,
+      title: v.title,
+    });
+
+    const nameValidation = validateStandardFileName(resolvedFileName, { requiresExpiryTracking });
+    if (!nameValidation.valid) {
+      return {
+        success: false,
+        error: `Standard file name is incomplete (missing: ${nameValidation.missing.join(", ")}). Fix on the review screen before approving.`,
+      };
+    }
 
     const userId = ctx.profile.id;
     const nowIso = new Date().toISOString();
@@ -810,7 +838,7 @@ export async function finalizeDraftIntake(
           file_role: "original",
           storage_bucket: "dms-documents",
           storage_path: finalPath,
-          file_name: session.original_filename,
+          file_name: resolvedFileName,
           mime_type: session.mime_type,
           file_size_bytes: session.file_size_bytes,
           sha256_hash: session.sha256_hash ?? null,

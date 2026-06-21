@@ -3,6 +3,7 @@
  */
 
 import type { IdentityDocumentFormState } from "./identity-document-form";
+import { isInternalDmsDocumentNumber } from "./compliance-dms-ocr";
 
 /** DMS document type_code → hr_identity_document_types.code */
 export const DMS_TYPE_TO_HR_IDENTITY_CODE: Record<string, string> = {
@@ -18,12 +19,22 @@ export const DMS_TYPE_TO_HR_IDENTITY_CODE: Record<string, string> = {
   LABOUR_CARD: "LABOUR_CARD",
   WORK_PERMIT: "WORK_PERMIT",
   EMP_WORK_PERMIT: "WORK_PERMIT",
+  DRIVING_LICENSE: "DRIVING_LICENSE",
+  CICPA_PASS: "CICPA_PASS",
+  HEALTH_CARD: "HEALTH_CARD",
+  EMPLOYMENT_CONTRACT: "EMPLOYMENT_CONTRACT",
 };
 
-export function mapDmsTypeCodeToHrIdentityCode(dmsTypeCode: string | null | undefined): string | null {
+export function mapDmsTypeCodeToHrIdentityCode(
+  dmsTypeCode: string | null | undefined,
+  hrIdentityTypes?: { id: number; code: string }[]
+): string | null {
   if (!dmsTypeCode) return null;
   const normalized = dmsTypeCode.trim().toUpperCase();
-  return DMS_TYPE_TO_HR_IDENTITY_CODE[normalized] ?? null;
+  const mapped = DMS_TYPE_TO_HR_IDENTITY_CODE[normalized];
+  if (mapped) return mapped;
+  if (hrIdentityTypes?.some((t) => t.code === normalized)) return normalized;
+  return null;
 }
 
 export function pickStringField(fields: Record<string, unknown>, keys: string[]): string | null {
@@ -87,7 +98,7 @@ export function mapExtractionToIdentityForm(input: ExtractionMapInput): Extracti
   const form: Partial<IdentityDocumentFormState> = {};
   const conf: Record<string, number> = {};
 
-  const hrCode = mapDmsTypeCodeToHrIdentityCode(input.dmsTypeCode);
+  const hrCode = mapDmsTypeCodeToHrIdentityCode(input.dmsTypeCode, hrIdentityTypes);
   if (hrCode) {
     const match = hrIdentityTypes.find((t) => t.code === hrCode);
     if (match) form.document_type_id = match.id;
@@ -101,8 +112,16 @@ export function mapExtractionToIdentityForm(input: ExtractionMapInput): Extracti
     "visa_number",
     "labour_card_number",
     "work_permit_number",
+    "license_number",
+    "driving_license_number",
+    "card_number",
     "reference_number",
-  ]) ?? (input.documentNo?.trim() || null);
+    "permit_number",
+  ]) ?? (
+    input.documentNo && !isInternalDmsDocumentNumber(input.documentNo)
+      ? input.documentNo.trim()
+      : null
+  );
 
   if (documentNumber) {
     form.document_number = documentNumber;
@@ -139,7 +158,7 @@ export function mapExtractionToIdentityForm(input: ExtractionMapInput): Extracti
     "employer_name",
   ]);
   if (issuingAuthority) {
-    // Authority must be chosen from Party Master in the UI — not auto-mapped from text.
+    // Resolved to party ID in server action via resolveIssuingAuthorityPartyId.
     void issuingAuthority;
   }
 
@@ -165,4 +184,35 @@ export function mapExtractionToIdentityForm(input: ExtractionMapInput): Extracti
   if (eidApp) form.emirates_id_application_no = eidApp;
 
   return { form, fieldConfidence: conf };
+}
+
+/** Text hints extracted for async geography / party resolution. */
+export function extractGeographyAndAuthorityHints(extractedFields: Record<string, unknown>): {
+  placeOfIssue: string | null;
+  countryName: string | null;
+  emirateName: string | null;
+  cityName: string | null;
+  issuingAuthority: string | null;
+} {
+  const placeOfIssue = pickStringField(extractedFields, [
+    "place_of_issue",
+    "issue_place",
+    "issued_at",
+    "place_of_issue_en",
+  ]);
+  const countryName = pickStringField(extractedFields, [
+    "issue_country",
+    "country_of_issue",
+    "issuing_country",
+  ]);
+  const emirateName = pickStringField(extractedFields, ["emirate", "issuing_emirate", "state"]);
+  const cityName = pickStringField(extractedFields, ["city", "issue_city", "place_of_issue_city"]);
+  const issuingAuthority = pickStringField(extractedFields, [
+    "issuing_authority",
+    "issuer",
+    "issued_by",
+    "authority",
+  ]);
+
+  return { placeOfIssue, countryName, emirateName, cityName, issuingAuthority };
 }

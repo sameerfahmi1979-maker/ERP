@@ -51,6 +51,7 @@ import {
   updateEmployeeSalaryComponent,
   archiveEmployeeSalaryComponent,
   calculateEmployeeGrossSalary,
+  calculateEmployeeBasicSalary,
   listEmployeeSalaryRevisions,
   createEmployeeSalaryRevision,
   listEmployeePayrollHolds,
@@ -170,7 +171,7 @@ function SalaryProfileSection({ employeeId, canManage, onChildOpen }: { employee
   });
 
   const { data: grossRes } = useQuery({
-    queryKey: queryKeys.hr.payroll.salaryComponents(employeeId),
+    queryKey: queryKeys.hr.payroll.grossSalary(employeeId),
     queryFn: () => calculateEmployeeGrossSalary(employeeId),
   });
 
@@ -523,8 +524,8 @@ function SalaryRevisionSection({ employeeId, canManage, onChildOpen }: { employe
   const [form, setForm] = useState({
     effective_date: new Date().toISOString().slice(0, 10),
     revision_reason: "",
-    old_gross: "",
-    new_gross: "",
+    new_basic: "",
+    apply_to_components: true,
   });
 
   const { data: revisionsRes, isLoading } = useQuery({
@@ -532,20 +533,44 @@ function SalaryRevisionSection({ employeeId, canManage, onChildOpen }: { employe
     queryFn: () => listEmployeeSalaryRevisions(employeeId),
   });
 
+  const { data: basicRes, isLoading: isBasicLoading } = useQuery({
+    queryKey: queryKeys.hr.payroll.basicSalary(employeeId),
+    queryFn: () => calculateEmployeeBasicSalary(employeeId),
+    enabled: dialogOpen,
+  });
+
   const revisions = Array.isArray(revisionsRes?.data) ? revisionsRes.data : [];
+  const currentBasic = basicRes?.success ? (basicRes.data?.basic ?? 0) : 0;
 
   const handleSubmit = () => {
+    if (!form.new_basic.trim()) {
+      toast.error("New basic salary is required");
+      return;
+    }
+    const newBasic = parseFloat(form.new_basic);
+    if (Number.isNaN(newBasic) || newBasic < 0) {
+      toast.error("Enter a valid new basic salary");
+      return;
+    }
+
     startTransition(async () => {
       const res = await createEmployeeSalaryRevision(employeeId, {
         effective_date: form.effective_date,
         revision_reason: form.revision_reason || null,
-        old_gross: form.old_gross ? parseFloat(form.old_gross) : null,
-        new_gross: form.new_gross ? parseFloat(form.new_gross) : null,
+        new_gross: newBasic,
+        apply_to_components: form.apply_to_components,
       });
       if (res.success) {
-        toast.success("Salary revision recorded");
+        toast.success(
+          form.apply_to_components
+            ? "Salary revision recorded and basic salary updated"
+            : "Salary revision recorded (history only)"
+        );
         setDialogOpen(false);
         invalidateHrEmployeeSalaryRevisions(qc, employeeId);
+        if (form.apply_to_components) {
+          invalidateHrEmployeeSalaryComponents(qc, employeeId);
+        }
       } else {
         toast.error(res.error ?? "Failed to save");
       }
@@ -561,7 +586,7 @@ function SalaryRevisionSection({ employeeId, canManage, onChildOpen }: { employe
           <Badge variant="outline">{revisions.length}</Badge>
         </div>
         {canManage && (
-          <Button size="sm" onClick={() => { setForm({ effective_date: new Date().toISOString().slice(0, 10), revision_reason: "", old_gross: "", new_gross: "" }); setDialogOpen(true); }}>
+          <Button size="sm" onClick={() => { setForm({ effective_date: new Date().toISOString().slice(0, 10), revision_reason: "", new_basic: "", apply_to_components: true }); setDialogOpen(true); }}>
             <Plus className="h-3.5 w-3.5 mr-1.5" />
             Record Revision
           </Button>
@@ -581,9 +606,9 @@ function SalaryRevisionSection({ employeeId, canManage, onChildOpen }: { employe
           {revisions.map((rev) => (
             <div key={rev.id} className="py-2.5 grid grid-cols-4 gap-2">
               <div><span className="text-muted-foreground">Date:</span> <span className="font-medium">{fmtDate(rev.effective_date)}</span></div>
-              <div><span className="text-muted-foreground">Old Gross:</span> <span>{fmtMoney(rev.old_gross)}</span></div>
-              <div><span className="text-muted-foreground">New Gross:</span> <span className="text-green-700 font-semibold">{fmtMoney(rev.new_gross)}</span></div>
-              <div><span className="text-muted-foreground">By:</span> <span>{rev.approver?.display_name ?? "—"}</span></div>
+              <div><span className="text-muted-foreground">Old Basic:</span> <span>{fmtMoney(rev.old_gross)}</span></div>
+              <div><span className="text-muted-foreground">New Basic:</span> <span className="text-green-700 font-semibold">{fmtMoney(rev.new_gross)}</span></div>
+              <div><span className="text-muted-foreground">By:</span> <span>{rev.creator?.display_name ?? rev.approver?.display_name ?? "—"}</span></div>
               {rev.revision_reason && <div className="col-span-4 text-muted-foreground">{rev.revision_reason}</div>}
             </div>
           ))}
@@ -594,7 +619,7 @@ function SalaryRevisionSection({ employeeId, canManage, onChildOpen }: { employe
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         title="Record Salary Revision"
-        subtitle="Add a salary revision entry to the append-only history"
+        subtitle="Record a basic salary change — current basic is loaded automatically from salary components"
         icon={<History className="h-5 w-5" />}
         mode="add"
         isSubmitting={isPending}
@@ -607,16 +632,52 @@ function SalaryRevisionSection({ employeeId, canManage, onChildOpen }: { employe
             <Input type="date" value={form.effective_date} onChange={e => setForm(f => ({ ...f, effective_date: e.target.value }))} required />
           </div>
           <div className="col-span-6">
-            <Label>Old Gross (AED)</Label>
-            <Input type="number" min={0} step={0.01} value={form.old_gross} onChange={e => setForm(f => ({ ...f, old_gross: e.target.value }))} placeholder="Previous gross" />
+            <Label>Current Basic (AED)</Label>
+            <Input
+              type="text"
+              readOnly
+              disabled
+              value={isBasicLoading ? "Loading..." : fmtMoney(currentBasic)}
+              className="bg-muted"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              {isBasicLoading
+                ? "Loading from salary components..."
+                : currentBasic > 0
+                  ? "Retrieved from active Basic Salary component"
+                  : "No active Basic Salary component found — add one in Salary Components first"}
+            </p>
           </div>
           <div className="col-span-6">
-            <Label>New Gross (AED)</Label>
-            <Input type="number" min={0} step={0.01} value={form.new_gross} onChange={e => setForm(f => ({ ...f, new_gross: e.target.value }))} placeholder="New gross" />
+            <Label>New Basic (AED) <span className="text-destructive">*</span></Label>
+            <Input
+              type="number"
+              min={0}
+              step={0.01}
+              value={form.new_basic}
+              onChange={e => setForm(f => ({ ...f, new_basic: e.target.value }))}
+              placeholder="Enter new basic salary"
+              required
+            />
           </div>
           <div className="col-span-12">
             <Label>Revision Reason</Label>
             <Textarea value={form.revision_reason} onChange={e => setForm(f => ({ ...f, revision_reason: e.target.value }))} rows={2} maxLength={1000} placeholder="Reason for salary revision..." />
+          </div>
+          <div className="col-span-12 flex items-start gap-3 rounded-md border bg-muted/30 p-3">
+            <Switch
+              id="apply_to_components"
+              checked={form.apply_to_components}
+              onCheckedChange={(v) => setForm(f => ({ ...f, apply_to_components: v }))}
+            />
+            <div className="space-y-1">
+              <Label htmlFor="apply_to_components" className="text-sm cursor-pointer">
+                Apply new basic to Salary Components
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                When enabled, the active Basic Salary component is end-dated and a new component row is created from the revision effective date. Calculated Gross will update automatically.
+              </p>
+            </div>
           </div>
         </div>
       </ERPChildDialogForm>

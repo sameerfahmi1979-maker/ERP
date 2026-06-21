@@ -137,3 +137,18 @@ export function calculateGrossSalary(
     })
     .reduce((sum, c) => sum + (c.amount ?? 0), 0);
 }
+
+/** Calculate basic salary from active components marked is_basic on the component type */
+export function calculateBasicSalary(
+  components: Array<{
+    amount: number;
+    is_active: boolean;
+    deleted_at: string | null;
+    component_type?: { is_basic?: boolean } | null;
+  }>
+): number {
+  return components
+    .filter((c) => c.is_active && !c.deleted_at)
+    .filter((c) => c.component_type?.is_basic === true)
+    .reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
+}

@@ -3,7 +3,7 @@
 /**
  * HR Compliance — Prefill legal/identity document fields from a linked DMS document.
  *
- * Uses DMS AI extraction results first; optional HR AI structured completion as fallback.
+ * Uses DMS AI extraction results first; HR AI structured completion as fallback/enrichment.
  * Does not save — caller must confirm and call createEmployeeIdentityDocument.
  */
 
@@ -22,9 +22,15 @@ import {
   mapDmsTypeCodeToHrIdentityCode,
   mapExtractionToIdentityForm,
   normalizeDateValue,
+  extractGeographyAndAuthorityHints,
 } from "@/lib/hr/compliance/dms-to-identity-map";
-
-const OCR_SNIPPET_MAX = 6000;
+import {
+  isInternalDmsDocumentNumber,
+  loadDmsOcrSnippet,
+  loadLatestDmsExtraction,
+} from "@/lib/hr/compliance/compliance-dms-ocr";
+import { resolveGeographyFromPlaceNames } from "@/lib/hr/compliance/compliance-geography-resolve";
+import { resolveIssuingAuthorityPartyId } from "@/lib/hr/compliance/compliance-party-resolve";
 
 function firstOrSelf<T>(val: T | T[] | null | undefined): T | null {
   if (val == null) return null;
@@ -32,45 +38,41 @@ function firstOrSelf<T>(val: T | T[] | null | undefined): T | null {
   return val;
 }
 
-async function loadOcrSnippet(db: ReturnType<typeof createAdminClient>, documentId: number): Promise<string | null> {
-  const { data: files } = await db
-    .from("dms_document_files")
-    .select("ocr_text")
-    .eq("document_id", documentId)
-    .eq("ocr_status", "complete")
-    .is("deleted_at", null)
-    .order("created_at", { ascending: true })
-    .limit(3);
+function needsAiEnrichment(form: ReturnType<typeof createEmptyIdentityDocumentForm>): boolean {
+  if (!form.document_type_id) return true;
+  if (!form.document_number.trim()) return true;
+  if (isInternalDmsDocumentNumber(form.document_number)) return true;
+  if (!form.issue_country_id && !form.issuing_emirate_id) return true;
+  return false;
+}
 
-  const parts = (files ?? [])
-    .map((f) => (f.ocr_text as string | null)?.trim())
-    .filter(Boolean) as string[];
-
-  if (parts.length === 0) {
-    const { data: result } = await db
-      .from("dms_ai_extraction_results")
-      .select("raw_ocr_text")
-      .eq("document_id", documentId)
-      .neq("ai_status", "superseded")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const raw = (result?.raw_ocr_text as string | null)?.trim();
-    if (raw) parts.push(raw);
+async function applyGeographyAndAuthority(
+  db: ReturnType<typeof createAdminClient>,
+  merged: ReturnType<typeof createEmptyIdentityDocumentForm>,
+  hints: {
+    placeOfIssue?: string | null;
+    countryName?: string | null;
+    emirateName?: string | null;
+    cityName?: string | null;
+    issuingAuthority?: string | null;
+  }
+): Promise<void> {
+  if (!merged.issue_country_id || !merged.issuing_emirate_id || !merged.issue_city_id) {
+    const geo = await resolveGeographyFromPlaceNames(db, {
+      countryName: hints.countryName,
+      emirateName: hints.emirateName,
+      cityName: hints.cityName,
+      placeOfIssue: hints.placeOfIssue,
+    });
+    if (!merged.issue_country_id && geo.issue_country_id) merged.issue_country_id = geo.issue_country_id;
+    if (!merged.issuing_emirate_id && geo.issuing_emirate_id) merged.issuing_emirate_id = geo.issuing_emirate_id;
+    if (!merged.issue_city_id && geo.issue_city_id) merged.issue_city_id = geo.issue_city_id;
   }
 
-  if (parts.length === 0) {
-    const { data: content } = await db
-      .from("dms_document_content")
-      .select("content_text")
-      .eq("document_id", documentId)
-      .maybeSingle();
-    const text = (content?.content_text as string | null)?.trim();
-    if (text) parts.push(text);
+  if (!merged.issuing_authority_party_id && hints.issuingAuthority) {
+    const partyId = await resolveIssuingAuthorityPartyId(db, hints.issuingAuthority);
+    if (partyId) merged.issuing_authority_party_id = partyId;
   }
-
-  const combined = parts.join("\n\n");
-  return combined ? combined.slice(0, OCR_SNIPPET_MAX) : null;
 }
 
 async function runAiIdentityPrefill(params: {
@@ -80,8 +82,9 @@ async function runAiIdentityPrefill(params: {
   ocrSnippet: string;
 }): Promise<{ fields: Record<string, string | null>; confidence: Record<string, number>; warning: string | null } | null> {
   const systemPrompt = `You are an HR compliance assistant extracting identity document fields from OCR text.
-Return JSON only. Dates must be YYYY-MM-DD. document_type_code must be one of: EMIRATES_ID, PASSPORT, RESIDENCE_VISA, LABOUR_CARD, WORK_PERMIT, or null if unknown.
-Do not invent values not supported by the text.`;
+Return JSON only. Dates must be YYYY-MM-DD.
+document_type_code must be one of: EMIRATES_ID, PASSPORT, RESIDENCE_VISA, LABOUR_CARD, WORK_PERMIT, DRIVING_LICENSE, CICPA_PASS, HEALTH_CARD, EMPLOYMENT_CONTRACT, or null if unknown.
+Do not invent values not supported by the text. Do not use internal DMS reference numbers (DMS-YYYY-NNNNNN) as document_number.`;
 
   const userPrompt = `Document type hint: ${params.dmsTypeName ?? params.dmsTypeCode ?? "Unknown"}
 Document title: ${params.documentTitle}
@@ -98,6 +101,9 @@ Return JSON:
     "expiry_date": "YYYY-MM-DD or null",
     "issuing_authority": "string or null",
     "place_of_issue": "string or null",
+    "country_name": "string or null",
+    "emirate_name": "string or null",
+    "city_name": "string or null",
     "emirates_id_application_no": "string or null",
     "visa_file_number": "string or null",
     "uid_number": "string or null",
@@ -111,7 +117,7 @@ Return JSON:
 }`;
 
   const outcome = await callCommonAiStructuredCompletion(systemPrompt, userPrompt, {
-    maxTokens: 1500,
+    maxTokens: 1800,
     temperature: 0,
   });
 
@@ -136,6 +142,9 @@ Return JSON:
       expiry_date: f.expiry_date ?? null,
       issuing_authority: f.issuing_authority ?? null,
       place_of_issue: f.place_of_issue ?? null,
+      country_name: f.country_name ?? null,
+      emirate_name: f.emirate_name ?? null,
+      city_name: f.city_name ?? null,
       emirates_id_application_no: f.emirates_id_application_no ?? null,
       visa_file_number: f.visa_file_number ?? null,
       uid_number: f.uid_number ?? null,
@@ -207,26 +216,15 @@ export async function prefillIdentityDocumentFromDms(
 
     const hrIdentityTypes = (hrTypes ?? []) as { id: number; code: string }[];
 
-    const { data: extractionRows } = await db
-      .from("dms_ai_extraction_results")
-      .select(`
-        extracted_fields_json, field_confidence_json,
-        issue_date_suggestion, expiry_date_suggestion
-      `)
-      .eq("document_id", dmsDocumentId)
-      .neq("ai_status", "superseded")
-      .order("created_at", { ascending: false })
-      .limit(1);
-
-    const extraction = extractionRows?.[0] ?? null;
-    const extractedFields = (extraction?.extracted_fields_json as Record<string, unknown>) ?? {};
-    const fieldConfidenceJson = (extraction?.field_confidence_json as Record<string, unknown>) ?? {};
+    const extraction = await loadLatestDmsExtraction(db, dmsDocumentId);
+    const extractedFields = extraction?.extracted_fields_json ?? {};
+    const fieldConfidenceJson = extraction?.field_confidence_json ?? {};
 
     const mapped = mapExtractionToIdentityForm({
       extractedFields,
       fieldConfidence: fieldConfidenceJson,
-      issueDateSuggestion: (extraction?.issue_date_suggestion as string | null) ?? null,
-      expiryDateSuggestion: (extraction?.expiry_date_suggestion as string | null) ?? null,
+      issueDateSuggestion: extraction?.issue_date_suggestion ?? null,
+      expiryDateSuggestion: extraction?.expiry_date_suggestion ?? null,
       dmsTypeCode,
       documentIssueDate: (doc.issue_date as string | null) ?? null,
       documentExpiryDate: (doc.expiry_date as string | null) ?? null,
@@ -243,11 +241,12 @@ export async function prefillIdentityDocumentFromDms(
     const base = createEmptyIdentityDocumentForm();
     const merged = { ...base, ...mapped.form, dms_document_id: dmsDocumentId };
 
-    const needsAi =
-      !merged.document_number.trim()
-      || !merged.document_type_id;
+    const geoHints = extractGeographyAndAuthorityHints(extractedFields);
+    await applyGeographyAndAuthority(db, merged, geoHints);
 
-    if (needsAi) {
+    const shouldRunAi = needsAiEnrichment(merged);
+
+    if (shouldRunAi) {
       const [masterEnabled, fillEnabled] = await Promise.all([
         isHrAiMasterEnabled(),
         isHrAiFeatureEnabled(HR_AI_FEATURE_FLAGS.FILL),
@@ -255,7 +254,7 @@ export async function prefillIdentityDocumentFromDms(
       const canUseAi = hasPermission(ctx, "hr.ai.use") && masterEnabled && fillEnabled;
 
       if (canUseAi) {
-        const ocrSnippet = await loadOcrSnippet(db, dmsDocumentId);
+        const ocrSnippet = await loadDmsOcrSnippet(db, dmsDocumentId);
         if (ocrSnippet) {
           const aiResult = await runAiIdentityPrefill({
             dmsTypeCode,
@@ -268,15 +267,19 @@ export async function prefillIdentityDocumentFromDms(
             prefillSource = extraction ? "extraction_and_ai" : "ai_only";
             warning = aiResult.warning;
 
-            if (!merged.document_number && aiResult.fields.document_number) {
-              merged.document_number = aiResult.fields.document_number;
+            const aiDocNo = aiResult.fields.document_number;
+            if (
+              aiDocNo
+              && (!merged.document_number.trim() || isInternalDmsDocumentNumber(merged.document_number))
+            ) {
+              merged.document_number = aiDocNo;
               if (aiResult.confidence.document_number != null) {
                 mergedConfidence.document_number = aiResult.confidence.document_number;
               }
             }
 
             if (!merged.document_type_id && aiResult.fields.document_type_code) {
-              const code = mapDmsTypeCodeToHrIdentityCode(aiResult.fields.document_type_code)
+              const code = mapDmsTypeCodeToHrIdentityCode(aiResult.fields.document_type_code, hrIdentityTypes)
                 ?? aiResult.fields.document_type_code.toUpperCase();
               const match = hrIdentityTypes.find((t) => t.code === code);
               if (match) merged.document_type_id = match.id;
@@ -297,6 +300,14 @@ export async function prefillIdentityDocumentFromDms(
                 }
               }
             }
+
+            await applyGeographyAndAuthority(db, merged, {
+              placeOfIssue: aiResult.fields.place_of_issue,
+              countryName: aiResult.fields.country_name,
+              emirateName: aiResult.fields.emirate_name,
+              cityName: aiResult.fields.city_name,
+              issuingAuthority: aiResult.fields.issuing_authority,
+            });
           } else if (!extraction) {
             warning = "AI prefill could not extract fields. Enter details manually.";
           }
@@ -309,11 +320,15 @@ export async function prefillIdentityDocumentFromDms(
     }
 
     if (!merged.document_type_id && dmsTypeCode) {
-      const hrCode = mapDmsTypeCodeToHrIdentityCode(dmsTypeCode);
+      const hrCode = mapDmsTypeCodeToHrIdentityCode(dmsTypeCode, hrIdentityTypes);
       if (hrCode) {
         const match = hrIdentityTypes.find((t) => t.code === hrCode);
         if (match) merged.document_type_id = match.id;
       }
+    }
+
+    if (isInternalDmsDocumentNumber(merged.document_number)) {
+      merged.document_number = "";
     }
 
     if (existingLink) {

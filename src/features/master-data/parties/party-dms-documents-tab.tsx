@@ -5,7 +5,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Plus,
@@ -16,12 +15,11 @@ import {
   FileText,
   AlertTriangle,
   Info,
-  Search,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, isPast, differenceInDays } from "date-fns";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
-import { ERPCombobox } from "@/components/erp/combobox";
+import { DmsAttachDocumentPicker } from "@/features/dms/entity-documents/dms-attach-document-picker";
 import { queryKeys } from "@/lib/query/query-keys";
 import {
   invalidatePartyDmsDocuments,
@@ -139,7 +137,7 @@ export function PartyDmsDocumentsTab({
     if (!open) onChildOpen?.(false);
   };
 
-  const { data: availableDocuments } = useQuery({
+  const { data: availableDocuments, isLoading: attachDocsLoading } = useQuery({
     queryKey: queryKeys.dms.availableForLink({ partyId, search: attachSearch }),
     queryFn: async () => {
       const result = await getAvailableDmsDocumentsForPartyLink(partyId, attachSearch);
@@ -329,40 +327,19 @@ export function PartyDmsDocumentsTab({
         subtitle="Search and link an existing DMS document to this party"
         icon={<Link2 className="h-5 w-5" />}
         mode="add"
-        size="md"
+        size="lg"
         isSubmitting={isAttaching}
         onSubmit={handleAttach}
         submitLabel="Link Document"
       >
-        <div className="space-y-4">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <Search className="h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search documents by number or title..."
-                value={attachSearch}
-                onChange={(e) => setAttachSearch(e.target.value)}
-                className="h-8 text-sm"
-              />
-            </div>
-            <ERPCombobox
-              value={attachSelectedId}
-              onValueChange={(v) => setAttachSelectedId(v !== null ? Number(v) : null)}
-              options={(availableDocuments ?? []).map((d) => ({
-                value: d.id,
-                label: `${d.document_no} — ${d.title}${d.document_type_name ? ` (${d.document_type_name})` : ""}`,
-              }))}
-              placeholder="Select a DMS document..."
-              required
-            />
-            {attachSelectedId && (
-              <p className="mt-2 text-xs text-muted-foreground">
-                The selected document will be linked (not duplicated). Unlinking later will only
-                remove the link, not delete the document.
-              </p>
-            )}
-          </div>
-        </div>
+        <DmsAttachDocumentPicker
+          search={attachSearch}
+          onSearchChange={setAttachSearch}
+          documents={availableDocuments ?? []}
+          isLoading={attachDocsLoading}
+          selectedId={attachSelectedId}
+          onSelect={setAttachSelectedId}
+        />
       </ERPChildDialogForm>
     </div>
   );

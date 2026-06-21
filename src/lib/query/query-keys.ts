@@ -437,6 +437,10 @@ export const queryKeys = {
         ["hr", "payroll", "profile", employeeId] as const,
       salaryComponents: (employeeId: number) =>
         ["hr", "payroll", "salary-components", employeeId] as const,
+      grossSalary: (employeeId: number) =>
+        ["hr", "payroll", "gross-salary", employeeId] as const,
+      basicSalary: (employeeId: number) =>
+        ["hr", "payroll", "basic-salary", employeeId] as const,
       salaryRevisions: (employeeId: number) =>
         ["hr", "payroll", "salary-revisions", employeeId] as const,
       holds: (employeeId: number) =>

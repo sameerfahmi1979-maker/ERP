@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/select";
 import { DmsAiIntakeFieldRow } from "./dms-ai-intake-field-row";
 import { DmsAiIntakeMetadataSection } from "./dms-ai-intake-metadata-section";
+import { DmsStandardFileNameField } from "./dms-standard-file-name-field";
 import { ERPCombobox } from "@/components/erp/combobox/erp-combobox";
 import { OwnerCompanySelect } from "@/components/erp/organizations/owner-company-select";
 import { BranchSelect } from "@/components/erp/organizations/branch-select";
@@ -32,6 +33,7 @@ const CONFIDENTIALITY_OPTIONS = [
 
 export type ReviewFormValues = {
   title: string;
+  standardFileName: string;
   documentTypeId: number | null;
   categoryId: number | null;
   description: string;
@@ -47,6 +49,7 @@ interface DmsAiIntakeReviewFormProps {
   session: IntakeSessionData;
   values: ReviewFormValues;
   onChange: (patch: Partial<ReviewFormValues>) => void;
+  initialDocTypes?: DmsDocumentTypeRow[];
 }
 
 function stripExtension(filename: string): string {
@@ -54,19 +57,45 @@ function stripExtension(filename: string): string {
   return lastDot > 0 ? filename.slice(0, lastDot) : filename;
 }
 
-export function DmsAiIntakeReviewForm({ session, values, onChange }: DmsAiIntakeReviewFormProps) {
+export function DmsAiIntakeReviewForm({
+  session,
+  values,
+  onChange,
+  initialDocTypes = [],
+}: DmsAiIntakeReviewFormProps) {
   const aiResult = session.ai_result;
   const extractedFields = aiResult?.extracted_fields_json ?? {};
   const fieldConf = aiResult?.field_confidence_json ?? {};
-  const [docTypes, setDocTypes] = useState<DmsDocumentTypeRow[]>([]);
-  const [isPending, startTransition] = useTransition();
+  const [docTypes, setDocTypes] = useState<DmsDocumentTypeRow[]>(initialDocTypes);
+  const [isLoadingTypes, setIsLoadingTypes] = useState(initialDocTypes.length === 0);
 
   useEffect(() => {
-    startTransition(async () => {
+    if (initialDocTypes.length > 0) {
+      setDocTypes(initialDocTypes);
+      setIsLoadingTypes(false);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      setIsLoadingTypes(true);
       const res = await getDmsDocumentTypes({ is_active: true });
-      if (res.success && res.data) setDocTypes(res.data);
-    });
-  }, []);
+      if (!cancelled && res.success && res.data) setDocTypes(res.data);
+      if (!cancelled) setIsLoadingTypes(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialDocTypes]);
+
+  // Sync category when types load and AI suggested a type
+  useEffect(() => {
+    if (!values.documentTypeId || docTypes.length === 0) return;
+    const selected = docTypes.find((t) => t.id === values.documentTypeId);
+    if (selected && values.categoryId !== selected.category_id) {
+      onChange({ categoryId: selected.category_id ?? null });
+    }
+  }, [docTypes, values.documentTypeId, values.categoryId, onChange]);
 
   // When document type changes, update categoryId
   const handleDocTypeChange = (typeId: number | null) => {
@@ -107,7 +136,7 @@ export function DmsAiIntakeReviewForm({ session, values, onChange }: DmsAiIntake
           confidenceLabel={aiResult?.classification_confidence}
           confidenceScore={aiResult?.classification_score}
         >
-          {isPending ? (
+          {isLoadingTypes ? (
             <div className="h-9 flex items-center gap-2 text-sm text-muted-foreground px-3 border rounded-md">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               Loading types…
@@ -155,6 +184,13 @@ export function DmsAiIntakeReviewForm({ session, values, onChange }: DmsAiIntake
             className="text-sm"
           />
         </DmsAiIntakeFieldRow>
+
+        <DmsStandardFileNameField
+          session={session}
+          values={values}
+          docTypes={docTypes}
+          onChange={onChange}
+        />
 
         {/* Description */}
         <DmsAiIntakeFieldRow
@@ -296,6 +332,7 @@ export function buildInitialReviewValues(session: IntakeSessionData): ReviewForm
 
   return {
     title: aiResult?.suggested_title ?? stripExtension(session.original_filename),
+    standardFileName: "",
     documentTypeId: aiResult?.suggested_document_type_id ?? null,
     categoryId: null,
     description: aiResult?.suggested_description ?? "",

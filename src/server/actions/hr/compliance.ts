@@ -115,6 +115,7 @@ export type EmployeeDependentRow = {
   medical_insurance_expiry: string | null;
   sponsored_by: string | null;
   is_active: boolean;
+  dms_document_id: number | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -208,6 +209,41 @@ import { ensureDmsDocumentLinkedToEntity } from "@/server/actions/dms/entity-doc
 function revalidateEmployeePath(employeeId: number) {
   revalidatePath(`/admin/hr/employees/record/${employeeId}`);
   revalidatePath("/admin/hr/employees");
+}
+
+type ComplianceDmsLinkKind =
+  | "legal_document"
+  | "medical_insurance"
+  | "dependent"
+  | "access_card"
+  | "training_certificate"
+  | "medical_record";
+
+const COMPLIANCE_DMS_LINK_NOTES: Record<ComplianceDmsLinkKind, string> = {
+  legal_document: "Auto-linked from HR legal document (compliance)",
+  medical_insurance: "Auto-linked from HR medical insurance (compliance)",
+  dependent: "Auto-linked from HR dependent record (compliance)",
+  access_card: "Auto-linked from HR access card (compliance)",
+  training_certificate: "Auto-linked from HR training certificate (compliance)",
+  medical_record: "Auto-linked from HR medical record (compliance)",
+};
+
+async function linkComplianceDmsDocument(
+  employeeId: number,
+  dmsDocumentId: number,
+  kind: ComplianceDmsLinkKind
+): Promise<ActionResult<{ created: boolean }>> {
+  const linkResult = await ensureDmsDocumentLinkedToEntity(
+    dmsDocumentId,
+    "employee",
+    employeeId,
+    {
+      link_role: "compliance",
+      notes: COMPLIANCE_DMS_LINK_NOTES[kind],
+    }
+  );
+  if (!linkResult.success) return { success: false, error: linkResult.error };
+  return { success: true, data: { created: linkResult.data?.created ?? false } };
 }
 
 async function validateIdentityDocumentGeography(input: {
@@ -565,7 +601,7 @@ export async function listEmployeeMedicalInsurances(
 export async function createEmployeeMedicalInsurance(
   employeeId: number,
   input: unknown
-): Promise<ActionResult<{ id: number }>> {
+): Promise<ActionResult<{ id: number; dmsLinkCreated?: boolean }>> {
   try {
     const ctx = await getAuthContext();
     if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
@@ -576,6 +612,17 @@ export async function createEmployeeMedicalInsurance(
 
     const emp = await loadEmployeeForAudit(employeeId);
     if (!emp) return { success: false, error: "Employee not found" };
+
+    let dmsLinkCreated = false;
+    if (parsed.data.dms_document_id) {
+      const linkResult = await linkComplianceDmsDocument(
+        employeeId,
+        parsed.data.dms_document_id,
+        "medical_insurance"
+      );
+      if (!linkResult.success) return { success: false, error: linkResult.error };
+      dmsLinkCreated = linkResult.data?.created ?? false;
+    }
 
     const admin = await createAdminClient();
     const { data, error } = await admin
@@ -594,7 +641,7 @@ export async function createEmployeeMedicalInsurance(
       new_values: { insurance_provider: parsed.data.insurance_provider, status: parsed.data.status, expiry_date: parsed.data.expiry_date },
     });
     revalidateEmployeePath(employeeId);
-    return { success: true, data: { id: data.id } };
+    return { success: true, data: { id: data.id, dmsLinkCreated } };
   } catch {
     return { success: false, error: "Failed to create medical insurance" };
   }
@@ -620,6 +667,15 @@ export async function updateEmployeeMedicalInsurance(
       .is("deleted_at", null)
       .single();
     if (!existing) return { success: false, error: "Record not found" };
+
+    if (parsed.data.dms_document_id) {
+      const linkResult = await linkComplianceDmsDocument(
+        existing.employee_id,
+        parsed.data.dms_document_id,
+        "medical_insurance"
+      );
+      if (!linkResult.success) return { success: false, error: linkResult.error };
+    }
 
     const { error } = await admin
       .from("employee_medical_insurances")
@@ -741,6 +797,7 @@ const dependentSchema = z.object({
   medical_insurance_expiry: z.string().nullish(),
   sponsored_by: z.enum(["employee", "company"]).nullish(),
   is_active: z.boolean().default(true),
+  dms_document_id: z.number().int().positive().nullish(),
   notes: z.string().nullish(),
 });
 
@@ -769,7 +826,7 @@ export async function listEmployeeDependents(
 export async function createEmployeeDependent(
   employeeId: number,
   input: unknown
-): Promise<ActionResult<{ id: number }>> {
+): Promise<ActionResult<{ id: number; dmsLinkCreated?: boolean }>> {
   try {
     const ctx = await getAuthContext();
     if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
@@ -780,6 +837,17 @@ export async function createEmployeeDependent(
 
     const emp = await loadEmployeeForAudit(employeeId);
     if (!emp) return { success: false, error: "Employee not found" };
+
+    let dmsLinkCreated = false;
+    if (parsed.data.dms_document_id) {
+      const linkResult = await linkComplianceDmsDocument(
+        employeeId,
+        parsed.data.dms_document_id,
+        "dependent"
+      );
+      if (!linkResult.success) return { success: false, error: linkResult.error };
+      dmsLinkCreated = linkResult.data?.created ?? false;
+    }
 
     const admin = await createAdminClient();
     const { data, error } = await admin
@@ -798,7 +866,7 @@ export async function createEmployeeDependent(
       new_values: { relationship_type_id: parsed.data.relationship_type_id },
     });
     revalidateEmployeePath(employeeId);
-    return { success: true, data: { id: data.id } };
+    return { success: true, data: { id: data.id, dmsLinkCreated } };
   } catch {
     return { success: false, error: "Failed to create dependent" };
   }
@@ -824,6 +892,15 @@ export async function updateEmployeeDependent(
       .is("deleted_at", null)
       .single();
     if (!existing) return { success: false, error: "Record not found" };
+
+    if (parsed.data.dms_document_id) {
+      const linkResult = await linkComplianceDmsDocument(
+        existing.employee_id,
+        parsed.data.dms_document_id,
+        "dependent"
+      );
+      if (!linkResult.success) return { success: false, error: linkResult.error };
+    }
 
     const { error } = await admin
       .from("employee_dependents")
@@ -908,7 +985,7 @@ export async function listEmployeeAccessCards(
 export async function createEmployeeAccessCard(
   employeeId: number,
   input: unknown
-): Promise<ActionResult<{ id: number }>> {
+): Promise<ActionResult<{ id: number; dmsLinkCreated?: boolean }>> {
   try {
     const ctx = await getAuthContext();
     if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
@@ -919,6 +996,17 @@ export async function createEmployeeAccessCard(
 
     const emp = await loadEmployeeForAudit(employeeId);
     if (!emp) return { success: false, error: "Employee not found" };
+
+    let dmsLinkCreated = false;
+    if (parsed.data.dms_document_id) {
+      const linkResult = await linkComplianceDmsDocument(
+        employeeId,
+        parsed.data.dms_document_id,
+        "access_card"
+      );
+      if (!linkResult.success) return { success: false, error: linkResult.error };
+      dmsLinkCreated = linkResult.data?.created ?? false;
+    }
 
     const admin = await createAdminClient();
     const { data, error } = await admin
@@ -937,7 +1025,7 @@ export async function createEmployeeAccessCard(
       new_values: { access_type_id: parsed.data.access_type_id, status: parsed.data.status },
     });
     revalidateEmployeePath(employeeId);
-    return { success: true, data: { id: data.id } };
+    return { success: true, data: { id: data.id, dmsLinkCreated } };
   } catch {
     return { success: false, error: "Failed to create access card" };
   }
@@ -963,6 +1051,15 @@ export async function updateEmployeeAccessCard(
       .is("deleted_at", null)
       .single();
     if (!existing) return { success: false, error: "Record not found" };
+
+    if (parsed.data.dms_document_id) {
+      const linkResult = await linkComplianceDmsDocument(
+        existing.employee_id,
+        parsed.data.dms_document_id,
+        "access_card"
+      );
+      if (!linkResult.success) return { success: false, error: linkResult.error };
+    }
 
     const { error } = await admin
       .from("employee_access_cards")
@@ -1081,7 +1178,7 @@ export async function listEmployeeTrainingCertificates(
 export async function createEmployeeTrainingCertificate(
   employeeId: number,
   input: unknown
-): Promise<ActionResult<{ id: number }>> {
+): Promise<ActionResult<{ id: number; dmsLinkCreated?: boolean }>> {
   try {
     const ctx = await getAuthContext();
     if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
@@ -1092,6 +1189,17 @@ export async function createEmployeeTrainingCertificate(
 
     const emp = await loadEmployeeForAudit(employeeId);
     if (!emp) return { success: false, error: "Employee not found" };
+
+    let dmsLinkCreated = false;
+    if (parsed.data.dms_document_id) {
+      const linkResult = await linkComplianceDmsDocument(
+        employeeId,
+        parsed.data.dms_document_id,
+        "training_certificate"
+      );
+      if (!linkResult.success) return { success: false, error: linkResult.error };
+      dmsLinkCreated = linkResult.data?.created ?? false;
+    }
 
     const admin = await createAdminClient();
     const { data, error } = await admin
@@ -1110,7 +1218,7 @@ export async function createEmployeeTrainingCertificate(
       new_values: { training_type_id: parsed.data.training_type_id, status: parsed.data.status },
     });
     revalidateEmployeePath(employeeId);
-    return { success: true, data: { id: data.id } };
+    return { success: true, data: { id: data.id, dmsLinkCreated } };
   } catch {
     return { success: false, error: "Failed to create training certificate" };
   }
@@ -1136,6 +1244,15 @@ export async function updateEmployeeTrainingCertificate(
       .is("deleted_at", null)
       .single();
     if (!existing) return { success: false, error: "Record not found" };
+
+    if (parsed.data.dms_document_id) {
+      const linkResult = await linkComplianceDmsDocument(
+        existing.employee_id,
+        parsed.data.dms_document_id,
+        "training_certificate"
+      );
+      if (!linkResult.success) return { success: false, error: linkResult.error };
+    }
 
     const { error } = await admin
       .from("employee_training_certificates")
@@ -1282,7 +1399,7 @@ export async function listEmployeeMedicalRecords(
 export async function createEmployeeMedicalRecord(
   employeeId: number,
   input: unknown
-): Promise<ActionResult<{ id: number }>> {
+): Promise<ActionResult<{ id: number; dmsLinkCreated?: boolean }>> {
   try {
     const ctx = await getAuthContext();
     if (!hasPermission(ctx, "hr.medical.manage") && !hasPermission(ctx, "hr.admin")) {
@@ -1293,6 +1410,17 @@ export async function createEmployeeMedicalRecord(
 
     const emp = await loadEmployeeForAudit(employeeId);
     if (!emp) return { success: false, error: "Employee not found" };
+
+    let dmsLinkCreated = false;
+    if (parsed.data.dms_document_id) {
+      const linkResult = await linkComplianceDmsDocument(
+        employeeId,
+        parsed.data.dms_document_id,
+        "medical_record"
+      );
+      if (!linkResult.success) return { success: false, error: linkResult.error };
+      dmsLinkCreated = linkResult.data?.created ?? false;
+    }
 
     const admin = await createAdminClient();
     const { data, error } = await admin
@@ -1316,7 +1444,7 @@ export async function createEmployeeMedicalRecord(
       },
     });
     revalidateEmployeePath(employeeId);
-    return { success: true, data: { id: data.id } };
+    return { success: true, data: { id: data.id, dmsLinkCreated } };
   } catch {
     return { success: false, error: "Failed to create medical record" };
   }
@@ -1342,6 +1470,15 @@ export async function updateEmployeeMedicalRecord(
       .is("deleted_at", null)
       .single();
     if (!existing) return { success: false, error: "Record not found" };
+
+    if (parsed.data.dms_document_id) {
+      const linkResult = await linkComplianceDmsDocument(
+        existing.employee_id,
+        parsed.data.dms_document_id,
+        "medical_record"
+      );
+      if (!linkResult.success) return { success: false, error: linkResult.error };
+    }
 
     const { error } = await admin
       .from("employee_medical_records")

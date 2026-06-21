@@ -6,6 +6,10 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
+import {
+  resolveStandardFileNameForDocumentCreate,
+  resolveStandardFileNameForExistingDocument,
+} from "@/server/actions/dms/standard-file-name";
 
 export type ActionResult<T = unknown> = {
   success: boolean;
@@ -129,6 +133,12 @@ export async function attachUploadToExistingDocument(
 
     const nextVersionNumber = (maxVerRow?.version_number ?? 0) + 1;
     const ext = getExtension(session.original_filename as string);
+
+    const resolvedFileName = await resolveStandardFileNameForExistingDocument({
+      documentId,
+      originalFilename: session.original_filename as string,
+    });
+
     const finalPath = buildFinalStoragePath(
       document.owning_company_id as number | null,
       year,
@@ -180,7 +190,7 @@ export async function attachUploadToExistingDocument(
         file_role: "original",
         storage_bucket: "dms-documents",
         storage_path: finalPath,
-        file_name: session.original_filename,
+        file_name: resolvedFileName,
         mime_type: session.mime_type,
         file_size_bytes: session.file_size_bytes,
         sha256_hash: session.sha256_hash,
@@ -306,6 +316,13 @@ export async function createDocumentFromUpload(
     const ext = getExtension(session.original_filename as string);
     const userId = ctx.profile.id;
 
+    const resolvedFileName = await resolveStandardFileNameForDocumentCreate({
+      documentTypeId: document_type_id,
+      expiryDate: expiry_date ?? null,
+      documentNo,
+      originalFilename: session.original_filename as string,
+    });
+
     const { data: document, error: docInsertError } = await supabase
       .from("dms_documents")
       .insert({
@@ -381,7 +398,7 @@ export async function createDocumentFromUpload(
         file_role: "original",
         storage_bucket: "dms-documents",
         storage_path: finalPath,
-        file_name: session.original_filename,
+        file_name: resolvedFileName,
         mime_type: session.mime_type,
         file_size_bytes: session.file_size_bytes,
         sha256_hash: session.sha256_hash,

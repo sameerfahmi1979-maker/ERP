@@ -99,14 +99,6 @@ export default async function DmsDashboardPage() {
           </Link>
         ))}
       </div>
-
-      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm">
-        <p className="font-medium text-amber-800">Party Documents Migration Notice</p>
-        <p className="text-amber-700 mt-1 text-xs">
-          Party Master documents are still managed in the Party Master Documents tab. Migration to DMS is scheduled for DMS.6.
-          New documents should be created directly in DMS from this phase onwards.
-        </p>
-      </div>
     </div>
   );
 }

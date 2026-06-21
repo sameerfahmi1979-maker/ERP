@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { DmsAiIntakeFieldRow } from "./dms-ai-intake-field-row";
@@ -35,26 +35,37 @@ export function DmsAiIntakeMetadataSection({
   onChange,
 }: DmsAiIntakeMetadataSectionProps) {
   const [definitions, setDefinitions] = useState<DmsMetadataDefinitionRow[]>([]);
-  const [isPending, startTransition] = useTransition();
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     if (!documentTypeId) {
       setDefinitions([]);
+      setIsLoading(false);
       return;
     }
-    startTransition(async () => {
+
+    let cancelled = false;
+    (async () => {
+      setIsLoading(true);
       const result = await getMetadataDefinitionsForType(documentTypeId);
-      if (result.success && result.data) {
-        setDefinitions(result.data);
-      } else {
-        setDefinitions([]);
+      if (!cancelled) {
+        if (result.success && result.data) {
+          setDefinitions(result.data);
+        } else {
+          setDefinitions([]);
+        }
+        setIsLoading(false);
       }
-    });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [documentTypeId]);
 
   if (!documentTypeId) return null;
 
-  if (isPending) {
+  if (isLoading) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
         <Loader2 className="h-4 w-4 animate-spin" />

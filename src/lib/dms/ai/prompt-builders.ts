@@ -7,6 +7,7 @@
  */
 
 import type { DmsAiDocumentTypeCandidate, DmsAiImageFile, DmsAiMetadataField } from "./types";
+import { TYPE_CLASSIFICATION_FINGERPRINTS } from "./classification-resolver";
 
 /** Maximum OCR text characters to include in a single prompt (≈ 6000 tokens). */
 const MAX_OCR_CHARS = 12_000;
@@ -18,8 +19,12 @@ const MAX_OCR_CHARS = 12_000;
  *   - Legal Arabic company name (legal_name_ar) extraction.
  *   - Arabic transliteration consistency rules.
  *   - UAE-specific Arabic term glossary.
+ * v3.1 — Classification strength + UAE fingerprint rules (DMS.NAMING.2 / intake fix):
+ *   - Mandatory classification decision tree for Emirates ID vs Passport vs Visa.
+ *   - Visual fingerprint hints per type_code in candidate list.
+ *   - Stricter confidence rules; never confuse Emirates ID with passport/visa.
  */
-const PROMPT_VERSION = "v3.0";
+const PROMPT_VERSION = "v3.1";
 
 export { PROMPT_VERSION };
 
@@ -80,8 +85,23 @@ UAE ARABIC DOCUMENT GLOSSARY (for classification and extraction):
 - المستأجر = Tenant
 - المؤجر = Landlord / Lessor
 
-STEP 2 — CLASSIFICATION:
-Using the full transcription and visual context, determine the document type.
+STEP 2 — CLASSIFICATION (CRITICAL — read carefully before choosing suggested_type_code):
+Using the full transcription and visual layout, determine the document type.
+
+CLASSIFICATION DECISION RULES — apply in this order:
+1. EMIRATES_ID — choose this if ANY of these are true:
+   - ID number matches 784-YYYY-NNNNNNN-N (15 digits, starts with 784)
+   - Card says "Emirates ID", "Emirates Identity", "Federal Authority for Identity", "ICA", or Arabic "الهوية الإماراتية"
+   - UAE national identity card layout (photo, chip, bilingual EN/AR, NOT a passport booklet)
+   - NEVER classify an Emirates ID as PASSPORT_COPY, VISA, or DRIVING_LICENSE even if a passport number appears elsewhere
+2. PASSPORT_COPY — choose only for passport booklets with MRZ (P<...) lines, passport number, nationality — NOT Emirates ID cards
+3. VISA / Residence Permit — entry permit, residence visa stamp/page, UID, GDRFA/ICP — NOT standalone Emirates ID card
+4. DRIVING_LICENSE — RTA/traffic licence with vehicle classes — NOT Emirates ID
+5. MEDICAL_INSURANCE — health insurance card with member/card ID, insurer, TPA, network — NOT Emirates ID
+6. TRADE_LICENSE — commercial licence from DED/SEDD/emirate authority — company registration document
+7. If multiple types seem possible, prefer the MOST SPECIFIC match to visual layout and primary document number format
+8. suggested_type_code MUST be an EXACT type_code from the candidates list (e.g. EMIRATES_ID, not "Emirates ID")
+9. If confidence < 0.85, set confidence_label to needs_manual_review and explain ambiguity in reason + warnings
 
 STEP 3 — METADATA EXTRACTION:
 From the full transcription, extract all requested metadata fields and additional fields.
@@ -190,8 +210,12 @@ export function buildCombinedPrompt(
   const hasImages = imageFiles.length > 0;
 
   const candidateList = typeCandidates
-    .slice(0, 20)
-    .map((t) => `- ${t.typeCode}: ${t.nameEn}${t.description ? ` (${t.description.slice(0, 80)})` : ""}`)
+    .slice(0, 30)
+    .map((t) => {
+      const fp = TYPE_CLASSIFICATION_FINGERPRINTS[t.typeCode] ?? "";
+      const fpSuffix = fp ? ` | fingerprint: ${fp}` : "";
+      return `- ${t.typeCode}: ${t.nameEn}${t.description ? ` (${t.description.slice(0, 80)})` : ""}${fpSuffix}`;
+    })
     .join("\n");
 
   const fieldList = metadataFields

@@ -64,6 +64,9 @@ export const HrIdentityDocumentPrefillFieldsSchema = z.object({
   expiry_date: z.string().max(20).nullable().optional(),
   issuing_authority: z.string().max(300).nullable().optional(),
   place_of_issue: z.string().max(300).nullable().optional(),
+  country_name: z.string().max(200).nullable().optional(),
+  emirate_name: z.string().max(200).nullable().optional(),
+  city_name: z.string().max(200).nullable().optional(),
   emirates_id_application_no: z.string().max(100).nullable().optional(),
   visa_file_number: z.string().max(100).nullable().optional(),
   uid_number: z.string().max(100).nullable().optional(),
@@ -81,6 +84,59 @@ export const HrIdentityDocumentPrefillOutputSchema = z.object({
 
 export type HrIdentityDocumentPrefillFields = z.infer<typeof HrIdentityDocumentPrefillFieldsSchema>;
 export type HrIdentityDocumentPrefillOutput = z.infer<typeof HrIdentityDocumentPrefillOutputSchema>;
+
+// ── 1c. HR Medical Insurance Prefill (from DMS) ───────────────────────────────
+
+export const HrMedicalInsurancePrefillFieldsSchema = z.object({
+  insurance_provider: z.string().max(300).nullable().optional(),
+  tpa: z.string().max(200).nullable().optional(),
+  policy_number: z.string().max(200).nullable().optional(),
+  insurance_card_number: z.string().max(200).nullable().optional(),
+  network_class: z.string().max(200).nullable().optional(),
+  issue_date: z.string().max(20).nullable().optional(),
+  expiry_date: z.string().max(20).nullable().optional(),
+  employee_covered: z.boolean().nullable().optional(),
+  dependent_coverage_included: z.boolean().nullable().optional(),
+  dependent_count_covered: z.number().int().min(0).nullable().optional(),
+  notes: z.string().max(1000).nullable().optional(),
+});
+
+export const HrMedicalInsurancePrefillOutputSchema = z.object({
+  fields: HrMedicalInsurancePrefillFieldsSchema,
+  field_confidence: z.record(z.string(), z.number().min(0).max(1)).optional(),
+  warning: z.string().max(500).nullable().optional(),
+});
+
+export type HrMedicalInsurancePrefillOutput = z.infer<typeof HrMedicalInsurancePrefillOutputSchema>;
+
+// ── 1d. HR Dependent Prefill (from DMS) ───────────────────────────────────────
+
+export const HrDependentPrefillFieldsSchema = z.object({
+  dependent_name_en: z.string().max(300).nullable().optional(),
+  dependent_name_ar: z.string().max(300).nullable().optional(),
+  date_of_birth: z.string().max(20).nullable().optional(),
+  nationality_name: z.string().max(200).nullable().optional(),
+  passport_number: z.string().max(100).nullable().optional(),
+  passport_expiry: z.string().max(20).nullable().optional(),
+  emirates_id_number: z.string().max(50).nullable().optional(),
+  emirates_id_expiry: z.string().max(20).nullable().optional(),
+  residence_visa_number: z.string().max(100).nullable().optional(),
+  residence_visa_expiry: z.string().max(20).nullable().optional(),
+  medical_insurance_provider: z.string().max(300).nullable().optional(),
+  medical_insurance_policy: z.string().max(200).nullable().optional(),
+  medical_insurance_card: z.string().max(200).nullable().optional(),
+  medical_insurance_expiry: z.string().max(20).nullable().optional(),
+  sponsored_by: z.string().max(50).nullable().optional(),
+  notes: z.string().max(1000).nullable().optional(),
+});
+
+export const HrDependentPrefillOutputSchema = z.object({
+  fields: HrDependentPrefillFieldsSchema,
+  field_confidence: z.record(z.string(), z.number().min(0).max(1)).optional(),
+  warning: z.string().max(500).nullable().optional(),
+});
+
+export type HrDependentPrefillOutput = z.infer<typeof HrDependentPrefillOutputSchema>;
 
 export type IdentityDocumentPrefillResult = {
   form: {

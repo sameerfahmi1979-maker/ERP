@@ -110,11 +110,13 @@ async function updateSessionOrchestration(
 
 // ── Content sync step ─────────────────────────────────────────────────────────
 
-async function runContentSyncStep(documentId: number): Promise<{ success: boolean; error?: string; skipped?: boolean }> {
+async function runContentSyncStep(
+  documentId: number,
+  uploadSessionId?: number | null
+): Promise<{ success: boolean; error?: string; skipped?: boolean }> {
   try {
     const supabase = await createClient();
 
-    // Check if content already synced
     const { data: existingContent } = await supabase
       .from("dms_document_content")
       .select("id")
@@ -125,28 +127,56 @@ async function runContentSyncStep(documentId: number): Promise<{ success: boolea
       return { success: true, skipped: true, error: "Content already synced." };
     }
 
-    // Load OCR text from current-version file
-    const { data: fileData } = await supabase
-      .from("dms_document_files")
-      .select("ocr_text")
-      .eq("document_id", documentId)
-      .eq("is_current_version", true)
-      .is("deleted_at", null)
-      .limit(1)
+    let ocrText: string | null = null;
+
+    // 1. OCR text on current version file (via document.current_version_id)
+    const { data: docRow } = await supabase
+      .from("dms_documents")
+      .select("current_version_id")
+      .eq("id", documentId)
       .maybeSingle();
 
-    const ocrText = (fileData as { ocr_text?: string | null } | null)?.ocr_text ?? null;
+    const versionId = docRow?.current_version_id as number | null;
+    if (versionId) {
+      const { data: fileData } = await supabase
+        .from("dms_document_files")
+        .select("ocr_text")
+        .eq("version_id", versionId)
+        .eq("file_role", "original")
+        .is("deleted_at", null)
+        .limit(1)
+        .maybeSingle();
+      ocrText = (fileData as { ocr_text?: string | null } | null)?.ocr_text ?? null;
+    }
 
-    if (!ocrText || !ocrText.trim()) {
+    // 2. AI intake transcription (draft docs often have no file OCR yet)
+    if (!ocrText?.trim() && uploadSessionId) {
+      const { data: sessionRow } = await supabase
+        .from("dms_upload_sessions")
+        .select("ai_result_id")
+        .eq("id", uploadSessionId)
+        .maybeSingle();
+
+      const aiResultId = sessionRow?.ai_result_id as number | null;
+      if (aiResultId) {
+        const { data: aiRow } = await supabase
+          .from("dms_ai_extraction_results")
+          .select("raw_ocr_text")
+          .eq("id", aiResultId)
+          .maybeSingle();
+        ocrText = (aiRow as { raw_ocr_text?: string | null } | null)?.raw_ocr_text ?? null;
+      }
+    }
+
+    if (!ocrText?.trim()) {
       return { success: true, skipped: true, error: "No OCR text available for content sync." };
     }
 
-    // Call existing content sync helper
     const result = await writeDocumentContentTextSystem({
       documentId,
       text: ocrText,
       source: "ocr",
-      performedBy: 0, // system action — orchestrator sets 0; existing system uses context internally
+      performedBy: 0,
     });
 
     return { success: result.success, error: result.error };
@@ -206,6 +236,7 @@ export async function runDmsAiOrchestrationPostDraft(input: {
     }
 
     const documentId = typedSession.document_id as number | null;
+    const uploadSessionId = typedSession.id as number;
     if (!documentId) {
       return {
         success: false,
@@ -274,7 +305,7 @@ export async function runDmsAiOrchestrationPostDraft(input: {
     // ── Step: content_sync ────────────────────────────────────────────────────
     markRunning("content_sync");
     const contentSyncResult = await runPipelineStepSafe("content_sync", () =>
-      runContentSyncStep(documentId)
+      runContentSyncStep(documentId, uploadSessionId)
     );
     steps = mergeStepResult(steps, contentSyncResult);
 
@@ -462,6 +493,7 @@ export async function retryDmsOrchestrationStep(input: {
     if (!isOwner && !isAdmin) return { success: false, error: "Access denied." };
 
     const documentId = typedSession.document_id as number | null;
+    const uploadSessionId = typedSession.id as number;
     if (!documentId) return { success: false, error: "No draft document exists for this session." };
 
     // Run the step
@@ -470,7 +502,9 @@ export async function retryDmsOrchestrationStep(input: {
 
     switch (code) {
       case "content_sync":
-        stepResult = await runPipelineStepSafe(code, () => runContentSyncStep(documentId));
+        stepResult = await runPipelineStepSafe(code, () =>
+          runContentSyncStep(documentId, typedSession.id as number)
+        );
         break;
       case "ai_summary":
         stepResult = await runPipelineStepSafe(code, async () => {

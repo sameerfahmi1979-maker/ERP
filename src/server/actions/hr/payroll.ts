@@ -39,6 +39,7 @@ import {
 import {
   checkWpsReadiness,
   calculateGrossSalary,
+  calculateBasicSalary,
   type WpsReadinessResult,
 } from "@/lib/hr/payroll/wps-readiness";
 
@@ -94,6 +95,7 @@ export type SalaryRevisionRow = {
   created_at: string;
   created_by: number | null;
   approver?: { display_name: string } | null;
+  creator?: { display_name: string } | null;
 };
 
 export type PayrollHoldRow = {
@@ -193,9 +195,13 @@ const salaryComponentUpdateSchema = salaryComponentBaseSchema.partial();
 const salaryRevisionCreateSchema = z.object({
   effective_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   revision_reason: z.string().max(1000).nullable().optional(),
+  /** Stored in old_gross column — current basic salary snapshot from system */
   old_gross: z.number().min(0).nullable().optional(),
-  new_gross: z.number().min(0).nullable().optional(),
+  /** Stored in new_gross column — new basic salary entered by user */
+  new_gross: z.number().min(0, "New basic salary is required"),
   approved_by: z.number().int().positive().nullable().optional(),
+  /** When true (default), supersede active basic component and insert new row at effective_date */
+  apply_to_components: z.boolean().default(true),
 });
 
 const payrollHoldCreateSchema = z.object({
@@ -247,6 +253,133 @@ function empRevalidate(employeeId: number) {
   revalidatePath(`/admin/hr/employees/record/${employeeId}`);
   revalidatePath("/admin/hr/payroll/salaries");
   revalidatePath("/admin/hr/payroll/wps");
+}
+
+function subtractOneDay(dateStr: string): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
+}
+
+type EmployeeCtxRow = NonNullable<Awaited<ReturnType<typeof getEmployeeCtx>>>;
+
+/** End-date active basic component(s) and insert a new basic row from revision effective date. */
+async function applyRevisionToBasicSalaryComponent(
+  admin: ReturnType<typeof createAdminClient>,
+  employeeId: number,
+  effectiveDate: string,
+  newAmount: number,
+  userId: number | undefined,
+  emp: EmployeeCtxRow
+): Promise<ActionResult> {
+  const { data: rows, error } = await admin
+    .from("employee_salary_components")
+    .select(
+      "id, effective_from, effective_to, component_type_id, component_type:hr_salary_component_types!employee_salary_components_component_type_id_fkey(id, is_basic)"
+    )
+    .eq("employee_id", employeeId)
+    .eq("is_active", true)
+    .is("deleted_at", null);
+
+  if (error) return { success: false, error: error.message };
+
+  const basicRows = (rows ?? []).filter(
+    (r) => (r.component_type as { is_basic?: boolean } | null)?.is_basic === true
+  );
+
+  const endDate = subtractOneDay(effectiveDate);
+
+  for (const row of basicRows) {
+    const rowEffectiveFrom = row.effective_from as string;
+    const effectiveTo =
+      endDate >= rowEffectiveFrom ? endDate : rowEffectiveFrom;
+
+    const { error: updErr } = await admin
+      .from("employee_salary_components")
+      .update({
+        is_active: false,
+        effective_to: effectiveTo,
+        updated_by: userId,
+      })
+      .eq("id", row.id);
+
+    if (updErr) return { success: false, error: updErr.message };
+
+    await logAudit({
+      module_code: "HR",
+      entity_name: "employee_salary_components",
+      entity_id: row.id,
+      entity_reference: `${emp.employee_code}-comp-${row.id}`,
+      action: "salary_component_updated",
+      new_values: {
+        parent_employee_id: employeeId,
+        employee_code: emp.employee_code,
+        employee_name: emp.full_name_en,
+        related_record_type: "salary_component",
+        superseded_by_revision: true,
+        effective_to: effectiveTo,
+      },
+    });
+  }
+
+  let componentTypeId = basicRows[0]?.component_type_id as number | undefined;
+
+  if (!componentTypeId) {
+    const { data: basicType, error: typeErr } = await admin
+      .from("hr_salary_component_types")
+      .select("id")
+      .eq("is_basic", true)
+      .eq("is_active", true)
+      .is("deleted_at", null)
+      .order("sort_order")
+      .limit(1)
+      .maybeSingle();
+
+    if (typeErr) return { success: false, error: typeErr.message };
+    if (!basicType) {
+      return {
+        success: false,
+        error: "No Basic Salary component type found in HR Settings",
+      };
+    }
+    componentTypeId = basicType.id;
+  }
+
+  const { data: inserted, error: insErr } = await admin
+    .from("employee_salary_components")
+    .insert({
+      employee_id: employeeId,
+      component_type_id: componentTypeId,
+      amount: newAmount,
+      effective_from: effectiveDate,
+      effective_to: null,
+      is_active: true,
+      notes: "Applied from salary revision",
+      created_by: userId,
+    })
+    .select("id")
+    .single();
+
+  if (insErr) return { success: false, error: insErr.message };
+
+  await logAudit({
+    module_code: "HR",
+    entity_name: "employee_salary_components",
+    entity_id: inserted.id,
+    entity_reference: `${emp.employee_code}-comp-${inserted.id}`,
+    action: "salary_component_created",
+    new_values: {
+      parent_employee_id: employeeId,
+      employee_code: emp.employee_code,
+      employee_name: emp.full_name_en,
+      related_record_type: "salary_component",
+      applied_from_revision: true,
+      effective_from: effectiveDate,
+    },
+  });
+
+  return { success: true };
 }
 
 // ── Payroll Profile ────────────────────────────────────────────────────────────
@@ -524,6 +657,33 @@ export async function calculateEmployeeGrossSalary(
   return { success: true, data: { gross } };
 }
 
+export async function calculateEmployeeBasicSalary(
+  employeeId: number
+): Promise<ActionResult<{ basic: number }>> {
+  const ctx = await getAuthContext();
+  if (!hasPermission(ctx, "hr.payroll.view"))
+    return { success: false, error: "Permission denied: hr.payroll.view required" };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("employee_salary_components")
+    .select("amount, is_active, deleted_at, component_type:hr_salary_component_types!employee_salary_components_component_type_id_fkey(is_basic)")
+    .eq("employee_id", employeeId)
+    .is("deleted_at", null);
+
+  if (error) return { success: false, error: error.message };
+
+  const basic = calculateBasicSalary(
+    (data ?? []).map((c) => ({
+      amount: Number(c.amount) || 0,
+      is_active: c.is_active,
+      deleted_at: c.deleted_at,
+      component_type: c.component_type as unknown as { is_basic?: boolean } | null,
+    }))
+  );
+  return { success: true, data: { basic } };
+}
+
 // ── Salary Revisions ───────────────────────────────────────────────────────────
 
 export async function listEmployeeSalaryRevisions(
@@ -538,7 +698,7 @@ export async function listEmployeeSalaryRevisions(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("employee_salary_revisions")
-    .select("*, approver:user_profiles!employee_salary_revisions_approved_by_fkey(display_name)")
+    .select("*, approver:user_profiles!employee_salary_revisions_approved_by_fkey(display_name), creator:user_profiles!employee_salary_revisions_created_by_fkey(display_name)")
     .eq("employee_id", employeeId)
     .order("effective_date", { ascending: false });
 
@@ -565,9 +725,50 @@ export async function createEmployeeSalaryRevision(
   const emp = await getEmployeeCtx(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 
+  const { data: componentRows, error: componentError } = await admin
+    .from("employee_salary_components")
+    .select("amount, is_active, deleted_at, component_type:hr_salary_component_types!employee_salary_components_component_type_id_fkey(is_basic)")
+    .eq("employee_id", employeeId)
+    .is("deleted_at", null);
+
+  if (componentError) return { success: false, error: componentError.message };
+
+  const currentBasic = calculateBasicSalary(
+    (componentRows ?? []).map((c) => ({
+      amount: Number(c.amount) || 0,
+      is_active: c.is_active,
+      deleted_at: c.deleted_at,
+      component_type: c.component_type as unknown as { is_basic?: boolean } | null,
+    }))
+  );
+
+  const applyToComponents = parsed.data.apply_to_components ?? true;
+
+  if (applyToComponents && parsed.data.new_gross !== currentBasic) {
+    const applyResult = await applyRevisionToBasicSalaryComponent(
+      admin,
+      employeeId,
+      parsed.data.effective_date,
+      parsed.data.new_gross,
+      ctx.profile?.id,
+      emp
+    );
+    if (!applyResult.success) {
+      return { success: false, error: applyResult.error };
+    }
+  }
+
   const { data, error } = await admin
     .from("employee_salary_revisions")
-    .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id })
+    .insert({
+      employee_id: employeeId,
+      effective_date: parsed.data.effective_date,
+      revision_reason: parsed.data.revision_reason ?? null,
+      old_gross: currentBasic,
+      new_gross: parsed.data.new_gross,
+      approved_by: parsed.data.approved_by ?? null,
+      created_by: ctx.profile?.id,
+    })
     .select("id")
     .single();
   if (error) return { success: false, error: error.message };
@@ -578,7 +779,15 @@ export async function createEmployeeSalaryRevision(
     entity_id: data.id,
     entity_reference: `${emp.employee_code}-rev-${data.id}`,
     action: "salary_revision_created",
-    new_values: { parent_employee_id: employeeId, employee_code: emp.employee_code, employee_name: emp.full_name_en, related_record_type: "salary_revision", effective_date: parsed.data.effective_date, revision_reason: parsed.data.revision_reason },
+    new_values: {
+      parent_employee_id: employeeId,
+      employee_code: emp.employee_code,
+      employee_name: emp.full_name_en,
+      related_record_type: "salary_revision",
+      effective_date: parsed.data.effective_date,
+      revision_reason: parsed.data.revision_reason,
+      apply_to_components: applyToComponents,
+    },
   });
   empRevalidate(employeeId);
   return { success: true, data: { id: data.id } };

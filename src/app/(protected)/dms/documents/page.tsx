@@ -28,7 +28,7 @@ export default async function DmsDocumentsPage() {
     <div className="p-6 space-y-4">
       <ERPPageHeader
         title="All Documents"
-        description="DMS document repository — metadata-only records. File upload enabled in DMS.5."
+        description="Browse, search, and manage all DMS documents."
         breadcrumbs={[{ label: "DMS", href: "/dms" }, { label: "All Documents" }]}
       />
 

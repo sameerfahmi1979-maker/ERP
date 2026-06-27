@@ -208,6 +208,39 @@ export const queryKeys = {
     documentAiResults: (documentId: number) => ["dms", "documents", documentId, "ai-results"] as const,
     aiResult: (resultId: number) => ["dms", "ai-results", resultId] as const,
 
+    // DMS AI Phase 7 — Apply History
+    documentAiApplyHistory: (documentId: number) => ["dms", "documents", documentId, "ai-apply-history"] as const,
+
+    // DMS AI Phase 16 — Apply-to-ERP
+    applyToErpPreview: (documentId: number) => ["dms", "documents", documentId, "apply-to-erp-preview"] as const,
+    applyToErpRun: (runId: number) => ["dms", "apply-to-erp", "run", runId] as const,
+    applyToErpRuns: (filters?: Record<string, unknown>) =>
+      filters ? (["dms", "apply-to-erp", "runs", filters] as const) : (["dms", "apply-to-erp", "runs"] as const),
+
+    // DMS AI Phase 16 Tier 2 — Party Apply Target Rows
+    partyApplyTargetRows: (partyId: number, targetKind: string) =>
+      ["dms", "apply-to-erp", "party-target-rows", partyId, targetKind] as const,
+
+    // DMS AI Phase 17 — Apply Correction Proposals
+    applyCorrectionSource: (applyItemId: number) =>
+      ["dms", "apply-correction", "source", applyItemId] as const,
+    applyCorrectionProposal: (proposalId: number) =>
+      ["dms", "apply-correction", "proposal", proposalId] as const,
+    applyCorrectionProposals: (filters?: Record<string, unknown>) =>
+      filters
+        ? (["dms", "apply-correction", "proposals", filters] as const)
+        : (["dms", "apply-correction", "proposals"] as const),
+
+    // DMS AI Phase 8 — ERP Mapping Registry + Preview
+    erpMappingsForDefinition: (definitionId: number) => ["dms", "erp-mappings", "definition", definitionId] as const,
+    erpMappingsForDocumentType: (documentTypeId: number) => ["dms", "erp-mappings", "document-type", documentTypeId] as const,
+    erpMappingPreview: (documentId: number) => ["dms", "documents", documentId, "erp-mapping-preview"] as const,
+    erpMappingTargets: () => ["dms", "erp-mapping-targets"] as const,
+
+    // DMS AI Phase 9 — Async Job Queue
+    aiJobsForDocument: (documentId: number) => ["dms", "documents", documentId, "ai-jobs"] as const,
+    aiJobStatus: (jobId: number) => ["dms", "ai-jobs", jobId, "status"] as const,
+
     // DMS.9 — OCR Pipeline
     documentOcrStatus: (documentId: number) => ["dms", "documents", documentId, "ocr-status"] as const,
     fileOcrText: (fileId: number) => ["dms", "files", fileId, "ocr-text"] as const,

@@ -1,6 +1,9 @@
 /**
  * DMS.9 — No-Op OCR Provider
  *
+ * Phase 1 inventory (2026-06-21): UNUSED — not imported by factory or OCR pipeline.
+ * Active OCR uses GPT-4.1 vision via triggerDmsOcrForFile. Retained as fallback stub.
+ *
  * Returned when no real OCR provider is configured.
  * Always marks the job as "provider_not_configured" so the UI can show a
  * clear message and the job record is still created for auditability.

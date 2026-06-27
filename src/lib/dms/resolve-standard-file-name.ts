@@ -9,8 +9,10 @@ import {
   formatVehicleOwnerSegment,
   getExtensionFromFilename,
   resolveDocNoFromDescription,
+  resolveDocNoFromExistingFilename,
   resolveDocNoFromFields,
   resolveOwnerFromAiContext,
+  resolveOwnerFromExistingFilename,
   sanitizeStandardFileName,
   type AiOwnerHints,
   type BuildDmsStandardFileNameInput,
@@ -59,9 +61,15 @@ export function resolveStandardFileNameInput(
   const fields = mergeFieldMaps(ctx.extractedFields, ctx.metadataValues);
   const extension = getExtensionFromFilename(ctx.originalFilename);
 
+  // Owner resolution — priority order:
+  // 1. Explicit ownerName from DB entity lookup (party/employee/vehicle)
+  // 2. AI-extracted fields or AI description/title hints
+  // 3. Existing filename parsing (retroactive rename safety net)
+  // 4. Final fallback: "Unknown_Owner"
   let ownerName =
     ctx.ownerName?.trim() ||
     resolveOwnerFromAiContext(fields, ctx.aiOwnerHints) ||
+    resolveOwnerFromExistingFilename(ctx.originalFilename, ctx.typeCode) ||
     "Unknown_Owner";
 
   if (
@@ -74,10 +82,19 @@ export function resolveStandardFileNameInput(
     ownerName = formatOwnerSegment(ownerName);
   }
 
+  // Doc-no resolution — priority order:
+  // 1. Structured metadata / AI-extracted fields
+  // 2. AI description prose (e.g. "ID: 784-…" patterns)
+  // 3. Existing filename parsing
+  // 4. DMS internal document_no fallback (already handled inside resolveDocNoFromFields)
   let docNo = resolveDocNoFromFields(ctx.typeCode, fields, ctx.documentNo ?? null);
   if (docNo === "DMS-Unknown") {
     const fromDesc = resolveDocNoFromDescription(ctx.aiOwnerHints?.suggestedDescription);
     if (fromDesc) docNo = fromDesc;
+  }
+  if (docNo === "DMS-Unknown") {
+    const fromFilename = resolveDocNoFromExistingFilename(ctx.originalFilename, ctx.typeCode);
+    if (fromFilename) docNo = fromFilename;
   }
 
   return {

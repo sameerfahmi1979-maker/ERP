@@ -7,6 +7,10 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ExternalLink, RefreshCw, Plus, CheckCircle2, XCircle } from "lucide-react";
+import { SortColHeader } from "@/components/erp/table/sort-col-header";
+import { TablePagination } from "@/components/erp/table/table-pagination";
+import { TableSearchInput } from "@/components/erp/table/table-search-input";
+import { useSortPaginate } from "@/hooks/use-sort-paginate";
 import { queryKeys } from "@/lib/query/query-keys";
 import {
   getDmsExpiringDocuments,
@@ -38,6 +42,16 @@ export function DmsExpiringDocumentsTable({ view, onStartRenewal }: DmsExpiringD
     staleTime: 60_000,
   });
 
+  const table = useSortPaginate(docs, {
+    defaultSortKey: view === "missing_expiry" ? "title" : "expiry_date",
+    defaultSortDir: "asc",
+    defaultPageSize: 25,
+    getSearchText: (d) => [d.document_no, d.title, d.document_type ?? "", d.category ?? "", d.status].join(" "),
+    comparators: {
+      days_remaining: (a, b) => (a.days_remaining ?? 99999) - (b.days_remaining ?? 99999),
+    },
+  });
+
   const handleGenerateReminders = async (docId: number) => {
     setGeneratingId(docId);
     try {
@@ -57,7 +71,7 @@ export function DmsExpiringDocumentsTable({ view, onStartRenewal }: DmsExpiringD
     return <div className="py-8 text-center text-sm text-muted-foreground">Loading…</div>;
   }
 
-  if (docs.length === 0) {
+  if (docs.length === 0 && !isLoading) {
     return (
       <div className="py-8 text-center text-sm text-muted-foreground">
         {view === "expired" ? "No expired documents" :
@@ -68,21 +82,37 @@ export function DmsExpiringDocumentsTable({ view, onStartRenewal }: DmsExpiringD
   }
 
   return (
-    <div className="rounded-md border border-border overflow-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="bg-muted/20 border-b border-border">
-            <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground uppercase">Document</th>
-            <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground uppercase">Type / Category</th>
-            {view !== "missing_expiry" && (
-              <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground uppercase">Expiry</th>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <p className="text-sm text-muted-foreground">
+          {table.total !== docs.length
+            ? `${table.total} of ${docs.length} documents`
+            : `${docs.length} document${docs.length !== 1 ? "s" : ""}`}
+        </p>
+        <TableSearchInput value={table.query} onChange={table.setQuery} placeholder="Search documents…" className="w-52" />
+      </div>
+      <div className="rounded-md border border-border overflow-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-muted/20 border-b border-border">
+              <SortColHeader field="document_no" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2">Document</SortColHeader>
+              <SortColHeader field="document_type" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2">Type / Category</SortColHeader>
+              {view !== "missing_expiry" && (
+                <SortColHeader field="expiry_date" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2">Expiry</SortColHeader>
+              )}
+              <SortColHeader field="status" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2">Status</SortColHeader>
+              <th className="px-3 py-2 w-40" />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border/50">
+            {table.rows.length === 0 && (
+              <tr>
+                <td colSpan={view === "missing_expiry" ? 4 : 5} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                  {table.query ? "No documents match your search" : "No documents found"}
+                </td>
+              </tr>
             )}
-            <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground uppercase">Status</th>
-            <th className="px-3 py-2 w-40" />
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border/50">
-          {docs.map((doc) => (
+            {table.rows.map((doc) => (
             <tr key={doc.id} className="hover:bg-muted/10 transition-colors">
               <td className="px-3 py-2">
                 <div>
@@ -151,8 +181,17 @@ export function DmsExpiringDocumentsTable({ view, onStartRenewal }: DmsExpiringD
               </td>
             </tr>
           ))}
-        </tbody>
-      </table>
+          </tbody>
+        </table>
+        <TablePagination
+          page={table.page}
+          totalPages={table.totalPages}
+          onPage={table.setPage}
+          pageSize={table.pageSize}
+          onPageSize={table.setPageSize}
+          total={table.total}
+        />
+      </div>
     </div>
   );
 }

@@ -11,6 +11,10 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { RequiredLabel } from "@/components/erp/required-label";
+import { SortColHeader } from "@/components/erp/table/sort-col-header";
+import { TablePagination } from "@/components/erp/table/table-pagination";
+import { TableSearchInput } from "@/components/erp/table/table-search-input";
+import { useSortPaginate } from "@/hooks/use-sort-paginate";
 import { Clock, PlusCircle, Pencil, Power, Trash2, Info } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -86,6 +90,16 @@ export function DmsRetentionPoliciesTable({ rows, authContext }: Props) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DmsRetentionPolicyRow | null>(null);
 
+  const table = useSortPaginate(rows, {
+    defaultSortKey: "name_en",
+    defaultSortDir: "asc",
+    defaultPageSize: 25,
+    getSearchText: (r) => [r.policy_code, r.name_en, r.name_ar ?? "", r.action_on_expiry].join(" "),
+    comparators: {
+      retain_for_days: (a, b) => (a.retain_for_days ?? 0) - (b.retain_for_days ?? 0),
+    },
+  });
+
   const openAdd = () => {
     setEditing(null);
     setForm({ ...emptyForm });
@@ -155,44 +169,45 @@ export function DmsRetentionPoliciesTable({ rows, authContext }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* delete_prompt safety banner */}
-      <div className="flex items-start gap-2 p-3 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-300 text-xs">
-        <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-        <span>
-          <strong>No automatic hard deletion.</strong> The &quot;Delete Prompt&quot; action only prompts administrators — documents are never auto-deleted.
-        </span>
-      </div>
-
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{rows.length} {rows.length === 1 ? "policy" : "policies"}</p>
-        {manage && (
-          <Button onClick={openAdd} size="sm">
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Add Policy
-          </Button>
-        )}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <p className="text-sm text-muted-foreground">
+          {table.total !== rows.length
+            ? `${table.total} of ${rows.length} ${rows.length === 1 ? "policy" : "policies"}`
+            : `${rows.length} ${rows.length === 1 ? "policy" : "policies"}`}
+        </p>
+        <div className="flex items-center gap-2">
+          <TableSearchInput value={table.query} onChange={table.setQuery} placeholder="Search policies…" className="w-52" />
+          {manage && (
+            <Button onClick={openAdd} size="sm">
+              <PlusCircle className="mr-2 h-4 w-4" />
+              Add Policy
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="rounded-md border overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 border-b">
             <tr>
-              <th className="text-left px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">Code</th>
-              <th className="text-left px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">Name</th>
-              <th className="text-center px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">Retain (Days)</th>
-              <th className="text-center px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">Action on Expiry</th>
-              <th className="text-center px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">Status</th>
-              <th className="text-center px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground hidden md:table-cell">Updated</th>
+              <SortColHeader field="policy_code" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort}>Code</SortColHeader>
+              <SortColHeader field="name_en" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort}>Name</SortColHeader>
+              <SortColHeader field="retain_for_days" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">Retain (Days)</SortColHeader>
+              <SortColHeader field="action_on_expiry" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">Action on Expiry</SortColHeader>
+              <SortColHeader field="is_active" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">Status</SortColHeader>
+              <SortColHeader field="updated_at" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center" className="hidden md:table-cell">Updated</SortColHeader>
               {manage && <th className="px-4 py-2.5 w-24" />}
             </tr>
           </thead>
           <tbody className="divide-y divide-border/50">
-            {rows.length === 0 && (
+            {table.rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground text-sm">No retention policies found</td>
+                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground text-sm">
+                  {table.query ? "No policies match your search" : "No retention policies found"}
+                </td>
               </tr>
             )}
-            {rows.map((row) => {
+            {table.rows.map((row) => {
               const action = ACTION_LABELS[row.action_on_expiry] ?? { label: row.action_on_expiry, color: "bg-gray-100 text-gray-600" };
               return (
                 <tr key={row.id} className="hover:bg-muted/25 transition-colors">
@@ -239,6 +254,14 @@ export function DmsRetentionPoliciesTable({ rows, authContext }: Props) {
             })}
           </tbody>
         </table>
+        <TablePagination
+          page={table.page}
+          totalPages={table.totalPages}
+          onPage={table.setPage}
+          pageSize={table.pageSize}
+          onPageSize={table.setPageSize}
+          total={table.total}
+        />
       </div>
 
       <ERPChildDialogForm

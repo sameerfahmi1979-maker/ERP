@@ -6,6 +6,10 @@ import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ExternalLink, CheckCircle2, XCircle } from "lucide-react";
+import { SortColHeader } from "@/components/erp/table/sort-col-header";
+import { TablePagination } from "@/components/erp/table/table-pagination";
+import { TableSearchInput } from "@/components/erp/table/table-search-input";
+import { useSortPaginate } from "@/hooks/use-sort-paginate";
 import { queryKeys } from "@/lib/query/query-keys";
 import {
   getDmsRenewalRequests,
@@ -35,6 +39,17 @@ export function DmsRenewalRequestsTable({ filter = {} }: DmsRenewalRequestsTable
     staleTime: 30_000,
   });
 
+  const table = useSortPaginate(renewals, {
+    defaultSortKey: "created_at",
+    defaultSortDir: "desc",
+    defaultPageSize: 25,
+    getSearchText: (r) => {
+      const doc = r.document as Record<string, unknown> | null | undefined;
+      const assignee = r.assignee as Record<string, unknown> | null | undefined;
+      return [r.renewal_no ?? "", String(doc?.document_no ?? ""), String(doc?.title ?? ""), r.status, r.priority, String(assignee?.full_name ?? "")].join(" ");
+    },
+  });
+
   const handleCancel = async (id: number) => {
     const result = await cancelDmsRenewalRequest(id, "Cancelled from dashboard");
     if (result.success) {
@@ -49,7 +64,7 @@ export function DmsRenewalRequestsTable({ filter = {} }: DmsRenewalRequestsTable
     return <div className="py-8 text-center text-sm text-muted-foreground">Loading…</div>;
   }
 
-  if (renewals.length === 0) {
+  if (renewals.length === 0 && !isLoading) {
     return (
       <div className="py-8 text-center text-sm text-muted-foreground">No renewal requests found.</div>
     );
@@ -57,21 +72,37 @@ export function DmsRenewalRequestsTable({ filter = {} }: DmsRenewalRequestsTable
 
   return (
     <>
-      <div className="rounded-md border border-border overflow-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-muted/20 border-b border-border">
-              <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground uppercase">Renewal No</th>
-              <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground uppercase">Document</th>
-              <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground uppercase">Status</th>
-              <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground uppercase">Priority</th>
-              <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground uppercase">Target Date</th>
-              <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground uppercase">Assigned To</th>
-              <th className="px-3 py-2 w-36" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border/50">
-            {renewals.map((r) => {
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-sm text-muted-foreground">
+            {table.total !== renewals.length
+              ? `${table.total} of ${renewals.length} renewal${renewals.length !== 1 ? "s" : ""}`
+              : `${renewals.length} renewal${renewals.length !== 1 ? "s" : ""}`}
+          </p>
+          <TableSearchInput value={table.query} onChange={table.setQuery} placeholder="Search renewals…" className="w-52" />
+        </div>
+        <div className="rounded-md border border-border overflow-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-muted/20 border-b border-border">
+                <SortColHeader field="renewal_no" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2">Renewal No</SortColHeader>
+                <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground uppercase">Document</th>
+                <SortColHeader field="status" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2">Status</SortColHeader>
+                <SortColHeader field="priority" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2">Priority</SortColHeader>
+                <SortColHeader field="target_renewal_date" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2">Target Date</SortColHeader>
+                <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground uppercase">Assigned To</th>
+                <th className="px-3 py-2 w-36" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/50">
+              {table.rows.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                    {table.query ? "No renewals match your search" : "No renewal requests found"}
+                  </td>
+                </tr>
+              )}
+              {table.rows.map((r) => {
               const doc = r.document as Record<string, unknown> | null | undefined;
               const assignee = r.assignee as Record<string, unknown> | null | undefined;
               return (
@@ -138,9 +169,18 @@ export function DmsRenewalRequestsTable({ filter = {} }: DmsRenewalRequestsTable
                 </tr>
               );
             })}
-          </tbody>
-        </table>
-      </div>
+              </tbody>
+            </table>
+            <TablePagination
+              page={table.page}
+              totalPages={table.totalPages}
+              onPage={table.setPage}
+              pageSize={table.pageSize}
+              onPageSize={table.setPageSize}
+              total={table.total}
+            />
+          </div>
+        </div>
 
       {completeDialog && (
         <DmsCompleteRenewalDialog

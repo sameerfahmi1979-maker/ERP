@@ -71,8 +71,11 @@ export function calculateDocumentUnderstandingHealth(
   let score = 0;
   let warningCount = 0;
 
-  // OCR available (20 pts)
-  const hasOcr = data.ocrStatus.ocrTextAvailable || data.ocrStatus.contentTextAvailable;
+  // OCR available (20 pts) — text exists OR OCR processing completed on files
+  const hasOcr =
+    data.ocrStatus.ocrTextAvailable ||
+    data.ocrStatus.contentTextAvailable ||
+    data.ocrStatus.ocrRunComplete;
   if (hasOcr) score += 20;
   else warningCount++;
 
@@ -153,8 +156,12 @@ export function buildRecommendedUnderstandingActions(
     });
   }
 
-  // HIGH: No OCR text
-  if (!data.ocrStatus.ocrTextAvailable && !data.ocrStatus.contentTextAvailable) {
+  // HIGH: No OCR run yet
+  const ocrSatisfied =
+    data.ocrStatus.ocrTextAvailable ||
+    data.ocrStatus.contentTextAvailable ||
+    data.ocrStatus.ocrRunComplete;
+  if (!ocrSatisfied) {
     actions.push({
       actionCode: "RUN_OCR",
       label: "Run OCR",
@@ -162,6 +169,19 @@ export function buildRecommendedUnderstandingActions(
       priority: "high",
       linkToTab: "ocr",
       condition: "No OCR text available",
+    });
+  } else if (
+    data.ocrStatus.ocrRunComplete &&
+    !data.ocrStatus.ocrTextAvailable &&
+    !data.ocrStatus.contentTextAvailable
+  ) {
+    actions.push({
+      actionCode: "RERUN_OCR",
+      label: "Re-run OCR",
+      description: "OCR completed but no text was extracted. Re-run OCR or check scan quality.",
+      priority: "medium",
+      linkToTab: "ocr",
+      condition: "OCR complete with no extractable text",
     });
   }
 

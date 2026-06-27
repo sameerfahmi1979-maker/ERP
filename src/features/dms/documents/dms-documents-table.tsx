@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { format, parseISO } from "date-fns";
@@ -33,6 +33,9 @@ import { DmsRiskBadge } from "./dms-risk-badge";
 import { askDmsDocumentsQuestion } from "@/server/actions/dms/ai-search";
 import { semanticSearchDmsDocuments } from "@/server/actions/dms/semantic-search";
 import type { DmsAiSearchResult, DmsSearchIntent, DmsSemanticSearchResult } from "@/lib/dms/ai/types";
+import { SortColHeader } from "@/components/erp/table/sort-col-header";
+import { TablePagination } from "@/components/erp/table/table-pagination";
+import { useSortPaginate } from "@/hooks/use-sort-paginate";
 
 type SearchMode = "auto" | "quick" | "safe" | "content" | "ai" | "semantic";
 
@@ -114,7 +117,7 @@ export function DmsDocumentsTable({
     }
   }
 
-  const filtered = initialDocuments.filter((doc) => {
+  const filtered = useMemo(() => initialDocuments.filter((doc) => {
     if (search) {
       const s = search.toLowerCase();
       const matches =
@@ -147,6 +150,16 @@ export function DmsDocumentsTable({
     }
 
     return true;
+  }), [initialDocuments, search, filterType, filterCategory, filterStatus, filterConfidentiality, filterExpiry]);
+
+  const table = useSortPaginate(filtered, {
+    defaultSortKey: "created_at",
+    defaultSortDir: "desc",
+    defaultPageSize: 25,
+    comparators: {
+      document_type: (a, b) => (a.document_type?.name_en ?? "").localeCompare(b.document_type?.name_en ?? ""),
+      tags: (a, b) => (a.tags?.length ?? 0) - (b.tags?.length ?? 0),
+    },
   });
 
   function openDocument(id: number, mode: "edit" | "view" = "edit") {
@@ -573,8 +586,18 @@ export function DmsDocumentsTable({
                               {r.aiSummarySnippet}
                             </p>
                           )}
+                          {r.chunkSnippet && (
+                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                              {r.chunkSnippet}
+                            </p>
+                          )}
                           <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
                             <span className="text-sky-600 dark:text-sky-400 font-medium">{r.matchReason}</span>
+                            {r.searchMode === "chunk" && (
+                              <Badge variant="outline" className="text-[9px] px-1 py-0 border-purple-400 text-purple-600">
+                                Chunk match
+                              </Badge>
+                            )}
                             {r.completenessScore !== null && (
                               <span>Completeness: {r.completenessScore}%</span>
                             )}
@@ -614,19 +637,19 @@ export function DmsDocumentsTable({
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-border bg-muted/30">
-              <th className="text-left px-3 py-2 font-medium text-muted-foreground w-[130px]">Doc No</th>
-              <th className="text-left px-3 py-2 font-medium text-muted-foreground">Title</th>
-              <th className="text-left px-3 py-2 font-medium text-muted-foreground w-[140px]">Type</th>
-              <th className="text-left px-3 py-2 font-medium text-muted-foreground w-[90px]">Status</th>
-              <th className="text-left px-3 py-2 font-medium text-muted-foreground w-[85px]">Conf.</th>
-              <th className="text-left px-3 py-2 font-medium text-muted-foreground w-[100px]">Expiry</th>
-              <th className="text-left px-3 py-2 font-medium text-muted-foreground w-[80px]">Tags</th>
-              <th className="text-left px-3 py-2 font-medium text-muted-foreground w-[90px]">Created</th>
+              <SortColHeader field="document_no" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 w-[130px] text-muted-foreground font-medium">Doc No</SortColHeader>
+              <SortColHeader field="title" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 text-muted-foreground font-medium">Title</SortColHeader>
+              <SortColHeader field="document_type" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 w-[140px] text-muted-foreground font-medium">Type</SortColHeader>
+              <SortColHeader field="status" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 w-[90px] text-muted-foreground font-medium">Status</SortColHeader>
+              <SortColHeader field="confidentiality_level" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 w-[85px] text-muted-foreground font-medium">Conf.</SortColHeader>
+              <SortColHeader field="expiry_date" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 w-[100px] text-muted-foreground font-medium">Expiry</SortColHeader>
+              <SortColHeader field="tags" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 w-[80px] text-muted-foreground font-medium">Tags</SortColHeader>
+              <SortColHeader field="created_at" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 w-[90px] text-muted-foreground font-medium">Created</SortColHeader>
               <th className="px-3 py-2 w-[90px]" />
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 ? (
+            {table.rows.length === 0 ? (
               <tr>
                 <td colSpan={9} className="text-center py-10 text-muted-foreground">
                   <div className="flex flex-col items-center gap-2">
@@ -639,7 +662,7 @@ export function DmsDocumentsTable({
                 </td>
               </tr>
             ) : (
-              filtered.map((doc) => (
+              table.rows.map((doc) => (
                 <tr key={doc.id} className="border-b border-border hover:bg-muted/20 transition-colors">
                   <td className="px-3 py-2 font-mono font-medium text-primary">
                     <button
@@ -759,12 +782,20 @@ export function DmsDocumentsTable({
             )}
           </tbody>
         </table>
+        <TablePagination
+          page={table.page}
+          totalPages={table.totalPages}
+          onPage={table.setPage}
+          pageSize={table.pageSize}
+          onPageSize={table.setPageSize}
+          total={table.total}
+        />
       </div>
       )}
 
       {searchMode !== "ai" && searchMode !== "semantic" && (
         <div className="text-xs text-muted-foreground">
-          Showing {filtered.length} of {initialDocuments.length} document{initialDocuments.length !== 1 ? "s" : ""}
+          Showing {table.total} of {initialDocuments.length} document{initialDocuments.length !== 1 ? "s" : ""}
         </div>
       )}
     </div>

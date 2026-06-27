@@ -6,6 +6,10 @@ import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
 import { ALLOWED_FIELD_TYPES } from "@/features/dms/admin/dms-constants";
+import {
+  mapMetadataDefinitionRow,
+  type DmsMetadataDefinitionBase,
+} from "@/lib/dms/metadata/metadata-definition-shared";
 
 export type ActionResult<T = unknown> = {
   success: boolean;
@@ -13,24 +17,11 @@ export type ActionResult<T = unknown> = {
   error?: string;
 };
 
-export type DmsMetadataDefinitionRow = {
-  id: number;
-  document_type_id: number;
-  field_code: string;
-  field_label_en: string;
-  field_label_ar: string | null;
-  field_type: string;
-  is_required: boolean;
-  is_ai_extractable: boolean;
-  ai_field_hint: string | null;
-  options_json: Record<string, unknown> | null;
-  validation_json: Record<string, unknown> | null;
-  sort_order: number;
+export type DmsMetadataDefinitionRow = DmsMetadataDefinitionBase & {
   is_active: boolean;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
-  // joined
   document_type?: { type_code: string; name_en: string } | null;
 };
 
@@ -41,6 +32,8 @@ export type DmsMetadataDefinitionFilters = {
   is_ai_extractable?: boolean;
   is_active?: boolean;
 };
+
+const jsonStringArraySchema = z.array(z.string().max(200)).max(50).nullable().optional();
 
 const metadataDefinitionSchema = z.object({
   document_type_id: z.number().int().positive("Document type is required"),
@@ -59,6 +52,31 @@ const metadataDefinitionSchema = z.object({
   validation_json: z.record(z.string(), z.unknown()).nullable().optional(),
   sort_order: z.number().int().min(0).default(0),
   is_active: z.boolean().default(true),
+  field_group: z.string().max(100).nullable().optional(),
+  field_section: z.string().max(100).nullable().optional(),
+  show_in_review: z.boolean().default(true),
+  show_in_detail: z.boolean().default(true),
+  show_in_list: z.boolean().default(false),
+  show_in_upload_review: z.boolean().default(true),
+  is_searchable: z.boolean().default(false),
+  is_filterable: z.boolean().default(false),
+  is_unique: z.boolean().default(false),
+  placeholder_en: z.string().max(255).nullable().optional(),
+  placeholder_ar: z.string().max(255).nullable().optional(),
+  help_text_en: z.string().max(500).nullable().optional(),
+  help_text_ar: z.string().max(500).nullable().optional(),
+  ai_possible_labels_en: jsonStringArraySchema,
+  ai_possible_labels_ar: jsonStringArraySchema,
+  ai_keywords: jsonStringArraySchema,
+  ai_negative_keywords: jsonStringArraySchema,
+  ai_expected_format: z.string().max(200).nullable().optional(),
+  ai_example_values: jsonStringArraySchema,
+  ai_confidence_threshold: z.number().min(0).max(1).nullable().optional(),
+  normalization_rule: z.string().max(100).nullable().optional(),
+  review_required_if_missing: z.boolean().default(false),
+  review_required_if_low_confidence: z.boolean().default(false),
+  metadata_version: z.number().int().min(1).default(1),
+  ai_rules_json: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 
 export type CreateDmsMetadataDefinitionInput = z.infer<typeof metadataDefinitionSchema>;
@@ -75,7 +93,7 @@ export async function getDmsMetadataDefinitions(
     const supabase = await createClient();
     let query = supabase
       .from("dms_metadata_definitions")
-      .select("*, document_type:dms_document_types(type_code, name_en)")
+      .select(`*, document_type:dms_document_types(type_code, name_en)`)
       .is("deleted_at", null);
 
     if (filters?.document_type_id !== undefined) query = query.eq("document_type_id", filters.document_type_id);
@@ -89,7 +107,15 @@ export async function getDmsMetadataDefinitions(
       .order("sort_order", { ascending: true })
       .order("field_label_en", { ascending: true });
     if (error) return { success: false, error: error.message };
-    return { success: true, data: (data ?? []) as DmsMetadataDefinitionRow[] };
+    const rows = (data ?? []).map((row) => ({
+      ...mapMetadataDefinitionRow(row as Record<string, unknown>),
+      is_active: (row as { is_active: boolean }).is_active,
+      created_at: (row as { created_at: string }).created_at,
+      updated_at: (row as { updated_at: string }).updated_at,
+      deleted_at: (row as { deleted_at: string | null }).deleted_at,
+      document_type: (row as { document_type?: DmsMetadataDefinitionRow["document_type"] }).document_type ?? null,
+    }));
+    return { success: true, data: rows };
   } catch (err) {
     return { success: false, error: String(err) };
   }
@@ -100,11 +126,22 @@ export async function getDmsMetadataDefinition(id: number): Promise<ActionResult
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("dms_metadata_definitions")
-      .select("*, document_type:dms_document_types(type_code, name_en)")
+      .select(`*, document_type:dms_document_types(type_code, name_en)`)
       .eq("id", id)
       .single();
     if (error) return { success: false, error: error.message };
-    return { success: true, data: data as DmsMetadataDefinitionRow };
+    const row = data as Record<string, unknown>;
+    return {
+      success: true,
+      data: {
+        ...mapMetadataDefinitionRow(row),
+        is_active: row.is_active as boolean,
+        created_at: row.created_at as string,
+        updated_at: row.updated_at as string,
+        deleted_at: (row.deleted_at as string | null) ?? null,
+        document_type: (row.document_type as DmsMetadataDefinitionRow["document_type"]) ?? null,
+      },
+    };
   } catch (err) {
     return { success: false, error: String(err) };
   }
@@ -118,7 +155,6 @@ export async function createDmsMetadataDefinition(
     if (!parsed.success) {
       return { success: false, error: parsed.error.issues.map((i) => i.message).join("; ") };
     }
-    // Validate options_json for select/multi_select
     if ((parsed.data.field_type === "select" || parsed.data.field_type === "multi_select") && !parsed.data.options_json) {
       return { success: false, error: "options_json is required for select and multi_select field types" };
     }
@@ -160,13 +196,30 @@ export async function updateDmsMetadataDefinition(
     const ctx = await getAuthContext();
     if (!hasPermission(ctx, "dms.documents.manage_types")) return { success: false, error: "Permission denied" };
     const supabase = await createClient();
-    const { data: existing } = await supabase.from("dms_metadata_definitions").select("field_code, document_type_id").eq("id", id).single();
+    const { data: existing } = await supabase
+      .from("dms_metadata_definitions")
+      .select("field_code, document_type_id, metadata_version")
+      .eq("id", id)
+      .single();
+
+    const payload = { ...input };
+    if (payload.metadata_version === undefined && existing?.metadata_version != null) {
+      payload.metadata_version = (existing.metadata_version as number) + 1;
+    }
+
     const { error } = await supabase
       .from("dms_metadata_definitions")
-      .update({ ...input, updated_by: ctx.profile?.id ?? null })
+      .update({ ...payload, updated_by: ctx.profile?.id ?? null })
       .eq("id", id);
     if (error) return { success: false, error: error.message };
-    await logAudit({ module_code: "DMS", entity_name: "dms_metadata_definitions", entity_id: id, entity_reference: existing?.field_code ?? String(id), action: "DMS_METADATA_FIELD_UPDATED", new_values: input });
+    await logAudit({
+      module_code: "DMS",
+      entity_name: "dms_metadata_definitions",
+      entity_id: id,
+      entity_reference: existing?.field_code ?? String(id),
+      action: "DMS_METADATA_FIELD_UPDATED",
+      new_values: input,
+    });
     revalidateDmsMetadataPaths();
     return { success: true };
   } catch (err) {
@@ -215,7 +268,7 @@ export async function deleteDmsMetadataDefinition(id: number): Promise<ActionRes
     const { count } = await supabase
       .from("dms_document_metadata_values")
       .select("id", { count: "exact", head: true })
-      .eq("metadata_definition_id", id);
+      .eq("definition_id", id);
     if ((count ?? 0) > 0) return { success: false, error: "Metadata field has existing values — deactivate instead" };
     const { error } = await supabase.from("dms_metadata_definitions").update({ deleted_at: new Date().toISOString(), updated_by: ctx.profile?.id ?? null }).eq("id", id);
     if (error) return { success: false, error: error.message };

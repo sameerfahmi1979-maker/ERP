@@ -394,6 +394,122 @@ export function validateStandardFileName(
   };
 }
 
+/**
+ * Attempt to extract the owner name from a filename that was previously
+ * formatted with the standard `{type}_{owner}_{docno}_{expiry}.{ext}` scheme.
+ *
+ * Strategy:
+ * 1. Strip extension.
+ * 2. Verify the filename starts with the expected type segment.
+ * 3. Remove the type prefix and the trailing date/NoExpiry token.
+ * 4. Walk remaining segments — the first all-numeric/hyphenated segment (no letters)
+ *    marks where the owner name ends and the doc-no begins.
+ * 5. Return the name portion, or null when the heuristic cannot confidently identify it.
+ */
+export function resolveOwnerFromExistingFilename(
+  filename: string,
+  typeCode: string
+): string | null {
+  const base = stripFilenameExtension(filename);
+  const typeSegment = typeCodeToDocumentTypeSegment(typeCode);
+  const typePrefix = `${typeSegment}_`;
+
+  if (!base.toLowerCase().startsWith(typePrefix.toLowerCase())) return null;
+
+  const remainder = base.slice(typePrefix.length);
+  if (!remainder) return null;
+
+  const parts = remainder.split("_");
+
+  // Drop trailing date token (YYYY-MM-DD, NoExpiry, or Unknown)
+  const lastPart = parts[parts.length - 1] ?? "";
+  if (
+    /^\d{4}-\d{2}-\d{2}$/.test(lastPart) ||
+    /^NoExpiry$/i.test(lastPart) ||
+    /^Unknown$/i.test(lastPart)
+  ) {
+    parts.pop();
+  }
+
+  if (parts.length === 0) return null;
+
+  // Find index of first segment that has no alphabetic characters (start of doc-no)
+  let nameEndIdx = parts.length;
+  for (let i = 0; i < parts.length; i++) {
+    if (/^[\d\-]+$/.test(parts[i]) && parts[i].length > 0) {
+      nameEndIdx = i;
+      break;
+    }
+  }
+
+  if (nameEndIdx === 0) return null; // Starts with a numeric token — no name before it
+
+  const nameParts = parts.slice(0, nameEndIdx);
+  const joined = nameParts.join(" ");
+
+  if (!/[a-zA-Z]/.test(joined)) return null;
+  if (/Unknown/i.test(joined)) return null; // Avoid recycling placeholder values
+  if (joined.trim().length < 2) return null;
+
+  return joined.trim();
+}
+
+/**
+ * Attempt to extract a doc-no token from a filename previously formatted in the
+ * standard scheme. Complements `resolveOwnerFromExistingFilename`.
+ *
+ * Returns null when the filename does not match the expected structure or when the
+ * extracted token looks like a DMS internal placeholder.
+ */
+export function resolveDocNoFromExistingFilename(
+  filename: string,
+  typeCode: string
+): string | null {
+  const base = stripFilenameExtension(filename);
+  const typeSegment = typeCodeToDocumentTypeSegment(typeCode);
+  const typePrefix = `${typeSegment}_`;
+
+  if (!base.toLowerCase().startsWith(typePrefix.toLowerCase())) return null;
+
+  const remainder = base.slice(typePrefix.length);
+  if (!remainder) return null;
+
+  const parts = remainder.split("_");
+
+  // Drop trailing date/NoExpiry token
+  const lastPart = parts[parts.length - 1] ?? "";
+  if (
+    /^\d{4}-\d{2}-\d{2}$/.test(lastPart) ||
+    /^NoExpiry$/i.test(lastPart) ||
+    /^Unknown$/i.test(lastPart)
+  ) {
+    parts.pop();
+  }
+
+  if (parts.length === 0) return null;
+
+  // Locate first numeric segment (start of doc-no)
+  let nameEndIdx = parts.length;
+  for (let i = 0; i < parts.length; i++) {
+    if (/^[\d\-]+$/.test(parts[i]) && parts[i].length > 0) {
+      nameEndIdx = i;
+      break;
+    }
+  }
+
+  if (nameEndIdx >= parts.length) return null; // No numeric segment found
+
+  const docParts = parts.slice(nameEndIdx);
+  if (docParts.length === 0) return null;
+
+  const raw = docParts.join("-");
+
+  // Skip if it's already a DMS placeholder
+  if (/DMS-Unknown/i.test(raw) || /^DMS-\d{6}$/i.test(raw)) return null;
+
+  return formatDocNoSegment(raw, 40);
+}
+
 /** Append _2, _3 … before extension when names collide. */
 export function dedupeFileName(fileName: string, existingNames: Set<string>): string {
   if (!existingNames.has(fileName)) return fileName;

@@ -29,6 +29,12 @@ import {
   calculateDocumentUnderstandingHealth,
   buildRecommendedUnderstandingActions,
 } from "@/lib/dms/understanding/understanding-builder";
+import { deriveDocumentOcrSummary } from "@/lib/dms/ocr/derive-document-ocr-summary";
+import {
+  formatDmsLinkEntityFallback,
+  resolveDmsLinkEntityDisplayNames,
+} from "@/lib/dms/resolve-link-entity-display-name";
+import { getDmsEntityTypeLabel } from "@/lib/dms/dms-entity-types";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -40,6 +46,27 @@ type ActionResult<T = undefined> = T extends undefined
 
 const CONFIDENTIAL_LEVELS = ["hr", "legal", "executive"];
 const STAGE_1_ENTITY_TYPES = ["company", "party"] as const;
+
+type FieldConfidenceEntry = { label?: string; confidence_label?: string };
+
+/** field_confidence_json is stored as Record<fieldCode, { score, label, ... }>, not an array. */
+function normalizeFieldConfidenceEntries(
+  raw: unknown
+): FieldConfidenceEntry[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) {
+    return raw.filter((item): item is FieldConfidenceEntry => !!item && typeof item === "object");
+  }
+  if (typeof raw === "object") {
+    return Object.values(raw as Record<string, FieldConfidenceEntry>);
+  }
+  return [];
+}
+
+function isLowConfidenceField(entry: FieldConfidenceEntry): boolean {
+  const label = (entry.confidence_label ?? entry.label ?? "").toLowerCase();
+  return label === "low" || label === "needs_manual_review";
+}
 
 // ── Feature flag check ────────────────────────────────────────────────────────
 
@@ -132,17 +159,19 @@ export async function getDmsDocumentUnderstanding(
     const docType = doc.document_type as { type_code?: string; name_en?: string; name_ar?: string } | null;
     const category = doc.category as { name_en?: string } | null;
 
-    // 7. OCR file status
+    // 7. OCR file status — derive from files, not document flag alone
     const { data: fileRows } = await supabase
       .from("dms_document_files")
-      .select("id, ocr_status")
+      .select("id, ocr_status, ocr_text, ocr_completed_at")
       .eq("document_id", documentId)
       .is("deleted_at", null);
 
-    const files = (fileRows ?? []) as Array<{ id: number; ocr_status: string | null }>;
-    const filesWithOcr = files.filter(
-      (f) => f.ocr_status === "complete"
-    ).length;
+    const files = (fileRows ?? []) as Array<{
+      id: number;
+      ocr_status: string | null;
+      ocr_text: string | null;
+      ocr_completed_at: string | null;
+    }>;
 
     // 8. Content text metadata (no body)
     const { data: contentRow } = await supabase
@@ -157,25 +186,36 @@ export async function getDmsDocumentUnderstanding(
       content_text_source?: string | null;
     } | null;
 
-    // 9. AI extraction result (latest — safe metadata only)
+    const contentTextAvailable = !!content && (content.char_count ?? 0) > 0;
+
+    // 9. AI extraction result (latest — safe metadata only; raw_ocr_text used server-side for OCR detection)
     const { data: extractRows } = await supabase
       .from("dms_ai_extraction_results")
-      .select("ai_status, classification_score, classification_reason, field_confidence_json, created_at")
+      .select("ai_status, classification_score, classification_reason, field_confidence_json, raw_ocr_text, created_at")
       .eq("document_id", documentId)
       .order("created_at", { ascending: false })
       .limit(1);
 
     const latestExtract = ((extractRows ?? []) as Array<Record<string, unknown>>)[0] ?? null;
+    const hasRawOcrInExtract =
+      typeof latestExtract?.raw_ocr_text === "string" &&
+      latestExtract.raw_ocr_text.trim().length > 0;
+
+    const ocrSummary = deriveDocumentOcrSummary({
+      files,
+      documentOcrTextAvailable: doc.ocr_text_available as boolean | null,
+      documentOcrLastRunAt: doc.ocr_last_run_at as string | null,
+      contentTextAvailable,
+      hasRawOcrInExtract,
+    });
     let extractedFieldCount = 0;
     let lowConfidenceCount = 0;
     let needsHumanReview = false;
 
     if (latestExtract?.field_confidence_json) {
-      const fields = latestExtract.field_confidence_json as Array<{ confidence_label?: string }>;
+      const fields = normalizeFieldConfidenceEntries(latestExtract.field_confidence_json);
       extractedFieldCount = fields.length;
-      lowConfidenceCount = fields.filter(
-        (f) => f.confidence_label === "low" || f.confidence_label === "needs_manual_review"
-      ).length;
+      lowConfidenceCount = fields.filter(isLowConfidenceField).length;
       needsHumanReview = lowConfidenceCount > 0;
     }
 
@@ -223,48 +263,18 @@ export async function getDmsDocumentUnderstanding(
     }>;
 
     const linkedEntities: DmsDocumentUnderstanding["tagsLinks"]["linkedEntities"] = [];
+    const linkSlice = links.slice(0, 5);
+    const displayNameMap = await resolveDmsLinkEntityDisplayNames(supabase, linkSlice);
 
-    for (const link of links.slice(0, 5)) {
-      let displayName: string | null = null;
-      try {
-        if (link.entity_type === "company") {
-          const { data: co } = await supabase
-            .from("owner_companies")
-            .select("trade_name, legal_name_en")
-            .eq("id", link.entity_id)
-            .maybeSingle();
-          displayName = (co as { trade_name?: string; legal_name_en?: string } | null)
-            ?.trade_name ?? (co as { trade_name?: string; legal_name_en?: string } | null)?.legal_name_en ?? null;
-        } else if (link.entity_type === "party") {
-          const { data: party } = await supabase
-            .from("parties")
-            .select("display_name")
-            .eq("id", link.entity_id)
-            .maybeSingle();
-          displayName = (party as { display_name?: string } | null)?.display_name ?? null;
-        } else if (link.entity_type === "branch") {
-          const { data: branch } = await supabase
-            .from("branches")
-            .select("legal_branch_name, name_en")
-            .eq("id", link.entity_id)
-            .maybeSingle();
-          displayName = (branch as { legal_branch_name?: string; name_en?: string } | null)
-            ?.legal_branch_name ?? (branch as { legal_branch_name?: string; name_en?: string } | null)?.name_en ?? null;
-        } else if (link.entity_type === "site") {
-          const { data: site } = await supabase
-            .from("work_sites")
-            .select("site_name")
-            .eq("id", link.entity_id)
-            .maybeSingle();
-          displayName = (site as { site_name?: string } | null)?.site_name ?? null;
-        }
-      } catch {
-        displayName = null;
-      }
+    for (const link of linkSlice) {
+      const key = `${link.entity_type}:${link.entity_id}`;
       linkedEntities.push({
         entityType: link.entity_type,
+        entityTypeLabel: getDmsEntityTypeLabel(link.entity_type),
         entityId: link.entity_id,
-        entityDisplayName: displayName,
+        entityDisplayName:
+          displayNameMap.get(key) ??
+          formatDmsLinkEntityFallback(link.entity_type, link.entity_id),
         isPrimary: link.is_primary,
       });
     }
@@ -478,11 +488,12 @@ export async function getDmsDocumentUnderstanding(
       },
 
       ocrStatus: {
-        ocrLastRunAt: doc.ocr_last_run_at as string | null,
-        ocrTextAvailable: (doc.ocr_text_available as boolean) ?? false,
-        fileCount: files.length,
-        filesWithOcr,
-        contentTextAvailable: !!content,
+        ocrLastRunAt: ocrSummary.ocrLastRunAt,
+        ocrTextAvailable: ocrSummary.ocrTextAvailable,
+        ocrRunComplete: ocrSummary.ocrRunComplete,
+        fileCount: ocrSummary.fileCount,
+        filesWithOcr: ocrSummary.filesWithOcr,
+        contentTextAvailable,
         contentTextCharCount: content?.char_count ?? null,
         contentTextTruncated: content?.is_truncated ?? false,
         contentTextSource: content?.content_text_source ?? null,

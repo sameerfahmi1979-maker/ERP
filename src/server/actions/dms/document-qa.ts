@@ -18,8 +18,9 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
-import { getDmsAiProvider } from "@/lib/dms/ai/factory";
+import { getDmsAiProvider, getDmsEmbeddingProvider } from "@/lib/dms/ai/factory";
 import type { DmsDocumentQuestionAnswer } from "@/lib/dms/ai/types";
+import { logDmsAiUsage } from "@/lib/ai/observability/log-dms-ai-usage";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -34,9 +35,11 @@ export type ActionResult<T = unknown> = {
 const CONFIDENTIAL_ADMIN_REQUIRED = ["hr", "legal", "executive"] as const;
 const QA_CONTENT_MAX_CHARS = 8_000;
 const QA_SUMMARY_MAX_CHARS = 1_000;
-const QA_PROMPT_VERSION = "v1.0";
+const QA_PROMPT_VERSION = "v1.1";
+const QA_CHUNK_TOP_K = 5;
+const QA_CHUNK_SIMILARITY_THRESHOLD = 0.25;
 
-// ── Feature flag ──────────────────────────────────────────────────────────────
+// ── Feature flags ──────────────────────────────────────────────────────────────
 
 async function isDmsDocumentQaEnabled(): Promise<boolean> {
   try {
@@ -52,6 +55,43 @@ async function isDmsDocumentQaEnabled(): Promise<boolean> {
   }
 }
 
+async function isChunkSearchEnabled(): Promise<boolean> {
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("erp_ai_feature_flags")
+      .select("is_enabled")
+      .eq("feature_code", "DMS_SEMANTIC_SEARCH_CHUNKS")
+      .single();
+    return (data as { is_enabled?: boolean } | null)?.is_enabled ?? false;
+  } catch {
+    return false;
+  }
+}
+
+/** Format embedding as pgvector literal. */
+function toVectorLiteral(embedding: number[]): string {
+  return `[${embedding.join(",")}]`;
+}
+
+/** Supabase returns pgvector columns as JSON array strings, not number[]. */
+function parseEmbeddingVector(embedding: unknown): number[] | null {
+  if (Array.isArray(embedding)) {
+    return embedding.every((v) => typeof v === "number") ? (embedding as number[]) : null;
+  }
+  if (typeof embedding === "string") {
+    try {
+      const parsed = JSON.parse(embedding) as unknown;
+      return Array.isArray(parsed) && parsed.every((v) => typeof v === "number")
+        ? (parsed as number[])
+        : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 // ── Permission helpers ─────────────────────────────────────────────────────────
 
 function isAdminUser(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
@@ -65,7 +105,7 @@ function isAdminUser(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
 const QaResponseSchema = z.object({
   answer: z.string(),
   confidence: z.enum(["high", "medium", "low"]),
-  sourceUsed: z.enum(["content_text", "ai_summary", "metadata", "not_found"]),
+  sourceUsed: z.enum(["content_text", "ai_summary", "metadata", "not_found", "chunk_text"]),
 });
 
 // ── Q&A prompt builders ───────────────────────────────────────────────────────
@@ -100,6 +140,7 @@ function buildQaUserMessage(params: {
   aiSummary: string | null;
   contentText: string | null;
   question: string;
+  chunkContext?: string | null;
 }): string {
   const parts: string[] = [];
 
@@ -114,7 +155,10 @@ function buildQaUserMessage(params: {
     parts.push(`\nAI SUMMARY:\n${params.aiSummary.substring(0, QA_SUMMARY_MAX_CHARS)}`);
   }
 
-  if (params.contentText) {
+  // Use chunk context if available (chunk-grounded path); otherwise use full content_text
+  if (params.chunkContext) {
+    parts.push(`\nRELEVANT DOCUMENT SECTIONS (retrieved by semantic similarity):\n${params.chunkContext}`);
+  } else if (params.contentText) {
     const capped = params.contentText.substring(0, QA_CONTENT_MAX_CHARS);
     const wasCapped = params.contentText.length > QA_CONTENT_MAX_CHARS;
     parts.push(
@@ -208,7 +252,76 @@ export async function askDmsDocumentQuestion(
     const contentText =
       (contentRow as { content_text?: string | null } | null)?.content_text ?? null;
 
-    const { provider } = await getDmsAiProvider();
+    // ── Phase 11: Attempt chunk-grounded Q&A ────────────────────────────────
+    let chunkContext: string | null = null;
+    let chunkCitations: Array<{ chunkIndex: number; snippet: string }> | undefined;
+    const useChunks = await isChunkSearchEnabled();
+
+    if (useChunks) {
+      try {
+        const { provider: embeddingProvider } = await getDmsEmbeddingProvider();
+        if (embeddingProvider.isConfigured()) {
+          const embResult = await embeddingProvider.embedText(question.trim());
+          if (embResult.embedding && embResult.embedding.length === 1536) {
+            const vectorLiteral = toVectorLiteral(embResult.embedding);
+
+            // Retrieve top-K chunks for this specific document using direct query
+            // We query chunks directly (not via the RPC) so we can filter by document_id
+            const { data: chunkRows } = await supabase
+              .from("dms_document_content_chunks")
+              .select("chunk_index, chunk_text, embedding")
+              .eq("document_id", documentId)
+              .eq("is_active", true)
+              .eq("embedding_status", "complete")
+              .is("deleted_at", null)
+              .not("embedding", "is", null)
+              .limit(QA_CHUNK_TOP_K * 4);
+
+            if (chunkRows && (chunkRows as unknown[]).length > 0) {
+              type ChunkRow = { chunk_index: number; chunk_text: string; embedding: number[] | null };
+              const rows = chunkRows as ChunkRow[];
+
+              // Compute cosine similarity locally for the per-document ranking
+              // (the search_dms_document_chunks_by_embedding RPC does cross-document search)
+              void vectorLiteral; // vectorLiteral used for future direct RPC call
+              const scored = rows.map((r) => {
+                const chunkEmbedding = parseEmbeddingVector(r.embedding);
+                if (!chunkEmbedding) return { ...r, sim: 0 };
+                // Cosine similarity via dot product (vectors are already unit-normalized by text-embedding-3-small)
+                const dot = embResult.embedding.reduce(
+                  (sum, v, i) => sum + v * (chunkEmbedding[i] ?? 0),
+                  0
+                );
+                return { ...r, sim: dot };
+              });
+
+              const topChunks = scored
+                .filter((r) => r.sim >= QA_CHUNK_SIMILARITY_THRESHOLD)
+                .sort((a, b) => b.sim - a.sim)
+                .slice(0, QA_CHUNK_TOP_K);
+
+              if (topChunks.length > 0) {
+                // Build grounding context from top chunks (internally only)
+                chunkContext = topChunks
+                  .map((c, i) => `[Section ${i + 1}]\n${c.chunk_text}`)
+                  .join("\n\n---\n\n");
+                // Return only short snippets to caller — never full chunk text
+                chunkCitations = topChunks.map((c) => ({
+                  chunkIndex: c.chunk_index,
+                  snippet:    c.chunk_text.slice(0, 200),
+                }));
+              }
+            }
+          }
+        }
+      } catch {
+        // Chunk retrieval failed — fall through to raw text path
+        chunkContext = null;
+        chunkCitations = undefined;
+      }
+    }
+
+    const { provider, configId } = await getDmsAiProvider();
     if (!provider.isConfigured()) {
       return { success: false, error: "AI provider is not configured." };
     }
@@ -221,15 +334,18 @@ export async function askDmsDocumentQuestion(
       expiryDate: docRow.expiry_date,
       confidentialityLevel: docRow.confidentiality_level,
       aiSummary: docRow.ai_summary,
-      contentText,
+      contentText: chunkContext ? null : contentText, // skip raw text when chunks used
       question: question.trim(),
+      chunkContext,
     });
 
+    const startMs = Date.now();
     const result = await provider.callStructuredCompletion(
       buildQaSystemPrompt(),
       userMessage,
       { maxTokens: 400, temperature: 0.0 }
     );
+    const durationMs = Date.now() - startMs;
 
     const parsed = JSON.parse(result.rawJson) as unknown;
     const validated = QaResponseSchema.safeParse(parsed);
@@ -238,18 +354,24 @@ export async function askDmsDocumentQuestion(
     }
 
     // Log usage — no question text, no answer, no content
-    await supabase.from("erp_ai_usage_logs").insert({
-      feature_area: "DMS_DOCUMENT_QA",
-      operation_type: "document_question_answer",
-      document_id: documentId,
-      provider_code: provider.providerCode,
-      model_id: provider.modelId,
-      input_char_count: question.length,
-      output_char_count: result.rawJson.length,
-      prompt_tokens: result.promptTokens ?? null,
-      completion_tokens: result.completionTokens ?? null,
+    void logDmsAiUsage({
+      providerConfigId: configId ?? null,
+      featureArea: "DMS_DOCUMENT_QA",
+      operationType: "document_question_answer",
+      modelId: result.model,
       status: "success",
-      prompt_version: QA_PROMPT_VERSION,
+      inputTokenCount: result.promptTokens ?? null,
+      outputTokenCount: result.completionTokens ?? null,
+      durationMs,
+      documentId,
+      createdBy: ctx.profile?.id ?? null,
+      metadata: {
+        input_char_count: question.length,
+        output_char_count: result.rawJson.length,
+        prompt_version: QA_PROMPT_VERSION,
+        source_used: chunkContext ? "chunk_text" : "content_text",
+        used_chunks: !!chunkContext,
+      },
     });
 
     await logAudit({
@@ -266,7 +388,14 @@ export async function askDmsDocumentQuestion(
       },
     });
 
-    return { success: true, data: validated.data };
+    return {
+      success: true,
+      data: {
+        ...validated.data,
+        ...(chunkCitations ? { chunkCitations } : {}),
+        sourceUsed: chunkContext ? "chunk_text" : validated.data.sourceUsed,
+      } satisfies DmsDocumentQuestionAnswer,
+    };
   } catch (err) {
     return {
       success: false,

@@ -4,16 +4,11 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { ERPDataTable } from "@/components/erp/table/erp-data-table";
-import { RequiredLabel } from "@/components/erp/required-label";
-import { ListTree, PlusCircle, Pencil, Power, Brain } from "lucide-react";
+import { ListTree, PlusCircle, Pencil, Power, Brain, Network } from "lucide-react";
 import { toast } from "sonner";
 import {
   createDmsMetadataDefinition,
@@ -21,45 +16,26 @@ import {
   activateDmsMetadataDefinition,
   deactivateDmsMetadataDefinition,
   type DmsMetadataDefinitionRow,
+  type CreateDmsMetadataDefinitionInput,
 } from "@/server/actions/dms/metadata-definitions";
 import { ALLOWED_FIELD_TYPES } from "@/features/dms/admin/dms-constants";
 import type { DmsCategoryRow } from "@/server/actions/dms/categories";
 import type { DmsDocumentTypeRow } from "@/server/actions/dms/document-types";
 import type { AuthContext } from "@/lib/rbac/check";
+import { linesToJsonStringArray } from "@/lib/dms/metadata/metadata-definition-shared";
+import {
+  DmsMetadataDefinitionFormBody,
+  emptyMetadataDefinitionForm,
+  metadataDefinitionRowToForm,
+  type MetadataDefinitionFormState,
+} from "@/features/dms/admin/dms-metadata-definition-form-body";
+import { DmsMetadataErpMappingsDialog } from "@/features/dms/admin/dms-metadata-erp-mappings-dialog";
 
 type Props = {
   rows: DmsMetadataDefinitionRow[];
   categories: DmsCategoryRow[];
   documentTypes: DmsDocumentTypeRow[];
   authContext: AuthContext;
-};
-
-type FormState = {
-  document_type_id: string;
-  field_code: string;
-  field_label_en: string;
-  field_label_ar: string;
-  field_type: string;
-  is_required: boolean;
-  is_ai_extractable: boolean;
-  ai_field_hint: string;
-  options_json_text: string;
-  sort_order: number;
-  is_active: boolean;
-};
-
-const emptyForm: FormState = {
-  document_type_id: "",
-  field_code: "",
-  field_label_en: "",
-  field_label_ar: "",
-  field_type: "text",
-  is_required: false,
-  is_ai_extractable: false,
-  ai_field_hint: "",
-  options_json_text: "",
-  sort_order: 0,
-  is_active: true,
 };
 
 const FIELD_TYPE_LABELS: Record<string, string> = {
@@ -98,6 +74,7 @@ function buildSearchText(row: DmsMetadataDefinitionRow): string {
     row.field_code,
     row.field_label_en,
     row.field_label_ar ?? "",
+    row.field_group ?? "",
     row.document_type?.name_en ?? "",
     row.document_type?.type_code ?? "",
     row.field_type,
@@ -108,14 +85,82 @@ function buildSearchText(row: DmsMetadataDefinitionRow): string {
     .toLowerCase();
 }
 
+function parseOptionalJson(text: string, fieldName: string): Record<string, unknown> | null | undefined {
+  if (!text.trim()) return null;
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    throw new Error(`${fieldName} is not valid JSON`);
+  }
+}
+
+function formToPayload(form: MetadataDefinitionFormState): CreateDmsMetadataDefinitionInput {
+  const needsOptions = form.field_type === "select" || form.field_type === "multi_select";
+  const options_json = parseOptionalJson(form.options_json_text, "options_json");
+  if (needsOptions && !options_json) {
+    throw new Error("options_json is required for select and multi_select field types");
+  }
+  const validation_json = parseOptionalJson(form.validation_json_text, "validation_json");
+  const ai_rules_json = parseOptionalJson(form.ai_rules_json_text, "ai_rules_json");
+  const threshold = form.ai_confidence_threshold.trim();
+  return {
+    document_type_id: parseInt(form.document_type_id),
+    field_code: form.field_code.toLowerCase(),
+    field_label_en: form.field_label_en,
+    field_label_ar: form.field_label_ar || null,
+    field_type: form.field_type as CreateDmsMetadataDefinitionInput["field_type"],
+    is_required: form.is_required,
+    is_ai_extractable: form.is_ai_extractable,
+    ai_field_hint: form.ai_field_hint || null,
+    options_json: options_json ?? null,
+    validation_json: validation_json ?? null,
+    sort_order: form.sort_order,
+    is_active: form.is_active,
+    field_group: form.field_group || null,
+    field_section: form.field_section || null,
+    show_in_review: form.show_in_review,
+    show_in_detail: form.show_in_detail,
+    show_in_list: form.show_in_list,
+    show_in_upload_review: form.show_in_upload_review,
+    is_searchable: form.is_searchable,
+    is_filterable: form.is_filterable,
+    is_unique: form.is_unique,
+    placeholder_en: form.placeholder_en || null,
+    placeholder_ar: form.placeholder_ar || null,
+    help_text_en: form.help_text_en || null,
+    help_text_ar: form.help_text_ar || null,
+    ai_possible_labels_en: linesToJsonStringArray(form.ai_possible_labels_en_text),
+    ai_possible_labels_ar: linesToJsonStringArray(form.ai_possible_labels_ar_text),
+    ai_keywords: linesToJsonStringArray(form.ai_keywords_text),
+    ai_negative_keywords: linesToJsonStringArray(form.ai_negative_keywords_text),
+    ai_expected_format: form.ai_expected_format || null,
+    ai_example_values: linesToJsonStringArray(form.ai_example_values_text),
+    ai_confidence_threshold: threshold ? Number(threshold) : null,
+    normalization_rule: form.normalization_rule || null,
+    review_required_if_missing: form.review_required_if_missing,
+    review_required_if_low_confidence: form.review_required_if_low_confidence,
+    metadata_version: 1,
+    ai_rules_json: ai_rules_json ?? null,
+  };
+}
+
 export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }: Props) {
   const router = useRouter();
   const manage = canManage(authContext);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<DmsMetadataDefinitionRow | null>(null);
-  const [form, setForm] = useState<FormState>({ ...emptyForm });
+  const [form, setForm] = useState<MetadataDefinitionFormState>({ ...emptyMetadataDefinitionForm });
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // ERP Mappings dialog state
+  const [erpMappingsDialogOpen, setErpMappingsDialogOpen] = useState(false);
+  const [erpMappingsTarget, setErpMappingsTarget] = useState<DmsMetadataDefinitionRow | null>(null);
+
+  const openErpMappings = (row: DmsMetadataDefinitionRow) => {
+    setErpMappingsTarget(row);
+    setErpMappingsDialogOpen(true);
+  };
 
   const [filterTypeId, setFilterTypeId] = useState<string>("all");
   const [filterFieldType, setFilterFieldType] = useState<string>("all");
@@ -139,25 +184,13 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
 
   const openAdd = () => {
     setEditing(null);
-    setForm({ ...emptyForm });
+    setForm({ ...emptyMetadataDefinitionForm });
     setDialogOpen(true);
   };
 
   const openEdit = (row: DmsMetadataDefinitionRow) => {
     setEditing(row);
-    setForm({
-      document_type_id: String(row.document_type_id),
-      field_code: row.field_code,
-      field_label_en: row.field_label_en,
-      field_label_ar: row.field_label_ar ?? "",
-      field_type: row.field_type,
-      is_required: row.is_required,
-      is_ai_extractable: row.is_ai_extractable,
-      ai_field_hint: row.ai_field_hint ?? "",
-      options_json_text: row.options_json ? JSON.stringify(row.options_json, null, 2) : "",
-      sort_order: row.sort_order,
-      is_active: row.is_active,
-    });
+    setForm(metadataDefinitionRowToForm(row));
     setDialogOpen(true);
   };
 
@@ -166,48 +199,34 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
       toast.error("Document type, field code, label, and field type are required");
       return;
     }
-    const needsOptions = form.field_type === "select" || form.field_type === "multi_select";
-    let options_json = undefined;
-    if (form.options_json_text.trim()) {
-      try {
-        options_json = JSON.parse(form.options_json_text);
-      } catch {
-        toast.error("options_json is not valid JSON");
+    setIsSubmitting(true);
+    try {
+      const payload = formToPayload(form);
+      const result = editing
+        ? await updateDmsMetadataDefinition(editing.id, payload)
+        : await createDmsMetadataDefinition(payload);
+      if (!result.success) {
+        toast.error(result.error ?? "Failed to save");
         return;
       }
-    } else if (needsOptions) {
-      toast.error("options_json is required for select and multi_select field types");
-      return;
+      toast.success(editing ? "Metadata field updated" : "Metadata field created");
+      setDialogOpen(false);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(true);
-    const payload = {
-      document_type_id: parseInt(form.document_type_id),
-      field_code: form.field_code.toLowerCase(),
-      field_label_en: form.field_label_en,
-      field_label_ar: form.field_label_ar || null,
-      field_type: form.field_type as typeof ALLOWED_FIELD_TYPES[number],
-      is_required: form.is_required,
-      is_ai_extractable: form.is_ai_extractable,
-      ai_field_hint: form.ai_field_hint || null,
-      options_json: options_json ?? null,
-      sort_order: form.sort_order,
-      is_active: form.is_active,
-    };
-    const result = editing
-      ? await updateDmsMetadataDefinition(editing.id, payload)
-      : await createDmsMetadataDefinition(payload);
-    setIsSubmitting(false);
-    if (!result.success) { toast.error(result.error ?? "Failed to save"); return; }
-    toast.success(editing ? "Metadata field updated" : "Metadata field created");
-    setDialogOpen(false);
-    router.refresh();
   };
 
   const handleToggle = async (row: DmsMetadataDefinitionRow) => {
     const result = row.is_active
       ? await deactivateDmsMetadataDefinition(row.id)
       : await activateDmsMetadataDefinition(row.id);
-    if (!result.success) { toast.error(result.error ?? "Failed"); return; }
+    if (!result.success) {
+      toast.error(result.error ?? "Failed");
+      return;
+    }
     toast.success(row.is_active ? "Field deactivated" : "Field activated");
     router.refresh();
   };
@@ -234,10 +253,17 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
         },
       },
       {
+        accessorKey: "field_group",
+        header: "Group",
+        cell: ({ row }) => (
+          <span className="text-xs text-muted-foreground">{row.original.field_group ?? "—"}</span>
+        ),
+        meta: { exportHeader: "Group", exportValue: (row) => row.field_group ?? "" },
+      },
+      {
         accessorKey: "field_code",
         accessorFn: (row) => buildSearchText(row),
-        sortingFn: (rowA, rowB) =>
-          rowA.original.field_code.localeCompare(rowB.original.field_code),
+        sortingFn: (rowA, rowB) => rowA.original.field_code.localeCompare(rowB.original.field_code),
         header: "Field Code",
         cell: ({ row }) => <span className="font-mono text-xs">{row.original.field_code}</span>,
         meta: { exportHeader: "Field Code", exportValue: (row) => row.field_code },
@@ -255,10 +281,7 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
             )}
           </div>
         ),
-        meta: {
-          exportHeader: "Label (EN)",
-          exportValue: (row) => row.field_label_en,
-        },
+        meta: { exportHeader: "Label (EN)", exportValue: (row) => row.field_label_en },
       },
       {
         accessorKey: "field_type",
@@ -289,26 +312,26 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
           ) : (
             <span className="text-muted-foreground text-xs">—</span>
           ),
-        meta: {
-          exportHeader: "Required",
-          exportValue: (row) => (row.is_required ? "Yes" : "No"),
-        },
+        meta: { exportHeader: "Required", exportValue: (row) => (row.is_required ? "Yes" : "No") },
       },
       {
         accessorKey: "is_ai_extractable",
         header: "AI",
         cell: ({ row }) =>
           row.original.is_ai_extractable ? (
-            <span title={row.original.ai_field_hint ?? "AI Extractable"}>
+            <span
+              title={
+                row.original.ai_confidence_threshold != null
+                  ? `Threshold: ${row.original.ai_confidence_threshold}`
+                  : row.original.ai_field_hint ?? "AI Extractable"
+              }
+            >
               <Brain className="h-3.5 w-3.5 mx-auto text-purple-500" />
             </span>
           ) : (
             <span className="text-muted-foreground text-xs">—</span>
           ),
-        meta: {
-          exportHeader: "AI Extractable",
-          exportValue: (row) => (row.is_ai_extractable ? "Yes" : "No"),
-        },
+        meta: { exportHeader: "AI Extractable", exportValue: (row) => (row.is_ai_extractable ? "Yes" : "No") },
       },
       {
         accessorKey: "is_active",
@@ -324,10 +347,7 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
             {row.original.is_active ? "Active" : "Inactive"}
           </Badge>
         ),
-        meta: {
-          exportHeader: "Status",
-          exportValue: (row) => (row.is_active ? "Active" : "Inactive"),
-        },
+        meta: { exportHeader: "Status", exportValue: (row) => (row.is_active ? "Active" : "Inactive") },
       },
       ...(manage
         ? [
@@ -337,6 +357,15 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
               enableSorting: false,
               cell: ({ row }: { row: { original: DmsMetadataDefinitionRow } }) => (
                 <div className="flex items-center gap-1 justify-end">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7"
+                    onClick={() => openErpMappings(row.original)}
+                    title="ERP Mappings"
+                  >
+                    <Network className="h-3.5 w-3.5 text-blue-500" />
+                  </Button>
                   <Button
                     size="icon"
                     variant="ghost"
@@ -455,7 +484,7 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
           enableRowSelection={false}
           enableColumnVisibility
           enablePreferences
-          searchPlaceholder="Search by code, label, document type, field type, or AI hint..."
+          searchPlaceholder="Search by code, label, group, document type, field type, or AI hint..."
           emptyMessage="No metadata fields found"
           initialPageSize={25}
           pageSizeOptions={[10, 25, 50, 100]}
@@ -477,124 +506,35 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
         subtitle="Define a dynamic metadata field for a document type"
         icon={<ListTree className="h-5 w-5" />}
         mode={editing ? "edit" : "add"}
-        size="lg"
+        size="xl"
         isSubmitting={isSubmitting}
         onSubmit={handleSubmit}
       >
         <div className="grid grid-cols-12 gap-4">
-          <div className="col-span-6">
-            <RequiredLabel required>Document Type</RequiredLabel>
-            <Select
-              value={form.document_type_id}
-              onValueChange={(v) => setForm((f) => ({ ...f, document_type_id: v ?? "" }))}
-              disabled={!!editing}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select document type" />
-              </SelectTrigger>
-              <SelectContent>
-                {documentTypes.map((dt) => (
-                  <SelectItem key={dt.id} value={String(dt.id)}>
-                    {dt.name_en}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="col-span-4">
-            <RequiredLabel required>Field Type</RequiredLabel>
-            <Select
-              value={form.field_type}
-              onValueChange={(v) => setForm((f) => ({ ...f, field_type: v ?? "text" }))}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {ALLOWED_FIELD_TYPES.map((t) => (
-                  <SelectItem key={t} value={t}>{FIELD_TYPE_LABELS[t] ?? t}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="col-span-2">
-            <Label>Order</Label>
-            <Input
-              type="number"
-              value={form.sort_order}
-              onChange={(e) => setForm((f) => ({ ...f, sort_order: parseInt(e.target.value) || 0 }))}
-              min={0}
-            />
-          </div>
-          <div className="col-span-5">
-            <RequiredLabel required>Field Code</RequiredLabel>
-            <Input
-              value={form.field_code}
-              onChange={(e) => setForm((f) => ({ ...f, field_code: e.target.value.toLowerCase() }))}
-              placeholder="e.g. license_number"
-              className="font-mono"
-              disabled={!!editing}
-            />
-            <p className="text-[10px] text-muted-foreground mt-1">Lowercase letters, numbers, underscores</p>
-          </div>
-          <div className="col-span-7">
-            <RequiredLabel required>Label (English)</RequiredLabel>
-            <Input
-              value={form.field_label_en}
-              onChange={(e) => setForm((f) => ({ ...f, field_label_en: e.target.value }))}
-              placeholder="e.g. License Number"
-            />
-          </div>
-          <div className="col-span-12">
-            <Label>Label (Arabic)</Label>
-            <Input
-              value={form.field_label_ar}
-              onChange={(e) => setForm((f) => ({ ...f, field_label_ar: e.target.value }))}
-              placeholder="التسمية بالعربي"
-              dir="rtl"
-            />
-          </div>
-          {(form.field_type === "select" || form.field_type === "multi_select") && (
-            <div className="col-span-12">
-              <RequiredLabel required>Options JSON</RequiredLabel>
-              <Textarea
-                value={form.options_json_text}
-                onChange={(e) => setForm((f) => ({ ...f, options_json_text: e.target.value }))}
-                placeholder='{"options": [{"value": "opt1", "label": "Option 1"}, {"value": "opt2", "label": "Option 2"}]}'
-                rows={4}
-                className="font-mono text-xs"
-              />
-              <p className="text-[10px] text-muted-foreground mt-1">Required for select and multi_select field types</p>
-            </div>
-          )}
-          <div className="col-span-12">
-            <Label className="flex items-center gap-1">
-              <Brain className="h-3.5 w-3.5 text-purple-500" />
-              AI Field Hint
-            </Label>
-            <Input
-              value={form.ai_field_hint}
-              onChange={(e) => setForm((f) => ({ ...f, ai_field_hint: e.target.value }))}
-              placeholder="Hint for AI extraction, e.g. 'The license number at the top of the document'"
-            />
-            <p className="text-[10px] text-muted-foreground mt-1">Used by future AI extraction (DMS.9+)</p>
-          </div>
-          <div className="col-span-12 flex flex-wrap items-center gap-6">
-            <div className="flex items-center gap-2">
-              <Switch checked={form.is_required} onCheckedChange={(v) => setForm((f) => ({ ...f, is_required: v }))} />
-              <Label>Required Field</Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch checked={form.is_ai_extractable} onCheckedChange={(v) => setForm((f) => ({ ...f, is_ai_extractable: v }))} />
-              <Label>AI Extractable</Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch checked={form.is_active} onCheckedChange={(v) => setForm((f) => ({ ...f, is_active: v }))} />
-              <Label>Active</Label>
-            </div>
-          </div>
+          <DmsMetadataDefinitionFormBody
+            form={form}
+            setForm={setForm}
+            editing={!!editing}
+            documentTypes={documentTypes}
+          />
         </div>
       </ERPChildDialogForm>
+
+      {/* ERP Mappings dialog */}
+      {erpMappingsTarget && (
+        <DmsMetadataErpMappingsDialog
+          open={erpMappingsDialogOpen}
+          onOpenChange={(o) => {
+            setErpMappingsDialogOpen(o);
+            if (!o) setErpMappingsTarget(null);
+          }}
+          definitionId={erpMappingsTarget.id}
+          documentTypeId={erpMappingsTarget.document_type_id}
+          fieldCode={erpMappingsTarget.field_code}
+          fieldLabelEn={erpMappingsTarget.field_label_en}
+          authContext={authContext}
+        />
+      )}
     </div>
   );
 }

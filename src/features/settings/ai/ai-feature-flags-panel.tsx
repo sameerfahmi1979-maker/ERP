@@ -78,7 +78,7 @@ export function AiFeatureFlagsPanel({ flags }: AiFeatureFlagsPanelProps) {
                     <ToggleLeft className="h-4 w-4 shrink-0 text-muted-foreground" />
                     <div>
                       <CardTitle className="text-sm font-medium">{flag.featureName}</CardTitle>
-                      {flag.description && (
+                      {flag.description && !flag.description.includes("Purpose: DMS document OCR") && (
                         <CardDescription className="text-xs mt-0.5">{flag.description}</CardDescription>
                       )}
                     </div>

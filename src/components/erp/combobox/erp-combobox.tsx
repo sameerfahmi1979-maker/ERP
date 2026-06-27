@@ -62,6 +62,7 @@ export function ERPCombobox({
   filterFn,
   onDirtyMark,
   maxVisibleOptions,
+  onSearchQueryChange,
 }: ERPComboboxProps) {
   const [open, setOpen] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState('');
@@ -243,7 +244,10 @@ export function ERPCombobox({
             <CommandInput
               placeholder={searchPlaceholder}
               value={searchQuery}
-              onValueChange={setSearchQuery}
+              onValueChange={(v) => {
+                setSearchQuery(v);
+                onSearchQueryChange?.(v);
+              }}
             />
             <CommandList>
               {options.length === 0 && (

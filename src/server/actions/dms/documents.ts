@@ -380,7 +380,7 @@ export type DmsDocumentRecordData = DmsDocumentRow & {
     definition?: {
       id: number;
       field_code: string;
-      label_en: string;
+      field_label_en: string;
       field_type: string;
       is_required: boolean;
       sort_order: number;
@@ -442,7 +442,7 @@ export async function getDmsDocumentRecordData(
         .from("dms_document_metadata_values")
         .select(`
           id, definition_id, value_text, value_number, value_date, value_datetime, value_boolean, value_json,
-          definition:dms_metadata_definitions(id, field_code, label_en, field_type, is_required, sort_order, options_json)
+          definition:dms_metadata_definitions(id, field_code, field_label_en, field_type, is_required, sort_order, options_json)
         `)
         .eq("document_id", id)
         .is("deleted_at", null)
@@ -734,6 +734,17 @@ export async function unarchiveDmsDocument(id: number): Promise<ActionResult> {
 }
 
 // ── deleteDmsDocument ─────────────────────────────────────────────────────────
+//
+// Performs a HARD DELETE via the purge_dms_document() PostgreSQL RPC.
+//
+// The RPC (SECURITY DEFINER) atomically:
+//   - Collects file metadata for storage purge
+//   - Hard-deletes the dms_documents row
+//   - Postgres CASCADE removes all DMS-owned child rows automatically
+//   - Postgres SET NULL nullifies cross-module FK references (employee, party, HR)
+//
+// After the RPC returns, this action purges physical files from Storage buckets.
+// Storage purge errors are non-fatal (document data is already removed from DB).
 
 export async function deleteDmsDocument(id: number): Promise<ActionResult> {
   try {
@@ -744,75 +755,52 @@ export async function deleteDmsDocument(id: number): Promise<ActionResult> {
 
     const supabase = await createClient();
     const adminClient = createAdminClient();
-    const now = new Date().toISOString();
 
-    // ── 1. Load file records before soft-deleting (need paths for storage purge) ──
-    const { data: fileRows } = await supabase
-      .from("dms_document_files")
-      .select("id, storage_bucket, storage_path")
-      .eq("document_id", id)
-      .is("deleted_at", null);
+    // ── 1. Call purge_dms_document() RPC — atomic hard-delete ────────────────
+    const { data: rpcRows, error: rpcError } = await supabase
+      .rpc("purge_dms_document", { p_id: id });
 
-    const storageFiles = (fileRows ?? []) as {
-      id: number;
-      storage_bucket: string | null;
-      storage_path: string | null;
-    }[];
+    if (rpcError) {
+      if (rpcError.message?.includes("not found")) {
+        return { success: false, error: "Document not found" };
+      }
+      return { success: false, error: rpcError.message };
+    }
 
-    // ── 2. Soft-delete the document itself ────────────────────────────────────────
-    const { error } = await supabase
-      .from("dms_documents")
-      .update({ deleted_at: now, status: "deleted", updated_by: ctx.profile?.id ?? null })
-      .eq("id", id)
-      .is("deleted_at", null);
+    // ── 2. Purge physical files from Supabase Storage ─────────────────────────
+    const rpcResult = (rpcRows as { out_storage_files: unknown; out_files_found: number }[] | null)?.[0];
+    const storageFiles = rpcResult?.out_storage_files as
+      { bucket: string; path: string }[] | null ?? [];
+    const fileCount = rpcResult?.out_files_found ?? 0;
 
-    if (error) return { success: false, error: error.message };
-
-    // ── 3. Soft-delete all associated file records ────────────────────────────────
-    // (so sha256_hash is no longer matched by duplicate-detection queries)
-    await supabase
-      .from("dms_document_files")
-      .update({ deleted_at: now })
-      .eq("document_id", id)
-      .is("deleted_at", null);
-
-    // ── 4. Mark all versions as not current ──────────────────────────────────────
-    await supabase
-      .from("dms_document_versions")
-      .update({ is_current: false })
-      .eq("document_id", id);
-
-    // ── 5. Delete physical files from Supabase Storage ───────────────────────────
-    // Group by bucket and remove; non-fatal per bucket so a missing file doesn't block.
     const byBucket = new Map<string, string[]>();
     for (const f of storageFiles) {
-      if (!f.storage_bucket || !f.storage_path) continue;
-      const paths = byBucket.get(f.storage_bucket) ?? [];
-      paths.push(f.storage_path);
-      byBucket.set(f.storage_bucket, paths);
+      if (!f.bucket || !f.path) continue;
+      const paths = byBucket.get(f.bucket) ?? [];
+      paths.push(f.path);
+      byBucket.set(f.bucket, paths);
     }
 
     for (const [bucket, paths] of byBucket.entries()) {
       try {
         await adminClient.storage.from(bucket).remove(paths);
       } catch (storageErr) {
-        // Non-fatal: DB is already soft-deleted. Log but don't fail the action.
+        // Non-fatal: document is already removed from DB.
         logger.warn(`[DMS delete] Storage purge failed for bucket "${bucket}":`, String(storageErr));
       }
     }
 
-    await insertDmsEvent(supabase, id, "deleted", ctx.profile?.id ?? null,
-      `Document deleted (${storageFiles.length} storage file(s) purged)`);
+    // ── 3. Audit log ──────────────────────────────────────────────────────────
     await logAudit({
       module_code: "DMS",
       entity_name: "dms_documents",
       entity_id: id,
       entity_reference: String(id),
       action: "delete",
-      new_values: { storage_files_purged: storageFiles.length },
+      new_values: { storage_files_purged: fileCount },
     });
-    revalidateDmsDocuments();
 
+    revalidateDmsDocuments();
     return { success: true };
   } catch (err) {
     logger.error("deleteDmsDocument error", err);

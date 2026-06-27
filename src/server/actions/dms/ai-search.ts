@@ -21,6 +21,7 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
 import { getDmsAiProvider } from "@/lib/dms/ai/factory";
 import type { DmsSearchIntent, DmsAiSearchResult } from "@/lib/dms/ai/types";
+import { logDmsAiUsage } from "@/lib/ai/observability/log-dms-ai-usage";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -132,17 +133,19 @@ export async function extractDmsSearchIntent(
     return { success: false, error: "AI Search feature is currently disabled." };
   }
 
-  const { provider } = await getDmsAiProvider();
+  const { provider, configId } = await getDmsAiProvider();
   if (!provider.isConfigured()) {
     return { success: false, error: "AI provider is not configured." };
   }
 
   try {
+    const startMs = Date.now();
     const result = await provider.callStructuredCompletion(
       buildIntentSystemPrompt(),
       question.trim().substring(0, 500),
       { maxTokens: 400, temperature: 0.0 }
     );
+    const durationMs = Date.now() - startMs;
 
     const parsed = JSON.parse(result.rawJson) as unknown;
     const validated = SearchIntentSchema.safeParse(parsed);
@@ -150,18 +153,21 @@ export async function extractDmsSearchIntent(
       return { success: false, error: "AI returned an unexpected intent format." };
     }
 
-    const supabase = await createClient();
-    await supabase.from("erp_ai_usage_logs").insert({
-      feature_area: "DMS_AI_SEARCH",
-      operation_type: "intent_extraction",
-      provider_code: provider.providerCode,
-      model_id: provider.modelId,
-      input_char_count: question.length,
-      output_char_count: result.rawJson.length,
-      prompt_tokens: result.promptTokens ?? null,
-      completion_tokens: result.completionTokens ?? null,
+    void logDmsAiUsage({
+      providerConfigId: configId ?? null,
+      featureArea: "DMS_AI_SEARCH",
+      operationType: "intent_extraction",
+      modelId: result.model,
       status: "success",
-      prompt_version: AI_SEARCH_PROMPT_VERSION,
+      inputTokenCount: result.promptTokens ?? null,
+      outputTokenCount: result.completionTokens ?? null,
+      durationMs,
+      createdBy: ctx.profile?.id ?? null,
+      metadata: {
+        input_char_count: question.length,
+        output_char_count: result.rawJson.length,
+        prompt_version: AI_SEARCH_PROMPT_VERSION,
+      },
     });
 
     return { success: true, data: validated.data as DmsSearchIntent };

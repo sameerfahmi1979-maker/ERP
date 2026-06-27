@@ -472,6 +472,15 @@ export async function retryDmsOrchestrationStep(input: {
     if (!ctx.profile) return { success: false, error: "Not authenticated." };
     if (!canRunOrchestration(ctx)) return { success: false, error: "Permission denied." };
 
+    // Phase 5: honour the DMS_AI_ORCHESTRATION feature flag on retry as well
+    const orchestrationEnabled = await isDmsAiOrchestrationEnabled();
+    if (!orchestrationEnabled) {
+      return {
+        success: false,
+        error: "DMS AI Orchestration is currently disabled. Enable the DMS_AI_ORCHESTRATION feature flag to retry steps.",
+      };
+    }
+
     if (!RETRYABLE.includes(stepCode as DmsAiOrchestrationStepCode)) {
       return { success: false, error: `Step "${stepCode}" cannot be retried via orchestration. Use the manual button instead.` };
     }

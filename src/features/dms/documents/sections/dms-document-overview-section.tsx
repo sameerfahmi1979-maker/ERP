@@ -71,6 +71,12 @@ export function DmsDocumentOverviewSection({
 }: DmsDocumentOverviewSectionProps) {
   const [requiresExpiry, setRequiresExpiry] = useState(false);
 
+  // Controlled state for text/date inputs to avoid Base UI "defaultValue after init" warning
+  const [title, setTitle]           = useState(doc?.title ?? "");
+  const [description, setDescription] = useState(doc?.description ?? "");
+  const [issueDate, setIssueDate]   = useState(doc?.issue_date ?? "");
+  const [expiryDate, setExpiryDate] = useState(doc?.expiry_date ?? "");
+
   useEffect(() => {
     if (documentTypeId) {
       const dt = documentTypes.find((t) => t.id === documentTypeId);
@@ -104,7 +110,8 @@ export function DmsDocumentOverviewSection({
         <Input
           id="dms-title"
           name="title"
-          defaultValue={doc?.title ?? ""}
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
           placeholder="Document title"
           disabled={isViewing}
           required
@@ -116,7 +123,8 @@ export function DmsDocumentOverviewSection({
         <Textarea
           id="dms-description"
           name="description"
-          defaultValue={doc?.description ?? ""}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
           placeholder="Optional description"
           disabled={isViewing}
           rows={2}
@@ -194,7 +202,8 @@ export function DmsDocumentOverviewSection({
             id="dms-issue-date"
             name="issue_date"
             type="date"
-            defaultValue={doc?.issue_date ?? ""}
+            value={issueDate}
+            onChange={(e) => setIssueDate(e.target.value)}
             disabled={isViewing}
           />
         </div>
@@ -208,7 +217,8 @@ export function DmsDocumentOverviewSection({
             id="dms-expiry-date"
             name="expiry_date"
             type="date"
-            defaultValue={doc?.expiry_date ?? ""}
+            value={expiryDate}
+            onChange={(e) => setExpiryDate(e.target.value)}
             disabled={isViewing}
             required={requiresExpiry}
           />

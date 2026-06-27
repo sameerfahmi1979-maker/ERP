@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,9 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { RequiredLabel } from "@/components/erp/required-label";
+import { SortColHeader } from "@/components/erp/table/sort-col-header";
+import { TablePagination } from "@/components/erp/table/table-pagination";
+import { useSortPaginate } from "@/hooks/use-sort-paginate";
 import { FileType2, PlusCircle, Pencil, Power, Copy, Info } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -180,7 +183,7 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
     router.refresh();
   };
 
-  const filteredRows = rows.filter((row) => {
+  const filteredRows = useMemo(() => rows.filter((row) => {
     if (filterCategory !== "all" && String(row.category_id) !== filterCategory) return false;
     if (filterStatus === "active" && !row.is_active) return false;
     if (filterStatus === "inactive" && row.is_active) return false;
@@ -188,19 +191,21 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
     if (filterSystem === "custom" && row.is_system) return false;
     if (searchText && !row.type_code.toLowerCase().includes(searchText.toLowerCase()) && !row.name_en.toLowerCase().includes(searchText.toLowerCase())) return false;
     return true;
+  }), [rows, filterCategory, filterStatus, filterSystem, searchText]);
+
+  const table = useSortPaginate(filteredRows, {
+    defaultSortKey: "sort_order",
+    defaultSortDir: "asc",
+    defaultPageSize: 25,
+    comparators: {
+      metadata_defs: (a, b) => (a.metadata_defs?.length ?? 0) - (b.metadata_defs?.length ?? 0),
+      category: (a, b) => (a.category?.name_en ?? "").localeCompare(b.category?.name_en ?? ""),
+    },
   });
 
   return (
     <div className="space-y-4">
-      {/* Info banner about party_document_types */}
-      <div className="flex items-start gap-2 p-3 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs">
-        <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-        <span>
-          <strong>DMS Document Types are the future source of truth for all ERP document types.</strong>{" "}
-          Existing <code className="font-mono bg-amber-100 dark:bg-amber-900/40 px-1 rounded">party_document_types</code> remains active until the Party Documents migration in DMS.6.
-          New document types should be managed here only.
-        </span>
-      </div>
+
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
@@ -244,6 +249,7 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
         <p className="text-xs text-muted-foreground ml-auto">
           {filteredRows.length} of {rows.length} types
         </p>
+
         {manage && (
           <Button onClick={openAdd} size="sm">
             <PlusCircle className="mr-2 h-4 w-4" />
@@ -256,24 +262,24 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
         <table className="w-full text-sm min-w-[900px]">
           <thead className="bg-muted/50 border-b">
             <tr>
-              <th className="text-left px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">Code</th>
-              <th className="text-left px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">Name</th>
-              <th className="text-left px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">Category</th>
-              <th className="text-center px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">Expiry</th>
-              <th className="text-center px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">Confidentiality</th>
-              <th className="text-center px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">Fields</th>
-              <th className="text-center px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">Type</th>
-              <th className="text-center px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">Status</th>
+              <SortColHeader field="type_code" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort}>Code</SortColHeader>
+              <SortColHeader field="name_en" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort}>Name</SortColHeader>
+              <SortColHeader field="category" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort}>Category</SortColHeader>
+              <SortColHeader field="requires_expiry_tracking" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">Expiry</SortColHeader>
+              <SortColHeader field="default_confidentiality" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">Confidentiality</SortColHeader>
+              <SortColHeader field="metadata_defs" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">Fields</SortColHeader>
+              <SortColHeader field="is_system" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">Type</SortColHeader>
+              <SortColHeader field="is_active" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">Status</SortColHeader>
               {manage && <th className="px-4 py-2.5 w-28" />}
             </tr>
           </thead>
           <tbody className="divide-y divide-border/50">
-            {filteredRows.length === 0 && (
+            {table.rows.length === 0 && (
               <tr>
                 <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground text-sm">No document types found</td>
               </tr>
             )}
-            {filteredRows.map((row) => {
+            {table.rows.map((row) => {
               const conf = CONFIDENTIALITY_LABELS[row.default_confidentiality] ?? { label: row.default_confidentiality, color: "bg-gray-100 text-gray-600" };
               const metaCount = row.metadata_defs?.length ?? 0;
               const isPartyType = PARTY_DOC_TYPE_CODES.has(row.type_code);
@@ -337,6 +343,14 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
             })}
           </tbody>
         </table>
+        <TablePagination
+          page={table.page}
+          totalPages={table.totalPages}
+          onPage={table.setPage}
+          pageSize={table.pageSize}
+          onPageSize={table.setPageSize}
+          total={table.total}
+        />
       </div>
 
       {/* Add / Edit Dialog */}

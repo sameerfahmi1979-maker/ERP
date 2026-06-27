@@ -20,6 +20,7 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
 import { getDmsAiProvider } from "@/lib/dms/ai/factory";
 import { revalidatePath } from "next/cache";
+import { logDmsAiUsage } from "@/lib/ai/observability/log-dms-ai-usage";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -169,7 +170,7 @@ export async function suggestDmsDocumentLinks(
     return { success: false, error: "AI Smart Links feature is currently disabled." };
   }
 
-  const { provider } = await getDmsAiProvider();
+  const { provider, configId } = await getDmsAiProvider();
   if (!provider.isConfigured()) {
     return { success: false, error: "AI provider is not configured." };
   }
@@ -308,6 +309,7 @@ export async function suggestDmsDocumentLinks(
     const partyList = allParties;
 
     // Call AI
+    const linkStartMs = Date.now();
     const result = await provider.callStructuredCompletion(
       buildLinkSystemPrompt(partyList),
       buildLinkUserMessage({
@@ -324,6 +326,7 @@ export async function suggestDmsDocumentLinks(
       }),
       { maxTokens: 500, temperature: 0.0 }
     );
+    const linkDurationMs = Date.now() - linkStartMs;
 
     const parsed = JSON.parse(result.rawJson) as unknown;
     const validated = LinkSuggestionsSchema.safeParse(parsed);
@@ -365,19 +368,23 @@ export async function suggestDmsDocumentLinks(
     }
 
     // Log AI usage
-    await supabase.from("erp_ai_usage_logs").insert({
-      feature_area: "DMS_SMART_LINKS",
-      operation_type: "link_suggestion",
-      document_id: documentId,
-      provider_code: provider.providerCode,
-      model_id: provider.modelId,
-      input_char_count: docRow.title.length + (docRow.ai_summary?.length ?? 0),
-      output_char_count: result.rawJson.length,
-      prompt_tokens: result.promptTokens ?? null,
-      completion_tokens: result.completionTokens ?? null,
+    void logDmsAiUsage({
+      providerConfigId: configId ?? null,
+      featureArea: "DMS_SMART_LINKS",
+      operationType: "link_suggestion",
+      modelId: result.model,
       status: "success",
-      prompt_version: LINK_PROMPT_VERSION,
-      result_count: toInsert.length,
+      inputTokenCount: result.promptTokens ?? null,
+      outputTokenCount: result.completionTokens ?? null,
+      durationMs: linkDurationMs,
+      documentId,
+      createdBy: (ctx.profile?.id as number | undefined) ?? null,
+      metadata: {
+        input_char_count: docRow.title.length + (docRow.ai_summary?.length ?? 0),
+        output_char_count: result.rawJson.length,
+        prompt_version: LINK_PROMPT_VERSION,
+        result_count: toInsert.length,
+      },
     });
 
     await logAudit({

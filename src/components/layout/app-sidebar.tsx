@@ -20,6 +20,7 @@ import {
   Banknote, CreditCard, Percent, Ruler, Repeat,
   KeyRound, LockKeyhole, Hash, Mail, Send,
   Bot, Sparkles, ScanSearch, CircleGauge, AlertTriangle, CopyCheck,
+  ListChecks,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -156,6 +157,7 @@ const navSections: NavSection[] = [
       { label: "All Documents",    icon: FolderOpen,      path: "/dms/documents" },
       { label: "Upload Inbox",     icon: UploadCloud,     path: "/dms/inbox" },
       { label: "Batch Intake",     icon: Inbox,           path: "/dms/inbox/batches" },
+      { label: "Review Queue",     icon: ListChecks,      path: "/dms/review-queue" },
       { label: "Expiry & Renewals", icon: RefreshCcw,    path: "/dms/expiring" },
       { label: "Notifications",    icon: Bell,            path: "/dms/notifications" },
       {
@@ -167,7 +169,8 @@ const navSections: NavSection[] = [
           { label: "Metadata Definitions", icon: Database,    path: "/admin/dms/metadata-definitions" },
           { label: "Tags",                 icon: Tags,        path: "/admin/dms/tags" },
           { label: "Retention Policies",   icon: ShieldCheck, path: "/admin/dms/retention-policies" },
-          { label: "AI Intelligence",      icon: Brain,       path: "/admin/dms/intelligence" },
+          { label: "AI Intelligence",      icon: Brain,        path: "/admin/dms/intelligence" },
+          { label: "AI Observability",     icon: CircleGauge,  path: "/admin/dms/ai-observability" },
         ],
       },
     ],

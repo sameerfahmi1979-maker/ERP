@@ -295,7 +295,7 @@ export function DmsDocumentOcrSection({
                 {ocrJobs.map((job) => (
                   <tr key={job.id} className="hover:bg-muted/20">
                     <td className="px-3 py-1.5 font-mono text-muted-foreground">#{job.id}</td>
-                    <td className="px-3 py-1.5 text-muted-foreground">{job.provider ?? "—"}</td>
+                    <td className="px-3 py-1.5 text-muted-foreground">{formatOcrProvider(job.provider)}</td>
                     <td className="px-3 py-1.5">
                       <DmsOcrStatusBadge status={job.status === "completed" ? "complete" : job.status} />
                     </td>
@@ -336,12 +336,30 @@ export function DmsDocumentOcrSection({
       <div className="flex items-start gap-2 rounded-md border border-border/50 bg-muted/20 px-3 py-2">
         <Info className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
         <p className="text-xs text-muted-foreground">
-          OCR uses GPT-4.1 vision to extract text from any document — PDFs (text layer or scanned), images (passport, Emirates ID, certificates), DOCX, and XLSX.
+          OCR extracts text from any document — PDFs (text layer or scanned), images (passport, Emirates ID, certificates), DOCX, and XLSX.
+          Digital PDFs use fast local extraction (no AI cost). Scanned PDFs and images use Azure Document Intelligence or GPT-4.1 Vision depending on configuration.
           Once OCR is complete, use the <strong>AI Analysis</strong> tab to classify and extract metadata.
         </p>
       </div>
     </div>
   );
+}
+
+// ── OCR provider display label ────────────────────────────────────────────────
+
+const OCR_PROVIDER_LABELS: Record<string, string> = {
+  pdf_text: "Local Text Layer",
+  azure_doc_intel: "Azure Document Intelligence",
+  vision: "GPT Vision",
+  ai_intake: "AI Intake",
+  ai_analysis: "AI Analysis",
+  noop: "Not Configured",
+  tesseract: "Tesseract",
+};
+
+function formatOcrProvider(provider: string | null): string {
+  if (!provider) return "—";
+  return OCR_PROVIDER_LABELS[provider] ?? provider;
 }
 
 // ── Sub-component: per-file OCR row ──────────────────────────────────────────
@@ -395,7 +413,7 @@ function OcrFileRow({ file, canTrigger, canViewText, documentId, onViewText, que
         <DmsOcrStatusBadge status={file.ocr_status} />
       </td>
       <td className="px-3 py-2 text-xs text-muted-foreground">
-        {file.ocr_provider ?? "—"}
+        {formatOcrProvider(file.ocr_provider)}
       </td>
       <td className="px-3 py-2 text-xs text-muted-foreground">
         {file.ocr_completed_at ? format(parseISO(file.ocr_completed_at), "dd MMM HH:mm") : "—"}

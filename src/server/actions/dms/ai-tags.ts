@@ -20,6 +20,7 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
 import { getDmsAiProvider } from "@/lib/dms/ai/factory";
 import { revalidatePath } from "next/cache";
+import { logDmsAiUsage } from "@/lib/ai/observability/log-dms-ai-usage";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -155,7 +156,7 @@ export async function suggestDmsDocumentTags(
     return { success: false, error: "AI Tag Suggestions feature is currently disabled." };
   }
 
-  const { provider } = await getDmsAiProvider();
+  const { provider, configId } = await getDmsAiProvider();
   if (!provider.isConfigured()) {
     return { success: false, error: "AI provider is not configured." };
   }
@@ -226,6 +227,7 @@ export async function suggestDmsDocumentTags(
       : null;
 
     // Call AI
+    const tagStartMs = Date.now();
     const result = await provider.callStructuredCompletion(
       buildTagSystemPrompt(availableTags),
       buildTagUserMessage({
@@ -239,6 +241,7 @@ export async function suggestDmsDocumentTags(
       }),
       { maxTokens: 500, temperature: 0.1 }
     );
+    const tagDurationMs = Date.now() - tagStartMs;
 
     const parsed = JSON.parse(result.rawJson) as unknown;
     const validated = TagSuggestionsSchema.safeParse(parsed);
@@ -281,19 +284,23 @@ export async function suggestDmsDocumentTags(
     }
 
     // Log AI usage
-    await supabase.from("erp_ai_usage_logs").insert({
-      feature_area: "DMS_AUTO_TAGS",
-      operation_type: "tag_suggestion",
-      document_id: documentId,
-      provider_code: provider.providerCode,
-      model_id: provider.modelId,
-      input_char_count: docRow.title.length + (docRow.ai_summary?.length ?? 0),
-      output_char_count: result.rawJson.length,
-      prompt_tokens: result.promptTokens ?? null,
-      completion_tokens: result.completionTokens ?? null,
+    void logDmsAiUsage({
+      providerConfigId: configId ?? null,
+      featureArea: "DMS_AUTO_TAGS",
+      operationType: "tag_suggestion",
+      modelId: result.model,
       status: "success",
-      prompt_version: TAG_PROMPT_VERSION,
-      result_count: toInsert.length,
+      inputTokenCount: result.promptTokens ?? null,
+      outputTokenCount: result.completionTokens ?? null,
+      durationMs: tagDurationMs,
+      documentId,
+      createdBy: (ctx.profile?.id as number | undefined) ?? null,
+      metadata: {
+        input_char_count: docRow.title.length + (docRow.ai_summary?.length ?? 0),
+        output_char_count: result.rawJson.length,
+        prompt_version: TAG_PROMPT_VERSION,
+        result_count: toInsert.length,
+      },
     });
 
     await logAudit({
@@ -463,6 +470,145 @@ export async function applyDmsTagSuggestions(
     return {
       success: false,
       error: err instanceof Error ? err.message : "Failed to apply tag suggestions.",
+    };
+  }
+}
+
+// ── createAndApplyDmsTagSuggestion ─────────────────────────────────────────────
+
+/**
+ * For "New" AI tag suggestions (tagId = null): creates the tag in dms_tags and
+ * then applies it to the document, marking the suggestion as accepted.
+ */
+export async function createAndApplyDmsTagSuggestion(
+  documentId: number,
+  suggestionId: number
+): Promise<ActionResult<{ appliedCount: number }>> {
+  const ctx = await getAuthContext();
+  if (!canEditDoc(ctx)) {
+    return { success: false, error: "Permission denied." };
+  }
+
+  const parsed = z
+    .object({
+      documentId: z.number().int().positive(),
+      suggestionId: z.number().int().positive(),
+    })
+    .safeParse({ documentId, suggestionId });
+
+  if (!parsed.success) {
+    return { success: false, error: "Invalid input." };
+  }
+
+  try {
+    const supabase = await createClient();
+
+    // Load the suggestion
+    const { data: sugg, error: suggErr } = await supabase
+      .from("dms_ai_tag_suggestions")
+      .select("id, document_id, tag_id, suggested_tag_name")
+      .eq("id", suggestionId)
+      .eq("document_id", documentId)
+      .eq("status", "pending")
+      .is("deleted_at", null)
+      .single();
+
+    if (suggErr || !sugg) {
+      return { success: false, error: "Pending suggestion not found." };
+    }
+
+    const userId = (ctx.profile?.id as number | undefined) ?? null;
+    const now = new Date().toISOString();
+
+    const tagRow = sugg as { id: number; document_id: number; tag_id: number | null; suggested_tag_name: string | null };
+
+    // If suggestion already has a tag_id, delegate to applyDmsTagSuggestions
+    if (tagRow.tag_id !== null) {
+      return applyDmsTagSuggestions(documentId, [suggestionId]);
+    }
+
+    const tagName = tagRow.suggested_tag_name?.trim();
+    if (!tagName) {
+      return { success: false, error: "Suggestion has no tag name." };
+    }
+
+    // Check if a tag with this name already exists (case-insensitive)
+    const { data: existing } = await supabase
+      .from("dms_tags")
+      .select("id")
+      .ilike("tag_name", tagName)
+      .eq("is_active", true)
+      .is("deleted_at", null)
+      .limit(1);
+
+    let resolvedTagId: number;
+
+    if (existing && existing.length > 0) {
+      resolvedTagId = (existing[0] as { id: number }).id;
+    } else {
+      // Create new tag
+      const { data: newTag, error: createErr } = await supabase
+        .from("dms_tags")
+        .insert({
+          tag_name: tagName,
+          is_active: true,
+          created_by: userId,
+        })
+        .select("id")
+        .single();
+
+      if (createErr || !newTag) {
+        return { success: false, error: `Failed to create tag "${tagName}": ${createErr?.message ?? "unknown error"}` };
+      }
+      resolvedTagId = (newTag as { id: number }).id;
+    }
+
+    // Link tag to suggestion row for traceability
+    await supabase
+      .from("dms_ai_tag_suggestions")
+      .update({ tag_id: resolvedTagId, updated_at: now })
+      .eq("id", suggestionId);
+
+    // Apply to document (check for duplicate)
+    const { data: existingDocTag } = await supabase
+      .from("dms_document_tags")
+      .select("tag_id")
+      .eq("document_id", documentId)
+      .eq("tag_id", resolvedTagId)
+      .limit(1);
+
+    if (!existingDocTag || existingDocTag.length === 0) {
+      const { error: tagErr } = await supabase
+        .from("dms_document_tags")
+        .insert({ document_id: documentId, tag_id: resolvedTagId, created_by: userId });
+
+      if (tagErr) {
+        return { success: false, error: tagErr.message };
+      }
+    }
+
+    // Mark suggestion accepted
+    await supabase
+      .from("dms_ai_tag_suggestions")
+      .update({ status: "accepted", reviewed_by: userId, reviewed_at: now, updated_at: now })
+      .eq("id", suggestionId);
+
+    await logAudit({
+      module_code: "DMS",
+      action: "dms_tag_suggestion_created_and_applied",
+      entity_name: "dms_ai_tag_suggestions",
+      entity_id: documentId,
+      entity_reference: String(documentId),
+      new_values: { tag_name: tagName, tag_id: resolvedTagId, suggestion_id: suggestionId },
+    });
+
+    revalidatePath(`/dms/documents/${documentId}`);
+
+    return { success: true, data: { appliedCount: 1 } };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to create and apply tag suggestion.",
     };
   }
 }

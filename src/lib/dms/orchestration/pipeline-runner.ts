@@ -17,15 +17,30 @@ import type {
   DmsAiOrchestrationStatus,
   DmsAiOrchestrationRunResult,
 } from "./types";
-import { DMS_AI_ORCH_STEPS } from "./types";
+import { DMS_AI_ORCH_STEPS, DMS_AI_ORCH_PHASE_A_STEPS } from "./types";
 
 // ── Build initial step list ───────────────────────────────────────────────────
 
 /**
- * Returns the initial step array with all steps in "pending" status.
+ * Returns the initial step array for the post-draft / post-approval pipeline.
+ *
+ * Phase A informational steps (upload_received, ocr_and_extraction, draft_ready)
+ * are marked as "skipped" immediately — they were completed earlier in the pipeline
+ * and are not actionable in this best-effort post-approval phase.
+ *
+ * Phase B actionable steps (content_sync → ready_for_review) start as "pending".
  */
 export function buildInitialSteps(): DmsAiOrchestrationStepResult[] {
-  return DMS_AI_ORCH_STEPS.map((step) => ({ step, status: "pending" as const }));
+  const phaseASet = new Set<DmsAiOrchestrationStepCode>(DMS_AI_ORCH_PHASE_A_STEPS);
+  return DMS_AI_ORCH_STEPS.map((step) => ({
+    step,
+    status: phaseASet.has(step)
+      ? ("skipped" as const)
+      : ("pending" as const),
+    ...(phaseASet.has(step) && {
+      safeErrorMessage: "Completed in Phase A (upload and OCR extraction).",
+    }),
+  }));
 }
 
 // ── Safe step runner ──────────────────────────────────────────────────────────

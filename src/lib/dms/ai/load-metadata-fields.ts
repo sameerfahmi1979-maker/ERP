@@ -1,28 +1,50 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { DmsAiMetadataField } from "./types";
+import {
+  DMS_METADATA_DEFINITION_SELECT,
+  filterMetadataDefinitionsByContext,
+  mapMetadataDefinitionRow,
+  type DmsMetadataDefinitionContext,
+} from "@/lib/dms/metadata/metadata-definition-shared";
 
-/** Load active metadata field definitions for a document type (AI intake extraction). */
+/** Load active metadata field definitions for a document type (AI intake / analysis). */
 export async function loadMetadataFieldsForDocumentType(
   supabase: SupabaseClient,
-  documentTypeId: number
+  documentTypeId: number,
+  context: DmsMetadataDefinitionContext = "all"
 ): Promise<DmsAiMetadataField[]> {
   const { data } = await supabase
     .from("dms_metadata_definitions")
-    .select(
-      "field_code, field_label_en, field_type, is_required, is_ai_extractable, ai_field_hint, options_json"
-    )
+    .select(DMS_METADATA_DEFINITION_SELECT)
     .eq("document_type_id", documentTypeId)
     .eq("is_active", true)
+    .is("deleted_at", null)
     .order("sort_order", { ascending: true });
 
-  return (data ?? [])
+  const mapped = (data ?? []).map((row) =>
+    mapMetadataDefinitionRow(row as Record<string, unknown>)
+  );
+
+  return filterMetadataDefinitionsByContext(mapped, context)
     .filter((f) => f.is_ai_extractable !== false)
     .map((f) => ({
-      fieldCode: f.field_code as string,
-      labelEn: f.field_label_en as string,
-      fieldType: f.field_type as string,
-      isRequired: (f.is_required as boolean) ?? false,
-      aiFieldHint: (f.ai_field_hint as string | null) ?? null,
-      optionsJson: (f.options_json as unknown) ?? null,
+      fieldCode: f.field_code,
+      labelEn: f.field_label_en,
+      labelAr: f.field_label_ar,
+      fieldType: f.field_type,
+      isRequired: f.is_required,
+      aiFieldHint: f.ai_field_hint,
+      optionsJson: f.options_json,
+      validationJson: f.validation_json,
+      aiPossibleLabelsEn: f.ai_possible_labels_en,
+      aiPossibleLabelsAr: f.ai_possible_labels_ar,
+      aiKeywords: f.ai_keywords,
+      aiNegativeKeywords: f.ai_negative_keywords,
+      aiExpectedFormat: f.ai_expected_format,
+      aiExampleValues: f.ai_example_values,
+      aiConfidenceThreshold: f.ai_confidence_threshold,
+      normalizationRule: f.normalization_rule,
+      fieldGroup: f.field_group,
+      fieldSection: f.field_section,
     }));
 }

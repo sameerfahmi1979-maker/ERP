@@ -155,6 +155,22 @@ export function DmsOrchestrationProgressCard({
     );
   }
 
+  // Phase 9: job enqueued — show minimal queued state card
+  if (orchestrationStatus === "queued") {
+    return (
+      <div className="rounded-lg border bg-slate-50 border-slate-200 px-3 py-2">
+        <div className="flex items-center gap-2">
+          <Clock className="h-3.5 w-3.5 text-blue-500" />
+          <span className="text-xs font-medium text-slate-700">AI Pipeline</span>
+          <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-blue-50 text-blue-600 border-blue-200">Queued</Badge>
+        </div>
+        <p className="text-[11px] text-slate-500 mt-1 ml-5.5">
+          AI pipeline is queued for background processing. Refresh to check progress.
+        </p>
+      </div>
+    );
+  }
+
   if (isLoading) return null;
 
   // Don't show card if pipeline never ran and not auto-triggering
@@ -287,6 +303,8 @@ function OrchestrationStatusBadge({ status, isRunning }: { status: DmsAiOrchestr
       return <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-amber-50 text-amber-700 border-amber-200 flex items-center gap-0.5"><AlertTriangle className="h-2.5 w-2.5" />Warnings</Badge>;
     case "failed":
       return <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-red-50 text-red-600 border-red-200">Failed</Badge>;
+    case "queued":
+      return <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-blue-50 text-blue-600 border-blue-200">Queued</Badge>;
     case "skipped_feature_disabled":
       return <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-slate-400 border-slate-200">Disabled</Badge>;
     default:

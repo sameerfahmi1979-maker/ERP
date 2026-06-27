@@ -72,4 +72,10 @@ export interface ERPComboboxProps {
    * Phase 002F.3E.3B.6C — large-list preparation.
    */
   maxVisibleOptions?: number;
+
+  /**
+   * Called when the user types in the combobox search field.
+   * Use for server-side search (pass filterFn={() => true} to disable client filtering).
+   */
+  onSearchQueryChange?: (query: string) => void;
 }

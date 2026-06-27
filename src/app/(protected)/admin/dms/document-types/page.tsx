@@ -43,7 +43,7 @@ export default async function DmsDocumentTypesPage() {
     <div className="flex-1 space-y-4 p-4 md:p-6">
       <ERPPageHeader
         title="Document Types"
-        description="Manage all DMS document types — the future single source of truth for all ERP document types"
+
         breadcrumbs={[
           { label: "Admin", href: "/dashboard" },
           { label: "DMS Admin", href: "/admin/dms" },

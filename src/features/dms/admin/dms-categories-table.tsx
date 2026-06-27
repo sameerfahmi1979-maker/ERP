@@ -10,6 +10,10 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { RequiredLabel } from "@/components/erp/required-label";
+import { SortColHeader } from "@/components/erp/table/sort-col-header";
+import { TablePagination } from "@/components/erp/table/table-pagination";
+import { TableSearchInput } from "@/components/erp/table/table-search-input";
+import { useSortPaginate } from "@/hooks/use-sort-paginate";
 import { FolderOpen, PlusCircle, Pencil, Power, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -81,6 +85,13 @@ export function DmsCategoriesTable({ rows, authContext }: Props) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DmsCategoryRow | null>(null);
 
+  const table = useSortPaginate(rows, {
+    defaultSortKey: "sort_order",
+    defaultSortDir: "asc",
+    defaultPageSize: 25,
+    getSearchText: (r) => [r.category_code, r.name_en, r.name_ar ?? "", r.description ?? ""].join(" "),
+  });
+
   const openAdd = () => {
     setEditing(null);
     setForm({ ...emptyForm });
@@ -147,37 +158,46 @@ export function DmsCategoriesTable({ rows, authContext }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{rows.length} {rows.length === 1 ? "category" : "categories"}</p>
-        {manage && (
-          <Button onClick={openAdd} size="sm">
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Add Category
-          </Button>
-        )}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <p className="text-sm text-muted-foreground">
+          {table.total !== rows.length
+            ? `${table.total} of ${rows.length} ${rows.length === 1 ? "category" : "categories"}`
+            : `${rows.length} ${rows.length === 1 ? "category" : "categories"}`}
+        </p>
+        <div className="flex items-center gap-2">
+          <TableSearchInput value={table.query} onChange={table.setQuery} placeholder="Search categories…" className="w-52" />
+          {manage && (
+            <Button onClick={openAdd} size="sm">
+              <PlusCircle className="mr-2 h-4 w-4" />
+              Add Category
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="rounded-md border overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 border-b">
             <tr>
-              <th className="text-left px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">Code</th>
-              <th className="text-left px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">Name</th>
+              <SortColHeader field="category_code" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort}>Code</SortColHeader>
+              <SortColHeader field="name_en" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort}>Name</SortColHeader>
               <th className="text-left px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground hidden md:table-cell">Description</th>
               <th className="text-center px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">Icon</th>
-              <th className="text-center px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">System</th>
-              <th className="text-center px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">Status</th>
-              <th className="text-center px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">Order</th>
+              <SortColHeader field="is_system" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">System</SortColHeader>
+              <SortColHeader field="is_active" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">Status</SortColHeader>
+              <SortColHeader field="sort_order" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">Order</SortColHeader>
               {(manage || allowDelete) && <th className="px-4 py-2.5 w-24" />}
             </tr>
           </thead>
           <tbody className="divide-y divide-border/50">
-            {rows.length === 0 && (
+            {table.rows.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground text-sm">No categories found</td>
+                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground text-sm">
+                  {table.query ? "No categories match your search" : "No categories found"}
+                </td>
               </tr>
             )}
-            {rows.map((row) => (
+            {table.rows.map((row) => (
               <tr key={row.id} className="hover:bg-muted/25 transition-colors">
                 <td className="px-4 py-2.5 font-mono text-xs font-medium text-foreground">{row.category_code}</td>
                 <td className="px-4 py-2.5">
@@ -236,6 +256,14 @@ export function DmsCategoriesTable({ rows, authContext }: Props) {
             ))}
           </tbody>
         </table>
+        <TablePagination
+          page={table.page}
+          totalPages={table.totalPages}
+          onPage={table.setPage}
+          pageSize={table.pageSize}
+          onPageSize={table.setPageSize}
+          total={table.total}
+        />
       </div>
 
       {/* Add / Edit Dialog */}

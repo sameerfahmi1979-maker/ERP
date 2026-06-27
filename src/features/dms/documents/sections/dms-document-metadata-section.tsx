@@ -221,7 +221,7 @@ function MetadataField({
   return (
     <div>
       <Label className="text-xs font-medium">
-        {def.label_en}
+        {def.field_label_en}
         {def.is_required && <span className="text-red-500 ml-1">*</span>}
         {def.is_ai_extractable && (
           <span className="ml-2 text-[10px] bg-violet-100 text-violet-600 px-1 rounded">AI</span>
@@ -282,7 +282,7 @@ function MetadataField({
           disabled={disabled}
           rows={3}
           className="mt-1"
-          placeholder={def.label_en}
+          placeholder={def.field_label_en}
         />
       ) : def.field_type === "json" ? (
         <Textarea
@@ -308,7 +308,7 @@ function MetadataField({
           onChange={(e) => onChange(e.target.value)}
           disabled={disabled}
           className="mt-1"
-          placeholder={def.label_en}
+          placeholder={def.field_label_en}
         />
       )}
     </div>

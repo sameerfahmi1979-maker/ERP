@@ -75,6 +75,8 @@ export interface DmsDocumentUnderstanding {
   ocrStatus: {
     ocrLastRunAt: string | null;
     ocrTextAvailable: boolean;
+    /** True when OCR has run on at least one file (complete/skipped), even if no text was found. */
+    ocrRunComplete: boolean;
     fileCount: number;
     filesWithOcr: number;
     contentTextAvailable: boolean;
@@ -137,8 +139,9 @@ export interface DmsDocumentUnderstanding {
     linkCount: number;
     linkedEntities: Array<{
       entityType: string;
+      entityTypeLabel: string;
       entityId: number;
-      entityDisplayName: string | null;
+      entityDisplayName: string;
       isPrimary: boolean;
     }>;
     pendingLinkSuggestions: number;

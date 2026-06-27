@@ -26,6 +26,17 @@ export const DMS_AI_ORCH_STEPS = [
 
 export type DmsAiOrchestrationStepCode = (typeof DMS_AI_ORCH_STEPS)[number];
 
+/**
+ * Phase A informational steps: completed during upload and OCR phase.
+ * These should be marked "skipped" in the post-approval orchestration run
+ * because they were already completed before the human approval step.
+ */
+export const DMS_AI_ORCH_PHASE_A_STEPS: ReadonlyArray<DmsAiOrchestrationStepCode> = [
+  "upload_received",
+  "ocr_and_extraction",
+  "draft_ready",
+];
+
 /** Best-effort steps that may be retried individually. */
 export const DMS_AI_ORCH_BEST_EFFORT_STEPS: ReadonlyArray<DmsAiOrchestrationStepCode> = [
   "content_sync",
@@ -49,6 +60,7 @@ export type DmsAiOrchestrationStepStatus =
 
 export type DmsAiOrchestrationStatus =
   | "pending"              // not yet started
+  | "queued"               // Phase 9: enqueued in async job queue, worker will process
   | "running"              // pipeline in progress
   | "complete"             // all steps completed
   | "complete_with_warnings" // some best-effort steps failed

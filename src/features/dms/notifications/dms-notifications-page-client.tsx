@@ -82,9 +82,7 @@ export function DmsNotificationsPageClient({
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">DMS Notifications</h1>
-          <p className="text-sm text-muted-foreground">
-            In-app document expiry notifications with global email delivery via Microsoft 365.
-          </p>
+
         </div>
         {(isAdmin || canBridge) && (
           <div className="flex gap-2">
@@ -124,13 +122,6 @@ export function DmsNotificationsPageClient({
             )}
           </div>
         )}
-      </div>
-
-      {/* Bridge info notice */}
-      <div className="rounded-md border border-blue-200 bg-blue-50 dark:bg-blue-950/20 dark:border-blue-900 p-3 text-sm text-blue-800 dark:text-blue-300">
-        <strong>DMS.8A Active.</strong> Notifications are bridged to the global notification engine.
-        Click <strong>Bridge to Global</strong> to sync pending notifications, then <strong>Send Emails</strong> to deliver via Microsoft 365.
-        Check <a href="/admin/notifications/email-queue" className="underline font-medium">Email Queue</a> for detailed status.
       </div>
 
       <Tabs defaultValue="my">

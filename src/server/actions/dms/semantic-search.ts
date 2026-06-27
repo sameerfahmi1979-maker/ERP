@@ -59,7 +59,7 @@ function isAdminUser(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
   return hasPermission(ctx, "dms.admin") || ctx.roleCodes.includes("system_admin");
 }
 
-// ── Feature flag ──────────────────────────────────────────────────────────────
+// ── Feature flags ──────────────────────────────────────────────────────────────
 
 async function isSemanticSearchEnabled(): Promise<boolean> {
   try {
@@ -68,6 +68,20 @@ async function isSemanticSearchEnabled(): Promise<boolean> {
       .from("erp_ai_feature_flags")
       .select("is_enabled")
       .eq("feature_code", "DMS_SEMANTIC_SEARCH")
+      .single();
+    return (data as { is_enabled?: boolean } | null)?.is_enabled ?? false;
+  } catch {
+    return false;
+  }
+}
+
+async function isChunkSearchEnabled(): Promise<boolean> {
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("erp_ai_feature_flags")
+      .select("is_enabled")
+      .eq("feature_code", "DMS_SEMANTIC_SEARCH_CHUNKS")
       .single();
     return (data as { is_enabled?: boolean } | null)?.is_enabled ?? false;
   } catch {
@@ -574,6 +588,7 @@ export async function semanticSearchDmsDocuments(
     let queryEmbedding: number[] | null = null;
     let usedModel: string | null = null;
     let inputTokens: number | null = null;
+    let durationMs = 0;
     try {
       const emb = await provider.embedText(queryText, { model: modelId });
       queryEmbedding = emb.embedding;
@@ -584,41 +599,114 @@ export async function semanticSearchDmsDocuments(
     }
 
     const supabase = await createClient();
-    const { data, error } = await supabase.rpc("search_dms_documents_by_embedding", {
-      p_query_embedding: toVectorLiteral(queryEmbedding),
-      p_match_count: SEARCH_MAX_RESULTS,
-      p_match_threshold: MATCH_THRESHOLD,
-      p_is_admin: isAdmin,
-      p_exclude_document_id: null,
-    });
 
-    const durationMs = Date.now() - startMs;
+    // ── Phase 11: Try chunk-level search first, fall back to document-level ───
+    const useChunkSearch = await isChunkSearchEnabled();
+    let results: DmsSemanticSearchResult[] = [];
+    let usedChunkSearch = false;
 
-    if (error) {
-      return { success: false, error: "Semantic search query failed." };
+    if (useChunkSearch) {
+      try {
+        const { data: chunkData, error: chunkErr } = await supabase.rpc(
+          "search_dms_document_chunks_by_embedding",
+          {
+            p_query_embedding:  toVectorLiteral(queryEmbedding),
+            p_match_count:      SEARCH_MAX_RESULTS * 4, // fetch more to deduplicate
+            p_match_threshold:  MATCH_THRESHOLD,
+            p_is_admin:         isAdmin,
+            p_document_type_id: null,
+          }
+        );
+
+        if (!chunkErr && chunkData && (chunkData as unknown[]).length > 0) {
+          // Group by document_id — keep best (highest similarity) chunk per document
+          const chunkRows = chunkData as Array<{
+            chunk_id: number;
+            document_id: number;
+            document_no: string;
+            title: string;
+            chunk_index: number;
+            snippet: string;
+            similarity: number;
+            confidentiality_level: string | null;
+          }>;
+
+          const docMap = new Map<number, typeof chunkRows[number]>();
+          for (const row of chunkRows) {
+            const existing = docMap.get(row.document_id);
+            if (!existing || row.similarity > existing.similarity) {
+              docMap.set(row.document_id, row);
+            }
+          }
+
+          const topDocs = [...docMap.values()]
+            .sort((a, b) => b.similarity - a.similarity)
+            .slice(0, SEARCH_MAX_RESULTS);
+
+          if (topDocs.length > 0) {
+            results = topDocs.map((row) => {
+              const pct = Math.round(row.similarity * 100);
+              return {
+                documentId:        row.document_id,
+                documentNo:        row.document_no ?? "",
+                title:             row.title ?? "",
+                aiSummarySnippet:  null,
+                similarity:        row.similarity,
+                riskLevel:         null,
+                completenessScore: null,
+                expiryDate:        null,
+                matchReason:       `Chunk match — semantically similar to your query (${pct}% match)`,
+                chunkSnippet:      row.snippet?.slice(0, 250) ?? null,
+                searchMode:        "chunk" as const,
+              };
+            });
+            usedChunkSearch = true;
+          }
+        }
+      } catch {
+        // Chunk search failed (table may not exist yet) — fall through to document search
+      }
     }
 
-    const rows = (data ?? []) as Record<string, unknown>[];
-    const results: DmsSemanticSearchResult[] = rows.map((row) => {
-      const similarity = typeof row.similarity === "number" ? row.similarity : 0;
-      const pct = Math.round(similarity * 100);
-      const summary =
-        typeof row.ai_summary === "string" && row.ai_summary
-          ? (row.ai_summary as string).substring(0, 160) +
-            ((row.ai_summary as string).length > 160 ? "…" : "")
-          : null;
-      return {
-        documentId: row.document_id as number,
-        documentNo: (row.document_no as string) ?? "",
-        title: (row.title as string) ?? "",
-        aiSummarySnippet: summary,
-        similarity,
-        riskLevel: (row.ai_risk_level as string | null) ?? null,
-        completenessScore: typeof row.completeness_score === "number" ? row.completeness_score : null,
-        expiryDate: (row.expiry_date as string | null) ?? null,
-        matchReason: `Semantically similar to your query (${pct}% match)`,
-      };
-    });
+    // Fall back to document-level search if chunk search disabled or returned no results
+    if (!usedChunkSearch) {
+      const { data, error } = await supabase.rpc("search_dms_documents_by_embedding", {
+        p_query_embedding: toVectorLiteral(queryEmbedding),
+        p_match_count: SEARCH_MAX_RESULTS,
+        p_match_threshold: MATCH_THRESHOLD,
+        p_is_admin: isAdmin,
+        p_exclude_document_id: null,
+      });
+
+      if (error) {
+        return { success: false, error: "Semantic search query failed." };
+      }
+
+      const rows = (data ?? []) as Record<string, unknown>[];
+      results = rows.map((row) => {
+        const similarity = typeof row.similarity === "number" ? row.similarity : 0;
+        const pct = Math.round(similarity * 100);
+        const summary =
+          typeof row.ai_summary === "string" && row.ai_summary
+            ? (row.ai_summary as string).substring(0, 160) +
+              ((row.ai_summary as string).length > 160 ? "…" : "")
+            : null;
+        return {
+          documentId:        row.document_id as number,
+          documentNo:        (row.document_no as string) ?? "",
+          title:             (row.title as string) ?? "",
+          aiSummarySnippet:  summary,
+          similarity,
+          riskLevel:         (row.ai_risk_level as string | null) ?? null,
+          completenessScore: typeof row.completeness_score === "number" ? row.completeness_score : null,
+          expiryDate:        (row.expiry_date as string | null) ?? null,
+          matchReason:       `Semantically similar to your query (${pct}% match)`,
+          searchMode:        "document" as const,
+        };
+      });
+    }
+
+    durationMs = Date.now() - startMs;
 
     // Usage log (no query text)
     await supabase.from("erp_ai_usage_logs").insert({
@@ -634,6 +722,7 @@ export async function semanticSearchDmsDocuments(
         prompt_version: SEMANTIC_PROMPT_VERSION,
         query_char_count: queryText.length,
         result_count: results.length,
+        search_mode: usedChunkSearch ? "chunk" : "document",
       },
       created_by: ctx.profile.id,
       created_at: new Date().toISOString(),

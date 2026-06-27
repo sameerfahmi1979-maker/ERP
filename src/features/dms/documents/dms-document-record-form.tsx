@@ -572,6 +572,7 @@ function DmsDocumentRecordFormInner({
           {effectiveDocId ? (
             <DmsDocumentAiSection
               documentId={effectiveDocId}
+              documentTypeId={documentTypeId}
               canRun={
                 authContext.permissionCodes.includes("dms.documents.ai.run") ||
                 authContext.permissionCodes.includes("dms.documents.review_ai") ||
@@ -587,6 +588,21 @@ function DmsDocumentRecordFormInner({
                 authContext.roleCodes.includes("system_admin") ||
                 authContext.roleCodes.includes("group_admin")
               }
+              canApplyMetadata={
+                !isViewing && (
+                  authContext.permissionCodes.includes("dms.documents.edit") ||
+                  authContext.permissionCodes.includes("dms.documents.review_ai") ||
+                  authContext.permissionCodes.includes("dms.admin") ||
+                  authContext.roleCodes.includes("system_admin") ||
+                  authContext.roleCodes.includes("group_admin")
+                )
+              }
+              canProposeCorrection={
+                authContext.permissionCodes.includes("dms.apply_correction.create") ||
+                authContext.permissionCodes.includes("dms.apply_correction.admin") ||
+                authContext.roleCodes.includes("system_admin") ||
+                authContext.roleCodes.includes("group_admin")
+              }
             />
           ) : (
             <div className="py-6 text-center text-sm text-muted-foreground">
@@ -597,7 +613,10 @@ function DmsDocumentRecordFormInner({
 
         {/* ── Understanding (COMMON AI.2) ── */}
         <ERPRecordSectionPanel id="understanding" activeId={activeSection} lazyMount>
-          <DmsDocumentUnderstandingSection documentId={effectiveDocId ?? null} />
+          <DmsDocumentUnderstandingSection
+            documentId={effectiveDocId ?? null}
+            onNavigateToSection={setActiveSection}
+          />
         </ERPRecordSectionPanel>
 
         {/* ── Expiry ── */}

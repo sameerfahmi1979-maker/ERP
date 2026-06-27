@@ -491,6 +491,14 @@ const REGISTRY: WorkspaceRouteConfig[] = [
     singleton: true,
     moduleCode: "DMS",
   },
+  {
+    route: "/admin/dms/ai-observability",
+    title: "AI Observability",
+    icon: "CircleGauge",
+    tabKind: "list",
+    singleton: true,
+    moduleCode: "DMS",
+  },
 
   // ── DMS Document Repository (DMS.4) ───────────────────────────────────────
   {
@@ -579,6 +587,16 @@ const REGISTRY: WorkspaceRouteConfig[] = [
     moduleCode: "DMS",
     entityType: "dms_document",
     pattern: /^\/dms\/documents\/record\/\d+/,
+  },
+
+  // ── DMS Review Queue (DMS Phase 12) ──────────────────────────────────────────
+  {
+    route: "/dms/review-queue",
+    title: "Review Queue",
+    icon: "ClipboardList",
+    tabKind: "list",
+    singleton: true,
+    moduleCode: "DMS_REVIEW_QUEUE",
   },
 
   // ── DMS AI Intake Review (DMS.11) ──────────────────────────────────────────

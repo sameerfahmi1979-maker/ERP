@@ -37,6 +37,10 @@ import {
   regenerateDmsDocumentEmbedding,
   findSimilarDmsDocuments,
 } from "@/server/actions/dms/semantic-search";
+import {
+  getDmsDocumentSemanticIndexStatus,
+  enqueueDmsDocumentSemanticIndex,
+} from "@/server/actions/dms/intelligence-admin";
 import type {
   DmsDocumentEmbeddingStatusRow,
   DmsEmbeddingStatus,
@@ -76,6 +80,7 @@ export function DmsDocumentSemanticSection({
   const router = useRouter();
   const { openTab } = useWorkspace();
   const [working, setWorking] = useState(false);
+  const [chunkWorking, setChunkWorking] = useState(false);
   const [similarLoading, setSimilarLoading] = useState(false);
   const [similar, setSimilar] = useState<DmsSemanticSearchResult[] | null>(null);
   const [similarError, setSimilarError] = useState<string | null>(null);
@@ -91,6 +96,20 @@ export function DmsDocumentSemanticSection({
       const r = await getDmsDocumentEmbeddingStatus(documentId);
       if (!r.success) throw new Error(r.error ?? "Failed to load embedding status");
       return r.data ?? null;
+    },
+    staleTime: 30_000,
+    retry: false,
+  });
+
+  // Phase 11 — semantic chunk index status
+  const {
+    data: chunkStatus,
+    refetch: refetchChunks,
+  } = useQuery({
+    queryKey: ["dms", "documents", documentId, "chunk-index"] as const,
+    queryFn: async () => {
+      const r = await getDmsDocumentSemanticIndexStatus(documentId);
+      return r.success ? (r.data ?? null) : null;
     },
     staleTime: 30_000,
     retry: false,
@@ -136,6 +155,25 @@ export function DmsDocumentSemanticSection({
       setSimilarError(String(e));
     } finally {
       setSimilarLoading(false);
+    }
+  }
+
+  async function handleRebuildChunkIndex() {
+    setChunkWorking(true);
+    try {
+      const result = await enqueueDmsDocumentSemanticIndex(documentId, false);
+      if (!result.success) {
+        toast.error(result.error ?? "Failed to enqueue semantic index job.");
+      } else if (result.data?.skipped) {
+        toast.info("Semantic index job already queued or running.");
+      } else {
+        toast.success("Semantic index job enqueued.");
+        await refetchChunks();
+      }
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      setChunkWorking(false);
     }
   }
 
@@ -314,6 +352,54 @@ export function DmsDocumentSemanticSection({
                 </div>
               )}
             </>
+          )}
+        </div>
+      )}
+
+      {/* Phase 11 — Semantic Chunk Index Status */}
+      {chunkStatus !== null && chunkStatus !== undefined && (
+        <div className="rounded-md border border-border/60 bg-muted/30 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-3.5 w-3.5 text-violet-500" />
+              <span className="text-xs font-semibold text-foreground">Semantic Chunk Index</span>
+              {chunkStatus.isStale && (
+                <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-600">Stale</Badge>
+              )}
+            </div>
+            {canGenerate && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={handleRebuildChunkIndex}
+                disabled={chunkWorking}
+              >
+                {chunkWorking ? (
+                  <RefreshCw className="h-3 w-3 mr-1.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3 w-3 mr-1.5" />
+                )}
+                Rebuild Index
+              </Button>
+            )}
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            {(["totalChunks", "embeddedChunks", "pendingChunks", "failedChunks"] as const).map((k) => {
+              const labels = { totalChunks: "Total", embeddedChunks: "Embedded", pendingChunks: "Pending", failedChunks: "Failed" };
+              const colors = { totalChunks: "text-foreground", embeddedChunks: "text-green-600", pendingChunks: "text-amber-600", failedChunks: "text-destructive" };
+              return (
+                <div key={k} className="bg-background rounded p-2 text-center">
+                  <div className={`text-base font-bold ${colors[k]}`}>{chunkStatus[k]}</div>
+                  <div className="text-[10px] text-muted-foreground">{labels[k]}</div>
+                </div>
+              );
+            })}
+          </div>
+          {chunkStatus.totalChunks === 0 && (
+            <p className="text-xs text-muted-foreground">
+              No semantic chunks indexed yet. Enable DMS_SEMANTIC_CHUNKING and enqueue a rebuild.
+            </p>
           )}
         </div>
       )}

@@ -109,18 +109,6 @@ export function AiSettingsPageClient({
         />
       </div>
 
-      {/* Security notice */}
-      <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/20 p-4">
-        <div className="flex items-start gap-3">
-          <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-          <div className="text-sm text-amber-800 dark:text-amber-200">
-            <span className="font-semibold">Security: </span>
-            API keys are never stored in the database. Only a masked preview is shown after saving.
-            Keys are resolved from environment variables at runtime (server-side only).
-          </div>
-        </div>
-      </div>
-
       {/* Tabs */}
       <Tabs defaultValue="providers" className="w-full">
         <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:grid-cols-none lg:flex">

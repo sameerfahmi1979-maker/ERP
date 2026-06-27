@@ -16,6 +16,7 @@ import type {
   DmsSuggestedLink,
   ConfidenceLabel,
 } from "./types";
+import { parseExtendedClassification } from "./classification-output";
 
 export interface ValidateResult {
   ok: boolean;
@@ -132,15 +133,27 @@ export function validateAiOutput(rawText: string): ValidateResult {
   // ── Classification ────────────────────────────────────────────────────────
   const rawClass = (parsed.classification ?? {}) as Record<string, unknown>;
   const classScore = safeConfidence(rawClass.confidence_score);
+  const confidenceLabel = safeConfidenceLabel(rawClass.confidence_label, classScore);
+  const suggestedTypeCode =
+    typeof rawClass.suggested_type_code === "string" && rawClass.suggested_type_code
+      ? rawClass.suggested_type_code
+      : null;
+  const extended = parseExtendedClassification(
+    rawClass,
+    classScore,
+    confidenceLabel,
+    suggestedTypeCode
+  );
   const classification: DmsClassificationResult = {
-    suggestedTypeCode:
-      typeof rawClass.suggested_type_code === "string" && rawClass.suggested_type_code
-        ? rawClass.suggested_type_code
-        : null,
-    suggestedTypeId: null, // resolved later from DB lookup
+    suggestedTypeCode,
+    suggestedTypeId: null,
     confidenceScore: classScore,
-    confidenceLabel: safeConfidenceLabel(rawClass.confidence_label, classScore),
+    confidenceLabel,
     reason: typeof rawClass.reason === "string" ? rawClass.reason.slice(0, 500) : "",
+    alternativeDocumentTypes: extended.alternativeDocumentTypes,
+    classificationEvidence: extended.classificationEvidence,
+    needsHumanReview: extended.needsHumanReview,
+    reviewReason: extended.reviewReason,
   };
 
   // ── Field extraction ──────────────────────────────────────────────────────

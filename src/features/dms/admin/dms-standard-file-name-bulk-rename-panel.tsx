@@ -71,28 +71,83 @@ export function DmsStandardFileNameBulkRenamePanel() {
       </div>
 
       {lastResult && (
-        <div className="text-xs space-y-2 border-t pt-3">
-          <p>
-            Processed {lastResult.processed} · Updated {lastResult.updated} · Skipped{" "}
-            {lastResult.skipped}
-            {lastResult.errors.length > 0 ? ` · Errors ${lastResult.errors.length}` : ""}
-          </p>
+        <div className="text-xs space-y-3 border-t pt-3">
+          {/* Stats bar */}
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            <span>Processed <strong>{lastResult.processed}</strong></span>
+            <span className="text-green-600 dark:text-green-400">
+              Updated <strong>{lastResult.updated}</strong>
+            </span>
+            <span className="text-muted-foreground">
+              Skipped <strong>{lastResult.skipped}</strong>
+            </span>
+            {lastResult.qualitySkipped > 0 && (
+              <span className="text-amber-600 dark:text-amber-400 font-medium">
+                ⚠ Quality-blocked <strong>{lastResult.qualitySkipped}</strong>
+                {" "}(rename would lose owner/doc-no — left unchanged)
+              </span>
+            )}
+            {lastResult.errors.length > 0 && (
+              <span className="text-destructive">
+                Errors <strong>{lastResult.errors.length}</strong>
+              </span>
+            )}
+          </div>
+
+          {/* Errors list */}
+          {lastResult.errors.length > 0 && (
+            <div className="rounded bg-destructive/10 p-2 space-y-0.5">
+              {lastResult.errors.slice(0, 5).map((e, i) => (
+                <p key={i} className="text-destructive font-mono">{e}</p>
+              ))}
+              {lastResult.errors.length > 5 && (
+                <p className="text-muted-foreground">…and {lastResult.errors.length - 5} more</p>
+              )}
+            </div>
+          )}
+
+          {/* Rename preview table */}
           {lastResult.samples.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-[11px]">
-                <thead>
-                  <tr className="text-left text-muted-foreground">
-                    <th className="pr-2 pb-1">Doc</th>
-                    <th className="pr-2 pb-1">Before</th>
-                    <th className="pb-1">After</th>
+            <div className="overflow-auto max-h-80 rounded border border-border/40">
+              <table className="w-full text-[11px] min-w-[640px]">
+                <thead className="sticky top-0 bg-card">
+                  <tr className="text-left text-muted-foreground border-b border-border/40">
+                    <th className="px-2 py-1.5 whitespace-nowrap">Doc</th>
+                    <th className="px-2 py-1.5">Before</th>
+                    <th className="px-2 py-1.5">After</th>
+                    <th className="px-2 py-1.5 whitespace-nowrap">Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {lastResult.samples.map((s) => (
-                    <tr key={s.documentId} className="border-t border-border/40">
-                      <td className="py-1 pr-2 font-mono">#{s.documentId}</td>
-                      <td className="py-1 pr-2 max-w-[180px] truncate">{s.oldName}</td>
-                      <td className="py-1 max-w-[220px] truncate font-medium">{s.newName}</td>
+                    <tr
+                      key={s.documentId}
+                      className={
+                        s.qualityIssue
+                          ? "border-t border-border/40 bg-amber-50/50 dark:bg-amber-950/20"
+                          : "border-t border-border/40"
+                      }
+                    >
+                      <td className="px-2 py-1 font-mono whitespace-nowrap">#{s.documentId}</td>
+                      <td className="px-2 py-1 max-w-[220px] truncate text-muted-foreground">
+                        {s.oldName}
+                      </td>
+                      <td className={`px-2 py-1 max-w-[260px] truncate font-medium ${
+                        s.qualityIssue
+                          ? "text-amber-700 dark:text-amber-400 line-through"
+                          : ""
+                      }`}>
+                        {s.newName}
+                      </td>
+                      <td className="px-2 py-1 whitespace-nowrap">
+                        {s.qualityIssue ? (
+                          <span className="text-amber-600 dark:text-amber-400">
+                            ⚠ Skipped ({s.qualityIssue})
+                          </span>
+                        ) : (
+                          <span className="text-green-600 dark:text-green-400">✓ Will rename</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

@@ -17,6 +17,7 @@ interface DmsAiIntakeFieldRowProps {
   confidenceLabel?: string | null;
   confidenceScore?: number | null;
   sourceSnippet?: string | null;
+  reviewWarning?: string | null;
   children: React.ReactNode;
   className?: string;
 }
@@ -28,6 +29,7 @@ export function DmsAiIntakeFieldRow({
   confidenceLabel,
   confidenceScore,
   sourceSnippet,
+  reviewWarning,
   children,
   className,
 }: DmsAiIntakeFieldRowProps) {
@@ -71,7 +73,12 @@ export function DmsAiIntakeFieldRow({
       >
         {children}
       </div>
-      {isLowConfidence && (
+      {reviewWarning && (
+        <p className="text-[11px] text-orange-600 dark:text-orange-400 font-medium">
+          ⚠ {reviewWarning}
+        </p>
+      )}
+      {isLowConfidence && !reviewWarning && (
         <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
           ⚠ Needs Review — AI confidence is low
         </p>

@@ -27,6 +27,7 @@ const SOURCE_LABELS: Record<string, string> = {
   ai_summary: "AI Summary",
   metadata: "Document Metadata",
   not_found: "Not Found",
+  chunk_text: "Semantic Chunks",
 };
 
 type ChatMessage =
@@ -175,6 +176,25 @@ export function DmsDocumentAskAiSection({
                         <p className="text-sm leading-relaxed whitespace-pre-wrap">
                           {msg.answer.answer}
                         </p>
+                        {msg.answer.chunkCitations && msg.answer.chunkCitations.length > 0 && (
+                          <div className="space-y-1 pt-1 border-t border-border/60">
+                            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                              Chunk citations
+                            </p>
+                            {msg.answer.chunkCitations.map((citation) => (
+                              <p
+                                key={citation.chunkIndex}
+                                className="text-[11px] text-muted-foreground line-clamp-2"
+                              >
+                                <span className="font-mono text-purple-600 dark:text-purple-400">
+                                  #{citation.chunkIndex}
+                                </span>
+                                {" — "}
+                                {citation.snippet}
+                              </p>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

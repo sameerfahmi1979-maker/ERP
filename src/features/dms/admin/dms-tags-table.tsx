@@ -9,6 +9,10 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { RequiredLabel } from "@/components/erp/required-label";
+import { SortColHeader } from "@/components/erp/table/sort-col-header";
+import { TablePagination } from "@/components/erp/table/table-pagination";
+import { TableSearchInput } from "@/components/erp/table/table-search-input";
+import { useSortPaginate } from "@/hooks/use-sort-paginate";
 import { Tag, PlusCircle, Pencil, Power, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -76,6 +80,16 @@ export function DmsTagsTable({ rows, authContext }: Props) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DmsTagRow | null>(null);
 
+  const table = useSortPaginate(rows, {
+    defaultSortKey: "tag_name",
+    defaultSortDir: "asc",
+    defaultPageSize: 25,
+    getSearchText: (r) => [r.tag_name, r.tag_code ?? "", r.color_hex ?? ""].join(" "),
+    comparators: {
+      document_count: (a, b) => (a.document_count ?? 0) - (b.document_count ?? 0),
+    },
+  });
+
   const openAdd = () => {
     setEditing(null);
     setForm({ ...emptyForm });
@@ -137,37 +151,46 @@ export function DmsTagsTable({ rows, authContext }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{rows.length} {rows.length === 1 ? "tag" : "tags"}</p>
-        {manage && (
-          <Button onClick={openAdd} size="sm">
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Add Tag
-          </Button>
-        )}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <p className="text-sm text-muted-foreground">
+          {table.total !== rows.length
+            ? `${table.total} of ${rows.length} ${rows.length === 1 ? "tag" : "tags"}`
+            : `${rows.length} ${rows.length === 1 ? "tag" : "tags"}`}
+        </p>
+        <div className="flex items-center gap-2">
+          <TableSearchInput value={table.query} onChange={table.setQuery} placeholder="Search tags…" className="w-48" />
+          {manage && (
+            <Button onClick={openAdd} size="sm">
+              <PlusCircle className="mr-2 h-4 w-4" />
+              Add Tag
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="rounded-md border overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 border-b">
             <tr>
-              <th className="text-left px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">Tag</th>
-              <th className="text-left px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground hidden sm:table-cell">Code</th>
+              <SortColHeader field="tag_name" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort}>Tag</SortColHeader>
+              <SortColHeader field="tag_code" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="hidden sm:table-cell">Code</SortColHeader>
               <th className="text-center px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">Color</th>
-              <th className="text-center px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">System</th>
-              <th className="text-center px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">Docs</th>
-              <th className="text-center px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground">Status</th>
-              <th className="text-center px-4 py-2.5 font-medium text-xs uppercase tracking-wide text-muted-foreground hidden md:table-cell">Updated</th>
+              <SortColHeader field="is_system" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">System</SortColHeader>
+              <SortColHeader field="document_count" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">Docs</SortColHeader>
+              <SortColHeader field="is_active" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">Status</SortColHeader>
+              <SortColHeader field="updated_at" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center" className="hidden md:table-cell">Updated</SortColHeader>
               {manage && <th className="px-4 py-2.5 w-24" />}
             </tr>
           </thead>
           <tbody className="divide-y divide-border/50">
-            {rows.length === 0 && (
+            {table.rows.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground text-sm">No tags found</td>
+                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground text-sm">
+                  {table.query ? "No tags match your search" : "No tags found"}
+                </td>
               </tr>
             )}
-            {rows.map((row) => (
+            {table.rows.map((row) => (
               <tr key={row.id} className="hover:bg-muted/25 transition-colors">
                 <td className="px-4 py-2.5">
                   <div className="flex items-center gap-2">
@@ -229,6 +252,14 @@ export function DmsTagsTable({ rows, authContext }: Props) {
             ))}
           </tbody>
         </table>
+        <TablePagination
+          page={table.page}
+          totalPages={table.totalPages}
+          onPage={table.setPage}
+          pageSize={table.pageSize}
+          onPageSize={table.setPageSize}
+          total={table.total}
+        />
       </div>
 
       <ERPChildDialogForm

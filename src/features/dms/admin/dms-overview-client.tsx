@@ -81,34 +81,8 @@ export function DmsOverviewClient({ stats }: Props) {
     },
   ];
 
-  const phaseStatus = [
-    { phase: "DMS.2", label: "Database Foundation", status: "done" },
-    { phase: "DMS.3", label: "Admin Masters", status: "current" },
-    { phase: "DMS.4", label: "Document Repository List", status: "next" },
-    { phase: "DMS.5", label: "Document Upload", status: "planned" },
-    { phase: "DMS.6", label: "Party Documents Migration", status: "planned" },
-  ];
-
   return (
     <div className="space-y-6">
-      {/* Info banners */}
-      <div className="space-y-2">
-        <div className="flex items-start gap-2 p-3 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs">
-          <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-          <div>
-            <strong>party_document_types</strong> remains active until the Party Documents migration in DMS.6.
-            New document types should only be managed from{" "}
-            <Link href="/admin/dms/document-types" className="underline font-medium">DMS Document Types</Link>.
-          </div>
-        </div>
-        <div className="flex items-start gap-2 p-3 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-300 text-xs">
-          <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-          <div>
-            DMS document upload and repository list are coming in <strong>DMS.4 / DMS.5</strong>.
-            This admin area manages the master data that will power the document repository.
-          </div>
-        </div>
-      </div>
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
@@ -136,31 +110,6 @@ export function DmsOverviewClient({ stats }: Props) {
             </Link>
           );
         })}
-      </div>
-
-      {/* Phase Timeline */}
-      <div className="rounded-lg border border-border/50 bg-card p-4">
-        <h3 className="text-sm font-semibold text-foreground mb-3">DMS Phase Progress</h3>
-        <div className="flex flex-wrap items-center gap-2">
-          {phaseStatus.map((p, i) => (
-            <div key={p.phase} className="flex items-center gap-2">
-              <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium ${
-                p.status === "done"
-                  ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                  : p.status === "current"
-                  ? "bg-primary/10 text-primary border border-primary/30"
-                  : "bg-muted text-muted-foreground"
-              }`}>
-                {p.status === "done" && <CheckCircle2 className="h-3 w-3" />}
-                <span className="font-mono text-[10px]">{p.phase}</span>
-                <span>{p.label}</span>
-              </div>
-              {i < phaseStatus.length - 1 && (
-                <ArrowRight className="h-3 w-3 text-muted-foreground/40 shrink-0" />
-              )}
-            </div>
-          ))}
-        </div>
       </div>
 
       <DmsStandardFileNameBulkRenamePanel />

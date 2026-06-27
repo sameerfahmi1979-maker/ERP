@@ -6,6 +6,10 @@ import { RefreshCw, Layers, ArrowRight, Inbox } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { SortColHeader } from "@/components/erp/table/sort-col-header";
+import { TablePagination } from "@/components/erp/table/table-pagination";
+import { TableSearchInput } from "@/components/erp/table/table-search-input";
+import { useSortPaginate } from "@/hooks/use-sort-paginate";
 import type { DmsUploadBatchListRow } from "@/server/actions/dms/batch-intake";
 
 interface Props {
@@ -39,6 +43,19 @@ export function DmsBatchListClient({ initialBatches }: Props) {
   const [batches] = useState<DmsUploadBatchListRow[]>(initialBatches);
   const [isPending, startTransition] = useTransition();
 
+  const table = useSortPaginate(batches, {
+    defaultSortKey: "created_at",
+    defaultSortDir: "desc",
+    defaultPageSize: 25,
+    getSearchText: (b) => [b.batch_code, b.status].join(" "),
+    comparators: {
+      total_files: (a, b) => a.total_files - b.total_files,
+      pendingCount: (a, b) => a.pendingCount - b.pendingCount,
+      approvedCount: (a, b) => a.approvedCount - b.approvedCount,
+      discardedCount: (a, b) => a.discardedCount - b.discardedCount,
+    },
+  });
+
   const refresh = useCallback(() => {
     startTransition(() => router.refresh());
   }, [router]);
@@ -52,38 +69,43 @@ export function DmsBatchListClient({ initialBatches }: Props) {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-sm text-muted-foreground">
-          {batches.length} {batches.length === 1 ? "batch" : "batches"}
+          {table.total !== batches.length
+            ? `${table.total} of ${batches.length} batches`
+            : `${batches.length} ${batches.length === 1 ? "batch" : "batches"}`}
         </p>
-        <Button size="sm" variant="outline" onClick={refresh} disabled={isPending}>
-          <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", isPending && "animate-spin")} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <TableSearchInput value={table.query} onChange={table.setQuery} placeholder="Search batches…" className="w-48" />
+          <Button size="sm" variant="outline" onClick={refresh} disabled={isPending}>
+            <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", isPending && "animate-spin")} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       <div className="rounded-xl border bg-card overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-muted/40 text-xs text-muted-foreground">
             <tr>
-              <th className="text-left font-medium px-3 py-2">Batch</th>
-              <th className="text-left font-medium px-3 py-2">Status</th>
-              <th className="text-right font-medium px-3 py-2">Files</th>
-              <th className="text-right font-medium px-3 py-2">Pending</th>
-              <th className="text-right font-medium px-3 py-2">Approved</th>
-              <th className="text-right font-medium px-3 py-2">Discarded</th>
-              <th className="text-left font-medium px-3 py-2">Created</th>
+              <SortColHeader field="batch_code" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2">Batch</SortColHeader>
+              <SortColHeader field="status" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2">Status</SortColHeader>
+              <SortColHeader field="total_files" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="right" className="px-3 py-2">Files</SortColHeader>
+              <SortColHeader field="pendingCount" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="right" className="px-3 py-2">Pending</SortColHeader>
+              <SortColHeader field="approvedCount" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="right" className="px-3 py-2">Approved</SortColHeader>
+              <SortColHeader field="discardedCount" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="right" className="px-3 py-2">Discarded</SortColHeader>
+              <SortColHeader field="created_at" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2">Created</SortColHeader>
               <th className="text-right font-medium px-3 py-2">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {batches.length === 0 && (
+            {table.rows.length === 0 && (
               <tr>
                 <td colSpan={8} className="px-3 py-12 text-center text-sm text-muted-foreground">
                   <Inbox className="h-6 w-6 mx-auto mb-2 opacity-40" />
-                  No upload batches yet. Use the Upload Inbox in &quot;Multiple Files (Batch)&quot; mode to create one.
+                  {table.query ? "No batches match your search." : "No upload batches yet. Use the Upload Inbox in \"Multiple Files (Batch)\" mode to create one."}
                 </td>
               </tr>
             )}
-            {batches.map((b) => (
+            {table.rows.map((b) => (
               <tr
                 key={b.id}
                 className="border-t hover:bg-muted/20 cursor-pointer"
@@ -135,6 +157,14 @@ export function DmsBatchListClient({ initialBatches }: Props) {
             ))}
           </tbody>
         </table>
+        <TablePagination
+          page={table.page}
+          totalPages={table.totalPages}
+          onPage={table.setPage}
+          pageSize={table.pageSize}
+          onPageSize={table.setPageSize}
+          total={table.total}
+        />
       </div>
     </div>
   );

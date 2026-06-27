@@ -59,6 +59,17 @@ export interface OcrResult {
   language?: string;
   /** Human-readable provider model/version string. */
   model?: string;
+  // ── Phase 10A — OCR router additions (all optional) ────────────────────────
+  /** How the document content was classified by the router. */
+  sourceKind?: "digital" | "scanned" | "image" | "office" | "unknown";
+  /** True when the extracted text was truncated to the storage cap. */
+  isTruncated?: boolean;
+  /** Safe, non-sensitive warnings (never contain document content). */
+  warnings?: string[];
+  /** True when Azure failed and GPT-4.1 vision was used as a fallback. */
+  fallbackUsed?: boolean;
+  /** Internal extraction method identifier (e.g. "pdf-text-layer", "azure-di", "gpt-vision"). */
+  method?: string;
 }
 
 // ── Provider interface ─────────────────────────────────────────────────────────

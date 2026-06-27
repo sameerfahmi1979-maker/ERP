@@ -290,6 +290,59 @@ export function invalidateDmsAiAnalysis(queryClient: QueryClient, documentId: nu
   void queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId, "ai-status"] });
   void queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId, "ai-results"] });
   void queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId, "record"] });
+  void queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId, "ai-apply-history"] });
+}
+
+// ── DMS AI Phase 16 — Apply-to-ERP ───────────────────────────────────────────
+
+export function invalidateDmsApplyToErp(queryClient: QueryClient, documentId: number): void {
+  void queryClient.invalidateQueries({ queryKey: ["dms", "apply-to-erp", "runs"] });
+  void queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId, "apply-to-erp-preview"] });
+  // Also invalidate the document record itself since FK/basic fields may have changed
+  void queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId, "record"] });
+}
+
+export function invalidateDmsApplyToErpRun(queryClient: QueryClient, runId: number): void {
+  void queryClient.invalidateQueries({ queryKey: ["dms", "apply-to-erp", "run", runId] });
+}
+
+export function invalidateDmsReviewQueueForApply(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: ["dms", "review-queue"] });
+}
+
+// ── DMS AI Phase 17 — Apply Correction ───────────────────────────────────────
+
+/** Invalidate all correction proposals (optionally filter by documentId). */
+export function invalidateDmsApplyCorrections(
+  queryClient: QueryClient,
+  documentId?: number
+): void {
+  void queryClient.invalidateQueries({ queryKey: ["dms", "apply-correction", "proposals"] });
+  if (documentId != null) {
+    void queryClient.invalidateQueries({
+      queryKey: ["dms", "apply-correction", "proposals", { documentId }],
+    });
+  }
+}
+
+/** Invalidate a single correction proposal. */
+export function invalidateDmsApplyCorrectionProposal(
+  queryClient: QueryClient,
+  proposalId: number
+): void {
+  void queryClient.invalidateQueries({
+    queryKey: ["dms", "apply-correction", "proposal", proposalId],
+  });
+}
+
+/** Invalidate correction source cache for an apply item. */
+export function invalidateDmsApplyCorrectionSource(
+  queryClient: QueryClient,
+  applyItemId: number
+): void {
+  void queryClient.invalidateQueries({
+    queryKey: ["dms", "apply-correction", "source", applyItemId],
+  });
 }
 
 // ── DMS.9 — OCR Pipeline ─────────────────────────────────────────────────────
@@ -298,6 +351,7 @@ export function invalidateDmsOcr(queryClient: QueryClient, documentId: number): 
   void queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId, "ocr-status"] });
   void queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId, "ocr-text"] });
   void queryClient.invalidateQueries({ queryKey: ["dms", "ocr-jobs"] });
+  invalidateDmsDocumentUnderstanding(queryClient, documentId);
 }
 
 export function invalidateDmsFileOcr(queryClient: QueryClient, fileId: number): void {

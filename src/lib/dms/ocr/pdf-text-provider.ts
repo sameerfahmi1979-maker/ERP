@@ -1,6 +1,10 @@
 /**
  * DMS.9 — PDF Text Layer Provider
  *
+ * Phase 1 inventory (2026-06-21): UNUSED — not imported by factory or OCR pipeline.
+ * Active OCR uses GPT-4.1 vision via triggerDmsOcrForFile. Retained for a future
+ * local/pdf-text fast path; do not wire without a dedicated phase prompt.
+ *
  * Extracts embedded text from digital PDFs using pdf-parse v1 (pure JS, no
  * native binaries, no web worker required). Works only for PDFs that already
  * contain a text layer (i.e. digitally-created PDFs). Scanned-image PDFs

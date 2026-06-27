@@ -14,16 +14,23 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
 import { getDmsAiProvider } from "@/lib/dms/ai/factory";
+import { upsertDmsReviewQueueItem, isDmsAiReviewEnabled } from "@/lib/dms/review-queue/review-queue-upsert";
+import { logger } from "@/lib/logger";
 import { hashOcrText, PROMPT_VERSION } from "@/lib/dms/ai/prompt-builders";
 import type {
   DmsAiDocumentTypeCandidate,
   DmsAiImageFile,
   DmsAiMetadataField,
   DmsAiOutput,
+  DmsClassificationCandidatePacket,
 } from "@/lib/dms/ai/types";
 import { revalidatePath } from "next/cache";
 import { extractFileContent } from "@/lib/dms/file-content-extractor";
 import { persistFileOcrResult } from "@/lib/dms/ocr/persist-file-ocr-result";
+import { loadMetadataFieldsForDocumentType } from "@/lib/dms/ai/load-metadata-fields";
+import { buildClassificationCandidates } from "@/lib/dms/ai/classification-candidate-builder";
+import { buildSanitizedClassificationPayload } from "@/lib/dms/ai/classification-output";
+import { logDmsAiUsage } from "@/lib/ai/observability/log-dms-ai-usage";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -416,37 +423,41 @@ export async function runDmsAiAnalysisForDocument(
     }
 
     // Load document type candidates for classification
-    const { data: typeRows } = await supabase
-      .from("dms_document_types")
-      .select("id, type_code, name_en, description, category_id")
-      .eq("is_active", true)
-      .is("deleted_at", null)
-      .limit(30);
+    const docTypeId = doc.document_type_id as number | null;
+    const useMetadataAwareClassification = !docTypeId;
 
-    const typeCandidates: DmsAiDocumentTypeCandidate[] = (typeRows ?? []).map((t) => ({
-      typeCode: t.type_code as string,
-      nameEn: t.name_en as string,
-      description: (t.description as string | null) ?? null,
-      categoryName: null,
-    }));
+    let typeCandidates: DmsAiDocumentTypeCandidate[] = [];
+    let classificationPackets: DmsClassificationCandidatePacket[] | undefined;
+    let typeRows: Array<{ id: number; type_code: string; name_en?: string }> = [];
 
-    // Load metadata fields for current document type
-    const { data: metaRows } = await supabase
-      .from("dms_metadata_definitions")
-      .select("field_code, field_label_en, field_type, is_required, is_ai_extractable, ai_field_hint, options_json")
-      .eq("document_type_id", doc.document_type_id as number)
-      .eq("is_ai_extractable", true)
-      .eq("is_active", true)
-      .order("sort_order");
+    if (useMetadataAwareClassification) {
+      const built = await buildClassificationCandidates(supabase, combinedOcr);
+      typeCandidates = built.typeCandidates;
+      classificationPackets = built.packets;
+      typeRows = built.scoredTypes.map((s) => ({
+        id: s.id,
+        type_code: s.type_code,
+        name_en: s.name_en,
+      }));
+    } else {
+      const { data: rows } = await supabase
+        .from("dms_document_types")
+        .select("id, type_code, name_en, description, category_id")
+        .eq("is_active", true)
+        .is("deleted_at", null)
+        .limit(30);
+      typeRows = (rows ?? []) as Array<{ id: number; type_code: string; name_en?: string }>;
+      typeCandidates = typeRows.map((t) => ({
+        typeCode: t.type_code as string,
+        nameEn: (t.name_en as string) ?? t.type_code,
+        description: null,
+        categoryName: null,
+      }));
+    }
 
-    const metadataFields: DmsAiMetadataField[] = (metaRows ?? []).map((f) => ({
-      fieldCode: f.field_code as string,
-      labelEn: f.field_label_en as string,
-      fieldType: f.field_type as string,
-      isRequired: f.is_required as boolean,
-      aiFieldHint: (f.ai_field_hint as string | null) ?? null,
-      optionsJson: f.options_json ?? null,
-    }));
+    const metadataFields: DmsAiMetadataField[] = docTypeId
+      ? await loadMetadataFieldsForDocumentType(supabase, docTypeId, "analysis")
+      : [];
 
     // Get current type code
     const currentType = typeCandidates.find((t) => {
@@ -494,6 +505,7 @@ export async function runDmsAiAnalysisForDocument(
         currentTypeCode: currentType?.typeCode ?? null,
         typeCandidates,
         metadataFields,
+        classificationPackets,
       });
     } catch (err) {
       aiError = String(err);
@@ -501,6 +513,29 @@ export async function runDmsAiAnalysisForDocument(
 
     const durationMs = Date.now() - startMs;
     const completedAt = new Date().toISOString();
+
+    // Log AI usage (non-fatal)
+    void logDmsAiUsage({
+      providerConfigId: configId ?? null,
+      featureArea: "DMS_AI_ANALYSIS",
+      operationType: "classify_extract",
+      modelId: provider.modelId,
+      status: aiError ? "failed" : "success",
+      inputTokenCount: aiOutput?.promptTokens ?? null,
+      outputTokenCount: aiOutput?.completionTokens ?? null,
+      durationMs,
+      errorMessage: aiError,
+      documentId,
+      createdBy: ctx.profile.id,
+      metadata: {
+        prompt_version: PROMPT_VERSION,
+        document_type_id: doc.document_type_id as number | null,
+        suggested_document_type_id: aiOutput?.classification?.suggestedTypeId ?? null,
+        input_char_count: combinedOcr.length + imageFiles.length * 500,
+        image_file_count: imageFiles.length,
+        text_file_count: ocrParts.length,
+      },
+    });
 
     if (aiError || !aiOutput) {
       await supabase
@@ -557,13 +592,27 @@ export async function runDmsAiAnalysisForDocument(
     // Sanitize raw response (remove any keys that might contain large text)
     const sanitizedResponse = aiOutput.rawResponse
       ? {
-          classification: aiOutput.rawResponse.classification,
+          classification: buildSanitizedClassificationPayload(
+            aiOutput.rawResponse.classification as Record<string, unknown> | undefined,
+            aiOutput.classification.confidenceScore,
+            aiOutput.classification.confidenceLabel,
+            aiOutput.classification.suggestedTypeCode,
+            aiOutput.classification.reason ?? ""
+          ),
           suggested_title: aiOutput.rawResponse.suggested_title,
           suggested_description: aiOutput.rawResponse.suggested_description,
           fields: (aiOutput.rawResponse.fields as unknown[])?.length ?? 0,
           warnings: aiOutput.rawResponse.warnings,
         }
-      : null;
+      : {
+          classification: buildSanitizedClassificationPayload(
+            undefined,
+            aiOutput.classification.confidenceScore,
+            aiOutput.classification.confidenceLabel,
+            aiOutput.classification.suggestedTypeCode,
+            aiOutput.classification.reason ?? ""
+          ),
+        };
 
     // Store result
     const { data: result, error: resultErr } = await supabase
@@ -675,6 +724,45 @@ export async function runDmsAiAnalysisForDocument(
     });
 
     revalidatePath(`/dms/documents/record/${documentId}`);
+
+    // ── Phase 12: Non-fatal review queue generation hook ─────────────────────
+    // Creates one result-level review queue item for AI analysis results
+    // that require human review. NEVER blocks the analysis workflow.
+    if (resultId) {
+      try {
+        const reviewEnabled = await isDmsAiReviewEnabled();
+        if (reviewEnabled) {
+          const confScore = aiOutput.classification.confidenceScore ?? 1;
+          const confLabel = aiOutput.classification.confidenceLabel;
+          const needsReview = aiOutput.classification.needsHumanReview || confScore < 0.6;
+
+          if (needsReview) {
+            await upsertDmsReviewQueueItem({
+              idempotencyKey:  `ai_analysis:${resultId}:result`,
+              reviewType:      "ai_analysis_metadata_review",
+              sourceType:      "ai_analysis",
+              sourceId:        String(resultId),
+              documentId,
+              aiResultId:      resultId,
+              reasonCode:      "ai_analysis_pending_review",
+              reasonMessage:   `AI analysis result ${resultId} has ${confLabel} confidence (${(confScore * 100).toFixed(0)}%) and requires review.`,
+              confidence:      confScore,
+              priority:        confScore < 0.4 ? "high" : "normal",
+              payloadJson: {
+                ai_result_id:        resultId,
+                document_id:         documentId,
+                suggested_type_code: suggestedTypeCode,
+                confidence_label:    confLabel,
+                confidence_score:    confScore,
+              },
+              createdBy: ctx.profile.id,
+            });
+          }
+        }
+      } catch (hookErr) {
+        logger.warn("[ai-analysis] review queue hook failed (non-fatal)", { documentId, resultId, error: String(hookErr).slice(0, 200) });
+      }
+    }
 
     const fieldCount = aiOutput.extraction.fields.length;
     return {
@@ -790,6 +878,651 @@ export async function markDmsAiResultSuperseded(
 
     revalidatePath(`/dms/documents/record/${result.document_id}`);
     return { success: true, data: { result_id: resultId } };
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
+}
+
+// ── applyAiAnalysisToMetadata ─────────────────────────────────────────────────
+
+export type ApplyAiMetadataSelection = {
+  definitionId: number;
+  fieldCode: string;
+  applyMode: "fill_missing_only" | "replace_selected";
+  expectedCurrentValue?: string | null;
+  expectedUpdatedAt?: string | null;
+};
+
+export type ApplyAiMetadataInput = {
+  documentId: number;
+  aiResultId: number;
+  selections: ApplyAiMetadataSelection[];
+  confirmation: {
+    replaceExistingConfirmed: boolean;
+    lowConfidenceConfirmed: boolean;
+  };
+};
+
+export type ApplyAiMetadataResult = {
+  appliedCount: number;
+  skippedCount: number;
+  appliedFields: string[];
+  skippedFields: Array<{ fieldCode: string; reason: string }>;
+  aiResultStatus: string;
+};
+
+import {
+  buildMetadataDiff,
+  convertAiValueForFieldType,
+  summarizeMetadataValue,
+  type CurrentMetadataValueRow,
+  type ConfidenceEntry,
+} from "@/lib/dms/metadata/metadata-diff";
+import {
+  DMS_METADATA_DEFINITION_SELECT,
+  filterMetadataDefinitionsByContext,
+  mapMetadataDefinitionRow,
+} from "@/lib/dms/metadata/metadata-definition-shared";
+
+const ApplyAiMetadataSchema = z.object({
+  documentId: z.number().int().positive(),
+  aiResultId: z.number().int().positive(),
+  selections: z
+    .array(
+      z.object({
+        definitionId: z.number().int().positive(),
+        fieldCode: z.string().min(1),
+        applyMode: z.enum(["fill_missing_only", "replace_selected"]),
+        expectedCurrentValue: z.string().nullable().optional(),
+        expectedUpdatedAt: z.string().nullable().optional(),
+      })
+    )
+    .min(1)
+    .max(50),
+  confirmation: z.object({
+    replaceExistingConfirmed: z.boolean(),
+    lowConfidenceConfirmed: z.boolean(),
+  }),
+});
+
+function canApplyMetadataAction(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
+  return (
+    hasPermission(ctx, "dms.documents.edit") ||
+    hasPermission(ctx, "dms.documents.review_ai") ||
+    hasPermission(ctx, "dms.admin") ||
+    ctx.roleCodes.includes("system_admin") ||
+    ctx.roleCodes.includes("group_admin")
+  );
+}
+
+function buildMetadataValueUpsert(
+  documentId: number,
+  definitionId: number,
+  aiValueConverted: unknown,
+  fieldType: string,
+  userId: number
+): Record<string, unknown> {
+  const base: Record<string, unknown> = {
+    document_id: documentId,
+    definition_id: definitionId,
+    value_text: null,
+    value_number: null,
+    value_date: null,
+    value_datetime: null,
+    value_boolean: null,
+    value_json: null,
+    updated_by: userId,
+    updated_at: new Date().toISOString(),
+  };
+  switch (fieldType) {
+    case "text":
+    case "textarea":
+    case "url":
+    case "email":
+    case "phone":
+    case "select":
+      return { ...base, value_text: String(aiValueConverted) };
+    case "multiselect":
+    case "json":
+      return { ...base, value_json: aiValueConverted };
+    case "number":
+    case "currency":
+      return { ...base, value_number: Number(aiValueConverted) };
+    case "date":
+      return { ...base, value_date: String(aiValueConverted) };
+    case "datetime":
+      return { ...base, value_datetime: String(aiValueConverted) };
+    case "boolean":
+      return { ...base, value_boolean: Boolean(aiValueConverted) };
+    default:
+      return { ...base, value_text: String(aiValueConverted) };
+  }
+}
+
+export async function applyAiAnalysisToMetadata(
+  input: ApplyAiMetadataInput
+): Promise<ActionResult<ApplyAiMetadataResult>> {
+  // runId tracks the apply history row (null if history write failed — non-fatal)
+  let runId: number | null = null;
+
+  try {
+    // ── 1. Validate input ──────────────────────────────────────────────────────
+    const parsed = ApplyAiMetadataSchema.safeParse(input);
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    }
+    const { documentId, aiResultId, selections, confirmation } = parsed.data;
+
+    // ── 2. Auth + permission ───────────────────────────────────────────────────
+    const supabase = await createClient();
+    const adminClient = await createAdminClient();
+    const ctx = await getAuthContext();
+    if (!ctx.profile) return { success: false, error: "Not authenticated" };
+    if (!canApplyMetadataAction(ctx)) return { success: false, error: "Permission denied" };
+
+    // ── 3. Load document ───────────────────────────────────────────────────────
+    const { data: doc, error: docErr } = await supabase
+      .from("dms_documents")
+      .select("id, title, document_no, document_type_id, confidentiality_level, status")
+      .eq("id", documentId)
+      .is("deleted_at", null)
+      .single();
+
+    if (docErr || !doc) return { success: false, error: "Document not found" };
+    if ((doc.status as string) === "archived") {
+      return { success: false, error: "Cannot modify metadata on an archived document" };
+    }
+
+    // ── 4. Confidentiality gate ────────────────────────────────────────────────
+    if (RESTRICTED_CONFIDENTIALITY.has(doc.confidentiality_level as string)) {
+      if (!hasPermission(ctx, "dms.admin")) {
+        return { success: false, error: "Modifying metadata on confidential documents requires dms.admin" };
+      }
+    }
+
+    // ── 5. Load AI result ──────────────────────────────────────────────────────
+    const { data: aiResult, error: resultErr } = await supabase
+      .from("dms_ai_extraction_results")
+      .select("id, document_id, ai_status, extracted_fields_json, field_confidence_json")
+      .eq("id", aiResultId)
+      .single();
+
+    if (resultErr || !aiResult) return { success: false, error: "AI result not found" };
+    if ((aiResult.document_id as number) !== documentId) {
+      return { success: false, error: "AI result does not belong to this document" };
+    }
+    if ((aiResult.ai_status as string) === "superseded") {
+      return { success: false, error: "Cannot apply from a superseded AI result" };
+    }
+
+    const docTypeId = doc.document_type_id as number | null;
+    if (!docTypeId) return { success: false, error: "Document has no document type assigned" };
+
+    // ── 6. Load metadata definitions ──────────────────────────────────────────
+    const { data: defRows } = await supabase
+      .from("dms_metadata_definitions")
+      .select(DMS_METADATA_DEFINITION_SELECT)
+      .eq("document_type_id", docTypeId)
+      .eq("is_active", true)
+      .is("deleted_at", null)
+      .order("sort_order");
+
+    const definitions = filterMetadataDefinitionsByContext(
+      (defRows ?? []).map((r) => mapMetadataDefinitionRow(r as Record<string, unknown>)),
+      "all"
+    );
+
+    // ── 7. Load current metadata values ───────────────────────────────────────
+    const { data: valueRows } = await supabase
+      .from("dms_document_metadata_values")
+      .select("definition_id, value_text, value_number, value_date, value_datetime, value_boolean, value_json, updated_at")
+      .eq("document_id", documentId)
+      .is("deleted_at", null);
+
+    const currentValues: CurrentMetadataValueRow[] = (valueRows ?? []).map((r) => ({
+      definition_id: (r as { definition_id: number }).definition_id,
+      value_text: (r as { value_text: string | null }).value_text,
+      value_number: (r as { value_number: number | null }).value_number,
+      value_date: (r as { value_date: string | null }).value_date,
+      value_datetime: (r as { value_datetime: string | null }).value_datetime,
+      value_boolean: (r as { value_boolean: boolean | null }).value_boolean,
+      value_json: (r as { value_json: unknown }).value_json,
+      updated_at: (r as { updated_at: string | null }).updated_at,
+    }));
+
+    // ── 8. Build server-side diff ──────────────────────────────────────────────
+    const extractedFields = (aiResult.extracted_fields_json as Record<string, unknown> | null) ?? null;
+    const fieldConf = (aiResult.field_confidence_json as Record<string, ConfidenceEntry> | null) ?? null;
+    const diffRows = buildMetadataDiff(definitions, currentValues, extractedFields, fieldConf);
+
+    const diffMap = new Map(diffRows.map((r) => [r.definitionId, r]));
+
+    // ── 9. Process each selection ──────────────────────────────────────────────
+    const userId = ctx.profile.id;
+    const now = new Date().toISOString();
+    const appliedFields: string[] = [];
+    const skippedFields: Array<{ fieldCode: string; reason: string }> = [];
+
+    await logAudit({
+      module_code: "DMS",
+      entity_name: "dms_documents",
+      entity_id: documentId,
+      entity_reference: String(doc.document_no ?? documentId),
+      action: "update",
+      new_values: {
+        event: "ai_metadata_apply_started",
+        document_id: documentId,
+        ai_result_id: aiResultId,
+        selected_count: selections.length,
+      },
+    });
+
+    // ── Phase 7: Insert apply run row (non-fatal) ──────────────────────────────
+    try {
+      const { data: runRow } = await adminClient
+        .from("dms_ai_metadata_apply_runs")
+        .insert({
+          document_id: documentId,
+          ai_result_id: aiResultId,
+          applied_by: userId,
+          apply_status: "started",
+          selected_count: selections.length,
+          replace_confirmed: confirmation.replaceExistingConfirmed,
+          low_confidence_confirmed: confirmation.lowConfidenceConfirmed,
+          created_at: now,
+        })
+        .select("id")
+        .single();
+      runId = runRow?.id ?? null;
+    } catch {
+      // Non-fatal: audit_logs is the fallback official trail
+    }
+
+    for (const sel of selections) {
+      const diffRow = diffMap.get(sel.definitionId);
+      let itemStatus: "applied" | "skipped" | "blocked" = "skipped";
+      let skipReason: string | null = null;
+
+      if (!diffRow) {
+        skipReason = "Definition not found";
+        skippedFields.push({ fieldCode: sel.fieldCode, reason: skipReason });
+      } else if (!diffRow.canApply) {
+        itemStatus = "blocked";
+        skipReason = diffRow.validationError ?? `Cannot apply (state: ${diffRow.diffState})`;
+        skippedFields.push({ fieldCode: sel.fieldCode, reason: skipReason });
+      } else if (diffRow.aiValueConverted === null || diffRow.aiValueConverted === undefined) {
+        skipReason = "No converted value available";
+        skippedFields.push({ fieldCode: sel.fieldCode, reason: skipReason });
+      } else if (sel.applyMode === "fill_missing_only" && diffRow.currentValueRaw !== null && diffRow.currentValueRaw.trim() !== "") {
+        skipReason = "Field already has a value (fill_missing_only mode)";
+        skippedFields.push({ fieldCode: sel.fieldCode, reason: skipReason });
+      } else if (
+        sel.applyMode === "replace_selected" &&
+        diffRow.currentValueRaw !== null &&
+        diffRow.currentValueRaw.trim() !== "" &&
+        !confirmation.replaceExistingConfirmed
+      ) {
+        // This is a hard error — return immediately (mark run as failed if possible)
+        if (runId !== null) {
+          try {
+            await adminClient
+              .from("dms_ai_metadata_apply_runs")
+              .update({ apply_status: "failed", error_message: "replaceExistingConfirmed required", completed_at: new Date().toISOString() })
+              .eq("id", runId);
+          } catch { /* non-fatal */ }
+        }
+        return {
+          success: false,
+          error: "Replacing existing values requires replaceExistingConfirmed = true",
+        };
+      } else if (diffRow.diffState === "low_confidence" && !confirmation.lowConfidenceConfirmed) {
+        if (runId !== null) {
+          try {
+            await adminClient
+              .from("dms_ai_metadata_apply_runs")
+              .update({ apply_status: "failed", error_message: "lowConfidenceConfirmed required", completed_at: new Date().toISOString() })
+              .eq("id", runId);
+          } catch { /* non-fatal */ }
+        }
+        return {
+          success: false,
+          error: "Applying low-confidence values requires lowConfidenceConfirmed = true",
+        };
+      } else {
+        const def = definitions.find((d) => d.id === sel.definitionId);
+        if (!def) {
+          skipReason = "Definition not found after re-lookup";
+          skippedFields.push({ fieldCode: sel.fieldCode, reason: skipReason });
+        } else {
+          const upsertRow = buildMetadataValueUpsert(
+            documentId,
+            sel.definitionId,
+            diffRow.aiValueConverted,
+            def.field_type,
+            userId
+          );
+
+          const { error: upsertErr } = await supabase
+            .from("dms_document_metadata_values")
+            .upsert(upsertRow, { onConflict: "document_id,definition_id" });
+
+          if (upsertErr) {
+            skipReason = upsertErr.message;
+            skippedFields.push({ fieldCode: sel.fieldCode, reason: skipReason });
+          } else {
+            itemStatus = "applied";
+            appliedFields.push(sel.fieldCode);
+
+            const oldSummary = summarizeMetadataValue(diffRow.currentValueRaw, def.field_type);
+            const newSummary = summarizeMetadataValue(diffRow.aiValueConverted, def.field_type);
+
+            await logAudit({
+              module_code: "DMS",
+              entity_name: "dms_document_metadata_values",
+              entity_id: documentId,
+              entity_reference: `${String(doc.document_no ?? documentId)}:${def.field_code}`,
+              action: "update",
+              new_values: {
+                event: "ai_metadata_field_applied",
+                document_id: documentId,
+                ai_result_id: aiResultId,
+                definition_id: sel.definitionId,
+                field_code: sel.fieldCode,
+                old_value_summary: oldSummary,
+                new_value_summary: newSummary,
+                confidence_score: diffRow.confidenceScore,
+                confidence_label: diffRow.confidenceLabel,
+                apply_mode: sel.applyMode,
+                user_id: userId,
+              },
+            });
+
+            // Phase 7: insert apply item (non-fatal)
+            if (runId !== null) {
+              try {
+                await adminClient
+                  .from("dms_ai_metadata_apply_items")
+                  .insert({
+                    apply_run_id: runId,
+                    document_id: documentId,
+                    definition_id: sel.definitionId,
+                    field_code: sel.fieldCode,
+                    old_value_summary: (oldSummary ?? "").slice(0, 100) || null,
+                    new_value_summary: (newSummary ?? "").slice(0, 100) || null,
+                    confidence_score: diffRow.confidenceScore,
+                    confidence_label: diffRow.confidenceLabel,
+                    apply_mode: sel.applyMode,
+                    item_status: "applied",
+                    skip_reason: null,
+                  });
+              } catch { /* non-fatal */ }
+            }
+            continue;
+          }
+        }
+      }
+
+      // Insert skipped/blocked item (non-fatal)
+      if (runId !== null) {
+        try {
+          await adminClient
+            .from("dms_ai_metadata_apply_items")
+            .insert({
+              apply_run_id: runId,
+              document_id: documentId,
+              definition_id: sel.definitionId,
+              field_code: sel.fieldCode,
+              old_value_summary: null,
+              new_value_summary: null,
+              confidence_score: diffRow?.confidenceScore ?? null,
+              confidence_label: diffRow?.confidenceLabel ?? null,
+              apply_mode: sel.applyMode,
+              item_status: itemStatus,
+              skip_reason: skipReason?.slice(0, 200) ?? null,
+            });
+        } catch { /* non-fatal */ }
+      }
+    }
+
+    const appliedCount = appliedFields.length;
+    const skippedCount = skippedFields.length;
+
+    // ── Phase 7: Finalize apply run (non-fatal) ────────────────────────────────
+    if (runId !== null) {
+      const finalStatus = skippedCount === 0 ? "completed" : "partial";
+      try {
+        await adminClient
+          .from("dms_ai_metadata_apply_runs")
+          .update({
+            apply_status: finalStatus,
+            applied_count: appliedCount,
+            skipped_count: skippedCount,
+            completed_at: new Date().toISOString(),
+          })
+          .eq("id", runId);
+      } catch { /* non-fatal */ }
+    }
+
+    // ── 10. Document event ─────────────────────────────────────────────────────
+    await insertDocumentEvent(supabase, documentId, "ai_metadata_applied", userId, {
+      ai_result_id: aiResultId,
+      applied_count: appliedCount,
+      skipped_count: skippedCount,
+      applied_fields: appliedFields,
+    });
+
+    // ── 11. Summary audit ──────────────────────────────────────────────────────
+    await logAudit({
+      module_code: "DMS",
+      entity_name: "dms_documents",
+      entity_id: documentId,
+      entity_reference: String(doc.document_no ?? documentId),
+      action: "update",
+      new_values: {
+        event: "ai_metadata_apply_completed",
+        document_id: documentId,
+        ai_result_id: aiResultId,
+        applied_count: appliedCount,
+        skipped_count: skippedCount,
+        replace_confirmed: confirmation.replaceExistingConfirmed,
+        low_confidence_confirmed: confirmation.lowConfidenceConfirmed,
+      },
+    });
+
+    // ── 12. Mark AI result accepted ────────────────────────────────────────────
+    let aiResultStatus = aiResult.ai_status as string;
+    if (appliedCount > 0) {
+      await supabase
+        .from("dms_ai_extraction_results")
+        .update({
+          ai_status: "accepted",
+          reviewed_by: userId,
+          reviewed_at: now,
+        })
+        .eq("id", aiResultId);
+      aiResultStatus = "accepted";
+    }
+
+    // ── 13. Revalidate ─────────────────────────────────────────────────────────
+    revalidatePath(`/dms/documents/record/${documentId}`);
+
+    return {
+      success: true,
+      data: { appliedCount, skippedCount, appliedFields, skippedFields, aiResultStatus },
+    };
+  } catch (e) {
+    // Mark apply run as failed if created (non-fatal)
+    if (runId !== null) {
+      void (async () => {
+        try {
+          const ac = await createAdminClient();
+          await ac
+            .from("dms_ai_metadata_apply_runs")
+            .update({ apply_status: "failed", error_message: String(e).slice(0, 200), completed_at: new Date().toISOString() })
+            .eq("id", runId!);
+        } catch { /* non-fatal */ }
+      })();
+    }
+    await logAudit({
+      module_code: "DMS",
+      entity_name: "dms_documents",
+      entity_id: input.documentId,
+      entity_reference: String(input.documentId),
+      action: "update",
+      new_values: {
+        event: "ai_metadata_apply_failed",
+        document_id: input.documentId,
+        ai_result_id: input.aiResultId,
+        safe_error_message: String(e).slice(0, 200),
+      },
+    }).catch(() => {});
+    return { success: false, error: String(e) };
+  }
+}
+
+// ── getDmsAiMetadataApplyHistory ──────────────────────────────────────────────
+
+export type DmsAiMetadataApplyHistoryItem = {
+  id: number;
+  applyRunId: number;
+  documentId: number;
+  definitionId: number | null;
+  fieldCode: string;
+  oldValueSummary: string | null;
+  newValueSummary: string | null;
+  confidenceScore: number | null;
+  confidenceLabel: string | null;
+  applyMode: string | null;
+  itemStatus: string;
+  skipReason: string | null;
+  createdAt: string;
+};
+
+export type DmsAiMetadataApplyHistoryRun = {
+  id: number;
+  documentId: number;
+  aiResultId: number | null;
+  appliedBy: number;
+  appliedByName: string | null;
+  applyStatus: string;
+  selectedCount: number;
+  appliedCount: number;
+  skippedCount: number;
+  replaceConfirmed: boolean;
+  lowConfidenceConfirmed: boolean;
+  createdAt: string;
+  completedAt: string | null;
+  items: DmsAiMetadataApplyHistoryItem[];
+};
+
+const GetApplyHistorySchema = z.object({
+  documentId: z.number().int().positive(),
+});
+
+export async function getDmsAiMetadataApplyHistory(
+  documentId: number
+): Promise<ActionResult<DmsAiMetadataApplyHistoryRun[]>> {
+  try {
+    const parsed = GetApplyHistorySchema.safeParse({ documentId });
+    if (!parsed.success) return { success: false, error: "Invalid document ID" };
+
+    const supabase = await createClient();
+    const ctx = await getAuthContext();
+    if (!ctx.profile) return { success: false, error: "Not authenticated" };
+    if (!canViewAi(ctx)) return { success: false, error: "Permission denied" };
+
+    // Confidentiality gate
+    const { data: doc } = await supabase
+      .from("dms_documents")
+      .select("id, confidentiality_level")
+      .eq("id", documentId)
+      .is("deleted_at", null)
+      .single();
+
+    if (!doc) return { success: false, error: "Document not found" };
+
+    if (RESTRICTED_CONFIDENTIALITY.has(doc.confidentiality_level as string)) {
+      if (!hasPermission(ctx, "dms.admin")) {
+        return { success: false, error: "Apply history for confidential documents requires dms.admin" };
+      }
+    }
+
+    // Load runs with items (using admin client so history is readable regardless of row-level state)
+    const adminClient = await createAdminClient();
+
+    const { data: rawRuns, error: runsErr } = await adminClient
+      .from("dms_ai_metadata_apply_runs")
+      .select(`
+        id, document_id, ai_result_id, applied_by,
+        apply_status, selected_count, applied_count, skipped_count,
+        replace_confirmed, low_confidence_confirmed,
+        created_at, completed_at,
+        applied_by_profile:user_profiles!applied_by(full_name_en)
+      `)
+      .eq("document_id", documentId)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    if (runsErr) return { success: false, error: runsErr.message };
+    if (!rawRuns || rawRuns.length === 0) return { success: true, data: [] };
+
+    const runs = rawRuns as unknown as Array<Record<string, unknown>>;
+    const runIds = runs.map((r) => r["id"] as number);
+
+    const { data: rawItems } = await adminClient
+      .from("dms_ai_metadata_apply_items")
+      .select(
+        "id, apply_run_id, document_id, definition_id, field_code, " +
+        "old_value_summary, new_value_summary, confidence_score, confidence_label, " +
+        "apply_mode, item_status, skip_reason, created_at"
+      )
+      .in("apply_run_id", runIds)
+      .order("created_at", { ascending: true });
+
+    const items = (rawItems ?? []) as unknown as Array<Record<string, unknown>>;
+
+    const itemsByRunId = new Map<number, DmsAiMetadataApplyHistoryItem[]>();
+    for (const item of items) {
+      const rid = item["apply_run_id"] as number;
+      if (!itemsByRunId.has(rid)) itemsByRunId.set(rid, []);
+      itemsByRunId.get(rid)!.push({
+        id: item["id"] as number,
+        applyRunId: rid,
+        documentId: item["document_id"] as number,
+        definitionId: (item["definition_id"] as number | null) ?? null,
+        fieldCode: item["field_code"] as string,
+        oldValueSummary: (item["old_value_summary"] as string | null) ?? null,
+        newValueSummary: (item["new_value_summary"] as string | null) ?? null,
+        confidenceScore: (item["confidence_score"] as number | null) ?? null,
+        confidenceLabel: (item["confidence_label"] as string | null) ?? null,
+        applyMode: (item["apply_mode"] as string | null) ?? null,
+        itemStatus: (item["item_status"] as string) ?? "skipped",
+        skipReason: (item["skip_reason"] as string | null) ?? null,
+        createdAt: item["created_at"] as string,
+      });
+    }
+
+    const result: DmsAiMetadataApplyHistoryRun[] = runs.map((r) => {
+      const profile = r["applied_by_profile"] as { full_name_en?: string } | null;
+      return {
+        id: r["id"] as number,
+        documentId: r["document_id"] as number,
+        aiResultId: (r["ai_result_id"] as number | null) ?? null,
+        appliedBy: r["applied_by"] as number,
+        appliedByName: profile?.full_name_en ?? null,
+        applyStatus: r["apply_status"] as string,
+        selectedCount: (r["selected_count"] as number) ?? 0,
+        appliedCount: (r["applied_count"] as number) ?? 0,
+        skippedCount: (r["skipped_count"] as number) ?? 0,
+        replaceConfirmed: (r["replace_confirmed"] as boolean) ?? false,
+        lowConfidenceConfirmed: (r["low_confidence_confirmed"] as boolean) ?? false,
+        createdAt: r["created_at"] as string,
+        completedAt: (r["completed_at"] as string | null) ?? null,
+        items: itemsByRunId.get(r["id"] as number) ?? [],
+      };
+    });
+
+    return { success: true, data: result };
   } catch (e) {
     return { success: false, error: String(e) };
   }

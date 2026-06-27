@@ -35,6 +35,8 @@ import type {
 
 interface DmsDocumentUnderstandingSectionProps {
   documentId: number | null;
+  /** Called when a Recommended Action "Open" button targets an in-page tab. */
+  onNavigateToSection?: (section: string) => void;
 }
 
 // ── Helper components ─────────────────────────────────────────────────────────
@@ -151,6 +153,7 @@ function HealthCard({ health }: { health: DmsUnderstandingHealth }) {
 
 export function DmsDocumentUnderstandingSection({
   documentId,
+  onNavigateToSection,
 }: DmsDocumentUnderstandingSectionProps) {
   const { data: result, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: queryKeys.dms.documentUnderstanding(documentId ?? 0),
@@ -249,8 +252,18 @@ export function DmsDocumentUnderstandingSection({
         <SectionCard title="OCR & Text" icon={<FileText className="h-3 w-3" />}>
           <div className="space-y-1.5 text-xs">
             <div className="flex items-center justify-between">
+              <span className="text-slate-500">OCR processed</span>
+              <StatusBadge
+                ok={u.ocrStatus.ocrRunComplete}
+                label={u.ocrStatus.ocrRunComplete ? "Complete" : "Not run"}
+              />
+            </div>
+            <div className="flex items-center justify-between">
               <span className="text-slate-500">OCR text</span>
-              <StatusBadge ok={u.ocrStatus.ocrTextAvailable} label={u.ocrStatus.ocrTextAvailable ? "Available" : "Missing"} />
+              <StatusBadge
+                ok={u.ocrStatus.ocrTextAvailable}
+                label={u.ocrStatus.ocrTextAvailable ? "Available" : "Missing"}
+              />
             </div>
             <div className="flex items-center justify-between">
               <span className="text-slate-500">Files with OCR</span>
@@ -263,7 +276,10 @@ export function DmsDocumentUnderstandingSection({
             {u.ocrStatus.contentTextTruncated && (
               <p className="text-amber-600">⚠ Content was truncated (very long document)</p>
             )}
-            {!u.ocrStatus.ocrTextAvailable && (
+            {u.ocrStatus.ocrRunComplete && !u.ocrStatus.ocrTextAvailable && !u.ocrStatus.contentTextAvailable && (
+              <p className="text-amber-600">OCR finished but no text was found in this file.</p>
+            )}
+            {!u.ocrStatus.ocrRunComplete && (
               <a href="?section=ocr" className="block mt-1 text-center text-[10px] text-blue-600 underline hover:text-blue-800 py-1 border border-slate-200 rounded">
                 Run OCR → OCR/Text tab
               </a>
@@ -399,8 +415,12 @@ export function DmsDocumentUnderstandingSection({
             {u.tagsLinks.linkedEntities.map((e) => (
               <div key={`${e.entityType}-${e.entityId}`} className="flex items-center gap-1.5">
                 <Link2 className="h-2.5 w-2.5 text-slate-400" />
-                <span className="capitalize text-slate-500">{e.entityType}</span>
-                <span className="truncate max-w-[150px]">{e.entityDisplayName ?? `#${e.entityId}`}</span>
+                <Badge variant="outline" className="text-[9px] px-1 py-0 shrink-0">
+                  {e.entityTypeLabel}
+                </Badge>
+                <span className="truncate max-w-[180px] font-medium text-slate-700">
+                  {e.entityDisplayName}
+                </span>
                 {e.isPrimary && <Badge variant="outline" className="text-[9px] px-1 py-0">Primary</Badge>}
               </div>
             ))}
@@ -603,7 +623,7 @@ export function DmsDocumentUnderstandingSection({
         <SectionCard title="Recommended Actions" icon={<Zap className="h-3 w-3" />} className="border-blue-100 bg-blue-50/30">
           <div className="space-y-1.5">
             {u.actions.map((action) => (
-              <ActionRow key={action.actionCode} action={action} />
+              <ActionRow key={action.actionCode} action={action} onNavigateToSection={onNavigateToSection} />
             ))}
           </div>
         </SectionCard>
@@ -618,7 +638,13 @@ export function DmsDocumentUnderstandingSection({
 
 // ── Action row ────────────────────────────────────────────────────────────────
 
-function ActionRow({ action }: { action: DmsUnderstandingAction }) {
+function ActionRow({
+  action,
+  onNavigateToSection,
+}: {
+  action: DmsUnderstandingAction;
+  onNavigateToSection?: (section: string) => void;
+}) {
   const colors = {
     high: "border-red-200 bg-red-50/50",
     medium: "border-amber-200 bg-amber-50/50",
@@ -630,6 +656,35 @@ function ActionRow({ action }: { action: DmsUnderstandingAction }) {
     low: "bg-slate-50 text-slate-500 border-slate-200",
   };
 
+  const openBtn = (() => {
+    // External route → regular link
+    if (action.linkToRoute) {
+      return (
+        <a
+          href={action.linkToRoute}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-600 hover:text-blue-800 flex items-center gap-0.5 text-[10px] flex-shrink-0 mt-0.5"
+        >
+          Open <ExternalLink className="h-2.5 w-2.5" />
+        </a>
+      );
+    }
+    // In-page tab → button that calls onNavigateToSection (no page reload)
+    if (action.linkToTab) {
+      return (
+        <button
+          type="button"
+          onClick={() => onNavigateToSection?.(action.linkToTab!)}
+          className="text-blue-600 hover:text-blue-800 flex items-center gap-0.5 text-[10px] flex-shrink-0 mt-0.5 cursor-pointer"
+        >
+          Open <ExternalLink className="h-2.5 w-2.5" />
+        </button>
+      );
+    }
+    return null;
+  })();
+
   return (
     <div className={cn("flex items-start gap-2 rounded-md border p-2 text-xs", colors[action.priority])}>
       <Badge variant="outline" className={cn("text-[9px] px-1 py-0 mt-0.5 flex-shrink-0 capitalize", badgeColors[action.priority])}>
@@ -639,16 +694,7 @@ function ActionRow({ action }: { action: DmsUnderstandingAction }) {
         <p className="font-medium text-slate-800">{action.label}</p>
         <p className="text-slate-500 text-[11px]">{action.description}</p>
       </div>
-      {(action.linkToTab || action.linkToRoute) && (
-        <a
-          href={action.linkToRoute ?? `?section=${action.linkToTab}`}
-          target={action.linkToRoute ? "_blank" : undefined}
-          rel={action.linkToRoute ? "noopener noreferrer" : undefined}
-          className="text-blue-600 hover:text-blue-800 flex items-center gap-0.5 text-[10px] flex-shrink-0 mt-0.5"
-        >
-          Open <ExternalLink className="h-2.5 w-2.5" />
-        </a>
-      )}
+      {openBtn}
     </div>
   );
 }

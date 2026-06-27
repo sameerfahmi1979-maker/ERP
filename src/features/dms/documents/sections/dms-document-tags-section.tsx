@@ -14,6 +14,7 @@ import {
   getDmsTagSuggestions,
   applyDmsTagSuggestions,
   rejectDmsTagSuggestions,
+  createAndApplyDmsTagSuggestion,
   type DmsTagSuggestionRow,
 } from "@/server/actions/dms/ai-tags";
 
@@ -83,20 +84,28 @@ export function DmsDocumentTagsSection({ documentId, isViewing }: DmsDocumentTag
     }
   }
 
-  async function handleApplySuggestion(suggestionId: number) {
+  async function handleApplySuggestion(suggestion: DmsTagSuggestionRow) {
     if (!documentId) return;
-    setApplyingIds((prev) => [...prev, suggestionId]);
+    setApplyingIds((prev) => [...prev, suggestion.id]);
     try {
-      const r = await applyDmsTagSuggestions(documentId, [suggestionId]);
+      // "New" suggestions (tagId = null) need tag creation first
+      const r = suggestion.tagId === null
+        ? await createAndApplyDmsTagSuggestion(documentId, suggestion.id)
+        : await applyDmsTagSuggestions(documentId, [suggestion.id]);
+
       if (r.success) {
-        toast.success("Tag applied");
+        toast.success(
+          suggestion.tagId === null
+            ? `Tag "${suggestion.suggestedTagName}" created and applied`
+            : "Tag applied"
+        );
         await refetchSuggestions();
         qc.invalidateQueries({ queryKey: queryKeys.dms.documentTags(documentId) });
       } else {
         toast.error(r.error ?? "Failed to apply suggestion");
       }
     } finally {
-      setApplyingIds((prev) => prev.filter((id) => id !== suggestionId));
+      setApplyingIds((prev) => prev.filter((id) => id !== suggestion.id));
     }
   }
 
@@ -293,22 +302,20 @@ export function DmsDocumentTagsSection({ documentId, isViewing }: DmsDocumentTag
                       </Badge>
                     )}
                     <div className="flex gap-1 shrink-0">
-                      {s.tagId !== null && (
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-6 w-6 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
-                          onClick={() => handleApplySuggestion(s.id)}
-                          disabled={applyingIds.includes(s.id) || rejectingIds.includes(s.id)}
-                          title="Accept"
-                        >
-                          {applyingIds.includes(s.id) ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <Check className="h-3 w-3" />
-                          )}
-                        </Button>
-                      )}
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                        onClick={() => handleApplySuggestion(s)}
+                        disabled={applyingIds.includes(s.id) || rejectingIds.includes(s.id)}
+                        title={s.tagId === null ? "Create tag and apply" : "Accept"}
+                      >
+                        {applyingIds.includes(s.id) ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Check className="h-3 w-3" />
+                        )}
+                      </Button>
                       <Button
                         size="icon"
                         variant="ghost"
@@ -327,10 +334,9 @@ export function DmsDocumentTagsSection({ documentId, isViewing }: DmsDocumentTag
                   </div>
                 ))}
                 {pendingSuggestions.some((s: DmsTagSuggestionRow) => s.tagId === null) && (
-                  <div className="flex items-start gap-1.5 text-[10px] text-amber-700 dark:text-amber-400">
+                  <div className="flex items-start gap-1.5 text-[10px] text-blue-700 dark:text-blue-400">
                     <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
-                    Suggestions marked "New" are not yet in the tag library and cannot be auto-applied.
-                    A DMS admin can create them first.
+                    Suggestions marked &quot;New&quot; will create the tag in the library and apply it when you click ✓.
                   </div>
                 )}
               </div>

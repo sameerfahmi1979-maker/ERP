@@ -265,8 +265,14 @@ export type BulkRenameResult = {
   processed: number;
   updated: number;
   skipped: number;
+  qualitySkipped: number;
   errors: string[];
-  samples: Array<{ documentId: number; oldName: string; newName: string }>;
+  samples: Array<{
+    documentId: number;
+    oldName: string;
+    newName: string;
+    qualityIssue?: string;
+  }>;
 };
 
 export async function bulkRenameDocumentsToStandardFileNames(
@@ -307,6 +313,7 @@ export async function bulkRenameDocumentsToStandardFileNames(
       processed: 0,
       updated: 0,
       skipped: 0,
+      qualitySkipped: 0,
       errors: [],
       samples: [],
     };
@@ -334,7 +341,7 @@ export async function bulkRenameDocumentsToStandardFileNames(
         continue;
       }
 
-      const [{ data: metaRows }, { data: linkRows }] = await Promise.all([
+      const [{ data: metaRows }, { data: linkRows }, { data: aiRows }] = await Promise.all([
         admin
           .from("dms_document_metadata_values")
           .select("value_text, definition:dms_metadata_definitions(field_code)")
@@ -343,7 +350,18 @@ export async function bulkRenameDocumentsToStandardFileNames(
           .from("dms_document_links")
           .select("entity_type, entity_id")
           .eq("document_id", documentId),
+        // Fetch the most recent AI extraction result — gives owner/docno from document content
+        admin
+          .from("dms_ai_extraction_results")
+          .select("extracted_fields_json, suggested_description, suggested_title")
+          .eq("document_id", documentId)
+          .order("created_at", { ascending: false })
+          .limit(1),
       ]);
+
+      const aiResult = aiRows?.[0] ?? null;
+      const aiExtractedFields =
+        (aiResult?.extracted_fields_json as Record<string, unknown> | null) ?? {};
 
       const metadataFieldMap: Record<string, unknown> = {};
       for (const m of metaRows ?? []) {
@@ -352,6 +370,9 @@ export async function bulkRenameDocumentsToStandardFileNames(
         const val = (m.value_text as string | null) ?? "";
         if (def?.field_code && val.trim()) metadataFieldMap[def.field_code] = val.trim();
       }
+
+      // Merge: metadata values (saved by human) take priority over raw AI extraction
+      const mergedFields: Record<string, unknown> = { ...aiExtractedFields, ...metadataFieldMap };
 
       const links = (linkRows ?? []).map((l) => ({
         entityType: l.entity_type as string,
@@ -366,13 +387,42 @@ export async function bulkRenameDocumentsToStandardFileNames(
           expiryDate: (doc.expiry_date as string | null) ?? null,
           documentNo: doc.document_no as string,
           originalFilename: oldName,
-          extractedFields: metadataFieldMap,
+          extractedFields: mergedFields,
+          suggestedDescription: (aiResult?.suggested_description as string | null) ?? null,
+          suggestedTitle: (aiResult?.suggested_title as string | null) ?? null,
           partyId: (doc.party_id as number | null) ?? null,
           links,
         });
       } catch (e) {
         result.errors.push(`Document ${documentId}: ${String(e)}`);
         result.skipped++;
+        continue;
+      }
+
+      // Quality gate: never write a name that degrades existing data.
+      // If the old name does NOT have Unknown_owner/DMS-Unknown but the new one would,
+      // skip this document — it is better to leave it unchanged.
+      const oldLower = oldName.toLowerCase();
+      const newLower = newName.toLowerCase();
+      const oldHasRealOwner = !oldLower.includes("unknown_owner") && !oldLower.includes("unknown owner");
+      const oldHasRealDocNo = !oldLower.includes("dms-unknown") && !oldLower.includes("dms_unknown");
+      const newHasUnknownOwner = newLower.includes("unknown_owner");
+      const newHasDmsUnknown = newLower.includes("dms-unknown");
+
+      if ((oldHasRealOwner && newHasUnknownOwner) || (oldHasRealDocNo && newHasDmsUnknown)) {
+        const issue = [
+          oldHasRealOwner && newHasUnknownOwner ? "owner lost" : "",
+          oldHasRealDocNo && newHasDmsUnknown ? "doc-no lost" : "",
+        ]
+          .filter(Boolean)
+          .join(", ");
+
+        result.qualitySkipped++;
+        result.skipped++;
+        // Always record quality-blocked renames so they appear in the preview table
+        if (result.samples.length < 50) {
+          result.samples.push({ documentId, oldName, newName, qualityIssue: issue });
+        }
         continue;
       }
 
@@ -384,7 +434,7 @@ export async function bulkRenameDocumentsToStandardFileNames(
         continue;
       }
 
-      if (result.samples.length < 10) {
+      if (result.samples.length < 50) {
         result.samples.push({ documentId, oldName, newName });
       }
 

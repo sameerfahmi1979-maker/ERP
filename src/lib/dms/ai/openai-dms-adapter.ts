@@ -65,7 +65,8 @@ export class OpenAiDmsAdapter implements IDmsAiProvider {
       input.metadataFields,
       input.currentTypeCode,
       input.imageFiles ?? [],
-      input.originalFilename
+      input.originalFilename,
+      input.classificationPackets
     );
 
     const baseUrl =
@@ -116,6 +117,7 @@ export class OpenAiDmsAdapter implements IDmsAiProvider {
 
     const data = (await response.json()) as {
       choices?: { message?: { content?: string } }[];
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
     };
 
     const content = data.choices?.[0]?.message?.content ?? "";
@@ -126,7 +128,11 @@ export class OpenAiDmsAdapter implements IDmsAiProvider {
       throw new Error(validated.error ?? "AI response validation failed.");
     }
 
-    return validated.output;
+    return {
+      ...validated.output,
+      promptTokens: data.usage?.prompt_tokens ?? null,
+      completionTokens: data.usage?.completion_tokens ?? null,
+    };
   }
 
   async summarize(systemPrompt: string, userMessage: string): Promise<DmsSummaryOutput> {

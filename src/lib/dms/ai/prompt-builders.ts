@@ -6,8 +6,13 @@
  * Prompts are truncated to safe token limits before sending.
  */
 
-import type { DmsAiDocumentTypeCandidate, DmsAiImageFile, DmsAiMetadataField } from "./types";
+import type { DmsAiDocumentTypeCandidate, DmsAiImageFile, DmsAiMetadataField, DmsClassificationCandidatePacket } from "./types";
 import { TYPE_CLASSIFICATION_FINGERPRINTS } from "./classification-resolver";
+import { formatClassificationPacketsForPrompt } from "./classification-candidate-builder";
+import {
+  truncateStringList,
+  validationJsonToPromptHint,
+} from "@/lib/dms/metadata/metadata-definition-shared";
 
 /** Maximum OCR text characters to include in a single prompt (≈ 6000 tokens). */
 const MAX_OCR_CHARS = 12_000;
@@ -19,12 +24,15 @@ const MAX_OCR_CHARS = 12_000;
  *   - Legal Arabic company name (legal_name_ar) extraction.
  *   - Arabic transliteration consistency rules.
  *   - UAE-specific Arabic term glossary.
- * v3.1 — Classification strength + UAE fingerprint rules (DMS.NAMING.2 / intake fix):
- *   - Mandatory classification decision tree for Emirates ID vs Passport vs Visa.
- *   - Visual fingerprint hints per type_code in candidate list.
- *   - Stricter confidence rules; never confuse Emirates ID with passport/visa.
+ * v3.2 — Phase 2 metadata definition enrichment (DMS AI Phase 2):
+ *   - Field list includes Arabic labels, aliases, keywords, format, examples, validation hints.
+ *   - Per-field confidence threshold hints.
+ *   - Alias/keyword location rules in system prompt.
+ * v3.3 — Phase 3 metadata-aware classification (DMS AI Phase 3):
+ *   - Pass 1 candidate packets include aggregated metadata hints per document type.
+ *   - Classification output includes alternatives, evidence, needs_human_review.
  */
-const PROMPT_VERSION = "v3.1";
+const PROMPT_VERSION = "v3.3";
 
 export { PROMPT_VERSION };
 
@@ -102,6 +110,11 @@ CLASSIFICATION DECISION RULES — apply in this order:
 7. If multiple types seem possible, prefer the MOST SPECIFIC match to visual layout and primary document number format
 8. suggested_type_code MUST be an EXACT type_code from the candidates list (e.g. EMIRATES_ID, not "Emirates ID")
 9. If confidence < 0.85, set confidence_label to needs_manual_review and explain ambiguity in reason + warnings
+10. Use metadata-aware candidate packets: match aliases, field labels (EN/AR), keywords, expected formats, and negative keywords
+11. Apply negative keywords to REDUCE false matches — if a type's avoid keywords appear prominently, lower confidence for that type
+12. Return up to 3 alternative_document_types with confidence and brief reason when ambiguous
+13. Populate classification_evidence with matched_keywords, matched_patterns, negative_matches (short labels only — not full OCR text)
+14. Set needs_human_review true when confidence_score < 0.60 or type is uncertain; provide review_reason
 
 STEP 3 — METADATA EXTRACTION:
 From the full transcription, extract all requested metadata fields and additional fields.
@@ -133,7 +146,21 @@ JSON output format:
     "suggested_type_code": "<type_code from candidates, or null if uncertain>",
     "confidence_score": <0.0-1.0>,
     "confidence_label": "<high|medium|low|needs_manual_review>",
-    "reason": "<brief explanation in English>"
+    "reason": "<brief explanation in English>",
+    "alternative_document_types": [
+      {
+        "document_type": "<type_code from candidates>",
+        "confidence": <0.0-1.0>,
+        "reason": "<brief reason>"
+      }
+    ],
+    "classification_evidence": {
+      "matched_keywords": ["<keyword or label matched>"],
+      "matched_patterns": ["<format or pattern matched>"],
+      "negative_matches": ["<negative keyword that ruled out a type>"]
+    },
+    "needs_human_review": <true|false>,
+    "review_reason": "<string or null>"
   },
   "suggested_title": "<suggested document title, e.g. 'Emirates ID — Sameer Fahmi' or null>",
   "suggested_description": "<1-2 sentence description mentioning key identifiers (name, ID number, nationality, etc.) or null>",
@@ -191,7 +218,14 @@ Rules:
   "arabic_activities" (الأنشطة التجارية بالعربية),
   "hijri_date" (if Hijri date found),
   "english_translation" (for Arabic-only documents).
-- If the document contains ONLY Arabic text with no English: set suggested_title to your English translation in brackets, e.g. "[Trade License — محمد للتجارة]".`;
+- If the document contains ONLY Arabic text with no English: set suggested_title to your English translation in brackets, e.g. "[Trade License — محمد للتجارة]".
+
+METADATA EXTRACTION RULES (Phase 2):
+- Use ai_keywords and alias labels (English/Arabic) in the field list to locate values in the document.
+- Ignore contexts matching ai_negative_keywords when extracting a field.
+- Normalize extracted values to ai_expected_format where specified (e.g. ID number patterns, YYYY-MM-DD dates).
+- Do not invent field_codes — only extract fields from the provided metadata list.
+- If a per-field confidence threshold is specified, treat values below it as needs_manual_review.`;
 
 /**
  * Builds a combined classification + extraction prompt.
@@ -203,25 +237,51 @@ export function buildCombinedPrompt(
   metadataFields: DmsAiMetadataField[],
   currentTypeCode: string | null,
   imageFiles: DmsAiImageFile[] = [],
-  originalFilename?: string
+  originalFilename?: string,
+  classificationPackets?: DmsClassificationCandidatePacket[]
 ): BuiltPrompt {
   const truncatedOcr = ocrText.substring(0, MAX_OCR_CHARS);
   const ocrTruncated = ocrText.length > MAX_OCR_CHARS;
   const hasImages = imageFiles.length > 0;
 
-  const candidateList = typeCandidates
-    .slice(0, 30)
-    .map((t) => {
-      const fp = TYPE_CLASSIFICATION_FINGERPRINTS[t.typeCode] ?? "";
-      const fpSuffix = fp ? ` | fingerprint: ${fp}` : "";
-      return `- ${t.typeCode}: ${t.nameEn}${t.description ? ` (${t.description.slice(0, 80)})` : ""}${fpSuffix}`;
-    })
-    .join("\n");
+  const candidateList =
+    classificationPackets && classificationPackets.length > 0
+      ? formatClassificationPacketsForPrompt(classificationPackets)
+      : typeCandidates
+          .slice(0, 30)
+          .map((t) => {
+            const fp = TYPE_CLASSIFICATION_FINGERPRINTS[t.typeCode] ?? "";
+            const fpSuffix = fp ? ` | fingerprint: ${fp}` : "";
+            return `- ${t.typeCode}: ${t.nameEn}${t.description ? ` (${t.description.slice(0, 80)})` : ""}${fpSuffix}`;
+          })
+          .join("\n");
+
+  const candidateSectionHeader =
+    classificationPackets && classificationPackets.length > 0
+      ? "Metadata-aware document type candidates (pre-ranked — use labels, keywords, formats, and avoid rules):"
+      : "Document type candidates:";
 
   const fieldList = metadataFields
     .map((f) => {
       let line = `- ${f.fieldCode} (${f.fieldType}): ${f.labelEn}`;
-      if (f.aiFieldHint) line += ` [hint: ${f.aiFieldHint}]`;
+      if (f.labelAr) line += ` / ${f.labelAr}`;
+      if (f.aiFieldHint) line += ` [hint: ${f.aiFieldHint.slice(0, 120)}]`;
+      const aliasesEn = truncateStringList(f.aiPossibleLabelsEn);
+      if (aliasesEn) line += ` [aliases EN: ${aliasesEn}]`;
+      const aliasesAr = truncateStringList(f.aiPossibleLabelsAr);
+      if (aliasesAr) line += ` [aliases AR: ${aliasesAr}]`;
+      const keywords = truncateStringList(f.aiKeywords);
+      if (keywords) line += ` [keywords: ${keywords}]`;
+      const negKeywords = truncateStringList(f.aiNegativeKeywords, 3);
+      if (negKeywords) line += ` [avoid: ${negKeywords}]`;
+      if (f.aiExpectedFormat) line += ` [format: ${f.aiExpectedFormat.slice(0, 80)}]`;
+      const examples = truncateStringList(f.aiExampleValues, 3);
+      if (examples) line += ` [examples: ${examples}]`;
+      const validationHint = validationJsonToPromptHint(f.validationJson);
+      if (validationHint) line += ` [validation: ${validationHint}]`;
+      if (f.aiConfidenceThreshold != null) {
+        line += ` [min confidence: ${f.aiConfidenceThreshold}]`;
+      }
       if (f.isRequired) line += " [required]";
       return line;
     })
@@ -236,7 +296,7 @@ export function buildCombinedPrompt(
       ? `${filenameHint}\n`
       : "";
 
-  const instructionBlock = `${contextHeader}Document type candidates:
+  const instructionBlock = `${contextHeader}${candidateSectionHeader}
 ${candidateList}
 
 Metadata fields to extract:

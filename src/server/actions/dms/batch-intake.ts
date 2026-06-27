@@ -33,13 +33,10 @@ import {
   startAiIntakeFromUploadSession,
   retryAiIntake,
 } from "@/server/actions/dms/ai-intake";
-import { writeDocumentContentTextSystem } from "@/server/actions/dms/document-content";
-import { persistFileOcrResult } from "@/lib/dms/ocr/persist-file-ocr-result";
-import { extractFileContent } from "@/lib/dms/file-content-extractor";
-import { getDmsAiProvider } from "@/lib/dms/ai/factory";
 import { DMS_MAX_BATCH_FILES } from "@/features/dms/upload/dms-upload-constants";
 import { resolveStandardFileNameForIntakeApprove } from "@/server/actions/dms/standard-file-name";
 import { validateStandardFileName } from "@/lib/dms/standard-file-name";
+import { runApproveAiIntakeSaga } from "@/lib/dms/approve/approve-ai-intake";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type ActionResult<T = unknown> = {
@@ -94,54 +91,11 @@ export async function isDmsBatchIntakeEnabled(): Promise<boolean> {
   }
 }
 
-// ── Small local helpers (mirrors ai-intake.ts; cannot import from a "use server" file) ──
-
-const REMINDER_DAYS = [90, 60, 30, 14, 7, 1];
-
-function getExtension(filename: string): string {
-  const parts = filename.split(".");
-  return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : "bin";
-}
+// ── Small local helpers ────────────────────────────────────────────────────────
 
 function stripExtension(filename: string): string {
   const idx = filename.lastIndexOf(".");
   return (idx > 0 ? filename.slice(0, idx) : filename).slice(0, 480);
-}
-
-function buildFinalStoragePath(
-  owningCompanyId: number | null,
-  year: number,
-  typeCode: string,
-  documentId: number,
-  versionNumber: number,
-  ext: string
-): string {
-  const company = owningCompanyId ?? 0;
-  return `${company}/${year}/${typeCode}/${documentId}/v${versionNumber}/original.${ext}`;
-}
-
-function resolveMetadataValueColumns(fieldType: string, rawValue: string) {
-  switch (fieldType) {
-    case "number":
-    case "decimal": {
-      const num = parseFloat(rawValue);
-      return { value_number: isNaN(num) ? null : num };
-    }
-    case "date":
-      return { value_date: rawValue || null };
-    case "datetime":
-      return { value_datetime: rawValue || null };
-    case "boolean":
-      return { value_boolean: rawValue === "true" || rawValue === "1" };
-    case "json":
-      try {
-        return { value_json: JSON.parse(rawValue) };
-      } catch {
-        return { value_json: rawValue };
-      }
-    default:
-      return { value_text: rawValue || null };
-  }
 }
 
 // ── Batch counts / status recompute (admin client = reliable bookkeeping) ──────
@@ -707,6 +661,7 @@ export async function finalizeDraftIntake(
     const uploadSessionId = session.id as number;
     const documentId = session.document_id as number | null;
     const batchId = session.batch_id as number | null;
+    const sessionCode = session.session_code as string;
     if (!documentId) return { success: false, error: "This intake has no draft document to finalize" };
 
     // Load the draft document.
@@ -736,6 +691,7 @@ export async function finalizeDraftIntake(
     if (!docType.is_active) return { success: false, error: "Selected document type is not active" };
 
     const requiresExpiryTracking = (docType.requires_expiry_tracking as boolean) ?? false;
+    const userId = ctx.profile.id;
 
     const resolvedFileName = await resolveStandardFileNameForIntakeApprove({
       uploadSessionId,
@@ -760,283 +716,53 @@ export async function finalizeDraftIntake(
       };
     }
 
-    const userId = ctx.profile.id;
-    const nowIso = new Date().toISOString();
+    // Determine if file copy is needed (batch drafts may already have a file from a previous partial run)
+    const createFileVersion = !doc.current_version_id && !!session.temp_storage_path;
+    const effectiveAiResultId = v.aiResultId ?? (session.ai_result_id as number | null);
     const confidentiality = v.confidentialityLevel ?? (docType.default_confidentiality as string | null) ?? "internal";
 
-    // ── Promote the existing draft to ACTIVE with the user-confirmed values ──
-    const { error: updErr } = await supabase
-      .from("dms_documents")
-      .update({
-        title: v.title,
-        description: v.description ?? null,
-        document_type_id: v.documentTypeId,
-        category_id: docType.category_id,
-        status: "active",
-        confidentiality_level: confidentiality,
-        owning_company_id: v.owningCompanyId ?? doc.owning_company_id ?? null,
-        owning_branch_id: v.owningBranchId ?? null,
-        party_id: v.partyId ?? null,
-        issue_date: v.issueDate ?? null,
-        expiry_date: v.expiryDate ?? null,
-        updated_by: userId,
-        updated_at: nowIso,
-      })
-      .eq("id", documentId);
-    if (updErr) return { success: false, error: updErr.message };
+    // ── Delegate to transactional approve saga ─────────────────────────────
 
-    // ── Copy the file dms-temp → dms-documents + version/file rows (once) ────
-    let fileRecordId: number | null = null;
-    if (!doc.current_version_id && session.temp_storage_path) {
-      const year = new Date().getFullYear();
-      const ext = getExtension(session.original_filename as string);
-      const finalPath = buildFinalStoragePath(
-        v.owningCompanyId ?? (doc.owning_company_id as number | null) ?? null,
-        year,
-        docType.type_code as string,
-        documentId,
-        1,
-        ext
-      );
+    const sagaResult = await runApproveAiIntakeSaga(supabase, admin, {
+      mode: "existing_batch_draft",
+      uploadSessionId,
+      sessionCode,
+      tempStoragePath: (session.temp_storage_path as string | null) ?? "",
+      originalFilename: session.original_filename as string,
+      mimeType: session.mime_type as string,
+      fileSizeBytes: session.file_size_bytes as number,
+      sha256Hash: (session.sha256_hash as string | null) ?? null,
+      documentId,
+      documentNo: doc.document_no as string,
+      title: v.title,
+      description: v.description ?? null,
+      documentTypeId: v.documentTypeId,
+      categoryId: docType.category_id as number,
+      typeCode: docType.type_code as string,
+      confidentialityLevel: confidentiality,
+      owningCompanyId: (v.owningCompanyId ?? (doc.owning_company_id as number | null)) ?? null,
+      owningBranchId: v.owningBranchId ?? null,
+      partyId: v.partyId ?? null,
+      issueDate: v.issueDate ?? null,
+      expiryDate: v.expiryDate ?? null,
+      resolvedFileName,
+      createFileVersion,
+      metadataValues: v.metadataValues ?? [],
+      tagIds: v.tagIds ?? [],
+      links: v.links ?? [],
+      aiResultId: effectiveAiResultId,
+      userId,
+    });
 
-      const { data: tempBlob, error: dlErr } = await admin.storage
-        .from("dms-temp")
-        .download(session.temp_storage_path as string);
-      if (dlErr || !tempBlob) {
-        // Revert to draft so the user can retry.
-        await supabase.from("dms_documents").update({ status: "pending_ai_review", updated_at: new Date().toISOString() }).eq("id", documentId);
-        return { success: false, error: `Failed to read temp file: ${dlErr?.message ?? "unknown"}` };
-      }
-      const { error: upErr } = await admin.storage
-        .from("dms-documents")
-        .upload(finalPath, tempBlob, { contentType: session.mime_type as string, upsert: false });
-      if (upErr) {
-        await supabase.from("dms_documents").update({ status: "pending_ai_review", updated_at: new Date().toISOString() }).eq("id", documentId);
-        return { success: false, error: `Failed to store file: ${upErr.message}` };
-      }
-
-      const { data: version, error: verErr } = await supabase
-        .from("dms_document_versions")
-        .insert({
-          document_id: documentId,
-          version_number: 1,
-          version_label: "v1",
-          change_notes: "Created from AI batch intake",
-          is_current: true,
-          created_by: userId,
-          created_at: nowIso,
-        })
-        .select("id")
-        .single();
-      if (verErr || !version) return { success: false, error: verErr?.message ?? "Failed to create version" };
-
-      const { data: fileRecord, error: fileErr } = await supabase
-        .from("dms_document_files")
-        .insert({
-          document_id: documentId,
-          version_id: version.id,
-          file_role: "original",
-          storage_bucket: "dms-documents",
-          storage_path: finalPath,
-          file_name: resolvedFileName,
-          mime_type: session.mime_type,
-          file_size_bytes: session.file_size_bytes,
-          sha256_hash: session.sha256_hash ?? null,
-          created_by: userId,
-          created_at: nowIso,
-        })
-        .select("id")
-        .single();
-      if (fileErr || !fileRecord) return { success: false, error: fileErr?.message ?? "Failed to create file record" };
-      fileRecordId = fileRecord.id as number;
-
-      await supabase
-        .from("dms_documents")
-        .update({ current_version_id: version.id, updated_at: new Date().toISOString() })
-        .eq("id", documentId);
-    }
-
-    // ── Approved metadata (now allowed — user approved THIS draft) ───────────
-    if (v.metadataValues && v.metadataValues.length > 0) {
-      const metaUpserts = v.metadataValues
-        .filter((m) => m.rawValue !== null && m.rawValue !== undefined && m.rawValue !== "")
-        .map((m) => ({
-          document_id: documentId,
-          definition_id: m.definitionId,
-          ...resolveMetadataValueColumns(m.fieldType, m.rawValue),
-          updated_by: userId,
-          updated_at: nowIso,
-        }));
-      if (metaUpserts.length > 0) {
-        await supabase
-          .from("dms_document_metadata_values")
-          .upsert(metaUpserts, { onConflict: "document_id,definition_id" });
-      }
-    }
-
-    // ── Tags ──────────────────────────────────────────────────────────────
-    if (v.tagIds && v.tagIds.length > 0) {
-      await supabase
-        .from("dms_document_tags")
-        .insert(v.tagIds.map((tagId) => ({ document_id: documentId, tag_id: tagId, created_by: userId })));
-    }
-
-    // ── Links ─────────────────────────────────────────────────────────────
-    if (v.links && v.links.length > 0) {
-      await supabase.from("dms_document_links").insert(
-        v.links.map((l) => ({
-          document_id: documentId,
-          entity_type: l.entityType,
-          entity_id: l.entityId,
-          link_role: l.linkRole ?? "related",
-          is_primary: l.isPrimary ?? false,
-          linked_at: nowIso,
-          created_by: userId,
-        }))
-      );
-    }
-
-    // ── Expiry reminders ────────────────────────────────────────────────────
-    if (v.expiryDate) {
-      const expiry = new Date(v.expiryDate);
-      for (const daysBefore of REMINDER_DAYS) {
-        const reminderDate = new Date(expiry);
-        reminderDate.setDate(reminderDate.getDate() - daysBefore);
-        await supabase.from("dms_expiry_reminders").upsert(
-          {
-            document_id: documentId,
-            reminder_days_before: daysBefore,
-            reminder_date: reminderDate.toISOString().split("T")[0],
-            status: "pending",
-            updated_at: nowIso,
-          },
-          { onConflict: "document_id,reminder_days_before", ignoreDuplicates: false }
-        );
-      }
-    }
-
-    // ── Mark AI result accepted + sync content text ──────────────────────────
-    const effectiveAiResultId = v.aiResultId ?? (session.ai_result_id as number | null);
-    if (effectiveAiResultId) {
-      await supabase
-        .from("dms_ai_extraction_results")
-        .update({ ai_status: "accepted", review_action: "accepted", reviewed_by: userId, reviewed_at: nowIso, document_id: documentId })
-        .eq("id", effectiveAiResultId);
-
-      try {
-        const { data: aiRaw } = await supabase
-          .from("dms_ai_extraction_results")
-          .select("raw_ocr_text")
-          .eq("id", effectiveAiResultId)
-          .single();
-        let rawOcrText = (aiRaw as Record<string, unknown> | null)?.raw_ocr_text as string | null;
-
-        // Vision fallback: if raw_ocr_text is empty, download the file and run vision OCR
-        if (!rawOcrText?.trim() && fileRecordId) {
-          try {
-            const { data: fileRow } = await supabase
-              .from("dms_document_files")
-              .select("storage_bucket, storage_path, file_name, mime_type")
-              .eq("id", fileRecordId)
-              .single();
-            if (fileRow?.storage_path) {
-              const { data: blob } = await admin.storage
-                .from((fileRow.storage_bucket as string | null) ?? "dms-documents")
-                .download(fileRow.storage_path as string);
-              if (blob) {
-                const buffer = Buffer.from(await blob.arrayBuffer());
-                const content = await extractFileContent(buffer, fileRow.mime_type as string, fileRow.file_name as string);
-                if (content.hasContent) {
-                  const { provider: aiProvider } = await getDmsAiProvider();
-                  if (aiProvider.isConfigured()) {
-                    const fallbackOutput = await aiProvider.analyze({
-                      ocrText: content.text,
-                      imageFiles: content.images,
-                      currentTypeCode: null,
-                      typeCandidates: [],
-                      metadataFields: [],
-                      originalFilename: fileRow.file_name as string,
-                    });
-                    const transcription = fallbackOutput.extraction?.fullTextTranscription;
-                    const fallbackText = transcription?.trim() || content.text?.trim() || null;
-                    if (fallbackText) {
-                      rawOcrText = fallbackText;
-                      await supabase
-                        .from("dms_ai_extraction_results")
-                        .update({ raw_ocr_text: fallbackText.slice(0, 100_000) })
-                        .eq("id", effectiveAiResultId);
-                    }
-                  }
-                }
-              }
-            }
-          } catch { /* fallback failed — continue without text */ }
-        }
-
-        if (rawOcrText && rawOcrText.trim().length > 0) {
-          if (fileRecordId) {
-            await persistFileOcrResult({
-              supabase,
-              fileId: fileRecordId,
-              documentId,
-              text: rawOcrText,
-              provider: "ai_intake",
-              model: null,
-              performedBy: userId,
-              source: "ai_intake",
-            });
-          } else {
-            await writeDocumentContentTextSystem({ documentId, text: rawOcrText, source: "ai_intake", performedBy: userId });
-            await supabase.from("dms_documents").update({ ocr_text_available: true, updated_at: nowIso }).eq("id", documentId);
-          }
-        }
-      } catch (contentErr) {
-        logger.warn("[DMS OCR-AI FIX.1] batch content text sync (non-fatal):", String(contentErr));
-      }
-    }
-
-    // ── Update upload session → approved ─────────────────────────────────────
-    await supabase
-      .from("dms_upload_sessions")
-      .update({
-        status: "completed",
-        intake_status: "approved",
-        review_status: "approved",
-        review_completed_at: nowIso,
-        reviewed_by: userId,
-        completed_at: nowIso,
-        updated_at: nowIso,
-      })
-      .eq("id", uploadSessionId);
-
-    // ── Document events ──────────────────────────────────────────────────────
-    await admin.from("dms_document_events").insert([
-      {
-        document_id: documentId,
-        event_type: "batch_draft_approved",
-        description: `AI batch draft approved & activated — session ${session.session_code}`,
-        performed_by: userId,
-        performed_at: nowIso,
-        metadata_json: { document_no: doc.document_no, upload_session_id: uploadSessionId, batch_id: batchId, ai_result_id: effectiveAiResultId },
-      },
-    ]);
+    if (!sagaResult.success) return sagaResult;
 
     if (batchId) await recomputeBatchStatus(batchId);
 
-    await logAudit({
-      module_code: "DMS",
-      entity_name: "dms_documents",
-      entity_id: documentId,
-      entity_reference: doc.document_no as string,
-      action: "update",
-      new_values: { event: "dms_batch_draft_approved", upload_session_id: uploadSessionId, batch_id: batchId },
-    });
-
     revalidatePath("/dms/documents");
     revalidatePath("/dms/inbox");
-    revalidatePath(`/dms/intake/${session.session_code}`);
+    revalidatePath(`/dms/intake/${sessionCode}`);
 
-    return { success: true, data: { documentId, documentNo: doc.document_no as string } };
+    return { success: true, data: sagaResult.data };
   } catch (e) {
     logger.error("finalizeDraftIntake error", e);
     return { success: false, error: String(e) };

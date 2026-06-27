@@ -24,7 +24,7 @@ import { DmsAiIntakeStatusBadge } from "./dms-ai-intake-status-badge";
 import { DmsAiConfidenceBadge } from "@/features/dms/ai/dms-ai-confidence-badge";
 import { DmsAiIntakeReviewForm, buildInitialReviewValues } from "./dms-ai-intake-review-form";
 import type { ReviewFormValues } from "./dms-ai-intake-review-form";
-import type { IntakeSessionData } from "@/server/actions/dms/ai-intake";
+import type { IntakeSessionData, IntakeAiResultRow } from "@/server/actions/dms/ai-intake";
 import {
   approveAiIntakeAndCreateDocument,
   discardAiIntake,
@@ -61,6 +61,15 @@ export function DmsAiIntakePageClient({
   const router = useRouter();
   const { activeTab, updateTabRoute, renameTab } = useWorkspace();
   const [session] = useState<IntakeSessionData>(initialSession);
+  const [aiResultPatch, setAiResultPatch] = useState<Partial<IntakeAiResultRow> | null>(null);
+  const aiResult = session.ai_result
+    ? ({ ...session.ai_result, ...aiResultPatch } as IntakeAiResultRow)
+    : null;
+
+  const displaySession: IntakeSessionData = {
+    ...session,
+    ai_result: aiResult,
+  };
   const [formValues, setFormValues] = useState<ReviewFormValues>(() =>
     buildInitialReviewValues(initialSession)
   );
@@ -70,7 +79,6 @@ export function DmsAiIntakePageClient({
   const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
   const [discardReason, setDiscardReason] = useState("");
 
-  const aiResult = session.ai_result;
   const isFailed = session.intake_status === "failed";
   const isProcessing = ["ocr_pending", "ocr_processing", "ai_pending", "ai_processing"].includes(session.intake_status);
   const isReady = ["review_pending", "review_in_progress"].includes(session.intake_status);
@@ -78,7 +86,20 @@ export function DmsAiIntakePageClient({
   // ── Form change handler ───────────────────────────────────────────────────
 
   const handleFormChange = useCallback((patch: Partial<ReviewFormValues>) => {
-    setFormValues((prev) => ({ ...prev, ...patch }));
+    setFormValues((prev) => {
+      // Metadata values must be MERGED (not replaced) because per-field onChange
+      // callbacks close over a potentially stale snapshot of values.metadataValues.
+      // Using the functional update's `prev` ensures concurrent seed/edit calls
+      // accumulate correctly rather than the last writer winning.
+      if (patch.metadataValues !== undefined) {
+        return {
+          ...prev,
+          ...patch,
+          metadataValues: { ...prev.metadataValues, ...patch.metadataValues },
+        };
+      }
+      return { ...prev, ...patch };
+    });
   }, []);
 
   // ── Validate before approve ───────────────────────────────────────────────
@@ -95,7 +116,7 @@ export function DmsAiIntakePageClient({
         requiresExpiryTracking: docType.requires_expiry_tracking,
         expiryDate: formValues.expiryDate || null,
         originalFilename: session.original_filename,
-        extractedFields: session.ai_result?.extracted_fields_json ?? null,
+        extractedFields: aiResult?.extracted_fields_json ?? null,
         metadataValues: Object.entries(formValues.metadataValues).map(([id, v]) => ({
           definitionId: parseInt(id, 10),
           rawValue: v.rawValue,
@@ -601,10 +622,14 @@ export function DmsAiIntakePageClient({
                 )}
               </div>
               <DmsAiIntakeReviewForm
-                session={session}
+                session={displaySession}
                 values={formValues}
                 onChange={handleFormChange}
                 initialDocTypes={documentTypes}
+                aiResultOverride={aiResult}
+                onAiResultPatch={(patch) =>
+                  setAiResultPatch((prev) => ({ ...(prev ?? {}), ...patch }))
+                }
               />
             </div>
           </div>

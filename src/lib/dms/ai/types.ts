@@ -18,12 +18,50 @@ export function confidenceLabelFromScore(score: number): ConfidenceLabel {
 
 // ── Classification ────────────────────────────────────────────────────────────
 
+export interface DmsClassificationAlternative {
+  documentType: string;
+  confidence: number;
+  reason: string;
+}
+
+export interface DmsClassificationEvidence {
+  matchedKeywords: string[];
+  matchedPatterns: string[];
+  negativeMatches: string[];
+}
+
 export interface DmsClassificationResult {
   suggestedTypeCode: string | null;
   suggestedTypeId: number | null;
   confidenceScore: number;
   confidenceLabel: ConfidenceLabel;
   reason: string;
+  /** Phase 3 — optional runner-up types from AI classification */
+  alternativeDocumentTypes?: DmsClassificationAlternative[];
+  classificationEvidence?: DmsClassificationEvidence | null;
+  needsHumanReview?: boolean;
+  reviewReason?: string | null;
+}
+
+/** Phase 3 — compact metadata-aware packet for Pass 1 classification */
+export interface DmsClassificationCandidatePacket {
+  documentTypeId: number;
+  typeCode: string;
+  nameEn: string;
+  nameAr: string | null;
+  categoryCode: string | null;
+  description: string | null;
+  aliases: string[];
+  fingerprint: string | null;
+  expectedKeywords: string[];
+  expectedKeywordsAr: string[];
+  expectedFieldLabelsEn: string[];
+  expectedFieldLabelsAr: string[];
+  expectedFormats: string[];
+  negativeKeywords: string[];
+  metadataFieldCount: number;
+  requiredFieldCount: number;
+  preRankScore: number;
 }
 
 // ── Field extraction ─────────────────────────────────────────────────────────
@@ -90,6 +128,9 @@ export interface DmsAiOutput {
   detectedEntities: DmsDetectedEntity[];
   warnings: string[];
   rawResponse?: Record<string, unknown>;
+  /** Phase 14 — Token counts from the AI provider response (analyze call only). */
+  promptTokens?: number | null;
+  completionTokens?: number | null;
 }
 
 // ── AI Status ─────────────────────────────────────────────────────────────────
@@ -114,10 +155,22 @@ export interface DmsAiDocumentTypeCandidate {
 export interface DmsAiMetadataField {
   fieldCode: string;
   labelEn: string;
+  labelAr?: string | null;
   fieldType: string;
   isRequired: boolean;
   aiFieldHint: string | null;
   optionsJson: unknown | null;
+  validationJson?: unknown | null;
+  aiPossibleLabelsEn?: string[] | null;
+  aiPossibleLabelsAr?: string[] | null;
+  aiKeywords?: string[] | null;
+  aiNegativeKeywords?: string[] | null;
+  aiExpectedFormat?: string | null;
+  aiExampleValues?: string[] | null;
+  aiConfidenceThreshold?: number | null;
+  normalizationRule?: string | null;
+  fieldGroup?: string | null;
+  fieldSection?: string | null;
 }
 
 /** An image file passed directly to an AI vision model for OCR + extraction. */
@@ -149,6 +202,8 @@ export interface DmsAiInput {
   metadataFields: DmsAiMetadataField[];
   /** Original filename — used as a classification hint (e.g. "sameer_EID_3028.pdf"). */
   originalFilename?: string;
+  /** Phase 3 — metadata-aware classification packets for Pass 1 (when set, used in prompt). */
+  classificationPackets?: DmsClassificationCandidatePacket[];
 }
 
 // ── Summary ───────────────────────────────────────────────────────────────────
@@ -237,6 +292,14 @@ export interface DmsSemanticSearchResult {
   completenessScore: number | null;
   expiryDate: string | null;
   matchReason: string;
+  /**
+   * Phase 11 — chunk-level snippet (max 250 chars).
+   * Present when the result came from chunk-level semantic search.
+   * Undefined when result came from document-level search.
+   */
+  chunkSnippet?: string | null;
+  /** Phase 11 — source search mode used for this result. */
+  searchMode?: "chunk" | "document";
 }
 
 export type DmsEmbeddingStatus =
@@ -261,7 +324,13 @@ export interface DmsDocumentEmbeddingStatusRow {
 export interface DmsDocumentQuestionAnswer {
   answer: string;
   confidence: "high" | "medium" | "low";
-  sourceUsed: "content_text" | "ai_summary" | "metadata" | "not_found";
+  sourceUsed: "content_text" | "ai_summary" | "metadata" | "not_found" | "chunk_text";
+  /**
+   * Phase 11 — chunk citations returned when chunk-grounded path was used.
+   * Each citation contains the chunk_index and a short snippet (max 200 chars).
+   * Never contains full chunk text.
+   */
+  chunkCitations?: Array<{ chunkIndex: number; snippet: string }>;
 }
 
 // ── Tag/Link Suggestion Types (DMS 12.4) ──────────────────────────────────────

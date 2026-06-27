@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -10,17 +10,34 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { DmsAiIntakeFieldRow } from "./dms-ai-intake-field-row";
 import { DmsAiIntakeMetadataSection } from "./dms-ai-intake-metadata-section";
+import { DmsAiIntakeClassificationCard } from "./dms-ai-intake-classification-card";
 import { DmsStandardFileNameField } from "./dms-standard-file-name-field";
 import { ERPCombobox } from "@/components/erp/combobox/erp-combobox";
 import { OwnerCompanySelect } from "@/components/erp/organizations/owner-company-select";
 import { BranchSelect } from "@/components/erp/organizations/branch-select";
 import { getDmsDocumentTypes } from "@/server/actions/dms/document-types";
 import type { DmsDocumentTypeRow } from "@/server/actions/dms/document-types";
-import type { IntakeSessionData } from "@/server/actions/dms/ai-intake";
+import {
+  rerunMetadataExtractionForIntakeSession,
+  type IntakeAiResultRow,
+  type IntakeSessionData,
+  type RerunExtractionMergeMode,
+} from "@/server/actions/dms/ai-intake";
 import type { ERPComboboxOption } from "@/components/erp/combobox/types";
 import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 const CONFIDENTIALITY_OPTIONS = [
   { value: "public", label: "Public" },
@@ -50,6 +67,8 @@ interface DmsAiIntakeReviewFormProps {
   values: ReviewFormValues;
   onChange: (patch: Partial<ReviewFormValues>) => void;
   initialDocTypes?: DmsDocumentTypeRow[];
+  aiResultOverride?: IntakeAiResultRow | null;
+  onAiResultPatch?: (patch: Partial<IntakeAiResultRow>) => void;
 }
 
 function stripExtension(filename: string): string {
@@ -62,12 +81,19 @@ export function DmsAiIntakeReviewForm({
   values,
   onChange,
   initialDocTypes = [],
+  aiResultOverride = null,
+  onAiResultPatch,
 }: DmsAiIntakeReviewFormProps) {
-  const aiResult = session.ai_result;
+  const aiResult = aiResultOverride ?? session.ai_result;
   const extractedFields = aiResult?.extracted_fields_json ?? {};
   const fieldConf = aiResult?.field_confidence_json ?? {};
   const [docTypes, setDocTypes] = useState<DmsDocumentTypeRow[]>(initialDocTypes);
   const [isLoadingTypes, setIsLoadingTypes] = useState(initialDocTypes.length === 0);
+  const [isRerunning, startRerun] = useTransition();
+  const [typeChangeDialogOpen, setTypeChangeDialogOpen] = useState(false);
+  const [pendingTypeId, setPendingTypeId] = useState<number | null>(null);
+  const [pendingMergeMode, setPendingMergeMode] = useState<RerunExtractionMergeMode>("fill_missing_only");
+  const suggestedTypeIdRef = useRef(aiResult?.suggested_document_type_id ?? null);
 
   useEffect(() => {
     if (initialDocTypes.length > 0) {
@@ -97,13 +123,68 @@ export function DmsAiIntakeReviewForm({
     }
   }, [docTypes, values.documentTypeId, values.categoryId, onChange]);
 
-  // When document type changes, update categoryId
-  const handleDocTypeChange = (typeId: number | null) => {
+  // When document type changes, update categoryId (with optional re-extraction prompt)
+  const applyDocTypeChange = (typeId: number | null) => {
     const selected = docTypes.find((t) => t.id === typeId) ?? null;
     onChange({
       documentTypeId: typeId,
       categoryId: selected?.category_id ?? null,
     });
+  };
+
+  const runMetadataRerun = (typeId: number, mergeMode: RerunExtractionMergeMode) => {
+    startRerun(async () => {
+      const result = await rerunMetadataExtractionForIntakeSession({
+        uploadSessionId: session.id,
+        documentTypeId: typeId,
+        mergeMode,
+      });
+      if (!result.success || !result.data) {
+        toast.error(result.error ?? "Failed to re-run metadata extraction");
+        return;
+      }
+      if (result.data.skipped) {
+        toast.info("Metadata definitions refreshed — existing values kept");
+        return;
+      }
+      onAiResultPatch?.({
+        extracted_fields_json: result.data.extractedFieldsJson,
+        field_confidence_json: result.data.fieldConfidenceJson,
+      });
+      toast.success("Metadata extraction updated for the selected type");
+    });
+  };
+
+  const handleDocTypeChange = (typeId: number | null) => {
+    const previousTypeId = values.documentTypeId;
+    if (typeId === previousTypeId) return;
+
+    const aiSuggested = suggestedTypeIdRef.current;
+    const isChangeFromAi = aiSuggested != null && typeId !== aiSuggested;
+
+    if (isChangeFromAi && typeId != null) {
+      setPendingTypeId(typeId);
+      setPendingMergeMode("fill_missing_only");
+      setTypeChangeDialogOpen(true);
+      return;
+    }
+
+    applyDocTypeChange(typeId);
+  };
+
+  const handleSelectAlternative = (typeCode: string) => {
+    const match = docTypes.find((t) => t.type_code.toUpperCase() === typeCode.toUpperCase());
+    if (match) handleDocTypeChange(match.id);
+  };
+
+  const confirmTypeChange = () => {
+    if (pendingTypeId == null) return;
+    applyDocTypeChange(pendingTypeId);
+    setTypeChangeDialogOpen(false);
+    if (pendingMergeMode !== "keep_user_values") {
+      runMetadataRerun(pendingTypeId, pendingMergeMode);
+    }
+    setPendingTypeId(null);
   };
 
   const docTypeOptions: ERPComboboxOption[] = docTypes.map((t) => ({
@@ -127,6 +208,12 @@ export function DmsAiIntakeReviewForm({
         <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
           Document Classification
         </h4>
+
+        <DmsAiIntakeClassificationCard
+          aiResult={aiResult}
+          docTypes={docTypes}
+          onSelectAlternative={handleSelectAlternative}
+        />
 
         {/* Document Type */}
         <DmsAiIntakeFieldRow
@@ -162,6 +249,49 @@ export function DmsAiIntakeReviewForm({
           </div>
         )}
       </div>
+
+      <AlertDialog open={typeChangeDialogOpen} onOpenChange={setTypeChangeDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Document type changed</AlertDialogTitle>
+            <AlertDialogDescription>
+              Re-run AI metadata extraction for the new document type? Your existing values can be
+              preserved or merged.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2 py-2">
+            <label className="text-sm font-medium">Merge mode</label>
+            <Select
+              value={pendingMergeMode}
+              onValueChange={(v) => {
+                if (v) setPendingMergeMode(v as RerunExtractionMergeMode);
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="fill_missing_only">Fill missing fields only (recommended)</SelectItem>
+                <SelectItem value="replace_ai_values">Replace AI-suggested values</SelectItem>
+                <SelectItem value="keep_user_values">Keep current values — refresh definitions only</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingTypeId(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmTypeChange} disabled={isRerunning}>
+              {isRerunning ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Re-running…
+                </>
+              ) : (
+                "Apply & continue"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Core Fields */}
       <div className="space-y-4">
@@ -312,6 +442,15 @@ export function DmsAiIntakeReviewForm({
         extractedFieldsJson={aiResult?.extracted_fields_json ?? null}
         fieldConfidenceJson={aiResult?.field_confidence_json ?? null}
         values={values.metadataValues}
+        onBulkSeed={(seeded) =>
+          // All AI-seeded values arrive in one call — no stale closure issue.
+          onChange({
+            metadataValues: {
+              ...values.metadataValues,
+              ...seeded,
+            },
+          })
+        }
         onChange={(defId, fieldType, rawValue) =>
           onChange({
             metadataValues: {

@@ -5,6 +5,12 @@ import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
+import {
+  DMS_METADATA_DEFINITION_SELECT,
+  filterMetadataDefinitionsByContext,
+  mapMetadataDefinitionRow,
+  type DmsMetadataDefinitionBase,
+} from "@/lib/dms/metadata/metadata-definition-shared";
 
 export type ActionResult<T = unknown> = {
   success: boolean;
@@ -12,20 +18,7 @@ export type ActionResult<T = unknown> = {
   error?: string;
 };
 
-export type DmsMetadataDefinitionRow = {
-  id: number;
-  field_code: string;
-  label_en: string;
-  label_ar: string | null;
-  field_type: string;
-  is_required: boolean;
-  is_ai_extractable: boolean;
-  ai_field_hint: string | null;
-  sort_order: number;
-  options_json: unknown;
-  validation_json: unknown;
-  document_type_id: number;
-};
+export type DmsMetadataDefinitionRow = DmsMetadataDefinitionBase;
 
 export type DmsMetadataValueInput = {
   definition_id: number;
@@ -53,7 +46,8 @@ export type DmsMetadataValueRow = {
 // ── getMetadataDefinitionsForType ─────────────────────────────────────────────
 
 export async function getMetadataDefinitionsForType(
-  documentTypeId: number
+  documentTypeId: number,
+  context: "all" | "intake" = "intake"
 ): Promise<ActionResult<DmsMetadataDefinitionRow[]>> {
   try {
     const ctx = await getAuthContext();
@@ -64,7 +58,7 @@ export async function getMetadataDefinitionsForType(
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("dms_metadata_definitions")
-      .select("id, field_code, label_en, label_ar, field_type, is_required, is_ai_extractable, ai_field_hint, sort_order, options_json, validation_json, document_type_id")
+      .select(DMS_METADATA_DEFINITION_SELECT)
       .eq("document_type_id", documentTypeId)
       .eq("is_active", true)
       .is("deleted_at", null)
@@ -72,7 +66,12 @@ export async function getMetadataDefinitionsForType(
 
     if (error) return { success: false, error: error.message };
 
-    return { success: true, data: (data ?? []) as DmsMetadataDefinitionRow[] };
+    const mapped = (data ?? []).map((row) =>
+      mapMetadataDefinitionRow(row as Record<string, unknown>)
+    );
+    const filtered = filterMetadataDefinitionsByContext(mapped, context === "intake" ? "intake" : "all");
+
+    return { success: true, data: filtered };
   } catch (err) {
     logger.error("getMetadataDefinitionsForType error", err);
     return { success: false, error: "Failed to load metadata definitions" };
@@ -95,7 +94,7 @@ export async function getDmsDocumentMetadataValues(
       .from("dms_document_metadata_values")
       .select(`
         id, document_id, definition_id, value_text, value_number, value_date, value_datetime, value_boolean, value_json,
-        definition:dms_metadata_definitions(id, field_code, label_en, label_ar, field_type, is_required, is_ai_extractable, ai_field_hint, sort_order, options_json, validation_json, document_type_id)
+        definition:dms_metadata_definitions(${DMS_METADATA_DEFINITION_SELECT})
       `)
       .eq("document_id", documentId)
       .is("deleted_at", null)
@@ -103,7 +102,16 @@ export async function getDmsDocumentMetadataValues(
 
     if (error) return { success: false, error: error.message };
 
-    return { success: true, data: (data ?? []) as unknown as DmsMetadataValueRow[] };
+    const rows = (data ?? []).map((row) => {
+      const defRaw = (row as { definition: Record<string, unknown> | Record<string, unknown>[] | null }).definition;
+      const defObj = Array.isArray(defRaw) ? defRaw[0] : defRaw;
+      return {
+        ...(row as Omit<DmsMetadataValueRow, "definition">),
+        definition: defObj ? mapMetadataDefinitionRow(defObj) : null,
+      };
+    });
+
+    return { success: true, data: rows as DmsMetadataValueRow[] };
   } catch (err) {
     logger.error("getDmsDocumentMetadataValues error", err);
     return { success: false, error: "Failed to load metadata values" };
@@ -145,7 +153,6 @@ export async function saveDmsDocumentMetadataValues(
       if (error) return { success: false, error: error.message };
     }
 
-    // Insert event
     await supabase.from("dms_document_events").insert({
       document_id: documentId,
       event_type: "metadata_updated",

@@ -13,11 +13,15 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
+import { upsertDmsReviewQueueItem, isDmsAiReviewEnabled } from "@/lib/dms/review-queue/review-queue-upsert";
+import { logger } from "@/lib/logger";
 import type { OcrStatus, OcrProviderCode } from "@/lib/dms/ocr/types";
 import { revalidatePath } from "next/cache";
 import { extractFileContent } from "@/lib/dms/file-content-extractor";
-import { getDmsAiProvider } from "@/lib/dms/ai/factory";
+import { getDmsAiProvider, getAzureDocumentIntelligenceProvider } from "@/lib/dms/ai/factory";
 import { persistFileOcrResult } from "@/lib/dms/ocr/persist-file-ocr-result";
+import { loadOcrFeatureFlags, routeOcr } from "@/lib/dms/ocr/ocr-router";
+import { AzureOcrProvider } from "@/lib/dms/ocr/azure-ocr-provider";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -311,7 +315,7 @@ export async function triggerDmsOcrForFile(
 
     const jobId: number = job.id as number;
 
-    // 4. Mark processing
+    // 4. Mark processing (provider may be updated after routing; use "vision" as initial value)
     await supabase
       .from("dms_document_files")
       .update({ ocr_status: "processing", ocr_provider: ocrProviderCode, ocr_started_at: new Date().toISOString(), ocr_error_message: null })
@@ -336,6 +340,7 @@ export async function triggerDmsOcrForFile(
       new_values: { event: "ocr_started", provider: ocrProviderCode, job_id: jobId },
     });
 
+
     // 5. Download the file from storage
     const startMs = Date.now();
     let fileBuffer: Buffer;
@@ -352,49 +357,68 @@ export async function triggerDmsOcrForFile(
       return { success: false, error: `Failed to download file for OCR: ${msg}` };
     }
 
-    // 6. Run AI vision OCR — handles all file types: PDF (text layer + scanned pages),
-    //    JPEG/PNG/WebP/TIFF images, DOCX, XLSX. GPT-4.1 is the sole OCR engine.
+    // 6. Run OCR — router-aware: checks DMS_OCR_ROUTER flag and routes accordingly.
     let finalStatus: OcrStatus = "complete";
     let extractedText = "";
     let model: string | undefined;
     let ocrError: string | null = null;
+    let usedProviderCode: OcrProviderCode = ocrProviderCode;
 
     try {
-      // 6a. Extract content — text from digital files, or rendered images from scanned/image files
-      const content = await extractFileContent(
-        fileBuffer,
-        file.mime_type as string,
-        file.file_name as string
-      );
+      // 6a. Load OCR feature flags
+      const featureFlags = await loadOcrFeatureFlags(supabase);
 
-      if (!content.hasContent) {
-        // Nothing extractable (e.g. empty or corrupted file) — complete with empty text
-        extractedText = "";
-      } else {
-        // 6b. Send to GPT-4.1 for full text transcription
-        const { provider: aiProvider } = await getDmsAiProvider();
-        if (!aiProvider.isConfigured()) {
-          throw new Error("No AI provider configured. Add an OpenAI API key in AI Settings.");
-        }
+      if (featureFlags.dmsOcrRouter) {
+        // ── Phase 10A: OCR router path ─────────────────────────────────────
+        // Load providers for the router
+        const { provider: gptProvider } = await getDmsAiProvider();
+        const { provider: azureAdapter } = await getAzureDocumentIntelligenceProvider();
+        const azureProvider = azureAdapter ? new AzureOcrProvider(azureAdapter) : null;
 
-        const aiOutput = await aiProvider.analyze({
-          ocrText: content.text,       // text extracted from digital PDFs / DOCX / XLSX
-          imageFiles: content.images,  // rendered pages from scanned PDFs / image files
-          currentTypeCode: null,
-          typeCandidates: [],
-          metadataFields: [],
-          originalFilename: file.file_name as string,
+        const routerResult = await routeOcr({
+          buffer: fileBuffer,
+          mimeType: file.mime_type as string,
+          fileName: file.file_name as string,
+          featureFlags,
+          azureProvider,
+          gptProvider: gptProvider.isConfigured() ? gptProvider : null,
         });
 
-        // Prefer AI full transcription; fall back to locally-extracted text for digital docs
-        const transcription = aiOutput.extraction?.fullTextTranscription;
-        if (transcription && transcription.trim().length > 0) {
-          extractedText = transcription.trim();
-        } else if (content.text && content.text.trim().length > 0) {
-          extractedText = content.text.trim();
-        }
+        extractedText = routerResult.text.trim();
+        model = routerResult.model ?? undefined;
+        usedProviderCode = routerResult.providerCode as OcrProviderCode;
+      } else {
+        // ── Legacy path (DMS_OCR_ROUTER=false): GPT-4.1 for all file types ─
+        const content = await extractFileContent(
+          fileBuffer,
+          file.mime_type as string,
+          file.file_name as string
+        );
 
-        model = (aiProvider.modelId ?? "gpt-4.1").toLowerCase();
+        if (content.hasContent) {
+          const { provider: aiProvider } = await getDmsAiProvider();
+          if (!aiProvider.isConfigured()) {
+            throw new Error("No AI provider configured. Add an OpenAI API key in AI Settings.");
+          }
+
+          const aiOutput = await aiProvider.analyze({
+            ocrText: content.text,
+            imageFiles: content.images,
+            currentTypeCode: null,
+            typeCandidates: [],
+            metadataFields: [],
+            originalFilename: file.file_name as string,
+          });
+
+          const transcription = aiOutput.extraction?.fullTextTranscription;
+          if (transcription && transcription.trim().length > 0) {
+            extractedText = transcription.trim();
+          } else if (content.text && content.text.trim().length > 0) {
+            extractedText = content.text.trim();
+          }
+
+          model = (aiProvider.modelId ?? "gpt-4.1").toLowerCase();
+        }
       }
     } catch (ocrEx) {
       ocrError = String(ocrEx);
@@ -411,7 +435,7 @@ export async function triggerDmsOcrForFile(
         fileId,
         documentId,
         text: extractedText || null,
-        provider: ocrProviderCode,
+        provider: usedProviderCode,
         model: model ?? null,
         performedBy: ctx.profile.id,
         source: "ocr",
@@ -419,11 +443,11 @@ export async function triggerDmsOcrForFile(
 
       await supabase
         .from("dms_ai_extraction_jobs")
-        .update({ status: "completed", completed_at: completedAt, duration_ms: durationMs, model, provider: ocrProviderCode })
+        .update({ status: "completed", completed_at: completedAt, duration_ms: durationMs, model, provider: usedProviderCode })
         .eq("id", jobId);
 
       await insertDocumentEvent(supabase, documentId, fileId, "ocr_completed", ctx.profile.id, {
-        provider: ocrProviderCode,
+        provider: usedProviderCode,
         duration_ms: durationMs,
         has_text: (extractedText?.trim().length ?? 0) > 0,
       });
@@ -434,7 +458,7 @@ export async function triggerDmsOcrForFile(
         entity_id: fileId,
         entity_reference: `FILE-${fileId}`,
         action: "update",
-        new_values: { event: "ocr_completed", job_id: jobId, provider: ocrProviderCode, duration_ms: durationMs },
+        new_values: { event: "ocr_completed", job_id: jobId, provider: usedProviderCode, duration_ms: durationMs },
       });
     } else {
       await markOcrFailed(supabase, fileId, jobId, documentId, ctx.profile.id, ocrError ?? "Unknown error", durationMs);
@@ -677,6 +701,32 @@ async function markOcrFailed(
     action: "update",
     new_values: { event: "ocr_failed", job_id: jobId, duration_ms: durationMs },
   });
+
+  // ── Phase 12: Non-fatal OCR failure review queue hook ────────────────────
+  // NEVER blocks the OCR failure recording.
+  try {
+    const reviewEnabled = await isDmsAiReviewEnabled();
+    if (reviewEnabled) {
+      await upsertDmsReviewQueueItem({
+        idempotencyKey:  `ocr_file:${fileId}`,
+        reviewType:      "ocr_failure_review",
+        sourceType:      "ocr",
+        sourceId:        String(fileId),
+        documentId,
+        reasonCode:      "ocr_failed",
+        reasonMessage:   `OCR failed for file ${fileId}: ${errorMsg.slice(0, 200)}`,
+        priority:        "high",
+        payloadJson: {
+          file_id:     fileId,
+          document_id: documentId,
+          job_id:      jobId,
+        },
+        createdBy: userId,
+      });
+    }
+  } catch (hookErr) {
+    logger.warn("[ocr] review queue hook failed (non-fatal)", { fileId, error: String(hookErr).slice(0, 200) });
+  }
 }
 
 async function insertDocumentEvent(

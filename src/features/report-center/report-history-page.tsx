@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { Fragment, useState, useEffect, useCallback } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import {
   History,
@@ -156,9 +156,8 @@ export function ReportHistoryPage() {
               const isExpanded = expandedRunId === run.id;
 
               return (
-                <>
+                <Fragment key={run.id}>
                   <tr
-                    key={run.id}
                     className={cn(
                       "border-b last:border-0 hover:bg-muted/20 cursor-pointer transition-colors",
                       isExpanded && "bg-muted/10"
@@ -227,7 +226,7 @@ export function ReportHistoryPage() {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               );
             })}
           </tbody>

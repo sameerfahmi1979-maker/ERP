@@ -8,9 +8,11 @@
  */
 
 import { useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useWorkspaceContext } from "@/components/workspace/workspace-provider";
 import { useWorkspaceDraftStoreContext } from "@/components/workspace/workspace-draft-provider";
 import type { WorkspaceTab } from "@/lib/workspace/workspace-types";
+import { DASHBOARD_ROUTE } from "@/lib/workspace/workspace-route-registry";
 
 export type OpenTabOptions = Partial<WorkspaceTab> & { route: string };
 
@@ -21,6 +23,7 @@ export function useWorkspace() {
   }
   const { state, dispatch, openTab, closeTab, setActiveTab } = ctx;
   const draftStore = useWorkspaceDraftStoreContext();
+  const router = useRouter();
 
   const activeTab = state.tabs.find((t) => t.id === state.activeTabId) ?? null;
 
@@ -73,7 +76,9 @@ export function useWorkspace() {
     const closing = state.tabs.filter((t) => t.closable);
     closing.forEach((t) => draftStore?.clearDraftsForTab(t.id));
     dispatch({ type: "CLOSE_ALL_CLOSABLE" });
-  }, [state.tabs, draftStore, dispatch]);
+    // Navigate to the dashboard so the viewport reflects the now-active tab.
+    router.push(DASHBOARD_ROUTE);
+  }, [state.tabs, draftStore, dispatch, router]);
 
   return {
     /** All open tabs */

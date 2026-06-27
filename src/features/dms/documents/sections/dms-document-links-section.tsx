@@ -4,13 +4,21 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { format, parseISO } from "date-fns";
-import { Plus, Trash2, Loader2, Link2, Sparkles, Check, X } from "lucide-react";
+import { Plus, Trash2, Loader2, Link2, Sparkles, Check, X, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { getDmsDocumentLinks, addDmsDocumentLink, removeDmsDocumentLink } from "@/server/actions/dms/document-links";
+import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
+import {
+  getDmsDocumentLinks,
+  addDmsDocumentLink,
+  updateDmsDocumentLink,
+  removeDmsDocumentLink,
+  type DmsDocumentLinkRow,
+} from "@/server/actions/dms/document-links";
+import { DmsLinkEntitySelect } from "@/features/dms/documents/dms-link-entity-select";
 import { queryKeys } from "@/lib/query/query-keys";
 import { DMS_ENTITY_TYPES, DMS_ENTITY_TYPE_LABELS } from "../dms-document-constants";
 import {
@@ -30,13 +38,19 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
   const qc = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [entityType, setEntityType] = useState<string>(DMS_ENTITY_TYPES[0]);
-  const [entityId, setEntityId] = useState("");
+  const [entityType, setEntityType] = useState<string>("employee");
+  const [entityId, setEntityId] = useState<number | null>(null);
   const [linkRole, setLinkRole] = useState("");
   const [isPrimary, setIsPrimary] = useState(false);
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [applyingIds, setApplyingIds] = useState<number[]>([]);
   const [rejectingIds, setRejectingIds] = useState<number[]>([]);
+  const [editingLink, setEditingLink] = useState<DmsDocumentLinkRow | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editEntityType, setEditEntityType] = useState<string>("employee");
+  const [editEntityId, setEditEntityId] = useState<number | null>(null);
+  const [editLinkRole, setEditLinkRole] = useState("");
+  const [editIsPrimary, setEditIsPrimary] = useState(false);
 
   const { data: links = [], isLoading } = useQuery({
     queryKey: queryKeys.dms.documentLinks(documentId ?? 0),
@@ -117,23 +131,22 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
 
   async function handleAdd() {
     if (!documentId) return;
-    const id = parseInt(entityId, 10);
-    if (isNaN(id) || id <= 0) {
-      toast.error("Please enter a valid entity ID");
+    if (!entityId || entityId <= 0) {
+      toast.error("Please select an entity");
       return;
     }
     setAdding(true);
     try {
       const result = await addDmsDocumentLink(documentId, {
         entity_type: entityType as typeof DMS_ENTITY_TYPES[number],
-        entity_id: id,
+        entity_id: entityId,
         link_role: linkRole || null,
         is_primary: isPrimary,
       });
       if (result.success) {
         toast.success("Link added");
         setShowAdd(false);
-        setEntityId("");
+        setEntityId(null);
         setLinkRole("");
         setIsPrimary(false);
         qc.invalidateQueries({ queryKey: queryKeys.dms.documentLinks(documentId) });
@@ -153,6 +166,47 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
       qc.invalidateQueries({ queryKey: queryKeys.dms.documentLinks(documentId) });
     } else {
       toast.error(result.error ?? "Failed to remove link");
+    }
+  }
+
+  function openEditLink(link: DmsDocumentLinkRow) {
+    setEditingLink(link);
+    setEditEntityType(link.entity_type);
+    setEditEntityId(link.entity_id);
+    setEditLinkRole(link.link_role ?? "");
+    setEditIsPrimary(link.is_primary);
+  }
+
+  function closeEditLink() {
+    setEditingLink(null);
+    setEditEntityId(null);
+    setEditLinkRole("");
+    setEditIsPrimary(false);
+  }
+
+  async function handleSaveEdit() {
+    if (!documentId || !editingLink) return;
+    if (!editEntityId || editEntityId <= 0) {
+      toast.error("Please select an entity");
+      return;
+    }
+    setEditSaving(true);
+    try {
+      const result = await updateDmsDocumentLink(editingLink.id, documentId, {
+        entity_type: editEntityType as typeof DMS_ENTITY_TYPES[number],
+        entity_id: editEntityId,
+        link_role: editLinkRole || null,
+        is_primary: editIsPrimary,
+      });
+      if (result.success) {
+        toast.success("Link updated");
+        closeEditLink();
+        qc.invalidateQueries({ queryKey: queryKeys.dms.documentLinks(documentId) });
+      } else {
+        toast.error(result.error ?? "Failed to update link");
+      }
+    } finally {
+      setEditSaving(false);
     }
   }
 
@@ -185,20 +239,23 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
             <thead>
               <tr className="border-b border-border bg-muted/20">
                 <th className="text-left px-3 py-2 font-medium text-muted-foreground">Entity Type</th>
-                <th className="text-left px-3 py-2 font-medium text-muted-foreground">Entity ID</th>
+                <th className="text-left px-3 py-2 font-medium text-muted-foreground">Entity</th>
                 <th className="text-left px-3 py-2 font-medium text-muted-foreground">Role</th>
                 <th className="text-left px-3 py-2 font-medium text-muted-foreground">Primary</th>
                 <th className="text-left px-3 py-2 font-medium text-muted-foreground">Linked</th>
-                {!isViewing && <th className="px-3 py-2 w-[50px]" />}
+                {!isViewing && <th className="px-3 py-2 w-[80px]" />}
               </tr>
             </thead>
             <tbody>
               {links.map((link) => (
                 <tr key={link.id} className="border-b border-border last:border-0">
                   <td className="px-3 py-2 font-medium">
-                    {DMS_ENTITY_TYPE_LABELS[link.entity_type as keyof typeof DMS_ENTITY_TYPE_LABELS] ?? link.entity_type}
+                    {link.entity_type_label}
                   </td>
-                  <td className="px-3 py-2 font-mono">#{link.entity_id}</td>
+                  <td className="px-3 py-2">
+                    <div className="font-medium">{link.entity_display_name}</div>
+                    <div className="text-[10px] text-muted-foreground font-mono">ID {link.entity_id}</div>
+                  </td>
                   <td className="px-3 py-2 text-muted-foreground">{link.link_role ?? "—"}</td>
                   <td className="px-3 py-2">{link.is_primary ? "✓" : "—"}</td>
                   <td className="px-3 py-2 text-muted-foreground">
@@ -206,14 +263,26 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
                   </td>
                   {!isViewing && (
                     <td className="px-3 py-2">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-6 w-6 text-destructive hover:text-destructive"
-                        onClick={() => handleRemove(link.id)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                      <div className="flex items-center gap-0.5">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6"
+                          onClick={() => openEditLink(link)}
+                          title="Edit link"
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6 text-destructive hover:text-destructive"
+                          onClick={() => handleRemove(link.id)}
+                          title="Remove link"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </td>
                   )}
                 </tr>
@@ -329,7 +398,13 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label className="text-xs">Entity Type</Label>
-              <Select value={entityType} onValueChange={(v) => setEntityType(v ?? DMS_ENTITY_TYPES[0])}>
+              <Select
+                value={entityType}
+                onValueChange={(v) => {
+                  setEntityType(v ?? "employee");
+                  setEntityId(null);
+                }}
+              >
                 <SelectTrigger className="mt-1 h-8 text-xs">
                   <SelectValue />
                 </SelectTrigger>
@@ -341,15 +416,15 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
               </Select>
             </div>
             <div>
-              <Label className="text-xs">Entity ID</Label>
-              <Input
-                className="mt-1 h-8 text-xs"
-                type="number"
-                min={1}
-                value={entityId}
-                onChange={(e) => setEntityId(e.target.value)}
-                placeholder="Numeric ID"
-              />
+              <Label className="text-xs">Entity</Label>
+              <div className="mt-1">
+                <DmsLinkEntitySelect
+                  entityType={entityType}
+                  value={entityId}
+                  onValueChange={setEntityId}
+                  required
+                />
+              </div>
             </div>
             <div>
               <Label className="text-xs">Role (optional)</Label>
@@ -382,6 +457,83 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
           </div>
         </div>
       )}
+
+      <ERPChildDialogForm
+        open={!!editingLink}
+        onOpenChange={(open) => {
+          if (!open) closeEditLink();
+        }}
+        title="Edit Entity Link"
+        subtitle="Change the linked entity, role, or primary flag"
+        icon={<Link2 className="h-5 w-5" />}
+        mode="edit"
+        size="md"
+        isSubmitting={editSaving}
+        onSubmit={handleSaveEdit}
+        submitLabel="Save"
+      >
+        <div className="grid grid-cols-12 gap-4">
+          <div className="col-span-6">
+            <Label className="text-xs">Entity Type</Label>
+            <Select
+              value={editEntityType}
+              onValueChange={(v) => {
+                setEditEntityType(v ?? "employee");
+                setEditEntityId(null);
+              }}
+            >
+              <SelectTrigger className="mt-1 h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DMS_ENTITY_TYPES.map((t) => (
+                  <SelectItem key={t} value={t}>{DMS_ENTITY_TYPE_LABELS[t]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="col-span-6">
+            <Label className="text-xs">Entity</Label>
+            <div className="mt-1">
+              <DmsLinkEntitySelect
+                entityType={editEntityType}
+                value={editEntityId}
+                onValueChange={setEditEntityId}
+                pinnedOption={
+                  editingLink &&
+                  editEntityType === editingLink.entity_type &&
+                  editEntityId === editingLink.entity_id
+                    ? {
+                        id: editingLink.entity_id,
+                        label: editingLink.entity_display_name,
+                      }
+                    : undefined
+                }
+                required
+              />
+            </div>
+          </div>
+          <div className="col-span-6">
+            <Label className="text-xs">Role (optional)</Label>
+            <Input
+              className="mt-1 h-8 text-xs"
+              value={editLinkRole}
+              onChange={(e) => setEditLinkRole(e.target.value)}
+              placeholder="e.g. primary, supporting"
+            />
+          </div>
+          <div className="col-span-6 flex items-end">
+            <label className="flex items-center gap-1.5 text-xs pb-2">
+              <input
+                type="checkbox"
+                checked={editIsPrimary}
+                onChange={(e) => setEditIsPrimary(e.target.checked)}
+              />
+              Primary link
+            </label>
+          </div>
+        </div>
+      </ERPChildDialogForm>
     </div>
   );
 }

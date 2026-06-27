@@ -5,8 +5,8 @@
  * All handlers receive pre-validated intent and return safe output only.
  */
 
-import { createClient } from "@/lib/supabase/server";
 import { searchAcrossErp } from "@/server/actions/ai/common/search";
+import { getDmsDocumentUnderstanding } from "@/server/actions/dms/document-understanding";
 import { getRiskScoreForEntity } from "@/server/actions/ai/common/risk-scoring";
 import {
   getComplianceFindingsForHandler,
@@ -238,35 +238,56 @@ export async function runExplainDocumentAction(intent: AssistantIntent): Promise
     };
   }
 
-  // Read document understanding (sanitized) from DMS
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("dms_document_understandings")
-    .select("summary_text, key_entities_json, ai_confidence_score, created_at")
-    .eq("document_id", documentId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const result = await getDmsDocumentUnderstanding(documentId);
 
-  if (error || !data) {
-    return {
-      responseText:
-        "No AI understanding found for this document. Try running AI analysis first via the document record.",
-      outputType: "text",
-    };
+  if (!result.success || !result.data) {
+    const message =
+      result.code === "FEATURE_DISABLED"
+        ? "AI Document Understanding is not enabled. Open the document record Understanding tab for details."
+        : result.code === "PERMISSION_DENIED"
+          ? "You do not have permission to view this document's AI understanding."
+          : "No AI understanding is available for this document yet. Run AI analysis or open the document record Understanding tab.";
+    return { responseText: message, outputType: "text" };
   }
 
-  // summary_text is already a sanitized human-readable field (not raw OCR/content_text)
-  const safeSummary = (data.summary_text ?? "No summary available.").slice(0, 800);
-  const confidence = data.ai_confidence_score
-    ? ` (AI confidence: ${Math.round(data.ai_confidence_score * 100)}%)`
-    : "";
+  const u = result.data;
+  const title = u.identity.title ?? u.identity.documentNo ?? `Document #${documentId}`;
+  const typeLabel = u.identity.typeName ?? u.identity.typeCode ?? "Unknown type";
+  const lines: string[] = [
+    `**${title}** (${typeLabel})`,
+    `Health: ${u.health.label} (${u.health.score}/100)`,
+  ];
+
+  if (u.summaryStatus.isConfidentialRedacted) {
+    lines.push("Summary: restricted for this confidentiality level.");
+  } else if (u.summaryStatus.summaryText) {
+    lines.push(`\nSummary:\n${u.summaryStatus.summaryText.slice(0, 600)}`);
+  }
+
+  if (u.extractionStatus.hasResult) {
+    lines.push(
+      `\nAI extraction: ${u.extractionStatus.extractedFieldCount} field(s)` +
+        (u.extractionStatus.needsHumanReview ? " — needs human review" : "")
+    );
+  }
+
+  if (u.completeness.missingFieldLabels.length > 0) {
+    lines.push(
+      `Missing metadata: ${u.completeness.missingFieldLabels.slice(0, 5).join(", ")}`
+    );
+  }
+
+  if (u.risk.riskLevel) {
+    lines.push(`Risk: ${u.risk.riskLevel}`);
+  }
+
+  lines.push("\nOpen the document record Understanding tab for full details.");
 
   return {
-    responseText: `Document summary${confidence}:\n\n${safeSummary}\n\nOpen the document record for full details.`,
+    responseText: lines.join("\n"),
     outputType: "explanation",
     navigationLinks: [
-      { label: "Open Document Record", route: `/admin/dms/documents/record/${documentId}` },
+      { label: "Open Document Record", route: `/dms/documents/record/${documentId}` },
     ],
   };
 }

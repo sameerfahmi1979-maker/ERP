@@ -1,11 +1,13 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
 import { getDefaultEmailProvider, getEmailProvider } from "@/lib/email/providers/factory";
+import { logger } from "@/lib/logger";
 
 const REVALIDATE_PATH = "/admin/notifications/email-queue";
 
@@ -103,7 +105,10 @@ const queueEmailSchema = z.object({
 
 export type QueueEmailInput = z.infer<typeof queueEmailSchema>;
 
-export async function queueEmail(input: QueueEmailInput): Promise<ActionResult<{ id: number }>> {
+export async function queueEmail(
+  input: QueueEmailInput,
+  options?: { autoProcess?: boolean },
+): Promise<ActionResult<{ id: number; sent?: boolean }>> {
   try {
     const supabase = await createClient();
     const ctx = await getAuthContext();
@@ -130,18 +135,32 @@ export async function queueEmail(input: QueueEmailInput): Promise<ActionResult<{
 
     if (error) return { success: false, error: error.message };
     const row = data as Record<string, unknown>;
+    const queueId = row.id as number;
 
     await logAudit({
       module_code: "NOTIFICATIONS",
       entity_name: "erp_email_queue",
-      entity_id: row.id as number,
-      entity_reference: String(row.id),
+      entity_id: queueId,
+      entity_reference: String(queueId),
       action: "create",
       new_values: { source_module: parsed.data.source_module, subject: parsed.data.subject, to: parsed.data.to_emails },
     });
 
     revalidatePath(REVALIDATE_PATH);
-    return { success: true, data: { id: row.id as number } };
+
+    // Auto-process: immediately send the queued item without requiring manual queue run.
+    // Uses admin client so no notifications.email_queue.process permission is needed.
+    let sent = false;
+    if (options?.autoProcess) {
+      try {
+        sent = await processEmailQueueItemAdmin(queueId);
+      } catch (e) {
+        // Non-fatal: item remains pending in queue; admin can retry manually.
+        logger.warn("queueEmail autoProcess failed — item queued for manual retry", { queueId, error: String(e) });
+      }
+    }
+
+    return { success: true, data: { id: queueId, sent } };
   } catch (e) {
     return { success: false, error: String(e) };
   }
@@ -178,6 +197,102 @@ export async function getEmailQueue(
   } catch (e) {
     return { success: false, error: String(e) };
   }
+}
+
+// ── processEmailQueueItemAdmin (internal) ─────────────────────────────────────
+// No auth/permission check — caller is responsible for authorization.
+// Uses admin client so it works in server actions that lack email_queue.process permission.
+// Returns true if sent successfully, false otherwise.
+
+async function processEmailQueueItemAdmin(id: number): Promise<boolean> {
+  const admin = createAdminClient();
+  const { data: row, error: fetchErr } = await admin
+    .from("erp_email_queue")
+    .select("*")
+    .eq("id", id)
+    .is("deleted_at", null)
+    .single();
+
+  if (fetchErr || !row) {
+    logger.warn("processEmailQueueItemAdmin: item not found", { id });
+    return false;
+  }
+  const item = row as Record<string, unknown>;
+
+  if (!["pending", "failed"].includes(item.status as string)) return false;
+  if ((item.attempt_count as number) >= (item.max_attempts as number)) return false;
+
+  const now = new Date().toISOString();
+  await admin.from("erp_email_queue").update({ status: "processing", processing_started_at: now, updated_at: now }).eq("id", id);
+
+  let sendResult: { ok: boolean; status: string; message: string; externalMessageId?: string | null; durationMs?: number };
+  try {
+    let provider;
+    if (item.provider_config_id) {
+      const { data: provRow } = await admin
+        .from("erp_email_provider_configs")
+        .select("provider_code")
+        .eq("id", item.provider_config_id)
+        .single();
+      const provCode = (provRow as Record<string, unknown> | null)?.provider_code as string | undefined;
+      provider = provCode
+        ? await getEmailProvider(provCode).catch(() => getDefaultEmailProvider())
+        : await getDefaultEmailProvider();
+    } else {
+      provider = await getDefaultEmailProvider();
+    }
+
+    sendResult = await provider.sendEmail({
+      to: item.to_emails as string[],
+      cc: item.cc_emails as string[] | undefined,
+      bcc: item.bcc_emails as string[] | undefined,
+      subject: item.subject as string,
+      htmlBody: item.html_body as string | undefined,
+      textBody: item.text_body as string | undefined,
+      replyTo: item.reply_to_email as string | undefined,
+      saveToSentItems: true,
+    });
+  } catch (e) {
+    sendResult = { ok: false, status: "failed", message: String(e) };
+  }
+
+  const sentAt = new Date().toISOString();
+  const newAttemptCount = (item.attempt_count as number) + 1;
+  const durationMs = Date.now() - new Date(now).getTime();
+
+  if (sendResult.ok) {
+    await admin.from("erp_email_queue").update({
+      status: "sent", sent_at: sentAt, attempt_count: newAttemptCount,
+      external_message_id: sendResult.externalMessageId ?? null, last_error: null, updated_at: sentAt,
+    }).eq("id", id);
+  } else {
+    const isExhausted = newAttemptCount >= (item.max_attempts as number);
+    await admin.from("erp_email_queue").update({
+      status: isExhausted ? "failed" : "pending",
+      attempt_count: newAttemptCount,
+      last_error: sendResult.message.slice(0, 1000),
+      next_retry_at: isExhausted ? null : calcNextRetry(newAttemptCount),
+      updated_at: sentAt,
+    }).eq("id", id);
+    logger.warn("processEmailQueueItemAdmin: send failed", { id, error: sendResult.message });
+  }
+
+  // Log delivery
+  await admin.from("erp_notification_delivery_logs").insert({
+    email_queue_id: id,
+    notification_id: item.notification_id as number | null,
+    delivery_channel: "email",
+    status: sendResult.ok ? "sent" : "failed",
+    message: sendResult.message.slice(0, 500),
+    external_message_id: sendResult.externalMessageId ?? null,
+    duration_ms: sendResult.durationMs ?? durationMs,
+    attempt_number: newAttemptCount,
+    error_message: sendResult.ok ? null : sendResult.message.slice(0, 1000),
+    created_at: sentAt,
+  });
+
+  revalidatePath(REVALIDATE_PATH);
+  return sendResult.ok;
 }
 
 // ── processEmailQueueItem ─────────────────────────────────────────────────────

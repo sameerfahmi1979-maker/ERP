@@ -160,7 +160,7 @@ async function sendSecurityEmail(input: {
       text_body: textBody,
       template_code: input.templateCode,
       max_attempts: 3,
-    });
+    }, { autoProcess: true });
 
     if (result.success && result.data?.id) {
       return { queued: true, queueId: result.data.id };

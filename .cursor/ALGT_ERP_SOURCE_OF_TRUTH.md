@@ -1,7 +1,7 @@
 # ALGT ERP — Source of Truth
 
 **Document:** `.cursor/ALGT_ERP_SOURCE_OF_TRUTH.md`  
-**Last updated:** 2026-06-29 (ERP USERS.2A Password Lifecycle and Account Security implemented — must_change_password gate, /change-password-required route, self-service password change, admin reset/temp/force/email-confirm actions, ERP-branded auth emails, users.security.manage permission; USERS.1/USERS.2 preserved)
+**Last updated:** 2026-06-29 (ERP USERS.3 Roles Management Enhancement implemented — advanced role fields, Clone Role workflow, Permissions section, Assigned Users section with assigned_at fix, system role protection, server-side assignability enforcement, roles-table improvements, RoleDetailDrawer retired; USERS.1/USERS.2/USERS.2A preserved)
 **Maintainer:** Update after **every** completed ERP phase
 **Last closed gate:** ERP DMS AI Phase 17 Apply Correction Proposal Browser UAT (**LIVE PASS / CLOSED ✅ — 2026-06-27. Two implementation bugs found and fixed during UAT: (1) `DmsDocumentAiSection` missing `correctionEnabled` prop wiring → added `getApplyCorrectionAccess` server action + `canProposeCorrection` prop + `useQuery`; (2) `onProposed` callback prematurely clearing `correctionItemId` → removed premature reset so confirm dialog can render. Full browser UAT: flag OFF (no button) ✅, flag ON (button appears) ✅, drawer source card ✅, manual proposal ✅, confirmation dialog ✅, ERP write verified (party_licenses.remarks updated) ✅, forbidden words 0 ✅. Payload safety 10/10 PASS. RLS security 11/11 PASS. Vitest 269/269 PASS. TS 0 errors. Lint 0 errors. Feature flags restored to false. Report: `implementation_Review/ERP_DMS_AI_PHASE_17_BROWSER_UAT_AND_CLOSURE_REPORT.md`.**)
 
@@ -383,6 +383,7 @@ If the user says "continue" or "next" after Phase 17, Cursor must first ask whet
 - HR module enhancement
 - USERS.2 User Management Core — **CLOSED / PASS WITH NOTES ✅** (see `implementation_Review/ERP_USERS_2_USER_MANAGEMENT_CORE_IMPLEMENTATION_REPORT.md` + browser UAT `implementation_Review/ERP_USERS_2_BROWSER_UAT_VERIFICATION_REPORT.md`). Next: **USERS.3 planning-first only**, unless Sameer changes priority.
 - USERS.2A Password Lifecycle and Account Security — **CLOSED / PASS ✅** (see `implementation_Review/ERP_USERS_2A_PASSWORD_LIFECYCLE_ACCOUNT_SECURITY_IMPLEMENTATION_REPORT.md` + UAT `implementation_Review/ERP_USERS_2A_BROWSER_UAT_VERIFICATION_REPORT.md`). Next: **USERS.3 Roles Management Enhancement — planning-first only**.
+- USERS.3 Roles Management Enhancement — **CLOSED / PASS ✅** (see `implementation_Review/ERP_USERS_3_ROLES_MANAGEMENT_ENHANCEMENT_IMPLEMENTATION_REPORT.md` + UAT `implementation_Review/ERP_USERS_3_BROWSER_UAT_VERIFICATION_REPORT.md`). Advanced fields, Clone Role, Permissions section, Assigned Users section (assigned_at fix), system role protection, server-side assignability, roles table improvements, RoleDetailDrawer retired. No migration needed. Next: **USERS.4 Permissions and Effective Access — planning-first only**.
 
 > HR Apply-to-ERP write-back is higher risk and must not begin until Party apply phases and reversal/correction proposal safety are stable and fully UAT-closed.
 

@@ -273,7 +273,7 @@ export async function createUser(
             text_body: rendered.data.textBody,
             template_code: "USER_WELCOME_INTERNAL",
             max_attempts: 3,
-          });
+          }, { autoProcess: true });
           await logAudit({
             module_code: "users",
             entity_name: "user_profiles",
@@ -428,12 +428,20 @@ export async function assignRoleToUser(
 
     const { data: role } = await supabase
       .from("roles")
-      .select("role_code, role_name")
+      .select("role_code, role_name, is_active, is_assignable")
       .eq("id", validated.role_id)
       .single();
 
     if (!userProfile || !role) {
       return { success: false, error: "User or role not found" };
+    }
+
+    // USERS.3 — server-side enforcement: only active + assignable roles may be assigned
+    if (!role.is_active) {
+      return { success: false, error: `Role "${role.role_name}" is inactive and cannot be assigned` };
+    }
+    if (role.is_assignable === false) {
+      return { success: false, error: `Role "${role.role_name}" is not assignable` };
     }
 
     // 4. Assign role

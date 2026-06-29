@@ -4,7 +4,7 @@ import { RoleWorkspaceForm } from "@/features/roles/role-workspace-form";
 
 export default async function NewRolePage() {
   const authContext = await getAuthContext();
-  if (!hasPermission(authContext, "roles.create")) {
+  if (!hasPermission(authContext, "roles.manage")) {
     redirect("/admin/roles");
   }
   return <RoleWorkspaceForm mode="add" authContext={authContext} />;

@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
 
@@ -13,7 +13,8 @@ export type ActionResult<T = unknown> = {
 };
 
 /**
- * Assign permission to role
+ * Assign a permission to a role.
+ * USERS.3 — system roles require global admin.
  */
 export async function assignPermissionToRole(
   roleId: number,
@@ -28,8 +29,8 @@ export async function assignPermissionToRole(
 
     const supabase = await createClient();
 
-    // Get role and permission for audit
-    const { data: role } = await supabase.from("roles").select("role_code").eq("id", roleId).single();
+    // Get role and permission for audit + system role check
+    const { data: role } = await supabase.from("roles").select("role_code, is_system_role").eq("id", roleId).single();
     const { data: permission } = await supabase
       .from("permissions")
       .select("permission_code")
@@ -40,7 +41,14 @@ export async function assignPermissionToRole(
       return { success: false, error: "Role or permission not found" };
     }
 
-    // Insert role-permission assignment
+    // USERS.3 — system roles: only global admin may assign/remove permissions
+    if (role.is_system_role && !isGlobalAdmin(ctx)) {
+      return {
+        success: false,
+        error: "Permissions on system roles can only be modified by a global administrator.",
+      };
+    }
+
     const { error } = await supabase
       .from("role_permissions")
       .insert({ role_id: roleId, permission_id: permissionId });
@@ -53,14 +61,13 @@ export async function assignPermissionToRole(
       return { success: false, error: error.message };
     }
 
-    // Log audit
     await logAudit({
       module_code: "roles",
       entity_name: "role_permissions",
       entity_id: roleId,
       entity_reference: `${role.role_code} → ${permission.permission_code}`,
       action: "assign_permission",
-      new_values: { role_id: roleId, permission_id: permissionId },
+      new_values: { role_id: roleId, permission_code: permission.permission_code },
     });
 
     revalidatePath("/admin/permissions");
@@ -74,7 +81,8 @@ export async function assignPermissionToRole(
 }
 
 /**
- * Remove permission from role
+ * Remove a permission from a role.
+ * USERS.3 — system roles require global admin.
  */
 export async function removePermissionFromRole(
   roleId: number,
@@ -89,8 +97,7 @@ export async function removePermissionFromRole(
 
     const supabase = await createClient();
 
-    // Get role and permission for audit
-    const { data: role } = await supabase.from("roles").select("role_code").eq("id", roleId).single();
+    const { data: role } = await supabase.from("roles").select("role_code, is_system_role").eq("id", roleId).single();
     const { data: permission } = await supabase
       .from("permissions")
       .select("permission_code")
@@ -101,7 +108,14 @@ export async function removePermissionFromRole(
       return { success: false, error: "Role or permission not found" };
     }
 
-    // Delete role-permission assignment
+    // USERS.3 — system roles: only global admin may remove permissions
+    if (role.is_system_role && !isGlobalAdmin(ctx)) {
+      return {
+        success: false,
+        error: "Permissions on system roles can only be modified by a global administrator.",
+      };
+    }
+
     const { error } = await supabase
       .from("role_permissions")
       .delete()
@@ -113,14 +127,13 @@ export async function removePermissionFromRole(
       return { success: false, error: error.message };
     }
 
-    // Log audit
     await logAudit({
       module_code: "roles",
       entity_name: "role_permissions",
       entity_id: roleId,
       entity_reference: `${role.role_code} → ${permission.permission_code}`,
       action: "remove_permission",
-      old_values: { role_id: roleId, permission_id: permissionId },
+      old_values: { role_id: roleId, permission_code: permission.permission_code },
     });
 
     revalidatePath("/admin/permissions");

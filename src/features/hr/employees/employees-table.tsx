@@ -195,21 +195,18 @@ export function EmployeesTable({ initialRows, initialTotal, authContext }: Props
             <TableRow>
               <TableHead>Employee Code</TableHead>
               <TableHead>Full Name</TableHead>
-              <TableHead>Known Name</TableHead>
               <TableHead>Nationality</TableHead>
               <TableHead>Department</TableHead>
               <TableHead>Designation</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Company</TableHead>
-              <TableHead>Branch</TableHead>
-              <TableHead>Work Site</TableHead>
               <TableHead className="w-12" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={11} className="text-center py-12">
+                <TableCell colSpan={8} className="text-center py-12">
                   <div className="flex flex-col items-center gap-2 text-muted-foreground">
                     <Users className="h-8 w-8 opacity-40" />
                     <p className="text-sm">
@@ -244,9 +241,6 @@ export function EmployeesTable({ initialRows, initialTotal, authContext }: Props
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {emp.known_name ?? "—"}
-                  </TableCell>
                   <TableCell className="text-sm">
                     {emp.nationality?.name_en ?? "—"}
                   </TableCell>
@@ -263,12 +257,6 @@ export function EmployeesTable({ initialRows, initialTotal, authContext }: Props
                   </TableCell>
                   <TableCell className="text-sm">
                     {emp.owner_company?.company_code ?? "—"}
-                  </TableCell>
-                  <TableCell className="text-sm">
-                    {emp.branch?.branch_code ?? "—"}
-                  </TableCell>
-                  <TableCell className="text-sm">
-                    {emp.primary_work_site?.site_name ?? "—"}
                   </TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <DropdownMenu>

@@ -2,7 +2,7 @@ import { ERPPageHeader } from "@/components/erp/page-header";
 import { ERPSectionCard } from "@/components/erp/section-card";
 import { RolesTable } from "@/features/roles/roles-table";
 import { AddRoleButton } from "@/features/roles/add-role-button";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
 import { listRoles } from "@/server/queries/roles";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Shield } from "lucide-react";
@@ -34,6 +34,7 @@ export default async function AdminRolesPage() {
 
   const roles = await listRoles();
   const canManage = hasPermission(ctx, "roles.manage");
+  const isAdmin = isGlobalAdmin(ctx);
 
   return (
     <div className="flex flex-col gap-6">
@@ -60,6 +61,8 @@ export default async function AdminRolesPage() {
       >
         <RolesTable 
           data={roles}
+          canManage={canManage}
+          isGlobalAdmin={isAdmin}
           userProfileId={ctx.profile?.id || "default"}
           exportConfig={{
             title: "Roles Report",

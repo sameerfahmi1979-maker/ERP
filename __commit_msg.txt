@@ -1,13 +1,14 @@
-feat: add MOHRE Establishments CRUD UI in HR Settings
+feat(users): USERS.1, USERS.2, USERS.2A — security foundation, user management core, password lifecycle
 
-The /admin/hr/settings/mohre-establishments page was read-only — it showed
-"No MOHRE establishments configured" with no way to add them.
-
-- New HrMohreEstablishmentsPage client component with full Add/Edit dialog
-- Fields: Company (required), Establishment Number (required), Establishment Name (required), Emirate (optional), Status
-- Add button in page header + inline in empty state for admin users
-- Pencil edit button per row for admin users
-- Uses ERPChildDialogForm, ERPCombobox (company + emirate lookups)
-- Server actions: createHrMohreEstablishment + updateHrMohreEstablishment
-- router.refresh() on save to reload server-rendered data
-- tsc passes clean
+- USERS.1: RBAC security foundation, role-scoped permissions, auth metadata helpers
+- USERS.2: Full admin user management — create, edit, assign roles, users list toolbar
+- USERS.2A: Password lifecycle and account security
+  - Force password change gate on protected layout
+  - Self-service password change card on /profile
+  - /change-password-required page with nested-form hydration fix
+  - Admin actions: send reset, set temp password, force change, confirm email, send invite/welcome
+  - Invite email fallback: type=invite falls back to type=recovery for already-confirmed accounts
+  - ERP-branded email delivery via notification templates and email queue
+  - Strengthened password policy (min 10 chars, uppercase, lowercase, digit)
+  - Audit logging with sanitized security payloads (no passwords or tokens logged)
+  - DB migration: user_profiles lifecycle columns + permission seed + 5 notification templates

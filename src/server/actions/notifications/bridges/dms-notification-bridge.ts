@@ -117,7 +117,7 @@ export async function bridgeDmsNotificationToGlobalNotification(
         template_code: templateCode,
         template_variables_json: variables,
         max_attempts: 3,
-      });
+      }, { autoProcess: true });
 
       if (emailResult.success && emailResult.data) {
         emailQueueId = emailResult.data.id;

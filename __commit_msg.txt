@@ -1,0 +1,13 @@
+feat: add MOHRE Establishments CRUD UI in HR Settings
+
+The /admin/hr/settings/mohre-establishments page was read-only — it showed
+"No MOHRE establishments configured" with no way to add them.
+
+- New HrMohreEstablishmentsPage client component with full Add/Edit dialog
+- Fields: Company (required), Establishment Number (required), Establishment Name (required), Emirate (optional), Status
+- Add button in page header + inline in empty state for admin users
+- Pencil edit button per row for admin users
+- Uses ERPChildDialogForm, ERPCombobox (company + emirate lookups)
+- Server actions: createHrMohreEstablishment + updateHrMohreEstablishment
+- router.refresh() on save to reload server-rendered data
+- tsc passes clean

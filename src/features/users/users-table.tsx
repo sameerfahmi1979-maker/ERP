@@ -8,7 +8,7 @@ import { ERPDataTable } from "@/components/erp/table/erp-data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { MoreHorizontal, Pencil, UserPlus, Ban, Eye, Trash2 } from "lucide-react";
+import { MoreHorizontal, Pencil, UserPlus, Ban, Eye, Trash2, ShieldAlert } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,12 +28,41 @@ import {
 } from "@/components/ui/alert-dialog";
 import type { UserWithRoles, Role, OwnerCompany, Branch } from "@/types/database";
 import { cn } from "@/lib/utils";
+import { formatRoleScopeLabel } from "@/lib/users/role-scope";
 import { AssignRoleDialog } from "./assign-role-dialog";
+import { UsersListToolbar } from "./users-list-toolbar";
 import { adminUpdateUserProfile, deleteUser } from "@/server/actions/users";
 import { toast } from "sonner";
 
+function StatusBadge({ status }: { status: string | null | undefined }) {
+  return (
+    <Badge
+      variant={status === "active" ? "default" : "secondary"}
+      className={cn(
+        "text-xs font-medium capitalize",
+        status === "active" &&
+          "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400",
+        status === "inactive" &&
+          "bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-400",
+        status === "suspended" &&
+          "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-400",
+      )}
+    >
+      {status ?? "Unknown"}
+    </Badge>
+  );
+}
+
 type UsersTableProps = {
   data: UserWithRoles[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  search: string;
+  statusFilter: string;
+  companyFilter: string;
+  branchFilter: string;
+  roleFilter: string;
   roles?: Role[];
   companies?: OwnerCompany[];
   branches?: Branch[];
@@ -48,6 +77,14 @@ type UsersTableProps = {
 
 export function UsersTable({
   data,
+  totalCount,
+  page,
+  pageSize,
+  search,
+  statusFilter,
+  companyFilter,
+  branchFilter,
+  roleFilter,
   roles = [],
   companies = [],
   branches = [],
@@ -59,10 +96,14 @@ export function UsersTable({
   const [deletingUser, setDeletingUser] = useState<UserWithRoles | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const handleStatusChange = async (userId: number, newStatus: "active" | "inactive" | "suspended") => {
+  const handleStatusChange = async (
+    userId: number,
+    newStatus: "active" | "inactive" | "suspended",
+  ) => {
     const result = await adminUpdateUserProfile({ id: userId, status: newStatus });
     if (result.success) {
-      toast.success(`User ${newStatus}`);
+      toast.success(`User marked as ${newStatus}`);
+      router.refresh();
     } else {
       toast.error(result.error || "Failed to update status");
     }
@@ -74,7 +115,9 @@ export function UsersTable({
     try {
       const result = await deleteUser(deletingUser.id);
       if (result.success) {
-        toast.success(`User "${deletingUser.display_name ?? deletingUser.full_name ?? deletingUser.email}" deleted`);
+        toast.success(
+          `User "${deletingUser.display_name ?? deletingUser.full_name ?? deletingUser.email}" deleted`,
+        );
         setDeletingUser(null);
         router.refresh();
       } else {
@@ -118,15 +161,23 @@ export function UsersTable({
     },
     {
       id: "roles",
-      header: "Role",
+      header: "Roles",
       cell: ({ row }) => {
-        const primaryRole = row.original.roles?.[0];
-        return primaryRole ? (
-          <Badge variant="secondary" className="text-xs font-medium">
-            {primaryRole.role_name}
-          </Badge>
-        ) : (
-          <span className="text-xs text-muted-foreground">No role</span>
+        const userRoles = row.original.roles ?? [];
+        if (userRoles.length === 0) {
+          return <span className="text-xs text-muted-foreground">No role</span>;
+        }
+        return (
+          <div className="flex flex-wrap gap-1 max-w-[220px]">
+            {userRoles.map((r) => (
+              <Badge key={r.user_role_id} variant="secondary" className="text-[10px] font-medium">
+                {r.role_name}
+                <span className="ml-1 opacity-60">
+                  ({formatRoleScopeLabel(r.scope, r.scope_company_name, r.scope_branch_name)})
+                </span>
+              </Badge>
+            ))}
+          </div>
         );
       },
     },
@@ -140,25 +191,18 @@ export function UsersTable({
       ),
     },
     {
+      id: "branch",
+      header: "Branch",
+      cell: ({ row }) => (
+        <span className="text-sm text-muted-foreground">
+          {row.original.branch?.branch_name_en ?? "—"}
+        </span>
+      ),
+    },
+    {
       accessorKey: "status",
       header: "Status",
-      cell: ({ row }) => {
-        const status = row.original.status;
-        return (
-          <Badge
-            variant={status === "active" ? "default" : "secondary"}
-            className={cn(
-              "text-xs font-medium",
-              status === "active" &&
-                "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400",
-              status === "inactive" &&
-                "bg-gray-100 text-gray-700 dark:bg-gray-900 dark:text-gray-400"
-            )}
-          >
-            {status ?? "Unknown"}
-          </Badge>
-        );
-      },
+      cell: ({ row }) => <StatusBadge status={row.original.status} />,
     },
     {
       accessorKey: "created_at",
@@ -186,7 +230,9 @@ export function UsersTable({
                   <Eye className="mr-2 h-4 w-4" />
                   View
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => router.push(`/admin/users/record/${user.id}?mode=edit`)}>
+                <DropdownMenuItem
+                  onClick={() => router.push(`/admin/users/record/${user.id}?mode=edit`)}
+                >
                   <Pencil className="mr-2 h-4 w-4" />
                   Edit Profile
                 </DropdownMenuItem>
@@ -195,10 +241,16 @@ export function UsersTable({
                   Assign Role
                 </DropdownMenuItem>
                 {user.status === "active" && (
-                  <DropdownMenuItem onClick={() => handleStatusChange(user.id, "inactive")}>
-                    <Ban className="mr-2 h-4 w-4" />
-                    Deactivate
-                  </DropdownMenuItem>
+                  <>
+                    <DropdownMenuItem onClick={() => handleStatusChange(user.id, "inactive")}>
+                      <Ban className="mr-2 h-4 w-4" />
+                      Deactivate
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleStatusChange(user.id, "suspended")}>
+                      <ShieldAlert className="mr-2 h-4 w-4" />
+                      Suspend
+                    </DropdownMenuItem>
+                  </>
                 )}
                 {user.status !== "active" && (
                   <DropdownMenuItem onClick={() => handleStatusChange(user.id, "active")}>
@@ -223,28 +275,45 @@ export function UsersTable({
 
   return (
     <>
+      <UsersListToolbar
+        totalCount={totalCount}
+        page={page}
+        pageSize={pageSize}
+        search={search}
+        status={statusFilter}
+        companyId={companyFilter}
+        branchId={branchFilter}
+        roleId={roleFilter}
+        roles={roles}
+        companies={companies}
+        branches={branches}
+      />
+
       <ERPDataTable
         tableId="admin.users"
         columns={columns}
         data={data}
         userProfileId={userProfileId}
-        searchPlaceholder="Search users by name, email, or role..."
-        emptyMessage="No users found. Sign up and run admin bootstrap after migration."
+        searchPlaceholder="Search users..."
+        emptyMessage="No users match your filters."
         enableSorting
         enableColumnResizing
         enableRowSelection
         enableColumnVisibility
         enablePreferences
+        enableGlobalFilter={false}
         exportConfig={exportConfig}
-        initialPageSize={25}
-        pageSizeOptions={[10, 25, 50, 100]}
+        initialPageSize={Math.max(data.length, 1)}
+        pageSizeOptions={[Math.max(data.length, 1)]}
       />
 
       {assigningRoleUser && (
         <AssignRoleDialog
           user={assigningRoleUser}
           open={Boolean(assigningRoleUser)}
-          onOpenChange={(open) => { if (!open) setAssigningRoleUser(null); }}
+          onOpenChange={(open) => {
+            if (!open) setAssigningRoleUser(null);
+          }}
           roles={roles}
           companies={companies}
           branches={branches}
@@ -253,7 +322,9 @@ export function UsersTable({
 
       <AlertDialog
         open={Boolean(deletingUser)}
-        onOpenChange={(open) => { if (!open && !isDeleting) setDeletingUser(null); }}
+        onOpenChange={(open) => {
+          if (!open && !isDeleting) setDeletingUser(null);
+        }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -264,7 +335,10 @@ export function UsersTable({
             <AlertDialogDescription>
               Are you sure you want to permanently delete{" "}
               <span className="font-semibold text-foreground">
-                {deletingUser?.display_name ?? deletingUser?.full_name ?? deletingUser?.email ?? "this user"}
+                {deletingUser?.display_name ??
+                  deletingUser?.full_name ??
+                  deletingUser?.email ??
+                  "this user"}
               </span>
               ?
               <br />

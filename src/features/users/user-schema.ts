@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { passwordPolicySchema } from "@/lib/validation/auth";
 
 /**
  * User Profile Admin Update Schema
@@ -15,6 +16,8 @@ export const adminUpdateUserProfileSchema = z.object({
   owner_company_id: z.number().int().positive().optional().nullable(),
   branch_id: z.number().int().positive().optional().nullable(),
   status: z.enum(["active", "inactive", "suspended"]).optional(),
+  notes: z.string().max(2000).optional().nullable(),
+  employee_reference: z.string().max(100).optional().nullable(),
 });
 
 export const userRoleAssignmentSchema = z.object({
@@ -29,10 +32,10 @@ export const userRoleRemovalSchema = z.object({
   user_role_id: z.number().int().positive(),
 });
 
-// Phase 002D: Create User Schema
+// Phase 002D: Create User Schema — USERS.2A updates temporary_password to use strong policy
 export const createUserSchema = z.object({
   email: z.string().email("Invalid email format"),
-  temporary_password: z.string().min(8, "Password must be at least 8 characters").optional(),
+  temporary_password: passwordPolicySchema.optional(),
   send_invite_email: z.boolean().default(false),
   full_name: z.string().min(1, "Full name is required").max(255),
   display_name: z.string().max(255).optional().nullable(),

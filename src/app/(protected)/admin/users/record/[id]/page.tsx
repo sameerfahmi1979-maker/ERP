@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, canManageUsers } from "@/lib/rbac/check";
 import { getUserById } from "@/server/queries/users";
 import { listOrganizations } from "@/server/queries/organizations";
 import { listBranches } from "@/server/queries/branches";
@@ -38,7 +38,7 @@ export default async function UserRecordPage({ params, searchParams }: Props) {
 
   if (!user) notFound();
 
-  const canManage = hasPermission(authContext, "users.manage");
+  const canManage = canManageUsers(authContext);
   const mode = modeParam === "edit" && canManage ? "edit" : "view";
 
   return (

@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { resetPasswordSchema } from "@/lib/validation/auth";
+import { recordPasswordResetCompleted } from "@/server/actions/users/account-security";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RequiredLabel } from "@/components/erp/required-label";
@@ -31,38 +32,58 @@ export function ResetPasswordForm() {
 
   const onSubmit = handleSubmit(async (values) => {
     setLoading(true);
-    const supabase = createClient();
-    const { error } = await supabase.auth.updateUser({ password: values.password });
-    setLoading(false);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.updateUser({ password: values.password });
 
-    if (error) {
-      toast.error(error.message);
-      return;
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+
+      // USERS.2A — Update lifecycle fields after successful password reset
+      await recordPasswordResetCompleted();
+
+      toast.success("Password updated");
+      router.push("/dashboard");
+      router.refresh();
+    } finally {
+      setLoading(false);
     }
-
-    toast.success("Password updated");
-    router.push("/dashboard");
-    router.refresh();
   });
 
   return (
     <Card className="w-full max-w-md">
       <CardHeader>
         <CardTitle>Reset password</CardTitle>
-        <CardDescription>Enter your new password below.</CardDescription>
+        <CardDescription>
+          Enter your new password. Must be 10+ characters with uppercase, lowercase, and digit.
+        </CardDescription>
       </CardHeader>
       <form onSubmit={onSubmit}>
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <RequiredLabel htmlFor="password" required>New password</RequiredLabel>
-            <Input id="password" type="password" required {...register("password")} />
+            <Input
+              id="password"
+              type="password"
+              autoComplete="new-password"
+              required
+              {...register("password")}
+            />
             {errors.password ? (
               <p className="text-sm text-destructive">{errors.password.message}</p>
             ) : null}
           </div>
           <div className="flex flex-col gap-2">
             <RequiredLabel htmlFor="confirmPassword" required>Confirm password</RequiredLabel>
-            <Input id="confirmPassword" type="password" required {...register("confirmPassword")} />
+            <Input
+              id="confirmPassword"
+              type="password"
+              autoComplete="new-password"
+              required
+              {...register("confirmPassword")}
+            />
             {errors.confirmPassword ? (
               <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>
             ) : null}

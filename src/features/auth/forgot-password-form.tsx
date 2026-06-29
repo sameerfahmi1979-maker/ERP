@@ -5,8 +5,8 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { createClient } from "@/lib/supabase/client";
 import { forgotPasswordSchema } from "@/lib/validation/auth";
+import { requestPasswordReset } from "@/server/actions/users/account-security";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RequiredLabel } from "@/components/erp/required-label";
@@ -23,6 +23,7 @@ type ForgotInput = { email: string };
 
 export function ForgotPasswordForm() {
   const [loading, setLoading] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
   const {
     register,
     handleSubmit,
@@ -31,19 +32,36 @@ export function ForgotPasswordForm() {
 
   const onSubmit = handleSubmit(async (values) => {
     setLoading(true);
-    const supabase = createClient();
-    const { error } = await supabase.auth.resetPasswordForEmail(values.email, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
-    setLoading(false);
-
-    if (error) {
-      toast.error(error.message);
-      return;
+    try {
+      // Server action handles ERP-branded email via Supabase admin API.
+      // Always returns success — never reveals whether email exists.
+      await requestPasswordReset(values.email);
+      setSubmitted(true);
+      toast.success("If an account exists, a reset link has been sent.");
+    } finally {
+      setLoading(false);
     }
-
-    toast.success("Password reset email sent if the account exists.");
   });
+
+  if (submitted) {
+    return (
+      <Card className="w-full max-w-md">
+        <CardHeader>
+          <CardTitle>Check your email</CardTitle>
+          <CardDescription>
+            If an account with that email exists, a password reset link has been sent.
+            Check your inbox and follow the link to reset your password.
+          </CardDescription>
+        </CardHeader>
+        <CardContent />
+        <CardFooter className="justify-center">
+          <Link href="/login" className="text-sm text-primary hover:underline">
+            Back to sign in
+          </Link>
+        </CardFooter>
+      </Card>
+    );
+  }
 
   return (
     <Card className="w-full max-w-md">

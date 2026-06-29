@@ -20,6 +20,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
+// ERP USERS.1 — Hide create-account link when public signup is disabled (default).
+const signupEnabled = process.env.NEXT_PUBLIC_SIGNUP_ENABLED === "true";
+
 export function LoginForm() {
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
@@ -90,9 +93,11 @@ export function LoginForm() {
             <Link href="/forgot-password" className="text-primary hover:underline">
               Forgot password?
             </Link>
-            <Link href="/signup" className="text-primary hover:underline">
-              Create account
-            </Link>
+            {signupEnabled && (
+              <Link href="/signup" className="text-primary hover:underline">
+                Create account
+              </Link>
+            )}
           </div>
         </CardFooter>
       </form>

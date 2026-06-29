@@ -8,12 +8,12 @@ import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/ca
 export default async function NewUserRecordPage() {
   const authContext = await getAuthContext();
 
-  if (!hasPermission(authContext, "users.manage")) {
+  if (!hasPermission(authContext, "users.create")) {
     return (
       <Card>
         <CardHeader>
           <CardTitle>Access Denied</CardTitle>
-          <CardDescription>You need the users.manage permission to create users.</CardDescription>
+          <CardDescription>You need the users.create permission to create users.</CardDescription>
         </CardHeader>
       </Card>
     );

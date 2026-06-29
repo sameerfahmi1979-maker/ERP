@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit, createAuditDiff } from "@/server/actions/audit";
 import {
@@ -99,8 +99,8 @@ export async function updateRole(input: UpdateRoleInput): Promise<ActionResult> 
       return { success: false, error: "Role not found" };
     }
 
-    if (oldData.is_system_role && !hasPermission(ctx, "system.admin")) {
-      return { success: false, error: "Only system admins can modify system roles" };
+    if (oldData.is_system_role && !isGlobalAdmin(ctx)) {
+      return { success: false, error: "System roles can only be modified by a global administrator." };
     }
 
     const dataToUpdate = {

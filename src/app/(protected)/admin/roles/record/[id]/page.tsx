@@ -23,7 +23,7 @@ export default async function RoleRecordPage({ params, searchParams }: Props) {
   const result = await getRoleById(numericId);
   if (!result.success || !result.data) notFound();
 
-  const mode = modeParam === "edit" && hasPermission(authContext, "roles.edit") ? "edit" : "view";
+  const mode = modeParam === "edit" && hasPermission(authContext, "roles.manage") ? "edit" : "view";
 
   return <RoleWorkspaceForm role={result.data} mode={mode} authContext={authContext} />;
 }

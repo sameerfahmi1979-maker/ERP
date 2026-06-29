@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
+import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import type { Role, UserProfile, OwnerCompany, Branch } from "@/types/database";
 
 type RoleWithUsers = Role & {
@@ -15,9 +16,16 @@ type RoleWithUsers = Role & {
 
 /**
  * List all roles
- * RLS-protected query
+ * RLS-protected query with explicit USERS.1 permission guard.
  */
 export async function listRoles(): Promise<Role[]> {
+  // USERS.1 — Explicit permission guard; defense-in-depth on top of RLS.
+  const ctx = await getAuthContext();
+  if (!hasPermission(ctx, "roles.view")) {
+    logger.warn("listRoles: access denied — missing roles.view");
+    return [];
+  }
+
   const supabase = await createClient();
 
   const { data, error } = await supabase

@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, canManageUsers } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit, createAuditDiff } from "@/server/actions/audit";
 import { getDefaultEmailProvider } from "@/lib/email/providers/factory";
@@ -24,6 +24,47 @@ export type ActionResult<T = unknown> = {
   error?: string;
 };
 
+// ── USERS.1 — Last system-admin protection ────────────────────────────────────
+
+/**
+ * Blocks deactivation / deletion of the last active system_admin.
+ * Throws a typed ActionResult-compatible error string if the guard triggers.
+ */
+async function assertNotLastSystemAdmin(userProfileId: number): Promise<string | null> {
+  const supabase = await createClient();
+
+  // Check if target user has an active system_admin assignment
+  const { data: targetRoles } = await supabase
+    .from("user_roles")
+    .select("role_id, roles!inner(role_code)")
+    .eq("user_profile_id", userProfileId)
+    .eq("is_active", true);
+
+  const isSystemAdmin = (targetRoles ?? []).some((row) => {
+    const r = row.roles as { role_code?: string } | null;
+    return r?.role_code === "system_admin";
+  });
+
+  if (!isSystemAdmin) return null; // Not a system admin — no restriction
+
+  // Count total active system_admin users (active role + active profile)
+  const { data: adminAssignments } = await supabase
+    .from("user_roles")
+    .select("user_profile_id, roles!inner(role_code), user_profiles!inner(status)")
+    .eq("is_active", true);
+
+  const activeAdminCount = (adminAssignments ?? []).filter((row) => {
+    const role = row.roles as { role_code?: string } | null;
+    const profile = row.user_profiles as { status?: string } | null;
+    return role?.role_code === "system_admin" && profile?.status === "active";
+  }).length;
+
+  if (activeAdminCount <= 1) {
+    return "Cannot deactivate or delete the last active system administrator.";
+  }
+  return null;
+}
+
 /**
  * Create new user (Admin only)
  * Creates Auth user and user profile with optional initial role assignment
@@ -39,7 +80,7 @@ export async function createUser(
 
     // 2. Check permissions
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "users.manage")) {
+    if (!hasPermission(ctx, "users.create")) {
       return { success: false, error: "You do not have permission to create users" };
     }
 
@@ -94,24 +135,34 @@ export async function createUser(
       return { success: false, error: "Failed to create Auth user" };
     }
 
+    const now = new Date().toISOString();
+
     // 4. Create user profile (upsert — the auth trigger may have already inserted a minimal row)
+    // USERS.2A — Set must_change_password + email/password admin confirmation fields
     const supabase = await createClient();
+    const profileFields: Record<string, unknown> = {
+      auth_user_id: authUser.id,
+      full_name: validated.full_name,
+      display_name: validated.display_name,
+      phone: validated.phone,
+      job_title: validated.job_title,
+      department: validated.department,
+      owner_company_id: validated.owner_company_id,
+      branch_id: validated.branch_id,
+      status: validated.status,
+      must_change_password: true,
+    };
+
+    if (!validated.send_invite_email) {
+      // Temp password mode — admin confirmed email and set password
+      profileFields.password_set_by_admin_at = now;
+      profileFields.email_confirmed_by_admin_at = now;
+      profileFields.email_confirmed_by_admin_id = ctx.profile?.id ?? null;
+    }
+
     const { data: profile, error: profileError } = await adminClient
       .from("user_profiles")
-      .upsert(
-        {
-          auth_user_id: authUser.id,
-          full_name: validated.full_name,
-          display_name: validated.display_name,
-          phone: validated.phone,
-          job_title: validated.job_title,
-          department: validated.department,
-          owner_company_id: validated.owner_company_id,
-          branch_id: validated.branch_id,
-          status: validated.status,
-        },
-        { onConflict: "auth_user_id" }
-      )
+      .upsert(profileFields, { onConflict: "auth_user_id" })
       .select("id")
       .single();
 
@@ -136,29 +187,106 @@ export async function createUser(
 
       if (roleError) {
         logger.error("user_roles insert error", roleError);
-        // Don't fail the entire operation, just log warning
         logger.warn(`User created but role assignment failed: ${roleError.message}`);
       }
     }
 
-    // 6. Send invite email via ERP email provider (Microsoft Graph)
-    let inviteEmailWarning: string | undefined;
+    // 6. Send email via ERP notification templates (USERS.2A)
+    let emailWarning: string | undefined;
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://erp.algt.net";
+    const companyName = process.env.NEXT_PUBLIC_ERP_COMPANY_NAME ?? "ALGT ERP";
+    const supportEmail = process.env.NEXT_PUBLIC_ERP_SUPPORT_EMAIL ?? "support@algt.net";
+    const displayName = validated.full_name || validated.email;
+
     if (validated.send_invite_email && inviteLink) {
+      // Invite flow: use USER_INVITE_LINK ERP template, fallback to inline HTML
       try {
         const emailProvider = await getDefaultEmailProvider();
-        const displayName = validated.full_name || validated.email;
+        let subject = `You have been invited to ${companyName}`;
+        let htmlBody: string | undefined;
+        let textBody: string;
+
+        try {
+          const { renderNotificationTemplate } = await import("@/server/actions/notifications/templates");
+          const rendered = await renderNotificationTemplate("USER_INVITE_LINK", {
+            display_name: displayName,
+            action_link: inviteLink,
+            company_name: companyName,
+            support_email: supportEmail,
+            expiry_note: "This link expires in 24 hours.",
+          });
+          if (rendered.success && rendered.data) {
+            subject = rendered.data.subject;
+            htmlBody = rendered.data.htmlBody ?? undefined;
+            textBody = rendered.data.textBody;
+          } else {
+            // Fallback to inline template
+            htmlBody = buildInviteEmailHtml({ displayName, inviteLink });
+            textBody = buildInviteEmailText({ displayName, inviteLink });
+          }
+        } catch {
+          htmlBody = buildInviteEmailHtml({ displayName, inviteLink });
+          textBody = buildInviteEmailText({ displayName, inviteLink });
+        }
+
         await emailProvider.sendEmail({
           to: [validated.email],
-          subject: "You have been invited to ALGT ERP",
-          htmlBody: buildInviteEmailHtml({ displayName, inviteLink }),
-          textBody: buildInviteEmailText({ displayName, inviteLink }),
-          metadata: { feature: "USER_INVITE", user_profile_id: profile.id },
+          subject,
+          htmlBody,
+          textBody,
+          metadata: { feature: "USER_INVITE_LINK", user_profile_id: profile.id },
+        });
+
+        await logAudit({
+          module_code: "users",
+          entity_name: "user_profiles",
+          entity_id: profile.id,
+          entity_reference: validated.email,
+          action: "USER_INVITE_EMAIL_SENT",
+          new_values: { template_code: "USER_INVITE_LINK", success: true },
         });
       } catch (emailErr) {
-        // Don't fail the user creation — the admin can resend manually
         const msg = emailErr instanceof Error ? emailErr.message : String(emailErr);
         logger.warn("Invite email send failed:", msg);
-        inviteEmailWarning = `User created but invite email could not be sent: ${msg}`;
+        emailWarning = `User created but invite email could not be sent: ${msg}`;
+      }
+    } else if (!validated.send_invite_email) {
+      // Temp password mode — queue welcome email via ERP email queue
+      try {
+        const { queueEmail } = await import("@/server/actions/notifications/email-queue");
+        const { renderNotificationTemplate } = await import("@/server/actions/notifications/templates");
+        const rendered = await renderNotificationTemplate("USER_WELCOME_INTERNAL", {
+          display_name: displayName,
+          login_url: `${siteUrl}/login`,
+          company_name: companyName,
+          support_email: supportEmail,
+        });
+        if (rendered.success && rendered.data) {
+          await queueEmail({
+            source_module: "users",
+            source_entity_type: "user_profile",
+            source_entity_id: profile.id,
+            priority: "normal",
+            to_emails: [validated.email],
+            subject: rendered.data.subject,
+            html_body: rendered.data.htmlBody,
+            text_body: rendered.data.textBody,
+            template_code: "USER_WELCOME_INTERNAL",
+            max_attempts: 3,
+          });
+          await logAudit({
+            module_code: "users",
+            entity_name: "user_profiles",
+            entity_id: profile.id,
+            entity_reference: validated.email,
+            action: "USER_WELCOME_EMAIL_SENT",
+            new_values: { template_code: "USER_WELCOME_INTERNAL", success: true },
+          });
+        }
+      } catch (emailErr) {
+        const msg = emailErr instanceof Error ? emailErr.message : String(emailErr);
+        logger.warn("Welcome email queue failed (non-fatal):", msg);
+        emailWarning = `User created but welcome email could not be queued: ${msg}`;
       }
     }
 
@@ -175,7 +303,7 @@ export async function createUser(
         full_name: validated.full_name,
         status: validated.status,
         auth_method: validated.send_invite_email ? "invite_email" : "temporary_password",
-        invite_email_sent: validated.send_invite_email && !inviteEmailWarning,
+        must_change_password: true,
       },
       owner_company_id: validated.owner_company_id ?? undefined,
       branch_id: validated.branch_id ?? undefined,
@@ -187,7 +315,7 @@ export async function createUser(
     return {
       success: true,
       data: { user_profile_id: profile.id },
-      ...(inviteEmailWarning ? { error: inviteEmailWarning } : {}),
+      ...(emailWarning ? { error: emailWarning } : {}),
     };
   } catch (error) {
     logger.error("createUser exception", error);
@@ -209,7 +337,7 @@ export async function adminUpdateUserProfile(
 
     // 2. Check permissions
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "users.manage")) {
+    if (!hasPermission(ctx, "users.update")) {
       return { success: false, error: "You do not have permission to update user profiles" };
     }
 
@@ -225,10 +353,22 @@ export async function adminUpdateUserProfile(
       return { success: false, error: "User profile not found" };
     }
 
+    // USERS.1 — Last-admin guard: block deactivation of sole system_admin
+    if (updates.status && updates.status !== "active" && oldData.status === "active") {
+      const adminGuard = await assertNotLastSystemAdmin(id);
+      if (adminGuard) return { success: false, error: adminGuard };
+    }
+
+    // USERS.2 — Auto-set last admin update timestamp
+    const updatePayload = {
+      ...updates,
+      last_admin_updated_at: new Date().toISOString(),
+    };
+
     // 4. Update profile
     const { error } = await supabase
       .from("user_profiles")
-      .update(updates)
+      .update(updatePayload)
       .eq("id", id);
 
     if (error) {
@@ -237,7 +377,7 @@ export async function adminUpdateUserProfile(
     }
 
     // 5. Log audit
-    const { old_values, new_values } = createAuditDiff(oldData, { ...oldData, ...updates });
+    const { old_values, new_values } = createAuditDiff(oldData, { ...oldData, ...updatePayload });
     
     await logAudit({
       module_code: "users",
@@ -274,7 +414,7 @@ export async function assignRoleToUser(
 
     // 2. Check permissions
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "users.manage")) {
+    if (!canManageUsers(ctx)) {
       return { success: false, error: "You do not have permission to assign roles" };
     }
 
@@ -360,7 +500,7 @@ export async function removeRoleFromUser(
 
     // 2. Check permissions
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "users.manage")) {
+    if (!canManageUsers(ctx)) {
       return { success: false, error: "You do not have permission to remove roles" };
     }
 
@@ -380,6 +520,14 @@ export async function removeRoleFromUser(
       return { success: false, error: "Role assignment not found" };
     }
 
+    const role = oldData.roles as { role_code: string; role_name: string } | null;
+
+    // USERS.2 — Last-admin guard: block removal of sole system_admin role assignment
+    if (role?.role_code === "system_admin") {
+      const adminGuard = await assertNotLastSystemAdmin(oldData.user_profile_id as number);
+      if (adminGuard) return { success: false, error: adminGuard };
+    }
+
     // 4. Remove role assignment
     const { error } = await supabase
       .from("user_roles")
@@ -393,7 +541,6 @@ export async function removeRoleFromUser(
 
     // 5. Log audit
     const userProfile = oldData.user_profiles as { user_code: string | null; owner_company_id: number | null; branch_id: number | null } | null;
-    const role = oldData.roles as { role_code: string; role_name: string } | null;
 
     await logAudit({
       module_code: "users",
@@ -431,7 +578,7 @@ export async function deleteUser(
   try {
     // 1. Check permissions
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "users.manage")) {
+    if (!hasPermission(ctx, "users.delete")) {
       return { success: false, error: "You do not have permission to delete users" };
     }
 
@@ -451,6 +598,10 @@ export async function deleteUser(
     if (ctx.profile?.id === userProfileId) {
       return { success: false, error: "You cannot delete your own account" };
     }
+
+    // USERS.1 — Last-admin guard
+    const adminGuard = await assertNotLastSystemAdmin(userProfileId);
+    if (adminGuard) return { success: false, error: adminGuard };
 
     // 4. Log audit before deletion (so we have a record)
     await logAudit({

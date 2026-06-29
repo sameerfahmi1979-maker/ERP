@@ -20,6 +20,17 @@ export type UserProfile = {
   timezone: string;
   last_admin_updated_at: string | null;
   notes: string | null;
+  // USERS.2A — Password lifecycle
+  must_change_password: boolean;
+  must_change_password_reason: string | null;
+  password_changed_at: string | null;
+  password_reset_sent_at: string | null;
+  password_set_by_admin_at: string | null;
+  email_confirmed_by_admin_at: string | null;
+  email_confirmed_by_admin_id: number | null;
+  last_password_security_action_at: string | null;
+  last_password_security_action: string | null;
+  last_password_security_action_by: number | null;
 };
 
 export type Role = {
@@ -146,11 +157,33 @@ export type Branch = {
   notes: string | null;
 };
 
+export type UserRoleAssignment = {
+  user_role_id: number;
+  role_id: number;
+  role_code: string;
+  role_name: string;
+  scope: "global" | "company" | "branch";
+  owner_company_id: number | null;
+  branch_id: number | null;
+  assigned_at: string;
+  scope_company_name?: string | null;
+  scope_branch_name?: string | null;
+};
+
+export type UserAuthMetadata = {
+  email: string | null;
+  last_sign_in_at: string | null;
+  auth_created_at: string | null;
+  // USERS.2A
+  email_confirmed_at: string | null;
+};
+
 export type UserWithRoles = UserProfile & {
   email?: string | null;
-  roles?: { role_code: string; role_name: string }[];
+  roles?: UserRoleAssignment[];
   owner_company?: OwnerCompany | null;
   branch?: Branch | null;
+  auth_metadata?: UserAuthMetadata | null;
 };
 
 export type BranchWithCompany = Branch & {

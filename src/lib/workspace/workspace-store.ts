@@ -20,7 +20,7 @@ import {
   DASHBOARD_ROUTE,
 } from "./workspace-route-registry";
 
-export const MAX_TABS = 8;
+export const MAX_TABS = 20;
 
 const STORAGE_TABS_KEY = "algt_erp_workspace_tabs";
 const STORAGE_ACTIVE_KEY = "algt_erp_workspace_active_tab";

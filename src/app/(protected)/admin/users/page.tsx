@@ -1,17 +1,38 @@
+import { Suspense } from "react";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { ERPSectionCard } from "@/components/erp/section-card";
 import { UsersTable } from "@/features/users/users-table";
 import { AddUserDialog } from "@/features/users/add-user-dialog";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { listUsers } from "@/server/queries/users";
+import { getAuthContext, hasPermission, canManageUsers } from "@/lib/rbac/check";
+import { listUsersPaginated } from "@/server/queries/users";
 import { listRoles } from "@/server/queries/roles";
 import { listOrganizations } from "@/server/queries/organizations";
 import { listBranches } from "@/server/queries/branches";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users as UsersIcon } from "lucide-react";
 
-export default async function AdminUsersPage() {
+type SearchParams = Promise<{
+  page?: string;
+  pageSize?: string;
+  q?: string;
+  status?: string;
+  company?: string;
+  branch?: string;
+  role?: string;
+}>;
+
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  const n = parseInt(value ?? "", 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+export default async function AdminUsersPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
   const ctx = await getAuthContext();
+  const sp = await searchParams;
 
   if (!hasPermission(ctx, "users.view")) {
     return (
@@ -35,14 +56,30 @@ export default async function AdminUsersPage() {
     );
   }
 
-  const [users, roles, organizations, branches] = await Promise.all([
-    listUsers(),
+  const page = parsePositiveInt(sp.page, 1);
+  const pageSize = Math.min(100, parsePositiveInt(sp.pageSize, 25));
+  const search = sp.q?.trim() ?? "";
+  const status = sp.status ?? "";
+  const companyId = sp.company ? parsePositiveInt(sp.company, 0) : undefined;
+  const branchId = sp.branch ? parsePositiveInt(sp.branch, 0) : undefined;
+  const roleId = sp.role ? parsePositiveInt(sp.role, 0) : undefined;
+
+  const [usersResult, roles, organizations, branches] = await Promise.all([
+    listUsersPaginated({
+      page,
+      pageSize,
+      search: search || undefined,
+      status: status || undefined,
+      ownerCompanyId: companyId || undefined,
+      branchId: branchId || undefined,
+      roleId: roleId || undefined,
+    }),
     listRoles(),
     listOrganizations(),
     listBranches(),
   ]);
 
-  const canManage = hasPermission(ctx, "users.manage");
+  const canManage = canManageUsers(ctx);
 
   return (
     <div className="flex flex-col gap-6">
@@ -58,30 +95,39 @@ export default async function AdminUsersPage() {
       />
       <ERPSectionCard
         title="All Users"
-        description="User profiles and role assignments"
+        description="Server-side pagination, search, and filters"
         actions={
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <UsersIcon className="h-3.5 w-3.5" />
-            <span>{users.length} total</span>
+            <span>{usersResult.totalCount} total</span>
           </div>
         }
         noPadding
       >
-        <UsersTable
-          data={users}
-          roles={roles}
-          companies={organizations}
-          branches={branches}
-          userProfileId={ctx.profile?.id || "default"}
-          exportConfig={{
-            title: "Users Report",
-            subtitle: "User profiles and role assignments",
-            filename: "users",
-            generatedBy: ctx.profile?.full_name || ctx.profile?.display_name || "System User",
-          }}
-        />
+        <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading users…</div>}>
+          <UsersTable
+            data={usersResult.rows}
+            totalCount={usersResult.totalCount}
+            page={usersResult.page}
+            pageSize={usersResult.pageSize}
+            search={search}
+            statusFilter={status}
+            companyFilter={sp.company ?? ""}
+            branchFilter={sp.branch ?? ""}
+            roleFilter={sp.role ?? ""}
+            roles={roles}
+            companies={organizations}
+            branches={branches}
+            userProfileId={ctx.profile?.id || "default"}
+            exportConfig={{
+              title: "Users Report",
+              subtitle: "User profiles and role assignments (current page)",
+              filename: "users",
+              generatedBy: ctx.profile?.full_name || ctx.profile?.display_name || "System User",
+            }}
+          />
+        </Suspense>
       </ERPSectionCard>
     </div>
   );
 }
-

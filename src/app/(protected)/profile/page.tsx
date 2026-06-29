@@ -2,6 +2,7 @@ import { PageBreadcrumb } from "@/components/layout/page-breadcrumb";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { ChangePasswordCard } from "@/features/profile/change-password-card";
 
 export default async function ProfilePage() {
   const supabase = await createClient();
@@ -45,6 +46,9 @@ export default async function ProfilePage() {
           </p>
         </CardContent>
       </Card>
+
+      {/* USERS.2A — Account Security: self-service password change */}
+      <ChangePasswordCard />
     </div>
   );
 }

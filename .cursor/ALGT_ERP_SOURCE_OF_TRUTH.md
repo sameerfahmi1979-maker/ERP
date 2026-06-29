@@ -1,7 +1,7 @@
 # ALGT ERP — Source of Truth
 
 **Document:** `.cursor/ALGT_ERP_SOURCE_OF_TRUTH.md`  
-**Last updated:** 2026-06-27 (Phase 17 Apply Correction Proposal — Browser UAT completed and LIVE PASS / CLOSED ✅)
+**Last updated:** 2026-06-29 (ERP USERS.2A Password Lifecycle and Account Security implemented — must_change_password gate, /change-password-required route, self-service password change, admin reset/temp/force/email-confirm actions, ERP-branded auth emails, users.security.manage permission; USERS.1/USERS.2 preserved)
 **Maintainer:** Update after **every** completed ERP phase
 **Last closed gate:** ERP DMS AI Phase 17 Apply Correction Proposal Browser UAT (**LIVE PASS / CLOSED ✅ — 2026-06-27. Two implementation bugs found and fixed during UAT: (1) `DmsDocumentAiSection` missing `correctionEnabled` prop wiring → added `getApplyCorrectionAccess` server action + `canProposeCorrection` prop + `useQuery`; (2) `onProposed` callback prematurely clearing `correctionItemId` → removed premature reset so confirm dialog can render. Full browser UAT: flag OFF (no button) ✅, flag ON (button appears) ✅, drawer source card ✅, manual proposal ✅, confirmation dialog ✅, ERP write verified (party_licenses.remarks updated) ✅, forbidden words 0 ✅. Payload safety 10/10 PASS. RLS security 11/11 PASS. Vitest 269/269 PASS. TS 0 errors. Lint 0 errors. Feature flags restored to false. Report: `implementation_Review/ERP_DMS_AI_PHASE_17_BROWSER_UAT_AND_CLOSURE_REPORT.md`.**)
 
@@ -302,6 +302,10 @@ From `implementation_Review/ERP_FULL_IMPLEMENTATION_ROADMAP_PHASE_TRACKER.md`:
 | **ERP PARTY MASTER UX FIX.1** | Filtered View Default Party Type | **CLOSED / PASS ✅** | `implementation_Review/ERP_PARTY_MASTER_UX_FIX_1_FILTERED_VIEW_DEFAULT_PARTY_TYPE_IMPLEMENTATION_REPORT.md` — `PartiesTable.openAdd()` appends `?defaultType={CODE}` and sets friendly tab title. `record/new` page reads + validates `searchParams.defaultType`. Pre-existing wiring in `party-workspace-form` and `party-types-tab` was complete. TS+build PASS. |
 | **ERP BANK MASTER STANDARD.1** | Unify Bank Master, Remove Party Bank Duplication | **CLOSED / PASS ✅** | `implementation_Review/ERP_BANK_MASTER_STANDARD_1_UNIFY_BANK_MASTER_REMOVE_PARTY_BANK_DUPLICATION_REPORT.md` — `/parties/banks` route redirects to `/finance-basics/banks`. Banks removed from Party Master sidebar. `BankSelect` added to Party Bank Details with read-only info panel and "+ New Bank" shortcut. BANK party type never existed in DB. TS+build PASS. |
 | **ERP GLOBAL UI.4G** | Child Form Modal Workspace Blocking and UX Standard Fix | **CLOSED / PASS ✅** | `implementation_Review/ERP_GLOBAL_UI_4G_CHILD_FORM_MODAL_WORKSPACE_BLOCKING_AND_UX_STANDARD_FIX_REPORT.md` — Child dialog overlay raised to `z-[100]`, tab bar lowered to `z-[30]`, combobox raised to `z-[120]`. Outside click/Esc blocked in ERPChildDialogForm. `isChildDialogOpen` wired to UserWorkspaceForm. Full audit: 13 forms using ERPChildDialogForm, 7 party admin tabs with onChildOpen, all correctly wired. TS+build PASS. |
+| **ERP GLOBAL UI.4H** | Workspace Tab Bar Overflow, Auto-Scroll, and Drag Reorder | **PLANNED** | Future UX phase — not started. See **§6.16.1 Workspace Tab Bar Enhancements (UI.4H — PLANNED)** below. Scope: auto-scroll active tab into view; overflow "All tabs / +N more" dropdown (single row, not second line); optional scroll chevrons/edge fade; drag-and-drop reorder for closable tabs (`REORDER_TABS` + persist order); align `SYNC_ROUTE` with max-tab enforcement. `MAX_TABS` raised locally to 20 by Sameer — requires UI.4H for usable overflow UX. Original shipped default: 8 closable + 1 pinned Dashboard. **Do not implement without explicit Sameer approval.** |
+| **ERP USERS.1** | Users Module Security Foundation and Source-of-Truth Alignment | **CLOSED / PASS ✅** | `implementation_Review/ERP_USERS_1_SECURITY_FOUNDATION_IMPLEMENTATION_REPORT.md` + browser UAT `implementation_Review/ERP_USERS_1_BROWSER_UAT_VERIFICATION_REPORT.md` (**PASS WITH NOTES** — Playwright not run; manual browser UAT). Security foundation: inactive/suspended users blocked at protected layout (redirect /account-disabled). FORCE RLS enabled on 8 tables. `audit_logs_insert` policy fixed to actor-self. Public /signup gated (SIGNUP_ENABLED=false default). `roles.edit` → `roles.manage`, `system.admin` → `isGlobalAdmin(ctx)`, `users.manage` → `canManageUsers(ctx)` + granular perms (users.create/update/delete). Last active system_admin delete/deactivate blocked. Explicit query guards on listUsers/listRoles/listPermissions. TS+build+vitest PASS. |
+| **ERP USERS.2** | User Management Core | **CLOSED / PASS WITH NOTES ✅** | `implementation_Review/ERP_USERS_2_USER_MANAGEMENT_CORE_IMPLEMENTATION_REPORT.md` + browser UAT `implementation_Review/ERP_USERS_2_BROWSER_UAT_VERIFICATION_REPORT.md` (**PASS WITH NOTES** — Playwright not run; manual browser UAT). Server-side users pagination/search/filter; admin email via safe auth metadata helper; notes + employee_reference save fix; last_admin_updated_at auto-set; all roles + scope display; remove role UI + last-system-admin guard on role removal; Security section with last sign-in; suspend action and badge styling; AssignRoleDialog ERPCombobox + is_assignable filter. USERS.1 controls preserved. No migration. |
+| **ERP USERS.2A** | Password Lifecycle and Account Security | **CLOSED / PASS ✅** | `implementation_Review/ERP_USERS_2A_PASSWORD_LIFECYCLE_ACCOUNT_SECURITY_IMPLEMENTATION_REPORT.md` + browser UAT `implementation_Review/ERP_USERS_2A_BROWSER_UAT_VERIFICATION_REPORT.md`. must_change_password gate in protected layout. /change-password-required route (auth layout). Self-service password change in /profile. Admin actions: send reset link, set temp password, force change, clear force change, confirm email, send welcome/invite email. ERP-branded auth emails via 5 notification templates (USER_WELCOME_INTERNAL, USER_INVITE_LINK, USER_PASSWORD_RESET, USER_TEMP_PASSWORD_SET, USER_FORCE_PASSWORD_CHANGE_NOTICE). users.security.manage permission seeded + granted to system_admin. 10 new user_profiles lifecycle columns. Password policy: min 10 chars + upper + lower + digit. Forgot password refactored to server action. Reset password updates lifecycle fields. createUser sets must_change_password=true, queues welcome/invite email. Safe audit logging (no passwords/links/tokens in logs). FORCE RLS preserved. Public signup remains disabled. TS+build PASS. |
 | **ERP GLOBAL CLEANUP.2** | Delete Legacy Dead Form-Dialog Files | **CLOSED / PASS ✅** | `implementation_Review/ERP_GLOBAL_CLEANUP_2_DELETE_LEGACY_DEAD_FORM_DIALOG_FILES_REPORT.md` — 21 legacy `*-form-dialog.tsx` files deleted. All confirmed zero active imports before deletion. No barrel exports referencing deleted files. TS+build PASS. |
 | **ERP DMS.1** | AI-Ready Enterprise DMS Research and Architecture Plan | **CLOSED / PLAN COMPLETE ✅** | `implementation_Review/Phase_DMS_1_Planning/ERP_DMS_1_AI_READY_ENTERPRISE_DMS_RESEARCH_AND_ARCHITECTURE_PLAN.md` — Deep research on 5 open-source DMS systems. Full DB schema (20+ tables), Storage architecture, AI abstraction, 35 document types, 7 AI extraction schemas, 14 phases. No implementation. |
 | **ERP DMS.1A** | Architecture Review, Corrections, Existing Document Inventory, and Final Approval Gate | **CLOSED / PLAN COMPLETE ✅** | `implementation_Review/Phase_DMS_1_Planning/ERP_DMS_1A_ARCHITECTURE_REVIEW_CORRECTIONS_EXISTING_DOCUMENT_INVENTORY_AND_FINAL_APPROVAL_GATE.md` — Full audit of existing party_documents (metadata-only, file_path never used), party_document_types (14 seeded types), party_licenses, party_tax_registrations. party_documents migration plan for DMS.6. party_document_types migration to dms_document_types in DMS.3. ERP SETTINGS.1 required before DMS.9. erp_ai_provider_configs added to DMS.2 scope. entity_types party_license + party_tax_registration added to dms_document_links. DMS single-source-of-truth rule established. V2 Architecture Standard + updated DMS Cursor rule created. Phase list expanded to 16 phases. 13 decisions awaiting Sameer approval. No implementation. |
@@ -367,16 +371,18 @@ If the user says "continue" or "next" after Phase 17, Cursor must first ask whet
 - Must follow the same governance as Apply-to-ERP and Apply Correction: human review, target row selection, feature flags, permissions, audit, conflict detection, no payroll/salary unsafe writes.
 
 **Next important ERP plans after current AI closure (in order):**
-1. Users module enhancement.
+1. Users module enhancement — **USERS.1 IMPLEMENTED** (see `implementation_Review/ERP_USERS_1_SECURITY_FOUNDATION_IMPLEMENTATION_REPORT.md`).
 2. HR module enhancement.
 3. Future module-wide AI write-back pattern after module implementations are stable.
+4. **ERP GLOBAL UI.4H** — Workspace tab bar overflow menu, auto-scroll, drag reorder (PLANNED — see §6.16.1; lower priority than Users/HR unless Sameer prioritizes).
 
 **Do NOT start without explicit Sameer approval:**
 - Any new Phase 19+ AI feature
 - Phase 16 Tier 3 (Party Contacts / Addresses write-back)
 - HR AI write-back
-- Users module enhancement
 - HR module enhancement
+- USERS.2 User Management Core — **CLOSED / PASS WITH NOTES ✅** (see `implementation_Review/ERP_USERS_2_USER_MANAGEMENT_CORE_IMPLEMENTATION_REPORT.md` + browser UAT `implementation_Review/ERP_USERS_2_BROWSER_UAT_VERIFICATION_REPORT.md`). Next: **USERS.3 planning-first only**, unless Sameer changes priority.
+- USERS.2A Password Lifecycle and Account Security — **CLOSED / PASS ✅** (see `implementation_Review/ERP_USERS_2A_PASSWORD_LIFECYCLE_ACCOUNT_SECURITY_IMPLEMENTATION_REPORT.md` + UAT `implementation_Review/ERP_USERS_2A_BROWSER_UAT_VERIFICATION_REPORT.md`). Next: **USERS.3 Roles Management Enhancement — planning-first only**.
 
 > HR Apply-to-ERP write-back is higher risk and must not begin until Party apply phases and reversal/correction proposal safety are stable and fully UAT-closed.
 
@@ -411,7 +417,7 @@ If the user says "continue" or "next" after Phase 17, Cursor must first ask whet
 | Child dialog rule | `.cursor/rules/erp-child-dialog-form-standard.mdc` | Enforces ERPChildDialogForm for all child forms |
 | WorkspaceProvider | `src/components/workspace/workspace-provider.tsx` | Global multi-tab workspace context (ERP GLOBAL UI.4A) |
 | WorkspaceTabBar | `src/components/workspace/workspace-tab-bar.tsx` | Chrome-style tab bar below AppHeader |
-| workspace-store | `src/lib/workspace/workspace-store.ts` | Tab state reducer + localStorage persistence |
+| workspace-store | `src/lib/workspace/workspace-store.ts` | Tab state reducer + localStorage persistence; `MAX_TABS` (shipped default 8; Sameer raised to 20 locally — UI.4H overflow UX planned) |
 | workspace-route-registry | `src/lib/workspace/workspace-route-registry.ts` | 42 protected routes mapped to tab metadata |
 | useWorkspace | `src/hooks/use-workspace.ts` | Primary hook for tab open/close/switch |
 | Workspace tabs rule | `.cursor/rules/erp-workspace-tabs-standard.mdc` | Tab behavior standard (DRAFT — activates after 4A) |
@@ -676,6 +682,66 @@ ERP_FULL_IMPLEMENTATION_GUIDE_FOR_NEXT_CHAT.md
 - All `ERPRecordWorkspaceForm` usages must use `useWorkspaceSectionState` to persist active section.
 - Scroll state via `useWorkspaceScrollState` + `bodyScrollRef` prop is strongly recommended for new record forms.
 - Never persist passwords, tokens, Supabase sessions, PII, bank account numbers, IBAN, or unsaved form field values in localStorage.
+
+### 6.16.1 Workspace Tab Bar Enhancements (UI.4H — PLANNED)
+
+> **Status:** PLANNED — future UX phase. **Not implemented.** Do not start without explicit Sameer approval and a dedicated implementation prompt.
+
+**Background (2026-06-27):** ERP GLOBAL UI.4A shipped `MAX_TABS = 8` closable tabs + 1 pinned Dashboard tab (9 total). Sameer raised `MAX_TABS` to **20** locally for heavier multi-tasking. With more tabs, new/active tabs scroll off-screen because the tab bar uses a single horizontal row with hidden scrollbar and **no auto-scroll-to-active** behavior.
+
+**This is not a platform limit** — it is an intentional ERP workspace cap (UI.4A) plus incomplete overflow UX when the cap is raised.
+
+**Current implementation files:**
+- `src/lib/workspace/workspace-store.ts` — `MAX_TABS` constant + reducer max-tab check
+- `src/components/workspace/workspace-provider.tsx` — max-tab toast in `openTab()`
+- `src/components/workspace/workspace-tab-bar.tsx` — horizontal scroll row (`overflow-x-auto`, scrollbar hidden)
+- `src/components/workspace/workspace-tab.tsx` — tab chip (`min-w-[80px]`, `max-w-[180px]`, `shrink-0`)
+- Tab order today: client re-sorts by pinned first, then `openedAt` — **manual drag order not supported yet**
+
+**Known gap:** `SYNC_ROUTE` (sidebar / direct URL navigation) can add tabs without the same max-tab check as `openTab()` — UI.4H should align enforcement.
+
+#### Planned scope (UI.4H)
+
+| # | Feature | Description | Priority |
+|---|---------|-------------|----------|
+| 1 | **Auto-scroll active tab** | When a tab is opened or activated, scroll it into view in the tab bar (`scrollIntoView`). Fixes "invisible new tab" problem. | Must |
+| 2 | **Overflow "All tabs" menu** | Single tab row stays. Button at end (e.g. `▾ All tabs` or `+N more`) opens dropdown listing all open tabs; click → activate + scroll into view. **Not a second row of tabs.** | Should |
+| 3 | **Scroll overflow hints** | Left/right chevrons or edge fade when tabs overflow viewport (scrollbar is intentionally hidden). | Should |
+| 4 | **Drag-and-drop reorder** | Reorder closable tabs by drag. Pinned Dashboard stays first and is not draggable. Requires `REORDER_TABS` reducer action, persist order in localStorage, stop re-sorting by `openedAt` for user-ordered closable tabs. Likely dependency: `@dnd-kit/core` + `@dnd-kit/sortable` (not currently in repo). | Nice |
+| 5 | **Compact tab mode (optional)** | When tab count is high, reduce min-width / hide subtitle to fit more tabs before overflow. | Optional |
+| 6 | **Max-tab enforcement parity** | Apply same `MAX_TABS` guard to `SYNC_ROUTE` path as `openTab()`. | Should |
+
+#### Explicitly out of scope for UI.4H
+
+- Second row / stacked tab lines
+- Unrelated module changes (DMS, HR, Users, AI)
+- Changing workspace record form, dirty-state, or child-dialog standards
+
+#### Recommended implementation sequence (when approved)
+
+1. Auto-scroll active tab
+2. Overflow dropdown + scroll chevrons
+3. `SYNC_ROUTE` max-tab parity
+4. Drag-and-drop reorder + `REORDER_TABS`
+5. Optional compact mode
+
+#### Acceptance criteria (draft — for future implementation prompt)
+
+- AC-01: Opening or activating any tab scrolls it into visible tab-bar area
+- AC-02: Overflow menu lists all tabs and switches correctly
+- AC-03: Tab bar remains **one row** (no second line)
+- AC-04: Dashboard pinned tab stays first and non-draggable
+- AC-05: Drag reorder persists across refresh (localStorage)
+- AC-06: `MAX_TABS` (20 or configured value) enforced consistently on `openTab` and `SYNC_ROUTE`
+- AC-07: No regression to dirty close, child-dialog blocking (UI.4G), or workspace draft (UI.4E.2)
+
+#### Estimated effort (planning note)
+
+- Auto-scroll + overflow menu + chevrons: ~0.5–1 day
+- Drag-and-drop reorder: ~1–1.5 days additional (`@dnd-kit`, store + persist changes)
+- Full UI.4H bundle: ~1.5–2 days
+
+**Planning-first rule:** Create planning file → Sameer approval → separate UI.4H implementation prompt → implementation report → update this SOT section to CLOSED.
 
 ### ERPCombobox z-index fix
 

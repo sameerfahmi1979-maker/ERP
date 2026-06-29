@@ -1,15 +1,18 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import type { UserWithRoles, OwnerCompany, Branch, Role } from "@/types/database";
-import { createUser, adminUpdateUserProfile } from "@/server/actions/users";
+import type { UserWithRoles, OwnerCompany, Branch, Role, UserRoleAssignment } from "@/types/database";
+import { createUser, adminUpdateUserProfile, removeRoleFromUser } from "@/server/actions/users";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { useFormDirty } from "@/hooks/use-form-dirty";
-import { Key, User, Building2, Shield, ShieldAlert, Info } from "lucide-react";
+import { Key, User, Building2, Shield, ShieldAlert, Info, Lock } from "lucide-react";
 import type { AuthContext } from "@/lib/rbac/check";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
@@ -17,7 +20,19 @@ import {
   ERPRecordWorkspaceForm,
   ERPRecordSectionPanel,
 } from "@/components/workspace/erp-record-workspace-form";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { AssignRoleDialog } from "./assign-role-dialog";
+import { SecuritySection } from "./user-security-section";
+import { formatRoleScopeLabel } from "@/lib/users/role-scope";
 import { format } from "date-fns";
 
 type UserWorkspaceFormProps = {
@@ -30,14 +45,21 @@ type UserWorkspaceFormProps = {
 };
 
 const FORM_ID = "user-workspace-form";
+const EMPTY = "-";
+
+function filterAssignableRoles(roles: Role[]): Role[] {
+  return roles.filter((r) => r.is_active && r.is_assignable !== false);
+}
 
 export function UserWorkspaceForm({
   user,
   mode,
+  authContext,
   companies = [],
   branches = [],
   roles = [],
 }: UserWorkspaceFormProps) {
+  const router = useRouter();
   const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -45,6 +67,8 @@ export function UserWorkspaceForm({
   const [sendInvite, setSendInvite] = useState(true);
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(user?.owner_company_id ?? null);
   const [assignRoleOpen, setAssignRoleOpen] = useState(false);
+  const [roleToRemove, setRoleToRemove] = useState<UserRoleAssignment | null>(null);
+  const [isRemovingRole, setIsRemovingRole] = useState(false);
 
   const isEditing = mode === "edit";
   const isViewing = mode === "view";
@@ -55,7 +79,6 @@ export function UserWorkspaceForm({
     if (activeTab?.id) markDirty(activeTab.id, isDirty);
   }, [isDirty, activeTab?.id, markDirty]);
 
-  // â”€â”€ Draft preservation (UI.4E.2) â€” NOTE: password fields excluded by denylist â”€â”€
   const { getDraftDefault, syncDraft, writeDraftField, clearDraft } = useWorkspaceFormDraft({
     formId: FORM_ID,
     enabled: !isViewing,
@@ -76,6 +99,7 @@ export function UserWorkspaceForm({
         { id: "profile", label: "Profile Details", icon: User },
         { id: "assignment", label: "Organization", icon: Building2 },
         { id: "roles", label: "Roles", icon: Shield },
+        { id: "security", label: "Security", icon: Lock },
         { id: "audit", label: "Audit Info", icon: Info },
       ];
 
@@ -109,40 +133,49 @@ export function UserWorkspaceForm({
           clearDraft();
           resetDirty();
           if (activeTab?.id) markDirty(activeTab.id, false);
+          router.refresh();
           return true;
-        } else { toast.error(result.error || "Failed to update user profile"); return false; }
-      } else {
-        const data = {
-          email: formData.get("email") as string,
-          temporary_password: sendInvite ? undefined : (formData.get("temporary_password") as string),
-          send_invite_email: sendInvite,
-          full_name: formData.get("full_name") as string,
-          display_name: (formData.get("display_name") as string) || null,
-          phone: (formData.get("phone") as string) || null,
-          job_title: (formData.get("job_title") as string) || null,
-          department: (formData.get("department") as string) || null,
-          owner_company_id: formData.get("owner_company_id") ? Number(formData.get("owner_company_id")) : null,
-          branch_id: formData.get("branch_id") ? Number(formData.get("branch_id")) : null,
-          status: (formData.get("status") as "active" | "inactive" | "suspended") || "active",
-          initial_role_id: formData.get("initial_role_id") ? Number(formData.get("initial_role_id")) : null,
-          initial_role_scope_company_id: formData.get("initial_role_scope_company_id") ? Number(formData.get("initial_role_scope_company_id")) : null,
-          initial_role_scope_branch_id: formData.get("initial_role_scope_branch_id") ? Number(formData.get("initial_role_scope_branch_id")) : null,
-        };
-        const result = await createUser(data);
-        if (result.success) {
-          toast.success("User created successfully");
-          if (result.error) toast.warning(result.error); // invite email warning
-          form.reset();
-          setSendInvite(true);
-          setSelectedCompanyId(null);
-          clearDraft();
-          resetDirty();
-          if (activeTab?.id) markDirty(activeTab.id, false);
-          return true;
-        } else { toast.error(result.error || "Failed to create user"); return false; }
+        }
+        toast.error(result.error || "Failed to update user profile");
+        return false;
       }
-    } catch { toast.error("An unexpected error occurred"); return false; }
-    finally { setIsSubmitting(false); }
+
+      const data = {
+        email: formData.get("email") as string,
+        temporary_password: sendInvite ? undefined : (formData.get("temporary_password") as string),
+        send_invite_email: sendInvite,
+        full_name: formData.get("full_name") as string,
+        display_name: (formData.get("display_name") as string) || null,
+        phone: (formData.get("phone") as string) || null,
+        job_title: (formData.get("job_title") as string) || null,
+        department: (formData.get("department") as string) || null,
+        owner_company_id: formData.get("owner_company_id") ? Number(formData.get("owner_company_id")) : null,
+        branch_id: formData.get("branch_id") ? Number(formData.get("branch_id")) : null,
+        status: (formData.get("status") as "active" | "inactive" | "suspended") || "active",
+        initial_role_id: formData.get("initial_role_id") ? Number(formData.get("initial_role_id")) : null,
+        initial_role_scope_company_id: formData.get("initial_role_scope_company_id") ? Number(formData.get("initial_role_scope_company_id")) : null,
+        initial_role_scope_branch_id: formData.get("initial_role_scope_branch_id") ? Number(formData.get("initial_role_scope_branch_id")) : null,
+      };
+      const result = await createUser(data);
+      if (result.success) {
+        toast.success("User created successfully");
+        if (result.error) toast.warning(result.error);
+        form.reset();
+        setSendInvite(true);
+        setSelectedCompanyId(null);
+        clearDraft();
+        resetDirty();
+        if (activeTab?.id) markDirty(activeTab.id, false);
+        return true;
+      }
+      toast.error(result.error || "Failed to create user");
+      return false;
+    } catch {
+      toast.error("An unexpected error occurred");
+      return false;
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleSaveAndClose = async () => {
@@ -150,7 +183,26 @@ export function UserWorkspaceForm({
     if (success) forceCloseActiveTab();
   };
 
-  const selectClass = "flex h-9 w-full rounded-md border border-input bg-background text-foreground px-3 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40";
+  const handleRemoveRoleConfirm = async () => {
+    if (!roleToRemove) return;
+    setIsRemovingRole(true);
+    try {
+      const result = await removeRoleFromUser({ user_role_id: roleToRemove.user_role_id });
+      if (result.success) {
+        toast.success("Role removed");
+        setRoleToRemove(null);
+        router.refresh();
+      } else {
+        toast.error(result.error || "Failed to remove role");
+      }
+    } finally {
+      setIsRemovingRole(false);
+    }
+  };
+
+  const assignableRoles = filterAssignableRoles(roles);
+  const selectClass =
+    "flex h-9 w-full rounded-md border border-input bg-background text-foreground px-3 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40";
 
   return (
     <>
@@ -159,7 +211,7 @@ export function UserWorkspaceForm({
         title={isViewing ? "View User" : isEditing ? "Edit User Profile" : "New User Account"}
         subtitle={
           user
-            ? `${user.display_name ?? user.full_name ?? "Unnamed"} · ${user.email ?? user.user_code ?? ""}`
+            ? `${user.display_name ?? user.full_name ?? "Unnamed"} - ${user.email ?? user.user_code ?? ""}`
             : "Provision access credentials for a new employee"
         }
         recordCode={user?.user_code ?? undefined}
@@ -174,8 +226,6 @@ export function UserWorkspaceForm({
         isChildDialogOpen={assignRoleOpen}
       >
         <form id={FORM_ID} onSubmit={(e) => { e.preventDefault(); handleSaveAndClose(); }} onInput={syncDraft} onChange={syncDraft}>
-
-          {/* â”€â”€ ADD ONLY: Authentication â”€â”€ */}
           {mode === "add" && (
             <ERPRecordSectionPanel id="auth" activeId={activeSection} title="Identity & Authentication">
               <div className="grid grid-cols-12 gap-4">
@@ -201,7 +251,6 @@ export function UserWorkspaceForm({
             </ERPRecordSectionPanel>
           )}
 
-          {/* â”€â”€ Profile Details â”€â”€ */}
           <ERPRecordSectionPanel id="profile" activeId={activeSection} title="Personal Profile">
             <div className="grid grid-cols-12 gap-4">
               <div className="col-span-6 space-y-1.5">
@@ -253,7 +302,6 @@ export function UserWorkspaceForm({
             </div>
           </ERPRecordSectionPanel>
 
-          {/* â”€â”€ Organization Assignment â”€â”€ */}
           <ERPRecordSectionPanel id="assignment" activeId={activeSection} title="Organization & Branch Linkage">
             <div className="grid grid-cols-12 gap-4">
               <div className="col-span-6 space-y-1.5">
@@ -290,7 +338,6 @@ export function UserWorkspaceForm({
             </div>
           </ERPRecordSectionPanel>
 
-          {/* â”€â”€ ADD ONLY: Initial Role â”€â”€ */}
           {mode === "add" && (
             <ERPRecordSectionPanel id="role" activeId={activeSection} title="Initial Security Role">
               <div className="grid grid-cols-12 gap-4">
@@ -298,7 +345,7 @@ export function UserWorkspaceForm({
                   <Label htmlFor="initial_role_id" className="text-muted-foreground text-xs">Primary Role</Label>
                   <select id="initial_role_id" name="initial_role_id" className={selectClass}>
                     <option value="">No initial role (Read-only)</option>
-                    {roles.filter((r) => r.is_active).map((r) => (
+                    {assignableRoles.map((r) => (
                       <option key={r.id} value={r.id}>{r.role_name} ({r.role_code})</option>
                     ))}
                   </select>
@@ -331,16 +378,30 @@ export function UserWorkspaceForm({
             </ERPRecordSectionPanel>
           )}
 
-          {/* â”€â”€ EDIT/VIEW: Current Roles â”€â”€ */}
           {mode !== "add" && (
             <ERPRecordSectionPanel id="roles" activeId={activeSection} title="Assigned Roles">
               <div className="space-y-3">
                 {user?.roles && user.roles.length > 0 ? (
                   <div className="space-y-2">
                     {user.roles.map((r) => (
-                      <div key={r.role_code} className="flex items-center justify-between px-3 py-2 rounded-md border border-border bg-muted/30 text-xs">
-                        <span className="font-medium">{r.role_name}</span>
-                        <span className="font-mono text-muted-foreground">{r.role_code}</span>
+                      <div key={r.user_role_id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-md border border-border bg-muted/30 text-xs">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-medium">{r.role_name}</span>
+                            <Badge variant="outline" className="text-[10px] font-mono">{r.role_code}</Badge>
+                            <Badge variant="secondary" className="text-[10px]">
+                              {formatRoleScopeLabel(r.scope, r.scope_company_name, r.scope_branch_name)}
+                            </Badge>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground mt-1">
+                            Assigned {format(new Date(r.assigned_at), "d MMM yyyy HH:mm")}
+                          </p>
+                        </div>
+                        {!isViewing && (
+                          <Button type="button" variant="outline" size="sm" className="h-7 text-xs shrink-0" onClick={() => setRoleToRemove(r)}>
+                            Remove
+                          </Button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -348,11 +409,7 @@ export function UserWorkspaceForm({
                   <p className="text-sm text-muted-foreground">No roles assigned.</p>
                 )}
                 {!isViewing && user && (
-                  <button
-                    type="button"
-                    onClick={() => setAssignRoleOpen(true)}
-                    className="text-xs text-indigo-600 hover:underline font-medium"
-                  >
+                  <button type="button" onClick={() => setAssignRoleOpen(true)} className="text-xs text-indigo-600 hover:underline font-medium">
                     + Assign Role
                   </button>
                 )}
@@ -360,7 +417,16 @@ export function UserWorkspaceForm({
             </ERPRecordSectionPanel>
           )}
 
-          {/* â”€â”€ EDIT/VIEW: Audit Info â”€â”€ */}
+          {mode !== "add" && (
+            <ERPRecordSectionPanel id="security" activeId={activeSection} title="Security" lazyMount>
+              {user ? (
+                <SecuritySection user={user} authContext={authContext} />
+              ) : (
+                <p className="text-sm text-muted-foreground">Security information unavailable.</p>
+              )}
+            </ERPRecordSectionPanel>
+          )}
+
           {mode !== "add" && (
             <ERPRecordSectionPanel id="audit" activeId={activeSection} title="Audit Information" lazyMount>
               {user ? (
@@ -375,7 +441,9 @@ export function UserWorkspaceForm({
                   </div>
                   <div className="col-span-6 space-y-1">
                     <Label className="text-muted-foreground text-xs">Last Admin Update</Label>
-                    <div className="text-sm">{user.last_admin_updated_at ? format(new Date(user.last_admin_updated_at), "yyyy-MM-dd HH:mm:ss") : "â€”"}</div>
+                    <div className="text-sm">
+                      {user.last_admin_updated_at ? format(new Date(user.last_admin_updated_at), "yyyy-MM-dd HH:mm:ss") : EMPTY}
+                    </div>
                   </div>
                   <div className="col-span-6 space-y-1">
                     <Label className="text-muted-foreground text-xs">Auth User ID</Label>
@@ -398,7 +466,6 @@ export function UserWorkspaceForm({
         </form>
       </ERPRecordWorkspaceForm>
 
-      {/* Assign Role child dialog â€” stays as ERPChildDialogForm (correct pattern) */}
       {user && (
         <AssignRoleDialog
           user={user}
@@ -409,6 +476,27 @@ export function UserWorkspaceForm({
           branches={branches}
         />
       )}
+
+      <AlertDialog open={Boolean(roleToRemove)} onOpenChange={(open) => { if (!open && !isRemovingRole) setRoleToRemove(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Role</AlertDialogTitle>
+            <AlertDialogDescription>
+              Remove role <span className="font-semibold text-foreground">{roleToRemove?.role_name}</span> from
+              this user? This action is audited and cannot be undone without re-assigning the role.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRemovingRole}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); handleRemoveRoleConfirm(); }}
+              disabled={isRemovingRole}
+            >
+              {isRemovingRole ? "Removing..." : "Remove Role"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

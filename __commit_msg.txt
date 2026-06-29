@@ -1,26 +1,19 @@
-feat(users,email,reports): USERS.4-5 permission flow, report schedule email fix
+feat(users.5): Security Hardening and Audit Enhancement
 
-USERS.4 - Permission-Aware Navigation
-- Fix getAuthContext() RLS bootstrap deadlock: use createAdminClient() for
-  roles/permissions lookups; cookie client for auth only
-- Add permission-aware sidebar filtering in AppSidebar
-- Add /start smart post-login redirect using getFirstPermittedRoute()
-- Add /access-denied and /no-access pages
-- Move WorkspaceProvider into ErpShell for server-side defaultRoute injection
-- Bump workspace localStorage version v4 to clear stale pinned tabs
-- Add /dev/auth-debug diagnostic page
-- Bulk replace redirect to /access-denied in permission guards
-- Add /admin/hr/ smart redirect page
-- Add route-access-registry.ts with 40+ protected routes
+Centralized sanitizeSecurityAuditPayload/sanitizeServerActionError in src/lib/audit/sanitizers.ts
+Added server-only guards to rbac/check, users, roles, permissions, audit action files
+/dev/auth-debug: admin-only guard (isGlobalAdmin), notFound() for non-admin, DEBUG_ROUTE_ACCESSED/UNAUTHORIZED_ACCESS_ATTEMPT audit events
+assertAccountActive() added to all mutating actions in users.ts, roles.ts, permissions.ts
+Zod validation added to permissions.ts (rolePermissionSchema for assign/remove)
+Standardized audit action taxonomy: USER_CREATED/UPDATED/STATUS_CHANGED/DELETED, USER_ROLE_ASSIGNED/REMOVED, USER_SECURITY_*/USER_PASSWORD_CHANGED, ROLE_CREATED/UPDATED/STATUS_CHANGED/DELETED/CLONED/PERMISSION_ASSIGNED/REMOVED, EFFECTIVE_ACCESS_VIEWED, UNAUTHORIZED_ACCESS_ATTEMPT, LAST_ADMIN_GUARD_TRIGGERED, DEBUG_ROUTE_ACCESSED
+LAST_ADMIN_GUARD_TRIGGERED events in users.ts and roles.ts (last system_admin protection)
+UNAUTHORIZED_ACCESS_ATTEMPT events in users.ts, roles.ts, permissions.ts, auth-debug page
+erp_email_queue RLS: dropped broad ALL policy, added scoped SELECT/INSERT/UPDATE policies
+Migration: 20260629100000_erp_users_5_security_hardening_email_queue_rls.sql (applied)
+New: src/server/actions/users/effective-access.ts with getMyEffectiveAccess/getUserEffectiveAccess + EFFECTIVE_ACCESS_VIEWED audit
+New: user-security-history-section.tsx (permission-gated, safe payload, Security History tab in user form)
+New: audit-filters-bar.tsx + extended listAuditLogs + listUserSecurityAuditLogs
+/admin/audit: URL search params filtering (module/action/date/actor/search)
+Implementation report + UAT report + SOT updated
 
-USERS.5 - Security Hardening Planning
-- Add ERP_USERS_5_SECURITY_HARDENING_AND_AUDIT_ENHANCEMENT_PLAN.md
-
-Email and Report Schedules fix
-- sendExportEmail now uses getDefaultEmailProvider() from erp_email_provider_configs
-  instead of env vars; resolves "Email service is not configured" error
-- Add EmailMessageAttachment type and attachments support to EmailMessageInput
-- Add attachment handling in MicrosoftGraphEmailProvider.sendEmail()
-- Loosen SendEmailResult.provider from literal to string type
-- Fix hardcoded microsoft_graph provider string in schedules.ts delivery log
-- Fix moduleCode REPORTS to reports to fix case mismatch in permission check
+TSC: 0 errors, build: exit 0

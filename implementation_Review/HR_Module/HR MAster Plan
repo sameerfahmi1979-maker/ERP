@@ -9,9 +9,14 @@ HR.4	Time Foundation✅
 HR.5	Payroll & WPS Readiness✅
 HR.6	Operations and Readiness✅
 HR.7	HR Actions✅
-HR.8	Recruitment & Onboarding
-HR.9	Single HR Dashboard
-HR.10	Single HR Search
-HR.11	Reports / Print / Export / Email
+HR.8	Recruitment & Onboarding✅
+HR.9	Single HR Dashboard✅
+HR.10	Single HR Search✅
+HR.11	Reports / Print / Export / Email✅
 HR.12	HR AI Integration
 HR.13	Security / RLS / QA / UAT Closure
+
+
+USERS.5 — Security Hardening and Audit Enhancement
+USERS.6 — UI/UX Polish and Admin Workspace
+USERS.7 — Testing, UAT, and Final Closure

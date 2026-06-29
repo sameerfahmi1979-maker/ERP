@@ -1,11 +1,14 @@
 "use server";
 
+import "server-only";
+
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission, canManageUsers } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, canManageUsers, assertAccountActive } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit, createAuditDiff } from "@/server/actions/audit";
+import { sanitizeServerActionError } from "@/lib/audit/sanitizers";
 import { getDefaultEmailProvider } from "@/lib/email/providers/factory";
 import {
   adminUpdateUserProfileSchema,
@@ -30,7 +33,7 @@ export type ActionResult<T = unknown> = {
  * Blocks deactivation / deletion of the last active system_admin.
  * Throws a typed ActionResult-compatible error string if the guard triggers.
  */
-async function assertNotLastSystemAdmin(userProfileId: number): Promise<string | null> {
+async function assertNotLastSystemAdmin(userProfileId: number, actorCtx?: import("@/lib/rbac/check").AuthContext, attemptedAction?: string): Promise<string | null> {
   const supabase = await createClient();
 
   // Check if target user has an active system_admin assignment
@@ -60,6 +63,23 @@ async function assertNotLastSystemAdmin(userProfileId: number): Promise<string |
   }).length;
 
   if (activeAdminCount <= 1) {
+    // Log LAST_ADMIN_GUARD_TRIGGERED
+    if (actorCtx?.profile) {
+      await logAudit({
+        module_code: "users",
+        entity_name: "user_profiles",
+        entity_id: userProfileId,
+        entity_reference: `user-${userProfileId}`,
+        action: "LAST_ADMIN_GUARD_TRIGGERED",
+        new_values: {
+          target_user_profile_id: userProfileId,
+          target_role_code: "system_admin",
+          attempted_action: attemptedAction ?? "unknown",
+          reason: "last_active_system_admin",
+          active_system_admin_count: activeAdminCount,
+        },
+      }).catch(() => {});
+    }
     return "Cannot deactivate or delete the last active system administrator.";
   }
   return null;
@@ -80,8 +100,14 @@ export async function createUser(
 
     // 2. Check permissions
     const ctx = await getAuthContext();
+    assertAccountActive(ctx);
     if (!hasPermission(ctx, "users.create")) {
-      return { success: false, error: "You do not have permission to create users" };
+      await logAudit({
+        module_code: "users", entity_name: "user_profiles", entity_id: 0,
+        entity_reference: "new_user", action: "UNAUTHORIZED_ACCESS_ATTEMPT",
+        new_values: { attempted_action: "createUser", required_permission: "users.create" },
+      }).catch(() => {});
+      return { success: false, error: "You do not have permission to perform this action." };
     }
 
     // 3. Create Auth user using Admin API (service-role)
@@ -296,7 +322,7 @@ export async function createUser(
       entity_name: "user_profiles",
       entity_id: profile.id,
       entity_reference: validated.email,
-      action: "create",
+      action: "USER_CREATED",
       old_values: null,
       new_values: {
         email: validated.email,
@@ -319,7 +345,7 @@ export async function createUser(
     };
   } catch (error) {
     logger.error("createUser exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { success: false, error: sanitizeServerActionError(error) };
   }
 }
 
@@ -337,8 +363,14 @@ export async function adminUpdateUserProfile(
 
     // 2. Check permissions
     const ctx = await getAuthContext();
+    assertAccountActive(ctx);
     if (!hasPermission(ctx, "users.update")) {
-      return { success: false, error: "You do not have permission to update user profiles" };
+      await logAudit({
+        module_code: "users", entity_name: "user_profiles", entity_id: id,
+        entity_reference: `user-${id}`, action: "UNAUTHORIZED_ACCESS_ATTEMPT",
+        new_values: { attempted_action: "adminUpdateUserProfile", required_permission: "users.update", target_entity_id: id },
+      }).catch(() => {});
+      return { success: false, error: "You do not have permission to perform this action." };
     }
 
     // 3. Get old values for audit
@@ -355,7 +387,7 @@ export async function adminUpdateUserProfile(
 
     // USERS.1 — Last-admin guard: block deactivation of sole system_admin
     if (updates.status && updates.status !== "active" && oldData.status === "active") {
-      const adminGuard = await assertNotLastSystemAdmin(id);
+      const adminGuard = await assertNotLastSystemAdmin(id, ctx, "deactivate_user");
       if (adminGuard) return { success: false, error: adminGuard };
     }
 
@@ -384,7 +416,7 @@ export async function adminUpdateUserProfile(
       entity_name: "user_profiles",
       entity_id: id,
       entity_reference: oldData.user_code || `user-${id}`,
-      action: "update",
+      action: updates.status && updates.status !== oldData.status ? "USER_STATUS_CHANGED" : "USER_UPDATED",
       old_values,
       new_values,
       owner_company_id: oldData.owner_company_id ?? undefined,
@@ -397,7 +429,7 @@ export async function adminUpdateUserProfile(
     return { success: true };
   } catch (error) {
     logger.error("adminUpdateUserProfile exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { success: false, error: sanitizeServerActionError(error) };
   }
 }
 
@@ -414,8 +446,14 @@ export async function assignRoleToUser(
 
     // 2. Check permissions
     const ctx = await getAuthContext();
+    assertAccountActive(ctx);
     if (!canManageUsers(ctx)) {
-      return { success: false, error: "You do not have permission to assign roles" };
+      await logAudit({
+        module_code: "users", entity_name: "user_roles", entity_id: 0,
+        entity_reference: `role-assign`, action: "UNAUTHORIZED_ACCESS_ATTEMPT",
+        new_values: { attempted_action: "assignRoleToUser", required_permission: "users.update" },
+      }).catch(() => {});
+      return { success: false, error: "You do not have permission to perform this action." };
     }
 
     // 3. Get user and role info for audit
@@ -475,7 +513,7 @@ export async function assignRoleToUser(
       entity_name: "user_roles",
       entity_id: data.id,
       entity_reference: `${userProfile.user_code || `user-${validated.user_profile_id}`} → ${role.role_code}`,
-      action: "assign_role",
+      action: "USER_ROLE_ASSIGNED",
       new_values: {
         user_profile_id: validated.user_profile_id,
         role: role.role_name,
@@ -491,7 +529,7 @@ export async function assignRoleToUser(
     return { success: true, data: { id: data.id } };
   } catch (error) {
     logger.error("assignRoleToUser exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { success: false, error: sanitizeServerActionError(error) };
   }
 }
 
@@ -508,8 +546,14 @@ export async function removeRoleFromUser(
 
     // 2. Check permissions
     const ctx = await getAuthContext();
+    assertAccountActive(ctx);
     if (!canManageUsers(ctx)) {
-      return { success: false, error: "You do not have permission to remove roles" };
+      await logAudit({
+        module_code: "users", entity_name: "user_roles", entity_id: 0,
+        entity_reference: "role-remove", action: "UNAUTHORIZED_ACCESS_ATTEMPT",
+        new_values: { attempted_action: "removeRoleFromUser", required_permission: "users.update" },
+      }).catch(() => {});
+      return { success: false, error: "You do not have permission to perform this action." };
     }
 
     // 3. Get role assignment info for audit
@@ -532,7 +576,7 @@ export async function removeRoleFromUser(
 
     // USERS.2 — Last-admin guard: block removal of sole system_admin role assignment
     if (role?.role_code === "system_admin") {
-      const adminGuard = await assertNotLastSystemAdmin(oldData.user_profile_id as number);
+      const adminGuard = await assertNotLastSystemAdmin(oldData.user_profile_id as number, ctx, "remove_role");
       if (adminGuard) return { success: false, error: adminGuard };
     }
 
@@ -555,7 +599,7 @@ export async function removeRoleFromUser(
       entity_name: "user_roles",
       entity_id: validated.user_role_id,
       entity_reference: `${userProfile?.user_code || `user-${oldData.user_profile_id}`} → ${role?.role_code || "unknown"}`,
-      action: "remove_role",
+      action: "USER_ROLE_REMOVED",
       old_values: {
         user_profile_id: oldData.user_profile_id,
         role: role?.role_name,
@@ -571,7 +615,7 @@ export async function removeRoleFromUser(
     return { success: true };
   } catch (error) {
     logger.error("removeRoleFromUser exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { success: false, error: sanitizeServerActionError(error) };
   }
 }
 
@@ -586,8 +630,14 @@ export async function deleteUser(
   try {
     // 1. Check permissions
     const ctx = await getAuthContext();
+    assertAccountActive(ctx);
     if (!hasPermission(ctx, "users.delete")) {
-      return { success: false, error: "You do not have permission to delete users" };
+      await logAudit({
+        module_code: "users", entity_name: "user_profiles", entity_id: userProfileId,
+        entity_reference: `user-${userProfileId}`, action: "UNAUTHORIZED_ACCESS_ATTEMPT",
+        new_values: { attempted_action: "deleteUser", required_permission: "users.delete", target_entity_id: userProfileId },
+      }).catch(() => {});
+      return { success: false, error: "You do not have permission to perform this action." };
     }
 
     // 2. Fetch the target user profile — use adminClient to bypass RLS
@@ -608,7 +658,7 @@ export async function deleteUser(
     }
 
     // USERS.1 — Last-admin guard
-    const adminGuard = await assertNotLastSystemAdmin(userProfileId);
+    const adminGuard = await assertNotLastSystemAdmin(userProfileId, ctx, "delete_user");
     if (adminGuard) return { success: false, error: adminGuard };
 
     // 4. Log audit before deletion (so we have a record)
@@ -617,7 +667,7 @@ export async function deleteUser(
       entity_name: "user_profiles",
       entity_id: userProfileId,
       entity_reference: profile.user_code || `user-${userProfileId}`,
-      action: "delete",
+      action: "USER_DELETED",
       old_values: {
         user_code: profile.user_code,
         full_name: profile.full_name,
@@ -656,7 +706,7 @@ export async function deleteUser(
     return { success: true };
   } catch (error) {
     logger.error("deleteUser exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { success: false, error: sanitizeServerActionError(error) };
   }
 }
 

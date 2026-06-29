@@ -1,32 +1,67 @@
 /**
- * DEV ONLY — Auth context diagnostic.
- * Remove or guard with requireAdmin() before production.
+ * DEV — Auth context diagnostic. Admin-only (system_admin / group_admin).
  * Access: /dev/auth-debug
+ * USERS.5 — guarded with requireAdmin() + DEBUG_ROUTE_ACCESSED audit event.
  */
-import { getAuthContext, isGlobalAdmin } from "@/lib/rbac/check";
-import { redirect } from "next/navigation";
+import "server-only";
+
+import { getAuthContext, isGlobalAdmin, requireAdmin } from "@/lib/rbac/check";
+import { notFound } from "next/navigation";
+import { logAudit } from "@/server/actions/audit";
+import { sanitizeAuditDisplayPayload } from "@/lib/audit/sanitizers";
 
 export default async function AuthDebugPage() {
   const ctx = await getAuthContext();
 
-  // Only accessible to authenticated users; non-admin users see limited info
-  if (!ctx.profile) redirect("/login");
+  // Non-authenticated users → 404 (don't advertise this route)
+  if (!ctx.profile) return notFound();
 
-  const globalAdmin = isGlobalAdmin(ctx);
+  // Non-admin users → UNAUTHORIZED_ACCESS_ATTEMPT audit + 404
+  if (!isGlobalAdmin(ctx)) {
+    await logAudit({
+      module_code: "users",
+      entity_name: "debug_route",
+      entity_id: ctx.profile.id,
+      entity_reference: ctx.profile.full_name ?? `user-${ctx.profile.id}`,
+      action: "UNAUTHORIZED_ACCESS_ATTEMPT",
+      new_values: sanitizeAuditDisplayPayload({
+        attempted_action: "access_debug_route",
+        route: "/dev/auth-debug",
+        required_permission: "erp.admin",
+        actor_role_codes: ctx.roleCodes,
+      }) as Record<string, unknown>,
+    }).catch(() => {});
+    return notFound();
+  }
+
+  // Admin: audit the access
+    await logAudit({
+      module_code: "users",
+      entity_name: "debug_route",
+      entity_id: ctx.profile.id,
+      entity_reference: ctx.profile.full_name ?? `user-${ctx.profile.id}`,
+      action: "DEBUG_ROUTE_ACCESSED",
+      new_values: sanitizeAuditDisplayPayload({
+        route: "/dev/auth-debug",
+        role_codes: ctx.roleCodes,
+      }) as Record<string, unknown>,
+    }).catch(() => {});
 
   return (
     <div className="p-8 font-mono text-sm space-y-4 max-w-4xl">
       <h1 className="text-xl font-bold">Auth Context Debug</h1>
+      <p className="text-xs text-muted-foreground bg-yellow-50 border border-yellow-200 rounded px-3 py-2">
+        Admin-only diagnostic page. All access is audited.
+      </p>
 
       <section className="border rounded p-4 space-y-1">
         <p><strong>profile.id:</strong> {ctx.profile.id}</p>
-        <p><strong>auth_user_id:</strong> {ctx.profile.auth_user_id}</p>
         <p><strong>full_name:</strong> {ctx.profile.full_name}</p>
         <p><strong>display_name:</strong> {ctx.profile.display_name ?? "(null)"}</p>
         <p><strong>email:</strong> {ctx.email}</p>
         <p><strong>status:</strong> {ctx.accountStatus}</p>
         <p><strong>isAccountActive:</strong> {String(ctx.isAccountActive)}</p>
-        <p><strong>isGlobalAdmin:</strong> {String(globalAdmin)}</p>
+        <p><strong>isGlobalAdmin:</strong> {String(isGlobalAdmin(ctx))}</p>
       </section>
 
       <section className="border rounded p-4 space-y-1">

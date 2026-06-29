@@ -4,10 +4,24 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { listAuditLogs } from "@/server/queries/audit";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AuditLogsTable } from "@/features/audit/audit-logs-table";
+import { AuditFiltersBar } from "@/features/audit/audit-filters-bar";
 import { FileText } from "lucide-react";
+import { Suspense } from "react";
 
-export default async function AdminAuditPage() {
+type AuditPageProps = {
+  searchParams: Promise<{
+    action?: string;
+    module?: string;
+    date_from?: string;
+    date_to?: string;
+    search?: string;
+    actor?: string;
+  }>;
+};
+
+export default async function AdminAuditPage({ searchParams }: AuditPageProps) {
   const ctx = await getAuthContext();
+  const params = await searchParams;
 
   if (!hasPermission(ctx, "audit.view")) {
     return (
@@ -31,7 +45,19 @@ export default async function AdminAuditPage() {
     );
   }
 
-  const auditLogs = await listAuditLogs({ limit: 200 });
+  const actorId = params.actor ? parseInt(params.actor, 10) : undefined;
+
+  const auditLogs = await listAuditLogs({
+    limit: 300,
+    module: params.module || undefined,
+    action: params.action || undefined,
+    date_from: params.date_from || undefined,
+    date_to: params.date_to || undefined,
+    search: params.search || undefined,
+    actor_user_profile_id: actorId && !isNaN(actorId) ? actorId : undefined,
+  });
+
+  const hasFilters = params.action || params.module || params.date_from || params.date_to || params.search || params.actor;
 
   return (
     <div className="flex flex-col gap-6">
@@ -46,21 +72,24 @@ export default async function AdminAuditPage() {
       />
       <ERPSectionCard
         title="Activity Log"
-        description="Recent system activities and changes (last 200 entries)"
+        description={hasFilters ? `${auditLogs.length} filtered results` : `Recent system activities and changes (last 300 entries)`}
         actions={
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <FileText className="h-3.5 w-3.5" />
-            <span>{auditLogs.length} recent logs</span>
+            <span>{auditLogs.length} logs</span>
           </div>
         }
         noPadding
       >
+        <Suspense>
+          <AuditFiltersBar />
+        </Suspense>
         <AuditLogsTable 
           data={auditLogs}
           userProfileId={ctx.profile?.id || "default"}
           exportConfig={{
             title: "Audit Logs Report",
-            subtitle: "System activity and change history (last 200 entries)",
+            subtitle: "System activity and change history",
             filename: "audit_logs",
             generatedBy: ctx.profile?.full_name || ctx.profile?.display_name || "System User",
           }}
@@ -69,4 +98,3 @@ export default async function AdminAuditPage() {
     </div>
   );
 }
-

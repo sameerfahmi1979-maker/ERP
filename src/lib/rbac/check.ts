@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { UserProfile } from "@/types/database";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";

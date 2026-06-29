@@ -1,10 +1,13 @@
 "use server";
 
+import "server-only";
+
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
-import { getAuthContext, hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, isGlobalAdmin, assertAccountActive } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit, createAuditDiff } from "@/server/actions/audit";
+import { sanitizeServerActionError } from "@/lib/audit/sanitizers";
 import { batchSafeAuthMetadata } from "@/lib/users/auth-metadata";
 import {
   createRoleSchema,
@@ -42,7 +45,7 @@ export async function getRoleById(id: number): Promise<ActionResult<import("@/ty
     return { success: true, data: data as import("@/types/database").Role };
   } catch (error) {
     logger.error("getRoleById exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { success: false, error: sanitizeServerActionError(error) };
   }
 }
 
@@ -54,9 +57,15 @@ export async function createRole(input: CreateRoleInput): Promise<ActionResult<{
   try {
     const validated = createRoleSchema.parse(input);
     const ctx = await getAuthContext();
+    assertAccountActive(ctx);
 
     if (!hasPermission(ctx, "roles.manage")) {
-      return { success: false, error: "You do not have permission to create roles" };
+      await logAudit({
+        module_code: "roles", entity_name: "roles", entity_id: 0,
+        entity_reference: "new_role", action: "UNAUTHORIZED_ACCESS_ATTEMPT",
+        new_values: { attempted_action: "createRole", required_permission: "roles.manage" },
+      }).catch(() => {});
+      return { success: false, error: "You do not have permission to perform this action." };
     }
 
     const supabase = await createClient();
@@ -91,7 +100,7 @@ export async function createRole(input: CreateRoleInput): Promise<ActionResult<{
       entity_name: "roles",
       entity_id: data.id,
       entity_reference: data.role_code,
-      action: "create",
+      action: "ROLE_CREATED",
       new_values: {
         role_code: dataToInsert.role_code,
         role_name: dataToInsert.role_name,
@@ -105,7 +114,7 @@ export async function createRole(input: CreateRoleInput): Promise<ActionResult<{
     return { success: true, data: { id: data.id } };
   } catch (error) {
     logger.error("createRole exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { success: false, error: sanitizeServerActionError(error) };
   }
 }
 
@@ -118,9 +127,15 @@ export async function updateRole(input: UpdateRoleInput): Promise<ActionResult> 
     const validated = updateRoleSchema.parse(input);
     const { id, ...updates } = validated;
     const ctx = await getAuthContext();
+    assertAccountActive(ctx);
 
     if (!hasPermission(ctx, "roles.manage")) {
-      return { success: false, error: "You do not have permission to update roles" };
+      await logAudit({
+        module_code: "roles", entity_name: "roles", entity_id: id,
+        entity_reference: `role-${id}`, action: "UNAUTHORIZED_ACCESS_ATTEMPT",
+        new_values: { attempted_action: "updateRole", required_permission: "roles.manage", target_entity_id: id },
+      }).catch(() => {});
+      return { success: false, error: "You do not have permission to perform this action." };
     }
 
     const supabase = await createClient();
@@ -143,6 +158,11 @@ export async function updateRole(input: UpdateRoleInput): Promise<ActionResult> 
     if (updates.is_assignable !== undefined) {
       // system_admin assignability should not be changed to false
       if (oldData.role_code === "system_admin" && updates.is_assignable === false) {
+        await logAudit({
+          module_code: "roles", entity_name: "roles", entity_id: id,
+          entity_reference: oldData.role_code, action: "LAST_ADMIN_GUARD_TRIGGERED",
+          new_values: { target_role_code: "system_admin", attempted_action: "set_is_assignable_false", reason: "system_admin_must_remain_assignable" },
+        }).catch(() => {});
         return { success: false, error: "The system_admin role must always remain assignable." };
       }
       dataToUpdate.is_assignable = updates.is_assignable;
@@ -168,7 +188,7 @@ export async function updateRole(input: UpdateRoleInput): Promise<ActionResult> 
       entity_name: "roles",
       entity_id: id,
       entity_reference: oldData.role_code,
-      action: "update",
+      action: "ROLE_UPDATED",
       old_values,
       new_values,
     });
@@ -177,7 +197,7 @@ export async function updateRole(input: UpdateRoleInput): Promise<ActionResult> 
     return { success: true };
   } catch (error) {
     logger.error("updateRole exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { success: false, error: sanitizeServerActionError(error) };
   }
 }
 
@@ -188,9 +208,15 @@ export async function updateRole(input: UpdateRoleInput): Promise<ActionResult> 
 export async function deleteRole(id: number): Promise<ActionResult> {
   try {
     const ctx = await getAuthContext();
+    assertAccountActive(ctx);
 
     if (!hasPermission(ctx, "roles.manage")) {
-      return { success: false, error: "You do not have permission to delete roles" };
+      await logAudit({
+        module_code: "roles", entity_name: "roles", entity_id: id,
+        entity_reference: `role-${id}`, action: "UNAUTHORIZED_ACCESS_ATTEMPT",
+        new_values: { attempted_action: "deleteRole", required_permission: "roles.manage", target_entity_id: id },
+      }).catch(() => {});
+      return { success: false, error: "You do not have permission to perform this action." };
     }
 
     const supabase = await createClient();
@@ -219,7 +245,7 @@ export async function deleteRole(id: number): Promise<ActionResult> {
       entity_name: "roles",
       entity_id: id,
       entity_reference: oldData.role_code,
-      action: "delete",
+      action: "ROLE_DELETED",
       old_values: { role_code: oldData.role_code, role_name: oldData.role_name },
     });
 
@@ -227,7 +253,7 @@ export async function deleteRole(id: number): Promise<ActionResult> {
     return { success: true };
   } catch (error) {
     logger.error("deleteRole exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { success: false, error: sanitizeServerActionError(error) };
   }
 }
 
@@ -238,9 +264,15 @@ export async function deleteRole(id: number): Promise<ActionResult> {
 export async function updateRoleStatus(id: number, isActive: boolean): Promise<ActionResult> {
   try {
     const ctx = await getAuthContext();
+    assertAccountActive(ctx);
 
     if (!hasPermission(ctx, "roles.manage")) {
-      return { success: false, error: "You do not have permission to update role status" };
+      await logAudit({
+        module_code: "roles", entity_name: "roles", entity_id: id,
+        entity_reference: `role-${id}`, action: "UNAUTHORIZED_ACCESS_ATTEMPT",
+        new_values: { attempted_action: "updateRoleStatus", required_permission: "roles.manage", target_entity_id: id },
+      }).catch(() => {});
+      return { success: false, error: "You do not have permission to perform this action." };
     }
 
     const supabase = await createClient();
@@ -250,6 +282,11 @@ export async function updateRoleStatus(id: number, isActive: boolean): Promise<A
 
     // USERS.3 — never deactivate system_admin role
     if (oldData.role_code === "system_admin" && !isActive) {
+      await logAudit({
+        module_code: "roles", entity_name: "roles", entity_id: id,
+        entity_reference: "system_admin", action: "LAST_ADMIN_GUARD_TRIGGERED",
+        new_values: { target_role_code: "system_admin", attempted_action: "deactivate_role", reason: "system_admin_role_cannot_be_deactivated" },
+      }).catch(() => {});
       return { success: false, error: "The system_admin role cannot be deactivated. Doing so would lock out all administrators." };
     }
 
@@ -273,7 +310,7 @@ export async function updateRoleStatus(id: number, isActive: boolean): Promise<A
       entity_name: "roles",
       entity_id: id,
       entity_reference: oldData.role_code,
-      action: "status_change",
+      action: "ROLE_STATUS_CHANGED",
       old_values: { is_active: oldData.is_active },
       new_values: { is_active: isActive },
     });
@@ -282,7 +319,7 @@ export async function updateRoleStatus(id: number, isActive: boolean): Promise<A
     return { success: true };
   } catch (error) {
     logger.error("updateRoleStatus exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { success: false, error: sanitizeServerActionError(error) };
   }
 }
 
@@ -297,9 +334,15 @@ export async function cloneRole(
   try {
     const validated = cloneRoleSchema.parse(input);
     const ctx = await getAuthContext();
+    assertAccountActive(ctx);
 
     if (!hasPermission(ctx, "roles.manage")) {
-      return { success: false, error: "You do not have permission to create roles" };
+      await logAudit({
+        module_code: "roles", entity_name: "roles", entity_id: sourceRoleId,
+        entity_reference: `clone-role-${sourceRoleId}`, action: "UNAUTHORIZED_ACCESS_ATTEMPT",
+        new_values: { attempted_action: "cloneRole", required_permission: "roles.manage", source_role_id: sourceRoleId },
+      }).catch(() => {});
+      return { success: false, error: "You do not have permission to perform this action." };
     }
 
     const supabase = await createClient();
@@ -403,7 +446,7 @@ export async function cloneRole(
     return { success: true, data: { id: newRole.id, role_code: newRole.role_code } };
   } catch (error) {
     logger.error("cloneRole exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { success: false, error: sanitizeServerActionError(error) };
   }
 }
 
@@ -544,7 +587,7 @@ export async function getRoleWithUsersAction(
     return { success: true, data: { role, assigned_users } };
   } catch (error) {
     logger.error("getRoleWithUsersAction exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { success: false, error: sanitizeServerActionError(error) };
   }
 }
 
@@ -626,6 +669,6 @@ export async function getRolePermissionsAction(
     };
   } catch (error) {
     logger.error("getRolePermissionsAction exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { success: false, error: sanitizeServerActionError(error) };
   }
 }

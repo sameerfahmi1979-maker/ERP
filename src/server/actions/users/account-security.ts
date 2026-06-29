@@ -5,13 +5,14 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, assertAccountActive } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
 import { queueEmail } from "@/server/actions/notifications/email-queue";
 import { renderTemplate } from "@/lib/notifications/template-renderer";
 import { passwordPolicySchema } from "@/lib/validation/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { sanitizeSecurityAuditPayload, sanitizeServerActionError } from "@/lib/audit/sanitizers";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -229,26 +230,6 @@ async function updateSecurityFields(
   if (error) throw new Error(`Failed to update security fields: ${error.message}`);
 }
 
-/**
- * Build a safe audit payload — never includes passwords, links, or tokens.
- */
-function sanitizeSecurityAuditPayload(
-  raw: Record<string, unknown>,
-): Record<string, unknown> {
-  const BLOCKED_KEYS = [
-    "password", "temporary_password", "action_link", "invite_link",
-    "reset_link", "token", "otp", "jwt", "cookie", "raw_response",
-  ];
-  const safe: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(raw)) {
-    const lower = k.toLowerCase();
-    if (!BLOCKED_KEYS.some((b) => lower.includes(b))) {
-      safe[k] = v;
-    }
-  }
-  return safe;
-}
-
 // ── Server Actions ────────────────────────────────────────────────────────────
 
 /**
@@ -293,7 +274,7 @@ export async function getUserSecurityStatus(
       },
     };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
+    return { success: false, error: sanitizeServerActionError(err) };
   }
 }
 
@@ -430,7 +411,7 @@ export async function changeOwnPassword(_input: unknown): Promise<ActionResult> 
     revalidatePath("/profile");
     return { success: true };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
+    return { success: false, error: sanitizeServerActionError(err) };
   }
 }
 
@@ -472,7 +453,7 @@ export async function completeRequiredPasswordChange(): Promise<ActionResult> {
     revalidatePath("/dashboard");
     return { success: true };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
+    return { success: false, error: sanitizeServerActionError(err) };
   }
 }
 
@@ -577,7 +558,7 @@ export async function adminSendPasswordResetEmail(
       entity_name: "user_profiles",
       entity_id: userProfileId,
       entity_reference: String(userProfileId),
-      action: "USER_PASSWORD_RESET_EMAIL_SENT",
+      action: "USER_SECURITY_RESET_EMAIL_SENT",
       new_values: sanitizeSecurityAuditPayload({
         template_code: "USER_PASSWORD_RESET",
         delivery_method: "email_queue",
@@ -590,7 +571,7 @@ export async function adminSendPasswordResetEmail(
     revalidatePath(`/admin/users/record/${userProfileId}`);
     return { success: true };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
+    return { success: false, error: sanitizeServerActionError(err) };
   }
 }
 
@@ -651,7 +632,7 @@ export async function adminSetTemporaryPassword(
       entity_name: "user_profiles",
       entity_id: userProfileId,
       entity_reference: String(userProfileId),
-      action: "USER_TEMP_PASSWORD_SET",
+      action: "USER_SECURITY_TEMP_PASSWORD_SET",
       new_values: sanitizeSecurityAuditPayload({
         was_generated: wasGenerated,
         must_change_password: true,
@@ -665,7 +646,7 @@ export async function adminSetTemporaryPassword(
       data: wasGenerated ? { generatedPassword: finalPassword } : {},
     };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
+    return { success: false, error: sanitizeServerActionError(err) };
   }
 }
 
@@ -723,7 +704,7 @@ export async function adminForcePasswordChange(
       entity_name: "user_profiles",
       entity_id: userProfileId,
       entity_reference: String(userProfileId),
-      action: "USER_FORCE_PASSWORD_CHANGE_SET",
+      action: "USER_SECURITY_FORCE_CHANGE_SET",
       new_values: sanitizeSecurityAuditPayload({
         has_reason: Boolean(parsed.data.reason),
         notice_sent: emailQueued,
@@ -734,7 +715,7 @@ export async function adminForcePasswordChange(
     revalidatePath(`/admin/users/record/${userProfileId}`);
     return { success: true };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
+    return { success: false, error: sanitizeServerActionError(err) };
   }
 }
 
@@ -760,14 +741,14 @@ export async function adminClearForcePasswordChange(
       entity_name: "user_profiles",
       entity_id: userProfileId,
       entity_reference: String(userProfileId),
-      action: "USER_FORCE_PASSWORD_CHANGE_CLEARED",
+      action: "USER_SECURITY_FORCE_CHANGE_CLEARED",
       new_values: sanitizeSecurityAuditPayload({ success: true }),
     });
 
     revalidatePath(`/admin/users/record/${userProfileId}`);
     return { success: true };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
+    return { success: false, error: sanitizeServerActionError(err) };
   }
 }
 
@@ -803,14 +784,14 @@ export async function adminConfirmUserEmail(
       entity_name: "user_profiles",
       entity_id: userProfileId,
       entity_reference: String(userProfileId),
-      action: "USER_EMAIL_CONFIRMED_BY_ADMIN",
+      action: "USER_SECURITY_EMAIL_CONFIRMED_BY_ADMIN",
       new_values: sanitizeSecurityAuditPayload({ success: true }),
     });
 
     revalidatePath(`/admin/users/record/${userProfileId}`);
     return { success: true };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
+    return { success: false, error: sanitizeServerActionError(err) };
   }
 }
 
@@ -844,7 +825,7 @@ export async function adminSendWelcomeEmail(
       entity_name: "user_profiles",
       entity_id: userProfileId,
       entity_reference: String(userProfileId),
-      action: "USER_WELCOME_EMAIL_SENT",
+      action: "USER_SECURITY_WELCOME_EMAIL_SENT",
       new_values: sanitizeSecurityAuditPayload({
         template_code: "USER_WELCOME_INTERNAL",
         email_queued: emailResult.queued,
@@ -855,7 +836,7 @@ export async function adminSendWelcomeEmail(
     revalidatePath(`/admin/users/record/${userProfileId}`);
     return { success: true };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
+    return { success: false, error: sanitizeServerActionError(err) };
   }
 }
 
@@ -942,7 +923,7 @@ export async function adminGenerateAndSendInviteEmail(
       entity_name: "user_profiles",
       entity_id: userProfileId,
       entity_reference: String(userProfileId),
-      action: "USER_INVITE_EMAIL_SENT",
+      action: "USER_SECURITY_INVITE_EMAIL_SENT",
       new_values: sanitizeSecurityAuditPayload({
         template_code: templateCode,
         email_queued: emailResult.queued,
@@ -953,7 +934,7 @@ export async function adminGenerateAndSendInviteEmail(
     revalidatePath(`/admin/users/record/${userProfileId}`);
     return { success: true };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
+    return { success: false, error: sanitizeServerActionError(err) };
   }
 }
 

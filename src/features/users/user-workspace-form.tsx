@@ -12,7 +12,7 @@ import type { UserWithRoles, OwnerCompany, Branch, Role, UserRoleAssignment } fr
 import { createUser, adminUpdateUserProfile, removeRoleFromUser } from "@/server/actions/users";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { useFormDirty } from "@/hooks/use-form-dirty";
-import { Key, User, Building2, Shield, ShieldAlert, Info, Lock } from "lucide-react";
+import { Key, User, Building2, Shield, ShieldAlert, Info, Lock, Clock } from "lucide-react";
 import type { AuthContext } from "@/lib/rbac/check";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { AssignRoleDialog } from "./assign-role-dialog";
 import { SecuritySection } from "./user-security-section";
+import { UserSecurityHistorySection } from "./user-security-history-section";
 import { formatRoleScopeLabel } from "@/lib/users/role-scope";
 import { format } from "date-fns";
 
@@ -100,6 +101,7 @@ export function UserWorkspaceForm({
         { id: "assignment", label: "Organization", icon: Building2 },
         { id: "roles", label: "Roles", icon: Shield },
         { id: "security", label: "Security", icon: Lock },
+        { id: "history", label: "Security History", icon: Clock },
         { id: "audit", label: "Audit Info", icon: Info },
       ];
 
@@ -423,6 +425,16 @@ export function UserWorkspaceForm({
                 <SecuritySection user={user} authContext={authContext} />
               ) : (
                 <p className="text-sm text-muted-foreground">Security information unavailable.</p>
+              )}
+            </ERPRecordSectionPanel>
+          )}
+
+          {mode !== "add" && (
+            <ERPRecordSectionPanel id="history" activeId={activeSection} title="Security History" lazyMount>
+              {user ? (
+                <UserSecurityHistorySection userProfileId={user.id} authContext={authContext} />
+              ) : (
+                <p className="text-sm text-muted-foreground">Security history unavailable.</p>
               )}
             </ERPRecordSectionPanel>
           )}

@@ -5,6 +5,8 @@
  * Must be called from server actions only.
  */
 
+import "server-only";
+
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";

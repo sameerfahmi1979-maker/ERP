@@ -24,6 +24,10 @@ export const MAX_TABS = 20;
 
 const STORAGE_TABS_KEY = "algt_erp_workspace_tabs";
 const STORAGE_ACTIVE_KEY = "algt_erp_workspace_active_tab";
+// ERP USERS.4 — Bump this version whenever the workspace default tab logic changes.
+// Incrementing causes all browsers to clear stale localStorage workspace state on next load.
+const STORAGE_VERSION_KEY = "algt_erp_workspace_version";
+const STORAGE_VERSION = "4"; // bumped for USERS.4 permission-aware home tab fix
 
 // ── Initial state ─────────────────────────────────────────────────────────────
 
@@ -185,13 +189,15 @@ export function workspaceReducer(
     }
 
     case "RESTORE_TABS": {
-      // Ensure dashboard always present
-      const hasDash = action.tabs.some((t) => t.route === DASHBOARD_ROUTE);
-      const dash = makeDashboardTab();
-      const tabs = hasDash ? action.tabs : [dash, ...action.tabs];
-      // Fix dashboard tab to always be non-closable pinned
+      // ERP USERS.4 — Use defaultRoute (from server permissions) or fall back to Dashboard.
+      // This ensures users without dashboard.view don't get a pinned inaccessible tab.
+      const homeRoute = action.defaultRoute ?? DASHBOARD_ROUTE;
+      const hasPinned = action.tabs.some((t) => t.route === homeRoute);
+      const homeTile = createTabFromRoute(homeRoute);
+      const tabs = hasPinned ? action.tabs : [homeTile, ...action.tabs];
+      // Ensure home tab is always non-closable and pinned
       const fixedTabs = tabs.map((t) =>
-        t.route === DASHBOARD_ROUTE
+        t.route === homeRoute
           ? { ...t, closable: false, pinned: true }
           : t
       );
@@ -261,6 +267,7 @@ export function persistToStorage(
     }));
     localStorage.setItem(STORAGE_TABS_KEY, JSON.stringify(persisted));
     localStorage.setItem(STORAGE_ACTIVE_KEY, activeTabId ?? "");
+    localStorage.setItem(STORAGE_VERSION_KEY, STORAGE_VERSION);
   } catch {
     // localStorage might be unavailable in some contexts — fail silently
   }
@@ -271,6 +278,15 @@ export function restoreFromStorage(): {
   activeTabId: string | null;
 } | null {
   try {
+    // ERP USERS.4 — Version check: clear stale state from before permission-aware home tab fix
+    const storedVersion = localStorage.getItem(STORAGE_VERSION_KEY);
+    if (storedVersion !== STORAGE_VERSION) {
+      localStorage.removeItem(STORAGE_TABS_KEY);
+      localStorage.removeItem(STORAGE_ACTIVE_KEY);
+      localStorage.setItem(STORAGE_VERSION_KEY, STORAGE_VERSION);
+      return null;
+    }
+
     const raw = localStorage.getItem(STORAGE_TABS_KEY);
     const activeId = localStorage.getItem(STORAGE_ACTIVE_KEY) || null;
     if (!raw) return null;

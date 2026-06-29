@@ -20,7 +20,7 @@ export default async function DmsInboxPage({
 
   if (!hasPermission(authContext, "dms.documents.upload") && !hasPermission(authContext, "dms.admin")) {
     if (!hasPermission(authContext, "dms.documents.view")) {
-      redirect("/dashboard");
+      redirect("/access-denied");
     }
   }
 

@@ -12,7 +12,7 @@ export default async function CandidateRecordPage({ params }: Props) {
 
   const ctx = await getAuthContext();
   const canView = hasPermission(ctx, "hr.recruitment.view") || hasPermission(ctx, "hr.recruitment.manage") || ctx.roleCodes?.includes("system_admin");
-  if (!canView) redirect("/admin");
+  if (!canView) redirect("/access-denied");
 
   const res = await getCandidate(candidateId);
   if (!res.success || !res.data) notFound();

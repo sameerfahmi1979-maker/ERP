@@ -16,7 +16,7 @@ export default async function EmployeesPage() {
     !hasPermission(authContext, "hr.employees.view") &&
     !authContext.roleCodes?.includes("system_admin")
   ) {
-    redirect("/admin");
+    redirect("/access-denied");
   }
 
   const result = await listEmployees({ page: 1, pageSize: 50 });

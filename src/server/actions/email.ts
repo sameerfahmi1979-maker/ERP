@@ -2,20 +2,19 @@
  * Email Server Actions
  * Phase 002E.3D - Export Menu Integration + Server Action
  * Phase REPORT.5 - Report Email Delivery with delivery log
+ * Phase SETTINGS.2 - Migrated to DB-backed email provider factory
  *
- * Server-only actions for sending emails via Microsoft Graph
+ * Config is loaded from erp_email_provider_configs (Admin -> Settings -> Email Settings).
  */
 
 "use server";
 
-import { getMicrosoftGraphConfig } from "@/lib/email/microsoft-graph-config";
 import { logger } from "@/lib/logger";
-import { MicrosoftGraphProvider } from "@/lib/email/microsoft-graph-provider";
-import { parseEmailList, deduplicateRecipients, validateSendEmailInput } from "@/lib/email/email-validation";
+import { getDefaultEmailProvider } from "@/lib/email/providers/factory";
 import { logAudit } from "./audit";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { SendEmailInput, SendEmailResult, EmailRecipient, EmailAttachment } from "@/lib/email/email-types";
+import type { SendEmailResult, EmailAttachment } from "@/lib/email/email-types";
 
 /**
  * Input for sendExportEmail server action
@@ -126,110 +125,72 @@ export async function sendExportEmail(input: SendExportEmailInput): Promise<Send
       };
     }
     
-    // 3. Load Microsoft Graph config
-    const configResult = getMicrosoftGraphConfig();
-    if (!configResult.configured) {
-      logger.error("[sendExportEmail] Microsoft Graph not configured. Missing:", configResult.missing);
-      
-      // Log configuration error
+    // 3. Load email provider from DB (Admin -> Settings -> Email Settings)
+    let provider;
+    try {
+      provider = await getDefaultEmailProvider();
+    } catch (providerErr) {
+      logger.error("[sendExportEmail] No email provider configured:", providerErr);
       await logAudit({
         module_code: input.context?.moduleCode || "email",
         entity_name: "email_send",
         entity_id: null,
         entity_reference: input.subject.substring(0, 50),
         action: "email_send_failed",
-        new_values: {
-          reason: "Microsoft Graph not configured",
-          // Do NOT log missing env var names (security)
-        },
+        new_values: { reason: "No email provider configured" },
       }).catch((err) => logger.error("[sendExportEmail] Audit log failed:", err));
-      
       return {
         success: false,
-        provider: "microsoft_graph",
-        error: "Email service is not configured. Please contact administrator.",
+        provider: "erp_provider",
+        error: "Email service is not configured. Please contact administrator to configure an email provider in Admin → Settings → Email Settings.",
         statusCode: 500,
       };
     }
-    
-    const graphConfig = configResult.config!;
-    
-    // 4. Convert string arrays to EmailRecipient arrays
-    const toRecipients: EmailRecipient[] = input.to
-      .filter((email) => email && email.trim())
-      .map((email) => ({ email: email.trim() }));
-    
-    const ccRecipients: EmailRecipient[] | undefined = input.cc
-      ? input.cc
-          .filter((email) => email && email.trim())
-          .map((email) => ({ email: email.trim() }))
+
+    // 4. Deduplicate and filter recipients
+    const toList = [...new Set(input.to.map((e) => e.trim()).filter(Boolean))];
+    const ccList = input.cc
+      ? [...new Set(input.cc.map((e) => e.trim()).filter(Boolean))]
       : undefined;
-    
-    const bccRecipients: EmailRecipient[] | undefined = input.bcc
-      ? input.bcc
-          .filter((email) => email && email.trim())
-          .map((email) => ({ email: email.trim() }))
+    const bccList = input.bcc
+      ? [...new Set(input.bcc.map((e) => e.trim()).filter(Boolean))]
       : undefined;
-    
-    // 5. Build SendEmailInput
-    const emailInput: SendEmailInput = {
-      to: toRecipients,
-      cc: ccRecipients,
-      bcc: bccRecipients,
-      subject: input.subject,
-      body: input.body,
-      bodyFormat: "text",
-      attachments: [input.attachment],
-      saveToSentItems: graphConfig.saveToSentItems,
-    };
-    
-    // 6. Validate input (server-side validation)
-    const validation = validateSendEmailInput(emailInput, graphConfig);
-    if (!validation.valid) {
-      logger.warn("[sendExportEmail] Validation failed:", validation.errors);
-      
-      // Log validation failure
-      await logAudit({
-        module_code: input.context?.moduleCode || "email",
-        entity_name: "email_send",
-        entity_id: null,
-        entity_reference: input.subject.substring(0, 50),
-        action: "email_send_validation_failed",
-        new_values: {
-          errors: validation.errors,
-        },
-      }).catch((err) => logger.error("[sendExportEmail] Audit log failed:", err));
-      
-      return {
-        success: false,
-        provider: "microsoft_graph",
-        error: validation.errors.join(", "),
-        statusCode: 400,
-      };
+
+    if (!toList.length) {
+      return { success: false, provider: provider.config.providerCode, error: "No valid recipients provided.", statusCode: 400 };
     }
-    
-    // 7. Deduplicate recipients
-    const deduplicatedInput = deduplicateRecipients(emailInput);
-    
-    // 8. Initialize Microsoft Graph provider
-    const provider = new MicrosoftGraphProvider(graphConfig);
-    
-    // 9. Send email
-    logger.info(`[sendExportEmail] Sending email: ${input.subject} to ${deduplicatedInput.to.length} recipients`);
-    const result = await provider.sendEmail(deduplicatedInput);
-    
-    // 10. Log audit event
+
+    // 5. Send email
+    logger.info(`[sendExportEmail] Sending via provider "${provider.config.providerCode}": ${input.subject} to ${toList.length} recipients`);
+    const providerResult = await provider.sendEmail({
+      to: toList,
+      cc: ccList,
+      bcc: bccList,
+      subject: input.subject,
+      textBody: input.body,
+      attachments: [
+        {
+          filename: input.attachment.filename,
+          contentType: input.attachment.contentType,
+          base64Content: input.attachment.base64Content,
+          sizeBytes: input.attachment.sizeBytes,
+        },
+      ],
+    });
+
+    const success = providerResult.ok;
+
+    // 6. Log audit event
     await logAudit({
       module_code: input.context?.moduleCode || "email",
       entity_name: "email_send",
       entity_id: null,
       entity_reference: input.subject.substring(0, 50),
-      action: result.success ? "email_send_success" : "email_send_failed",
+      action: success ? "email_send_success" : "email_send_failed",
       new_values: {
-        provider: "microsoft_graph",
-        to_count: deduplicatedInput.to.length,
-        cc_count: deduplicatedInput.cc?.length || 0,
-        bcc_count: deduplicatedInput.bcc?.length || 0,
+        provider: provider.config.providerCode,
+        to_count: toList.length,
+        cc_count: ccList?.length || 0,
         subject: input.subject,
         attachment_filename: input.attachment.filename,
         attachment_content_type: input.attachment.contentType,
@@ -237,41 +198,36 @@ export async function sendExportEmail(input: SendExportEmailInput): Promise<Send
         attachment_size_mb: (input.attachment.sizeBytes / (1024 * 1024)).toFixed(2),
         record_count: input.context?.recordCount,
         export_mode: input.context?.exportMode,
-        success: result.success,
-        error: result.error,
-        status_code: result.statusCode,
-        graph_error_code: result.graphErrorCode,
+        success,
+        error: providerResult.message,
       },
-    }).catch((err) => {
-      // Audit failure should not fail email send
-      logger.error("[sendExportEmail] Audit log failed:", err);
-    });
-    
-    if (result.success) {
+    }).catch((err) => logger.error("[sendExportEmail] Audit log failed:", err));
+
+    if (success) {
       logger.info(`[sendExportEmail] Email sent successfully: ${input.subject}`);
     } else {
-      logger.error(`[sendExportEmail] Email send failed: ${result.error}`);
+      logger.error(`[sendExportEmail] Email send failed: ${providerResult.message}`);
     }
-    
-    return result;
+
+    return {
+      success,
+      provider: provider.config.providerCode,
+      error: success ? undefined : providerResult.message,
+      statusCode: success ? 200 : 500,
+    };
   } catch (error) {
     logger.error("[sendExportEmail] Unexpected error:", error);
-    
-    // Log unexpected error
     await logAudit({
       module_code: input.context?.moduleCode || "email",
       entity_name: "email_send",
       entity_id: null,
       entity_reference: input.subject.substring(0, 50),
       action: "email_send_error",
-      new_values: {
-        error: error instanceof Error ? error.message : String(error),
-      },
+      new_values: { error: error instanceof Error ? error.message : String(error) },
     }).catch((err) => logger.error("[sendExportEmail] Audit log failed:", err));
-    
     return {
       success: false,
-      provider: "microsoft_graph",
+      provider: "erp_provider",
       error: error instanceof Error ? error.message : "Unknown error occurred",
       statusCode: 500,
     };
@@ -332,7 +288,7 @@ export async function sendReportEmail(
       attachment_format: input.attachmentFormat ?? input.attachment.contentType,
       attachment_filename: input.attachmentFilename ?? input.attachment.filename,
       attachment_size_bytes: input.attachmentSizeBytes ?? input.attachment.sizeBytes,
-      provider: "microsoft_graph",
+      provider: result.provider ?? "erp_provider",
       delivery_status: result.success ? "sent" : "failed",
       success: result.success,
       sent_at: result.success ? new Date().toISOString() : null,

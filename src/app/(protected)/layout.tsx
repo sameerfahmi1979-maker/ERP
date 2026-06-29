@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { ErpShell } from "@/components/layout/erp-shell";
-import { createClient } from "@/lib/supabase/server";
+import { getAuthContext, isGlobalAdmin } from "@/lib/rbac/check";
 
 export const dynamic = "force-dynamic";
 
@@ -9,37 +9,32 @@ export default async function ProtectedLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // ERP USERS.4 — Single getAuthContext() call replaces the old direct user_profiles query.
+  // ctx.profile contains all user_profiles columns; no separate DB round-trip needed.
+  const ctx = await getAuthContext();
 
-  if (!user) {
+  if (!ctx.profile) {
     redirect("/login");
   }
 
-  const { data: profile } = await supabase
-    .from("user_profiles")
-    .select("display_name, full_name, status, must_change_password")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
   // ERP USERS.1 — Block inactive/suspended users before any other check.
-  const status = profile?.status ?? "active";
-  if (status !== "active") {
+  if (!ctx.isAccountActive) {
     redirect("/account-disabled");
   }
 
   // ERP USERS.2A — Force password change gate.
-  // Active users with must_change_password=true are redirected before ERP shell renders.
-  if (profile?.must_change_password === true) {
+  if (ctx.profile.must_change_password === true) {
     redirect("/change-password-required");
   }
 
+  const globalAdmin = isGlobalAdmin(ctx);
+
   return (
     <ErpShell
-      displayName={profile?.display_name ?? profile?.full_name}
-      email={user.email}
+      displayName={ctx.profile.display_name ?? ctx.profile.full_name}
+      email={ctx.email}
+      permissionCodes={ctx.permissionCodes}
+      isGlobalAdmin={globalAdmin}
     >
       {children}
     </ErpShell>

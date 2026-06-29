@@ -41,7 +41,7 @@ export default async function LookupValuesPage() {
   const ctx = await getAuthContext();
   
   if (!hasPermission(ctx, "master_data.lookups.view")) {
-    redirect("/dashboard");
+    redirect("/access-denied");
   }
 
   return (

@@ -1,4 +1,4 @@
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+﻿import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function HrActionsPage() {
   const ctx = await getAuthContext();
   if (!ctx || !hasPermission(ctx, "hr.actions.view")) {
-    redirect("/admin");
+    redirect("/access-denied");
   }
 
   return (
@@ -34,7 +34,7 @@ export default async function HrActionsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-xs text-muted-foreground">Visa renewals · Work permits · Government submissions</p>
+              <p className="text-xs text-muted-foreground">Visa renewals Â· Work permits Â· Government submissions</p>
             </CardContent>
           </Card>
         </Link>
@@ -51,7 +51,7 @@ export default async function HrActionsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-xs text-muted-foreground">Verbal warnings · Written warnings · Final warnings · Incidents</p>
+              <p className="text-xs text-muted-foreground">Verbal warnings Â· Written warnings Â· Final warnings Â· Incidents</p>
             </CardContent>
           </Card>
         </Link>
@@ -68,7 +68,7 @@ export default async function HrActionsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-xs text-muted-foreground">Pending · Approved · Rejected · All types</p>
+              <p className="text-xs text-muted-foreground">Pending Â· Approved Â· Rejected Â· All types</p>
             </CardContent>
           </Card>
         </Link>
@@ -85,7 +85,7 @@ export default async function HrActionsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-xs text-muted-foreground">Resignations · Terminations · Clearance tracking</p>
+              <p className="text-xs text-muted-foreground">Resignations Â· Terminations Â· Clearance tracking</p>
             </CardContent>
           </Card>
         </Link>
@@ -98,3 +98,4 @@ export default async function HrActionsPage() {
     </div>
   );
 }
+

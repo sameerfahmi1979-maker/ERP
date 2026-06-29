@@ -15,7 +15,7 @@ export default async function DmsBatchListPage() {
     !hasPermission(ctx, "dms.documents.upload") &&
     !hasPermission(ctx, "dms.admin")
   ) {
-    redirect("/dashboard");
+    redirect("/access-denied");
   }
 
   const result = await listDmsUploadBatches();

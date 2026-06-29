@@ -36,7 +36,7 @@ async function DocumentTypesContent({ authContext }: { authContext: AuthContext 
 export default async function DmsDocumentTypesPage() {
   const ctx = await getAuthContext();
   if (!hasPermission(ctx, "dms.documents.view") && !hasPermission(ctx, "dms.admin")) {
-    redirect("/dashboard");
+    redirect("/access-denied");
   }
 
   return (

@@ -30,7 +30,7 @@ export default async function EmployeeRecordPage({
     !hasPermission(authContext, "hr.employees.view") &&
     !authContext.roleCodes?.includes("system_admin")
   ) {
-    redirect("/admin");
+    redirect("/access-denied");
   }
 
   const result = await getEmployee(id);

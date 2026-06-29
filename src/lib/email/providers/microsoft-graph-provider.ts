@@ -171,6 +171,16 @@ export class MicrosoftGraphEmailProvider implements IEmailProvider {
           ...(input.replyTo
             ? { replyTo: [{ emailAddress: { address: input.replyTo } }] }
             : {}),
+          ...(input.attachments?.length
+            ? {
+                attachments: input.attachments.map((a) => ({
+                  "@odata.type": "#microsoft.graph.fileAttachment",
+                  name: a.filename,
+                  contentType: a.contentType,
+                  contentBytes: a.base64Content,
+                })),
+              }
+            : {}),
         },
         saveToSentItems: input.saveToSentItems ?? true,
       });

@@ -26,7 +26,7 @@ export default async function AssistantPage({
     ctx.roleCodes.includes("system_admin");
 
   if (!canAccess) {
-    redirect("/dashboard");
+    redirect("/access-denied");
   }
 
   const enabled = await isAssistantEnabled();

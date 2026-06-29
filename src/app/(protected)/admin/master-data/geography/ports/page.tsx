@@ -29,7 +29,7 @@ export default async function PortsPage() {
   const ctx = await getAuthContext();
   
   if (!hasPermission(ctx, "master_data.geography.view")) {
-    redirect("/dashboard");
+    redirect("/access-denied");
   }
 
   return (

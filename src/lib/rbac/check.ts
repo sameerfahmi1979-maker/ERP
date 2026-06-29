@@ -1,5 +1,6 @@
 import type { UserProfile } from "@/types/database";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -8,6 +9,8 @@ export type AccountStatus = "active" | "inactive" | "suspended" | "none";
 
 export type AuthContext = {
   profile: UserProfile | null;
+  /** ERP USERS.4 — auth email from supabase.auth.getUser() (not stored in user_profiles) */
+  email: string | null;
   roleCodes: string[];
   permissionCodes: string[];
   /** ERP USERS.1 — live account status from user_profiles.status */
@@ -38,7 +41,7 @@ export async function getAuthContext(): Promise<AuthContext> {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return { profile: null, roleCodes: [], permissionCodes: [], accountStatus: "none", isAccountActive: false };
+    return { profile: null, email: null, roleCodes: [], permissionCodes: [], accountStatus: "none", isAccountActive: false };
   }
 
   const { data: profile } = await supabase
@@ -48,7 +51,7 @@ export async function getAuthContext(): Promise<AuthContext> {
     .maybeSingle();
 
   if (!profile) {
-    return { profile: null, roleCodes: [], permissionCodes: [], accountStatus: "none", isAccountActive: false };
+    return { profile: null, email: user.email ?? null, roleCodes: [], permissionCodes: [], accountStatus: "none", isAccountActive: false };
   }
 
   const rawStatus = (profile.status ?? "active") as string;
@@ -58,32 +61,70 @@ export async function getAuthContext(): Promise<AuthContext> {
       : "active";
   const isAccountActive = accountStatus === "active";
 
-  const { data: userRoles } = await supabase
+  // ── USERS.4: flat separate queries to avoid !inner join ambiguity ──────────
+  // IMPORTANT: use the admin client (service role) for roles/permissions lookups.
+  // RLS on these tables requires roles.view / permissions.view — a bootstrapping
+  // deadlock when we're *trying* to determine what the user can see. The cookie
+  // client is only used for getUser() (authentication); all authorisation lookups
+  // must bypass RLS via the service-role client.
+  const admin = createAdminClient();
+
+  // Step 1 — get role_ids the user is actively assigned to
+  const { data: userRoleRows, error: err1 } = await admin
     .from("user_roles")
-    .select("role_id, roles(role_code)")
+    .select("role_id")
     .eq("user_profile_id", profile.id)
     .eq("is_active", true);
 
+  if (err1) logger.error("getAuthContext: user_roles query failed", { error: err1 });
+
+  const roleIds = (userRoleRows ?? []).map((r) => r.role_id as number).filter(Boolean);
+
+  // Step 2 — get active role records (filter inactive roles at role level)
   const roleCodes: string[] = [];
-  const roleIds: number[] = [];
-
-  for (const row of userRoles ?? []) {
-    const role = row.roles as { role_code?: string } | null;
-    if (role?.role_code) roleCodes.push(role.role_code);
-    if (row.role_id) roleIds.push(row.role_id);
-  }
-
-  const permissionSet = new Set<string>();
+  const activeRoleIds: number[] = [];
 
   if (roleIds.length > 0) {
-    const { data: rolePerms } = await supabase
-      .from("role_permissions")
-      .select("permissions(permission_code)")
-      .in("role_id", roleIds);
+    const { data: activeRoles, error: err2 } = await admin
+      .from("roles")
+      .select("id, role_code")
+      .in("id", roleIds)
+      .eq("is_active", true);
 
-    for (const row of rolePerms ?? []) {
-      const perm = row.permissions as { permission_code?: string } | null;
-      if (perm?.permission_code) permissionSet.add(perm.permission_code);
+    if (err2) logger.error("getAuthContext: roles query failed", { error: err2 });
+
+    for (const r of activeRoles ?? []) {
+      if (r.role_code) roleCodes.push(r.role_code as string);
+      if (r.id) activeRoleIds.push(r.id as number);
+    }
+  }
+
+  // Step 3 — get permission_ids linked to the active roles
+  const permissionSet = new Set<string>();
+
+  if (activeRoleIds.length > 0) {
+    const { data: rolePermRows, error: err3 } = await admin
+      .from("role_permissions")
+      .select("permission_id")
+      .in("role_id", activeRoleIds);
+
+    if (err3) logger.error("getAuthContext: role_permissions query failed", { error: err3 });
+
+    const permissionIds = (rolePermRows ?? []).map((r) => r.permission_id as number).filter(Boolean);
+
+    // Step 4 — get active permission codes
+    if (permissionIds.length > 0) {
+      const { data: activePerms, error: err4 } = await admin
+        .from("permissions")
+        .select("permission_code")
+        .in("id", permissionIds)
+        .eq("is_active", true);
+
+      if (err4) logger.error("getAuthContext: permissions query failed", { error: err4 });
+
+      for (const p of activePerms ?? []) {
+        if (p.permission_code) permissionSet.add(p.permission_code as string);
+      }
     }
   }
 
@@ -93,6 +134,7 @@ export async function getAuthContext(): Promise<AuthContext> {
 
   return {
     profile: profile as UserProfile,
+    email: user.email ?? null,
     roleCodes,
     permissionCodes: Array.from(permissionSet),
     accountStatus,

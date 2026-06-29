@@ -12,7 +12,7 @@ export default async function DmsExpiringPage() {
     hasPermission(ctx, "dms.documents.view") ||
     hasPermission(ctx, "dms.admin");
 
-  if (!canView) redirect("/dashboard");
+  if (!canView) redirect("/access-denied");
 
   const isAdmin = hasPermission(ctx, "dms.admin") || hasPermission(ctx, "dms.expiry.manage");
   const canBridge =

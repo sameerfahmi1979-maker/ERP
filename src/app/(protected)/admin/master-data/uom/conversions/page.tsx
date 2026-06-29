@@ -28,7 +28,7 @@ export default async function UomConversionsPage() {
   const ctx = await getAuthContext();
 
   if (!hasPermission(ctx, "master_data.uom.view")) {
-    redirect("/dashboard");
+    redirect("/access-denied");
   }
 
   const breadcrumbs = [

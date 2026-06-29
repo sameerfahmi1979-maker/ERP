@@ -22,7 +22,7 @@ export default async function DataQualityPage() {
     ctx.roleCodes.includes("system_admin");
 
   if (!canView) {
-    redirect("/dashboard");
+    redirect("/access-denied");
   }
 
   const canScan =

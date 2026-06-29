@@ -26,7 +26,7 @@ async function RetentionPoliciesContent({ authContext }: { authContext: AuthCont
 export default async function DmsRetentionPoliciesPage() {
   const ctx = await getAuthContext();
   if (!hasPermission(ctx, "dms.documents.view") && !hasPermission(ctx, "dms.admin")) {
-    redirect("/dashboard");
+    redirect("/access-denied");
   }
 
   return (

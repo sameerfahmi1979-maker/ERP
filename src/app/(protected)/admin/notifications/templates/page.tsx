@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 export default async function NotificationTemplatesPage() {
   const ctx = await getAuthContext();
   if (!hasPermission(ctx, "notifications.templates.view") && !hasPermission(ctx, "notifications.admin")) {
-    redirect("/dashboard");
+    redirect("/access-denied");
   }
 
   const result = await getNotificationTemplates();

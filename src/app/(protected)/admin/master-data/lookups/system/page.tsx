@@ -139,7 +139,7 @@ export default async function LockedSystemValuesPage() {
   const ctx = await getAuthContext();
   
   if (!hasPermission(ctx, "master_data.lookups.view")) {
-    redirect("/dashboard");
+    redirect("/access-denied");
   }
 
   return (

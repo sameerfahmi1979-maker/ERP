@@ -12,7 +12,7 @@ export default async function DmsRenewalsPage() {
     hasPermission(ctx, "dms.renewals.manage") ||
     hasPermission(ctx, "dms.admin");
 
-  if (!canView) redirect("/dashboard");
+  if (!canView) redirect("/access-denied");
 
   return <DmsRenewalRequestsPageClient />;
 }

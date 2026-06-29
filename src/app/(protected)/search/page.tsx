@@ -18,7 +18,7 @@ export default async function SearchPage() {
     ctx.roleCodes.includes("system_admin");
 
   if (!canAccess) {
-    redirect("/dashboard");
+    redirect("/access-denied");
   }
 
   const [recentResult, flagsResult] = await Promise.all([

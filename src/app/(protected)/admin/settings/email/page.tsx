@@ -23,7 +23,7 @@ export default async function EmailSettingsPage() {
     hasPermission(ctx, "settings.email.view") ||
     hasPermission(ctx, "settings.email.manage");
 
-  if (!canView) redirect("/dashboard");
+  if (!canView) redirect("/access-denied");
 
   const [configsResult, flagsResult, logsResult] = await Promise.all([
     getEmailProviderConfigs(),

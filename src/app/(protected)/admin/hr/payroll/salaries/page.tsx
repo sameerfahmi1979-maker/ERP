@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+﻿import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { listGlobalSalaryProfiles } from "@/server/actions/hr/payroll";
 import { HrSalariesPageClient } from "@/features/hr/payroll/salaries/hr-salaries-page-client";
@@ -12,7 +12,7 @@ export default async function HrSalariesPage() {
     hasPermission(authContext, "hr.payroll.view") ||
     authContext.roleCodes?.includes("system_admin");
 
-  if (!canView) redirect("/admin");
+  if (!canView) redirect("/access-denied");
 
   const result = await listGlobalSalaryProfiles({ page: 1, page_size: 50 });
   const initialData = result.success && result.data
@@ -21,3 +21,4 @@ export default async function HrSalariesPage() {
 
   return <HrSalariesPageClient initialData={initialData} />;
 }
+

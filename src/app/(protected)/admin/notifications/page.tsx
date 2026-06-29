@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 export default async function AdminNotificationsPage() {
   const ctx = await getAuthContext();
   if (!hasPermission(ctx, "notifications.admin") && !hasPermission(ctx, "notifications.manage")) {
-    redirect("/dashboard");
+    redirect("/access-denied");
   }
 
   const result = await getAllNotifications({ limit: 300 });

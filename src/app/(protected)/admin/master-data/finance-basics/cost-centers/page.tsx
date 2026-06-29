@@ -29,7 +29,7 @@ export default async function CostCentersPage() {
   const ctx = await getAuthContext();
 
   if (!hasPermission(ctx, "master_data.finance_basics.view")) {
-    redirect("/dashboard");
+    redirect("/access-denied");
   }
 
   return (

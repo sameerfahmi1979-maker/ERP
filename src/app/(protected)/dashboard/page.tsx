@@ -21,36 +21,20 @@ import {
   Plus,
   TrendingUp,
 } from "lucide-react";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { getAuthContext, hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
 import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+import { getFirstPermittedRoute } from "@/lib/rbac/route-access-registry";
 
 export default async function DashboardPage() {
   const ctx = await getAuthContext();
   const canViewDashboard = hasPermission(ctx, "dashboard.view");
 
+  // ERP USERS.4 — Users without dashboard.view are redirected to their first permitted route.
+  // This replaces the old static "Limited access" card which showed technical permission codes.
   if (!canViewDashboard) {
-    return (
-      <div className="flex flex-col gap-6">
-        <ERPPageHeader
-          title="Dashboard"
-          description="Alliance Gulf Transport — ERP Foundation"
-          breadcrumbs={[
-            { label: "Home", href: "/" },
-            { label: "Dashboard" },
-          ]}
-        />
-        <Card>
-          <CardHeader>
-            <CardTitle>Limited access</CardTitle>
-            <CardDescription>
-              Your account does not yet have the dashboard.view permission. Assign roles after
-              migration and admin bootstrap.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
-    );
+    const firstRoute = getFirstPermittedRoute(ctx.permissionCodes, isGlobalAdmin(ctx));
+    redirect(firstRoute);
   }
 
   const supabase = await createClient();

@@ -57,8 +57,8 @@ export type SendEmailInput = {
 export type SendEmailResult = {
   /** Whether email was sent successfully */
   success: boolean;
-  /** Provider used */
-  provider: "microsoft_graph";
+  /** Provider code used (e.g. provider_code from erp_email_provider_configs) */
+  provider: string;
   /** Error message (if failed) */
   error?: string;
   /** HTTP status code (if available) */

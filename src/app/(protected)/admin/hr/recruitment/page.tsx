@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+﻿import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { getRecruitmentSummary } from "@/server/actions/hr/recruitment";
 import Link from "next/link";
@@ -10,7 +10,7 @@ import { HrReportsMenu } from "@/components/erp/hr-reports-menu";
 export default async function RecruitmentHubPage() {
   const ctx = await getAuthContext();
   const canView = hasPermission(ctx, "hr.recruitment.view") || hasPermission(ctx, "hr.recruitment.manage") || ctx.roleCodes?.includes("system_admin");
-  if (!canView) redirect("/admin");
+  if (!canView) redirect("/access-denied");
 
   const summaryRes = await getRecruitmentSummary();
   const summary = summaryRes.data;
@@ -142,3 +142,4 @@ function StatCard({ label, value }: { label: string; value: number }) {
     </Card>
   );
 }
+

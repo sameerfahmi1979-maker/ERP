@@ -634,6 +634,31 @@ const REGISTRY: WorkspaceRouteConfig[] = [
     entityType: "dms_upload_batch",
     pattern: /^\/dms\/inbox\/batch\/[a-zA-Z0-9-]+/,
   },
+
+  // ── HR Module (USERS.4) ──────────────────────────────────────────────────
+  { route: "/admin/hr/dashboard",            title: "HR Dashboard",      icon: "LayoutDashboard",  tabKind: "list",   closable: true, singleton: true,  moduleCode: "HR" },
+  { route: "/admin/hr/search",               title: "HR Search",         icon: "Search",           tabKind: "list",   closable: true, singleton: true,  moduleCode: "HR" },
+  { route: "/admin/hr/employees",            title: "Employees",         icon: "Users",            tabKind: "list",   closable: true, singleton: true,  moduleCode: "HR" },
+  { route: "/admin/hr/actions/pro",          title: "PRO Processes",     icon: "FileText",         tabKind: "list",   closable: true, singleton: true,  moduleCode: "HR" },
+  { route: "/admin/hr/actions/disciplinary", title: "Disciplinary",      icon: "ShieldAlert",      tabKind: "list",   closable: true, singleton: true,  moduleCode: "HR" },
+  { route: "/admin/hr/actions/approvals",    title: "Approval Requests", icon: "CheckCircle",      tabKind: "list",   closable: true, singleton: true,  moduleCode: "HR" },
+  { route: "/admin/hr/actions/eos",          title: "EOS & Clearance",   icon: "LogOut",           tabKind: "list",   closable: true, singleton: true,  moduleCode: "HR" },
+  { route: "/admin/hr/time/attendance",      title: "Daily Attendance",  icon: "CalendarDays",     tabKind: "list",   closable: true, singleton: true,  moduleCode: "HR" },
+  { route: "/admin/hr/time/leave",           title: "Leave Requests",    icon: "ClipboardList",    tabKind: "list",   closable: true, singleton: true,  moduleCode: "HR" },
+  { route: "/admin/hr/time/shifts",          title: "Shift Calendar",    icon: "CalendarClock",    tabKind: "list",   closable: true, singleton: true,  moduleCode: "HR" },
+  { route: "/admin/hr/recruitment/requisitions", title: "Job Requisitions", icon: "Briefcase",     tabKind: "list",   closable: true, singleton: true,  moduleCode: "HR" },
+  { route: "/admin/hr/recruitment/candidates",   title: "Candidates",       icon: "UserSearch",    tabKind: "list",   closable: true, singleton: true,  moduleCode: "HR" },
+  { route: "/admin/hr/recruitment/interviews",   title: "Interviews",       icon: "Users",         tabKind: "list",   closable: true, singleton: true,  moduleCode: "HR" },
+  { route: "/admin/hr/recruitment/offers",       title: "Offers",           icon: "Handshake",     tabKind: "list",   closable: true, singleton: true,  moduleCode: "HR" },
+  { route: "/admin/hr/recruitment/onboarding",   title: "Onboarding",       icon: "ClipboardCheck",tabKind: "list",   closable: true, singleton: true,  moduleCode: "HR" },
+  { route: "/admin/hr/payroll/salaries",     title: "Salary Profiles",   icon: "DollarSign",       tabKind: "list",   closable: true, singleton: true,  moduleCode: "HR" },
+  { route: "/admin/hr/payroll/wps",          title: "WPS Readiness",     icon: "Landmark",         tabKind: "list",   closable: true, singleton: true,  moduleCode: "HR" },
+  { route: "/admin/hr/operations/assignments",title: "Assignments",      icon: "Briefcase",        tabKind: "list",   closable: true, singleton: true,  moduleCode: "HR" },
+  { route: "/admin/hr/operations/readiness", title: "Readiness Monitor", icon: "MonitorCheck",     tabKind: "list",   closable: true, singleton: true,  moduleCode: "HR" },
+  { route: "/admin/hr/operations/blocks",    title: "Operational Blocks",icon: "Ban",              tabKind: "list",   closable: true, singleton: true,  moduleCode: "HR" },
+  { route: "/admin/hr/settings",             title: "HR Settings",       icon: "Settings",         tabKind: "list",   closable: true, singleton: true,  moduleCode: "HR" },
+  { route: "/admin/hr/employees/record/new", title: "New Employee",      icon: "UserPlus",         tabKind: "record", closable: true, singleton: false, moduleCode: "HR", entityType: "employee" },
+  { route: "/admin/hr/employees/record/",    title: "Employee Record",   icon: "User",             tabKind: "record", closable: true, singleton: false, moduleCode: "HR", entityType: "employee", pattern: /^\/admin\/hr\/employees\/record\/\d+/ },
 ];
 
 // ── Helpers ────────────────────────────────────────────────────────────────

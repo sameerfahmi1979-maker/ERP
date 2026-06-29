@@ -19,7 +19,7 @@ export default async function DmsReviewQueuePage() {
     authContext.roleCodes.includes("system_admin");
 
   if (!canView) {
-    redirect("/dashboard");
+    redirect("/access-denied");
   }
 
   const reviewEnabled = await isDmsAiReviewEnabled();

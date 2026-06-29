@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+﻿import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { Clock, Calendar, Plane, Timer } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,7 +39,7 @@ export default async function HrTimeHubPage() {
   const canViewLeave = hasPermission(authContext, "hr.leave.view") || authContext.roleCodes?.includes("system_admin");
 
   if (!canViewAttendance && !canViewLeave) {
-    redirect("/admin");
+    redirect("/access-denied");
   }
 
   return (
@@ -83,17 +83,18 @@ export default async function HrTimeHubPage() {
           );
         })}
 
-        {/* Overtime — sub-section note */}
+        {/* Overtime â€” sub-section note */}
         <Card className="border-dashed">
           <CardHeader>
             <div className="flex items-center gap-2">
               <Timer className="h-5 w-5 text-muted-foreground" />
               <CardTitle className="text-base text-muted-foreground">Overtime Records</CardTitle>
             </div>
-            <CardDescription>Manage overtime records from the individual Employee Profile → Time tab.</CardDescription>
+            <CardDescription>Manage overtime records from the individual Employee Profile â†’ Time tab.</CardDescription>
           </CardHeader>
         </Card>
       </div>
     </div>
   );
 }
+

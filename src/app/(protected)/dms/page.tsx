@@ -11,7 +11,7 @@ export default async function DmsDashboardPage() {
   const authContext = await getAuthContext();
 
   if (!hasPermission(authContext, "dms.documents.view") && !hasPermission(authContext, "dms.admin")) {
-    redirect("/dashboard");
+    redirect("/access-denied");
   }
 
   const quickLinks = [

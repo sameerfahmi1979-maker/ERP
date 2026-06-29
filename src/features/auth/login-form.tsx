@@ -51,9 +51,8 @@ export function LoginForm() {
     // Small delay to ensure cookies are set
     await new Promise(resolve => setTimeout(resolve, 100));
     
-    // Security: Always redirect to dashboard on login (Phase 002F.3C.4A.2)
-    // Do not restore previous protected screen to prevent cross-user data exposure
-    window.location.href = "/dashboard";
+    // ERP USERS.4 — Route to /start which redirects each user to their first permitted route
+    window.location.href = "/start";
   });
 
   return (

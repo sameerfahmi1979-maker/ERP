@@ -16,7 +16,7 @@ async function DashboardContent() {
   const ctx = await getAuthContext();
   
   if (!hasPermission(ctx, "master_data.dashboard.view")) {
-    redirect("/dashboard");
+    redirect("/access-denied");
   }
 
   const result = await getLookupDashboardStats();

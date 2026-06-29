@@ -70,6 +70,14 @@ export interface EmailFeatureFlag {
   updatedAt: string;
 }
 
+export interface EmailMessageAttachment {
+  filename: string;
+  contentType: string;
+  /** Base64-encoded content */
+  base64Content: string;
+  sizeBytes: number;
+}
+
 export interface EmailMessageInput {
   to: string[];
   cc?: string[];
@@ -79,6 +87,7 @@ export interface EmailMessageInput {
   textBody?: string;
   replyTo?: string;
   saveToSentItems?: boolean;
+  attachments?: EmailMessageAttachment[];
   metadata?: Record<string, unknown>;
 }
 

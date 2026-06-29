@@ -12,7 +12,7 @@ export default async function DmsDocumentsPage() {
   const authContext = await getAuthContext();
 
   if (!hasPermission(authContext, "dms.documents.view") && !hasPermission(authContext, "dms.admin")) {
-    redirect("/dashboard");
+    redirect("/access-denied");
   }
 
   const [docsResult, defaultsResult] = await Promise.all([

@@ -29,7 +29,7 @@ export default async function CountriesPage() {
   const ctx = await getAuthContext();
   
   if (!hasPermission(ctx, "master_data.geography.view")) {
-    redirect("/dashboard");
+    redirect("/access-denied");
   }
 
   return (

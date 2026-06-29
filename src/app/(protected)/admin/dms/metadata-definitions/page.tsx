@@ -39,7 +39,7 @@ async function MetadataDefinitionsContent({ authContext }: { authContext: AuthCo
 export default async function DmsMetadataDefinitionsPage() {
   const ctx = await getAuthContext();
   if (!hasPermission(ctx, "dms.documents.view") && !hasPermission(ctx, "dms.admin")) {
-    redirect("/dashboard");
+    redirect("/access-denied");
   }
 
   return (

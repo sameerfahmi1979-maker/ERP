@@ -1,14 +1,26 @@
-feat(users): USERS.1, USERS.2, USERS.2A — security foundation, user management core, password lifecycle
+feat(users,email,reports): USERS.4-5 permission flow, report schedule email fix
 
-- USERS.1: RBAC security foundation, role-scoped permissions, auth metadata helpers
-- USERS.2: Full admin user management — create, edit, assign roles, users list toolbar
-- USERS.2A: Password lifecycle and account security
-  - Force password change gate on protected layout
-  - Self-service password change card on /profile
-  - /change-password-required page with nested-form hydration fix
-  - Admin actions: send reset, set temp password, force change, confirm email, send invite/welcome
-  - Invite email fallback: type=invite falls back to type=recovery for already-confirmed accounts
-  - ERP-branded email delivery via notification templates and email queue
-  - Strengthened password policy (min 10 chars, uppercase, lowercase, digit)
-  - Audit logging with sanitized security payloads (no passwords or tokens logged)
-  - DB migration: user_profiles lifecycle columns + permission seed + 5 notification templates
+USERS.4 - Permission-Aware Navigation
+- Fix getAuthContext() RLS bootstrap deadlock: use createAdminClient() for
+  roles/permissions lookups; cookie client for auth only
+- Add permission-aware sidebar filtering in AppSidebar
+- Add /start smart post-login redirect using getFirstPermittedRoute()
+- Add /access-denied and /no-access pages
+- Move WorkspaceProvider into ErpShell for server-side defaultRoute injection
+- Bump workspace localStorage version v4 to clear stale pinned tabs
+- Add /dev/auth-debug diagnostic page
+- Bulk replace redirect to /access-denied in permission guards
+- Add /admin/hr/ smart redirect page
+- Add route-access-registry.ts with 40+ protected routes
+
+USERS.5 - Security Hardening Planning
+- Add ERP_USERS_5_SECURITY_HARDENING_AND_AUDIT_ENHANCEMENT_PLAN.md
+
+Email and Report Schedules fix
+- sendExportEmail now uses getDefaultEmailProvider() from erp_email_provider_configs
+  instead of env vars; resolves "Email service is not configured" error
+- Add EmailMessageAttachment type and attachments support to EmailMessageInput
+- Add attachment handling in MicrosoftGraphEmailProvider.sendEmail()
+- Loosen SendEmailResult.provider from literal to string type
+- Fix hardcoded microsoft_graph provider string in schedules.ts delivery log
+- Fix moduleCode REPORTS to reports to fix case mismatch in permission check

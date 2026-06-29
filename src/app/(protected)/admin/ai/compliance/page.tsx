@@ -24,7 +24,7 @@ export default async function AiCompliancePage({ searchParams }: PageProps) {
     ctx.roleCodes.includes("system_admin");
 
   if (!canView) {
-    redirect("/dashboard");
+    redirect("/access-denied");
   }
 
   const params = await searchParams;

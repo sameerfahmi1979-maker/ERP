@@ -15,7 +15,7 @@ export default async function DmsDocumentNewPage({
   const authContext = await getAuthContext();
 
   if (!hasPermission(authContext, "dms.documents.view") && !hasPermission(authContext, "dms.admin")) {
-    redirect("/dashboard");
+    redirect("/access-denied");
   }
 
   if (!hasPermission(authContext, "dms.documents.upload") && !hasPermission(authContext, "dms.admin")) {

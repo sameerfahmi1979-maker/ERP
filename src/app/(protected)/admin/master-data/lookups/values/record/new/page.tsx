@@ -8,7 +8,7 @@ export const revalidate = 0;
 
 export default async function LookupValueNewPage() {
   const authContext = await getAuthContext();
-  if (!hasPermission(authContext, "master_data.lookups.view")) redirect("/dashboard");
+  if (!hasPermission(authContext, "master_data.lookups.view")) redirect("/access-denied");
   if (!hasPermission(authContext, "master_data.lookups.manage")) redirect("/admin/master-data/lookups/values");
 
   const categoriesResult = await listLookupCategories();

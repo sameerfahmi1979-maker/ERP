@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+﻿import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { DollarSign, Landmark, PauseCircle } from "lucide-react";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,7 +33,7 @@ export default async function HrPayrollHubPage() {
     authContext.roleCodes?.includes("system_admin");
 
   if (!canView) {
-    redirect("/admin");
+    redirect("/access-denied");
   }
 
   return (
@@ -70,7 +70,7 @@ export default async function HrPayrollHubPage() {
           );
         })}
 
-        {/* Payroll holds — note */}
+        {/* Payroll holds â€” note */}
         <Card className="border-dashed">
           <CardHeader>
             <div className="flex items-center gap-2">
@@ -78,7 +78,7 @@ export default async function HrPayrollHubPage() {
               <CardTitle className="text-base text-muted-foreground">Payroll Holds</CardTitle>
             </div>
             <CardDescription>
-              Place or release payroll holds from the individual Employee Profile → Payroll &amp; WPS tab.
+              Place or release payroll holds from the individual Employee Profile â†’ Payroll &amp; WPS tab.
             </CardDescription>
           </CardHeader>
         </Card>
@@ -86,3 +86,4 @@ export default async function HrPayrollHubPage() {
     </div>
   );
 }
+

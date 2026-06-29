@@ -88,5 +88,5 @@ export type WorkspaceAction =
    * without closing and re-opening the tab (ERP GLOBAL UI.4D).
    */
   | { type: "UPDATE_TAB_ROUTE"; tabId: string; route: string; entityId?: number | string; formMode?: "add" | "edit" | "view" }
-  | { type: "RESTORE_TABS"; tabs: WorkspaceTab[]; activeTabId: string | null }
+  | { type: "RESTORE_TABS"; tabs: WorkspaceTab[]; activeTabId: string | null; defaultRoute?: string }
   | { type: "SYNC_ROUTE"; route: string; tab?: WorkspaceTab };

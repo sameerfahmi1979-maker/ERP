@@ -12,7 +12,7 @@ export default async function DmsNotificationsPage() {
     hasPermission(ctx, "dms.notifications.manage") ||
     hasPermission(ctx, "dms.admin");
 
-  if (!canView) redirect("/dashboard");
+  if (!canView) redirect("/access-denied");
 
   const isAdmin = hasPermission(ctx, "dms.admin") || hasPermission(ctx, "dms.notifications.manage");
   const canBridge =

@@ -1,4 +1,4 @@
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+﻿import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function HrOperationsPage() {
   const ctx = await getAuthContext();
   if (!ctx || !hasPermission(ctx, "hr.assignments.view")) {
-    redirect("/admin");
+    redirect("/access-denied");
   }
 
   return (
@@ -34,7 +34,7 @@ export default async function HrOperationsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-xs text-muted-foreground">Active assignments · Assignment history · Reporting lines</p>
+              <p className="text-xs text-muted-foreground">Active assignments Â· Assignment history Â· Reporting lines</p>
             </CardContent>
           </Card>
         </Link>
@@ -51,7 +51,7 @@ export default async function HrOperationsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-xs text-muted-foreground">Readiness status · Missing requirements · Site coverage</p>
+              <p className="text-xs text-muted-foreground">Readiness status Â· Missing requirements Â· Site coverage</p>
             </CardContent>
           </Card>
         </Link>
@@ -68,7 +68,7 @@ export default async function HrOperationsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-xs text-muted-foreground">Active blocks · Block types · Release history</p>
+              <p className="text-xs text-muted-foreground">Active blocks Â· Block types Â· Release history</p>
             </CardContent>
           </Card>
         </Link>
@@ -81,3 +81,4 @@ export default async function HrOperationsPage() {
     </div>
   );
 }
+

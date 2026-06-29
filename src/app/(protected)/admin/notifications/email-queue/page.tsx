@@ -19,7 +19,7 @@ export default async function EmailQueuePage() {
     !hasPermission(ctx, "notifications.email_queue.manage") &&
     !hasPermission(ctx, "notifications.admin")
   ) {
-    redirect("/dashboard");
+    redirect("/access-denied");
   }
 
   const result = await getEmailQueue({ limit: 200 });

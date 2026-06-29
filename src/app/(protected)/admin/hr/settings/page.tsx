@@ -1,4 +1,4 @@
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+﻿import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { redirect } from "next/navigation";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { ERPSectionCard } from "@/components/erp/section-card";
@@ -67,7 +67,7 @@ export default async function HrSettingsPage() {
     hasPermission(ctx, "hr.settings.view") ||
     hasPermission(ctx, "hr.settings.manage") ||
     hasPermission(ctx, "hr.admin");
-  if (!canView) redirect("/dashboard");
+  if (!canView) redirect("/access-denied");
 
   return (
     <div className="flex flex-col gap-6">
@@ -112,3 +112,4 @@ export default async function HrSettingsPage() {
     </div>
   );
 }
+

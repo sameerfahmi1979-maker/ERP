@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+﻿import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { EmployeeWorkspaceForm } from "@/features/hr/employees/employee-workspace-form";
 
@@ -12,7 +12,7 @@ export default async function EmployeeNewPage() {
     !hasPermission(authContext, "hr.employees.view") &&
     !authContext.roleCodes?.includes("system_admin")
   ) {
-    redirect("/admin");
+    redirect("/access-denied");
   }
 
   if (
@@ -28,3 +28,4 @@ export default async function EmployeeNewPage() {
     </div>
   );
 }
+

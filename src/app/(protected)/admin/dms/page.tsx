@@ -14,7 +14,7 @@ export const metadata = {
 export default async function DmsAdminPage() {
   const ctx = await getAuthContext();
   if (!hasPermission(ctx, "dms.documents.view") && !hasPermission(ctx, "dms.admin")) {
-    redirect("/dashboard");
+    redirect("/access-denied");
   }
 
   const result = await getDmsAdminOverviewStats();

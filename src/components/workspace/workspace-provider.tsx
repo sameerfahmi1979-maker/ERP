@@ -60,7 +60,7 @@ const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
 // ── Provider ──────────────────────────────────────────────────────────────────
 
-export function WorkspaceProvider({ children }: { children: ReactNode }) {
+export function WorkspaceProvider({ children, defaultRoute }: { children: ReactNode; defaultRoute?: string }) {
   const [state, dispatch] = useReducer(workspaceReducer, undefined, getInitialState);
   const pathname = usePathname();
   const router = useRouter();

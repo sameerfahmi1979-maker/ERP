@@ -24,13 +24,21 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ??? Types ???????????????????????????????????????????????????????????????????
 
 interface NavItem {
   label: string;
   icon: LucideIcon;
   path: string;
   disabled?: boolean;
+  /** ERP USERS.4 ? single required permission code */
+  requiredPermission?: string;
+  /** ERP USERS.4 ? user needs at least one of these */
+  requiredAnyPermissions?: string[];
+  /** ERP USERS.4 ? only system_admin / group_admin */
+  requiresGlobalAdmin?: boolean;
+  /** ERP USERS.4 ? visible to all active users */
+  publicToAllActive?: boolean;
 }
 
 interface NavSubSection {
@@ -67,7 +75,7 @@ function getAllPaths(section: NavSection): string[] {
   return paths;
 }
 
-// ─── Navigation Structure ─────────────────────────────────────────────────────
+// ??? Navigation Structure ?????????????????????????????????????????????????????
 
 const navSections: NavSection[] = [
   {
@@ -77,8 +85,8 @@ const navSections: NavSection[] = [
     textColor: "text-blue-600 dark:text-blue-400",
     iconColor: "text-blue-400 dark:text-blue-500",
     children: [
-      { label: "Dashboard",     icon: LayoutDashboard, path: "/dashboard" },
-      { label: "Notifications", icon: Bell,            path: "/notifications" },
+      { label: "Dashboard",     icon: LayoutDashboard, path: "/dashboard",     requiredPermission: "dashboard.view" },
+      { label: "Notifications", icon: Bell,            path: "/notifications", publicToAllActive: true },
     ],
   },
   {
@@ -91,57 +99,57 @@ const navSections: NavSection[] = [
       {
         kind: "subsection", label: "HR", icon: UsersRound,
         items: [
-          { label: "Dashboard", icon: LayoutDashboard, path: "/admin/hr/dashboard" },
-          { label: "Search",    icon: Search,          path: "/admin/hr/search" },
-          { label: "Employees", icon: UsersRound,      path: "/admin/hr/employees" },
+          { label: "Dashboard", icon: LayoutDashboard, path: "/admin/hr/dashboard", requiredAnyPermissions: ["hr.dashboard.view", "hr.employees.view", "hr.admin"] },
+          { label: "Search",    icon: Search,          path: "/admin/hr/search",    requiredAnyPermissions: ["hr.search.use", "hr.admin"] },
+          { label: "Employees", icon: UsersRound,      path: "/admin/hr/employees", requiredAnyPermissions: ["hr.employees.view", "hr.admin"] },
         ],
       },
       {
         kind: "subsection", label: "HR Actions", icon: ClipboardList,
         items: [
-          { label: "PRO Processes",           icon: FileText,     path: "/admin/hr/actions/pro" },
-          { label: "Disciplinary & Warnings", icon: ShieldAlert,  path: "/admin/hr/actions/disciplinary" },
-          { label: "Approval Requests",       icon: CheckCircle2, path: "/admin/hr/actions/approvals" },
-          { label: "EOS & Clearance",         icon: LogOut,       path: "/admin/hr/actions/eos" },
+          { label: "PRO Processes",           icon: FileText,     path: "/admin/hr/actions/pro",          requiredAnyPermissions: ["hr.actions.view", "hr.actions.manage", "hr.admin"] },
+          { label: "Disciplinary & Warnings", icon: ShieldAlert,  path: "/admin/hr/actions/disciplinary", requiredAnyPermissions: ["hr.actions.view", "hr.actions.manage", "hr.admin"] },
+          { label: "Approval Requests",       icon: CheckCircle2, path: "/admin/hr/actions/approvals",    requiredAnyPermissions: ["hr.actions.view", "hr.actions.manage", "hr.admin"] },
+          { label: "EOS & Clearance",         icon: LogOut,       path: "/admin/hr/actions/eos",          requiredAnyPermissions: ["hr.eos.view", "hr.eos.manage", "hr.admin"] },
         ],
       },
       {
         kind: "subsection", label: "Attendance & Leave", icon: CalendarDays,
         items: [
-          { label: "Daily Attendance", icon: CalendarDays,  path: "/admin/hr/time/attendance" },
-          { label: "Leave Requests",   icon: ClipboardList, path: "/admin/hr/time/leave" },
-          { label: "Shift Calendar",   icon: CalendarClock, path: "/admin/hr/time/shifts" },
+          { label: "Daily Attendance", icon: CalendarDays,  path: "/admin/hr/time/attendance", requiredAnyPermissions: ["hr.attendance.view", "hr.attendance.manage", "hr.admin"] },
+          { label: "Leave Requests",   icon: ClipboardList, path: "/admin/hr/time/leave",      requiredAnyPermissions: ["hr.leave.view", "hr.leave.manage", "hr.admin"] },
+          { label: "Shift Calendar",   icon: CalendarClock, path: "/admin/hr/time/shifts",     requiredAnyPermissions: ["hr.attendance.view", "hr.admin"] },
         ],
       },
       {
         kind: "subsection", label: "Recruitment", icon: UserSearch,
         items: [
-          { label: "Job Requisitions", icon: BriefcaseBusiness, path: "/admin/hr/recruitment/requisitions" },
-          { label: "Candidates",       icon: UserSearch,         path: "/admin/hr/recruitment/candidates" },
-          { label: "Interviews",       icon: UserRoundCheck,     path: "/admin/hr/recruitment/interviews" },
-          { label: "Offers",           icon: Handshake,          path: "/admin/hr/recruitment/offers" },
-          { label: "Onboarding",       icon: ClipboardCheck,     path: "/admin/hr/recruitment/onboarding" },
+          { label: "Job Requisitions", icon: BriefcaseBusiness, path: "/admin/hr/recruitment/requisitions", requiredAnyPermissions: ["hr.recruitment.view", "hr.recruitment.manage", "hr.admin"] },
+          { label: "Candidates",       icon: UserSearch,         path: "/admin/hr/recruitment/candidates",   requiredAnyPermissions: ["hr.recruitment.view", "hr.recruitment.manage", "hr.admin"] },
+          { label: "Interviews",       icon: UserRoundCheck,     path: "/admin/hr/recruitment/interviews",   requiredAnyPermissions: ["hr.recruitment.view", "hr.recruitment.manage", "hr.admin"] },
+          { label: "Offers",           icon: Handshake,          path: "/admin/hr/recruitment/offers",       requiredAnyPermissions: ["hr.recruitment.view", "hr.recruitment.manage", "hr.admin"] },
+          { label: "Onboarding",       icon: ClipboardCheck,     path: "/admin/hr/recruitment/onboarding",   requiredAnyPermissions: ["hr.recruitment.view", "hr.recruitment.manage", "hr.admin"] },
         ],
       },
       {
         kind: "subsection", label: "Payroll & WPS", icon: BadgeDollarSign,
         items: [
-          { label: "Salary Profiles", icon: BadgeDollarSign, path: "/admin/hr/payroll/salaries" },
-          { label: "WPS Readiness",   icon: Landmark,        path: "/admin/hr/payroll/wps" },
+          { label: "Salary Profiles", icon: BadgeDollarSign, path: "/admin/hr/payroll/salaries", requiredAnyPermissions: ["hr.payroll.view", "hr.payroll.manage", "hr.admin"] },
+          { label: "WPS Readiness",   icon: Landmark,        path: "/admin/hr/payroll/wps",      requiredAnyPermissions: ["hr.payroll.view", "hr.payroll.manage", "hr.admin"] },
         ],
       },
       {
         kind: "subsection", label: "HR Operations", icon: MonitorCheck,
         items: [
-          { label: "Assignments",        icon: BriefcaseBusiness, path: "/admin/hr/operations/assignments" },
-          { label: "Readiness Monitor",  icon: MonitorCheck,       path: "/admin/hr/operations/readiness" },
-          { label: "Operational Blocks", icon: Ban,                path: "/admin/hr/operations/blocks" },
+          { label: "Assignments",        icon: BriefcaseBusiness, path: "/admin/hr/operations/assignments", requiredAnyPermissions: ["hr.assignments.view", "hr.assignments.manage", "hr.admin"] },
+          { label: "Readiness Monitor",  icon: MonitorCheck,       path: "/admin/hr/operations/readiness",   requiredAnyPermissions: ["hr.assignments.view", "hr.admin"] },
+          { label: "Operational Blocks", icon: Ban,                path: "/admin/hr/operations/blocks",      requiredAnyPermissions: ["hr.assignments.view", "hr.admin"] },
         ],
       },
       {
         kind: "subsection", label: "HR Admin", icon: Settings,
         items: [
-          { label: "HR Settings", icon: Settings, path: "/admin/hr/settings" },
+          { label: "HR Settings", icon: Settings, path: "/admin/hr/settings", requiredAnyPermissions: ["hr.settings.view", "hr.settings.manage", "hr.admin"] },
         ],
       },
     ],
@@ -153,24 +161,24 @@ const navSections: NavSection[] = [
     textColor: "text-sky-700 dark:text-sky-400",
     iconColor: "text-sky-500/70 dark:text-sky-400/60",
     children: [
-      { label: "DMS Dashboard",    icon: LayoutDashboard, path: "/dms" },
-      { label: "All Documents",    icon: FolderOpen,      path: "/dms/documents" },
-      { label: "Upload Inbox",     icon: UploadCloud,     path: "/dms/inbox" },
-      { label: "Batch Intake",     icon: Inbox,           path: "/dms/inbox/batches" },
-      { label: "Review Queue",     icon: ListChecks,      path: "/dms/review-queue" },
-      { label: "Expiry & Renewals", icon: RefreshCcw,    path: "/dms/expiring" },
-      { label: "Notifications",    icon: Bell,            path: "/dms/notifications" },
+      { label: "DMS Dashboard",     icon: LayoutDashboard, path: "/dms",                requiredAnyPermissions: ["dms.documents.view", "dms.admin"] },
+      { label: "All Documents",     icon: FolderOpen,      path: "/dms/documents",       requiredAnyPermissions: ["dms.documents.view", "dms.admin"] },
+      { label: "Upload Inbox",      icon: UploadCloud,     path: "/dms/inbox",           requiredAnyPermissions: ["dms.documents.upload", "dms.documents.view", "dms.admin"] },
+      { label: "Batch Intake",      icon: Inbox,           path: "/dms/inbox/batches",   requiredAnyPermissions: ["dms.documents.upload", "dms.documents.view", "dms.admin"] },
+      { label: "Review Queue",      icon: ListChecks,      path: "/dms/review-queue",    requiredAnyPermissions: ["dms.review_queue.view", "dms.review_queue.manage", "dms.documents.review_ai", "dms.admin"] },
+      { label: "Expiry & Renewals", icon: RefreshCcw,      path: "/dms/expiring",        requiredAnyPermissions: ["dms.expiry.view", "dms.documents.view", "dms.admin"] },
+      { label: "Notifications",     icon: Bell,            path: "/dms/notifications",   requiredAnyPermissions: ["dms.documents.view", "dms.admin"] },
       {
         kind: "subsection", label: "DMS Admin", icon: Settings,
         items: [
-          { label: "DMS Overview",         icon: FolderOpen,  path: "/admin/dms" },
-          { label: "Document Categories",  icon: Tags,        path: "/admin/dms/categories" },
-          { label: "Document Types",       icon: FileText,    path: "/admin/dms/document-types" },
-          { label: "Metadata Definitions", icon: Database,    path: "/admin/dms/metadata-definitions" },
-          { label: "Tags",                 icon: Tags,        path: "/admin/dms/tags" },
-          { label: "Retention Policies",   icon: ShieldCheck, path: "/admin/dms/retention-policies" },
-          { label: "AI Intelligence",      icon: Brain,        path: "/admin/dms/intelligence" },
-          { label: "AI Observability",     icon: CircleGauge,  path: "/admin/dms/ai-observability" },
+          { label: "DMS Overview",         icon: FolderOpen,  path: "/admin/dms",                      requiredAnyPermissions: ["dms.documents.view", "dms.admin"] },
+          { label: "Document Categories",  icon: Tags,        path: "/admin/dms/categories",            requiredAnyPermissions: ["dms.documents.view", "dms.admin"] },
+          { label: "Document Types",       icon: FileText,    path: "/admin/dms/document-types",        requiredAnyPermissions: ["dms.documents.view", "dms.admin"] },
+          { label: "Metadata Definitions", icon: Database,    path: "/admin/dms/metadata-definitions",  requiredAnyPermissions: ["dms.admin"] },
+          { label: "Tags",                 icon: Tags,        path: "/admin/dms/tags",                  requiredAnyPermissions: ["dms.documents.view", "dms.admin"] },
+          { label: "Retention Policies",   icon: ShieldCheck, path: "/admin/dms/retention-policies",    requiredAnyPermissions: ["dms.admin"] },
+          { label: "AI Intelligence",      icon: Brain,       path: "/admin/dms/intelligence",          requiredAnyPermissions: ["dms.admin"] },
+          { label: "AI Observability",     icon: CircleGauge, path: "/admin/dms/ai-observability",      requiredAnyPermissions: ["dms.admin"] },
         ],
       },
     ],
@@ -182,9 +190,9 @@ const navSections: NavSection[] = [
     textColor: "text-orange-700 dark:text-orange-400",
     iconColor: "text-orange-400/70 dark:text-orange-400/60",
     children: [
-      { label: "Fleet Management", icon: Truck,       path: "/modules/fleet",       disabled: true },
-      { label: "Workshop",         icon: Wrench,      path: "/modules/workshop",    disabled: true },
-      { label: "HSE",              icon: ShieldCheck, path: "/modules/hse",         disabled: true },
+      { label: "Fleet Management", icon: Truck,       path: "/modules/fleet",    disabled: true, requiresGlobalAdmin: true },
+      { label: "Workshop",         icon: Wrench,      path: "/modules/workshop", disabled: true, requiresGlobalAdmin: true },
+      { label: "HSE",              icon: ShieldCheck, path: "/modules/hse",      disabled: true, requiresGlobalAdmin: true },
     ],
   },
   {
@@ -194,9 +202,9 @@ const navSections: NavSection[] = [
     textColor: "text-yellow-700 dark:text-yellow-400",
     iconColor: "text-yellow-600/70 dark:text-yellow-400/60",
     children: [
-      { label: "Finance",     icon: DollarSign,   path: "/modules/finance",     disabled: true },
-      { label: "Inventory",   icon: Boxes,        path: "/modules/inventory",   disabled: true },
-      { label: "Procurement", icon: ShoppingCart, path: "/modules/procurement", disabled: true },
+      { label: "Finance",     icon: DollarSign,   path: "/modules/finance",     disabled: true, requiresGlobalAdmin: true },
+      { label: "Inventory",   icon: Boxes,        path: "/modules/inventory",   disabled: true, requiresGlobalAdmin: true },
+      { label: "Procurement", icon: ShoppingCart, path: "/modules/procurement", disabled: true, requiresGlobalAdmin: true },
     ],
   },
   {
@@ -206,10 +214,10 @@ const navSections: NavSection[] = [
     textColor: "text-violet-700 dark:text-violet-400",
     iconColor: "text-violet-500/70 dark:text-violet-400/60",
     children: [
-      { label: "Report Center",        icon: BarChart3,     path: "/admin/reports" },
-      { label: "Templates & Branding", icon: Palette,       path: "/admin/reports/templates" },
-      { label: "Report History",       icon: History,       path: "/admin/reports/history" },
-      { label: "Report Schedules",     icon: CalendarClock, path: "/admin/reports/schedules" },
+      { label: "Report Center",        icon: BarChart3,     path: "/admin/reports",            requiredAnyPermissions: ["reports.view", "reports.manage"] },
+      { label: "Templates & Branding", icon: Palette,       path: "/admin/reports/templates",  requiredAnyPermissions: ["reports.manage"] },
+      { label: "Report History",       icon: History,       path: "/admin/reports/history",    requiredAnyPermissions: ["reports.view", "reports.history.view"] },
+      { label: "Report Schedules",     icon: CalendarClock, path: "/admin/reports/schedules",  requiredAnyPermissions: ["reports.schedule.view", "reports.schedule.manage"] },
     ],
   },
   {
@@ -222,59 +230,59 @@ const navSections: NavSection[] = [
       {
         kind: "subsection", label: "Common Master Data", icon: Database,
         items: [
-          { label: "Common MD Overview",  icon: Database,     path: "/admin/common-master-data" },
-          { label: "Departments",         icon: Building2,    path: "/admin/common-master-data/departments" },
-          { label: "Designations",        icon: Users,        path: "/admin/common-master-data/designations" },
-          { label: "Work Sites",          icon: MapPin,       path: "/admin/common-master-data/work-sites" },
-          { label: "Work Calendars",      icon: CalendarDays, path: "/admin/common-master-data/work-calendars" },
-          { label: "Approval Roles",      icon: CheckCircle2, path: "/admin/common-master-data/approval-roles" },
-          { label: "Required Doc. Rules", icon: FileText,     path: "/admin/common-master-data/dms-required-documents" },
+          { label: "Common MD Overview",  icon: Database,     path: "/admin/common-master-data",                            requiredAnyPermissions: ["common_md.view", "common_md.manage"] },
+          { label: "Departments",         icon: Building2,    path: "/admin/common-master-data/departments",                requiredAnyPermissions: ["common_md.view", "common_md.departments.view"] },
+          { label: "Designations",        icon: Users,        path: "/admin/common-master-data/designations",               requiredAnyPermissions: ["common_md.view", "common_md.designations.view"] },
+          { label: "Work Sites",          icon: MapPin,       path: "/admin/common-master-data/work-sites",                 requiredAnyPermissions: ["common_md.view", "common_md.work_sites.view"] },
+          { label: "Work Calendars",      icon: CalendarDays, path: "/admin/common-master-data/work-calendars",             requiredAnyPermissions: ["common_md.view", "common_md.work_calendars.view"] },
+          { label: "Approval Roles",      icon: CheckCircle2, path: "/admin/common-master-data/approval-roles",             requiredAnyPermissions: ["common_md.view", "common_md.approval_roles.view"] },
+          { label: "Required Doc. Rules", icon: FileText,     path: "/admin/common-master-data/dms-required-documents",     requiredAnyPermissions: ["common_md.view", "common_md.dms_required_documents.view"] },
         ],
       },
       {
         kind: "subsection", label: "Geography & Locations", icon: Globe2,
         items: [
-          { label: "Countries",          icon: Globe2,    path: "/admin/master-data/geography/countries" },
-          { label: "Regions / Emirates", icon: MapPin,    path: "/admin/master-data/geography/emirates" },
-          { label: "Cities",             icon: Building,  path: "/admin/master-data/geography/cities" },
-          { label: "Areas & Zones",      icon: MapPin,    path: "/admin/master-data/geography/areas" },
-          { label: "Ports",              icon: Ship,      path: "/admin/master-data/geography/ports" },
+          { label: "Countries",          icon: Globe2,    path: "/admin/master-data/geography/countries", requiredAnyPermissions: ["master_data.geography.view", "master_data.geography.manage"] },
+          { label: "Regions / Emirates", icon: MapPin,    path: "/admin/master-data/geography/emirates",  requiredAnyPermissions: ["master_data.geography.view", "master_data.geography.manage"] },
+          { label: "Cities",             icon: Building,  path: "/admin/master-data/geography/cities",    requiredAnyPermissions: ["master_data.geography.view", "master_data.geography.manage"] },
+          { label: "Areas & Zones",      icon: MapPin,    path: "/admin/master-data/geography/areas",     requiredAnyPermissions: ["master_data.geography.view", "master_data.geography.manage"] },
+          { label: "Ports",              icon: Ship,      path: "/admin/master-data/geography/ports",     requiredAnyPermissions: ["master_data.geography.view", "master_data.geography.manage"] },
         ],
       },
       {
         kind: "subsection", label: "Party Master", icon: UsersRound,
         items: [
-          { label: "All Parties",            icon: UsersRound,    path: "/admin/master-data/parties" },
-          { label: "Customers",              icon: Handshake,     path: "/admin/master-data/parties/customers" },
-          { label: "Vendors",                icon: Factory,       path: "/admin/master-data/parties/vendors" },
-          { label: "Subcontractors",         icon: Wrench,        path: "/admin/master-data/parties/subcontractors" },
-          { label: "Consultants",            icon: Users,         path: "/admin/master-data/parties/consultants" },
-          { label: "Recruitment Agencies",   icon: UserSearch,    path: "/admin/master-data/parties/recruitment-agencies" },
-          { label: "Government Authorities", icon: Landmark,      path: "/admin/master-data/parties/government-authorities" },
-          { label: "Insurance Companies",    icon: ShieldCheck,   path: "/admin/master-data/parties/insurance-companies" },
-          { label: "License Issuers",        icon: FileText,      path: "/admin/master-data/parties/license-issuers" },
-          { label: "Party Types",            icon: Tags,          path: "/admin/master-data/parties/types" },
-          { label: "Service Categories",     icon: ClipboardList, path: "/admin/master-data/parties/service-categories" },
-          { label: "Relationship Types",     icon: Scale,         path: "/admin/master-data/parties/relationship-types" },
+          { label: "All Parties",            icon: UsersRound,    path: "/admin/master-data/parties",                        requiredAnyPermissions: ["master_data.parties.view", "master_data.party_master.view"] },
+          { label: "Customers",              icon: Handshake,     path: "/admin/master-data/parties/customers",              requiredAnyPermissions: ["master_data.parties.view", "master_data.party_master.view"] },
+          { label: "Vendors",                icon: Factory,       path: "/admin/master-data/parties/vendors",                requiredAnyPermissions: ["master_data.parties.view", "master_data.party_master.view"] },
+          { label: "Subcontractors",         icon: Wrench,        path: "/admin/master-data/parties/subcontractors",         requiredAnyPermissions: ["master_data.parties.view", "master_data.party_master.view"] },
+          { label: "Consultants",            icon: Users,         path: "/admin/master-data/parties/consultants",            requiredAnyPermissions: ["master_data.parties.view", "master_data.party_master.view"] },
+          { label: "Recruitment Agencies",   icon: UserSearch,    path: "/admin/master-data/parties/recruitment-agencies",   requiredAnyPermissions: ["master_data.parties.view", "master_data.party_master.view"] },
+          { label: "Government Authorities", icon: Landmark,      path: "/admin/master-data/parties/government-authorities", requiredAnyPermissions: ["master_data.parties.view", "master_data.party_master.view"] },
+          { label: "Insurance Companies",    icon: ShieldCheck,   path: "/admin/master-data/parties/insurance-companies",    requiredAnyPermissions: ["master_data.parties.view", "master_data.party_master.view"] },
+          { label: "License Issuers",        icon: FileText,      path: "/admin/master-data/parties/license-issuers",        requiredAnyPermissions: ["master_data.parties.view", "master_data.party_master.view"] },
+          { label: "Party Types",            icon: Tags,          path: "/admin/master-data/parties/types",                  requiredAnyPermissions: ["master_data.parties.view", "master_data.party_master.view"] },
+          { label: "Service Categories",     icon: ClipboardList, path: "/admin/master-data/parties/service-categories",     requiredAnyPermissions: ["master_data.parties.view", "master_data.party_master.view"] },
+          { label: "Relationship Types",     icon: Scale,         path: "/admin/master-data/parties/relationship-types",     requiredAnyPermissions: ["master_data.parties.view", "master_data.party_master.view"] },
         ],
       },
       {
         kind: "subsection", label: "Finance Basics", icon: Banknote,
         items: [
-          { label: "Currencies",     icon: Banknote,    path: "/admin/master-data/finance-basics/currencies" },
-          { label: "Payment Terms",  icon: CreditCard,  path: "/admin/master-data/finance-basics/payment-terms" },
-          { label: "Tax Types",      icon: Percent,     path: "/admin/master-data/finance-basics/tax-types" },
-          { label: "Banks",          icon: Landmark,    path: "/admin/master-data/finance-basics/banks" },
-          { label: "Cost Centers",   icon: CircleGauge, path: "/admin/master-data/finance-basics/cost-centers" },
-          { label: "Profit Centers", icon: CircleGauge, path: "/admin/master-data/finance-basics/profit-centers" },
+          { label: "Currencies",     icon: Banknote,    path: "/admin/master-data/finance-basics/currencies",   requiredAnyPermissions: ["master_data.finance_basics.view", "master_data.finance_basics.manage"] },
+          { label: "Payment Terms",  icon: CreditCard,  path: "/admin/master-data/finance-basics/payment-terms", requiredAnyPermissions: ["master_data.finance_basics.view", "master_data.finance_basics.manage"] },
+          { label: "Tax Types",      icon: Percent,     path: "/admin/master-data/finance-basics/tax-types",     requiredAnyPermissions: ["master_data.finance_basics.view", "master_data.finance_basics.manage"] },
+          { label: "Banks",          icon: Landmark,    path: "/admin/master-data/finance-basics/banks",         requiredAnyPermissions: ["master_data.finance_basics.view", "master_data.finance_basics.manage"] },
+          { label: "Cost Centers",   icon: CircleGauge, path: "/admin/master-data/finance-basics/cost-centers",  requiredAnyPermissions: ["master_data.finance_basics.view", "master_data.finance_basics.manage"] },
+          { label: "Profit Centers", icon: CircleGauge, path: "/admin/master-data/finance-basics/profit-centers", requiredAnyPermissions: ["master_data.finance_basics.view", "master_data.finance_basics.manage"] },
         ],
       },
       {
         kind: "subsection", label: "Units & Measurements", icon: Ruler,
         items: [
-          { label: "UOM Categories",   icon: Ruler,  path: "/admin/master-data/uom/categories" },
-          { label: "Units of Measure", icon: Ruler,  path: "/admin/master-data/uom/units" },
-          { label: "UOM Conversions",  icon: Repeat, path: "/admin/master-data/uom/conversions" },
+          { label: "UOM Categories",   icon: Ruler,  path: "/admin/master-data/uom/categories",  requiredAnyPermissions: ["master_data.uom.view", "master_data.uom.manage"] },
+          { label: "Units of Measure", icon: Ruler,  path: "/admin/master-data/uom/units",        requiredAnyPermissions: ["master_data.uom.view", "master_data.uom.manage"] },
+          { label: "UOM Conversions",  icon: Repeat, path: "/admin/master-data/uom/conversions",  requiredAnyPermissions: ["master_data.uom.view", "master_data.uom.manage"] },
         ],
       },
     ],
@@ -286,41 +294,40 @@ const navSections: NavSection[] = [
     textColor: "text-rose-700 dark:text-rose-400",
     iconColor: "text-rose-400/70 dark:text-rose-400/60",
     children: [
-      { label: "Users",                icon: Users,          path: "/admin/users" },
-      { label: "Organizations",        icon: Building2,      path: "/admin/organizations" },
-      { label: "Branches",             icon: Building,       path: "/admin/branches" },
-      { label: "Roles",                icon: KeyRound,       path: "/admin/roles" },
-      { label: "Permissions",          icon: LockKeyhole,    path: "/admin/permissions" },
-      { label: "Numbering Rules",      icon: Hash,           path: "/admin/settings/numbering" },
-      { label: "Email Settings",       icon: Mail,           path: "/admin/settings/email" },
-      { label: "Notifications",        icon: Bell,           path: "/admin/notifications" },
-      { label: "Email Queue",          icon: Send,           path: "/admin/notifications/email-queue" },
-      { label: "Notif. Templates",     icon: FileText,       path: "/admin/notifications/templates" },
-      { label: "Delivery Logs",        icon: History,        path: "/admin/notifications/logs" },
-      { label: "Master Data",          icon: Database,       path: "/admin/master-data" },
-      { label: "Lookup Categories",    icon: Tags,           path: "/admin/master-data/lookups/categories" },
-      { label: "Lookup Values",        icon: Database,       path: "/admin/master-data/lookups/values" },
-      { label: "Locked System Values", icon: LockKeyhole,    path: "/admin/master-data/lookups/system" },
-      { label: "Audit Logs",           icon: ClipboardCheck, path: "/admin/audit" },
+      { label: "Users",                icon: Users,          path: "/admin/users",                            requiredPermission: "users.view" },
+      { label: "Organizations",        icon: Building2,      path: "/admin/organizations",                    requiredPermission: "organizations.view" },
+      { label: "Branches",             icon: Building,       path: "/admin/branches",                         requiredPermission: "branches.view" },
+      { label: "Roles",                icon: KeyRound,       path: "/admin/roles",                            requiredAnyPermissions: ["roles.view", "roles.manage"] },
+      { label: "Permissions",          icon: LockKeyhole,    path: "/admin/permissions",                      requiredPermission: "permissions.view" },
+      { label: "Numbering Rules",      icon: Hash,           path: "/admin/settings/numbering",               requiredAnyPermissions: ["numbering.rules.view", "numbering.rules.manage"] },
+      { label: "Email Settings",       icon: Mail,           path: "/admin/settings/email",                   requiredAnyPermissions: ["settings.email.view", "settings.email.manage"] },
+      { label: "Notifications",        icon: Bell,           path: "/admin/notifications",                    requiredAnyPermissions: ["notifications.manage", "notifications.admin"] },
+      { label: "Email Queue",          icon: Send,           path: "/admin/notifications/email-queue",         requiredAnyPermissions: ["notifications.email_queue.view", "notifications.email_queue.manage"] },
+      { label: "Notif. Templates",     icon: FileText,       path: "/admin/notifications/templates",           requiredAnyPermissions: ["notifications.templates.view", "notifications.templates.manage"] },
+      { label: "Delivery Logs",        icon: History,        path: "/admin/notifications/logs",                requiredAnyPermissions: ["notifications.logs.view", "notifications.manage"] },
+      { label: "Master Data",          icon: Database,       path: "/admin/master-data",                      requiredAnyPermissions: ["master_data.lookups.view", "master_data.geography.view", "master_data.parties.view"] },
+      { label: "Lookup Categories",    icon: Tags,           path: "/admin/master-data/lookups/categories",   requiredAnyPermissions: ["master_data.lookups.view", "master_data.lookups.manage"] },
+      { label: "Lookup Values",        icon: Database,       path: "/admin/master-data/lookups/values",       requiredAnyPermissions: ["master_data.lookups.view", "master_data.lookups.manage"] },
+      { label: "Locked System Values", icon: LockKeyhole,    path: "/admin/master-data/lookups/system",       requiredAnyPermissions: ["master_data.lookups.view", "master_data.lookups.manage"] },
+      { label: "Audit Logs",           icon: ClipboardCheck, path: "/admin/audit",                            requiredPermission: "audit.view" },
       {
         kind: "subsection", label: "AI", icon: Bot,
         items: [
-          { label: "AI Settings",        icon: Settings,      path: "/admin/settings/ai" },
-          { label: "AI Daily Dashboard", icon: Bot,           path: "/admin/ai/dashboard" },
-          { label: "AI Audit Explainer", icon: ScanSearch,    path: "/admin/ai/audit-explainer" },
-          { label: "AI Data Quality",    icon: Sparkles,      path: "/admin/ai/data-quality" },
-          { label: "AI Duplicates",      icon: CopyCheck,     path: "/admin/ai/duplicates" },
-          { label: "AI Compliance",      icon: ShieldCheck,   path: "/admin/ai/compliance" },
-          { label: "AI Risk",            icon: AlertTriangle, path: "/admin/ai/risk" },
-          { label: "AI Search",          icon: Search,        path: "/search" },
-          { label: "AI Assistant",       icon: Bot,           path: "/assistant" },
+          { label: "AI Settings",        icon: Settings,      path: "/admin/settings/ai",          requiredAnyPermissions: ["settings.ai.view", "settings.ai.manage"] },
+          { label: "AI Daily Dashboard", icon: Bot,           path: "/admin/ai/dashboard",         requiredAnyPermissions: ["ai.dashboard.view", "ai.dashboard.admin", "ai.common.view", "ai.common.admin"] },
+          { label: "AI Audit Explainer", icon: ScanSearch,    path: "/admin/ai/audit-explainer",   requiredAnyPermissions: ["ai.audit_explainer.use", "ai.common.admin"] },
+          { label: "AI Data Quality",    icon: Sparkles,      path: "/admin/ai/data-quality",      requiredAnyPermissions: ["ai.data_quality.view", "ai.common.view", "ai.common.admin"] },
+          { label: "AI Duplicates",      icon: CopyCheck,     path: "/admin/ai/duplicates",        requiredAnyPermissions: ["ai.duplicates.view", "ai.common.view", "ai.common.admin"] },
+          { label: "AI Compliance",      icon: ShieldCheck,   path: "/admin/ai/compliance",        requiredAnyPermissions: ["ai.compliance.view", "ai.common.view", "ai.common.admin"] },
+          { label: "AI Risk",            icon: AlertTriangle, path: "/admin/ai/risk",              requiredAnyPermissions: ["ai.risk.view", "ai.common.view", "ai.common.admin"] },
+          { label: "AI Search",          icon: Search,        path: "/search",                     requiredAnyPermissions: ["ai.search.use", "ai.search.view", "ai.common.admin"] },
+          { label: "AI Assistant",       icon: Bot,           path: "/assistant",                  requiredAnyPermissions: ["ai.assistant.use", "ai.assistant.view", "ai.common.admin"] },
         ],
       },
     ],
   },
 ];
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ??? Helpers ??????????????????????????????????????????????????????????????????
 
 function getInitials(name?: string | null, email?: string | null): string {
   if (name) {
@@ -331,8 +338,41 @@ function getInitials(name?: string | null, email?: string | null): string {
   if (email) return email.slice(0, 2).toUpperCase();
   return "??";
 }
+// ERP USERS.4 ? Permission-based visibility helpers
 
-// ─── Animated collapse wrapper ────────────────────────────────────────────────
+/** Returns true if the current user should see this nav item. */
+function canUserSeeItem(
+  item: NavItem,
+  permissionCodes: string[],
+  isGlobalAdmin: boolean
+): boolean {
+  // Disabled items are admin-only (greyed out)
+  if (item.disabled) return isGlobalAdmin;
+  if (item.publicToAllActive) return true;
+  if (isGlobalAdmin) return true;
+  if (item.requiresGlobalAdmin) return false;
+  if (item.requiredPermission) return permissionCodes.includes(item.requiredPermission);
+  if (item.requiredAnyPermissions) {
+    return item.requiredAnyPermissions.some((p) => permissionCodes.includes(p));
+  }
+  return true;
+}
+
+/** Returns true if a section has at least one visible child (after permission filtering). */
+function sectionHasVisibleChildren(
+  section: NavSection,
+  permissionCodes: string[],
+  isGlobalAdmin: boolean
+): boolean {
+  return section.children.some((child) => {
+    if (isSubSection(child)) {
+      return child.items.some((item) => canUserSeeItem(item, permissionCodes, isGlobalAdmin));
+    }
+    return canUserSeeItem(child as NavItem, permissionCodes, isGlobalAdmin);
+  });
+}
+
+// ??? Animated collapse wrapper ????????????????????????????????????????????????
 
 function Collapsible({ open, children }: { open: boolean; children: React.ReactNode }) {
   return (
@@ -344,16 +384,20 @@ function Collapsible({ open, children }: { open: boolean; children: React.ReactN
   );
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// ??? Component ????????????????????????????????????????????????????????????????
 
 interface AppSidebarProps {
   collapsed: boolean;
   onToggle: () => void;
   displayName?: string | null;
   email?: string | null;
+  /** ERP USERS.4 ? permission codes for sidebar filtering */
+  permissionCodes?: string[];
+  /** ERP USERS.4 ? true for system_admin / group_admin (bypass all checks) */
+  isGlobalAdmin?: boolean;
 }
 
-export function AppSidebar({ collapsed, onToggle, displayName, email }: AppSidebarProps) {
+export function AppSidebar({ collapsed, onToggle, displayName, email, permissionCodes = [], isGlobalAdmin = false }: AppSidebarProps) {
   const pathname = usePathname();
   const { openTab, activeTab, isHydrated } = useWorkspace();
 
@@ -412,7 +456,7 @@ export function AppSidebar({ collapsed, onToggle, displayName, email }: AppSideb
   const q = searchQuery.toLowerCase().trim();
   const isFiltering = q.length > 0;
 
-  // ── Nav item ──────────────────────────────────────────────────────────────
+  // ?? Nav item ??????????????????????????????????????????????????????????????
   const renderNavItem = (item: NavItem, iconColor: string) => {
     const active = isActive(item.path);
     if (isFiltering && !item.label.toLowerCase().includes(q)) return null;
@@ -468,7 +512,7 @@ export function AppSidebar({ collapsed, onToggle, displayName, email }: AppSideb
     return <div key={item.path}>{btn}</div>;
   };
 
-  // ── Subsection ────────────────────────────────────────────────────────────
+  // ?? Subsection ????????????????????????????????????????????????????????????
   const renderSubSection = (sub: NavSubSection, sectionLabel: string, iconColor: string) => {
     const key = `${sectionLabel}::${sub.label}`;
     const isExpanded = expandedSubSections.includes(key);
@@ -527,7 +571,7 @@ export function AppSidebar({ collapsed, onToggle, displayName, email }: AppSideb
           collapsed ? "w-[68px]" : "w-[260px]"
         )}
       >
-        {/* ── Logo ─────────────────────────────────────────────────────────── */}
+        {/* ?? Logo ??????????????????????????????????????????????????????????? */}
         <div className="h-14 flex items-center px-4 border-b border-border/40 shrink-0">
           {!collapsed ? (
             <div className="flex items-center gap-2.5">
@@ -546,7 +590,7 @@ export function AppSidebar({ collapsed, onToggle, displayName, email }: AppSideb
           )}
         </div>
 
-        {/* ── Search bar ───────────────────────────────────────────────────── */}
+        {/* ?? Search bar ????????????????????????????????????????????????????? */}
         {!collapsed && (
           <div className="px-3 py-2 border-b border-border/30 shrink-0">
             <div className="relative">
@@ -554,7 +598,7 @@ export function AppSidebar({ collapsed, onToggle, displayName, email }: AppSideb
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Filter menu…"
+                placeholder="Filter menu?"
                 className="h-7 pl-7 pr-7 text-xs bg-muted/40 border-0 focus-visible:ring-1 focus-visible:ring-primary/40 placeholder:text-muted-foreground/40"
               />
               {searchQuery && (
@@ -570,7 +614,7 @@ export function AppSidebar({ collapsed, onToggle, displayName, email }: AppSideb
           </div>
         )}
 
-        {/* ── Navigation ───────────────────────────────────────────────────── */}
+        {/* ?? Navigation ????????????????????????????????????????????????????? */}
         <div className="relative flex-1 min-h-0 flex flex-col">
           {canScrollUp && (
             <button type="button" onClick={() => scrollBy("up")}
@@ -588,21 +632,26 @@ export function AppSidebar({ collapsed, onToggle, displayName, email }: AppSideb
                 const isSectionActive = activeSectionLabel === section.label;
 
                 // In filter mode: only show sections that have matching items
-                const visibleDirectItems = section.children
-                  .filter((c) => !isSubSection(c))
-                  .filter((c) => !isFiltering || (c as NavItem).label.toLowerCase().includes(q)) as NavItem[];
-                const visibleSubSections = section.children
-                  .filter(isSubSection)
-                  .filter((s) => !isFiltering || s.items.some((i) => i.label.toLowerCase().includes(q)));
+                 // ERP USERS.4 - Apply permission filter first, then search filter
+                 const visibleDirectItems = section.children
+                   .filter((c) => !isSubSection(c))
+                   .filter((c) => canUserSeeItem(c as NavItem, permissionCodes, isGlobalAdmin))
+                   .filter((c) => !isFiltering || (c as NavItem).label.toLowerCase().includes(q)) as NavItem[];
+                 const visibleSubSections = section.children
+                   .filter(isSubSection)
+                   .map((s) => ({ ...s, items: s.items.filter((item) => canUserSeeItem(item, permissionCodes, isGlobalAdmin)) }))
+                   .filter((s) => s.items.length > 0)
+                   .filter((s) => !isFiltering || s.items.some((i) => i.label.toLowerCase().includes(q)));
 
-                if (isFiltering && visibleDirectItems.length === 0 && visibleSubSections.length === 0) return null;
+                 // Skip entire section if no visible items after filtering
+                 if (visibleDirectItems.length === 0 && visibleSubSections.length === 0) return null;
 
-                const hasDirectItems = section.children.some((c) => !isSubSection(c));
-                const hasSubSections = section.children.some(isSubSection);
+                 const hasDirectItems = visibleDirectItems.length > 0;
+                 const hasSubSections = visibleSubSections.length > 0;
 
                 return (
                   <div key={section.label} className="mb-1">
-                    {/* ── Level 1 Section Header ─────────────────────────── */}
+                    {/* ?? Level 1 Section Header ??????????????????????????? */}
                     {!collapsed ? (
                       <button
                         type="button"
@@ -658,15 +707,13 @@ export function AppSidebar({ collapsed, onToggle, displayName, email }: AppSideb
                       </Tooltip>
                     )}
 
-                    {/* ── Section children ───────────────────────────────── */}
+                    {/* ?? Section children ????????????????????????????????? */}
                     <Collapsible open={collapsed || isSectionExpanded || isFiltering}>
                       <div className="space-y-0.5 mt-0.5 px-0.5">
                         {/* Direct items (e.g. DMS top-level links) */}
                         {hasDirectItems && (
                           <div className="space-y-0.5">
-                            {section.children
-                              .filter((c) => !isSubSection(c))
-                              .map((c) => renderNavItem(c as NavItem, section.iconColor))}
+                            {visibleDirectItems.map((c) => renderNavItem(c, section.iconColor))}
                           </div>
                         )}
                         {/* Separator between direct items and subsections */}
@@ -674,8 +721,7 @@ export function AppSidebar({ collapsed, onToggle, displayName, email }: AppSideb
                           <div className="my-1 mx-1 h-px bg-border/40" />
                         )}
                         {/* Subsections */}
-                        {section.children
-                          .filter(isSubSection)
+                        {visibleSubSections
                           .map((c) => renderSubSection(c as NavSubSection, section.label, section.iconColor))}
                       </div>
                     </Collapsible>
@@ -693,7 +739,7 @@ export function AppSidebar({ collapsed, onToggle, displayName, email }: AppSideb
           )}
         </div>
 
-        {/* ── Footer: User avatar ──────────────────────────────────────────── */}
+        {/* ?? Footer: User avatar ???????????????????????????????????????????? */}
         <div className="border-t border-border/40 shrink-0">
           {/* User avatar row */}
           {!collapsed ? (
@@ -721,7 +767,7 @@ export function AppSidebar({ collapsed, onToggle, displayName, email }: AppSideb
 
         </div>
 
-        {/* ── Collapse toggle ───────────────────────────────────────────────── */}
+        {/* ?? Collapse toggle ????????????????????????????????????????????????? */}
         <div className="border-t border-border/40 p-2 shrink-0">
           <Button variant="ghost" size="sm" onClick={onToggle}
             className="w-full h-8 text-muted-foreground hover:text-foreground">
@@ -733,3 +779,4 @@ export function AppSidebar({ collapsed, onToggle, displayName, email }: AppSideb
     </TooltipProvider>
   );
 }
+

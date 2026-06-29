@@ -653,7 +653,7 @@ async function executeScheduleRun(
     subject,
     body,
     attachment,
-    context: { moduleCode: "REPORTS" },
+    context: { moduleCode: "reports" },
   });
 
   const { data: deliveryLog } = await db
@@ -668,7 +668,7 @@ async function executeScheduleRun(
       attachment_format: sched.output_format,
       attachment_filename: attachment.filename,
       attachment_size_bytes: attachment.sizeBytes,
-      provider: "microsoft_graph",
+      provider: emailResult.provider ?? "erp_provider",
       delivery_status: emailResult.success ? "sent" : "failed",
       success: emailResult.success,
       sent_at: emailResult.success ? new Date().toISOString() : null,

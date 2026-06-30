@@ -1,14 +1,21 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { ERPCombobox } from "@/components/erp/combobox";
-import { ShieldCheck } from "lucide-react";
+import { ShieldCheck, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import type { UserWithRoles, Role, OwnerCompany, Branch } from "@/types/database";
 import { assignRoleToUser } from "@/server/actions/users";
 import { RequiredLabel } from "@/components/erp/required-label";
+
+// High-privilege role codes that warrant a warning
+const HIGH_PRIVILEGE_ROLE_CODES = new Set([
+  "system_admin",
+  "group_admin",
+  "company_admin",
+]);
 
 type AssignRoleDialogProps = {
   user: UserWithRoles;
@@ -38,6 +45,16 @@ export function AssignRoleDialog({
   const [ownerCompanyId, setOwnerCompanyId] = useState<string>("");
   const [branchId, setBranchId] = useState<string>("");
 
+  // Reset form whenever dialog opens
+  useEffect(() => {
+    if (open) {
+      setSelectedScope("global");
+      setRoleId("");
+      setOwnerCompanyId("");
+      setBranchId("");
+    }
+  }, [open]);
+
   const assignableRoles = useMemo(() => filterAssignableRoles(roles), [roles]);
 
   const roleOptions = useMemo(
@@ -50,9 +67,37 @@ export function AssignRoleDialog({
     [assignableRoles],
   );
 
+  // Filter branches by selected company
+  const filteredBranches = useMemo(() => {
+    if (!ownerCompanyId) return branches;
+    return branches.filter((b) => String(b.owner_company_id) === ownerCompanyId);
+  }, [branches, ownerCompanyId]);
+
+  const companyOptions = useMemo(
+    () => companies.map((c) => ({ value: String(c.id), label: c.legal_name_en })),
+    [companies],
+  );
+
+  const branchOptions = useMemo(
+    () => filteredBranches.map((b) => ({ value: String(b.id), label: b.branch_name_en })),
+    [filteredBranches],
+  );
+
+  // Detect high-privilege role selection
+  const selectedRole = assignableRoles.find((r) => String(r.id) === roleId);
+  const isHighPrivilege = selectedRole && HIGH_PRIVILEGE_ROLE_CODES.has(selectedRole.role_code);
+
   const handleFormSubmit = async () => {
     if (!roleId) {
       toast.error("Please select a role");
+      return;
+    }
+    if (selectedScope !== "global" && !ownerCompanyId) {
+      toast.error("Please select an organization for the role scope");
+      return;
+    }
+    if (selectedScope === "branch" && !branchId) {
+      toast.error("Please select a branch for the role scope");
       return;
     }
     setIsSubmitting(true);
@@ -79,9 +124,6 @@ export function AssignRoleDialog({
     }
   };
 
-  const selectClass =
-    "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm";
-
   return (
     <ERPChildDialogForm
       open={open}
@@ -96,11 +138,24 @@ export function AssignRoleDialog({
       submitLabel="Assign Role"
     >
       <div className="space-y-4">
+        {/* High-privilege role warning */}
+        {isHighPrivilege && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 px-3 py-2.5 text-sm text-amber-800 dark:text-amber-300">
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-600" />
+            <span>
+              <strong>{selectedRole?.role_name}</strong> is a high-privilege role. Only assign to
+              trusted administrators. This action is audited.
+            </span>
+          </div>
+        )}
+
         <div>
           <RequiredLabel required>Role</RequiredLabel>
           <ERPCombobox
             value={roleId}
-            onValueChange={(v) => setRoleId(v != null ? String(v) : "")}
+            onValueChange={(v) => {
+              setRoleId(v != null ? String(v) : "");
+            }}
             options={roleOptions}
             placeholder="Select role..."
             searchPlaceholder="Search roles..."
@@ -111,59 +166,55 @@ export function AssignRoleDialog({
 
         <div>
           <RequiredLabel htmlFor="scope">Scope</RequiredLabel>
-          <select
-            id="scope"
+          <ERPCombobox
             value={selectedScope}
-            onChange={(e) => setSelectedScope(e.target.value as "global" | "company" | "branch")}
-            className={selectClass}
-          >
-            <option value="global">Global</option>
-            <option value="company">Company</option>
-            <option value="branch">Branch</option>
-          </select>
+            onValueChange={(v) => {
+              setSelectedScope((v as "global" | "company" | "branch") ?? "global");
+              setOwnerCompanyId("");
+              setBranchId("");
+            }}
+            options={[
+              { value: "global", label: "Global" },
+              { value: "company", label: "Company" },
+              { value: "branch", label: "Branch" },
+            ]}
+            placeholder="Select scope..."
+          />
         </div>
 
         {selectedScope !== "global" && (
           <div>
-            <RequiredLabel htmlFor="owner_company_id" required>
-              Organization
-            </RequiredLabel>
-            <select
-              id="owner_company_id"
+            <RequiredLabel required>Organization</RequiredLabel>
+            <ERPCombobox
               value={ownerCompanyId}
-              onChange={(e) => setOwnerCompanyId(e.target.value)}
+              onValueChange={(v) => {
+                setOwnerCompanyId(v != null ? String(v) : "");
+                setBranchId(""); // reset branch when company changes
+              }}
+              options={companyOptions}
+              placeholder="Select organization..."
+              searchPlaceholder="Search organizations..."
               required
-              className={selectClass}
-            >
-              <option value="">Select organization...</option>
-              {companies.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.legal_name_en}
-                </option>
-              ))}
-            </select>
+            />
           </div>
         )}
 
         {selectedScope === "branch" && (
           <div>
-            <RequiredLabel htmlFor="branch_id" required>
-              Branch
-            </RequiredLabel>
-            <select
-              id="branch_id"
+            <RequiredLabel required>Branch</RequiredLabel>
+            <ERPCombobox
               value={branchId}
-              onChange={(e) => setBranchId(e.target.value)}
+              onValueChange={(v) => setBranchId(v != null ? String(v) : "")}
+              options={branchOptions}
+              placeholder={ownerCompanyId ? "Select branch..." : "Select an organization first"}
+              searchPlaceholder="Search branches..."
               required
-              className={selectClass}
-            >
-              <option value="">Select branch...</option>
-              {branches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.branch_name_en}
-                </option>
-              ))}
-            </select>
+            />
+            {ownerCompanyId && filteredBranches.length === 0 && (
+              <p className="text-xs text-muted-foreground mt-1">
+                No branches found for the selected organization.
+              </p>
+            )}
           </div>
         )}
       </div>

@@ -49,10 +49,14 @@ export default async function AuthDebugPage() {
 
   return (
     <div className="p-8 font-mono text-sm space-y-4 max-w-4xl">
+      <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 px-4 py-3">
+        <span className="text-amber-700 dark:text-amber-300 font-sans text-xs font-medium">
+          ⚠ Admin-only diagnostic page. All access to this page is audited and recorded in the security log.
+          This page is not visible to non-administrators.
+        </span>
+      </div>
+
       <h1 className="text-xl font-bold">Auth Context Debug</h1>
-      <p className="text-xs text-muted-foreground bg-yellow-50 border border-yellow-200 rounded px-3 py-2">
-        Admin-only diagnostic page. All access is audited.
-      </p>
 
       <section className="border rounded p-4 space-y-1">
         <p><strong>profile.id:</strong> {ctx.profile.id}</p>

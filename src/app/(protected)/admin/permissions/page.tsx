@@ -1,13 +1,11 @@
 import { ERPPageHeader } from "@/components/erp/page-header";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
 import { listPermissions, getAllRolePermissions } from "@/server/queries/permissions";
 import { listRoles } from "@/server/queries/roles";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { PermissionsMatrix } from "@/features/permissions/permissions-matrix";
+import { PermissionCommandCenter } from "@/features/permissions/permission-command-center";
 import { Shield } from "lucide-react";
 import { ERPExportMenu } from "@/components/erp/export/erp-export-menu";
-import type { ERPExportColumn } from "@/lib/export";
-import type { Permission } from "@/types/database";
 
 export default async function AdminPermissionsPage() {
   const ctx = await getAuthContext();
@@ -16,8 +14,8 @@ export default async function AdminPermissionsPage() {
     return (
       <div className="flex flex-col gap-6">
         <ERPPageHeader
-          title="Permissions"
-          description="Permission and role matrix"
+          title="Role Permission Center"
+          description="Search permissions on the left, then assign and review roles on the right."
           breadcrumbs={[
             { label: "Dashboard", href: "/dashboard" },
             { label: "Admin" },
@@ -52,8 +50,8 @@ export default async function AdminPermissionsPage() {
   return (
     <div className="flex flex-col gap-6">
       <ERPPageHeader
-        title="Permissions & Role Matrix"
-        description="Manage role-permission assignments across the system"
+        title="Role Permission Center"
+        description="Search permissions on the left, then assign and review roles on the right."
         breadcrumbs={[
           { label: "Dashboard", href: "/dashboard" },
           { label: "Admin" },
@@ -89,7 +87,7 @@ export default async function AdminPermissionsPage() {
         }
       />
 
-      <PermissionsMatrix
+      <PermissionCommandCenter
         permissions={permissions}
         roles={roles}
         rolePermissions={rolePermissions}

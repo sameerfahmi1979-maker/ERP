@@ -109,6 +109,7 @@ export type ListUsersParams = {
   ownerCompanyId?: number;
   branchId?: number;
   roleId?: number;
+  mustChangePassword?: boolean;
 };
 
 export type PaginatedUsersResult = {
@@ -203,6 +204,7 @@ export async function listUsersPaginated(
   if (params.status) query = query.eq("status", params.status);
   if (params.ownerCompanyId) query = query.eq("owner_company_id", params.ownerCompanyId);
   if (params.branchId) query = query.eq("branch_id", params.branchId);
+  if (params.mustChangePassword) query = query.eq("must_change_password", true);
   if (roleFilterProfileIds) query = query.in("id", roleFilterProfileIds);
   if (emailSearchProfileIds) query = query.in("id", emailSearchProfileIds);
 

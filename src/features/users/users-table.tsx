@@ -8,7 +8,7 @@ import { ERPDataTable } from "@/components/erp/table/erp-data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { MoreHorizontal, Pencil, UserPlus, Ban, Eye, Trash2, ShieldAlert } from "lucide-react";
+import { MoreHorizontal, Pencil, UserPlus, Ban, Eye, Trash2, ShieldAlert, CheckCircle } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -53,6 +53,11 @@ function StatusBadge({ status }: { status: string | null | undefined }) {
   );
 }
 
+type StatusChangeTarget = {
+  user: UserWithRoles;
+  newStatus: "active" | "inactive" | "suspended";
+};
+
 type UsersTableProps = {
   data: UserWithRoles[];
   totalCount: number;
@@ -63,6 +68,8 @@ type UsersTableProps = {
   companyFilter: string;
   branchFilter: string;
   roleFilter: string;
+  mcpFilter?: string;
+  noRoleFilter?: boolean;
   roles?: Role[];
   companies?: OwnerCompany[];
   branches?: Branch[];
@@ -75,6 +82,21 @@ type UsersTableProps = {
   };
 };
 
+const STATUS_CHANGE_COPY: Record<"active" | "inactive" | "suspended", { title: string; description: (name: string) => string }> = {
+  active: {
+    title: "Activate User?",
+    description: (name) => `Activate ${name}? Their account will be restored and they will regain access.`,
+  },
+  inactive: {
+    title: "Deactivate User?",
+    description: (name) => `Deactivate ${name}? Their account will be locked and they will lose access immediately.`,
+  },
+  suspended: {
+    title: "Suspend User?",
+    description: (name) => `Suspend ${name}? They will be prevented from accessing the ERP until reactivated. This action is audited.`,
+  },
+};
+
 export function UsersTable({
   data,
   totalCount,
@@ -85,6 +107,8 @@ export function UsersTable({
   companyFilter,
   branchFilter,
   roleFilter,
+  mcpFilter = "",
+  noRoleFilter = false,
   roles = [],
   companies = [],
   branches = [],
@@ -95,14 +119,25 @@ export function UsersTable({
   const [assigningRoleUser, setAssigningRoleUser] = useState<UserWithRoles | null>(null);
   const [deletingUser, setDeletingUser] = useState<UserWithRoles | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [statusChangeTarget, setStatusChangeTarget] = useState<StatusChangeTarget | null>(null);
+  const [isChangingStatus, setIsChangingStatus] = useState(false);
 
-  const handleStatusChange = async (
-    userId: number,
-    newStatus: "active" | "inactive" | "suspended",
-  ) => {
-    const result = await adminUpdateUserProfile({ id: userId, status: newStatus });
+  // Client-side "No Role" filter
+  const displayData = noRoleFilter
+    ? data.filter((u) => !u.roles || u.roles.length === 0)
+    : data;
+
+  const handleStatusChangeConfirm = async () => {
+    if (!statusChangeTarget) return;
+    setIsChangingStatus(true);
+    const result = await adminUpdateUserProfile({
+      id: statusChangeTarget.user.id,
+      status: statusChangeTarget.newStatus,
+    });
+    setIsChangingStatus(false);
     if (result.success) {
-      toast.success(`User marked as ${newStatus}`);
+      toast.success(`User marked as ${statusChangeTarget.newStatus}`);
+      setStatusChangeTarget(null);
       router.refresh();
     } else {
       toast.error(result.error || "Failed to update status");
@@ -165,7 +200,7 @@ export function UsersTable({
       cell: ({ row }) => {
         const userRoles = row.original.roles ?? [];
         if (userRoles.length === 0) {
-          return <span className="text-xs text-muted-foreground">No role</span>;
+          return <span className="text-xs text-amber-600 font-medium">No role</span>;
         }
         return (
           <div className="flex flex-wrap gap-1 max-w-[220px]">
@@ -202,7 +237,14 @@ export function UsersTable({
     {
       accessorKey: "status",
       header: "Status",
-      cell: ({ row }) => <StatusBadge status={row.original.status} />,
+      cell: ({ row }) => (
+        <div className="flex flex-col gap-0.5">
+          <StatusBadge status={row.original.status} />
+          {row.original.must_change_password && (
+            <span className="text-[10px] text-amber-600 font-medium">⚠ Must change pwd</span>
+          )}
+        </div>
+      ),
     },
     {
       accessorKey: "created_at",
@@ -218,10 +260,14 @@ export function UsersTable({
       header: () => <div className="text-right">Actions</div>,
       cell: ({ row }) => {
         const user = row.original;
+        const userName = user.display_name ?? user.full_name ?? user.email ?? "this user";
         return (
           <div className="flex justify-end">
             <DropdownMenu>
-              <DropdownMenuTrigger className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground">
+              <DropdownMenuTrigger
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground"
+                aria-label="Open user actions"
+              >
                 <span className="sr-only">Open menu</span>
                 <MoreHorizontal className="h-4 w-4" />
               </DropdownMenuTrigger>
@@ -242,18 +288,25 @@ export function UsersTable({
                 </DropdownMenuItem>
                 {user.status === "active" && (
                   <>
-                    <DropdownMenuItem onClick={() => handleStatusChange(user.id, "inactive")}>
+                    <DropdownMenuItem
+                      onClick={() => setStatusChangeTarget({ user, newStatus: "inactive" })}
+                    >
                       <Ban className="mr-2 h-4 w-4" />
                       Deactivate
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleStatusChange(user.id, "suspended")}>
+                    <DropdownMenuItem
+                      onClick={() => setStatusChangeTarget({ user, newStatus: "suspended" })}
+                    >
                       <ShieldAlert className="mr-2 h-4 w-4" />
                       Suspend
                     </DropdownMenuItem>
                   </>
                 )}
                 {user.status !== "active" && (
-                  <DropdownMenuItem onClick={() => handleStatusChange(user.id, "active")}>
+                  <DropdownMenuItem
+                    onClick={() => setStatusChangeTarget({ user, newStatus: "active" })}
+                  >
+                    <CheckCircle className="mr-2 h-4 w-4" />
                     Activate
                   </DropdownMenuItem>
                 )}
@@ -276,7 +329,7 @@ export function UsersTable({
   return (
     <>
       <UsersListToolbar
-        totalCount={totalCount}
+        totalCount={noRoleFilter ? displayData.length : totalCount}
         page={page}
         pageSize={pageSize}
         search={search}
@@ -284,6 +337,8 @@ export function UsersTable({
         companyId={companyFilter}
         branchId={branchFilter}
         roleId={roleFilter}
+        mcpFilter={mcpFilter}
+        noRoleFilter={noRoleFilter}
         roles={roles}
         companies={companies}
         branches={branches}
@@ -292,7 +347,7 @@ export function UsersTable({
       <ERPDataTable
         tableId="admin.users"
         columns={columns}
-        data={data}
+        data={displayData}
         userProfileId={userProfileId}
         searchPlaceholder="Search users..."
         emptyMessage="No users match your filters."
@@ -303,8 +358,8 @@ export function UsersTable({
         enablePreferences
         enableGlobalFilter={false}
         exportConfig={exportConfig}
-        initialPageSize={Math.max(data.length, 1)}
-        pageSizeOptions={[Math.max(data.length, 1)]}
+        initialPageSize={Math.max(displayData.length, 1)}
+        pageSizeOptions={[Math.max(displayData.length, 1)]}
       />
 
       {assigningRoleUser && (
@@ -320,6 +375,57 @@ export function UsersTable({
         />
       )}
 
+      {/* Status change confirmation */}
+      <AlertDialog
+        open={Boolean(statusChangeTarget)}
+        onOpenChange={(open) => {
+          if (!open && !isChangingStatus) setStatusChangeTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {statusChangeTarget ? STATUS_CHANGE_COPY[statusChangeTarget.newStatus].title : ""}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {statusChangeTarget
+                ? STATUS_CHANGE_COPY[statusChangeTarget.newStatus].description(
+                    statusChangeTarget.user.display_name ??
+                      statusChangeTarget.user.full_name ??
+                      statusChangeTarget.user.email ??
+                      "this user",
+                  )
+                : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isChangingStatus}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleStatusChangeConfirm();
+              }}
+              disabled={isChangingStatus}
+              className={
+                statusChangeTarget?.newStatus === "suspended" ||
+                statusChangeTarget?.newStatus === "inactive"
+                  ? "bg-amber-600 hover:bg-amber-700 text-white"
+                  : undefined
+              }
+            >
+              {isChangingStatus
+                ? "Updating…"
+                : statusChangeTarget?.newStatus === "active"
+                  ? "Activate"
+                  : statusChangeTarget?.newStatus === "suspended"
+                    ? "Suspend"
+                    : "Deactivate"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete confirmation */}
       <AlertDialog
         open={Boolean(deletingUser)}
         onOpenChange={(open) => {

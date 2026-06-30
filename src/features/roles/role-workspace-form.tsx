@@ -321,7 +321,7 @@ export function RoleWorkspaceForm({ role, mode, authContext }: RoleWorkspaceForm
 
       {/* ── PERMISSIONS ─────────────────────────────────────── */}
       {!isAdding && role && (
-        <ERPRecordSectionPanel id="permissions" activeId={activeSection} title="Permissions">
+        <ERPRecordSectionPanel id="permissions" activeId={activeSection} title="Permissions" lazyMount>
           <RolePermissionsSection
             roleId={role.id}
             isSystemRole={role.is_system_role}
@@ -333,7 +333,7 @@ export function RoleWorkspaceForm({ role, mode, authContext }: RoleWorkspaceForm
 
       {/* ── ASSIGNED USERS ──────────────────────────────────── */}
       {!isAdding && role && (
-        <ERPRecordSectionPanel id="assigned-users" activeId={activeSection} title="Assigned Users">
+        <ERPRecordSectionPanel id="assigned-users" activeId={activeSection} title="Assigned Users" lazyMount>
           <RoleAssignedUsersSection
             roleId={role.id}
             roleName={role.role_name}

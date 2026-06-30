@@ -88,6 +88,13 @@ export function CloneRoleDialog({ sourceRole, open, onOpenChange }: CloneRoleDia
         <span className="text-xs text-muted-foreground ml-auto">→ will create custom role</span>
       </div>
 
+      <div className="col-span-12 flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-800 px-3 py-2 text-xs text-blue-700 dark:text-blue-300">
+        <span>
+          <strong>Permissions will be copied</strong> to the new role.{" "}
+          <strong>User assignments will not be copied</strong> — assign users to the new role separately.
+        </span>
+      </div>
+
       <div className="col-span-6 space-y-1.5">
         <RequiredLabel htmlFor="clone_role_code" required>New Role Code</RequiredLabel>
         <Input

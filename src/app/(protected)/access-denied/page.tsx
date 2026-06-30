@@ -1,4 +1,5 @@
 import { ShieldX, ArrowLeft } from "lucide-react";
+import Link from "next/link";
 
 /**
  * ERP USERS.4 — Access Denied page.
@@ -15,18 +16,22 @@ export default function AccessDeniedPage() {
       <div className="space-y-2 max-w-md">
         <h1 className="text-2xl font-bold tracking-tight">Access Denied</h1>
         <p className="text-muted-foreground text-sm leading-relaxed">
-          You don&apos;t have permission to access this page. If you believe
-          this is a mistake, please contact your system administrator.
+          You don&apos;t have permission to access this page.
+        </p>
+        <p className="text-muted-foreground text-sm">
+          Contact your ERP administrator if you believe this is an error.
         </p>
       </div>
 
-      <a
-        href="/dashboard"
-        className="inline-flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground transition-colors"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to Dashboard
-      </a>
+      <div className="flex flex-col sm:flex-row items-center gap-3">
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to Dashboard
+        </Link>
+      </div>
     </div>
   );
 }

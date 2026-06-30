@@ -1,51 +1,64 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+
 import type { Permission, Role } from "@/types/database";
 import { assignPermissionToRole, removePermissionFromRole } from "@/server/actions/permissions";
 import { toast } from "sonner";
 
+type RolePermission = { role_id: number; permission_id: number };
+
 type PermissionsMatrixProps = {
   permissions: Permission[];
   roles: Role[];
-  rolePermissions: Array<{ role_id: number; permission_id: number }>;
+  rolePermissions: RolePermission[];
   canManage: boolean;
 };
 
 export function PermissionsMatrix({
   permissions,
   roles,
-  rolePermissions,
+  rolePermissions: initialRolePermissions,
   canManage,
 }: PermissionsMatrixProps) {
+  // Optimistic local state for role permissions
+  const [localPermissions, setLocalPermissions] = useState<RolePermission[]>(initialRolePermissions);
   const [loading, setLoading] = useState<string | null>(null);
+
+
 
   // Group permissions by module
   const groupedPermissions = permissions.reduce(
     (acc, perm) => {
-      if (!acc[perm.module_code]) {
-        acc[perm.module_code] = [];
-      }
+      if (!acc[perm.module_code]) acc[perm.module_code] = [];
       acc[perm.module_code].push(perm);
       return acc;
     },
     {} as Record<string, Permission[]>,
   );
 
-  // Check if role has permission
-  const hasPermission = (roleId: number, permissionId: number) => {
-    return rolePermissions.some((rp) => rp.role_id === roleId && rp.permission_id === permissionId);
-  };
+  const hasPermission = useCallback(
+    (roleId: number, permissionId: number) =>
+      localPermissions.some((rp) => rp.role_id === roleId && rp.permission_id === permissionId),
+    [localPermissions],
+  );
 
-  // Toggle permission
   const handleToggle = async (roleId: number, permissionId: number, currentValue: boolean) => {
     if (!canManage) return;
-
     const key = `${roleId}-${permissionId}`;
     setLoading(key);
+
+    // Optimistic update
+    if (currentValue) {
+      setLocalPermissions((prev) =>
+        prev.filter((rp) => !(rp.role_id === roleId && rp.permission_id === permissionId)),
+      );
+    } else {
+      setLocalPermissions((prev) => [...prev, { role_id: roleId, permission_id: permissionId }]);
+    }
 
     try {
       const result = currentValue
@@ -55,8 +68,26 @@ export function PermissionsMatrix({
       if (result.success) {
         toast.success(currentValue ? "Permission removed" : "Permission assigned");
       } else {
+        // Revert on error
+        if (currentValue) {
+          setLocalPermissions((prev) => [...prev, { role_id: roleId, permission_id: permissionId }]);
+        } else {
+          setLocalPermissions((prev) =>
+            prev.filter((rp) => !(rp.role_id === roleId && rp.permission_id === permissionId)),
+          );
+        }
         toast.error(result.error || "Failed to update permission");
       }
+    } catch {
+      // Revert on exception
+      if (currentValue) {
+        setLocalPermissions((prev) => [...prev, { role_id: roleId, permission_id: permissionId }]);
+      } else {
+        setLocalPermissions((prev) =>
+          prev.filter((rp) => !(rp.role_id === roleId && rp.permission_id === permissionId)),
+        );
+      }
+      toast.error("An unexpected error occurred");
     } finally {
       setLoading(null);
     }
@@ -64,6 +95,8 @@ export function PermissionsMatrix({
 
   return (
     <div className="space-y-6">
+
+
       {Object.entries(groupedPermissions).map(([module, perms]) => (
         <Card key={module} className="p-6">
           <div className="mb-4">
@@ -108,6 +141,7 @@ export function PermissionsMatrix({
                             checked={checked}
                             disabled={!canManage || isLoading}
                             onCheckedChange={() => handleToggle(role.id, perm.id, checked)}
+                            aria-label={`${checked ? "Remove" : "Assign"} ${perm.permission_name} for ${role.role_name}`}
                           />
                         </td>
                       );

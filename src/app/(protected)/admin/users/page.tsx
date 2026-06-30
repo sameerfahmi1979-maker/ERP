@@ -19,6 +19,8 @@ type SearchParams = Promise<{
   company?: string;
   branch?: string;
   role?: string;
+  mcp?: string;
+  no_role?: string;
 }>;
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
@@ -63,6 +65,8 @@ export default async function AdminUsersPage({
   const companyId = sp.company ? parsePositiveInt(sp.company, 0) : undefined;
   const branchId = sp.branch ? parsePositiveInt(sp.branch, 0) : undefined;
   const roleId = sp.role ? parsePositiveInt(sp.role, 0) : undefined;
+  const mustChangePassword = sp.mcp === "1" ? true : undefined;
+  const noRoleFilter = sp.no_role === "1";
 
   const [usersResult, roles, organizations, branches] = await Promise.all([
     listUsersPaginated({
@@ -73,6 +77,7 @@ export default async function AdminUsersPage({
       ownerCompanyId: companyId || undefined,
       branchId: branchId || undefined,
       roleId: roleId || undefined,
+      mustChangePassword,
     }),
     listRoles(),
     listOrganizations(),
@@ -115,6 +120,8 @@ export default async function AdminUsersPage({
             companyFilter={sp.company ?? ""}
             branchFilter={sp.branch ?? ""}
             roleFilter={sp.role ?? ""}
+            mcpFilter={sp.mcp ?? ""}
+            noRoleFilter={noRoleFilter}
             roles={roles}
             companies={organizations}
             branches={branches}

@@ -20,7 +20,7 @@ import {
   Banknote, CreditCard, Percent, Ruler, Repeat,
   KeyRound, LockKeyhole, Hash, Mail, Send,
   Bot, Sparkles, ScanSearch, CircleGauge, AlertTriangle, CopyCheck,
-  ListChecks,
+  ListChecks, Shield, Lock,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -294,11 +294,17 @@ const navSections: NavSection[] = [
     textColor: "text-rose-700 dark:text-rose-400",
     iconColor: "text-rose-400/70 dark:text-rose-400/60",
     children: [
-      { label: "Users",                icon: Users,          path: "/admin/users",                            requiredPermission: "users.view" },
+      {
+        kind: "subsection", label: "Security & Access", icon: Shield,
+        items: [
+          { label: "Users",       icon: UsersRound,    path: "/admin/users",        requiredPermission: "users.view" },
+          { label: "Roles",       icon: Shield,        path: "/admin/roles",        requiredAnyPermissions: ["roles.view", "roles.manage"] },
+          { label: "Permissions", icon: Lock,          path: "/admin/permissions",  requiredPermission: "permissions.view" },
+          { label: "Activity Log",icon: ClipboardList, path: "/admin/audit",        requiredPermission: "audit.view" },
+        ],
+      },
       { label: "Organizations",        icon: Building2,      path: "/admin/organizations",                    requiredPermission: "organizations.view" },
       { label: "Branches",             icon: Building,       path: "/admin/branches",                         requiredPermission: "branches.view" },
-      { label: "Roles",                icon: KeyRound,       path: "/admin/roles",                            requiredAnyPermissions: ["roles.view", "roles.manage"] },
-      { label: "Permissions",          icon: LockKeyhole,    path: "/admin/permissions",                      requiredPermission: "permissions.view" },
       { label: "Numbering Rules",      icon: Hash,           path: "/admin/settings/numbering",               requiredAnyPermissions: ["numbering.rules.view", "numbering.rules.manage"] },
       { label: "Email Settings",       icon: Mail,           path: "/admin/settings/email",                   requiredAnyPermissions: ["settings.email.view", "settings.email.manage"] },
       { label: "Notifications",        icon: Bell,           path: "/admin/notifications",                    requiredAnyPermissions: ["notifications.manage", "notifications.admin"] },
@@ -309,7 +315,6 @@ const navSections: NavSection[] = [
       { label: "Lookup Categories",    icon: Tags,           path: "/admin/master-data/lookups/categories",   requiredAnyPermissions: ["master_data.lookups.view", "master_data.lookups.manage"] },
       { label: "Lookup Values",        icon: Database,       path: "/admin/master-data/lookups/values",       requiredAnyPermissions: ["master_data.lookups.view", "master_data.lookups.manage"] },
       { label: "Locked System Values", icon: LockKeyhole,    path: "/admin/master-data/lookups/system",       requiredAnyPermissions: ["master_data.lookups.view", "master_data.lookups.manage"] },
-      { label: "Audit Logs",           icon: ClipboardCheck, path: "/admin/audit",                            requiredPermission: "audit.view" },
       {
         kind: "subsection", label: "AI", icon: Bot,
         items: [

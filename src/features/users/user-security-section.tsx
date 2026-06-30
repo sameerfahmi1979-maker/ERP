@@ -285,7 +285,21 @@ export function SecuritySection({ user, authContext }: Props) {
           </div>
           <div className="col-span-6 space-y-1">
             <Label className="text-muted-foreground text-xs">Last Security Action</Label>
-            <div className="text-xs font-mono">{status.last_password_security_action ?? EMPTY}</div>
+            <div className="text-xs">
+              {status.last_password_security_action
+                ? ({
+                    admin_set_temp_password: "Admin Set Temporary Password",
+                    password_reset_sent: "Password Reset Email Sent",
+                    forced_change_set: "Force Change Enabled",
+                    forced_change_cleared: "Force Change Cleared",
+                    password_changed: "Password Changed by User",
+                    email_confirmed_by_admin: "Email Confirmed by Admin",
+                    welcome_email_sent: "Welcome Email Sent",
+                    invite_email_sent: "Invite Email Sent",
+                  }[status.last_password_security_action] ??
+                  status.last_password_security_action.replace(/_/g, " "))
+                : EMPTY}
+            </div>
           </div>
           <div className="col-span-6 space-y-1">
             <Label className="text-muted-foreground text-xs">Last Security Action At</Label>
@@ -296,106 +310,132 @@ export function SecuritySection({ user, authContext }: Props) {
 
       {/* Admin Actions */}
       {canManageSecurity && (
-        <div className="rounded-md border p-4 space-y-3">
+        <div className="rounded-md border p-4 space-y-4">
           <h4 className="text-sm font-medium flex items-center gap-2">
             <ShieldCheck className="h-4 w-4 text-muted-foreground" />
             Admin Security Actions
           </h4>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => openConfirm(
-                "Send Reset Link",
-                `Send a password reset email to ${status.auth_email}? The link will expire in 1 hour.`,
-                async () => { await runAction("Send reset link", () => adminSendPasswordResetEmail(user.id)); }
-              )}
-            >
-              <Mail className="h-3.5 w-3.5 mr-1.5" />
-              Send Reset Link
-            </Button>
 
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setTempPwd((p) => ({ ...p, open: true }))}
-            >
-              <KeyRound className="h-3.5 w-3.5 mr-1.5" />
-              Set Temp Password
-            </Button>
-
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setForceChange((p) => ({ ...p, open: true }))}
-            >
-              <AlertTriangle className="h-3.5 w-3.5 mr-1.5" />
-              Force Password Change
-            </Button>
-
-            {status.must_change_password && (
+          {/* Password Management group */}
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              Password Management
+            </p>
+            <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={() => openConfirm(
-                  "Clear Force Password Change",
-                  "Clear the force-password-change flag for this user?",
-                  async () => { await runAction("Clear force change", () => adminClearForcePasswordChange(user.id)); }
+                  "Send Reset Link",
+                  `Send a password reset email to ${status.auth_email}? The link will expire in 1 hour.`,
+                  async () => { await runAction("Send reset link", () => adminSendPasswordResetEmail(user.id)); }
                 )}
               >
-                <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
-                Clear Force Change
+                <Mail className="h-3.5 w-3.5 mr-1.5" />
+                Send Reset Link
               </Button>
-            )}
 
-            {!status.email_confirmed_at && (
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => openConfirm(
-                  "Mark Email Verified",
-                  "Mark this user's email as verified? This confirms their account without requiring them to click an email link.",
-                  async () => { await runAction("Mark email verified", () => adminConfirmUserEmail(user.id)); }
-                )}
+                onClick={() => setTempPwd((p) => ({ ...p, open: true }))}
               >
-                <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
-                Mark Email Verified
+                <KeyRound className="h-3.5 w-3.5 mr-1.5" />
+                Set Temp Password
               </Button>
-            )}
 
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => openConfirm(
-                "Send Welcome Email",
-                `Send the welcome email to ${status.auth_email}?`,
-                async () => { await runAction("Send welcome email", () => adminSendWelcomeEmail(user.id)); }
-              )}
-            >
-              <Send className="h-3.5 w-3.5 mr-1.5" />
-              Send Welcome Email
-            </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setForceChange((p) => ({ ...p, open: true }))}
+              >
+                <AlertTriangle className="h-3.5 w-3.5 mr-1.5" />
+                Force Password Change
+              </Button>
 
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => openConfirm(
-                "Send Invite Email",
-                `Generate a new invite link and send to ${status.auth_email}? Any previous invite links will be superseded.`,
-                async () => { await runAction("Send invite email", () => adminGenerateAndSendInviteEmail(user.id)); }
+              {status.must_change_password && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openConfirm(
+                    "Clear Force Password Change",
+                    "Clear the force-password-change flag for this user? They will no longer be required to change password on next login.",
+                    async () => { await runAction("Clear force change", () => adminClearForcePasswordChange(user.id)); }
+                  )}
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
+                  Clear Force Change
+                </Button>
               )}
-            >
-              <Mail className="h-3.5 w-3.5 mr-1.5" />
-              Send Invite Email
-            </Button>
+            </div>
           </div>
+
+          {/* Email & Onboarding group */}
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              Email &amp; Onboarding
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => openConfirm(
+                  "Send Welcome Email with Credentials",
+                  `This will generate a new temporary password, set it on the account, and email the login URL, username, and temporary password to ${status.auth_email}.\n\nThe user will be required to change their password on first login.\n\nProceed?`,
+                  async () => { await runAction("Send welcome email", () => adminSendWelcomeEmail(user.id)); }
+                )}
+              >
+                <Send className="h-3.5 w-3.5 mr-1.5" />
+                Send Welcome Email
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => openConfirm(
+                  "Send Invite Email",
+                  `Generate a new invite link and send to ${status.auth_email}? Any previous invite links will be superseded.`,
+                  async () => { await runAction("Send invite email", () => adminGenerateAndSendInviteEmail(user.id)); }
+                )}
+              >
+                <Mail className="h-3.5 w-3.5 mr-1.5" />
+                Send Invite Email
+              </Button>
+
+              {!status.email_confirmed_at && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openConfirm(
+                    "Mark Email Verified",
+                    "Mark this user's email as verified? This confirms their account without requiring them to click an email link.",
+                    async () => { await runAction("Mark email verified", () => adminConfirmUserEmail(user.id)); }
+                  )}
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
+                  Mark Email Verified
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View-only locked message */}
+      {!canManageSecurity && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground border rounded-md px-3 py-2.5 bg-muted/20">
+          <KeyRound className="h-4 w-4 shrink-0" />
+          <span>
+            Security actions require the{" "}
+            <code className="font-mono text-xs">users.security.manage</code> permission.
+          </span>
         </div>
       )}
 

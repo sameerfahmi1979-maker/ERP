@@ -796,19 +796,49 @@ export async function adminConfirmUserEmail(
 }
 
 /**
- * Admin: send a welcome email to a user (temp-password flow).
+ * Admin: send a welcome email to a user.
+ * USERS.6B — Generates a temporary password, sets it in Auth, marks must_change_password=true,
+ * and includes login URL, username, and the temporary password in the email body.
+ * The generated password is passed to the template renderer at send time and never stored.
  */
 export async function adminSendWelcomeEmail(
   userProfileId: number,
 ): Promise<ActionResult> {
   try {
-    await assertCanManageUserSecurity();
+    const ctx = await assertCanManageUserSecurity();
     const target = await getTargetUserSecurityContext(userProfileId);
     if (!target?.email) return { success: false, error: "Target user or email not found" };
 
+    // Generate a temporary password
+    const temporaryPassword = generateSecurePassword();
+    const admin = createAdminClient();
+
+    // Set the temporary password in Supabase Auth
+    const { error: pwError } = await admin.auth.admin.updateUserById(
+      target.auth_user_id,
+      { password: temporaryPassword },
+    );
+    if (pwError) {
+      return { success: false, error: `Failed to set temporary password: ${pwError.message}` };
+    }
+
+    // Mark must_change_password so the user is forced to change on first login
+    const now = new Date().toISOString();
+    await updateSecurityFields(userProfileId, {
+      must_change_password: true,
+      must_change_password_reason: null,
+      password_set_by_admin_at: now,
+      last_password_security_action: "welcome_email_sent",
+      last_password_security_action_at: now,
+      last_password_security_action_by: ctx.profile!.id,
+    });
+
+    // Build template variables — temporary_password is render-time only, never persisted
     const variables: Record<string, string> = {
       display_name: target.display_name,
       login_url: `${SITE_URL}/login`,
+      username: target.email,
+      temporary_password: temporaryPassword,
       company_name: COMPANY_NAME,
       support_email: SUPPORT_EMAIL,
     };
@@ -818,6 +848,7 @@ export async function adminSendWelcomeEmail(
       templateCode: "USER_WELCOME_INTERNAL",
       variables,
       sourceEntityId: userProfileId,
+      priority: "high",
     });
 
     await logAudit({
@@ -829,6 +860,8 @@ export async function adminSendWelcomeEmail(
       new_values: sanitizeSecurityAuditPayload({
         template_code: "USER_WELCOME_INTERNAL",
         email_queued: emailResult.queued,
+        temp_password_included: true,
+        must_change_password: true,
         success: true,
       }),
     });

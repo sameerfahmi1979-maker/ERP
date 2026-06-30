@@ -12,7 +12,7 @@ import type { UserWithRoles, OwnerCompany, Branch, Role, UserRoleAssignment } fr
 import { createUser, adminUpdateUserProfile, removeRoleFromUser } from "@/server/actions/users";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { useFormDirty } from "@/hooks/use-form-dirty";
-import { Key, User, Building2, Shield, ShieldAlert, Info, Lock, Clock } from "lucide-react";
+import { Key, User, Building2, Shield, ShieldAlert, Info, Lock, Clock, LayoutDashboard } from "lucide-react";
 import type { AuthContext } from "@/lib/rbac/check";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
@@ -33,8 +33,10 @@ import {
 import { AssignRoleDialog } from "./assign-role-dialog";
 import { SecuritySection } from "./user-security-section";
 import { UserSecurityHistorySection } from "./user-security-history-section";
+import { UserEffectiveAccessSection } from "./user-effective-access-section";
 import { formatRoleScopeLabel } from "@/lib/users/role-scope";
 import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 type UserWorkspaceFormProps = {
   user?: UserWithRoles | null;
@@ -52,6 +54,22 @@ function filterAssignableRoles(roles: Role[]): Role[] {
   return roles.filter((r) => r.is_active && r.is_assignable !== false);
 }
 
+function StatusChip({ status }: { status: string | null | undefined }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
+        status === "active" && "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400",
+        status === "inactive" && "bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-400",
+        status === "suspended" && "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-400",
+        !status && "bg-muted text-muted-foreground",
+      )}
+    >
+      {status ? status.charAt(0).toUpperCase() + status.slice(1) : "Unknown"}
+    </span>
+  );
+}
+
 export function UserWorkspaceForm({
   user,
   mode,
@@ -64,12 +82,13 @@ export function UserWorkspaceForm({
   const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeSection, setActiveSection] = useState(mode === "add" ? "auth" : "profile");
+  const [activeSection, setActiveSection] = useState(mode === "add" ? "auth" : "overview");
   const [sendInvite, setSendInvite] = useState(true);
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(user?.owner_company_id ?? null);
   const [assignRoleOpen, setAssignRoleOpen] = useState(false);
   const [roleToRemove, setRoleToRemove] = useState<UserRoleAssignment | null>(null);
   const [isRemovingRole, setIsRemovingRole] = useState(false);
+  const [showTechDetails, setShowTechDetails] = useState(false);
 
   const isEditing = mode === "edit";
   const isViewing = mode === "view";
@@ -97,10 +116,12 @@ export function UserWorkspaceForm({
         { id: "role", label: "Initial Role", icon: Shield },
       ]
     : [
+        { id: "overview", label: "Overview", icon: LayoutDashboard },
         { id: "profile", label: "Profile Details", icon: User },
         { id: "assignment", label: "Organization", icon: Building2 },
         { id: "roles", label: "Roles", icon: Shield },
         { id: "security", label: "Security", icon: Lock },
+        { id: "access", label: "Effective Access", icon: Shield },
         { id: "history", label: "Security History", icon: Clock },
         { id: "audit", label: "Audit Info", icon: Info },
       ];
@@ -228,6 +249,94 @@ export function UserWorkspaceForm({
         isChildDialogOpen={assignRoleOpen}
       >
         <form id={FORM_ID} onSubmit={(e) => { e.preventDefault(); handleSaveAndClose(); }} onInput={syncDraft} onChange={syncDraft}>
+
+          {/* ── OVERVIEW (edit/view only) ─────────────────────────────── */}
+          {mode !== "add" && user && (
+            <ERPRecordSectionPanel id="overview" activeId={activeSection} title="User Overview">
+              <div className="grid grid-cols-12 gap-4">
+                {/* Status + must_change_password banners */}
+                {user.must_change_password && (
+                  <div className="col-span-12 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 px-3 py-2.5 text-sm text-amber-800 dark:text-amber-300">
+                    <ShieldAlert className="h-4 w-4 shrink-0 text-amber-600" />
+                    <span>
+                      <strong>Password change required.</strong> This user must change their
+                      password on next login.
+                      {user.must_change_password_reason && (
+                        <span className="ml-1 text-amber-700">
+                          Reason: {user.must_change_password_reason}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                )}
+                {(user.status === "suspended" || user.status === "inactive") && (
+                  <div className={cn(
+                    "col-span-12 flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm",
+                    user.status === "suspended"
+                      ? "border-amber-200 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300"
+                      : "border-border bg-muted/30 text-muted-foreground",
+                  )}>
+                    <ShieldAlert className="h-4 w-4 shrink-0" />
+                    <span>
+                      This account is{" "}
+                      <strong>{user.status === "suspended" ? "suspended" : "inactive"}</strong> and
+                      cannot access the ERP.
+                    </span>
+                  </div>
+                )}
+
+                {/* Core info grid */}
+                <div className="col-span-6 space-y-1">
+                  <Label className="text-muted-foreground text-xs">Status</Label>
+                  <div><StatusChip status={user.status} /></div>
+                </div>
+                <div className="col-span-6 space-y-1">
+                  <Label className="text-muted-foreground text-xs">User Code</Label>
+                  <div className="text-sm font-mono">{user.user_code ?? EMPTY}</div>
+                </div>
+                <div className="col-span-6 space-y-1">
+                  <Label className="text-muted-foreground text-xs">Full Name</Label>
+                  <div className="text-sm">{user.full_name ?? EMPTY}</div>
+                </div>
+                <div className="col-span-6 space-y-1">
+                  <Label className="text-muted-foreground text-xs">Display Name</Label>
+                  <div className="text-sm">{user.display_name ?? EMPTY}</div>
+                </div>
+                <div className="col-span-6 space-y-1">
+                  <Label className="text-muted-foreground text-xs">Email</Label>
+                  <div className="text-sm text-muted-foreground">{user.email ?? EMPTY}</div>
+                </div>
+                <div className="col-span-6 space-y-1">
+                  <Label className="text-muted-foreground text-xs">Job Title</Label>
+                  <div className="text-sm">{user.job_title ?? EMPTY}</div>
+                </div>
+                <div className="col-span-6 space-y-1">
+                  <Label className="text-muted-foreground text-xs">Organization</Label>
+                  <div className="text-sm">{user.owner_company?.legal_name_en ?? EMPTY}</div>
+                </div>
+                <div className="col-span-6 space-y-1">
+                  <Label className="text-muted-foreground text-xs">Branch</Label>
+                  <div className="text-sm">{user.branch?.branch_name_en ?? EMPTY}</div>
+                </div>
+                <div className="col-span-6 space-y-1">
+                  <Label className="text-muted-foreground text-xs">Roles Assigned</Label>
+                  <div className="text-sm">
+                    {user.roles && user.roles.length > 0 ? (
+                      <span>{user.roles.length} role{user.roles.length !== 1 ? "s" : ""}</span>
+                    ) : (
+                      <span className="text-amber-600 text-xs font-medium">No role assigned</span>
+                    )}
+                  </div>
+                </div>
+                <div className="col-span-6 space-y-1">
+                  <Label className="text-muted-foreground text-xs">Member Since</Label>
+                  <div className="text-sm">{format(new Date(user.created_at), "d MMM yyyy")}</div>
+                </div>
+              </div>
+            </ERPRecordSectionPanel>
+          )}
+
+          {/* ── AUTHENTICATION (add mode only) ──────────────────────── */}
           {mode === "add" && (
             <ERPRecordSectionPanel id="auth" activeId={activeSection} title="Identity & Authentication">
               <div className="grid grid-cols-12 gap-4">
@@ -253,6 +362,7 @@ export function UserWorkspaceForm({
             </ERPRecordSectionPanel>
           )}
 
+          {/* ── PROFILE DETAILS ──────────────────────────────────────── */}
           <ERPRecordSectionPanel id="profile" activeId={activeSection} title="Personal Profile">
             <div className="grid grid-cols-12 gap-4">
               <div className="col-span-6 space-y-1.5">
@@ -304,6 +414,7 @@ export function UserWorkspaceForm({
             </div>
           </ERPRecordSectionPanel>
 
+          {/* ── ORGANIZATION ─────────────────────────────────────────── */}
           <ERPRecordSectionPanel id="assignment" activeId={activeSection} title="Organization & Branch Linkage">
             <div className="grid grid-cols-12 gap-4">
               <div className="col-span-6 space-y-1.5">
@@ -340,6 +451,7 @@ export function UserWorkspaceForm({
             </div>
           </ERPRecordSectionPanel>
 
+          {/* ── INITIAL ROLE (add mode only) ─────────────────────────── */}
           {mode === "add" && (
             <ERPRecordSectionPanel id="role" activeId={activeSection} title="Initial Security Role">
               <div className="grid grid-cols-12 gap-4">
@@ -380,6 +492,7 @@ export function UserWorkspaceForm({
             </ERPRecordSectionPanel>
           )}
 
+          {/* ── ROLES (edit/view) ────────────────────────────────────── */}
           {mode !== "add" && (
             <ERPRecordSectionPanel id="roles" activeId={activeSection} title="Assigned Roles">
               <div className="space-y-3">
@@ -400,7 +513,14 @@ export function UserWorkspaceForm({
                           </p>
                         </div>
                         {!isViewing && (
-                          <Button type="button" variant="outline" size="sm" className="h-7 text-xs shrink-0" onClick={() => setRoleToRemove(r)}>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs shrink-0"
+                            onClick={() => setRoleToRemove(r)}
+                            aria-label={`Remove role ${r.role_name}`}
+                          >
                             Remove
                           </Button>
                         )}
@@ -411,14 +531,21 @@ export function UserWorkspaceForm({
                   <p className="text-sm text-muted-foreground">No roles assigned.</p>
                 )}
                 {!isViewing && user && (
-                  <button type="button" onClick={() => setAssignRoleOpen(true)} className="text-xs text-indigo-600 hover:underline font-medium">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAssignRoleOpen(true)}
+                    className="gap-1"
+                  >
                     + Assign Role
-                  </button>
+                  </Button>
                 )}
               </div>
             </ERPRecordSectionPanel>
           )}
 
+          {/* ── SECURITY ─────────────────────────────────────────────── */}
           {mode !== "add" && (
             <ERPRecordSectionPanel id="security" activeId={activeSection} title="Security" lazyMount>
               {user ? (
@@ -429,6 +556,18 @@ export function UserWorkspaceForm({
             </ERPRecordSectionPanel>
           )}
 
+          {/* ── EFFECTIVE ACCESS ─────────────────────────────────────── */}
+          {mode !== "add" && (
+            <ERPRecordSectionPanel id="access" activeId={activeSection} title="Effective Access" lazyMount>
+              {user ? (
+                <UserEffectiveAccessSection userProfileId={user.id} authContext={authContext} />
+              ) : (
+                <p className="text-sm text-muted-foreground">Effective access unavailable.</p>
+              )}
+            </ERPRecordSectionPanel>
+          )}
+
+          {/* ── SECURITY HISTORY ─────────────────────────────────────── */}
           {mode !== "add" && (
             <ERPRecordSectionPanel id="history" activeId={activeSection} title="Security History" lazyMount>
               {user ? (
@@ -439,6 +578,7 @@ export function UserWorkspaceForm({
             </ERPRecordSectionPanel>
           )}
 
+          {/* ── AUDIT INFO ───────────────────────────────────────────── */}
           {mode !== "add" && (
             <ERPRecordSectionPanel id="audit" activeId={activeSection} title="Audit Information" lazyMount>
               {user ? (
@@ -458,16 +598,27 @@ export function UserWorkspaceForm({
                     </div>
                   </div>
                   <div className="col-span-6 space-y-1">
-                    <Label className="text-muted-foreground text-xs">Auth User ID</Label>
-                    <div className="text-xs font-mono text-muted-foreground truncate">{user.auth_user_id}</div>
-                  </div>
-                  <div className="col-span-6 space-y-1">
                     <Label className="text-muted-foreground text-xs">Preferred Language</Label>
                     <div className="text-sm">{user.preferred_language ?? "en"}</div>
                   </div>
                   <div className="col-span-6 space-y-1">
                     <Label className="text-muted-foreground text-xs">Timezone</Label>
                     <div className="text-sm">{user.timezone ?? "UTC"}</div>
+                  </div>
+                  <div className="col-span-12">
+                    <button
+                      type="button"
+                      onClick={() => setShowTechDetails((v) => !v)}
+                      className="text-xs text-muted-foreground hover:text-foreground underline"
+                    >
+                      {showTechDetails ? "Hide" : "Show"} Technical Details
+                    </button>
+                    {showTechDetails && (
+                      <div className="mt-2 space-y-1">
+                        <Label className="text-muted-foreground text-xs">Auth User ID</Label>
+                        <div className="text-xs font-mono text-muted-foreground truncate">{user.auth_user_id}</div>
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (
@@ -494,8 +645,11 @@ export function UserWorkspaceForm({
           <AlertDialogHeader>
             <AlertDialogTitle>Remove Role</AlertDialogTitle>
             <AlertDialogDescription>
-              Remove role <span className="font-semibold text-foreground">{roleToRemove?.role_name}</span> from
-              this user? This action is audited and cannot be undone without re-assigning the role.
+              Remove role{" "}
+              <span className="font-semibold text-foreground">
+                {roleToRemove?.role_name} ({roleToRemove?.role_code})
+              </span>{" "}
+              from this user? This action is audited and cannot be undone without re-assigning the role.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -503,6 +657,7 @@ export function UserWorkspaceForm({
             <AlertDialogAction
               onClick={(e) => { e.preventDefault(); handleRemoveRoleConfirm(); }}
               disabled={isRemovingRole}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {isRemovingRole ? "Removing..." : "Remove Role"}
             </AlertDialogAction>

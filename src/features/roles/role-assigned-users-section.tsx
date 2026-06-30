@@ -194,6 +194,7 @@ export function RoleAssignedUsersSection({ roleId, roleName, canManageUsers }: P
                         className="h-7 w-7 p-0"
                         onClick={() => handleOpenUser(u)}
                         title="Open user record"
+                        aria-label="Open user record"
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
                       </Button>
@@ -204,6 +205,7 @@ export function RoleAssignedUsersSection({ roleId, roleName, canManageUsers }: P
                           className="h-7 w-7 p-0 text-destructive hover:text-destructive"
                           onClick={() => setDeassignTarget(u)}
                           title="Remove role from user"
+                          aria-label="Remove role from user"
                         >
                           <UserMinus className="h-3.5 w-3.5" />
                         </Button>

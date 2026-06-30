@@ -266,10 +266,20 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
 
       {/* Drafts table */}
       <div className="rounded-xl border bg-card overflow-hidden">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm table-fixed">
+          <colgroup>
+            <col className="w-8" />
+            <col className="w-8" />
+            <col className="w-[200px]" />
+            <col className="w-[110px]" />
+            <col className="w-[130px]" />
+            <col className="w-[100px]" />
+            <col className="w-[120px]" />
+            <col className="w-[160px]" />
+          </colgroup>
           <thead className="bg-muted/40 text-xs text-muted-foreground">
             <tr>
-              <th className="px-3 py-2 w-8">
+              <th className="px-3 py-2">
                 <Checkbox
                   checked={allDiscardableSelected}
                   onCheckedChange={(checked) => toggleAll(checked === true)}
@@ -277,7 +287,7 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
                   aria-label="Select all discardable drafts"
                 />
               </th>
-              <th className="text-left font-medium px-3 py-2 w-8">#</th>
+              <th className="text-left font-medium px-3 py-2">#</th>
               <th className="text-left font-medium px-3 py-2">File / AI Title</th>
               <th className="text-left font-medium px-3 py-2">Doc No.</th>
               <th className="text-left font-medium px-3 py-2">Type</th>
@@ -311,22 +321,26 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
                     />
                   </td>
                   <td className="px-3 py-2 text-xs text-muted-foreground">{i + 1}</td>
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-2 min-w-0">
+                  <td className="px-3 py-2 min-w-0">
+                    <div className="flex items-center gap-1.5 min-w-0">
                       <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                      <div className="min-w-0">
-                        <p className="font-medium truncate">{d.aiTitle ?? d.originalFilename}</p>
-                        <p className="text-[11px] text-muted-foreground truncate">{d.originalFilename}</p>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium truncate text-xs" title={d.aiTitle ?? d.originalFilename}>
+                          {d.aiTitle ?? d.originalFilename}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground truncate" title={d.originalFilename}>
+                          {d.originalFilename}
+                        </p>
                       </div>
                       {d.isDuplicate && (
                         <Badge variant="outline" className="text-[9px] border-orange-300 text-orange-700 bg-orange-50 shrink-0">
-                          Duplicate
+                          Dup
                         </Badge>
                       )}
                     </div>
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs">{d.documentNo ?? "—"}</td>
-                  <td className="px-3 py-2 text-xs">{d.documentTypeName ?? "—"}</td>
+                  <td className="px-3 py-2 font-mono text-xs truncate" title={d.documentNo ?? ""}>{d.documentNo ?? "—"}</td>
+                  <td className="px-3 py-2 text-xs truncate" title={d.documentTypeName ?? ""}>{d.documentTypeName ?? "—"}</td>
                   <td className="px-3 py-2">
                     {d.confidenceLabel ? (
                       <DmsAiConfidenceBadge label={d.confidenceLabel} score={null} />
@@ -346,23 +360,24 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
                     )}
                   </td>
                   <td className="px-3 py-2">
-                    <div className="flex items-center justify-end gap-1.5">
+                    <div className="flex items-center justify-end gap-1">
                       {isPendingReview && (
                         <Button
                           size="sm"
-                          className="h-7 bg-green-600 hover:bg-green-700 text-white"
+                          className="h-7 px-2 bg-green-600 hover:bg-green-700 text-white text-xs"
                           onClick={() => handleReview(d.sessionCode)}
                           disabled={isPending}
+                          title="Review & Approve this draft"
                         >
-                          <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
-                          Review &amp; Approve
+                          <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                          Review
                         </Button>
                       )}
                       {(isPendingReview || isFailed) && (
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-7"
+                          className="h-7 w-7 p-0"
                           onClick={() => handleRerun(d.sessionId)}
                           disabled={isPending}
                           title="Re-run AI for this draft"
@@ -374,7 +389,7 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="h-7 text-destructive hover:text-destructive"
+                          className="h-7 w-7 p-0 text-destructive hover:text-destructive"
                           onClick={() => handleDiscard(d.sessionId)}
                           disabled={isPending}
                           title="Discard this draft"
@@ -386,7 +401,7 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-7"
+                          className="h-7 px-2 text-xs"
                           onClick={() => router.push(`/dms/documents/record/${d.documentId}`)}
                         >
                           Open

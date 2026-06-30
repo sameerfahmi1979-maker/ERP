@@ -1,19 +1,36 @@
-feat(users.5): Security Hardening and Audit Enhancement
+feat(users.6, users.6a, users.6b): Permission Command Center, UI/UX Polish, Welcome Email with Credentials
 
-Centralized sanitizeSecurityAuditPayload/sanitizeServerActionError in src/lib/audit/sanitizers.ts
-Added server-only guards to rbac/check, users, roles, permissions, audit action files
-/dev/auth-debug: admin-only guard (isGlobalAdmin), notFound() for non-admin, DEBUG_ROUTE_ACCESSED/UNAUTHORIZED_ACCESS_ATTEMPT audit events
-assertAccountActive() added to all mutating actions in users.ts, roles.ts, permissions.ts
-Zod validation added to permissions.ts (rolePermissionSchema for assign/remove)
-Standardized audit action taxonomy: USER_CREATED/UPDATED/STATUS_CHANGED/DELETED, USER_ROLE_ASSIGNED/REMOVED, USER_SECURITY_*/USER_PASSWORD_CHANGED, ROLE_CREATED/UPDATED/STATUS_CHANGED/DELETED/CLONED/PERMISSION_ASSIGNED/REMOVED, EFFECTIVE_ACCESS_VIEWED, UNAUTHORIZED_ACCESS_ATTEMPT, LAST_ADMIN_GUARD_TRIGGERED, DEBUG_ROUTE_ACCESSED
-LAST_ADMIN_GUARD_TRIGGERED events in users.ts and roles.ts (last system_admin protection)
-UNAUTHORIZED_ACCESS_ATTEMPT events in users.ts, roles.ts, permissions.ts, auth-debug page
-erp_email_queue RLS: dropped broad ALL policy, added scoped SELECT/INSERT/UPDATE policies
-Migration: 20260629100000_erp_users_5_security_hardening_email_queue_rls.sql (applied)
-New: src/server/actions/users/effective-access.ts with getMyEffectiveAccess/getUserEffectiveAccess + EFFECTIVE_ACCESS_VIEWED audit
-New: user-security-history-section.tsx (permission-gated, safe payload, Security History tab in user form)
-New: audit-filters-bar.tsx + extended listAuditLogs + listUserSecurityAuditLogs
-/admin/audit: URL search params filtering (module/action/date/actor/search)
-Implementation report + UAT report + SOT updated
+USERS.6 - UI/UX Polish and Admin Workspace:
+- Users list quick-filter chips (All/Active/Suspended/Inactive/Must Change Password/No Role)
+- Status-change confirmation dialogs (activate/suspend/deactivate)
+- Assign Role dialog: branch-by-company filter fix, reset on open, ERPCombobox, high-privilege warning
+- User record Overview section with status/org/member-since and warning banners
+- Effective Access section (new user-effective-access-section.tsx)
+- Security History: humanized labels, skeleton, error+retry, expand/collapse payload, load more
+- Account Security: grouped Password Management / Email & Onboarding sections
+- Roles list: search + quick filters + status confirmation dialog
+- Role record: lazyMount for Permissions and Assigned Users sections
+- Clone Role info banner (permissions copied, users not)
+- Permissions matrix: optimistic checkbox + revert on error + system-role warning
+- Audit page: payload viewer, severity-tinted badges, copy audit ID
+- /access-denied, /no-access, /dev/auth-debug polish
+- Sidebar: Security & Access subsection (Users/Roles/Permissions/Activity Log)
+- Full aria-label accessibility pass
 
-TSC: 0 errors, build: exit 0
+USERS.6A - Permission Command Center:
+- Replaced spreadsheet matrix with two-panel Role Permission Center
+- Left: Permission Explorer (search, module accordion, localStorage expansion state)
+- Right: Role Assignment (permission summary, role filter chips, status badges)
+- Draft -> Review -> Save workflow (no immediate DB writes on toggle)
+- Pending changes bar with grant/revoke counts
+- Discard Changes confirmation dialog
+- Review & Save dialog with grouped summary and system-role warnings
+- saveRolePermissionDraftChanges batch server action with ROLE_PERMISSION_BATCH_UPDATED audit
+- Partial failure handling (failed items stay pending)
+
+USERS.6B - Welcome Email with Credentials:
+- adminSendWelcomeEmail now generates a temporary password, sets it in Auth, marks must_change_password=true, and includes login URL + username + temporary password in the email
+- Updated USER_WELCOME_INTERNAL email template with branded credentials block (HTML + text)
+- Confirm dialog updated to warn admin that password will be reset
+
+No DB migration. No RLS change. No security regression.

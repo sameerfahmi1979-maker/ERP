@@ -1,34 +1,21 @@
-feat(dms): AI-validated version linking, unlink version, RLS parity fix, documents table layout
+fix(dms): scope renewal replacement search by owning entity, relabel superseded status, trim documents table columns
 
-Version Link redesign (replaces direct "Upload New Version"):
-- attachUploadToExistingDocument now requires the upload session to have
-  completed AI review (intake_status=review_pending) before it can become
-  a document version, and blocks on AI-detected document-type mismatch or
-  an already-expired suggested expiry date.
-- New getEligibleUploadSessionsForVersionLink action lists AI-reviewed,
-  unattached Inbox sessions with eligibility/ineligibility reasons.
-- New DmsLinkVersionDialog: pick an AI-reviewed Inbox file instead of
-  uploading directly; ineligible sessions shown disabled with a reason.
-- Inbox "Attach to existing document" actions (table + banner) disabled
-  until AI Fill has completed, with a guiding tooltip.
-- Deleted the old direct-upload DmsUploadNewVersionDialog.
+Renewal replacement bugfix:
+- searchDmsDocumentsForRenewalReplacement previously scoped candidates
+  by document_type_id only, so e.g. every employee's Emirates ID/Passport
+  showed up as a valid replacement for one specific employee's renewal.
+- Now resolves the original document's owner via dms_document_links
+  (employee, party, vehicle, etc.) and restricts candidates to documents
+  linked to that same entity. Falls back to type-only scoping for
+  documents with no entity link (generic/company-wide documents).
+- DmsCompleteRenewalDialog now shows which entity the search is scoped
+  to and reflects it in the empty-state message.
 
-Unlink Version:
-- New unlinkDmsDocumentVersion server action (dms.documents.edit/admin):
-  soft-deletes the linked file, hard-deletes the version row, and
-  promotes the next-highest version to current (or clears current_version_id
-  if none remain). Blocked if referenced by an active renewal request.
-- Unlink button + confirmation added to the Versions section.
+Status label:
+- "Superseded" document status now displays as "Renewed" everywhere
+  (badge, filter dropdown, expiry banner, complete-renewal dialog/toast).
+  Underlying DB value/status code is unchanged.
 
-RLS parity fix (root cause of silent Set Current / new-version-demote / Unlink failures):
-- dms_document_versions and dms_document_files were missing UPDATE/DELETE
-  RLS policies since DMS.2, causing all version mutations to silently no-op.
-  Added dms_versions_update/delete and dms_files_update/delete policies.
-
-Documents table layout:
-- Fixed-width, resizable columns (drag header edge, widths persist per
-  browser via localStorage) using new shared useResizableColumns hook and
-  an optional width/onResizeStart on SortColHeader (backward compatible).
-- Removed Conf. and Created columns to declutter the list.
-
-Audit labels: file_uploaded, version_uploaded, version_unlinked, current_version_changed.
+Documents table:
+- Removed the Conf. and Created columns to declutter the list; widened
+  remaining resizable columns to use the freed space.

@@ -404,10 +404,17 @@ export type RenewalReplacementCandidate = {
 
 /**
  * DMS RENEWAL.2 — Search for a document to link as the replacement for a
- * renewal completion. Scoped to the same document type as the original
- * document, excludes the original document itself, excludes documents
- * already deleted, and excludes documents already linked as someone else's
- * replacement (prevents double-linking the same new doc to two renewals).
+ * renewal completion. Scoped to the same document type AND the same owning
+ * entity (employee, party, vehicle, etc. via dms_document_links) as the
+ * original document, excludes the original document itself, excludes
+ * documents already deleted, and excludes documents already linked as
+ * someone else's replacement (prevents double-linking the same new doc to
+ * two renewals).
+ *
+ * DMS RENEWAL.2 BUGFIX — previously this only scoped by document_type_id,
+ * so e.g. every employee's Passport Copy showed up as a valid replacement
+ * for one specific employee's renewal. Now it also requires the candidate
+ * document to be linked to the same entity as the original document.
  */
 export async function searchDmsDocumentsForRenewalReplacement(
   documentTypeId: number,
@@ -421,6 +428,38 @@ export async function searchDmsDocumentsForRenewalReplacement(
     if (!canManageRenewals(ctx)) return { success: false, error: "Permission denied" };
 
     if (!documentTypeId) return { success: true, data: [] };
+
+    // Find who/what the original document belongs to (employee, party, vehicle, etc.).
+    const { data: originalLinks } = await supabase
+      .from("dms_document_links")
+      .select("entity_type, entity_id, is_primary")
+      .eq("document_id", excludeDocumentId)
+      .is("deleted_at", null);
+
+    const links = (originalLinks ?? []) as { entity_type: string; entity_id: number; is_primary: boolean }[];
+
+    // If the original document is linked to an entity, restrict candidates to
+    // documents linked to that SAME entity. Documents with no entity link at
+    // all (generic/company-wide documents) fall back to type-only scoping.
+    let scopedDocumentIds: number[] | null = null;
+    if (links.length > 0) {
+      const primary = links.find((l) => l.is_primary) ?? links[0];
+      const { data: entityLinked } = await supabase
+        .from("dms_document_links")
+        .select("document_id")
+        .eq("entity_type", primary.entity_type)
+        .eq("entity_id", primary.entity_id)
+        .is("deleted_at", null);
+
+      scopedDocumentIds = Array.from(
+        new Set(
+          (entityLinked ?? []).map((r) => (r as Record<string, unknown>).document_id as number)
+        )
+      );
+
+      // Nothing else is linked to this entity — no valid candidate can exist.
+      if (scopedDocumentIds.length === 0) return { success: true, data: [] };
+    }
 
     // Documents already claimed as a replacement on a completed renewal must be excluded.
     const { data: alreadyLinked } = await supabase
@@ -443,6 +482,10 @@ export async function searchDmsDocumentsForRenewalReplacement(
       .not("id", "in", `(${Array.from(excludedIds).join(",")})`)
       .order("created_at", { ascending: false })
       .limit(50);
+
+    if (scopedDocumentIds) {
+      q = q.in("id", scopedDocumentIds);
+    }
 
     if (query?.trim()) {
       const term = query.trim();

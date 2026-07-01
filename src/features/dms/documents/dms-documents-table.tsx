@@ -347,7 +347,9 @@ export function DmsDocumentsTable({
           <SelectContent>
             <SelectItem value="all">All Statuses</SelectItem>
             {["draft", "pending_review", "approved", "active", "expired", "archived", "rejected", "superseded"].map((s) => (
-              <SelectItem key={s} value={s}>{s.replace("_", " ").replace(/\b\w/g, (l) => l.toUpperCase())}</SelectItem>
+              <SelectItem key={s} value={s}>
+                {s === "superseded" ? "Renewed" : s.replace("_", " ").replace(/\b\w/g, (l) => l.toUpperCase())}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>

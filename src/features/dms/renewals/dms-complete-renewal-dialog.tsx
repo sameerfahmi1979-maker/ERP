@@ -16,6 +16,7 @@ import {
   searchDmsDocumentsForRenewalReplacement,
   type RenewalReplacementCandidate,
 } from "@/server/actions/dms/renewals";
+import { getDmsDocumentLinks } from "@/server/actions/dms/document-links";
 import {
   invalidateDmsRenewals,
   invalidateDmsExpiry,
@@ -60,6 +61,20 @@ export function DmsCompleteRenewalDialog({
     staleTime: 30_000,
   });
 
+  // Shows who/what the search is scoped to (e.g. "Employee — John Doe"), so it's
+  // clear the replacement list is limited to the same owner as the original doc.
+  const { data: ownerLinks = [] } = useQuery({
+    queryKey: ["dms", "documents", "links", documentId],
+    queryFn: async () => {
+      const result = await getDmsDocumentLinks(documentId);
+      if (!result.success) return [];
+      return result.data ?? [];
+    },
+    enabled: open,
+    staleTime: 30_000,
+  });
+  const scopeOwner = ownerLinks.find((l) => l.is_primary) ?? ownerLinks[0];
+
   const reset = () => {
     setReplacementDocumentId(null);
     setNewExpiryDate("");
@@ -95,7 +110,7 @@ export function DmsCompleteRenewalDialog({
       });
 
       if (result.success) {
-        toast.success("Renewal completed — original document marked as superseded");
+        toast.success("Renewal completed — original document marked as renewed");
         invalidateDmsRenewals(queryClient);
         invalidateDmsExpiry(queryClient);
         invalidateDmsDocumentExpiry(queryClient, documentId);
@@ -134,7 +149,7 @@ export function DmsCompleteRenewalDialog({
           <p className="text-xs text-muted-foreground">Completing this renewal will:</p>
           <ul className="text-xs mt-1 space-y-0.5 list-disc list-inside text-muted-foreground">
             <li>Link the replacement document you select below</li>
-            <li>Mark the original document as <span className="font-medium">Superseded</span></li>
+            <li>Mark the original document as <span className="font-medium">Renewed</span></li>
             <li>Update the new expiry date and rebuild its reminder schedule</li>
             <li>Dismiss all pending reminders on the original document</li>
           </ul>
@@ -155,13 +170,17 @@ export function DmsCompleteRenewalDialog({
             allowClear
             emptyText={
               documentTypeId
-                ? "No matching documents found — upload the new document first, then complete this renewal."
+                ? scopeOwner
+                  ? `No matching documents found for ${scopeOwner.entity_type_label} — ${scopeOwner.entity_display_name}. Upload the new document (linked to the same ${scopeOwner.entity_type_label.toLowerCase()}) first, then complete this renewal.`
+                  : "No matching documents found — upload the new document first, then complete this renewal."
                 : "Unknown document type"
             }
             noResultsText="No results found"
           />
           <p className="text-[10px] text-muted-foreground mt-1">
-            Upload the new/renewed file through the normal upload flow first, then pick it here to link it.
+            {scopeOwner
+              ? `Showing only documents linked to ${scopeOwner.entity_type_label} — ${scopeOwner.entity_display_name}. Upload the new/renewed file through the normal upload flow first, then pick it here to link it.`
+              : "Upload the new/renewed file through the normal upload flow first, then pick it here to link it."}
           </p>
         </div>
 

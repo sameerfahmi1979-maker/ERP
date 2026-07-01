@@ -82,16 +82,16 @@ export function DmsDocumentExpirySection({
 
   return (
     <div className="space-y-4">
-      {/* Superseded banner — this document was renewed and replaced by a newer one */}
+      {/* Renewed banner — this document was renewed and replaced by a newer one */}
       {isSuperseded && (
         <div className="flex items-start gap-3 rounded-lg p-3 border text-sm bg-purple-50 border-purple-200 text-purple-700 dark:bg-purple-950/20 dark:border-purple-900 dark:text-purple-400">
           <GitBranchPlus className="h-4 w-4 mt-0.5 shrink-0" />
           <div className="flex-1">
-            <p className="font-medium">This document has been renewed and superseded</p>
+            <p className="font-medium">This document has been renewed</p>
             <p className="text-xs mt-0.5 opacity-80">
               {supersededBy
                 ? "A new document replaces it going forward."
-                : "This document is marked superseded, but the replacement document link is missing."}
+                : "This document is marked as renewed, but the replacement document link is missing."}
             </p>
           </div>
           {supersededBy && (

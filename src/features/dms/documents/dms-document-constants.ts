@@ -25,7 +25,7 @@ export const DMS_DOCUMENT_STATUS_LABELS: Record<DmsDocumentStatus, string> = {
   active: "Active",
   expired: "Expired",
   archived: "Archived",
-  superseded: "Superseded",
+  superseded: "Renewed",
   deleted: "Deleted",
 };
 

@@ -439,6 +439,7 @@ export function DmsAiIntakeReviewForm({
       {/* Dynamic Metadata */}
       <DmsAiIntakeMetadataSection
         documentTypeId={values.documentTypeId}
+        documentTypeName={selectedDocType?.name_en ?? null}
         extractedFieldsJson={aiResult?.extracted_fields_json ?? null}
         fieldConfidenceJson={aiResult?.field_confidence_json ?? null}
         values={values.metadataValues}
@@ -459,6 +460,14 @@ export function DmsAiIntakeReviewForm({
             },
           })
         }
+        onDefinitionsCreated={(typeId) => {
+          // DMS AI META.2 Flow A — offer to re-run AI extraction now that
+          // definitions exist for this type. Uses the same session-based
+          // re-extraction path as a manual document-type change, since no
+          // dms_documents row exists yet during intake review.
+          toast.success("Metadata fields created. Re-running AI extraction for this document…");
+          runMetadataRerun(typeId, "fill_missing_only");
+        }}
       />
     </div>
   );

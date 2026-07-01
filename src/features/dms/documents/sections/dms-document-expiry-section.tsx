@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { format, parseISO, differenceInDays } from "date-fns";
-import { AlertTriangle, CheckCircle2, CalendarX, RefreshCw, Plus } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CalendarX, RefreshCw, Plus, GitBranchPlus, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { getExpiryState, getDaysRemaining } from "../dms-expiry-badge";
@@ -11,6 +11,7 @@ import { DmsReminderScheduleTable } from "@/features/dms/expiry/dms-reminder-sch
 import { DmsStartRenewalDialog } from "@/features/dms/renewals/dms-start-renewal-dialog";
 import { generateDmsExpiryRemindersForDocument, rebuildDmsExpiryReminders } from "@/server/actions/dms/expiry-reminders";
 import { invalidateDmsDocumentExpiry, invalidateDmsRenewals } from "@/lib/query/invalidation";
+import { useWorkspace } from "@/hooks/use-workspace";
 
 interface DmsDocumentExpirySectionProps {
   documentId: number;
@@ -19,6 +20,12 @@ interface DmsDocumentExpirySectionProps {
   issueDate: string | null;
   expiryDate: string | null;
   requiresExpiryTracking: boolean;
+  /** DMS RENEWAL.2 — when false, this document's type is one-time (e.g. Visit Visa); hide renewal actions. */
+  isRenewable?: boolean;
+  /** DMS RENEWAL.2 — current document status; used to detect "superseded" state. */
+  documentStatus?: string | null;
+  /** DMS RENEWAL.2 — the replacement document this one was renewed into, if superseded. */
+  supersededBy?: { id: number; document_no: string; title: string } | null;
   canManage?: boolean;
 }
 
@@ -29,14 +36,19 @@ export function DmsDocumentExpirySection({
   issueDate,
   expiryDate,
   requiresExpiryTracking,
+  isRenewable = true,
+  documentStatus = null,
+  supersededBy = null,
   canManage = false,
 }: DmsDocumentExpirySectionProps) {
   const queryClient = useQueryClient();
+  const { openTab } = useWorkspace();
   const expiryState = getExpiryState(expiryDate);
   const daysRemaining = getDaysRemaining(expiryDate);
   const [generating, setGenerating] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
   const [showRenewalDialog, setShowRenewalDialog] = useState(false);
+  const isSuperseded = documentStatus === "superseded";
 
   const handleGenerateReminders = async () => {
     setGenerating(true);
@@ -70,6 +82,46 @@ export function DmsDocumentExpirySection({
 
   return (
     <div className="space-y-4">
+      {/* Superseded banner — this document was renewed and replaced by a newer one */}
+      {isSuperseded && (
+        <div className="flex items-start gap-3 rounded-lg p-3 border text-sm bg-purple-50 border-purple-200 text-purple-700 dark:bg-purple-950/20 dark:border-purple-900 dark:text-purple-400">
+          <GitBranchPlus className="h-4 w-4 mt-0.5 shrink-0" />
+          <div className="flex-1">
+            <p className="font-medium">This document has been renewed and superseded</p>
+            <p className="text-xs mt-0.5 opacity-80">
+              {supersededBy
+                ? "A new document replaces it going forward."
+                : "This document is marked superseded, but the replacement document link is missing."}
+            </p>
+          </div>
+          {supersededBy && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="shrink-0 gap-1 h-7 text-xs border-purple-300 text-purple-700 hover:bg-purple-100 dark:border-purple-800 dark:text-purple-300"
+              onClick={() =>
+                openTab({
+                  route: `/dms/documents/record/${supersededBy.id}?mode=view`,
+                  title: supersededBy.document_no,
+                })
+              }
+            >
+              View new document
+              <ArrowRight className="h-3 w-3" />
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* One-time (non-renewable) document type notice */}
+      {!isRenewable && !isSuperseded && (
+        <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/20 border border-border rounded-lg p-3">
+          <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+          <p>One-time document — this document type does not support renewal. Upload a new document when this one expires.</p>
+        </div>
+      )}
+
       {/* Expiry status banner */}
       {expiryDate && (
         <div
@@ -104,7 +156,7 @@ export function DmsDocumentExpirySection({
               Expiry date: {format(parseISO(expiryDate), "dd MMMM yyyy")}
             </p>
           </div>
-          {(expiryState === "expired" || expiryState === "expiring_7") && canManage && (
+          {(expiryState === "expired" || expiryState === "expiring_7") && canManage && isRenewable && !isSuperseded && (
             <Button
               type="button"
               size="sm"

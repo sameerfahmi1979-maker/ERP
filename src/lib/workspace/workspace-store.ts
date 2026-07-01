@@ -262,6 +262,7 @@ export function persistToStorage(
       moduleCode: t.moduleCode,
       entityType: t.entityType,
       entityId: t.entityId,
+      returnRoute: t.returnRoute,
       openedAt: t.openedAt,
       lastActiveAt: t.lastActiveAt,
     }));

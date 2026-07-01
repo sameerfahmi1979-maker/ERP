@@ -58,7 +58,9 @@ export function DmsAiIntakeFieldRow({
                 </TooltipTrigger>
                 <TooltipContent side="top" className="max-w-xs text-xs">
                   <p className="font-medium mb-1">Source:</p>
-                  <p className="italic text-muted-foreground">&ldquo;{sourceSnippet}&rdquo;</p>
+                  <p className="italic text-muted-foreground" dir="auto">
+                    &ldquo;{sourceSnippet}&rdquo;
+                  </p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

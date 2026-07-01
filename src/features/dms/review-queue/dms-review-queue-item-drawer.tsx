@@ -15,10 +15,13 @@ import {
 } from "@/server/actions/dms/validation";
 import { reviewDmsEntityMatchCandidate } from "@/server/actions/dms/entity-matching";
 import { Button } from "@/components/ui/button";
-import { X, UserCheck, Play, CheckCircle2, Ban, ExternalLink, Clock, ShieldAlert, GitMerge, Search } from "lucide-react";
+import { X, UserCheck, Play, CheckCircle2, Ban, ExternalLink, Clock, ShieldAlert, GitMerge, Search, Sparkles } from "lucide-react";
 // Phase 16 — Apply-to-ERP entry point (feature-flag gated inside DmsApplyToErpPreview)
 import { DmsApplyToErpPreview, DmsPartyTargetSelector } from "@/features/dms/apply-to-erp";
 import type { PartyApplyTargetKind } from "@/lib/dms/apply-to-erp/types";
+// DMS AI META.2 — Flow B: AI metadata suggestions review, embedded (not modal)
+import { DmsAiMetadataSuggestionsDialog } from "@/features/dms/admin/dms-ai-metadata-suggestions-dialog";
+import type { AiSuggestedField } from "@/lib/dms/metadata/ai-definition-builder";
 
 // ── Resolution codes ──────────────────────────────────────────────────────────
 
@@ -108,6 +111,8 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated }
     ocr_failure_review:            "OCR Failure Review",
     semantic_index_review:         "Semantic Index Review",
     ai_job_failure_review:         "AI Job Failure Review",
+    // DMS AI META.2
+    metadata_definition_suggestions_review: "AI Metadata Suggestions Review",
     // Phase 13
     validation_conflict_review:    "Validation Conflict Review",
     metadata_rule_violation_review: "Metadata Rule Violation",
@@ -127,6 +132,32 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated }
     "validation_conflict_review", "metadata_rule_violation_review",
     "duplicate_document_review", "document_consistency_review"
   ].includes(item.reviewType);
+
+  // DMS AI META.2 — Flow B: AI metadata suggestions review type. The embedded
+  // dialog below is the sole place fields are created/dismissed for this
+  // item; the generic Resolve/Dismiss footer is hidden for this type.
+  const isMetadataSuggestionsReviewType = item.reviewType === "metadata_definition_suggestions_review";
+  const metadataSuggestionsPayload = item.payloadJson as
+    | {
+        document_type_id?: number;
+        document_type_code?: string;
+        document_type_name?: string;
+        trigger_document_id?: number;
+        model?: string | null;
+        suggestions?: Array<Record<string, unknown>>;
+      }
+    | null;
+  const metadataSuggestions: AiSuggestedField[] = (metadataSuggestionsPayload?.suggestions ?? []).map((s) => ({
+    field_code: String(s.field_code ?? ""),
+    field_label_en: String(s.field_label_en ?? ""),
+    field_type: (s.field_type as AiSuggestedField["field_type"]) ?? "text",
+    is_required: s.is_required === true,
+    is_ai_extractable: s.is_ai_extractable !== false,
+    ai_field_hint: String(s.ai_field_hint ?? ""),
+    ai_example_values: [],
+    sort_order: typeof s.sort_order === "number" ? s.sort_order : 0,
+    reasoning: String(s.reasoning ?? ""),
+  }));
 
   const handleAcceptCandidate = async () => {
     if (!item.entityMatchCandidateId) return;
@@ -533,6 +564,44 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated }
           </div>
         )}
 
+        {/* DMS AI META.2 — Flow B: embedded AI metadata suggestions review */}
+        {isMetadataSuggestionsReviewType && isActive && metadataSuggestionsPayload?.document_type_id && (
+          <div className="rounded-md border border-purple-200 bg-purple-50 p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-purple-600" />
+              <p className="text-xs font-semibold text-purple-800 uppercase tracking-wide">
+                AI Metadata Suggestions
+              </p>
+            </div>
+            <p className="text-xs text-purple-700">
+              AI has suggested {metadataSuggestions.length} metadata field
+              {metadataSuggestions.length !== 1 ? "s" : ""} for{" "}
+              {metadataSuggestionsPayload.document_type_name ?? metadataSuggestionsPayload.document_type_code}.
+              Review and select the fields you want to create — nothing is saved until you approve.
+            </p>
+            <div className="rounded-md border bg-white p-3">
+              <DmsAiMetadataSuggestionsDialog
+                open
+                onOpenChange={() => {
+                  /* embedded — lifecycle controlled by drawer/onMutated below */
+                }}
+                embedded
+                suggestions={metadataSuggestions}
+                documentTypeId={metadataSuggestionsPayload.document_type_id}
+                documentTypeCode={metadataSuggestionsPayload.document_type_code ?? null}
+                documentTypeName={metadataSuggestionsPayload.document_type_name ?? "this document type"}
+                existingCount={0}
+                model={metadataSuggestionsPayload.model ?? null}
+                source="review_queue"
+                triggerDocumentId={metadataSuggestionsPayload.trigger_document_id ?? null}
+                reviewQueueItemId={item.id}
+                onCreated={onMutated}
+                onRejected={onMutated}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Phase 13 — Safety Notice */}
         {(isValidationReviewType || isMatchingReviewType) && (
           <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
@@ -628,7 +697,7 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated }
       </div>
 
       {/* Footer — action controls */}
-      {isActive && canManage && !showResolveForm && !showDismissForm && (
+      {isActive && canManage && !showResolveForm && !showDismissForm && !isMetadataSuggestionsReviewType && (
         <div className="border-t border-slate-200 px-6 py-4 flex flex-wrap gap-2 bg-slate-50">
           {item.status === "open" && (
             <Button size="sm" variant="outline" onClick={handleAssignToMe} disabled={isSubmitting}>

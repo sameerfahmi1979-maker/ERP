@@ -166,16 +166,22 @@ export function DmsExpiringDocumentsTable({ view, onStartRenewal }: DmsExpiringD
                       Reminders
                     </Button>
                   )}
-                  {onStartRenewal && view !== "missing_expiry" && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="h-7 text-xs gap-1"
-                      onClick={() => onStartRenewal(doc)}
-                    >
-                      <Plus className="h-3 w-3" />
-                      Renew
-                    </Button>
+                  {onStartRenewal && view !== "missing_expiry" && doc.status !== "superseded" && (
+                    doc.is_renewable ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-7 text-xs gap-1"
+                        onClick={() => onStartRenewal(doc)}
+                      >
+                        <Plus className="h-3 w-3" />
+                        Renew
+                      </Button>
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground italic px-1" title="One-time document type — upload a new document instead">
+                        One-time
+                      </span>
+                    )
                   )}
                 </div>
               </td>

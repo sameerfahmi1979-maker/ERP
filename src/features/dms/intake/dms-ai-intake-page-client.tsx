@@ -59,7 +59,7 @@ export function DmsAiIntakePageClient({
   documentTypes,
 }: DmsAiIntakePageClientProps) {
   const router = useRouter();
-  const { activeTab, updateTabRoute, renameTab } = useWorkspace();
+  const { activeTab, updateTabRoute, renameTab, closeTab } = useWorkspace();
   const [session] = useState<IntakeSessionData>(initialSession);
   const [aiResultPatch, setAiResultPatch] = useState<Partial<IntakeAiResultRow> | null>(null);
   const aiResult = session.ai_result
@@ -188,7 +188,10 @@ export function DmsAiIntakePageClient({
         // Convert the intake tab into the new document tab in-place so closing it
         // later doesn't navigate back to the intake URL (which would server-redirect
         // back to the document, creating an infinite new-tab loop).
-        const docRoute = `/dms/documents/record/${result.data.documentId}`;
+        // Open the newly-approved document in edit mode (not the view-only
+        // default) so the user can immediately continue working on it —
+        // e.g. attaching links, adjusting metadata, etc. — without an extra click.
+        const docRoute = `/dms/documents/record/${result.data.documentId}?mode=edit`;
         if (activeTab) {
           updateTabRoute(activeTab.id, docRoute, result.data.documentId);
           renameTab(activeTab.id, result.data.documentNo, "Document");
@@ -229,7 +232,14 @@ export function DmsAiIntakePageClient({
         : await discardAiIntake(session.id, discardReason || undefined);
       if (result.success) {
         toast.success("Intake discarded");
-        router.push("/dms/inbox");
+        // Close this tab and let the workspace return to wherever it came
+        // from (e.g. the Batch Review Queue), instead of always landing on
+        // the Upload Inbox.
+        if (activeTab) {
+          closeTab(activeTab.id, { force: true });
+        } else {
+          router.push("/dms/inbox");
+        }
       } else {
         toast.error(result.error ?? "Failed to discard intake");
       }

@@ -283,6 +283,11 @@ function MetadataField({
           rows={3}
           className="mt-1"
           placeholder={def.field_label_en}
+          // Arabic/RTL content must render right-to-left with correctly ordered
+          // word arrangement. dir="auto" picks direction from the field's own
+          // current value (first strong-direction character) instead of
+          // inheriting the page's LTR direction.
+          dir="auto"
         />
       ) : def.field_type === "json" ? (
         <Textarea
@@ -309,6 +314,7 @@ function MetadataField({
           disabled={disabled}
           className="mt-1"
           placeholder={def.field_label_en}
+          dir="auto"
         />
       )}
     </div>

@@ -12,6 +12,7 @@ const REVIEW_TYPES = [
   { value: "ocr_failure_review",            label: "OCR Failure" },
   { value: "semantic_index_review",         label: "Semantic Index" },
   { value: "ai_job_failure_review",         label: "AI Job Failure" },
+  { value: "metadata_definition_suggestions_review", label: "AI Metadata Suggestions" },
 ];
 
 const STATUSES = [

@@ -1,14 +1,19 @@
 "use client";
 
-import { useState, useTransition, useCallback } from "react";
+import { useState, useTransition, useCallback, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { useWorkspace } from "@/hooks/use-workspace";
+import { useSortPaginate, type SortDir } from "@/hooks/use-sort-paginate";
 import {
   RefreshCw,
   CheckCircle2,
   XCircle,
   RotateCcw,
   ArrowRight,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
   FileText,
   AlertTriangle,
   Layers,
@@ -53,12 +58,128 @@ function StatCard({ label, value, tone }: { label: string; value: number; tone?:
   );
 }
 
+// ── Resizable / sortable column widths ──────────────────────────────────────
+// Draft rows: File/AI Title, Doc No., Type, Confidence, Status are user-
+// resizable and sortable. Checkbox / # / Actions stay fixed-width.
+type SortableColKey = "title" | "docNo" | "type" | "confidence" | "status";
+
+const DEFAULT_COL_WIDTHS: Record<SortableColKey, number> = {
+  title: 200,
+  docNo: 110,
+  type: 130,
+  confidence: 100,
+  status: 120,
+};
+
+const MIN_COL_WIDTH = 70;
+
+const CONFIDENCE_RANK: Record<string, number> = {
+  needs_manual_review: 0,
+  low: 1,
+  medium: 2,
+  high: 3,
+};
+
+function draftStatusSortLabel(d: DmsBatchDraftRow): string {
+  if (d.intakeStatus === "failed") return "Failed";
+  if (d.intakeStatus === "discarded") return "Discarded";
+  if (d.documentStatus) return d.documentStatus;
+  return "Processing";
+}
+
+function SortableTh({
+  label,
+  colKey,
+  width,
+  sortDir,
+  onSort,
+  onResizeStart,
+  align = "left",
+}: {
+  label: string;
+  colKey: SortableColKey;
+  width: number;
+  sortDir: SortDir | null;
+  onSort: (key: string) => void;
+  onResizeStart: (key: SortableColKey, e: ReactMouseEvent) => void;
+  align?: "left" | "right";
+}) {
+  return (
+    <th
+      className="relative select-none px-3 py-2 font-medium"
+      style={{ width }}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(colKey)}
+        className={cn(
+          "flex items-center gap-1 hover:text-foreground transition-colors",
+          align === "right" ? "ml-auto" : "text-left"
+        )}
+      >
+        {label}
+        {sortDir === "asc" ? (
+          <ArrowUp className="h-3 w-3" />
+        ) : sortDir === "desc" ? (
+          <ArrowDown className="h-3 w-3" />
+        ) : (
+          <ArrowUpDown className="h-3 w-3 opacity-40" />
+        )}
+      </button>
+      <div
+        onMouseDown={(e) => onResizeStart(colKey, e)}
+        className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize touch-none hover:bg-primary/50"
+      />
+    </th>
+  );
+}
+
 export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
   const router = useRouter();
+  const { openTab } = useWorkspace();
+  const batchReviewRoute = `/dms/inbox/batch/${batch.batch_code}`;
   const [drafts] = useState<DmsBatchDraftRow[]>(initialDrafts);
   const [isPending, startTransition] = useTransition();
   const [busyId, setBusyId] = useState<number | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+
+  // ── Sorting (click column header) ──────────────────────────────────────
+  const draftsTable = useSortPaginate(drafts, {
+    defaultPageSize: 1000,
+    comparators: {
+      title: (a, b) => (a.aiTitle ?? a.originalFilename).localeCompare(b.aiTitle ?? b.originalFilename),
+      docNo: (a, b) => (a.documentNo ?? "").localeCompare(b.documentNo ?? ""),
+      type: (a, b) => (a.documentTypeName ?? "").localeCompare(b.documentTypeName ?? ""),
+      confidence: (a, b) =>
+        (CONFIDENCE_RANK[(a.confidenceLabel ?? "").toLowerCase()] ?? -1) -
+        (CONFIDENCE_RANK[(b.confidenceLabel ?? "").toLowerCase()] ?? -1),
+      status: (a, b) => draftStatusSortLabel(a).localeCompare(draftStatusSortLabel(b)),
+    },
+  });
+  const sortedDrafts = draftsTable.rows;
+
+  // ── Column width adjust (drag the right edge of a header) ───────────────
+  const [colWidths, setColWidths] = useState<Record<SortableColKey, number>>(DEFAULT_COL_WIDTHS);
+  const resizingCol = useRef<{ key: SortableColKey; startX: number; startWidth: number } | null>(null);
+
+  const handleResizeStart = useCallback((key: SortableColKey, e: ReactMouseEvent) => {
+    e.preventDefault();
+    resizingCol.current = { key, startX: e.clientX, startWidth: colWidths[key] };
+
+    const onMove = (ev: MouseEvent) => {
+      const active = resizingCol.current;
+      if (!active) return;
+      const nextWidth = Math.max(MIN_COL_WIDTH, active.startWidth + (ev.clientX - active.startX));
+      setColWidths((prev) => ({ ...prev, [active.key]: nextWidth }));
+    };
+    const onUp = () => {
+      resizingCol.current = null;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [colWidths]);
 
   const pending = drafts.filter((d) => d.documentStatus === "pending_ai_review").length;
   const approved = drafts.filter((d) => d.documentStatus === "active").length;
@@ -139,9 +260,18 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
     });
   }, [selected, discardableIds, router]);
 
+  // Opens the intake review screen in a new tab that remembers this Batch
+  // Review Queue as its "return route" — so closing it (after approve or
+  // discard) always comes back here instead of the Upload Inbox.
   const handleReview = useCallback((sessionCode: string) => {
-    router.push(`/dms/intake/${sessionCode}`);
-  }, [router]);
+    openTab({
+      route: `/dms/intake/${sessionCode}`,
+      tabKind: "record",
+      entityType: "dms_intake_session",
+      entityId: sessionCode,
+      returnRoute: batchReviewRoute,
+    });
+  }, [openTab, batchReviewRoute]);
 
   const handleReviewNext = useCallback(() => {
     setBusyId(-1);
@@ -149,14 +279,20 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
       const res = await getNextPendingDraftInBatch(batch.id);
       setBusyId(null);
       if (res.success && res.data) {
-        router.push(`/dms/intake/${res.data.sessionCode}`);
+        openTab({
+          route: `/dms/intake/${res.data.sessionCode}`,
+          tabKind: "record",
+          entityType: "dms_intake_session",
+          entityId: res.data.sessionCode,
+          returnRoute: batchReviewRoute,
+        });
       } else if (res.success && !res.data) {
         toast.info("No pending drafts remaining in this batch.");
       } else {
         toast.error(res.error ?? "Could not load the next draft");
       }
     });
-  }, [batch.id, router]);
+  }, [batch.id, openTab, batchReviewRoute]);
 
   const handleDiscard = useCallback((sessionId: number) => {
     setBusyId(sessionId);
@@ -270,11 +406,11 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
           <colgroup>
             <col className="w-8" />
             <col className="w-8" />
-            <col className="w-[200px]" />
-            <col className="w-[110px]" />
-            <col className="w-[130px]" />
-            <col className="w-[100px]" />
-            <col className="w-[120px]" />
+            <col style={{ width: colWidths.title }} />
+            <col style={{ width: colWidths.docNo }} />
+            <col style={{ width: colWidths.type }} />
+            <col style={{ width: colWidths.confidence }} />
+            <col style={{ width: colWidths.status }} />
             <col className="w-[160px]" />
           </colgroup>
           <thead className="bg-muted/40 text-xs text-muted-foreground">
@@ -288,23 +424,58 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
                 />
               </th>
               <th className="text-left font-medium px-3 py-2">#</th>
-              <th className="text-left font-medium px-3 py-2">File / AI Title</th>
-              <th className="text-left font-medium px-3 py-2">Doc No.</th>
-              <th className="text-left font-medium px-3 py-2">Type</th>
-              <th className="text-left font-medium px-3 py-2">Confidence</th>
-              <th className="text-left font-medium px-3 py-2">Status</th>
+              <SortableTh
+                label="File / AI Title"
+                colKey="title"
+                width={colWidths.title}
+                sortDir={draftsTable.sortDirFor("title")}
+                onSort={draftsTable.toggleSort}
+                onResizeStart={handleResizeStart}
+              />
+              <SortableTh
+                label="Doc No."
+                colKey="docNo"
+                width={colWidths.docNo}
+                sortDir={draftsTable.sortDirFor("docNo")}
+                onSort={draftsTable.toggleSort}
+                onResizeStart={handleResizeStart}
+              />
+              <SortableTh
+                label="Type"
+                colKey="type"
+                width={colWidths.type}
+                sortDir={draftsTable.sortDirFor("type")}
+                onSort={draftsTable.toggleSort}
+                onResizeStart={handleResizeStart}
+              />
+              <SortableTh
+                label="Confidence"
+                colKey="confidence"
+                width={colWidths.confidence}
+                sortDir={draftsTable.sortDirFor("confidence")}
+                onSort={draftsTable.toggleSort}
+                onResizeStart={handleResizeStart}
+              />
+              <SortableTh
+                label="Status"
+                colKey="status"
+                width={colWidths.status}
+                sortDir={draftsTable.sortDirFor("status")}
+                onSort={draftsTable.toggleSort}
+                onResizeStart={handleResizeStart}
+              />
               <th className="text-right font-medium px-3 py-2">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {drafts.length === 0 && (
+            {sortedDrafts.length === 0 && (
               <tr>
                 <td colSpan={8} className="px-3 py-8 text-center text-sm text-muted-foreground">
                   No files in this batch.
                 </td>
               </tr>
             )}
-            {drafts.map((d, i) => {
+            {sortedDrafts.map((d, i) => {
               const isPendingReview = d.documentStatus === "pending_ai_review";
               const isFailed = d.intakeStatus === "failed";
               const isDiscarded = d.intakeStatus === "discarded";
@@ -402,7 +573,13 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
                           size="sm"
                           variant="outline"
                           className="h-7 px-2 text-xs"
-                          onClick={() => router.push(`/dms/documents/record/${d.documentId}`)}
+                          onClick={() => openTab({
+                            route: `/dms/documents/record/${d.documentId}?mode=edit`,
+                            tabKind: "record",
+                            entityType: "dms_document",
+                            entityId: d.documentId!,
+                            returnRoute: batchReviewRoute,
+                          })}
                         >
                           Open
                         </Button>

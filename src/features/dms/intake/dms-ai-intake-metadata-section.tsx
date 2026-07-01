@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { DmsAiIntakeFieldRow } from "./dms-ai-intake-field-row";
+import { DmsAiIntakeZeroDefinitionsNotice } from "./dms-ai-intake-zero-definitions-notice";
 import { getMetadataDefinitionsForType } from "@/server/actions/dms/document-metadata-values";
 import type { DmsMetadataDefinitionRow } from "@/server/actions/dms/document-metadata-values";
 import { groupMetadataDefinitionsByFieldGroup } from "@/lib/dms/metadata/metadata-definition-shared";
@@ -22,12 +23,16 @@ interface FieldConfidenceEntry {
 
 interface DmsAiIntakeMetadataSectionProps {
   documentTypeId: number | null;
+  /** DMS AI META.2 — used by the zero-definition notice; falls back to "this document type" when absent. */
+  documentTypeName?: string | null;
   extractedFieldsJson: Record<string, unknown> | null;
   fieldConfidenceJson: Record<string, unknown> | null;
   values: Record<number, MetadataValue>;
   onChange: (definitionId: number, fieldType: string, rawValue: string) => void;
   /** Called ONCE with all AI-seeded values when definitions first load. */
   onBulkSeed?: (seeded: Record<number, { fieldType: string; rawValue: string }>) => void;
+  /** DMS AI META.2 Flow A — called after AI-suggested definitions are approved, so the parent can offer re-extraction. */
+  onDefinitionsCreated?: (documentTypeId: number) => void;
 }
 
 function buildReviewWarning(
@@ -69,6 +74,13 @@ function MetadataFieldInput({
         rows={2}
         className="text-sm"
         placeholder={placeholder}
+        // Arabic/RTL content (e.g. AI-extracted Arabic name fields) must render
+        // right-to-left with correctly ordered word arrangement. dir="auto"
+        // lets the browser pick the direction per the first strong-direction
+        // character in the field's current value, and re-evaluates live as
+        // the value changes (AI seed or manual edit) — no per-field-code
+        // Arabic detection needed.
+        dir="auto"
       />
     );
   }
@@ -85,23 +97,29 @@ function MetadataFieldInput({
       onChange={(e) => onChange(def.id, def.field_type, e.target.value)}
       className="text-sm"
       placeholder={placeholder}
+      dir="auto"
     />
   );
 }
 
 export function DmsAiIntakeMetadataSection({
   documentTypeId,
+  documentTypeName,
   extractedFieldsJson,
   fieldConfidenceJson,
   values,
   onChange,
   onBulkSeed,
+  onDefinitionsCreated,
 }: DmsAiIntakeMetadataSectionProps) {
   const [definitions, setDefinitions] = useState<DmsMetadataDefinitionRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   // Track which documentTypeId we've already seeded AI values for,
   // so we seed exactly once per type load and never create an update loop.
   const seededForTypeRef = useRef<number | null>(null);
+  // DMS AI META.2 — bumped after AI-suggested definitions are approved, to
+  // force the definitions list below to reload for this document type.
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     if (!documentTypeId) {
@@ -128,7 +146,7 @@ export function DmsAiIntakeMetadataSection({
     return () => {
       cancelled = true;
     };
-  }, [documentTypeId]);
+  }, [documentTypeId, reloadToken]);
 
   // Seed the parent formValues with AI-extracted values immediately after
   // definitions load. All fields are collected first and emitted in ONE bulk
@@ -172,7 +190,19 @@ export function DmsAiIntakeMetadataSection({
     );
   }
 
-  if (definitions.length === 0) return null;
+  if (definitions.length === 0) {
+    // DMS AI META.2 Flow A — zero-definition notice replaces the previous no-op.
+    return (
+      <DmsAiIntakeZeroDefinitionsNotice
+        documentTypeId={documentTypeId}
+        documentTypeName={documentTypeName ?? "this document type"}
+        onDefinitionsCreated={() => {
+          setReloadToken((t) => t + 1);
+          onDefinitionsCreated?.(documentTypeId);
+        }}
+      />
+    );
+  }
 
   const groups = groupMetadataDefinitionsByFieldGroup(definitions);
 

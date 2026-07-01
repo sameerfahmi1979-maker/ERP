@@ -1,14 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { CheckCircle2 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { RequiredLabel } from "@/components/erp/required-label";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
-import { completeDmsRenewalRequest } from "@/server/actions/dms/renewals";
+import { ERPCombobox } from "@/components/erp/combobox";
+import type { ERPComboboxOption } from "@/components/erp/combobox";
+import {
+  completeDmsRenewalRequest,
+  searchDmsDocumentsForRenewalReplacement,
+  type RenewalReplacementCandidate,
+} from "@/server/actions/dms/renewals";
 import {
   invalidateDmsRenewals,
   invalidateDmsExpiry,
@@ -21,6 +28,8 @@ interface DmsCompleteRenewalDialogProps {
   renewalId: number;
   renewalNo: string;
   documentId: number;
+  /** DMS RENEWAL.2 — scopes the replacement-document search to the same document type. */
+  documentTypeId: number | null;
   onSuccess?: () => void;
 }
 
@@ -30,14 +39,29 @@ export function DmsCompleteRenewalDialog({
   renewalId,
   renewalNo,
   documentId,
+  documentTypeId,
   onSuccess,
 }: DmsCompleteRenewalDialogProps) {
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [replacementDocumentId, setReplacementDocumentId] = useState<number | null>(null);
   const [newExpiryDate, setNewExpiryDate] = useState("");
   const [notes, setNotes] = useState("");
 
+  const { data: candidates = [], isLoading: loadingCandidates } = useQuery({
+    queryKey: ["dms", "renewals", "replacement-candidates", documentTypeId, documentId],
+    queryFn: async () => {
+      if (!documentTypeId) return [];
+      const result = await searchDmsDocumentsForRenewalReplacement(documentTypeId, documentId);
+      if (!result.success) throw new Error(result.error);
+      return result.data ?? [];
+    },
+    enabled: open && !!documentTypeId,
+    staleTime: 30_000,
+  });
+
   const reset = () => {
+    setReplacementDocumentId(null);
     setNewExpiryDate("");
     setNotes("");
   };
@@ -49,16 +73,29 @@ export function DmsCompleteRenewalDialog({
     }
   };
 
+  // Auto-fill the new expiry date from the picked replacement document (still editable).
+  const handleReplacementChange = (value: string | number | null) => {
+    const id = value == null ? null : Number(value);
+    setReplacementDocumentId(id);
+    const picked = id != null ? candidates.find((c) => c.id === id) : null;
+    if (picked?.expiry_date) setNewExpiryDate(picked.expiry_date);
+  };
+
   const handleSubmit = async () => {
+    if (!replacementDocumentId) {
+      toast.error("Select the replacement document that was uploaded for this renewal");
+      return;
+    }
     setIsSubmitting(true);
     try {
       const result = await completeDmsRenewalRequest(renewalId, {
         new_expiry_date: newExpiryDate || undefined,
+        replacement_document_id: replacementDocumentId,
         notes: notes || undefined,
       });
 
       if (result.success) {
-        toast.success("Renewal completed successfully");
+        toast.success("Renewal completed — original document marked as superseded");
         invalidateDmsRenewals(queryClient);
         invalidateDmsExpiry(queryClient);
         invalidateDmsDocumentExpiry(queryClient, documentId);
@@ -71,6 +108,13 @@ export function DmsCompleteRenewalDialog({
       setIsSubmitting(false);
     }
   };
+
+  const options: ERPComboboxOption[] = candidates.map((c: RenewalReplacementCandidate) => ({
+    value: c.id,
+    label: c.title,
+    code: c.document_no,
+    description: c.expiry_date ? `Expiry: ${c.expiry_date}` : undefined,
+  }));
 
   return (
     <ERPChildDialogForm
@@ -89,16 +133,41 @@ export function DmsCompleteRenewalDialog({
         <div className="rounded-md bg-muted/20 border border-border p-3 text-sm">
           <p className="text-xs text-muted-foreground">Completing this renewal will:</p>
           <ul className="text-xs mt-1 space-y-0.5 list-disc list-inside text-muted-foreground">
-            <li>Update document expiry date (if provided)</li>
-            <li>Rebuild the reminder schedule</li>
-            <li>Dismiss all pending reminders</li>
-            <li>Mark this renewal as completed</li>
+            <li>Link the replacement document you select below</li>
+            <li>Mark the original document as <span className="font-medium">Superseded</span></li>
+            <li>Update the new expiry date and rebuild its reminder schedule</li>
+            <li>Dismiss all pending reminders on the original document</li>
           </ul>
         </div>
 
         <div>
+          <RequiredLabel required className="mb-1.5 block">
+            Replacement Document
+          </RequiredLabel>
+          <ERPCombobox
+            value={replacementDocumentId}
+            onValueChange={handleReplacementChange}
+            options={options}
+            placeholder="Search for the document already uploaded to replace this one..."
+            searchPlaceholder="Search by document no. or title..."
+            loading={loadingCandidates}
+            required
+            allowClear
+            emptyText={
+              documentTypeId
+                ? "No matching documents found — upload the new document first, then complete this renewal."
+                : "Unknown document type"
+            }
+            noResultsText="No results found"
+          />
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Upload the new/renewed file through the normal upload flow first, then pick it here to link it.
+          </p>
+        </div>
+
+        <div>
           <Label htmlFor="new-expiry" className="mb-1.5 block">
-            New Expiry Date <span className="text-xs text-muted-foreground">(optional — updates document)</span>
+            New Expiry Date <span className="text-xs text-muted-foreground">(auto-filled from replacement, editable)</span>
           </Label>
           <Input
             id="new-expiry"

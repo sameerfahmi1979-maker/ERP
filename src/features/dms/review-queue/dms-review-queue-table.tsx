@@ -32,6 +32,7 @@ function ReviewTypeBadge({ reviewType }: { reviewType: string }) {
     ocr_failure_review:            "OCR Failure",
     semantic_index_review:         "Semantic",
     ai_job_failure_review:         "Job Failure",
+    metadata_definition_suggestions_review: "AI Metadata Suggest.",
   };
   return (
     <span className="inline-flex rounded-md bg-violet-50 border border-violet-200 px-2 py-0.5 text-[10px] font-medium text-violet-700">
@@ -161,9 +162,31 @@ export function DmsReviewQueueTable({ items, isLoading, onViewItem }: Props) {
               <RQSortHeader field="id" label="#" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="w-8" />
               <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <span className="inline-flex items-center gap-1.5">
-                  <RQSortHeader field="priority" label="Priority" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-0 py-0 text-slate-500" />
+                  <button
+                    type="button"
+                    onClick={() => toggleSort("priority")}
+                    className={`inline-flex items-center gap-1 cursor-pointer select-none hover:text-slate-800 transition-colors ${sortKey === "priority" ? "text-slate-800" : ""}`}
+                  >
+                    Priority
+                    {sortKey === "priority" ? (
+                      sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+                    ) : (
+                      <ArrowUpDown className="h-3 w-3 opacity-35" />
+                    )}
+                  </button>
                   <span className="text-slate-300">/</span>
-                  <RQSortHeader field="reviewType" label="Type" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-0 py-0 text-slate-500" />
+                  <button
+                    type="button"
+                    onClick={() => toggleSort("reviewType")}
+                    className={`inline-flex items-center gap-1 cursor-pointer select-none hover:text-slate-800 transition-colors ${sortKey === "reviewType" ? "text-slate-800" : ""}`}
+                  >
+                    Type
+                    {sortKey === "reviewType" ? (
+                      sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+                    ) : (
+                      <ArrowUpDown className="h-3 w-3 opacity-35" />
+                    )}
+                  </button>
                 </span>
               </th>
               <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Source</th>
@@ -193,10 +216,19 @@ export function DmsReviewQueueTable({ items, isLoading, onViewItem }: Props) {
                       ? <span className="font-mono">{item.document.document_no}</span>
                       : item.uploadSession?.session_code
                       ? <span className="font-mono text-violet-600">{item.uploadSession.session_code}</span>
+                      : item.reviewType === "metadata_definition_suggestions_review"
+                      ? <span className="font-mono text-purple-600">
+                          {String(item.payloadJson?.document_type_code ?? item.sourceId ?? "—")}
+                        </span>
                       : <span className="text-slate-400">—</span>
                     }
                     {item.document?.title && (
                       <div className="text-slate-400 truncate max-w-[140px]">{item.document.title}</div>
+                    )}
+                    {item.reviewType === "metadata_definition_suggestions_review" && Boolean(item.payloadJson?.document_type_name) && (
+                      <div className="text-slate-400 truncate max-w-[140px]">
+                        {String(item.payloadJson?.document_type_name)}
+                      </div>
                     )}
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-600 max-w-[200px]">

@@ -42,6 +42,14 @@ export type WorkspaceTab = {
   tabKind: WorkspaceTabKind;
   /** Add / edit / view — only relevant for record tabs (4C+) */
   formMode?: "add" | "edit" | "view";
+  /**
+   * Explicit "go back to" route for this tab, e.g. a Batch Review Queue tab
+   * opened a document review inside it. When set, closing this tab navigates
+   * here instead of falling back to the most-recently-active-tab heuristic.
+   * Survives UPDATE_TAB_ROUTE (e.g. intake tab converting into a document tab)
+   * so "close" after approve/discard still returns to the origin screen.
+   */
+  returnRoute?: string;
   /** ISO timestamp when tab was opened */
   openedAt: string;
   /** ISO timestamp when tab was last made active */
@@ -62,6 +70,7 @@ export type PersistedWorkspaceTab = Pick<
   | "moduleCode"
   | "entityType"
   | "entityId"
+  | "returnRoute"
   | "openedAt"
   | "lastActiveAt"
 >;

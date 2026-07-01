@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { ERPDataTable } from "@/components/erp/table/erp-data-table";
-import { ListTree, PlusCircle, Pencil, Power, Brain, Network } from "lucide-react";
+import { ListTree, PlusCircle, Pencil, Power, Brain, Network, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   createDmsMetadataDefinition,
@@ -30,6 +30,12 @@ import {
   type MetadataDefinitionFormState,
 } from "@/features/dms/admin/dms-metadata-definition-form-body";
 import { DmsMetadataErpMappingsDialog } from "@/features/dms/admin/dms-metadata-erp-mappings-dialog";
+import { DmsAiMetadataSuggestionsDialog } from "@/features/dms/admin/dms-ai-metadata-suggestions-dialog";
+import {
+  suggestMetadataDefinitions,
+  checkDmsAiProviderAvailable,
+} from "@/server/actions/dms/ai-metadata-suggestions";
+import type { AiSuggestedField } from "@/lib/dms/metadata/ai-definition-builder";
 
 type Props = {
   rows: DmsMetadataDefinitionRow[];
@@ -141,6 +147,9 @@ function formToPayload(form: MetadataDefinitionFormState): CreateDmsMetadataDefi
     review_required_if_low_confidence: form.review_required_if_low_confidence,
     metadata_version: 1,
     ai_rules_json: ai_rules_json ?? null,
+    // DMS AI META.2 — manual admin form always creates non-AI-sourced definitions.
+    created_from_ai_suggestion: false,
+    ai_suggestion_trigger_document_id: null,
   };
 }
 
@@ -162,11 +171,26 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
     setErpMappingsDialogOpen(true);
   };
 
+  // AI suggestion state
+  const [aiProviderAvailable, setAiProviderAvailable] = useState<boolean | null>(null);
+  const [aiSuggestLoading, setAiSuggestLoading] = useState(false);
+  const [aiDialogOpen, setAiDialogOpen] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<AiSuggestedField[]>([]);
+  const [aiDocumentTypeName, setAiDocumentTypeName] = useState("");
+  const [aiExistingCount, setAiExistingCount] = useState(0);
+  const [aiModel, setAiModel] = useState<string | null>(null);
+
+  useEffect(() => {
+    checkDmsAiProviderAvailable().then((r) => setAiProviderAvailable(r.available));
+  }, []);
+
   const [filterTypeId, setFilterTypeId] = useState<string>("all");
   const [filterFieldType, setFilterFieldType] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterRequired, setFilterRequired] = useState<string>("all");
   const [filterAi, setFilterAi] = useState<string>("all");
+  // DMS AI META.2 — filter by definition provenance (manual vs AI-assisted).
+  const [filterSource, setFilterSource] = useState<string>("all");
 
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
@@ -178,9 +202,11 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
       if (filterRequired === "no" && row.is_required) return false;
       if (filterAi === "yes" && !row.is_ai_extractable) return false;
       if (filterAi === "no" && row.is_ai_extractable) return false;
+      if (filterSource === "ai_assisted" && !row.created_from_ai_suggestion) return false;
+      if (filterSource === "manual" && row.created_from_ai_suggestion) return false;
       return true;
     });
-  }, [rows, filterTypeId, filterFieldType, filterStatus, filterRequired, filterAi]);
+  }, [rows, filterTypeId, filterFieldType, filterStatus, filterRequired, filterAi, filterSource]);
 
   const openAdd = () => {
     setEditing(null);
@@ -231,6 +257,31 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
     router.refresh();
   };
 
+  const handleAiSuggest = async () => {
+    if (!filterTypeId || filterTypeId === "all") return;
+    setAiSuggestLoading(true);
+    try {
+      const result = await suggestMetadataDefinitions(parseInt(filterTypeId));
+      if (!result.success) {
+        toast.error(result.error ?? "Failed to generate suggestions");
+        return;
+      }
+      if (result.suggestions.length === 0) {
+        toast.info(
+          "AI could not generate new suggestions for this document type. All suggested fields may already exist, or try again."
+        );
+        return;
+      }
+      setAiSuggestions(result.suggestions);
+      setAiDocumentTypeName(result.documentTypeName);
+      setAiExistingCount(result.existingCount);
+      setAiModel(result.model);
+      setAiDialogOpen(true);
+    } finally {
+      setAiSuggestLoading(false);
+    }
+  };
+
   const columns: ColumnDef<DmsMetadataDefinitionRow>[] = useMemo(
     () => [
       {
@@ -273,7 +324,18 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
         header: "Label",
         cell: ({ row }) => (
           <div>
-            <div className="text-sm">{row.original.field_label_en}</div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm">{row.original.field_label_en}</span>
+              {row.original.created_from_ai_suggestion && (
+                <Badge
+                  className="gap-1 bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 text-[9px] px-1.5 py-0"
+                  title="Created by an authorized user approving an AI-suggested field"
+                >
+                  <Sparkles className="h-2.5 w-2.5" />
+                  AI-Assisted
+                </Badge>
+              )}
+            </div>
             {row.original.field_label_ar && (
               <div className="text-xs text-muted-foreground" dir="rtl">
                 {row.original.field_label_ar}
@@ -281,7 +343,10 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
             )}
           </div>
         ),
-        meta: { exportHeader: "Label (EN)", exportValue: (row) => row.field_label_en },
+        meta: {
+          exportHeader: "Label (EN)",
+          exportValue: (row) => row.field_label_en,
+        },
       },
       {
         accessorKey: "field_type",
@@ -453,12 +518,46 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
           <SelectItem value="no">Not AI extractable</SelectItem>
         </SelectContent>
       </Select>
+      <Select value={filterSource} onValueChange={(v) => setFilterSource(v ?? "all")}>
+        <SelectTrigger className="h-8 w-36 text-xs">
+          <SelectValue placeholder="Source" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">Source: All</SelectItem>
+          <SelectItem value="manual">Source: Manual</SelectItem>
+          <SelectItem value="ai_assisted">Source: AI-Assisted</SelectItem>
+        </SelectContent>
+      </Select>
       {manage && (
         <Button onClick={openAdd} size="sm">
           <PlusCircle className="mr-2 h-4 w-4" />
           Add Field
         </Button>
       )}
+      {manage && filterTypeId !== "all" && (() => {
+        const existingForType = rows.filter((r) => String(r.document_type_id) === filterTypeId);
+        const buttonLabel =
+          existingForType.length === 0 ? "Suggest Fields with AI" : "Suggest Additional Fields";
+        const isChecking = aiProviderAvailable === null;
+        const isUnavailable = aiProviderAvailable === false;
+        return (
+          <Button
+            onClick={handleAiSuggest}
+            size="sm"
+            variant="outline"
+            disabled={aiSuggestLoading || isChecking || isUnavailable}
+            title={isUnavailable ? "AI provider not configured. Contact administrator." : undefined}
+            className="gap-1.5"
+          >
+            {aiSuggestLoading || isChecking ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4 text-purple-500" />
+            )}
+            {isChecking ? "Checking AI..." : aiSuggestLoading ? "Analyzing..." : buttonLabel}
+          </Button>
+        );
+      })()}
     </div>
   );
 
@@ -470,7 +569,8 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
           filterFieldType !== "all" ||
           filterStatus !== "all" ||
           filterRequired !== "all" ||
-          filterAi !== "all") &&
+          filterAi !== "all" ||
+          filterSource !== "all") &&
           " (filtered)"}
       </p>
 
@@ -535,6 +635,18 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
           authContext={authContext}
         />
       )}
+
+      {/* AI Metadata Suggestions Dialog */}
+      <DmsAiMetadataSuggestionsDialog
+        open={aiDialogOpen}
+        onOpenChange={setAiDialogOpen}
+        suggestions={aiSuggestions}
+        documentTypeId={filterTypeId !== "all" ? parseInt(filterTypeId) : 0}
+        documentTypeName={aiDocumentTypeName}
+        existingCount={aiExistingCount}
+        model={aiModel}
+        onCreated={() => router.refresh()}
+      />
     </div>
   );
 }

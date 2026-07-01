@@ -62,6 +62,8 @@ export type DmsExpiringDocumentRow = {
   confidentiality: string;
   days_remaining: number | null;
   document_type: string | null;
+  /** DMS RENEWAL.2 — false when the document's type is one-time (e.g. Visit Visa); hides the Renew action. */
+  is_renewable: boolean;
   category: string | null;
   owner: string | null;
   latest_reminder_status: string | null;
@@ -119,17 +121,17 @@ export async function getDmsExpiryDashboardStats(): Promise<ActionResult<DmsExpi
       { count: open_renewals },
     ] = await Promise.all([
       supabase.from("dms_documents").select("id", { count: "exact", head: true })
-        .not("expiry_date", "is", null).lt("expiry_date", today).is("deleted_at", null).neq("status", "archived"),
+        .not("expiry_date", "is", null).lt("expiry_date", today).is("deleted_at", null).neq("status", "archived").neq("status", "superseded"),
       supabase.from("dms_documents").select("id", { count: "exact", head: true })
-        .not("expiry_date", "is", null).gte("expiry_date", today).lte("expiry_date", in7).is("deleted_at", null),
+        .not("expiry_date", "is", null).gte("expiry_date", today).lte("expiry_date", in7).is("deleted_at", null).neq("status", "superseded"),
       supabase.from("dms_documents").select("id", { count: "exact", head: true })
-        .not("expiry_date", "is", null).gt("expiry_date", in7).lte("expiry_date", in30).is("deleted_at", null),
+        .not("expiry_date", "is", null).gt("expiry_date", in7).lte("expiry_date", in30).is("deleted_at", null).neq("status", "superseded"),
       supabase.from("dms_documents").select("id", { count: "exact", head: true })
-        .not("expiry_date", "is", null).gt("expiry_date", in30).lte("expiry_date", in60).is("deleted_at", null),
+        .not("expiry_date", "is", null).gt("expiry_date", in30).lte("expiry_date", in60).is("deleted_at", null).neq("status", "superseded"),
       supabase.from("dms_documents").select("id", { count: "exact", head: true })
-        .not("expiry_date", "is", null).gt("expiry_date", in60).lte("expiry_date", in90).is("deleted_at", null),
+        .not("expiry_date", "is", null).gt("expiry_date", in60).lte("expiry_date", in90).is("deleted_at", null).neq("status", "superseded"),
       supabase.from("dms_documents").select("id", { count: "exact", head: true })
-        .is("expiry_date", null).is("deleted_at", null).neq("status", "archived"),
+        .is("expiry_date", null).is("deleted_at", null).neq("status", "archived").neq("status", "superseded"),
       supabase.from("dms_expiry_reminders").select("id", { count: "exact", head: true }).eq("status", "pending"),
       supabase.from("dms_expiry_reminders").select("id", { count: "exact", head: true }).eq("status", "dismissed"),
       supabase.from("dms_renewal_requests").select("id", { count: "exact", head: true })
@@ -178,10 +180,13 @@ export async function getDmsExpiringDocuments(
       .from("dms_documents")
       .select(
         `id, document_no, title, expiry_date, issue_date, status, confidentiality:confidentiality_level,
-         document_type:dms_document_types!document_type_id(name_en),
+         document_type:dms_document_types!document_type_id(name_en, is_renewable),
          category:dms_document_types!document_type_id(category:dms_document_categories!category_id(name_en))`,
       )
       .is("deleted_at", null)
+      // A superseded document has already been renewed/replaced — it must stop
+      // being flagged as expired/expiring once the replacement is linked.
+      .neq("status", "superseded")
       .order("expiry_date", { ascending: true, nullsFirst: false })
       .limit(filter.limit ?? 200);
 
@@ -205,7 +210,7 @@ export async function getDmsExpiringDocuments(
         const exp = new Date(expiryDate);
         daysRemaining = Math.round((exp.getTime() - today2.getTime()) / 86400000);
       }
-      const dt = raw.document_type as { name_en?: string } | null;
+      const dt = raw.document_type as { name_en?: string; is_renewable?: boolean } | null;
       const catWrapper = raw.category as { category?: { name_en?: string } } | null;
       return {
         id: raw.id as number,
@@ -217,6 +222,7 @@ export async function getDmsExpiringDocuments(
         confidentiality: raw.confidentiality as string,
         days_remaining: daysRemaining,
         document_type: dt?.name_en ?? null,
+        is_renewable: dt?.is_renewable ?? true,
         category: catWrapper?.category?.name_en ?? null,
         owner: null,
         latest_reminder_status: null,
@@ -412,6 +418,7 @@ export async function generateDmsExpiryRemindersBulk(
       .not("expiry_date", "is", null)
       .is("deleted_at", null)
       .neq("status", "archived")
+      .neq("status", "superseded")
       .limit(options.limit ?? 100);
 
     if (error) return { success: false, error: error.message };

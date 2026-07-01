@@ -137,6 +137,15 @@ export function WorkspaceProvider({ children, defaultRoute }: { children: ReactN
       dispatch({ type: "CLOSE_TAB", tabId });
 
       if (wasActive) {
+        // Prefer an explicit returnRoute (e.g. a document opened from a Batch
+        // Review Queue tab) over the "most recently active tab" heuristic —
+        // the heuristic can pick the wrong tab if the user briefly visited
+        // another screen (e.g. Upload Inbox) while reviewing.
+        if (tab.returnRoute) {
+          router.push(tab.returnRoute);
+          return;
+        }
+
         const remaining = state.tabs.filter((t) => t.id !== tabId);
         if (remaining.length > 0) {
           const sorted = [...remaining].sort(

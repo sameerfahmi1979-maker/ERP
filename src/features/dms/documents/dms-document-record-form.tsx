@@ -68,6 +68,7 @@ interface DocumentType {
   type_code: string;
   category_id: number | null;
   requires_expiry_tracking: boolean;
+  is_renewable?: boolean;
   default_confidentiality: string;
 }
 
@@ -628,6 +629,9 @@ function DmsDocumentRecordFormInner({
             issueDate={doc?.issue_date ?? null}
             expiryDate={doc?.expiry_date ?? null}
             requiresExpiryTracking={selectedDocType?.requires_expiry_tracking ?? false}
+            isRenewable={selectedDocType?.is_renewable ?? true}
+            documentStatus={doc?.status ?? null}
+            supersededBy={doc?.superseded_by ?? null}
             canManage={!isViewing && !!effectiveDocId}
           />
         </ERPRecordSectionPanel>

@@ -10,6 +10,7 @@ import {
   mapMetadataDefinitionRow,
   type DmsMetadataDefinitionBase,
 } from "@/lib/dms/metadata/metadata-definition-shared";
+import { canApproveAiMetadataSuggestions } from "@/lib/dms/metadata/ai-suggestion-permissions";
 
 export type ActionResult<T = unknown> = {
   success: boolean;
@@ -77,6 +78,13 @@ const metadataDefinitionSchema = z.object({
   review_required_if_low_confidence: z.boolean().default(false),
   metadata_version: z.number().int().min(1).default(1),
   ai_rules_json: z.record(z.string(), z.unknown()).nullable().optional(),
+  // DMS AI META.2 — true when this definition was created by an authorized
+  // user approving an AI-suggested field (Flow A or Flow B). Never set by
+  // background jobs directly — only by the human approval path (this action).
+  created_from_ai_suggestion: z.boolean().default(false),
+  // DMS AI META.2 — the document that triggered the AI suggestion workflow
+  // which led to this definition being created. Null for manual definitions.
+  ai_suggestion_trigger_document_id: z.number().int().positive().nullable().optional(),
 });
 
 export type CreateDmsMetadataDefinitionInput = z.infer<typeof metadataDefinitionSchema>;
@@ -159,7 +167,14 @@ export async function createDmsMetadataDefinition(
       return { success: false, error: "options_json is required for select and multi_select field types" };
     }
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "dms.documents.manage_types")) {
+    // DMS AI META.2: definitions created from an approved AI suggestion may be
+    // authorized via the dedicated dms.metadata.ai_suggestions.approve permission
+    // (which also covers manage_types/dms.admin/system_admin/group_admin).
+    // Manually created definitions keep the original manage_types-only check.
+    const isAuthorized = parsed.data.created_from_ai_suggestion
+      ? canApproveAiMetadataSuggestions(ctx)
+      : hasPermission(ctx, "dms.documents.manage_types");
+    if (!isAuthorized) {
       return { success: false, error: "Permission denied" };
     }
     const supabase = await createClient();

@@ -91,6 +91,79 @@ async function tryEnqueueSemanticIndexJob(documentId: number): Promise<void> {
   }
 }
 
+// ── DMS AI META.2: metadata suggestions check enqueue helper ──────────────────
+
+/**
+ * Optionally enqueues a generate_metadata_definition_suggestions job (Flow B)
+ * when the document's type currently has zero active metadata definitions.
+ *
+ * Non-blocking: errors are swallowed — never fail the main orchestration.
+ * Only fires if DMS_AI_FIRST_UPLOAD_METADATA_SUGGESTIONS and DMS_AI_JOB_QUEUE
+ * are both enabled. This is a lightweight pre-check to avoid enqueuing
+ * pointless jobs; the job handler itself re-verifies zero-definitions and all
+ * other conditions before generating anything.
+ *
+ * Governance rule: this step ONLY enqueues a suggestion-generation job. It
+ * NEVER creates metadata definitions itself.
+ */
+async function tryEnqueueMetadataSuggestionsJob(documentId: number): Promise<void> {
+  try {
+    const [suggestionsEnabled, jobQueueEnabled] = await Promise.all([
+      isFeatureEnabled("DMS_AI_FIRST_UPLOAD_METADATA_SUGGESTIONS"),
+      isFeatureEnabled("DMS_AI_JOB_QUEUE"),
+    ]);
+    if (!suggestionsEnabled || !jobQueueEnabled) return;
+
+    const db = createAdminClient();
+
+    const { data: docRow } = await db
+      .from("dms_documents")
+      .select("document_type_id")
+      .eq("id", documentId)
+      .maybeSingle();
+
+    const documentTypeId = (docRow as { document_type_id?: number | null } | null)?.document_type_id ?? null;
+    if (!documentTypeId) return;
+
+    const { data: docTypeRow } = await db
+      .from("dms_document_types")
+      .select("is_system, ai_suggestions_generated_at")
+      .eq("id", documentTypeId)
+      .maybeSingle();
+
+    const dt = docTypeRow as { is_system?: boolean; ai_suggestions_generated_at?: string | null } | null;
+    if (!dt || dt.is_system === true || dt.ai_suggestions_generated_at) return;
+
+    const { count: activeDefCount } = await db
+      .from("dms_metadata_definitions")
+      .select("id", { count: "exact", head: true })
+      .eq("document_type_id", documentTypeId)
+      .eq("is_active", true)
+      .is("deleted_at", null);
+
+    if ((activeDefCount ?? 0) > 0) return;
+
+    await enqueueUniqueDmsAiJob({
+      jobType: DMS_AI_JOB_TYPE.GENERATE_METADATA_DEFINITION_SUGGESTIONS,
+      payload: { documentTypeId, triggerDocumentId: documentId, source: "post_approve" },
+      idempotencyKey: `meta_suggestions:type:${documentTypeId}`,
+      priority: 4,
+      relatedDocumentId: documentId,
+    });
+
+    logger.info("[system-pipeline] generate_metadata_definition_suggestions job enqueued", {
+      documentId,
+      documentTypeId,
+    });
+  } catch (err) {
+    const safeMsg = err instanceof Error ? err.message.slice(0, 100) : String(err).slice(0, 100);
+    logger.warn("[system-pipeline] metadata_suggestions_check enqueue failed (non-fatal)", {
+      documentId,
+      error: safeMsg,
+    });
+  }
+}
+
 // ── Session status helper (admin client) ─────────────────────────────────────
 
 async function updateSessionStatus(
@@ -841,6 +914,11 @@ export async function runDmsAiOrchestrationPostDraftSystem(params: {
 
     // Phase 11 — enqueue semantic_document_index if flags allow (non-blocking; errors are swallowed)
     await tryEnqueueSemanticIndexJob(documentId);
+
+    // DMS AI META.2 — metadata_suggestions_check: enqueue Flow B suggestion
+    // generation for zero-definition document types (non-blocking; suggests only,
+    // never auto-creates definitions).
+    await tryEnqueueMetadataSuggestionsJob(documentId);
 
     markRunning("ai_summary");
     steps = mergeStepResult(steps, await runPipelineStepSafe("ai_summary", () =>

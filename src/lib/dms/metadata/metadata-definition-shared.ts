@@ -46,6 +46,14 @@ export type DmsMetadataDefinitionBase = {
   review_required_if_low_confidence: boolean;
   metadata_version: number;
   ai_rules_json: unknown;
+  /**
+   * DMS AI META.2 — true when this definition was created by an authorized
+   * user approving an AI-suggested field (META.1 manual suggest, or META.2
+   * Flow A/B). Never set by background jobs directly.
+   */
+  created_from_ai_suggestion: boolean;
+  /** DMS AI META.2 — the document that triggered the AI suggestion workflow, if any. */
+  ai_suggestion_trigger_document_id: number | null;
 };
 
 /** Parse JSONB that should be a string array. */
@@ -99,6 +107,9 @@ export function mapMetadataDefinitionRow(row: Record<string, unknown>): DmsMetad
     review_required_if_low_confidence: row.review_required_if_low_confidence === true,
     metadata_version: (row.metadata_version as number) ?? 1,
     ai_rules_json: row.ai_rules_json ?? null,
+    created_from_ai_suggestion: row.created_from_ai_suggestion === true,
+    ai_suggestion_trigger_document_id:
+      (row.ai_suggestion_trigger_document_id as number | null) ?? null,
   };
 }
 

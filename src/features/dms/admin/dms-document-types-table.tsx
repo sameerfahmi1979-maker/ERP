@@ -45,6 +45,7 @@ type FormState = {
   description: string;
   category_id: string;
   requires_expiry_tracking: boolean;
+  is_renewable: boolean;
   default_confidentiality: string;
   requires_approval: boolean;
   default_retention_days: string;
@@ -60,6 +61,7 @@ const emptyForm: FormState = {
   description: "",
   category_id: "",
   requires_expiry_tracking: false,
+  is_renewable: true,
   default_confidentiality: "internal",
   requires_approval: false,
   default_retention_days: "",
@@ -115,6 +117,7 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
       description: row.description ?? "",
             category_id: row.category_id != null ? String(row.category_id) : "",
       requires_expiry_tracking: row.requires_expiry_tracking,
+      is_renewable: row.is_renewable,
       default_confidentiality: row.default_confidentiality,
       requires_approval: row.requires_approval,
       default_retention_days: row.default_retention_days ? String(row.default_retention_days) : "",
@@ -152,6 +155,7 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
       description: form.description || null,
       category_id: form.category_id ? parseInt(form.category_id) : null,
       requires_expiry_tracking: form.requires_expiry_tracking,
+      is_renewable: form.is_renewable,
       default_confidentiality: form.default_confidentiality as typeof ALLOWED_CONFIDENTIALITY[number],
       requires_approval: form.requires_approval,
       default_retention_days: retDays,
@@ -301,9 +305,16 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
                     {row.category?.name_en ?? "—"}
                   </td>
                   <td className="px-4 py-2.5 text-center">
-                    {row.requires_expiry_tracking ? (
-                      <Badge className="bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 text-[10px] px-1.5 py-0">Expiry</Badge>
-                    ) : <span className="text-muted-foreground text-xs">—</span>}
+                    <div className="flex items-center justify-center gap-1">
+                      {row.requires_expiry_tracking ? (
+                        <Badge className="bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 text-[10px] px-1.5 py-0">Expiry</Badge>
+                      ) : <span className="text-muted-foreground text-xs">—</span>}
+                      {!row.is_renewable && (
+                        <Badge variant="outline" className="text-[9px] px-1 py-0 border-slate-400 text-slate-500" title="One-time document — renewal actions are hidden for this type">
+                          One-time
+                        </Badge>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-2.5 text-center">
                     <Badge className={`text-[10px] px-1.5 py-0 ${conf.color}`}>{conf.label}</Badge>
@@ -477,6 +488,10 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
               <Label>Requires Expiry Tracking</Label>
             </div>
             <div className="flex items-center gap-2">
+              <Switch checked={form.is_renewable} onCheckedChange={(v) => setForm((f) => ({ ...f, is_renewable: v }))} />
+              <Label>Renewable</Label>
+            </div>
+            <div className="flex items-center gap-2">
               <Switch checked={form.requires_approval} onCheckedChange={(v) => setForm((f) => ({ ...f, requires_approval: v }))} />
               <Label>Requires Approval</Label>
             </div>
@@ -485,6 +500,15 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
               <Label>Active</Label>
             </div>
           </div>
+          {!form.is_renewable && (
+            <div className="col-span-12 flex items-start gap-2 text-xs text-muted-foreground bg-muted/20 border border-border rounded-md p-2">
+              <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+              <p>
+                Documents of this type are treated as one-time (e.g. Visit Visa). The &quot;Start Renewal&quot; / &quot;Renew&quot;
+                actions will be hidden everywhere for these documents — a brand new document must be uploaded instead.
+              </p>
+            </div>
+          )}
         </div>
       </ERPChildDialogForm>
     </div>

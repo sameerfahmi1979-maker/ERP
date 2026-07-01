@@ -25,6 +25,9 @@ export const DMS_AI_JOB_TYPE = {
   OCR_BACKFILL:               "ocr_backfill",
   // Phase 11 — chunk-level semantic indexing:
   SEMANTIC_DOCUMENT_INDEX:    "semantic_document_index",
+  // DMS AI META.2 — first-upload AI metadata suggestion workflow (approval-based):
+  GENERATE_METADATA_DEFINITION_SUGGESTIONS: "generate_metadata_definition_suggestions",
+  AI_RE_EXTRACTION:                          "ai_re_extraction",
 } as const;
 
 export type DmsAiJobType = typeof DMS_AI_JOB_TYPE[keyof typeof DMS_AI_JOB_TYPE];
@@ -209,6 +212,37 @@ export const SemanticDocumentIndexPayloadSchema = z.object({
 
 export type SemanticDocumentIndexPayload = z.infer<typeof SemanticDocumentIndexPayloadSchema>;
 
+/**
+ * GENERATE_METADATA_DEFINITION_SUGGESTIONS payload.
+ * DMS AI META.2 — background suggestion queue (Flow B).
+ * References only IDs + control codes. The handler for this job type MUST
+ * ONLY write to dms_review_queue — it must NEVER insert into
+ * dms_metadata_definitions. Suggestions require authorized human approval.
+ */
+export const GenerateMetadataDefinitionSuggestionsPayloadSchema = z.object({
+  documentTypeId:    z.number().int().positive(),
+  triggerDocumentId: z.number().int().positive(),
+  source:            z.enum(["post_approve", "admin_manual"]),
+});
+
+export type GenerateMetadataDefinitionSuggestionsPayload = z.infer<
+  typeof GenerateMetadataDefinitionSuggestionsPayloadSchema
+>;
+
+/**
+ * AI_RE_EXTRACTION payload.
+ * DMS AI META.2 — re-runs AI metadata value extraction for a single document
+ * AFTER new metadata definitions have been created via authorized approval.
+ * Extraction-only: never reclassifies the document and never overwrites
+ * existing (human-approved) metadata values.
+ */
+export const AiReExtractionPayloadSchema = z.object({
+  documentId: z.number().int().positive(),
+  source:     z.enum(["metadata_suggestions_approved", "admin_manual_retry"]),
+});
+
+export type AiReExtractionPayload = z.infer<typeof AiReExtractionPayloadSchema>;
+
 /** Per-job-type max attempts */
 export const JOB_TYPE_MAX_ATTEMPTS: Record<DmsAiJobType, number> = {
   post_approve_orchestration: 3,
@@ -220,6 +254,8 @@ export const JOB_TYPE_MAX_ATTEMPTS: Record<DmsAiJobType, number> = {
   link_suggestions:           2,
   ocr_backfill:               3,
   semantic_document_index:    3,
+  generate_metadata_definition_suggestions: 2,
+  ai_re_extraction:                          3,
 };
 
 /** Retryable error codes (all others are non-retryable — fail permanently) */

@@ -24,6 +24,7 @@ export type DmsDocumentTypeRow = {
   description: string | null;
   category_id: number | null;
   requires_expiry_tracking: boolean;
+  is_renewable: boolean;
   default_confidentiality: string;
   requires_approval: boolean;
   default_retention_days: number | null;
@@ -59,6 +60,7 @@ const documentTypeSchema = z.object({
   description: z.string().nullable().optional(),
   category_id: z.number().int().positive().nullable().optional(),
   requires_expiry_tracking: z.boolean().default(false),
+  is_renewable: z.boolean().default(true),
   default_confidentiality: z.enum(ALLOWED_CONFIDENTIALITY).default("internal"),
   requires_approval: z.boolean().default(false),
   default_retention_days: z.number().int().positive().nullable().optional(),
@@ -260,6 +262,7 @@ export async function duplicateDmsDocumentType(id: number): Promise<ActionResult
         description: source.description,
         category_id: source.category_id,
         requires_expiry_tracking: source.requires_expiry_tracking,
+        is_renewable: source.is_renewable,
         default_confidentiality: source.default_confidentiality,
         requires_approval: source.requires_approval,
         default_retention_days: source.default_retention_days,

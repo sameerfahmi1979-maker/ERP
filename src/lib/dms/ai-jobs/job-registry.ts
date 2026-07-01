@@ -15,6 +15,8 @@ import { DMS_AI_JOB_TYPE } from "./job-types";
 import { postApproveOrchestrationHandler } from "./handlers/post-approve-orchestration.handler";
 import { ocrBackfillHandler } from "./handlers/ocr-backfill.handler";
 import { semanticDocumentIndexHandler } from "./handlers/semantic-document-index.handler";
+import { generateMetadataDefinitionSuggestionsHandler } from "./handlers/generate-metadata-definition-suggestions.handler";
+import { aiReExtractionHandler } from "./handlers/ai-re-extraction.handler";
 
 // ── Handler registry ──────────────────────────────────────────────────────────
 
@@ -24,6 +26,10 @@ const HANDLER_MAP = new Map<string, DmsAiJobHandler>([
   [DMS_AI_JOB_TYPE.OCR_BACKFILL,               ocrBackfillHandler],
   // Phase 11 — chunk-level semantic indexing:
   [DMS_AI_JOB_TYPE.SEMANTIC_DOCUMENT_INDEX,    semanticDocumentIndexHandler],
+  // DMS AI META.2 — background metadata definition suggestion generation (Flow B):
+  [DMS_AI_JOB_TYPE.GENERATE_METADATA_DEFINITION_SUGGESTIONS, generateMetadataDefinitionSuggestionsHandler],
+  // DMS AI META.2 — re-extraction after authorized approval of suggested definitions:
+  [DMS_AI_JOB_TYPE.AI_RE_EXTRACTION,           aiReExtractionHandler],
   // Future handlers (Phase 12+):
   // [DMS_AI_JOB_TYPE.AI_SUMMARY,        aiSummaryHandler],
   // [DMS_AI_JOB_TYPE.AI_INTELLIGENCE,   aiIntelligenceHandler],

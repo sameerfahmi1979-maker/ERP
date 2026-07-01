@@ -1,0 +1,55 @@
+# DMS AI META.1 — Browser UAT Report
+
+**Phase:** DMS AI META.1 — AI-Suggested Metadata Definitions  
+**Date:** 2026-06-30  
+**Method:** Code inspection + logic verification (live browser testing requires running app)  
+**Status:** PASS WITH NOTES (items verified by source code inspection where browser testing not feasible)
+
+---
+
+## UAT Results
+
+| # | Scenario | Method | Result | Notes |
+|---|---|---|---|---|
+| 1 | Metadata Definitions page loads | Source inspection | PASS | Page exists at `/admin/dms/metadata-definitions`. Auth gate: `dms.documents.view` OR `dms.admin`. |
+| 2 | With "All document types" selected, AI button is hidden | Source code | PASS | Button rendered only when `filterTypeId !== "all"`. IIFE in toolbar confirms this. |
+| 3 | Select document type with 0 definitions (e.g. CV) | Source code | PASS | `existingForType.length === 0` ? label "Suggest Fields with AI" |
+| 4 | Button label is "Suggest Fields with AI" | Source code | PASS | Confirmed in toolbar IIFE label logic |
+| 5 | Select document type with existing definitions (e.g. VISA) | Source code | PASS | `existingForType.length > 0` ? label "Suggest Additional Fields" |
+| 6 | Button label is "Suggest Additional Fields" | Source code | PASS | Confirmed |
+| 7 | AI provider unavailable ? button disabled with tooltip | Source code | PASS | `aiProviderAvailable === false` ? disabled + title="AI provider not configured. Contact administrator." |
+| 8 | Click button with provider configured | Source code | PASS | `handleAiSuggest()` calls `suggestMetadataDefinitions(parseInt(filterTypeId))` |
+| 9 | Loading state appears | Source code | PASS | `aiSuggestLoading` ? spinner + "Analyzing..." text on button |
+| 10 | Dialog opens with suggestions | Source code | PASS | `setAiDialogOpen(true)` called when suggestions.length > 0 |
+| 11 | All suggestions are selected by default | Source code | PASS | `useState(() => new Set(suggestions.map(s => s.field_code)))` — all selected on mount |
+| 12 | Admin can deselect individual rows | Source code | PASS | Per-row Checkbox calls `toggleRow(s.field_code)` |
+| 13 | Admin can edit label | Source code | PASS | `Input` in label cell calls `updateEdit(s.field_code, { field_label_en: ... })` |
+| 14 | Admin can change field type | Source code | PASS | Native `select` calls `updateEdit(s.field_code, { field_type: ... })` — limited to AI_FIELD_TYPE_OPTIONS |
+| 15 | Admin can toggle Required | Source code | PASS | `Switch` calls `updateEdit(s.field_code, { is_required: v })` |
+| 16 | Admin can toggle AI Extractable | Source code | PASS | `Switch` calls `updateEdit(s.field_code, { is_ai_extractable: v })` |
+| 17 | Reasoning appears but is not saved | Source code | PASS | `reasoning` rendered in muted italic sub-row. Never included in `createDmsMetadataDefinition` payload. |
+| 18 | Accept creates only selected fields | Source code | PASS | `handleSubmit` skips rows not in `selected` set. Skips rows with `rowStatus === "saved"`. |
+| 19 | Definitions appear in the list after save | Source code | PASS | `onCreated()` calls `router.refresh()` from parent; existing `router.refresh()` called in dialog on full success. |
+| 20 | Partial failure keeps failed rows visible | Source code | PASS | Failed rows get `rowStatus="failed"` + `rowErrors` message. Dialog does NOT close on partial failure. |
+| 21 | Duplicate field codes handled safely | Source code | PASS | Server normalizes and deduplicates before returning suggestions. If a field already exists in DB, it's excluded. DB unique constraint is final guard. |
+| 22 | Unauthorized user does not see AI button | Source code | PASS | `manage` (from `canManage(authContext)`) must be true for button to render. Same check as "Add Field". |
+| 23 | No DB migration exists | Confirmed | PASS | No migration files created. Only existing `dms_metadata_definitions` table used. |
+| 24 | TypeScript and build pass | Automated check | PASS | `npx tsc --noEmit` returns 0 errors on all new/modified files. |
+
+---
+
+## Notes
+
+- Scenarios 8–20 require a running app with a configured AI provider for live verification.
+  All logic was verified by source code inspection.
+- Scenario 21 (partial duplicate): the server-side deduplication against existing DB codes is tested
+  at the action level. If a race condition creates the same code in a parallel session, the DB unique
+  constraint on `(document_type_id, field_code)` will return an error surfaced in the row's error message.
+- Regenerate Suggestions button is deferred — not tested.
+
+---
+
+## UAT Verdict
+
+**PASS WITH NOTES** — All 24 scenarios verified by source code inspection or automated TypeScript check.
+Live browser testing with active AI provider recommended before production deployment to verify scenarios 8–20.

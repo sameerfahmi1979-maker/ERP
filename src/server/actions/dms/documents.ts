@@ -58,11 +58,14 @@ export type DmsDocumentRow = {
   ai_risk_level?: string | null;
   ai_risk_reasons_json?: unknown;
   ai_risk_updated_at?: string | null;
+  // DMS RENEWAL.2 — links the old document to the replacement document once superseded
+  superseded_by_document_id?: number | null;
   // joined
-  document_type?: { type_code: string; name_en: string; requires_expiry_tracking: boolean; default_confidentiality: string } | null;
+  document_type?: { type_code: string; name_en: string; requires_expiry_tracking: boolean; default_confidentiality: string; is_renewable?: boolean } | null;
   category?: { category_code: string; name_en: string } | null;
   tags?: { tag_id: number; tag?: { tag_name: string; color_hex: string | null } }[];
   files_count?: number;
+  superseded_by?: { id: number; document_no: string; title: string } | null;
 };
 
 /** DMS 12.3 — search mode selector */
@@ -430,9 +433,10 @@ export async function getDmsDocumentRecordData(
         .from("dms_documents")
         .select(`
           *,
-          document_type:dms_document_types(type_code, name_en, requires_expiry_tracking, default_confidentiality),
+          document_type:dms_document_types(type_code, name_en, requires_expiry_tracking, default_confidentiality, is_renewable),
           category:dms_document_categories(category_code, name_en),
-          tags:dms_document_tags(tag_id, tag:dms_tags(tag_name, color_hex))
+          tags:dms_document_tags(tag_id, tag:dms_tags(tag_name, color_hex)),
+          superseded_by:dms_documents!superseded_by_document_id(id, document_no, title)
         `)
         .eq("id", id)
         .is("deleted_at", null)
@@ -491,7 +495,7 @@ export async function getDmsDocumentRecordData(
 // ── getDmsNewDocumentDefaults ─────────────────────────────────────────────────
 
 export async function getDmsNewDocumentDefaults(): Promise<
-  ActionResult<{ categories: { id: number; name_en: string; category_code: string }[]; documentTypes: { id: number; name_en: string; type_code: string; category_id: number | null; requires_expiry_tracking: boolean; default_confidentiality: string }[] }>
+  ActionResult<{ categories: { id: number; name_en: string; category_code: string }[]; documentTypes: { id: number; name_en: string; type_code: string; category_id: number | null; requires_expiry_tracking: boolean; is_renewable: boolean; default_confidentiality: string }[] }>
 > {
   try {
     const ctx = await getAuthContext();
@@ -509,7 +513,7 @@ export async function getDmsNewDocumentDefaults(): Promise<
         .order("sort_order"),
       supabase
         .from("dms_document_types")
-        .select("id, name_en, type_code, category_id, requires_expiry_tracking, default_confidentiality")
+        .select("id, name_en, type_code, category_id, requires_expiry_tracking, is_renewable, default_confidentiality")
         .eq("is_active", true)
         .is("deleted_at", null)
         .order("sort_order"),

@@ -1,8 +1,34 @@
-fix(dms): batch review screen autofit - fixed column widths and compact action buttons
+feat(dms): AI-validated version linking, unlink version, RLS parity fix, documents table layout
 
-- Add table-fixed layout with colgroup to enforce column widths
-- Cap File/AI Title column at 200px with truncate + title tooltip
-- Shorten 'Review & Approve' button to icon + 'Review' to save space
-- Make Re-run and Discard buttons icon-only (w-7 squares)
-- Shorten 'Duplicate' badge to 'Dup'
-- All columns now fit on screen without horizontal scrolling
+Version Link redesign (replaces direct "Upload New Version"):
+- attachUploadToExistingDocument now requires the upload session to have
+  completed AI review (intake_status=review_pending) before it can become
+  a document version, and blocks on AI-detected document-type mismatch or
+  an already-expired suggested expiry date.
+- New getEligibleUploadSessionsForVersionLink action lists AI-reviewed,
+  unattached Inbox sessions with eligibility/ineligibility reasons.
+- New DmsLinkVersionDialog: pick an AI-reviewed Inbox file instead of
+  uploading directly; ineligible sessions shown disabled with a reason.
+- Inbox "Attach to existing document" actions (table + banner) disabled
+  until AI Fill has completed, with a guiding tooltip.
+- Deleted the old direct-upload DmsUploadNewVersionDialog.
+
+Unlink Version:
+- New unlinkDmsDocumentVersion server action (dms.documents.edit/admin):
+  soft-deletes the linked file, hard-deletes the version row, and
+  promotes the next-highest version to current (or clears current_version_id
+  if none remain). Blocked if referenced by an active renewal request.
+- Unlink button + confirmation added to the Versions section.
+
+RLS parity fix (root cause of silent Set Current / new-version-demote / Unlink failures):
+- dms_document_versions and dms_document_files were missing UPDATE/DELETE
+  RLS policies since DMS.2, causing all version mutations to silently no-op.
+  Added dms_versions_update/delete and dms_files_update/delete policies.
+
+Documents table layout:
+- Fixed-width, resizable columns (drag header edge, widths persist per
+  browser via localStorage) using new shared useResizableColumns hook and
+  an optional width/onResizeStart on SortColHeader (backward compatible).
+- Removed Conf. and Created columns to declutter the list.
+
+Audit labels: file_uploaded, version_uploaded, version_unlinked, current_version_changed.

@@ -273,6 +273,140 @@ export async function setDmsDocumentCurrentVersion(
   }
 }
 
+// ── Unlink a version (DMS VERSION LINK.1 — Option B) ──────────────────────────
+// Removes the version row and soft-deletes its associated file row(s). The
+// physical file stays in storage. If the unlinked version was current, the
+// next-highest remaining version is promoted; if it was the only version, the
+// document reverts to a "no file attached" state.
+
+export type UnlinkVersionResult = {
+  filesRemoved: number;
+  promotedVersionNumber: number | null;
+  documentHasNoVersion: boolean;
+};
+
+export async function unlinkDmsDocumentVersion(
+  versionId: number
+): Promise<ActionResult<UnlinkVersionResult>> {
+  try {
+    const supabase = await createClient();
+    const ctx = await getAuthContext();
+    if (!ctx.profile) return { success: false, error: "Not authenticated" };
+    if (!hasPermission(ctx, "dms.documents.edit") && !hasPermission(ctx, "dms.admin")) {
+      return { success: false, error: "Permission denied: requires dms.documents.edit" };
+    }
+
+    const { data: version, error: verError } = await supabase
+      .from("dms_document_versions")
+      .select("id, document_id, version_number, version_label, is_current")
+      .eq("id", versionId)
+      .single();
+
+    if (verError || !version) return { success: false, error: "Version not found" };
+
+    const documentId = version.document_id as number;
+
+    // Guard: block if a renewal request references this version as its replacement.
+    const { count: renewalRefCount } = await supabase
+      .from("dms_renewal_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("replacement_version_id", versionId);
+
+    if ((renewalRefCount ?? 0) > 0) {
+      return {
+        success: false,
+        error: "This version is referenced by a renewal request and cannot be unlinked.",
+      };
+    }
+
+    const now = new Date().toISOString();
+
+    const { data: files } = await supabase
+      .from("dms_document_files")
+      .select("id")
+      .eq("version_id", versionId)
+      .is("deleted_at", null);
+
+    const fileIds = (files ?? []).map((f) => f.id as number);
+    if (fileIds.length > 0) {
+      await supabase.from("dms_document_files").update({ deleted_at: now }).in("id", fileIds);
+    }
+
+    const { error: deleteError } = await supabase
+      .from("dms_document_versions")
+      .delete()
+      .eq("id", versionId);
+
+    if (deleteError) return { success: false, error: deleteError.message };
+
+    let promotedVersionNumber: number | null = null;
+    let documentHasNoVersion = false;
+
+    if (version.is_current) {
+      const { data: nextVersion } = await supabase
+        .from("dms_document_versions")
+        .select("id, version_number")
+        .eq("document_id", documentId)
+        .order("version_number", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (nextVersion) {
+        await supabase
+          .from("dms_document_versions")
+          .update({ is_current: true })
+          .eq("id", nextVersion.id);
+        await supabase
+          .from("dms_documents")
+          .update({ current_version_id: nextVersion.id, updated_by: ctx.profile.id, updated_at: now })
+          .eq("id", documentId);
+        promotedVersionNumber = nextVersion.version_number as number;
+      } else {
+        await supabase
+          .from("dms_documents")
+          .update({ current_version_id: null, updated_by: ctx.profile.id, updated_at: now })
+          .eq("id", documentId);
+        documentHasNoVersion = true;
+      }
+    }
+
+    await supabase.from("dms_document_events").insert({
+      document_id: documentId,
+      event_type: "version_unlinked",
+      description: `Version v${version.version_number} unlinked${
+        promotedVersionNumber ? ` — v${promotedVersionNumber} promoted to current` : ""
+      }`,
+      performed_by: ctx.profile.id,
+      performed_at: now,
+      metadata_json: {
+        version_id: versionId,
+        version_number: version.version_number,
+        files_removed: fileIds.length,
+        promoted_version_number: promotedVersionNumber,
+      },
+    });
+
+    await logAudit({
+      module_code: "DMS",
+      entity_name: "dms_document_versions",
+      entity_id: versionId,
+      entity_reference: String(documentId),
+      action: "delete",
+      new_values: { version_number: version.version_number, files_removed: fileIds.length },
+    });
+
+    revalidatePath(`/dms/documents/record/${documentId}`);
+
+    return {
+      success: true,
+      data: { filesRemoved: fileIds.length, promotedVersionNumber, documentHasNoVersion },
+    };
+  } catch (e) {
+    logger.error("unlinkDmsDocumentVersion error", e);
+    return { success: false, error: String(e) };
+  }
+}
+
 // ── Admin: purge a file record and all its connections ────────────────────────
 
 export type AdminDeleteFileResult = {

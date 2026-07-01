@@ -43,6 +43,9 @@ export type DmsUploadSessionRow = {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+  // DMS.11 — AI-first intake lifecycle
+  intake_status: string;
+  ai_result_id: number | null;
   // joined
   duplicate_document?: { id: number; document_no: string; title: string } | null;
   uploader?: { full_name: string | null; email: string | null } | null;
@@ -94,7 +97,7 @@ export async function getDmsUploadSessions(
         `id, session_code, status, original_filename, mime_type, file_size_bytes,
          sha256_hash, temp_storage_path, is_duplicate, duplicate_document_id,
          uploaded_by, uploaded_at, expires_at, completed_at, error_message,
-         temp_cleaned_at, cleanup_error_message,
+         temp_cleaned_at, cleanup_error_message, intake_status, ai_result_id,
          created_at, updated_at, deleted_at,
          duplicate_document:dms_documents!duplicate_document_id(id, document_no, title),
          uploader:user_profiles!uploaded_by(full_name, email)`
@@ -139,6 +142,7 @@ export async function getDmsUploadSession(
         `id, session_code, status, original_filename, mime_type, file_size_bytes,
          sha256_hash, temp_storage_path, is_duplicate, duplicate_document_id,
          uploaded_by, uploaded_at, expires_at, completed_at, error_message,
+         intake_status, ai_result_id,
          created_at, updated_at, deleted_at,
          duplicate_document:dms_documents!duplicate_document_id(id, document_no, title),
          uploader:user_profiles!uploaded_by(full_name, email)`

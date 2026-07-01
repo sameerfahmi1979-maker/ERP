@@ -410,7 +410,8 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
             <Button
               variant="outline"
               size="sm"
-              onClick={() => handleAttach(uploadState.session)}
+              disabled
+              title="Run &quot;Upload & AI Fill&quot; first — attaching as a version now requires AI review"
             >
               Attach to existing document
             </Button>

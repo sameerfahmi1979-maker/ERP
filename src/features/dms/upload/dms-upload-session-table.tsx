@@ -70,6 +70,7 @@ export function DmsUploadSessionTable({
           {sessions.map((s) => {
             const statusInfo = STATUS_BADGE[s.status] ?? { label: s.status, className: "bg-gray-100 text-gray-600" };
             const isActionable = s.status === "uploaded" || s.status === "processing";
+            const isAiReviewed = s.intake_status === "review_pending";
             return (
               <tr key={s.id} className="hover:bg-muted/20 transition-colors">
                 <td className="px-4 py-2.5">
@@ -142,8 +143,12 @@ export function DmsUploadSessionTable({
                         variant="outline"
                         className="h-7 text-xs gap-1"
                         onClick={() => onAttach(s)}
-                        disabled={isSubmitting}
-                        title="Attach to existing document"
+                        disabled={isSubmitting || !isAiReviewed}
+                        title={
+                          isAiReviewed
+                            ? "Attach to existing document"
+                            : "Run \"Upload & AI Fill\" first to attach this file as a document version"
+                        }
                       >
                         <Paperclip className="h-3 w-3" />
                         Attach

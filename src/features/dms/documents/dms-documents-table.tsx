@@ -25,7 +25,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { DmsDocumentStatusBadge } from "./dms-document-status-badge";
-import { DmsConfidentialityBadge } from "./dms-confidentiality-badge";
 import { DmsExpiryBadge } from "./dms-expiry-badge";
 import { archiveDmsDocument, unarchiveDmsDocument, deleteDmsDocument } from "@/server/actions/dms/documents";
 import type { DmsDocumentRow } from "@/server/actions/dms/documents";
@@ -36,6 +35,24 @@ import type { DmsAiSearchResult, DmsSearchIntent, DmsSemanticSearchResult } from
 import { SortColHeader } from "@/components/erp/table/sort-col-header";
 import { TablePagination } from "@/components/erp/table/table-pagination";
 import { useSortPaginate } from "@/hooks/use-sort-paginate";
+import { useResizableColumns } from "@/components/erp/table/use-resizable-columns";
+
+type DocColKey =
+  | "docNo"
+  | "title"
+  | "type"
+  | "status"
+  | "expiry"
+  | "tags";
+
+const DEFAULT_DOC_COL_WIDTHS: Record<DocColKey, number> = {
+  docNo: 110,
+  title: 320,
+  type: 150,
+  status: 100,
+  expiry: 130,
+  tags: 100,
+};
 
 type SearchMode = "auto" | "quick" | "safe" | "content" | "ai" | "semantic";
 
@@ -160,6 +177,12 @@ export function DmsDocumentsTable({
       document_type: (a, b) => (a.document_type?.name_en ?? "").localeCompare(b.document_type?.name_en ?? ""),
       tags: (a, b) => (a.tags?.length ?? 0) - (b.tags?.length ?? 0),
     },
+  });
+
+  // Column adjustment — drag a header's right edge to resize; widths persist per-browser.
+  const { widths: colWidths, startResize } = useResizableColumns<DocColKey>(DEFAULT_DOC_COL_WIDTHS, {
+    minWidth: 60,
+    storageKey: "dms-documents-table-col-widths-v2",
   });
 
   function openDocument(id: number, mode: "edit" | "view" = "edit") {
@@ -634,24 +657,22 @@ export function DmsDocumentsTable({
       {/* Table */}
       {searchMode !== "ai" && searchMode !== "semantic" && (
       <div className="rounded-md border border-border overflow-x-auto">
-        <table className="w-full text-xs">
+        <table className="w-full text-xs table-fixed">
           <thead>
             <tr className="border-b border-border bg-muted/30">
-              <SortColHeader field="document_no" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 w-[130px] text-muted-foreground font-medium">Doc No</SortColHeader>
-              <SortColHeader field="title" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 text-muted-foreground font-medium">Title</SortColHeader>
-              <SortColHeader field="document_type" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 w-[140px] text-muted-foreground font-medium">Type</SortColHeader>
-              <SortColHeader field="status" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 w-[90px] text-muted-foreground font-medium">Status</SortColHeader>
-              <SortColHeader field="confidentiality_level" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 w-[85px] text-muted-foreground font-medium">Conf.</SortColHeader>
-              <SortColHeader field="expiry_date" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 w-[100px] text-muted-foreground font-medium">Expiry</SortColHeader>
-              <SortColHeader field="tags" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 w-[80px] text-muted-foreground font-medium">Tags</SortColHeader>
-              <SortColHeader field="created_at" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 w-[90px] text-muted-foreground font-medium">Created</SortColHeader>
-              <th className="px-3 py-2 w-[90px]" />
+              <SortColHeader field="document_no" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 text-muted-foreground font-medium" width={colWidths.docNo} onResizeStart={(e) => startResize("docNo", e)}>Doc No</SortColHeader>
+              <SortColHeader field="title" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 text-muted-foreground font-medium" width={colWidths.title} onResizeStart={(e) => startResize("title", e)}>Title</SortColHeader>
+              <SortColHeader field="document_type" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 text-muted-foreground font-medium" width={colWidths.type} onResizeStart={(e) => startResize("type", e)}>Type</SortColHeader>
+              <SortColHeader field="status" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 text-muted-foreground font-medium" width={colWidths.status} onResizeStart={(e) => startResize("status", e)}>Status</SortColHeader>
+              <SortColHeader field="expiry_date" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 text-muted-foreground font-medium" width={colWidths.expiry} onResizeStart={(e) => startResize("expiry", e)}>Expiry</SortColHeader>
+              <SortColHeader field="tags" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 text-muted-foreground font-medium" width={colWidths.tags} onResizeStart={(e) => startResize("tags", e)}>Tags</SortColHeader>
+              <th className="px-3 py-2" style={{ width: 104 }} />
             </tr>
           </thead>
           <tbody>
             {table.rows.length === 0 ? (
               <tr>
-                <td colSpan={9} className="text-center py-10 text-muted-foreground">
+                <td colSpan={7} className="text-center py-10 text-muted-foreground">
                   <div className="flex flex-col items-center gap-2">
                     <FileText className="h-8 w-8 opacity-30" />
                     <p className="text-sm">No documents found</p>
@@ -664,18 +685,18 @@ export function DmsDocumentsTable({
             ) : (
               table.rows.map((doc) => (
                 <tr key={doc.id} className="border-b border-border hover:bg-muted/20 transition-colors">
-                  <td className="px-3 py-2 font-mono font-medium text-primary">
+                  <td className="px-3 py-2 font-mono font-medium text-primary overflow-hidden">
                     <button
                       type="button"
                       onClick={() => openDocument(doc.id)}
-                      className="hover:underline"
+                      className="hover:underline truncate block max-w-full"
                     >
                       {doc.document_no}
                     </button>
                   </td>
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-1.5">
-                      <span className="truncate max-w-[200px] font-medium">{doc.title}</span>
+                  <td className="px-3 py-2 overflow-hidden">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="truncate min-w-0 flex-1 font-medium">{doc.title}</span>
                       {doc.is_archived && (
                         <Badge variant="outline" className="text-[9px] px-1 py-0 text-muted-foreground shrink-0">
                           Archived
@@ -687,22 +708,19 @@ export function DmsDocumentsTable({
                     </div>
                     {/* AI summary secondary line (redacted for confidential if server already replaced it) */}
                     {doc.ai_summary && doc.ai_summary_status === "complete" && (
-                      <p className="text-muted-foreground truncate max-w-[300px] mt-0.5 italic">
+                      <p className="text-muted-foreground truncate mt-0.5 italic">
                         {doc.ai_summary}
                       </p>
                     )}
                     {!doc.ai_summary && doc.description && (
-                      <p className="text-muted-foreground truncate max-w-[300px] mt-0.5">{doc.description}</p>
+                      <p className="text-muted-foreground truncate mt-0.5">{doc.description}</p>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-muted-foreground">
+                  <td className="px-3 py-2 text-muted-foreground truncate">
                     {doc.document_type?.name_en ?? "—"}
                   </td>
                   <td className="px-3 py-2">
                     <DmsDocumentStatusBadge status={doc.status} />
-                  </td>
-                  <td className="px-3 py-2">
-                    <DmsConfidentialityBadge level={doc.confidentiality_level} />
                   </td>
                   <td className="px-3 py-2">
                     {doc.expiry_date ? (
@@ -736,9 +754,6 @@ export function DmsDocumentsTable({
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}
-                  </td>
-                  <td className="px-3 py-2 text-muted-foreground">
-                    {format(parseISO(doc.created_at), "dd MMM yy")}
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1 justify-end">

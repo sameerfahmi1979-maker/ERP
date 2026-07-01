@@ -3,22 +3,33 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
-import { Upload, CheckCircle2, Star, Eye, Download, FileText } from "lucide-react";
+import { Upload, CheckCircle2, Star, Eye, Download, FileText, Unlink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { queryKeys } from "@/lib/query/query-keys";
 import {
   getDmsDocumentVersions,
   getDmsDocumentFileSignedUrl,
   setDmsDocumentCurrentVersion,
+  unlinkDmsDocumentVersion,
   type DmsDocumentVersionRow,
   type DmsDocumentFileRow,
 } from "@/server/actions/dms/document-files";
 import { getDmsDocumentFiles } from "@/server/actions/dms/document-files";
 import { FileSize } from "@/features/dms/upload/dms-file-size";
 import { FileTypeIcon } from "@/features/dms/upload/dms-file-type-icon";
-import { DmsUploadNewVersionDialog } from "@/features/dms/upload/dms-upload-new-version-dialog";
+import { DmsLinkVersionDialog } from "./dms-link-version-dialog";
 import {
   invalidateDmsDocumentFiles,
   invalidateDmsDocumentVersions,
@@ -42,6 +53,8 @@ export function DmsDocumentVersionsSection({
   const queryClient = useQueryClient();
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const [unlinkTarget, setUnlinkTarget] = useState<DmsDocumentVersionRow | null>(null);
+  const [isUnlinking, setIsUnlinking] = useState(false);
 
   const { data: versions = [], isLoading: versionsLoading } = useQuery({
     queryKey: queryKeys.dms.documentVersions(documentId),
@@ -107,6 +120,31 @@ export function DmsDocumentVersionsSection({
     }
   };
 
+  const handleUnlink = async () => {
+    if (!unlinkTarget) return;
+    setIsUnlinking(true);
+    try {
+      const result = await unlinkDmsDocumentVersion(unlinkTarget.id);
+      if (result.success && result.data) {
+        const { promotedVersionNumber, documentHasNoVersion } = result.data;
+        toast.success(
+          promotedVersionNumber
+            ? `Version unlinked — v${promotedVersionNumber} is now current`
+            : documentHasNoVersion
+            ? "Version unlinked — document has no file attached"
+            : "Version unlinked"
+        );
+        invalidateDmsDocumentVersions(queryClient, documentId);
+        invalidateDmsDocumentFiles(queryClient, documentId);
+        setUnlinkTarget(null);
+      } else {
+        toast.error(result.error ?? "Failed to unlink version");
+      }
+    } finally {
+      setIsUnlinking(false);
+    }
+  };
+
   if (versionsLoading) {
     return (
       <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
@@ -133,7 +171,7 @@ export function DmsDocumentVersionsSection({
             onClick={() => setUploadDialogOpen(true)}
           >
             <Upload className="h-3.5 w-3.5" />
-            Upload New Version
+            Link New Version
           </Button>
         )}
       </div>
@@ -144,7 +182,7 @@ export function DmsDocumentVersionsSection({
           <div className="text-center">
             <p className="text-sm font-medium">No versions yet</p>
             <p className="text-xs mt-1 opacity-70">
-              Click &ldquo;Upload New Version&rdquo; above to add the first file version.
+              Click &ldquo;Link New Version&rdquo; above to link the first AI-reviewed file from the Inbox.
             </p>
           </div>
         </div>
@@ -197,6 +235,18 @@ export function DmsDocumentVersionsSection({
                         title="Set as current version"
                       >
                         <Star className="h-3 w-3" /> Set Current
+                      </Button>
+                    )}
+                    {canEdit && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 text-[11px] gap-1 text-muted-foreground hover:text-destructive"
+                        onClick={() => setUnlinkTarget(v)}
+                        title="Unlink this version"
+                      >
+                        <Unlink className="h-3 w-3" /> Unlink
                       </Button>
                     )}
                   </div>
@@ -279,8 +329,8 @@ export function DmsDocumentVersionsSection({
         </div>
       )}
 
-      {/* Upload New Version Dialog */}
-      <DmsUploadNewVersionDialog
+      {/* Link New Version Dialog */}
+      <DmsLinkVersionDialog
         open={uploadDialogOpen}
         onOpenChange={setUploadDialogOpen}
         documentId={documentId}
@@ -290,6 +340,36 @@ export function DmsDocumentVersionsSection({
           invalidateDmsDocumentFiles(queryClient, documentId);
         }}
       />
+
+      {/* Unlink confirmation */}
+      <AlertDialog open={!!unlinkTarget} onOpenChange={(v) => !v && setUnlinkTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unlink Version {unlinkTarget ? `v${unlinkTarget.version_number}` : ""}?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  This removes the version and its file record from this document. The physical file
+                  stays in storage and is not deleted.
+                </p>
+                {unlinkTarget?.is_current && (
+                  <p className="text-amber-600 dark:text-amber-400 font-medium">
+                    This is the current version — the next most recent remaining version will
+                    automatically become current, or the document will show no file attached if this
+                    was the only version.
+                  </p>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isUnlinking}>Cancel</AlertDialogCancel>
+            <AlertDialogAction disabled={isUnlinking} onClick={handleUnlink}>
+              {isUnlinking ? "Unlinking…" : "Unlink Version"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

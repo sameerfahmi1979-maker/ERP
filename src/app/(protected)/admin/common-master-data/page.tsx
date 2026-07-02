@@ -35,7 +35,7 @@ export default async function CommonMasterDataPage() {
   const counts = [depts.data?.length ?? 0, desigs.data?.length ?? 0, sites.data?.length ?? 0, cals.data?.length ?? 0, roles.data?.length ?? 0, rules.data?.length ?? 0];
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="p-6 space-y-4">
       <ERPPageHeader
         title="Common Master Data"
         description="Cross-module foundation data shared by all ERP modules"

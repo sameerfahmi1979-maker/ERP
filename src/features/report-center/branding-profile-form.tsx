@@ -1,22 +1,19 @@
 "use client";
 
 /**
- * Branding Profile Form (Drawer)
+ * Branding Profile Form
  * Phase REPORT.3 — Template / Branding / Output Adapter Engine
  *
- * Create / edit erp_report_branding_profiles.
- * Uses Sheet (drawer) pattern since this is a config record, not a primary business entity.
+ * Uses ERPChildDialogForm — ERP standard for Add/Edit config records.
  */
 
 import { useState, useEffect } from "react";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Button } from "@/components/ui/button";
+import { Palette } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Separator } from "@/components/ui/separator";
-import { Loader2, Palette } from "lucide-react";
+import { ERPCombobox } from "@/components/erp/combobox";
+import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { toast } from "sonner";
 import { createBrandingProfile, updateBrandingProfile } from "@/server/actions/reports/templates";
 import type { ReportBrandingProfile } from "@/lib/report-center/types";
@@ -31,7 +28,7 @@ interface Props {
 const defaultForm = {
   profile_code: "",
   profile_name: "",
-  profile_type: "company" as const,
+  profile_type: "company" as "company" | "group" | "neutral" | "custom",
   logo_url: "",
   small_logo_url: "",
   stamp_url: "",
@@ -63,6 +60,13 @@ const defaultForm = {
   is_neutral_profile: false,
   is_active: true,
 };
+
+const profileTypeOptions = [
+  { value: "company", label: "Company" },
+  { value: "group", label: "Group" },
+  { value: "neutral", label: "Neutral" },
+  { value: "custom", label: "Custom" },
+];
 
 export function BrandingProfileForm({ open, onOpenChange, profile, onSaved }: Props) {
   const [form, setForm] = useState(defaultForm);
@@ -112,55 +116,33 @@ export function BrandingProfileForm({ open, onOpenChange, profile, onSaved }: Pr
     }
   }, [open, profile]);
 
-  const field = (key: keyof typeof defaultForm) => ({
-    value: String(form[key] ?? ""),
-    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-      setForm((f) => ({ ...f, [key]: e.target.value })),
-  });
-
   const handleSubmit = async () => {
-    if (!form.profile_name.trim()) {
-      toast.error("Profile name is required");
-      return;
-    }
+    if (!form.profile_name.trim()) { toast.error("Profile name is required"); return; }
+    if (!isEditing && !form.profile_code.trim()) { toast.error("Profile code is required"); return; }
 
     setIsSubmitting(true);
     try {
       let result;
+      const payload = {
+        ...form,
+        logo_url: form.logo_url || null,
+        small_logo_url: form.small_logo_url || null,
+        stamp_url: form.stamp_url || null,
+        signature_url: form.signature_url || null,
+        watermark_text: form.watermark_text || null,
+        email: form.email || null,
+      };
+
       if (isEditing && profile) {
-        result = await updateBrandingProfile({
-          id: profile.id,
-          ...form,
-          logo_url: form.logo_url || null,
-          small_logo_url: form.small_logo_url || null,
-          stamp_url: form.stamp_url || null,
-          signature_url: form.signature_url || null,
-          watermark_text: form.watermark_text || null,
-          email: form.email || null,
-        } as Parameters<typeof updateBrandingProfile>[0]);
+        result = await updateBrandingProfile({ id: profile.id, ...payload } as Parameters<typeof updateBrandingProfile>[0]);
       } else {
-        if (!form.profile_code.trim()) {
-          toast.error("Profile code is required");
-          return;
-        }
-        result = await createBrandingProfile({
-          ...form,
-          logo_url: form.logo_url || null,
-          small_logo_url: form.small_logo_url || null,
-          stamp_url: form.stamp_url || null,
-          signature_url: form.signature_url || null,
-          watermark_text: form.watermark_text || null,
-          email: form.email || null,
-        } as Parameters<typeof createBrandingProfile>[0]);
+        result = await createBrandingProfile(payload as Parameters<typeof createBrandingProfile>[0]);
       }
 
-      if (!result.success) {
-        toast.error(result.error ?? "Save failed");
-        return;
-      }
+      if (!result.success) { toast.error(result.error ?? "Save failed"); return; }
 
       toast.success(isEditing ? "Branding profile updated" : "Branding profile created");
-      // Build a partial profile object for the optimistic update
+
       const saved: ReportBrandingProfile = {
         ...(profile ?? ({} as ReportBrandingProfile)),
         ...form,
@@ -202,203 +184,227 @@ export function BrandingProfileForm({ open, onOpenChange, profile, onSaved }: Pr
     }
   };
 
+  const tf = (key: keyof typeof defaultForm) => ({
+    value: String(form[key] ?? ""),
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
+      setForm((f) => ({ ...f, [key]: e.target.value })),
+  });
+
+  const colorField = (key: keyof typeof defaultForm) => (
+    <div className="flex items-center gap-2 mt-1">
+      <input
+        type="color"
+        value={String(form[key])}
+        onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+        className="h-9 w-10 rounded border cursor-pointer shrink-0 p-0.5"
+      />
+      <Input
+        value={String(form[key])}
+        onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+        className="h-9 text-sm font-mono"
+        maxLength={7}
+      />
+    </div>
+  );
+
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-2xl flex flex-col">
-        <SheetHeader className="shrink-0">
-          <SheetTitle className="flex items-center gap-2">
-            <Palette className="h-5 w-5 text-primary" />
-            {isEditing ? "Edit Branding Profile" : "New Branding Profile"}
-          </SheetTitle>
-        </SheetHeader>
-
-        <ScrollArea className="flex-1 min-h-0 -mx-6 px-6">
-          <div className="grid grid-cols-2 gap-4 pb-6">
-            {/* Basic Info */}
-            <div className="col-span-2">
-              <Separator className="my-1" />
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mt-2 mb-3">Basic Info</p>
-            </div>
-
-            {!isEditing && (
-              <div>
-                <Label className="text-xs font-medium" htmlFor="profile_code">Code <span className="text-red-500">*</span></Label>
-                <Input id="profile_code" className="mt-1 uppercase" placeholder="COMPANY_1_DEFAULT" {...field("profile_code")} />
-              </div>
-            )}
-
-            <div className={isEditing ? "col-span-2" : ""}>
-              <Label className="text-xs font-medium" htmlFor="profile_name">Profile Name <span className="text-red-500">*</span></Label>
-              <Input id="profile_name" className="mt-1" placeholder="Company Default" {...field("profile_name")} />
-            </div>
-
-            <div>
-              <Label className="text-xs font-medium" htmlFor="legal_name_en">Legal Name (EN)</Label>
-              <Input id="legal_name_en" className="mt-1" {...field("legal_name_en")} />
-            </div>
-            <div>
-              <Label className="text-xs font-medium" htmlFor="legal_name_ar">Legal Name (AR)</Label>
-              <Input id="legal_name_ar" className="mt-1 text-right" dir="rtl" {...field("legal_name_ar")} />
-            </div>
-            <div>
-              <Label className="text-xs font-medium" htmlFor="trade_name_en">Trade Name (EN)</Label>
-              <Input id="trade_name_en" className="mt-1" {...field("trade_name_en")} />
-            </div>
-            <div>
-              <Label className="text-xs font-medium" htmlFor="trade_name_ar">Trade Name (AR)</Label>
-              <Input id="trade_name_ar" className="mt-1 text-right" dir="rtl" {...field("trade_name_ar")} />
-            </div>
-
-            {/* Contact */}
-            <div className="col-span-2">
-              <Separator className="my-1" />
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mt-2 mb-3">Contact & Address</p>
-            </div>
-            <div className="col-span-2">
-              <Label className="text-xs font-medium" htmlFor="address_block_en">Address (EN)</Label>
-              <Input id="address_block_en" className="mt-1" {...field("address_block_en")} />
-            </div>
-            <div className="col-span-2">
-              <Label className="text-xs font-medium" htmlFor="address_block_ar">Address (AR)</Label>
-              <Input id="address_block_ar" className="mt-1 text-right" dir="rtl" {...field("address_block_ar")} />
-            </div>
-            <div>
-              <Label className="text-xs font-medium" htmlFor="phone">Phone</Label>
-              <Input id="phone" className="mt-1" {...field("phone")} />
-            </div>
-            <div>
-              <Label className="text-xs font-medium" htmlFor="email">Email</Label>
-              <Input id="email" type="email" className="mt-1" {...field("email")} />
-            </div>
-            <div>
-              <Label className="text-xs font-medium" htmlFor="website">Website</Label>
-              <Input id="website" className="mt-1" {...field("website")} />
-            </div>
-            <div>
-              <Label className="text-xs font-medium" htmlFor="po_box">PO Box</Label>
-              <Input id="po_box" className="mt-1" {...field("po_box")} />
-            </div>
-            <div>
-              <Label className="text-xs font-medium" htmlFor="trn">TRN</Label>
-              <Input id="trn" className="mt-1" {...field("trn")} />
-            </div>
-            <div>
-              <Label className="text-xs font-medium" htmlFor="trade_license_no">Trade License No.</Label>
-              <Input id="trade_license_no" className="mt-1" {...field("trade_license_no")} />
-            </div>
-
-            {/* Branding */}
-            <div className="col-span-2">
-              <Separator className="my-1" />
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mt-2 mb-3">Branding & Theme</p>
-            </div>
-            <div>
-              <Label className="text-xs font-medium" htmlFor="logo_url">Logo URL</Label>
-              <Input id="logo_url" className="mt-1" placeholder="https://..." {...field("logo_url")} />
-            </div>
-            <div>
-              <Label className="text-xs font-medium" htmlFor="small_logo_url">Small Logo URL</Label>
-              <Input id="small_logo_url" className="mt-1" placeholder="https://..." {...field("small_logo_url")} />
-            </div>
-            <div>
-              <Label className="text-xs font-medium" htmlFor="stamp_url">Stamp URL</Label>
-              <Input id="stamp_url" className="mt-1" placeholder="https://..." {...field("stamp_url")} />
-            </div>
-            <div>
-              <Label className="text-xs font-medium" htmlFor="signature_url">Signature URL</Label>
-              <Input id="signature_url" className="mt-1" placeholder="https://..." {...field("signature_url")} />
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <Label className="text-xs font-medium" htmlFor="theme_primary_color">Primary Color</Label>
-              <div className="flex items-center gap-2 mt-1">
-                <input type="color" id="theme_primary_color" value={form.theme_primary_color} onChange={(e) => setForm((f) => ({ ...f, theme_primary_color: e.target.value }))} className="h-9 w-14 rounded border cursor-pointer" />
-                <Input value={form.theme_primary_color} onChange={(e) => setForm((f) => ({ ...f, theme_primary_color: e.target.value }))} className="font-mono text-xs" />
-              </div>
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label className="text-xs font-medium" htmlFor="theme_header_bg_color">Header BG Color</Label>
-              <div className="flex items-center gap-2 mt-1">
-                <input type="color" id="theme_header_bg_color" value={form.theme_header_bg_color} onChange={(e) => setForm((f) => ({ ...f, theme_header_bg_color: e.target.value }))} className="h-9 w-14 rounded border cursor-pointer" />
-                <Input value={form.theme_header_bg_color} onChange={(e) => setForm((f) => ({ ...f, theme_header_bg_color: e.target.value }))} className="font-mono text-xs" />
-              </div>
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label className="text-xs font-medium" htmlFor="theme_secondary_color">Secondary Color</Label>
-              <div className="flex items-center gap-2 mt-1">
-                <input type="color" id="theme_secondary_color" value={form.theme_secondary_color} onChange={(e) => setForm((f) => ({ ...f, theme_secondary_color: e.target.value }))} className="h-9 w-14 rounded border cursor-pointer" />
-                <Input value={form.theme_secondary_color} onChange={(e) => setForm((f) => ({ ...f, theme_secondary_color: e.target.value }))} className="font-mono text-xs" />
-              </div>
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label className="text-xs font-medium" htmlFor="theme_header_text_color">Header Text Color</Label>
-              <div className="flex items-center gap-2 mt-1">
-                <input type="color" id="theme_header_text_color" value={form.theme_header_text_color} onChange={(e) => setForm((f) => ({ ...f, theme_header_text_color: e.target.value }))} className="h-9 w-14 rounded border cursor-pointer" />
-                <Input value={form.theme_header_text_color} onChange={(e) => setForm((f) => ({ ...f, theme_header_text_color: e.target.value }))} className="font-mono text-xs" />
-              </div>
-            </div>
-
-            {/* Footer & Signatory */}
-            <div className="col-span-2">
-              <Separator className="my-1" />
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mt-2 mb-3">Footer & Signatory</p>
-            </div>
-            <div className="col-span-2">
-              <Label className="text-xs font-medium" htmlFor="footer_text_en">Footer Text (EN)</Label>
-              <Input id="footer_text_en" className="mt-1" placeholder="Confidential — For internal use only" {...field("footer_text_en")} />
-            </div>
-            <div className="col-span-2">
-              <Label className="text-xs font-medium" htmlFor="footer_text_ar">Footer Text (AR)</Label>
-              <Input id="footer_text_ar" className="mt-1 text-right" dir="rtl" {...field("footer_text_ar")} />
-            </div>
-            <div>
-              <Label className="text-xs font-medium" htmlFor="signatory_name">Signatory Name</Label>
-              <Input id="signatory_name" className="mt-1" {...field("signatory_name")} />
-            </div>
-            <div>
-              <Label className="text-xs font-medium" htmlFor="signatory_title_en">Signatory Title (EN)</Label>
-              <Input id="signatory_title_en" className="mt-1" {...field("signatory_title_en")} />
-            </div>
-            <div>
-              <Label className="text-xs font-medium" htmlFor="watermark_text">Watermark Text</Label>
-              <Input id="watermark_text" className="mt-1" placeholder="CONFIDENTIAL" {...field("watermark_text")} />
-            </div>
-
-            {/* Flags */}
-            <div className="col-span-2">
-              <Separator className="my-1" />
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mt-2 mb-3">Flags</p>
-            </div>
-            <div className="flex items-center gap-3">
-              <Switch checked={form.is_active} onCheckedChange={(v) => setForm((f) => ({ ...f, is_active: v }))} id="is_active" />
-              <Label htmlFor="is_active" className="text-sm cursor-pointer">Active</Label>
-            </div>
-            <div className="flex items-center gap-3">
-              <Switch checked={form.is_default_for_company} onCheckedChange={(v) => setForm((f) => ({ ...f, is_default_for_company: v }))} id="is_default_for_company" />
-              <Label htmlFor="is_default_for_company" className="text-sm cursor-pointer">Default for company</Label>
-            </div>
-            <div className="flex items-center gap-3">
-              <Switch checked={form.is_group_profile} onCheckedChange={(v) => setForm((f) => ({ ...f, is_group_profile: v }))} id="is_group_profile" />
-              <Label htmlFor="is_group_profile" className="text-sm cursor-pointer">Group profile</Label>
-            </div>
-            <div className="flex items-center gap-3">
-              <Switch checked={form.is_neutral_profile} onCheckedChange={(v) => setForm((f) => ({ ...f, is_neutral_profile: v }))} id="is_neutral_profile" />
-              <Label htmlFor="is_neutral_profile" className="text-sm cursor-pointer">Neutral profile</Label>
-            </div>
-          </div>
-        </ScrollArea>
-
-        {/* Footer */}
-        <div className="shrink-0 flex justify-end gap-2 pt-4 border-t">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit} disabled={isSubmitting}>
-            {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            {isEditing ? "Save Changes" : "Create Profile"}
-          </Button>
+    <ERPChildDialogForm
+      open={open}
+      onOpenChange={onOpenChange}
+      title={isEditing ? "Edit Branding Profile" : "New Branding Profile"}
+      subtitle="Configure company identity, theme colors, and contact details"
+      icon={<Palette className="h-5 w-5" />}
+      mode={isEditing ? "edit" : "add"}
+      size="xl"
+      isSubmitting={isSubmitting}
+      onSubmit={handleSubmit}
+    >
+      <div className="grid grid-cols-12 gap-4">
+        {/* ── Basic Info ─────────────────────────────────────────────────── */}
+        <div className="col-span-12">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Basic Info</p>
+          <div className="h-px bg-border mb-4" />
         </div>
-      </SheetContent>
-    </Sheet>
+
+        {!isEditing && (
+          <div className="col-span-4">
+            <Label className="text-xs font-medium">
+              Code <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              className="mt-1 h-9 text-sm uppercase"
+              placeholder="COMPANY_1_DEFAULT"
+              {...tf("profile_code")}
+              onChange={(e) => setForm((f) => ({ ...f, profile_code: e.target.value.toUpperCase() }))}
+            />
+          </div>
+        )}
+
+        <div className={`col-span-${isEditing ? "8" : "8"}`}>
+          <Label className="text-xs font-medium">
+            Profile Name <span className="text-destructive">*</span>
+          </Label>
+          <Input className="mt-1 h-9 text-sm" placeholder="Company Default" {...tf("profile_name")} />
+        </div>
+
+        <div className="col-span-4">
+          <Label className="text-xs font-medium">Profile Type</Label>
+          <div className="mt-1">
+            <ERPCombobox
+              value={form.profile_type}
+              onValueChange={(v) => setForm((f) => ({ ...f, profile_type: String(v) as typeof defaultForm.profile_type }))}
+              options={profileTypeOptions}
+              placeholder="Select type..."
+            />
+          </div>
+        </div>
+
+        <div className="col-span-6">
+          <Label className="text-xs font-medium">Legal Name (EN)</Label>
+          <Input className="mt-1 h-9 text-sm" {...tf("legal_name_en")} />
+        </div>
+        <div className="col-span-6">
+          <Label className="text-xs font-medium">Legal Name (AR)</Label>
+          <Input className="mt-1 h-9 text-sm text-right" dir="rtl" {...tf("legal_name_ar")} />
+        </div>
+        <div className="col-span-6">
+          <Label className="text-xs font-medium">Trade Name (EN)</Label>
+          <Input className="mt-1 h-9 text-sm" {...tf("trade_name_en")} />
+        </div>
+        <div className="col-span-6">
+          <Label className="text-xs font-medium">Trade Name (AR)</Label>
+          <Input className="mt-1 h-9 text-sm text-right" dir="rtl" {...tf("trade_name_ar")} />
+        </div>
+
+        {/* ── Contact & Address ───────────────────────────────────────────── */}
+        <div className="col-span-12 mt-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Contact &amp; Address</p>
+          <div className="h-px bg-border mb-4" />
+        </div>
+
+        <div className="col-span-12">
+          <Label className="text-xs font-medium">Address (EN)</Label>
+          <Input className="mt-1 h-9 text-sm" placeholder="123 Business Bay, Dubai, UAE" {...tf("address_block_en")} />
+        </div>
+        <div className="col-span-12">
+          <Label className="text-xs font-medium">Address (AR)</Label>
+          <Input className="mt-1 h-9 text-sm text-right" dir="rtl" {...tf("address_block_ar")} />
+        </div>
+        <div className="col-span-4">
+          <Label className="text-xs font-medium">Phone</Label>
+          <Input className="mt-1 h-9 text-sm" {...tf("phone")} />
+        </div>
+        <div className="col-span-4">
+          <Label className="text-xs font-medium">Email</Label>
+          <Input className="mt-1 h-9 text-sm" type="email" {...tf("email")} />
+        </div>
+        <div className="col-span-4">
+          <Label className="text-xs font-medium">Website</Label>
+          <Input className="mt-1 h-9 text-sm" {...tf("website")} />
+        </div>
+        <div className="col-span-3">
+          <Label className="text-xs font-medium">PO Box</Label>
+          <Input className="mt-1 h-9 text-sm" {...tf("po_box")} />
+        </div>
+        <div className="col-span-4">
+          <Label className="text-xs font-medium">TRN</Label>
+          <Input className="mt-1 h-9 text-sm font-mono" {...tf("trn")} />
+        </div>
+        <div className="col-span-5">
+          <Label className="text-xs font-medium">Trade License No.</Label>
+          <Input className="mt-1 h-9 text-sm font-mono" {...tf("trade_license_no")} />
+        </div>
+
+        {/* ── Branding & Theme ─────────────────────────────────────────────── */}
+        <div className="col-span-12 mt-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Branding &amp; Theme</p>
+          <div className="h-px bg-border mb-4" />
+        </div>
+
+        <div className="col-span-6">
+          <Label className="text-xs font-medium">Logo URL</Label>
+          <Input className="mt-1 h-9 text-sm" placeholder="https://..." {...tf("logo_url")} />
+        </div>
+        <div className="col-span-6">
+          <Label className="text-xs font-medium">Small Logo URL</Label>
+          <Input className="mt-1 h-9 text-sm" placeholder="https://..." {...tf("small_logo_url")} />
+        </div>
+        <div className="col-span-6">
+          <Label className="text-xs font-medium">Stamp URL</Label>
+          <Input className="mt-1 h-9 text-sm" placeholder="https://..." {...tf("stamp_url")} />
+        </div>
+        <div className="col-span-6">
+          <Label className="text-xs font-medium">Signature URL</Label>
+          <Input className="mt-1 h-9 text-sm" placeholder="https://..." {...tf("signature_url")} />
+        </div>
+
+        <div className="col-span-3">
+          <Label className="text-xs font-medium">Primary Color</Label>
+          {colorField("theme_primary_color")}
+        </div>
+        <div className="col-span-3">
+          <Label className="text-xs font-medium">Secondary Color</Label>
+          {colorField("theme_secondary_color")}
+        </div>
+        <div className="col-span-3">
+          <Label className="text-xs font-medium">Header BG Color</Label>
+          {colorField("theme_header_bg_color")}
+        </div>
+        <div className="col-span-3">
+          <Label className="text-xs font-medium">Header Text Color</Label>
+          {colorField("theme_header_text_color")}
+        </div>
+
+        {/* ── Footer & Signatory ──────────────────────────────────────────── */}
+        <div className="col-span-12 mt-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Footer &amp; Signatory</p>
+          <div className="h-px bg-border mb-4" />
+        </div>
+
+        <div className="col-span-6">
+          <Label className="text-xs font-medium">Footer Text (EN)</Label>
+          <Input className="mt-1 h-9 text-sm" placeholder="Confidential — For internal use only" {...tf("footer_text_en")} />
+        </div>
+        <div className="col-span-6">
+          <Label className="text-xs font-medium">Footer Text (AR)</Label>
+          <Input className="mt-1 h-9 text-sm text-right" dir="rtl" {...tf("footer_text_ar")} />
+        </div>
+        <div className="col-span-4">
+          <Label className="text-xs font-medium">Signatory Name</Label>
+          <Input className="mt-1 h-9 text-sm" {...tf("signatory_name")} />
+        </div>
+        <div className="col-span-4">
+          <Label className="text-xs font-medium">Signatory Title (EN)</Label>
+          <Input className="mt-1 h-9 text-sm" {...tf("signatory_title_en")} />
+        </div>
+        <div className="col-span-4">
+          <Label className="text-xs font-medium">Watermark Text</Label>
+          <Input className="mt-1 h-9 text-sm" placeholder="CONFIDENTIAL" {...tf("watermark_text")} />
+        </div>
+
+        {/* ── Flags ───────────────────────────────────────────────────────── */}
+        <div className="col-span-12 mt-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Flags</p>
+          <div className="h-px bg-border mb-4" />
+        </div>
+
+        <div className="col-span-3 flex items-center gap-2">
+          <Switch checked={form.is_active} onCheckedChange={(v) => setForm((f) => ({ ...f, is_active: v }))} id="bp_is_active" />
+          <Label htmlFor="bp_is_active" className="text-sm cursor-pointer">Active</Label>
+        </div>
+        <div className="col-span-3 flex items-center gap-2">
+          <Switch checked={form.is_default_for_company} onCheckedChange={(v) => setForm((f) => ({ ...f, is_default_for_company: v }))} id="bp_is_default" />
+          <Label htmlFor="bp_is_default" className="text-sm cursor-pointer">Default for company</Label>
+        </div>
+        <div className="col-span-3 flex items-center gap-2">
+          <Switch checked={form.is_group_profile} onCheckedChange={(v) => setForm((f) => ({ ...f, is_group_profile: v }))} id="bp_is_group" />
+          <Label htmlFor="bp_is_group" className="text-sm cursor-pointer">Group profile</Label>
+        </div>
+        <div className="col-span-3 flex items-center gap-2">
+          <Switch checked={form.is_neutral_profile} onCheckedChange={(v) => setForm((f) => ({ ...f, is_neutral_profile: v }))} id="bp_is_neutral" />
+          <Label htmlFor="bp_is_neutral" className="text-sm cursor-pointer">Neutral profile</Label>
+        </div>
+      </div>
+    </ERPChildDialogForm>
   );
 }

@@ -1,7 +1,6 @@
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { redirect } from "next/navigation";
 import { ERPPageHeader } from "@/components/erp/page-header";
-import { ERPSectionCard } from "@/components/erp/section-card";
 import { ERPEmptyState } from "@/components/erp/empty-state";
 import { Button } from "@/components/ui/button";
 import { Building2, Plus } from "lucide-react";
@@ -19,7 +18,7 @@ export default async function DepartmentsPage() {
   const departments = result.data ?? [];
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="p-6 space-y-4">
       <ERPPageHeader
         title="Departments"
         description="Organizational departments and reporting structure"
@@ -34,18 +33,11 @@ export default async function DepartmentsPage() {
           </Link>
         ) : null}
       />
-      <ERPSectionCard
-        title="All Departments"
-        description="Departments across all organizations"
-        noPadding
-        actions={<span className="text-xs text-muted-foreground">{departments.length} total</span>}
-      >
-        {departments.length === 0 ? (
-          <ERPEmptyState icon={Building2} title="No departments yet" description="Create your first department." />
-        ) : (
-          <DepartmentsListClient departments={departments} canManage={canManage} />
-        )}
-      </ERPSectionCard>
+      {departments.length === 0 ? (
+        <ERPEmptyState icon={Building2} title="No departments yet" description="Create your first department." />
+      ) : (
+        <DepartmentsListClient departments={departments} canManage={canManage} />
+      )}
     </div>
   );
 }

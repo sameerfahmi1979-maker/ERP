@@ -1,6 +1,5 @@
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { ERPPageHeader } from "@/components/erp/page-header";
-import { ERPSectionCard } from "@/components/erp/section-card";
 import { ERPEmptyState } from "@/components/erp/empty-state";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +14,7 @@ export default async function DmsRequiredDocumentsPage() {
   const rules = result.data ?? [];
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="p-6 space-y-4">
       <ERPPageHeader
         title="Required Document Rules"
         description="DMS compliance rules defining required documents for each entity type"
@@ -26,8 +25,8 @@ export default async function DmsRequiredDocumentsPage() {
         ]}
         actions={canManage ? <Link href="/admin/common-master-data/dms-required-documents/record/new"><Button size="sm"><Plus className="h-4 w-4 mr-1" />Add Rule</Button></Link> : null}
       />
-      <ERPSectionCard title="All Required Document Rules" noPadding actions={<span className="text-xs text-muted-foreground">{rules.length} total</span>}>
-        {rules.length === 0 ? <ERPEmptyState icon={FileCheck} title="No rules defined yet" description="Create compliance rules for required documents." /> : (
+      {rules.length === 0 ? <ERPEmptyState icon={FileCheck} title="No rules defined yet" description="Create compliance rules for required documents." /> : (
+        <div className="rounded-md border overflow-hidden">
           <div className="divide-y">
             {rules.map(r => (
               <Link key={r.id} href={`/admin/common-master-data/dms-required-documents/record/${r.id}`} className="flex items-center justify-between px-4 py-3 hover:bg-muted/40 transition-colors">
@@ -45,8 +44,8 @@ export default async function DmsRequiredDocumentsPage() {
               </Link>
             ))}
           </div>
-        )}
-      </ERPSectionCard>
+        </div>
+      )}
     </div>
   );
 }

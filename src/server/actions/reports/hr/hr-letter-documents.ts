@@ -24,16 +24,17 @@ async function loadEmployeeBase(employeeId: number) {
     .select(
       `id, employee_code, full_name_en, full_name_ar, joining_date, employee_status,
        owner_company_id,
-       owner_company:owner_companies(id, legal_name_en, legal_name_ar, company_code),
+       owner_company:owner_companies!employees_owner_company_id_fkey(id, legal_name_en, legal_name_ar, company_code),
        branch:branches(branch_name_en),
        department:departments(department_name_en),
        designation:designations(designation_name_en, designation_name_ar),
-       employment_type:employment_types(name_en)`
+       employment_type:hr_employment_types(name_en)`
     )
     .eq("id", employeeId)
     .is("deleted_at", null)
     .single();
-  if (error || !data) throw new Error("Employee not found");
+  if (error) throw new Error(`Employee query failed: ${error.message}`);
+  if (!data) throw new Error("Employee not found");
   return data;
 }
 

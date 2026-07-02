@@ -2,7 +2,6 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { redirect } from "next/navigation";
 import { listHrApprovalWorkflows } from "@/server/actions/hr/settings";
 import { ERPPageHeader } from "@/components/erp/page-header";
-import { ERPSectionCard } from "@/components/erp/section-card";
 import { ERPEmptyState } from "@/components/erp/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { GitBranch } from "lucide-react";
@@ -21,16 +20,16 @@ export default async function HrApprovalWorkflowsPage() {
   }, {});
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="p-6 space-y-4">
       <ERPPageHeader
         title="Approval Workflows"
         description="Multi-step approval chains for leave, payroll changes, and PRO processes"
         breadcrumbs={[{ label: "Dashboard", href: "/dashboard" }, { label: "HR Settings", href: "/admin/hr/settings" }, { label: "Approval Workflows" }]}
       />
-      <ERPSectionCard title="Configured Workflows" description={`${Object.keys(grouped).length} workflow${Object.keys(grouped).length !== 1 ? "s" : ""}`} noPadding>
-        {rows.length === 0 ? (
-          <ERPEmptyState icon={GitBranch} title="No approval workflows configured" description="Approval workflows define who must approve leave and payroll changes." />
-        ) : (
+      {rows.length === 0 ? (
+        <ERPEmptyState icon={GitBranch} title="No approval workflows configured" description="Approval workflows define who must approve leave and payroll changes." />
+      ) : (
+        <div className="rounded-md border overflow-hidden">
           <div className="divide-y">
             {Object.entries(grouped).map(([code, steps]) => (
               <div key={code} className="px-4 py-3">
@@ -52,8 +51,8 @@ export default async function HrApprovalWorkflowsPage() {
               </div>
             ))}
           </div>
-        )}
-      </ERPSectionCard>
+        </div>
+      )}
     </div>
   );
 }

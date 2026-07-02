@@ -1,25 +1,29 @@
 "use client";
 
-import { Fragment, useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { format, formatDistanceToNow } from "date-fns";
+import type { ColumnDef } from "@tanstack/react-table";
 import {
-  History,
-  ChevronDown,
-  ChevronRight,
-  AlertCircle,
   CheckCircle2,
   XCircle,
+  AlertCircle,
   Clock,
-  Mail,
   RefreshCw,
-  Search,
+  Eye,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import { ERPPageHeader } from "@/components/erp/page-header";
 import { createClient } from "@/lib/supabase/client";
 import { ReportDeliveryLogPanel } from "./report-delivery-log-page";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface ReportRun {
   id: number;
@@ -40,27 +44,21 @@ interface ReportRun {
   run_by: number;
   run_reference: string | null;
   filters_json: Record<string, unknown>;
-  report?: {
-    report_name_en: string;
-    module_code: string;
-  };
-  runner?: {
-    display_name: string | null;
-  };
+  report?: { report_name_en: string; module_code: string };
+  runner?: { display_name: string | null };
 }
 
 const STATUS_CONFIG = {
-  success: { label: "Success", icon: CheckCircle2, variant: "default" as const, color: "text-emerald-600" },
-  failed: { label: "Failed", icon: XCircle, variant: "destructive" as const, color: "text-red-600" },
-  cancelled: { label: "Cancelled", icon: AlertCircle, variant: "secondary" as const, color: "text-amber-600" },
-  running: { label: "Running", icon: Clock, variant: "outline" as const, color: "text-blue-600" },
+  success: { label: "Success", icon: CheckCircle2, color: "text-emerald-600" },
+  failed: { label: "Failed", icon: XCircle, color: "text-red-600" },
+  cancelled: { label: "Cancelled", icon: AlertCircle, color: "text-amber-600" },
+  running: { label: "Running", icon: Clock, color: "text-blue-600" },
 };
 
 export function ReportHistoryPage() {
   const [runs, setRuns] = useState<ReportRun[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [expandedRunId, setExpandedRunId] = useState<number | null>(null);
+  const [detailRun, setDetailRun] = useState<ReportRun | null>(null);
 
   const loadRuns = useCallback(async () => {
     setIsLoading(true);
@@ -68,13 +66,9 @@ export function ReportHistoryPage() {
       const db = createClient();
       const { data } = await db
         .from("erp_report_runs")
-        .select(`
-          *,
-          report:erp_report_registry(report_name_en, module_code),
-          runner:user_profiles!run_by(display_name)
-        `)
+        .select(`*, report:erp_report_registry(report_name_en, module_code), runner:user_profiles!run_by(display_name)`)
         .order("started_at", { ascending: false })
-        .limit(200);
+        .limit(500);
       setRuns((data ?? []) as ReportRun[]);
     } catch (err) {
       console.error("[ReportHistoryPage] Load failed:", err);
@@ -85,154 +79,196 @@ export function ReportHistoryPage() {
 
   useEffect(() => { loadRuns(); }, [loadRuns]);
 
-  const filtered = runs.filter((r) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      r.report_code.toLowerCase().includes(q) ||
-      r.report?.report_name_en?.toLowerCase().includes(q) ||
-      r.run_reference?.toLowerCase().includes(q) ||
-      r.runner?.display_name?.toLowerCase().includes(q)
-    );
-  });
+  const columns: ColumnDef<ReportRun>[] = [
+    {
+      id: "report",
+      header: "Report",
+      size: 260,
+      accessorFn: (row) => row.report?.report_name_en ?? row.report_code,
+      cell: ({ row }) => (
+        <div className="min-w-0">
+          <div className="font-medium text-sm truncate">
+            {row.original.report?.report_name_en ?? row.original.report_code}
+          </div>
+          <div className="text-[10px] font-mono text-muted-foreground truncate">
+            {row.original.run_reference ?? row.original.report_code}
+          </div>
+        </div>
+      ),
+      meta: { exportValue: (row) => row.report?.report_name_en ?? row.report_code },
+    },
+    {
+      id: "output_format",
+      accessorKey: "output_format",
+      header: "Format",
+      size: 80,
+      cell: ({ row }) => (
+        <Badge variant="outline" className="text-[10px] font-mono uppercase px-1.5 py-0.5">
+          {row.original.output_format}
+        </Badge>
+      ),
+      meta: { exportValue: (row) => row.output_format },
+    },
+    {
+      id: "run_status",
+      accessorKey: "run_status",
+      header: "Status",
+      size: 110,
+      cell: ({ row }) => {
+        const cfg = STATUS_CONFIG[row.original.run_status] ?? STATUS_CONFIG.failed;
+        return (
+          <div className={cn("flex items-center gap-1.5 text-xs", cfg.color)}>
+            <cfg.icon className="h-3.5 w-3.5 shrink-0" />
+            {cfg.label}
+          </div>
+        );
+      },
+      meta: { exportValue: (row) => row.run_status },
+    },
+    {
+      id: "row_count",
+      accessorKey: "row_count",
+      header: "Rows",
+      size: 70,
+      cell: ({ row }) => (
+        <span className="text-xs text-muted-foreground">
+          {row.original.row_count != null ? row.original.row_count.toLocaleString() : "—"}
+        </span>
+      ),
+      meta: { exportValue: (row) => String(row.row_count ?? "") },
+    },
+    {
+      id: "duration",
+      header: "Duration",
+      size: 90,
+      accessorFn: (row) => row.duration_ms ?? 0,
+      cell: ({ row }) => {
+        const ms = row.original.duration_ms;
+        return (
+          <span className="text-xs text-muted-foreground">
+            {ms != null ? (ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`) : "—"}
+          </span>
+        );
+      },
+      meta: { exportValue: (row) => row.duration_ms != null ? (row.duration_ms < 1000 ? `${row.duration_ms}ms` : `${(row.duration_ms / 1000).toFixed(1)}s`) : "" },
+    },
+    {
+      id: "run_by",
+      header: "Run By",
+      size: 140,
+      accessorFn: (row) => row.runner?.display_name ?? String(row.run_by),
+      cell: ({ row }) => (
+        <span className="text-xs text-muted-foreground truncate block">
+          {row.original.runner?.display_name ?? String(row.original.run_by)}
+        </span>
+      ),
+      meta: { exportValue: (row) => row.runner?.display_name ?? String(row.run_by) },
+    },
+    {
+      id: "started_at",
+      accessorKey: "started_at",
+      header: "Started",
+      size: 130,
+      cell: ({ row }) => (
+        <span
+          className="text-xs text-muted-foreground"
+          title={row.original.started_at}
+        >
+          {formatDistanceToNow(new Date(row.original.started_at), { addSuffix: true })}
+        </span>
+      ),
+      meta: { exportValue: (row) => format(new Date(row.started_at), "dd MMM yyyy HH:mm") },
+    },
+    {
+      id: "flags",
+      header: "Flags",
+      size: 130,
+      enableSorting: false,
+      cell: ({ row }) => (
+        <div className="flex items-center gap-1 flex-wrap">
+          {row.original.sensitive_data_included && (
+            <Badge variant="destructive" className="text-[10px] px-1.5 py-0.5">Sensitive</Badge>
+          )}
+          {row.original.was_multi_company && (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0.5">Multi-Co</Badge>
+          )}
+        </div>
+      ),
+      meta: { exportable: false },
+    },
+    {
+      id: "actions",
+      header: "",
+      size: 60,
+      enableSorting: false,
+      enableHiding: false,
+      cell: ({ row }) => (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          title="View Run Details"
+          onClick={() => setDetailRun(row.original)}
+        >
+          <Eye className="h-3.5 w-3.5" />
+        </Button>
+      ),
+      meta: { exportable: false },
+    },
+  ];
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <History className="h-5 w-5 text-muted-foreground" />
-          <h1 className="text-lg font-semibold">Report History</h1>
-          <Badge variant="secondary">{runs.length} runs</Badge>
-        </div>
-        <Button variant="outline" size="sm" onClick={loadRuns} disabled={isLoading}>
-          <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", isLoading && "animate-spin")} />
-          Refresh
-        </Button>
-      </div>
+    <>
+      <ERPPageHeader
+        title="Report History"
+        description="View past report runs, output details, and delivery logs"
+        breadcrumbs={[
+          { label: "Dashboard", href: "/dashboard" },
+          { label: "Admin" },
+          { label: "Report Center", href: "/admin/reports" },
+          { label: "Report History" },
+        ]}
+        actions={
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="text-xs">{runs.length} runs</Badge>
+            <Button variant="outline" size="sm" onClick={loadRuns} disabled={isLoading}>
+              <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", isLoading && "animate-spin")} />
+              Refresh
+            </Button>
+          </div>
+        }
+      />
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search by report, user, reference..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
+      <div className="rounded-md border border-border overflow-hidden">
+        <ERPDataTable
+          tableId="admin.reports.history"
+          columns={columns}
+          data={runs}
+          searchPlaceholder="Search by report, reference, user..."
+          emptyMessage={isLoading ? "Loading history..." : "No report runs found."}
+          enableSorting
+          enableColumnResizing
+          enableRowSelection={false}
+          enableColumnVisibility
+          enablePreferences
+          enableGlobalFilter
+          initialPageSize={25}
+          pageSizeOptions={[10, 25, 50, 100]}
         />
       </div>
 
-      <div className="border rounded-lg overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-muted/50 border-b text-xs font-medium text-muted-foreground">
-              <th className="px-3 py-2.5 text-left w-6"></th>
-              <th className="px-3 py-2.5 text-left">Report</th>
-              <th className="px-3 py-2.5 text-left">Format</th>
-              <th className="px-3 py-2.5 text-left">Status</th>
-              <th className="px-3 py-2.5 text-left">Rows</th>
-              <th className="px-3 py-2.5 text-left">Duration</th>
-              <th className="px-3 py-2.5 text-left">Run By</th>
-              <th className="px-3 py-2.5 text-left">Started</th>
-              <th className="px-3 py-2.5 text-left">Flags</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading && (
-              <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground text-xs">
-                  Loading history...
-                </td>
-              </tr>
-            )}
-            {!isLoading && filtered.length === 0 && (
-              <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground text-xs">
-                  No report runs found.
-                </td>
-              </tr>
-            )}
-            {filtered.map((run) => {
-              const status = STATUS_CONFIG[run.run_status] ?? STATUS_CONFIG.failed;
-              const StatusIcon = status.icon;
-              const isExpanded = expandedRunId === run.id;
-
-              return (
-                <Fragment key={run.id}>
-                  <tr
-                    className={cn(
-                      "border-b last:border-0 hover:bg-muted/20 cursor-pointer transition-colors",
-                      isExpanded && "bg-muted/10"
-                    )}
-                    onClick={() => setExpandedRunId(isExpanded ? null : run.id)}
-                  >
-                    <td className="px-3 py-2.5">
-                      {isExpanded ? (
-                        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-                      ) : (
-                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <div className="font-medium text-foreground leading-tight">
-                        {run.report?.report_name_en ?? run.report_code}
-                      </div>
-                      <div className="text-[10px] font-mono text-muted-foreground">
-                        {run.run_reference ?? run.report_code}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <Badge variant="outline" className="text-[10px] font-mono uppercase">
-                        {run.output_format}
-                      </Badge>
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <div className={cn("flex items-center gap-1.5", status.color)}>
-                        <StatusIcon className="h-3.5 w-3.5" />
-                        <span className="text-xs">{status.label}</span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-2.5 text-muted-foreground">
-                      {run.row_count != null ? run.row_count.toLocaleString() : "—"}
-                    </td>
-                    <td className="px-3 py-2.5 text-muted-foreground">
-                      {run.duration_ms != null
-                        ? run.duration_ms < 1000
-                          ? `${run.duration_ms}ms`
-                          : `${(run.duration_ms / 1000).toFixed(1)}s`
-                        : "—"}
-                    </td>
-                    <td className="px-3 py-2.5 text-muted-foreground text-xs">
-                      {run.runner?.display_name ?? String(run.run_by)}
-                    </td>
-                    <td className="px-3 py-2.5 text-muted-foreground text-xs">
-                      <span title={run.started_at}>
-                        {formatDistanceToNow(new Date(run.started_at), { addSuffix: true })}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <div className="flex items-center gap-1">
-                        {run.sensitive_data_included && (
-                          <Badge variant="destructive" className="text-[10px] px-1">Sensitive</Badge>
-                        )}
-                        {run.was_multi_company && (
-                          <Badge variant="outline" className="text-[10px] px-1">Multi-Co</Badge>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                  {isExpanded && (
-                    <tr key={`${run.id}-expanded`} className="bg-muted/5 border-b">
-                      <td colSpan={9} className="px-6 py-4">
-                        <RunDetailPanel run={run} />
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
+      {/* Run detail dialog */}
+      <Dialog open={!!detailRun} onOpenChange={(open) => { if (!open) setDetailRun(null); }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {detailRun?.report?.report_name_en ?? detailRun?.report_code} — Run Details
+            </DialogTitle>
+          </DialogHeader>
+          {detailRun && <RunDetailPanel run={detailRun} />}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -244,26 +280,26 @@ function RunDetailPanel({ run }: { run: ReportRun }) {
   } | null;
 
   return (
-    <div className="grid grid-cols-12 gap-4 text-sm">
+    <div className="grid grid-cols-12 gap-4 text-sm pt-2">
       <div className="col-span-4 space-y-2">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Run Details</div>
+        <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Run Details</div>
         <div className="space-y-1 text-xs">
-          <div className="flex justify-between">
+          <div className="flex justify-between gap-2">
             <span className="text-muted-foreground">Reference</span>
             <span className="font-mono">{run.run_reference ?? "—"}</span>
           </div>
-          <div className="flex justify-between">
+          <div className="flex justify-between gap-2">
             <span className="text-muted-foreground">Started</span>
             <span>{format(new Date(run.started_at), "dd MMM yyyy HH:mm:ss")}</span>
           </div>
           {run.completed_at && (
-            <div className="flex justify-between">
+            <div className="flex justify-between gap-2">
               <span className="text-muted-foreground">Completed</span>
               <span>{format(new Date(run.completed_at), "dd MMM yyyy HH:mm:ss")}</span>
             </div>
           )}
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Template manually selected</span>
+          <div className="flex justify-between gap-2">
+            <span className="text-muted-foreground">Template manual</span>
             <span>{run.template_selected_manually ? "Yes" : "No"}</span>
           </div>
           {run.error_message && (
@@ -275,12 +311,10 @@ function RunDetailPanel({ run }: { run: ReportRun }) {
       </div>
 
       <div className="col-span-4 space-y-2">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Redaction</div>
+        <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Redaction</div>
         {redactionSummary?.wasRedacted ? (
           <div className="space-y-1 text-xs">
-            <div className="text-amber-700">
-              {redactionSummary.totalFieldsRedacted} field(s) redacted
-            </div>
+            <div className="text-amber-700">{redactionSummary.totalFieldsRedacted} field(s) redacted</div>
             {(redactionSummary.redactedFields ?? []).slice(0, 5).map((f, i) => (
               <div key={i} className="text-muted-foreground">
                 <span className="font-mono">{f.field}</span> — {f.action}
@@ -293,9 +327,7 @@ function RunDetailPanel({ run }: { run: ReportRun }) {
       </div>
 
       <div className="col-span-4 space-y-2">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          Email Deliveries
-        </div>
+        <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Email Deliveries</div>
         <ReportDeliveryLogPanel runId={run.id} />
       </div>
     </div>

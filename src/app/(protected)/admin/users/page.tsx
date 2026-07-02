@@ -1,6 +1,5 @@
 import { Suspense } from "react";
 import { ERPPageHeader } from "@/components/erp/page-header";
-import { ERPSectionCard } from "@/components/erp/section-card";
 import { UsersTable } from "@/features/users/users-table";
 import { AddUserDialog } from "@/features/users/add-user-dialog";
 import { getAuthContext, hasPermission, canManageUsers } from "@/lib/rbac/check";
@@ -9,7 +8,6 @@ import { listRoles } from "@/server/queries/roles";
 import { listOrganizations } from "@/server/queries/organizations";
 import { listBranches } from "@/server/queries/branches";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users as UsersIcon } from "lucide-react";
 
 type SearchParams = Promise<{
   page?: string;
@@ -38,7 +36,7 @@ export default async function AdminUsersPage({
 
   if (!hasPermission(ctx, "users.view")) {
     return (
-      <div className="flex flex-col gap-6">
+      <div className="p-6 space-y-4">
         <ERPPageHeader
           title="Users"
           description="User directory and management"
@@ -87,7 +85,7 @@ export default async function AdminUsersPage({
   const canManage = canManageUsers(ctx);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="p-6 space-y-4">
       <ERPPageHeader
         title="User Management"
         description="Manage user profiles and role assignments"
@@ -98,43 +96,31 @@ export default async function AdminUsersPage({
         ]}
         actions={canManage ? <AddUserDialog /> : null}
       />
-      <ERPSectionCard
-        title="All Users"
-        description="Server-side pagination, search, and filters"
-        actions={
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <UsersIcon className="h-3.5 w-3.5" />
-            <span>{usersResult.totalCount} total</span>
-          </div>
-        }
-        noPadding
-      >
-        <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading users…</div>}>
-          <UsersTable
-            data={usersResult.rows}
-            totalCount={usersResult.totalCount}
-            page={usersResult.page}
-            pageSize={usersResult.pageSize}
-            search={search}
-            statusFilter={status}
-            companyFilter={sp.company ?? ""}
-            branchFilter={sp.branch ?? ""}
-            roleFilter={sp.role ?? ""}
-            mcpFilter={sp.mcp ?? ""}
-            noRoleFilter={noRoleFilter}
-            roles={roles}
-            companies={organizations}
-            branches={branches}
-            userProfileId={ctx.profile?.id || "default"}
-            exportConfig={{
-              title: "Users Report",
-              subtitle: "User profiles and role assignments (current page)",
-              filename: "users",
-              generatedBy: ctx.profile?.full_name || ctx.profile?.display_name || "System User",
-            }}
-          />
-        </Suspense>
-      </ERPSectionCard>
+      <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading users…</div>}>
+        <UsersTable
+          data={usersResult.rows}
+          totalCount={usersResult.totalCount}
+          page={usersResult.page}
+          pageSize={usersResult.pageSize}
+          search={search}
+          statusFilter={status}
+          companyFilter={sp.company ?? ""}
+          branchFilter={sp.branch ?? ""}
+          roleFilter={sp.role ?? ""}
+          mcpFilter={sp.mcp ?? ""}
+          noRoleFilter={noRoleFilter}
+          roles={roles}
+          companies={organizations}
+          branches={branches}
+          userProfileId={ctx.profile?.id || "default"}
+          exportConfig={{
+            title: "Users Report",
+            subtitle: "User profiles and role assignments (current page)",
+            filename: "users",
+            generatedBy: ctx.profile?.full_name || ctx.profile?.display_name || "System User",
+          }}
+        />
+      </Suspense>
     </div>
   );
 }

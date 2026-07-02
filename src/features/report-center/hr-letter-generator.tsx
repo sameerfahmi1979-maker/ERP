@@ -1,10 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, FileText, Award, Shield, CreditCard, ClipboardList, CheckSquare, HardHat } from "lucide-react";
+import {
+  FileText,
+  Award,
+  Shield,
+  CreditCard,
+  ClipboardList,
+  CheckSquare,
+  HardHat,
+  Wand2,
+} from "lucide-react";
+import { LetterPreviewDialog } from "./letter-preview-dialog";
 
 export interface HrLetterType {
   reportCode: string;
@@ -17,10 +26,20 @@ export interface HrLetterType {
 
 interface HrLetterGeneratorProps {
   employeeId: number;
+  employeeName?: string;
   canViewPayroll: boolean;
 }
 
-export function HrLetterGenerator({ employeeId, canViewPayroll }: HrLetterGeneratorProps) {
+export function HrLetterGenerator({
+  employeeId,
+  employeeName,
+  canViewPayroll,
+}: HrLetterGeneratorProps) {
+  const [selected, setSelected] = useState<{
+    reportCode: string;
+    label: string;
+  } | null>(null);
+
   const letters: HrLetterType[] = [
     {
       reportCode: "HR_EXPERIENCE_LETTER",
@@ -82,41 +101,65 @@ export function HrLetterGenerator({ employeeId, canViewPayroll }: HrLetterGenera
   ];
 
   return (
-    <div className="space-y-2">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        {letters.map((letter) => (
-          <div
-            key={letter.reportCode}
-            className={`flex items-center justify-between p-3 rounded-lg border transition-colors ${
-              letter.hasPermission
-                ? "bg-card hover:bg-muted/40 cursor-pointer"
-                : "bg-muted/20 opacity-60 cursor-not-allowed"
-            }`}
-          >
-            <div className="flex items-start gap-2.5 min-w-0">
-              <div className="text-muted-foreground mt-0.5 shrink-0">{letter.icon}</div>
-              <div className="min-w-0">
-                <div className="text-sm font-medium text-foreground truncate">{letter.label}</div>
-                <div className="text-xs text-muted-foreground truncate">{letter.description}</div>
-                {letter.requiresPermission && !letter.hasPermission && (
-                  <Badge variant="outline" className="text-[10px] mt-1">Requires {letter.requiresPermission}</Badge>
-                )}
+    <>
+      <div className="space-y-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {letters.map((letter) => (
+            <div
+              key={letter.reportCode}
+              className={`flex items-center justify-between p-3 rounded-lg border transition-colors ${
+                letter.hasPermission
+                  ? "bg-card hover:bg-muted/40"
+                  : "bg-muted/20 opacity-60 cursor-not-allowed"
+              }`}
+            >
+              <div className="flex items-start gap-2.5 min-w-0">
+                <div className="text-muted-foreground mt-0.5 shrink-0">
+                  {letter.icon}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-foreground truncate">
+                    {letter.label}
+                  </div>
+                  <div className="text-xs text-muted-foreground truncate">
+                    {letter.description}
+                  </div>
+                  {letter.requiresPermission && !letter.hasPermission && (
+                    <Badge variant="outline" className="text-[10px] mt-1">
+                      Requires {letter.requiresPermission}
+                    </Badge>
+                  )}
+                </div>
               </div>
-            </div>
-            {letter.hasPermission && (
-              <Link
-                href={`/admin/reports/run/${letter.reportCode}?employee_id=${employeeId}`}
-                className="ml-2 shrink-0"
-              >
-                <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
-                  <ExternalLink className="h-3 w-3" />
+              {letter.hasPermission && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="ml-2 shrink-0 h-7 text-xs gap-1"
+                  onClick={() =>
+                    setSelected({
+                      reportCode: letter.reportCode,
+                      label: letter.label,
+                    })
+                  }
+                >
+                  <Wand2 className="h-3 w-3" />
                   Generate
                 </Button>
-              </Link>
-            )}
-          </div>
-        ))}
+              )}
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
+
+      <LetterPreviewDialog
+        open={!!selected}
+        onOpenChange={(open) => !open && setSelected(null)}
+        reportCode={selected?.reportCode ?? ""}
+        reportLabel={selected?.label ?? ""}
+        employeeId={employeeId}
+        employeeName={employeeName}
+      />
+    </>
   );
 }

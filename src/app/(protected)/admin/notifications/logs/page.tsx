@@ -22,7 +22,7 @@ export default async function DeliveryLogsPage() {
   const logs = result.success ? (result.data ?? []) : [];
 
   return (
-    <div className="flex flex-col gap-6 p-8">
+    <div className="p-6 space-y-4">
       <DeliveryLogsPageClient initialLogs={logs} />
     </div>
   );

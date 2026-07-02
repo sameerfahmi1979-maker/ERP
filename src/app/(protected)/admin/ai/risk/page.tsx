@@ -40,7 +40,7 @@ export default async function AiRiskPage({ searchParams }: PageProps) {
   const entityId = params.entityId ? Number(params.entityId) : undefined;
 
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-6">
+    <div className="p-6 space-y-4">
       <ERPPageHeader
         title="AI Risk Review"
         description="Review deterministic entity risk scores from DMS, compliance, duplicate, and conflict signals. No automatic block or status update."

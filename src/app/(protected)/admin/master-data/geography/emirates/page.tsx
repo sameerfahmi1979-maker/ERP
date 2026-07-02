@@ -33,7 +33,7 @@ export default async function EmiratesPage() {
   }
 
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-6">
+    <div className="p-6 space-y-4">
       <ERPPageHeader
         title="Regions / Emirates"
         description="Manage country administrative regions such as UAE Emirates, Jordan Governorates, US States, Saudi Regions, and Provinces"

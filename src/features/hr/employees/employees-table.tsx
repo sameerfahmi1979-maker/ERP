@@ -1,21 +1,23 @@
 "use client";
 
-import { useState, useCallback, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { useWorkspace } from "@/hooks/use-workspace";
+import { useWorkspaceTableState } from "@/hooks/use-workspace-table-state";
 import type { AuthContext } from "@/lib/rbac/check";
 import type { EmployeeListRow, EmployeeListParams } from "@/server/actions/hr/employees";
 import { listEmployees, archiveEmployee } from "@/server/actions/hr/employees";
+import { listDepartments } from "@/server/actions/common-master-data/departments";
+import { listDesignations } from "@/server/actions/common-master-data/designations";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
-import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
-  DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -29,29 +31,65 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { ERPCombobox } from "@/components/erp/combobox";
+import type { ERPComboboxOption } from "@/components/erp/combobox";
+import { SortColHeader } from "@/components/erp/table/sort-col-header";
+import { TablePagination } from "@/components/erp/table/table-pagination";
+import { useResizableColumns } from "@/components/erp/table/use-resizable-columns";
+import { useOwnerCompaniesQuery } from "@/hooks/lookups/use-org-queries";
+import { useCountriesQuery } from "@/hooks/lookups/use-geography-queries";
+import {
+  EmployeeStatusBadge,
+  EMPLOYEE_STATUS_FILTER_VALUES,
+} from "./employee-status-badge";
 import { toast } from "sonner";
 import {
-  Plus, MoreVertical, Eye, Edit, Archive, Search, ChevronLeft, ChevronRight,
+  Plus,
+  Search,
+  ExternalLink,
+  Edit,
+  Archive,
   Users,
+  RefreshCw,
+  Columns3,
+  X,
+  Loader2,
 } from "lucide-react";
-const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
-  active: "default",
-  probation: "secondary",
-  on_leave: "secondary",
-  inactive: "outline",
-  suspended: "destructive",
-  terminated: "destructive",
-  archived: "outline",
+import type { SortDir } from "@/hooks/use-sort-paginate";
+
+type EmpColKey =
+  | "code"
+  | "name"
+  | "nationality"
+  | "department"
+  | "designation"
+  | "status"
+  | "company";
+
+const DEFAULT_EMP_COL_WIDTHS: Record<EmpColKey, number> = {
+  code: 120,
+  name: 220,
+  nationality: 120,
+  department: 140,
+  designation: 140,
+  status: 100,
+  company: 100,
 };
 
-const STATUS_LABEL: Record<string, string> = {
-  active: "Active",
-  probation: "Probation",
-  on_leave: "On Leave",
-  inactive: "Inactive",
-  suspended: "Suspended",
-  terminated: "Terminated",
-  archived: "Archived",
+type EmployeeFilters = {
+  status: string | null;
+  companyId: number | null;
+  departmentId: number | null;
+  designationId: number | null;
+  nationalityId: number | null;
+};
+
+const EMPTY_FILTERS: EmployeeFilters = {
+  status: null,
+  companyId: null,
+  departmentId: null,
+  designationId: null,
+  nationalityId: null,
 };
 
 type Props = {
@@ -60,33 +98,134 @@ type Props = {
   authContext: AuthContext;
 };
 
-const PAGE_SIZE = 50;
+function parseFilters(raw: Record<string, unknown>): EmployeeFilters {
+  return {
+    status: typeof raw.status === "string" ? raw.status : null,
+    companyId: typeof raw.companyId === "number" ? raw.companyId : null,
+    departmentId: typeof raw.departmentId === "number" ? raw.departmentId : null,
+    designationId: typeof raw.designationId === "number" ? raw.designationId : null,
+    nationalityId: typeof raw.nationalityId === "number" ? raw.nationalityId : null,
+  };
+}
+
+function statusFilterLabel(s: string): string {
+  return s.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+}
 
 export function EmployeesTable({ initialRows, initialTotal, authContext }: Props) {
   const router = useRouter();
   const { openTab } = useWorkspace();
   const [isPending, startTransition] = useTransition();
 
+  const {
+    search,
+    setSearch,
+    filters: rawFilters,
+    setFilters,
+    pagination,
+    setPagination,
+    columnVisibility,
+    setColumnVisibility,
+  } = useWorkspaceTableState({
+    key: "employees-table",
+    scope: "route",
+    identifier: "/admin/hr/employees",
+    initialPagination: { pageIndex: 0, pageSize: 25 },
+    initialColumnVisibility: { nationality: false },
+  });
+
+  const filters = useMemo(
+    () => parseFilters(rawFilters),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      rawFilters.status,
+      rawFilters.companyId,
+      rawFilters.departmentId,
+      rawFilters.designationId,
+      rawFilters.nationalityId,
+    ]
+  );
+
   const [rows, setRows] = useState<EmployeeListRow[]>(initialRows);
   const [totalCount, setTotalCount] = useState(initialTotal);
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
   const [archiveTarget, setArchiveTarget] = useState<EmployeeListRow | null>(null);
+  const [sortKey, setSortKey] = useState<string | null>("employee_code");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
-  const canCreate = authContext.permissionCodes?.includes("hr.employees.create")
-    || authContext.roleCodes?.includes("system_admin");
-  const canUpdate = authContext.permissionCodes?.includes("hr.employees.update")
-    || authContext.roleCodes?.includes("system_admin");
-  const canArchive = authContext.permissionCodes?.includes("hr.employees.archive")
-    || authContext.roleCodes?.includes("system_admin");
+  const page = pagination.pageIndex + 1;
+  const pageSize = pagination.pageSize;
 
-  const fetchPage = useCallback(
-    (p: number, q: string) => {
+  const canCreate =
+    authContext.permissionCodes?.includes("hr.employees.create") ||
+    authContext.roleCodes?.includes("system_admin");
+  const canUpdate =
+    authContext.permissionCodes?.includes("hr.employees.update") ||
+    authContext.roleCodes?.includes("system_admin");
+  const canArchive =
+    authContext.permissionCodes?.includes("hr.employees.archive") ||
+    authContext.roleCodes?.includes("system_admin");
+
+  const showNationality = columnVisibility.nationality !== false;
+
+  const { options: companyOptions } = useOwnerCompaniesQuery();
+  const { options: countryOptions } = useCountriesQuery();
+
+  const { data: departmentOptions = [], isLoading: loadingDepartments } = useQuery({
+    queryKey: ["hr", "employees", "filter-departments", filters.companyId],
+    queryFn: async () => {
+      const result = await listDepartments({
+        is_active: true,
+        owner_company_id: filters.companyId ?? undefined,
+      });
+      if (!result.success) throw new Error(result.error);
+      return (result.data ?? []).map(
+        (d): ERPComboboxOption => ({
+          value: d.id,
+          label: d.department_name_en,
+          code: d.department_code,
+        })
+      );
+    },
+    staleTime: 60_000,
+  });
+
+  const { data: designationOptions = [], isLoading: loadingDesignations } = useQuery({
+    queryKey: ["hr", "employees", "filter-designations", filters.companyId, filters.departmentId],
+    queryFn: async () => {
+      const result = await listDesignations({
+        is_active: true,
+        owner_company_id: filters.companyId ?? undefined,
+        department_id: filters.departmentId ?? undefined,
+      });
+      if (!result.success) throw new Error(result.error);
+      return (result.data ?? []).map(
+        (d): ERPComboboxOption => ({
+          value: d.id,
+          label: d.designation_name_en,
+          code: d.designation_code,
+        })
+      );
+    },
+    staleTime: 60_000,
+  });
+
+  const statusOptions: ERPComboboxOption[] = useMemo(
+    () => EMPLOYEE_STATUS_FILTER_VALUES.map((s) => ({ value: s, label: statusFilterLabel(s) })),
+    []
+  );
+
+  const fetchEmployees = useCallback(
+    (p: number, ps: number, q: string, f: EmployeeFilters) => {
       startTransition(async () => {
         const params: Partial<EmployeeListParams> = {
           page: p,
-          pageSize: PAGE_SIZE,
-          search: q || undefined,
+          pageSize: ps,
+          search: q.trim() || undefined,
+          employeeStatus: f.status ?? undefined,
+          ownerCompanyId: f.companyId ?? undefined,
+          departmentId: f.departmentId ?? undefined,
+          designationId: f.designationId ?? undefined,
+          nationalityId: f.nationalityId ?? undefined,
         };
         const result = await listEmployees(params);
         if (result.success && result.data) {
@@ -100,16 +239,139 @@ export function EmployeesTable({ initialRows, initialTotal, authContext }: Props
     []
   );
 
-  const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setPage(1);
-    fetchPage(1, search);
+  // Debounced server search + filter refetch
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchEmployees(page, pageSize, search, filters);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [search, filters, page, pageSize, fetchEmployees]);
+
+  const setFilter = useCallback(
+    (patch: Partial<EmployeeFilters>) => {
+      setFilters((prev) => {
+        const current = parseFilters(prev);
+        const next = { ...current, ...patch };
+        if (patch.companyId !== undefined && patch.companyId !== current.companyId) {
+          next.departmentId = null;
+          next.designationId = null;
+        }
+        if (patch.departmentId !== undefined && patch.departmentId !== current.departmentId) {
+          next.designationId = null;
+        }
+        return next as Record<string, unknown>;
+      });
+      setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+    },
+    [setFilters, setPagination]
+  );
+
+  const clearAllFilters = () => {
+    setFilters(EMPTY_FILTERS as unknown as Record<string, unknown>);
+    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
   };
 
-  const handlePageChange = (newPage: number) => {
-    setPage(newPage);
-    fetchPage(newPage, search);
+  const toggleSort = (field: string) => {
+    if (sortKey === field) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(field);
+      setSortDir("asc");
+    }
   };
+
+  const sortedRows = useMemo(() => {
+    if (!sortKey) return rows;
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...rows].sort((a, b) => {
+      let av: string | number = "";
+      let bv: string | number = "";
+      switch (sortKey) {
+        case "employee_code":
+          av = a.employee_code;
+          bv = b.employee_code;
+          break;
+        case "full_name_en":
+          av = a.full_name_en;
+          bv = b.full_name_en;
+          break;
+        case "nationality":
+          av = a.nationality?.name_en ?? "";
+          bv = b.nationality?.name_en ?? "";
+          break;
+        case "department":
+          av = a.department?.department_name_en ?? "";
+          bv = b.department?.department_name_en ?? "";
+          break;
+        case "designation":
+          av = a.designation?.designation_name_en ?? "";
+          bv = b.designation?.designation_name_en ?? "";
+          break;
+        case "employee_status":
+          av = a.employee_status;
+          bv = b.employee_status;
+          break;
+        case "company":
+          av = a.owner_company?.company_code ?? "";
+          bv = b.owner_company?.company_code ?? "";
+          break;
+        default:
+          return 0;
+      }
+      return String(av).localeCompare(String(bv)) * dir;
+    });
+  }, [rows, sortKey, sortDir]);
+
+  const { widths: colWidths, startResize } = useResizableColumns<EmpColKey>(
+    DEFAULT_EMP_COL_WIDTHS,
+    { minWidth: 60, storageKey: "hr-employees-table-col-widths-v1" }
+  );
+
+  const activeFilterChips = useMemo(() => {
+    const chips: { key: string; label: string; onRemove: () => void }[] = [];
+    if (filters.status) {
+      chips.push({
+        key: "status",
+        label: `Status: ${statusFilterLabel(filters.status)}`,
+        onRemove: () => setFilter({ status: null }),
+      });
+    }
+    if (filters.companyId != null) {
+      const opt = companyOptions.find((o) => o.value === filters.companyId);
+      chips.push({
+        key: "company",
+        label: `Company: ${opt?.label ?? filters.companyId}`,
+        onRemove: () => setFilter({ companyId: null, departmentId: null, designationId: null }),
+      });
+    }
+    if (filters.departmentId != null) {
+      const opt = departmentOptions.find((o) => o.value === filters.departmentId);
+      chips.push({
+        key: "department",
+        label: `Department: ${opt?.label ?? filters.departmentId}`,
+        onRemove: () => setFilter({ departmentId: null, designationId: null }),
+      });
+    }
+    if (filters.designationId != null) {
+      const opt = designationOptions.find((o) => o.value === filters.designationId);
+      chips.push({
+        key: "designation",
+        label: `Designation: ${opt?.label ?? filters.designationId}`,
+        onRemove: () => setFilter({ designationId: null }),
+      });
+    }
+    if (filters.nationalityId != null) {
+      const opt = countryOptions.find((o) => o.value === filters.nationalityId);
+      chips.push({
+        key: "nationality",
+        label: `Nationality: ${opt?.label ?? filters.nationalityId}`,
+        onRemove: () => setFilter({ nationalityId: null }),
+      });
+    }
+    return chips;
+  }, [filters, companyOptions, departmentOptions, designationOptions, countryOptions, setFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   const openAdd = () => {
     openTab({
@@ -153,189 +415,418 @@ export function EmployeesTable({ initialRows, initialTotal, authContext }: Props
     const result = await archiveEmployee(archiveTarget.id, "Archived from list");
     if (result.success) {
       toast.success(`Employee ${archiveTarget.employee_code} archived`);
-      fetchPage(page, search);
+      fetchEmployees(page, pageSize, search, filters);
     } else {
       toast.error(result.error ?? "Failed to archive employee");
     }
     setArchiveTarget(null);
   };
 
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const colSpan =
+    6 + (showNationality ? 1 : 0) + 1; /* data cols + actions */
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Toolbar */}
-      <div className="flex items-center justify-between gap-3">
-        <form onSubmit={handleSearch} className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by code, name, mobile..."
-              className="pl-8 w-72"
+    <div className="space-y-4">
+      {/* Row 1: Search + actions */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            placeholder="Search by code, name, mobile..."
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+            }}
+            className="pl-8 h-8 text-sm"
+          />
+        </div>
+
+        <div className="ml-auto flex items-center gap-2 shrink-0">
+          <DropdownMenu>
+            <DropdownMenuTrigger className="inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-2.5 text-xs font-medium hover:bg-accent hover:text-accent-foreground">
+              <Columns3 className="h-3.5 w-3.5" />
+              Columns
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuLabel className="text-xs">Show columns</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuCheckboxItem
+                checked={showNationality}
+                onCheckedChange={(checked) =>
+                  setColumnVisibility({ ...columnVisibility, nationality: !!checked })
+                }
+              >
+                Nationality
+              </DropdownMenuCheckboxItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => router.refresh()}
+            disabled={isPending}
+            title="Refresh"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isPending ? "animate-spin" : ""}`} />
+          </Button>
+
+          {canCreate && (
+            <Button size="sm" onClick={openAdd} className="gap-1.5">
+              <Plus className="h-3.5 w-3.5" />
+              Add Employee
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Row 2: Labeled searchable filters */}
+      <div className="rounded-lg border border-border bg-muted/10 p-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Status
+            </label>
+            <ERPCombobox
+              value={filters.status}
+              onValueChange={(v) => setFilter({ status: v == null ? null : String(v) })}
+              options={statusOptions}
+              placeholder="All Statuses"
+              searchPlaceholder="Search statuses..."
+              allowClear
+              triggerClassName="h-8 text-xs"
             />
           </div>
-          <Button type="submit" variant="outline" size="sm" disabled={isPending}>
-            Search
-          </Button>
-        </form>
-        {canCreate && (
-          <Button onClick={openAdd} size="sm">
-            <Plus className="h-4 w-4 mr-1" />
-            Add Employee
-          </Button>
+
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Company
+            </label>
+            <ERPCombobox
+              value={filters.companyId}
+              onValueChange={(v) =>
+                setFilter({
+                  companyId: v == null ? null : Number(v),
+                  departmentId: null,
+                  designationId: null,
+                })
+              }
+              options={companyOptions}
+              placeholder="All Companies"
+              searchPlaceholder="Search companies..."
+              allowClear
+              triggerClassName="h-8 text-xs"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Department
+            </label>
+            <ERPCombobox
+              value={filters.departmentId}
+              onValueChange={(v) =>
+                setFilter({
+                  departmentId: v == null ? null : Number(v),
+                  designationId: null,
+                })
+              }
+              options={departmentOptions}
+              placeholder="All Departments"
+              searchPlaceholder="Search departments..."
+              loading={loadingDepartments}
+              allowClear
+              triggerClassName="h-8 text-xs"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Designation
+            </label>
+            <ERPCombobox
+              value={filters.designationId}
+              onValueChange={(v) => setFilter({ designationId: v == null ? null : Number(v) })}
+              options={designationOptions}
+              placeholder="All Designations"
+              searchPlaceholder="Search designations..."
+              loading={loadingDesignations}
+              allowClear
+              triggerClassName="h-8 text-xs"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Nationality
+            </label>
+            <ERPCombobox
+              value={filters.nationalityId}
+              onValueChange={(v) => setFilter({ nationalityId: v == null ? null : Number(v) })}
+              options={countryOptions}
+              placeholder="All Nationalities"
+              searchPlaceholder="Search nationalities..."
+              allowClear
+              triggerClassName="h-8 text-xs"
+            />
+          </div>
+        </div>
+
+        {activeFilterChips.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border/60 pt-3">
+            {activeFilterChips.map((chip) => (
+              <Badge
+                key={chip.key}
+                variant="secondary"
+                className="gap-1 pr-1 text-[11px] font-normal"
+              >
+                {chip.label}
+                <button
+                  type="button"
+                  onClick={chip.onRemove}
+                  className="ml-0.5 rounded-full p-0.5 hover:bg-muted-foreground/20"
+                  aria-label={`Remove ${chip.label} filter`}
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </Badge>
+            ))}
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              className="text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+            >
+              Clear all
+            </button>
+          </div>
         )}
       </div>
 
       {/* Table */}
-      <div className="rounded-md border overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Employee Code</TableHead>
-              <TableHead>Full Name</TableHead>
-              <TableHead>Nationality</TableHead>
-              <TableHead>Department</TableHead>
-              <TableHead>Designation</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Company</TableHead>
-              <TableHead className="w-12" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={8} className="text-center py-12">
-                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                    <Users className="h-8 w-8 opacity-40" />
+      <div className="rounded-md border border-border overflow-x-auto relative">
+        {isPending && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/50">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        )}
+
+        <table className="w-full text-xs table-fixed">
+          <thead>
+            <tr className="border-b border-border bg-muted/30">
+              <SortColHeader
+                field="employee_code"
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={toggleSort}
+                className="px-3 py-2 text-muted-foreground font-medium"
+                width={colWidths.code}
+                onResizeStart={(e) => startResize("code", e)}
+              >
+                Employee Code
+              </SortColHeader>
+              <SortColHeader
+                field="full_name_en"
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={toggleSort}
+                className="px-3 py-2 text-muted-foreground font-medium"
+                width={colWidths.name}
+                onResizeStart={(e) => startResize("name", e)}
+              >
+                Full Name
+              </SortColHeader>
+              {showNationality && (
+                <SortColHeader
+                  field="nationality"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={toggleSort}
+                  className="px-3 py-2 text-muted-foreground font-medium"
+                  width={colWidths.nationality}
+                  onResizeStart={(e) => startResize("nationality", e)}
+                >
+                  Nationality
+                </SortColHeader>
+              )}
+              <SortColHeader
+                field="department"
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={toggleSort}
+                className="px-3 py-2 text-muted-foreground font-medium"
+                width={colWidths.department}
+                onResizeStart={(e) => startResize("department", e)}
+              >
+                Department
+              </SortColHeader>
+              <SortColHeader
+                field="designation"
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={toggleSort}
+                className="px-3 py-2 text-muted-foreground font-medium"
+                width={colWidths.designation}
+                onResizeStart={(e) => startResize("designation", e)}
+              >
+                Designation
+              </SortColHeader>
+              <SortColHeader
+                field="employee_status"
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={toggleSort}
+                className="px-3 py-2 text-muted-foreground font-medium"
+                width={colWidths.status}
+                onResizeStart={(e) => startResize("status", e)}
+              >
+                Status
+              </SortColHeader>
+              <SortColHeader
+                field="company"
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={toggleSort}
+                className="px-3 py-2 text-muted-foreground font-medium"
+                width={colWidths.company}
+                onResizeStart={(e) => startResize("company", e)}
+              >
+                Company
+              </SortColHeader>
+              <th className="px-3 py-2" style={{ width: 104 }} />
+            </tr>
+          </thead>
+          <tbody>
+            {sortedRows.length === 0 ? (
+              <tr>
+                <td colSpan={colSpan} className="text-center py-10 text-muted-foreground">
+                  <div className="flex flex-col items-center gap-2">
+                    <Users className="h-8 w-8 opacity-30" />
                     <p className="text-sm">
-                      {search ? `No employees found matching "${search}"` : "No employees found"}
+                      {search || activeFilterChips.length > 0
+                        ? "No employees found matching your search or filters"
+                        : "No employees found"}
                     </p>
-                    {canCreate && !search && (
-                      <Button size="sm" variant="outline" onClick={openAdd}>
-                        <Plus className="h-4 w-4 mr-1" />
-                        Add First Employee
+                    {canCreate && !search && activeFilterChips.length === 0 && (
+                      <Button size="sm" variant="outline" onClick={openAdd} className="mt-1 gap-1.5">
+                        <Plus className="h-3.5 w-3.5" />
+                        Add first employee
                       </Button>
                     )}
                   </div>
-                </TableCell>
-              </TableRow>
+                </td>
+              </tr>
             ) : (
-              rows.map((emp) => (
-                <TableRow
+              sortedRows.map((emp) => (
+                <tr
                   key={emp.id}
-                  className="cursor-pointer hover:bg-muted/40"
-                  onClick={() => openView(emp)}
+                  className="border-b border-border hover:bg-muted/20 transition-colors"
                 >
-                  <TableCell className="font-mono text-sm font-medium">
-                    {emp.employee_code}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col">
-                      <span className="font-medium text-sm">{emp.full_name_en}</span>
+                  <td className="px-3 py-2 font-mono font-medium text-primary overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => openView(emp)}
+                      className="hover:underline truncate block max-w-full"
+                    >
+                      {emp.employee_code}
+                    </button>
+                  </td>
+                  <td className="px-3 py-2 overflow-hidden">
+                    <div className="min-w-0">
+                      <span className="truncate block font-medium">{emp.full_name_en}</span>
                       {emp.full_name_ar && (
-                        <span className="text-xs text-muted-foreground" dir="rtl">
+                        <span className="truncate block text-muted-foreground mt-0.5" dir="auto">
                           {emp.full_name_ar}
                         </span>
                       )}
                     </div>
-                  </TableCell>
-                  <TableCell className="text-sm">
-                    {emp.nationality?.name_en ?? "—"}
-                  </TableCell>
-                  <TableCell className="text-sm">
+                  </td>
+                  {showNationality && (
+                    <td className="px-3 py-2 text-muted-foreground truncate">
+                      {emp.nationality?.name_en ?? "—"}
+                    </td>
+                  )}
+                  <td className="px-3 py-2 text-muted-foreground truncate">
                     {emp.department?.department_name_en ?? "—"}
-                  </TableCell>
-                  <TableCell className="text-sm">
+                  </td>
+                  <td className="px-3 py-2 text-muted-foreground truncate">
                     {emp.designation?.designation_name_en ?? "—"}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={STATUS_VARIANT[emp.employee_status] ?? "outline"}>
-                      {STATUS_LABEL[emp.employee_status] ?? emp.employee_status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-sm">
+                  </td>
+                  <td className="px-3 py-2">
+                    <EmployeeStatusBadge status={emp.employee_status} />
+                  </td>
+                  <td className="px-3 py-2 text-muted-foreground truncate">
                     {emp.owner_company?.company_code ?? "—"}
-                  </TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground">
-                        <span className="sr-only">Open menu</span>
-                        <MoreVertical className="h-4 w-4" />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => openView(emp)}>
-                          <Eye className="h-4 w-4 mr-2" />
-                          View
-                        </DropdownMenuItem>
-                        {canUpdate && (
-                          <DropdownMenuItem onClick={() => openEdit(emp)}>
-                            <Edit className="h-4 w-4 mr-2" />
-                            Edit
-                          </DropdownMenuItem>
-                        )}
-                        {canArchive && (
-                          <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              onClick={() => setArchiveTarget(emp)}
-                            >
-                              <Archive className="h-4 w-4 mr-2" />
-                              Archive
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-1 justify-end">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6"
+                        onClick={() => openView(emp)}
+                        title="View"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                      </Button>
+                      {canUpdate && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6"
+                          onClick={() => openEdit(emp)}
+                          title="Edit"
+                        >
+                          <Edit className="h-3 w-3" />
+                        </Button>
+                      )}
+                      {canArchive && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6 text-destructive hover:text-destructive"
+                          onClick={() => setArchiveTarget(emp)}
+                          title="Archive"
+                        >
+                          <Archive className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
               ))
             )}
-          </TableBody>
-        </Table>
+          </tbody>
+        </table>
+
+        <TablePagination
+          page={page}
+          totalPages={totalPages}
+          onPage={(p) => setPagination((prev) => ({ ...prev, pageIndex: p - 1 }))}
+          pageSize={pageSize}
+          onPageSize={(s) => {
+            setPagination({ pageIndex: 0, pageSize: s });
+          }}
+          total={totalCount}
+        />
       </div>
 
-      {/* Pagination */}
-      <div className="flex items-center justify-between text-sm text-muted-foreground">
-        <span>
-          {totalCount === 0
-            ? "No results"
-            : `Showing ${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, totalCount)} of ${totalCount} employees`}
-        </span>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handlePageChange(page - 1)}
-            disabled={page <= 1 || isPending}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span>
-            Page {page} of {totalPages}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handlePageChange(page + 1)}
-            disabled={page >= totalPages || isPending}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
+      <div className="text-xs text-muted-foreground">
+        {totalCount === 0
+          ? "No results"
+          : `Showing ${Math.min((page - 1) * pageSize + 1, totalCount)}–${Math.min(page * pageSize, totalCount)} of ${totalCount} employees`}
       </div>
 
-      {/* Archive confirmation */}
       <AlertDialog open={!!archiveTarget} onOpenChange={(o) => !o && setArchiveTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Archive Employee?</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to archive{" "}
-              <strong>{archiveTarget?.employee_code} — {archiveTarget?.full_name_en}</strong>?
-              This will set their status to archived and soft-delete the record.
+              <strong>
+                {archiveTarget?.employee_code} — {archiveTarget?.full_name_en}
+              </strong>
+              ? This will set their status to archived and soft-delete the record.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -346,7 +837,6 @@ export function EmployeesTable({ initialRows, initialTotal, authContext }: Props
             >
               Archive
             </AlertDialogAction>
-
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -2,7 +2,6 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { redirect } from "next/navigation";
 import { listHrSiteRequirementMatrix } from "@/server/actions/hr/settings";
 import { ERPPageHeader } from "@/components/erp/page-header";
-import { ERPSectionCard } from "@/components/erp/section-card";
 import { ERPEmptyState } from "@/components/erp/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Map } from "lucide-react";
@@ -14,16 +13,16 @@ export default async function HrSiteRequirementMatrixPage() {
   const rows = result.data?.data ?? [];
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="p-6 space-y-4">
       <ERPPageHeader
         title="Site Requirement Matrix"
         description="Defines access card and training requirements per work site"
         breadcrumbs={[{ label: "Dashboard", href: "/dashboard" }, { label: "HR Settings", href: "/admin/hr/settings" }, { label: "Site Requirement Matrix" }]}
       />
-      <ERPSectionCard title="Site Mappings" description={`${rows.length} mapping${rows.length !== 1 ? "s" : ""}`} noPadding>
-        {rows.length === 0 ? (
-          <ERPEmptyState icon={Map} title="No site requirement mappings" description="Mappings define which access cards and training are required at each work site." />
-        ) : (
+      {rows.length === 0 ? (
+        <ERPEmptyState icon={Map} title="No site requirement mappings" description="Mappings define which access cards and training are required at each work site." />
+      ) : (
+        <div className="rounded-md border overflow-hidden">
           <div className="divide-y">
             {rows.map((row) => (
               <div key={row.id} className="flex items-center justify-between px-4 py-3">
@@ -37,8 +36,8 @@ export default async function HrSiteRequirementMatrixPage() {
               </div>
             ))}
           </div>
-        )}
-      </ERPSectionCard>
+        </div>
+      )}
     </div>
   );
 }

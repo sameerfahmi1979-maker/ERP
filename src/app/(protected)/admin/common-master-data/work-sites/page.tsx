@@ -1,6 +1,5 @@
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { ERPPageHeader } from "@/components/erp/page-header";
-import { ERPSectionCard } from "@/components/erp/section-card";
 import { ERPEmptyState } from "@/components/erp/empty-state";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +14,7 @@ export default async function WorkSitesPage() {
   const sites = result.data ?? [];
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="p-6 space-y-4">
       <ERPPageHeader
         title="Work Sites"
         description="Operational locations, yards, workshops, and facilities"
@@ -26,8 +25,8 @@ export default async function WorkSitesPage() {
         ]}
         actions={canManage ? <Link href="/admin/common-master-data/work-sites/record/new"><Button size="sm"><Plus className="h-4 w-4 mr-1" />Add Work Site</Button></Link> : null}
       />
-      <ERPSectionCard title="All Work Sites" noPadding actions={<span className="text-xs text-muted-foreground">{sites.length} total</span>}>
-        {sites.length === 0 ? <ERPEmptyState icon={MapPin} title="No work sites yet" description="Create your first work site." /> : (
+      {sites.length === 0 ? <ERPEmptyState icon={MapPin} title="No work sites yet" description="Create your first work site." /> : (
+        <div className="rounded-md border overflow-hidden">
           <div className="divide-y">
             {sites.map(s => (
               <Link key={s.id} href={`/admin/common-master-data/work-sites/record/${s.id}`} className="flex items-center justify-between px-4 py-3 hover:bg-muted/40 transition-colors">
@@ -44,8 +43,8 @@ export default async function WorkSitesPage() {
               </Link>
             ))}
           </div>
-        )}
-      </ERPSectionCard>
+        </div>
+      )}
     </div>
   );
 }

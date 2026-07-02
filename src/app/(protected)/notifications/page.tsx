@@ -24,7 +24,7 @@ export default async function NotificationsPage() {
   const unreadCount = countResult.success ? (countResult.data?.count ?? 0) : 0;
 
   return (
-    <div className="flex flex-col gap-6 p-8">
+    <div className="p-6 space-y-4">
       <NotificationsPageClient
         initialNotifications={notifications}
         unreadCount={unreadCount}

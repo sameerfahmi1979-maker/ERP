@@ -204,7 +204,7 @@ Below the table, show filtered vs total when client-side filtering is used:
 
 ```tsx
 <div className="rounded-md border border-border overflow-x-auto">
-  <table className="w-full text-xs table-fixed">…</table>
+  <table className="w-full text-xs" style={{ tableLayout: "fixed", minWidth: "100%" }}>…</table>
   <TablePagination … />
 </div>
 ```
@@ -213,11 +213,32 @@ Below the table, show filtered vs total when client-side filtering is used:
 |-------|-------|
 | Outer container | `rounded-md border border-border overflow-x-auto` |
 | Table density | `text-xs` |
-| Layout algorithm | `table-fixed` (prevents runaway column width / page overflow) |
-| Header row | `border-b border-border bg-muted/30` |
+| Layout algorithm | `style={{ tableLayout: "fixed", minWidth: "100%" }}` — prevents runaway column width, enables column resizing, fills available space |
+| Header row | `border-b border-border bg-muted/30 hover:bg-muted/30` |
 | Body row | `border-b border-border hover:bg-muted/20 transition-colors` |
 | Cell padding | `px-3 py-2` |
 | Header cell padding | `px-3 py-2` (SortColHeader default is `px-4 py-2.5` — All Documents overrides to `px-3 py-2`) |
+| **Cell overflow** | **`overflow-hidden`** — required on EVERY `<th>` and `<td>` to prevent text overlap when columns are narrow or resized |
+
+### Column Overflow Fix — Mandatory Rule
+
+**Every `<th>` and `<td>` MUST have `overflow-hidden` in its className.**
+
+This prevents text from overflowing into adjacent columns. Without this, resizing a narrow column causes text to bleed across the table.
+
+```tsx
+{/* ✅ Correct — overflow-hidden on every cell */}
+<th className="w-[180px] px-3 py-2 overflow-hidden">Name</th>
+<td className="px-3 py-2 overflow-hidden truncate">{value}</td>
+
+{/* ❌ Wrong — missing overflow-hidden causes text bleed */}
+<th className="w-[180px] px-3 py-2">Name</th>
+<td className="px-3 py-2">{value}</td>
+```
+
+For **`ERPDataTable`** (TanStack Table): `overflow-hidden` is applied globally in `erp-data-table.tsx` — no per-column action needed.
+
+For **custom `<table>` elements**: you must add `overflow-hidden` to every `<th>` and `<td>` manually.
 
 **Primary identifier column:** `font-mono font-medium text-primary`, clickable with `hover:underline truncate`.
 

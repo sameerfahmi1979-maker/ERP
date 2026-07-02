@@ -5,6 +5,7 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { redirect, notFound } from "next/navigation";
 import { getPartiesByTypeCode } from "@/server/actions/master-data/parties";
 import { PartiesTable } from "@/features/master-data/parties/parties-table";
+import { ERPPageHeader } from "@/components/erp/page-header";
 
 // Slug → type code mapping
 const SLUG_TYPE_MAP: Record<string, { typeCode: string; title: string }> = {
@@ -36,21 +37,17 @@ export default async function FilteredPartiesPage({ params }: Props) {
   const parties = result.success ? result.data ?? [] : [];
 
   return (
-    <div className="container mx-auto py-6 px-4 max-w-7xl">
-      <div className="mb-6">
-        <nav className="text-sm text-muted-foreground mb-2">
-          Master Data / Party Master / <span className="text-foreground">{mapping.title}</span>
-        </nav>
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold">{mapping.title}</h1>
-          <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded border text-muted-foreground">
-            Party Type: {mapping.typeCode}
-          </span>
-        </div>
-        <p className="text-muted-foreground text-sm mt-1">
-          {parties.length} {mapping.title.toLowerCase()} found
-        </p>
-      </div>
+    <div className="p-6 space-y-4">
+      <ERPPageHeader
+        title={mapping.title}
+        description={`${parties.length} ${mapping.title.toLowerCase()} found`}
+        breadcrumbs={[
+          { label: "Dashboard", href: "/dashboard" },
+          { label: "Master Data", href: "/admin/master-data" },
+          { label: "Party Master", href: "/admin/master-data/parties" },
+          { label: mapping.title },
+        ]}
+      />
       <PartiesTable
         parties={parties}
         authContext={ctx}

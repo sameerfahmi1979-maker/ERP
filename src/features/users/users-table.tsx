@@ -167,6 +167,7 @@ export function UsersTable({
     {
       id: "user",
       header: "User",
+      size: 220,
       cell: ({ row }) => {
         const initials = (row.original.display_name ?? row.original.full_name ?? "U")
           .split(" ")
@@ -197,6 +198,7 @@ export function UsersTable({
     {
       id: "roles",
       header: "Roles",
+      size: 220,
       cell: ({ row }) => {
         const userRoles = row.original.roles ?? [];
         if (userRoles.length === 0) {
@@ -219,6 +221,7 @@ export function UsersTable({
     {
       id: "organization",
       header: "Organization",
+      size: 160,
       cell: ({ row }) => (
         <span className="text-sm text-foreground">
           {row.original.owner_company?.legal_name_en ?? "—"}
@@ -228,6 +231,7 @@ export function UsersTable({
     {
       id: "branch",
       header: "Branch",
+      size: 130,
       cell: ({ row }) => (
         <span className="text-sm text-muted-foreground">
           {row.original.branch?.branch_name_en ?? "—"}
@@ -237,6 +241,7 @@ export function UsersTable({
     {
       accessorKey: "status",
       header: "Status",
+      size: 110,
       cell: ({ row }) => (
         <div className="flex flex-col gap-0.5">
           <StatusBadge status={row.original.status} />
@@ -249,6 +254,7 @@ export function UsersTable({
     {
       accessorKey: "created_at",
       header: "Joined",
+      size: 100,
       cell: ({ row }) => (
         <span className="text-sm text-muted-foreground">
           {format(new Date(row.original.created_at), "d MMM yyyy")}
@@ -258,6 +264,7 @@ export function UsersTable({
     {
       id: "actions",
       header: () => <div className="text-right">Actions</div>,
+      size: 60,
       cell: ({ row }) => {
         const user = row.original;
         const userName = user.display_name ?? user.full_name ?? user.email ?? "this user";
@@ -358,8 +365,8 @@ export function UsersTable({
         enablePreferences
         enableGlobalFilter={false}
         exportConfig={exportConfig}
-        initialPageSize={Math.max(displayData.length, 1)}
-        pageSizeOptions={[Math.max(displayData.length, 1)]}
+        initialPageSize={pageSize}
+        pageSizeOptions={[10, 25, 50, 100]}
       />
 
       {assigningRoleUser && (

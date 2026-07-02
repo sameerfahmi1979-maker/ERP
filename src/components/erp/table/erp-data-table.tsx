@@ -336,7 +336,7 @@ export function ERPDataTable<TData>({
 
       {/* Table */}
       <div className="overflow-x-auto">
-        <Table>
+        <Table style={{ tableLayout: "fixed", minWidth: "100%" }}>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id} className="hover:bg-transparent border-border/40">
@@ -348,7 +348,7 @@ export function ERPDataTable<TData>({
                       position: "relative",
                     }}
                     className={cn(
-                      "h-10 text-xs font-semibold uppercase tracking-wider text-muted-foreground bg-muted/30 select-none",
+                      "h-10 text-xs font-semibold uppercase tracking-wider text-muted-foreground bg-muted/30 select-none overflow-hidden",
                       header.column.getCanSort() && "cursor-pointer hover:bg-muted/50"
                     )}
                     onClick={header.column.getToggleSortingHandler()}
@@ -401,7 +401,11 @@ export function ERPDataTable<TData>({
                   )}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="h-12 text-sm">
+                    <TableCell
+                      key={cell.id}
+                      style={{ width: cell.column.getSize() }}
+                      className="h-12 text-sm overflow-hidden"
+                    >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}

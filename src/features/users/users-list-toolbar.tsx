@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { Role, OwnerCompany, Branch } from "@/types/database";
-import { Search, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, X, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type QuickFilter = {
@@ -115,148 +115,202 @@ export function UsersListToolbar({
   };
 
   const selectClass =
-    "flex h-9 rounded-md border border-input bg-background text-foreground px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring";
+    "flex h-8 w-full rounded-md border border-input bg-background text-foreground px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring";
+
+  // Active filter labels for chips
+  const activeChips: { label: string; onRemove: () => void }[] = [];
+  if (search) activeChips.push({ label: `Search: "${search}"`, onRemove: () => updateParams({ q: null, page: "1" }) });
+  if (status) activeChips.push({ label: `Status: ${status}`, onRemove: () => updateParams({ status: null, page: "1" }) });
+  if (companyId) {
+    const co = companies.find((c) => String(c.id) === companyId);
+    activeChips.push({ label: `Company: ${co?.legal_name_en ?? companyId}`, onRemove: () => updateParams({ company: null, branch: null, page: "1" }) });
+  }
+  if (branchId) {
+    const br = branches.find((b) => String(b.id) === branchId);
+    activeChips.push({ label: `Branch: ${br?.branch_name_en ?? branchId}`, onRemove: () => updateParams({ branch: null, page: "1" }) });
+  }
+  if (roleId) {
+    const ro = roles.find((r) => String(r.id) === roleId);
+    activeChips.push({ label: `Role: ${ro?.role_name ?? roleId}`, onRemove: () => updateParams({ role: null, page: "1" }) });
+  }
+  if (mcpFilter === "1") activeChips.push({ label: "Must Change Password", onRemove: () => updateParams({ mcp: null, page: "1" }) });
+  if (noRoleFilter) activeChips.push({ label: "No Role", onRemove: () => updateParams({ no_role: null, page: "1" }) });
 
   return (
-    <div className="flex flex-col gap-3 p-4 border-b border-border/40">
-      {/* Quick filter chips */}
-      <div className="flex flex-wrap items-center gap-1.5">
-        {QUICK_FILTERS.map((f) => {
-          const isActive = f.activeWhen(searchParams);
-          return (
-            <button
-              key={f.label}
-              type="button"
-              onClick={() => updateParams(f.params)}
-              disabled={isPending}
-              className={cn(
-                "inline-flex items-center rounded-full px-3 py-1 text-xs font-medium border transition-colors",
-                isActive
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-background text-muted-foreground border-border hover:bg-accent hover:text-accent-foreground",
-              )}
-            >
-              {f.label}
-            </button>
-          );
-        })}
-        {hasActiveFilters && (
-          <button
-            type="button"
-            onClick={handleClearAll}
-            disabled={isPending}
-            className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium text-muted-foreground hover:text-foreground border border-dashed border-border hover:border-foreground transition-colors"
-            aria-label="Clear all filters"
-          >
-            <X className="h-3 w-3" />
-            Clear filters
-          </button>
-        )}
-      </div>
-
-      {/* Search + dropdowns */}
-      <form action={handleSearchSubmit} className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[200px] max-w-md">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            name="q"
-            defaultValue={search}
-            placeholder="Search name, user code, or email..."
-            className="pl-9 h-9 text-sm"
-          />
-        </div>
-        <Button type="submit" size="sm" variant="secondary" disabled={isPending}>
-          Search
-        </Button>
-      </form>
-
+    <div className="flex flex-col gap-3">
+      {/* Row 1 — Quick status chips + search */}
       <div className="flex flex-wrap items-center gap-2">
-        <select
-          value={status}
-          onChange={(e) => updateParams({ status: e.target.value || null, page: "1", mcp: null, no_role: null })}
-          className={selectClass}
-          aria-label="Filter by status"
-        >
-          <option value="">All statuses</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-          <option value="suspended">Suspended</option>
-        </select>
+        <div className="flex flex-wrap items-center gap-1.5 flex-1">
+          {QUICK_FILTERS.map((f) => {
+            const isActive = f.activeWhen(searchParams);
+            return (
+              <button
+                key={f.label}
+                type="button"
+                onClick={() => updateParams(f.params)}
+                disabled={isPending}
+                className={cn(
+                  "inline-flex items-center rounded-full px-3 py-1 text-xs font-medium border transition-colors",
+                  isActive
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-background text-muted-foreground border-border hover:bg-accent hover:text-accent-foreground",
+                )}
+              >
+                {f.label}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex items-center gap-2 shrink-0 ml-auto">
+          <form action={handleSearchSubmit} className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                name="q"
+                defaultValue={search}
+                placeholder="Search name, email, user code..."
+                className="pl-8 h-8 text-sm w-64"
+              />
+            </div>
+            <Button type="submit" variant="outline" size="sm" disabled={isPending}>
+              <Search className="h-3.5 w-3.5" />
+            </Button>
+          </form>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => startTransition(() => router.refresh())}
+            disabled={isPending}
+            aria-label="Refresh"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", isPending && "animate-spin")} />
+          </Button>
+        </div>
+      </div>
 
-        <select
-          value={companyId}
-          onChange={(e) =>
-            updateParams({ company: e.target.value || null, branch: null, page: "1" })
-          }
-          className={selectClass}
-          aria-label="Filter by company"
-        >
-          <option value="">All companies</option>
-          {companies.map((c) => (
-            <option key={c.id} value={String(c.id)}>
-              {c.legal_name_en}
-            </option>
-          ))}
-        </select>
+      {/* Row 2 — Labeled filter panel */}
+      <div className="rounded-lg border border-border bg-muted/10 p-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Status
+            </label>
+            <select
+              value={status}
+              onChange={(e) => updateParams({ status: e.target.value || null, page: "1", mcp: null, no_role: null })}
+              className={selectClass}
+              aria-label="Filter by status"
+            >
+              <option value="">All statuses</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="suspended">Suspended</option>
+            </select>
+          </div>
 
-        <select
-          value={branchId}
-          onChange={(e) => updateParams({ branch: e.target.value || null, page: "1" })}
-          className={selectClass}
-          aria-label="Filter by branch"
-          disabled={!companyId && branches.length > 20}
-        >
-          <option value="">All branches</option>
-          {(companyId
-            ? branches.filter((b) => String(b.owner_company_id) === companyId)
-            : branches
-          ).map((b) => (
-            <option key={b.id} value={String(b.id)}>
-              {b.branch_name_en}
-            </option>
-          ))}
-        </select>
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Company
+            </label>
+            <select
+              value={companyId}
+              onChange={(e) =>
+                updateParams({ company: e.target.value || null, branch: null, page: "1" })
+              }
+              className={selectClass}
+              aria-label="Filter by company"
+            >
+              <option value="">All companies</option>
+              {companies.map((c) => (
+                <option key={c.id} value={String(c.id)}>
+                  {c.legal_name_en}
+                </option>
+              ))}
+            </select>
+          </div>
 
-        <select
-          value={roleId}
-          onChange={(e) => updateParams({ role: e.target.value || null, page: "1" })}
-          className={selectClass}
-          aria-label="Filter by role"
-        >
-          <option value="">All roles</option>
-          {roles.filter((r) => r.is_active).map((r) => (
-            <option key={r.id} value={String(r.id)}>
-              {r.role_name}
-            </option>
-          ))}
-        </select>
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Branch
+            </label>
+            <select
+              value={branchId}
+              onChange={(e) => updateParams({ branch: e.target.value || null, page: "1" })}
+              className={selectClass}
+              aria-label="Filter by branch"
+              disabled={!companyId && branches.length > 20}
+            >
+              <option value="">All branches</option>
+              {(companyId
+                ? branches.filter((b) => String(b.owner_company_id) === companyId)
+                : branches
+              ).map((b) => (
+                <option key={b.id} value={String(b.id)}>
+                  {b.branch_name_en}
+                </option>
+              ))}
+            </select>
+          </div>
 
-        {(mcpFilter === "1" || noRoleFilter) && (
-          <Badge variant="secondary" className="text-xs gap-1">
-            {mcpFilter === "1" ? "Must Change Password" : "No Role"}
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Role
+            </label>
+            <select
+              value={roleId}
+              onChange={(e) => updateParams({ role: e.target.value || null, page: "1" })}
+              className={selectClass}
+              aria-label="Filter by role"
+            >
+              <option value="">All roles</option>
+              {roles.filter((r) => r.is_active).map((r) => (
+                <option key={r.id} value={String(r.id)}>
+                  {r.role_name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Active filter chips */}
+        {activeChips.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border/60 pt-3">
+            {activeChips.map((chip) => (
+              <Badge key={chip.label} variant="secondary" className="gap-1 pr-1 text-[11px] font-normal">
+                {chip.label}
+                <button
+                  type="button"
+                  onClick={chip.onRemove}
+                  aria-label={`Remove ${chip.label} filter`}
+                  className="hover:text-destructive"
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </Badge>
+            ))}
             <button
               type="button"
-              onClick={() => updateParams({ mcp: null, no_role: null, page: "1" })}
-              aria-label="Remove special filter"
-              className="hover:text-destructive"
+              onClick={handleClearAll}
+              className="text-[11px] text-muted-foreground hover:underline"
             >
-              <X className="h-2.5 w-2.5" />
+              Clear all
             </button>
-          </Badge>
+          </div>
         )}
       </div>
 
+      {/* Pagination footer */}
       <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
         <span>
           {totalCount} user{totalCount !== 1 ? "s" : ""}
-          {noRoleFilter ? " (filtered: No Role)" : ""}
           {isPending ? " · Loading…" : ""}
         </span>
         <div className="flex items-center gap-2">
           <select
             value={String(pageSize)}
             onChange={(e) => updateParams({ pageSize: e.target.value, page: "1" })}
-            className={selectClass}
+            className="flex h-7 rounded border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
             aria-label="Page size"
           >
             {[10, 25, 50, 100].map((n) => (
@@ -267,26 +321,28 @@ export function UsersListToolbar({
           </select>
           <Button
             type="button"
-            variant="outline"
-            size="sm"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
             disabled={page <= 1 || isPending}
             onClick={() => updateParams({ page: String(page - 1) })}
             aria-label="Previous page"
           >
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft className="h-3.5 w-3.5" />
           </Button>
           <span>
             Page {page} of {totalPages}
           </span>
           <Button
             type="button"
-            variant="outline"
-            size="sm"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
             disabled={page >= totalPages || isPending}
             onClick={() => updateParams({ page: String(page + 1) })}
             aria-label="Next page"
           >
-            <ChevronRight className="h-4 w-4" />
+            <ChevronRight className="h-3.5 w-3.5" />
           </Button>
         </div>
       </div>

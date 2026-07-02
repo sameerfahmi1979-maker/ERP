@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { getParties } from "@/server/actions/master-data/parties";
 import { PartiesTable } from "@/features/master-data/parties/parties-table";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ERPPageHeader } from "@/components/erp/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export const dynamic = "force-dynamic";
@@ -24,20 +24,19 @@ async function PartiesContent() {
 
 export default async function PartiesPage() {
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Party Master</CardTitle>
-          <CardDescription>
-            Unified master registry for customers, vendors, subcontractors, government authorities, and all other business parties.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Suspense fallback={<Skeleton className="h-[400px] w-full" />}>
-            <PartiesContent />
-          </Suspense>
-        </CardContent>
-      </Card>
+    <div className="p-6 space-y-4">
+      <ERPPageHeader
+        title="Party Master"
+        description="Unified master registry for customers, vendors, subcontractors, government authorities, and all other business parties."
+        breadcrumbs={[
+          { label: "Dashboard", href: "/dashboard" },
+          { label: "Master Data", href: "/admin/master-data" },
+          { label: "Party Master" },
+        ]}
+      />
+      <Suspense fallback={<Skeleton className="h-[400px] w-full" />}>
+        <PartiesContent />
+      </Suspense>
     </div>
   );
 }

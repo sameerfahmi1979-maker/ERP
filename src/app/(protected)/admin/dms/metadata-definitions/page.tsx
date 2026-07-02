@@ -43,7 +43,7 @@ export default async function DmsMetadataDefinitionsPage() {
   }
 
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-6">
+    <div className="p-6 space-y-4">
       <ERPPageHeader
         title="Metadata Definitions"
         description="Define dynamic metadata fields per document type — including AI-extractable fields"

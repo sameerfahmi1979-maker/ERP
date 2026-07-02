@@ -4,9 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, X, Filter } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Search, X, RefreshCw } from "lucide-react";
 
 const MODULE_OPTIONS = [
   { value: "", label: "All Modules" },
@@ -88,98 +87,174 @@ export function AuditFiltersBar() {
 
   const hasFilters = action || module || dateFrom || dateTo || search || actor;
 
+  const selectClass =
+    "flex h-8 w-full rounded-md border border-input bg-background text-foreground px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring";
+
+  // Active filter chips
+  const activeChips: { label: string; onRemove: () => void }[] = [];
+  if (search) activeChips.push({ label: `Search: "${search}"`, onRemove: () => { setSearch(""); applyWithOverride({ search: "" }); } });
+  if (module) {
+    const m = MODULE_OPTIONS.find((o) => o.value === module);
+    activeChips.push({ label: `Module: ${m?.label ?? module}`, onRemove: () => { setModule(""); applyWithOverride({ module: "" }); } });
+  }
+  if (action) {
+    const a = ACTION_OPTIONS.find((o) => o.value === action);
+    activeChips.push({ label: `Action: ${a?.label ?? action}`, onRemove: () => { setAction(""); applyWithOverride({ action: "" }); } });
+  }
+  if (dateFrom) activeChips.push({ label: `From: ${dateFrom}`, onRemove: () => { setDateFrom(""); applyWithOverride({ dateFrom: "" }); } });
+  if (dateTo) activeChips.push({ label: `To: ${dateTo}`, onRemove: () => { setDateTo(""); applyWithOverride({ dateTo: "" }); } });
+  if (actor) activeChips.push({ label: `Actor: #${actor}`, onRemove: () => { setActor(""); applyWithOverride({ actor: "" }); } });
+
+  function applyWithOverride(override: Record<string, string>) {
+    startTransition(() => {
+      const params = new URLSearchParams();
+      const cur = { action, module, dateFrom, dateTo, search, actor, ...override };
+      if (cur.action) params.set("action", cur.action);
+      if (cur.module) params.set("module", cur.module);
+      if (cur.dateFrom) params.set("date_from", cur.dateFrom);
+      if (cur.dateTo) params.set("date_to", cur.dateTo);
+      if (cur.search) params.set("search", cur.search);
+      if (cur.actor) params.set("actor", cur.actor);
+      router.push(`${pathname}?${params.toString()}`);
+    });
+  }
+
   return (
-    <div className="flex flex-col gap-3 px-4 py-3 border-b bg-muted/20">
-      <div className="flex items-center gap-2">
-        <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
-        <span className="text-sm font-medium">Filters</span>
-        {hasFilters && (
-          <Button type="button" variant="ghost" size="sm" className="h-6 text-xs ml-auto" onClick={clearFilters}>
-            <X className="h-3 w-3 mr-1" />
-            Clear all
+    <div className="flex flex-col gap-3">
+      {/* Row 1 — Search + apply + refresh */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            placeholder="Search action or entity..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && applyFilters()}
+            className="pl-8 h-8 text-sm"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => { setSearch(""); applyWithOverride({ search: "" }); }}
+              className="absolute right-2.5 top-2 text-muted-foreground hover:text-foreground"
+              aria-label="Clear search"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+        <div className="ml-auto flex items-center gap-2 shrink-0">
+          <Button
+            type="button"
+            size="sm"
+            onClick={applyFilters}
+            disabled={isPending}
+            className="gap-1.5"
+          >
+            <Search className="h-3.5 w-3.5" />
+            {isPending ? "Loading…" : "Apply"}
           </Button>
-        )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => startTransition(() => router.refresh())}
+            disabled={isPending}
+            aria-label="Refresh"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
-        <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground">Module</Label>
-          <Select value={module} onValueChange={(v) => setModule(v ?? "")}>
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="All modules" />
-            </SelectTrigger>
-            <SelectContent>
+      {/* Row 2 — Labeled filter panel */}
+      <div className="rounded-lg border border-border bg-muted/10 p-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Module
+            </label>
+            <select value={module} onChange={(e) => setModule(e.target.value)} className={selectClass}>
               {MODULE_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value} className="text-xs">{o.label}</SelectItem>
+                <option key={o.value} value={o.value}>{o.label}</option>
               ))}
-            </SelectContent>
-          </Select>
-        </div>
+            </select>
+          </div>
 
-        <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground">Action</Label>
-          <Select value={action} onValueChange={(v) => setAction(v ?? "")}>
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="All actions" />
-            </SelectTrigger>
-            <SelectContent>
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Action
+            </label>
+            <select value={action} onChange={(e) => setAction(e.target.value)} className={selectClass}>
               {ACTION_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value} className="text-xs">{o.label}</SelectItem>
+                <option key={o.value} value={o.value}>{o.label}</option>
               ))}
-            </SelectContent>
-          </Select>
-        </div>
+            </select>
+          </div>
 
-        <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground">Date from</Label>
-          <Input
-            type="date"
-            className="h-8 text-xs"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-          />
-        </div>
-
-        <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground">Date to</Label>
-          <Input
-            type="date"
-            className="h-8 text-xs"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-          />
-        </div>
-
-        <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground">Actor (profile ID)</Label>
-          <Input
-            type="number"
-            className="h-8 text-xs"
-            placeholder="e.g. 5"
-            value={actor}
-            onChange={(e) => setActor(e.target.value)}
-          />
-        </div>
-
-        <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground">Search</Label>
-          <div className="relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Date From
+            </label>
             <Input
-              className="h-8 text-xs pl-6"
-              placeholder="action or entity..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && applyFilters()}
+              type="date"
+              className="h-8 text-xs"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Date To
+            </label>
+            <Input
+              type="date"
+              className="h-8 text-xs"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Actor (Profile ID)
+            </label>
+            <Input
+              type="number"
+              className="h-8 text-xs"
+              placeholder="e.g. 5"
+              value={actor}
+              onChange={(e) => setActor(e.target.value)}
             />
           </div>
         </div>
-      </div>
 
-      <div className="flex justify-end">
-        <Button type="button" size="sm" className="h-7 text-xs" onClick={applyFilters} disabled={isPending}>
-          {isPending ? "Filtering..." : "Apply Filters"}
-        </Button>
+        {/* Active filter chips */}
+        {activeChips.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border/60 pt-3">
+            {activeChips.map((chip) => (
+              <Badge key={chip.label} variant="secondary" className="gap-1 pr-1 text-[11px] font-normal">
+                {chip.label}
+                <button
+                  type="button"
+                  onClick={chip.onRemove}
+                  aria-label={`Remove ${chip.label} filter`}
+                  className="hover:text-destructive"
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </Badge>
+            ))}
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="text-[11px] text-muted-foreground hover:underline"
+            >
+              Clear all
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

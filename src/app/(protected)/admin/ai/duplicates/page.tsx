@@ -42,7 +42,7 @@ export default async function AiDuplicatesPage({ searchParams }: PageProps) {
   const documentId = params.documentId ? Number(params.documentId) : undefined;
 
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-6">
+    <div className="p-6 space-y-4">
       <ERPPageHeader
         title="AI Duplicate & Conflict Review"
         description="Review duplicate and conflict candidates across master data and DMS. No automatic merge or fix."

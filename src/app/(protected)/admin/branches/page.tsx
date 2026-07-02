@@ -1,10 +1,6 @@
 import { ERPPageHeader } from "@/components/erp/page-header";
-import { ERPSectionCard } from "@/components/erp/section-card";
-import { ERPEmptyState } from "@/components/erp/empty-state";
-import { Button } from "@/components/ui/button";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, GitBranch } from "lucide-react";
+import { GitBranch } from "lucide-react";
 import { listBranches } from "@/server/queries/branches";
 import { listOrganizations } from "@/server/queries/organizations";
 import { BranchesTable } from "@/features/branches/branches-table";
@@ -15,22 +11,16 @@ export default async function AdminBranchesPage() {
 
   if (!hasPermission(ctx, "branches.view")) {
     return (
-      <div className="flex flex-col gap-6">
+      <div className="p-6 space-y-4">
         <ERPPageHeader
           title="Branches"
-          description="Branch location management"
+          description="Manage organizational branches and locations"
           breadcrumbs={[
-            { label: "Dashboard", href: "/dashboard" },
-            { label: "Administration" },
+            { label: "Admin", href: "/admin" },
             { label: "Branches" },
           ]}
         />
-        <Card>
-          <CardHeader>
-            <CardTitle>Access denied</CardTitle>
-            <CardDescription>You need the branches.view permission.</CardDescription>
-          </CardHeader>
-        </Card>
+        <p className="text-sm text-muted-foreground">You need the branches.view permission to access this page.</p>
       </div>
     );
   }
@@ -40,51 +30,26 @@ export default async function AdminBranchesPage() {
   const canManage = hasPermission(ctx, "branches.manage");
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="p-6 space-y-4">
       <ERPPageHeader
         title="Branches"
-        description="Manage organizational branches and locations"
+        description="Manage organizational branches and locations. Search, filter, and open branch records."
         breadcrumbs={[
-          { label: "Dashboard", href: "/dashboard" },
-          { label: "Administration" },
+          { label: "Admin", href: "/admin" },
           { label: "Branches" },
         ]}
-        actions={
-          canManage ? (
-            <AddBranchButton companies={organizations} />
-          ) : null
-        }
+        actions={canManage ? <AddBranchButton companies={organizations} /> : null}
       />
-      <ERPSectionCard
-        title="Branch Locations"
-        description="All branch locations across organizations"
-        actions={
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <GitBranch className="h-3.5 w-3.5" />
-            <span>{branches.length} total</span>
-          </div>
-        }
-        noPadding
-      >
-        {branches.length > 0 ? (
-          <BranchesTable 
-            data={branches}
-            userProfileId={ctx.profile?.id || "default"}
-            exportConfig={{
-              title: "Branches Report",
-              subtitle: "Branch locations across organizations",
-              filename: "branches",
-              generatedBy: ctx.profile?.full_name || ctx.profile?.display_name || "System User",
-            }}
-          />
-        ) : (
-          <ERPEmptyState
-            icon={GitBranch}
-            title="No branches yet"
-            description="Create your first branch location to get started. Use the Add Branch button above."
-          />
-        )}
-      </ERPSectionCard>
+      <BranchesTable
+        data={branches}
+        userProfileId={ctx.profile?.id || "default"}
+        exportConfig={{
+          title: "Branches",
+          subtitle: "Branch locations across organizations",
+          filename: "branches",
+          generatedBy: ctx.profile?.full_name || ctx.profile?.display_name || "System User",
+        }}
+      />
     </div>
   );
 }

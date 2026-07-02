@@ -22,7 +22,7 @@ export default async function AdminNotificationsPage() {
   const notifications = result.success ? (result.data ?? []) : [];
 
   return (
-    <div className="flex flex-col gap-6 p-8">
+    <div className="p-6 space-y-4">
       <AdminNotificationsPageClient initialNotifications={notifications} />
     </div>
   );

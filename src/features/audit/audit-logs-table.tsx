@@ -120,6 +120,7 @@ export function AuditLogsTable({
     {
       accessorKey: "created_at",
       header: "Timestamp",
+      size: 140,
       cell: ({ row }) => (
         <div className="space-y-0.5">
           <span className="text-sm whitespace-nowrap">
@@ -134,6 +135,7 @@ export function AuditLogsTable({
     {
       accessorKey: "module_code",
       header: "Module",
+      size: 110,
       cell: ({ row }) => (
         <Badge variant="outline" className="text-xs capitalize">
           {(row.original.module_code || "unknown").replace(/_/g, " ")}
@@ -143,6 +145,7 @@ export function AuditLogsTable({
     {
       accessorKey: "action",
       header: "Action",
+      size: 200,
       cell: ({ row }) => {
         const action = row.original.action;
         const severity = getEventSeverity(action);
@@ -161,6 +164,7 @@ export function AuditLogsTable({
     {
       accessorKey: "entity_reference",
       header: "Entity",
+      size: 160,
       cell: ({ row }) => {
         const ref = row.original.entity_reference;
         const entityName = row.original.entity_name;
@@ -175,6 +179,7 @@ export function AuditLogsTable({
     {
       id: "actor",
       header: "Actor",
+      size: 100,
       cell: ({ row }) => {
         const actorId = row.original.actor_user_profile_id;
         return (
@@ -187,6 +192,7 @@ export function AuditLogsTable({
     {
       id: "payload",
       header: "Details",
+      size: 180,
       cell: ({ row }) => (
         <PayloadViewer payload={row.original.new_values ?? row.original.old_values} />
       ),

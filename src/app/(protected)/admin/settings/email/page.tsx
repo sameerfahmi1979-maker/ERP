@@ -36,7 +36,7 @@ export default async function EmailSettingsPage() {
   const sendLogs = logsResult.success ? (logsResult.data ?? []) : [];
 
   return (
-    <div className="flex flex-col gap-6 p-8">
+    <div className="p-6 space-y-4">
       <EmailSettingsPageClient
         configs={configs}
         featureFlags={featureFlags}

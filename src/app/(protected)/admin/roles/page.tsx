@@ -1,18 +1,16 @@
 import { ERPPageHeader } from "@/components/erp/page-header";
-import { ERPSectionCard } from "@/components/erp/section-card";
 import { RolesTable } from "@/features/roles/roles-table";
 import { AddRoleButton } from "@/features/roles/add-role-button";
 import { getAuthContext, hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
 import { listRoles } from "@/server/queries/roles";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Shield } from "lucide-react";
 
 export default async function AdminRolesPage() {
   const ctx = await getAuthContext();
 
   if (!hasPermission(ctx, "roles.view")) {
     return (
-      <div className="flex flex-col gap-6">
+      <div className="p-6 space-y-4">
         <ERPPageHeader
           title="Roles"
           description="Role and permission management"
@@ -37,7 +35,7 @@ export default async function AdminRolesPage() {
   const isAdmin = isGlobalAdmin(ctx);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="p-6 space-y-4">
       <ERPPageHeader
         title="Roles"
         description="System role definitions and permission assignments"
@@ -48,30 +46,18 @@ export default async function AdminRolesPage() {
         ]}
         actions={canManage ? <AddRoleButton /> : null}
       />
-      <ERPSectionCard
-        title="Role Catalog"
-        description="Define roles and their associated permissions"
-        actions={
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Shield className="h-3.5 w-3.5" />
-            <span>{roles.length} roles</span>
-          </div>
-        }
-        noPadding
-      >
-        <RolesTable 
-          data={roles}
-          canManage={canManage}
-          isGlobalAdmin={isAdmin}
-          userProfileId={ctx.profile?.id || "default"}
-          exportConfig={{
-            title: "Roles Report",
-            subtitle: "System role definitions and permission assignments",
-            filename: "roles",
-            generatedBy: ctx.profile?.full_name || ctx.profile?.display_name || "System User",
-          }}
-        />
-      </ERPSectionCard>
+      <RolesTable 
+        data={roles}
+        canManage={canManage}
+        isGlobalAdmin={isAdmin}
+        userProfileId={ctx.profile?.id || "default"}
+        exportConfig={{
+          title: "Roles Report",
+          subtitle: "System role definitions and permission assignments",
+          filename: "roles",
+          generatedBy: ctx.profile?.full_name || ctx.profile?.display_name || "System User",
+        }}
+      />
     </div>
   );
 }

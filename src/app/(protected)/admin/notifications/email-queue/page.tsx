@@ -26,7 +26,7 @@ export default async function EmailQueuePage() {
   const items = result.success ? (result.data ?? []) : [];
 
   return (
-    <div className="flex flex-col gap-6 p-8">
+    <div className="p-6 space-y-4">
       <EmailQueuePageClient
         initialItems={items}
         canManage={hasPermission(ctx, "notifications.email_queue.manage") || hasPermission(ctx, "notifications.admin")}

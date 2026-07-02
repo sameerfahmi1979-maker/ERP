@@ -437,6 +437,7 @@ export function EmployeeWorkspaceForm({ employee, mode, authContext }: Props) {
               </p>
               <HrLetterGenerator
                 employeeId={employee.id}
+                employeeName={employee.full_name_en ?? undefined}
                 canViewPayroll={checkPermission(authContext, "hr.payroll.view")}
               />
             </div>

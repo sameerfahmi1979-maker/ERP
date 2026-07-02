@@ -70,7 +70,7 @@ export default async function HrSettingsPage() {
   if (!canView) redirect("/access-denied");
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="p-6 space-y-4">
       <ERPPageHeader
         title="HR Settings"
         description="Configure HR module lookup tables, compliance rules, payroll groups, and approval workflows"
@@ -79,7 +79,7 @@ export default async function HrSettingsPage() {
           { label: "HR Settings" },
         ]}
       />
-      <div className="flex flex-col gap-6">
+        <div className="space-y-6">
         {SETTINGS_GROUPS.map((group) => (
           <ERPSectionCard
             key={group.group}

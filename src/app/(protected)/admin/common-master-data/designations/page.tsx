@@ -1,6 +1,5 @@
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { ERPPageHeader } from "@/components/erp/page-header";
-import { ERPSectionCard } from "@/components/erp/section-card";
 import { ERPEmptyState } from "@/components/erp/empty-state";
 import { Button } from "@/components/ui/button";
 import { Briefcase, Plus } from "lucide-react";
@@ -15,7 +14,7 @@ export default async function DesignationsPage() {
   const designations = result.data ?? [];
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="p-6 space-y-4">
       <ERPPageHeader
         title="Designations"
         description="Job titles and authority levels"
@@ -30,18 +29,11 @@ export default async function DesignationsPage() {
           </Link>
         ) : null}
       />
-      <ERPSectionCard
-        title="All Designations"
-        description="Job titles and authority levels across all organizations"
-        noPadding
-        actions={<span className="text-xs text-muted-foreground">{designations.length} total</span>}
-      >
-        {designations.length === 0 ? (
-          <ERPEmptyState icon={Briefcase} title="No designations yet" description="Create your first job title." />
-        ) : (
-          <DesignationsListClient designations={designations} canManage={canManage} />
-        )}
-      </ERPSectionCard>
+      {designations.length === 0 ? (
+        <ERPEmptyState icon={Briefcase} title="No designations yet" description="Create your first job title." />
+      ) : (
+        <DesignationsListClient designations={designations} canManage={canManage} />
+      )}
     </div>
   );
 }

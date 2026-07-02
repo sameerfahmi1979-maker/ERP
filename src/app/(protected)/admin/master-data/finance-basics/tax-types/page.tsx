@@ -33,7 +33,7 @@ export default async function TaxTypesPage() {
   }
 
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-6">
+    <div className="p-6 space-y-4">
       <ERPPageHeader
         title="Tax Types"
         description="Manage tax types with rates, VAT treatment codes, and sales/purchase applicability"

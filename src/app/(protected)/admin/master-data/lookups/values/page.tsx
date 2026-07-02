@@ -45,7 +45,7 @@ export default async function LookupValuesPage() {
   }
 
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-6">
+    <div className="p-6 space-y-4">
       <ERPPageHeader
         title="Lookup Values"
         description="Manage lookup values for category dropdowns"

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { DmsDocumentStatusBadge } from "@/features/dms/documents/dms-document-status-badge";
 import { queryKeys } from "@/lib/query/query-keys";
 import {
   getDmsDocumentsByEntity,
@@ -372,12 +373,18 @@ function EmployeeDocPickRow({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-medium text-sm truncate">{doc.title || doc.document_no}</span>
+          <DmsDocumentStatusBadge status={doc.status} />
           <Badge variant="secondary" className="text-xs">On employee file</Badge>
           {doc.document_type_name && (
             <Badge variant="outline" className="text-xs">{doc.document_type_name}</Badge>
           )}
         </div>
-        <div className="text-xs text-muted-foreground mt-0.5">{doc.document_no}</div>
+        <div className="text-xs text-muted-foreground mt-0.5">
+          {doc.document_no}
+          {doc.expiry_date && (
+            <span className="ml-2">· Expires {new Date(doc.expiry_date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</span>
+          )}
+        </div>
       </div>
     </button>
   );
@@ -405,6 +412,7 @@ function LibraryDocPickRow({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-medium text-sm truncate">{doc.title || doc.document_no}</span>
+          <DmsDocumentStatusBadge status={doc.status} />
           <Badge variant="outline" className="text-xs text-amber-700 border-amber-300 bg-amber-50">
             Will link on save
           </Badge>
@@ -412,7 +420,12 @@ function LibraryDocPickRow({
             <Badge variant="outline" className="text-xs">{doc.document_type_name}</Badge>
           )}
         </div>
-        <div className="text-xs text-muted-foreground mt-0.5">{doc.document_no}</div>
+        <div className="text-xs text-muted-foreground mt-0.5">
+          {doc.document_no}
+          {doc.expiry_date && (
+            <span className="ml-2">· Expires {new Date(doc.expiry_date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</span>
+          )}
+        </div>
       </div>
     </button>
   );

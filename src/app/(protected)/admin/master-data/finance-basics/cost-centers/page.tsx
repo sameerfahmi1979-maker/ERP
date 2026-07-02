@@ -33,7 +33,7 @@ export default async function CostCentersPage() {
   }
 
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-6">
+    <div className="p-6 space-y-4">
       <ERPPageHeader
         title="Cost Centers"
         description="Manage cost centers with hierarchy, type classification, and company/branch scope"

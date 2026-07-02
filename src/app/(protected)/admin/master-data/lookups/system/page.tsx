@@ -143,7 +143,7 @@ export default async function LockedSystemValuesPage() {
   }
 
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-6">
+    <div className="p-6 space-y-4">
       <ERPPageHeader
         title="Locked System Values"
         description="View and manage system-critical locked lookup values"

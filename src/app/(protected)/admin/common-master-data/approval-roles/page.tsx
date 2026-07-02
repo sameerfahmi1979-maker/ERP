@@ -1,6 +1,5 @@
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { ERPPageHeader } from "@/components/erp/page-header";
-import { ERPSectionCard } from "@/components/erp/section-card";
 import { ERPEmptyState } from "@/components/erp/empty-state";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +14,7 @@ export default async function ApprovalRolesPage() {
   const roles = result.data ?? [];
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="p-6 space-y-4">
       <ERPPageHeader
         title="Approval Roles"
         description="Approval authority levels and delegation rules"
@@ -26,8 +25,8 @@ export default async function ApprovalRolesPage() {
         ]}
         actions={canManage ? <Link href="/admin/common-master-data/approval-roles/record/new"><Button size="sm"><Plus className="h-4 w-4 mr-1" />Add Approval Role</Button></Link> : null}
       />
-      <ERPSectionCard title="All Approval Roles" noPadding actions={<span className="text-xs text-muted-foreground">{roles.length} total</span>}>
-        {roles.length === 0 ? <ERPEmptyState icon={ShieldCheck} title="No approval roles yet" description="Create approval authority levels." /> : (
+      {roles.length === 0 ? <ERPEmptyState icon={ShieldCheck} title="No approval roles yet" description="Create approval authority levels." /> : (
+        <div className="rounded-md border overflow-hidden">
           <div className="divide-y">
             {roles.map(r => (
               <Link key={r.id} href={`/admin/common-master-data/approval-roles/record/${r.id}`} className="flex items-center justify-between px-4 py-3 hover:bg-muted/40 transition-colors">
@@ -45,8 +44,8 @@ export default async function ApprovalRolesPage() {
               </Link>
             ))}
           </div>
-        )}
-      </ERPSectionCard>
+        </div>
+      )}
     </div>
   );
 }

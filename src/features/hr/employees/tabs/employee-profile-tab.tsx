@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -102,6 +102,33 @@ export function EmployeeProfileTab({
   setForm,
 }: Props) {
   const disabled = mode === "view";
+
+  // Freeze all defaultValue computations on first render so Base UI's FieldControl
+  // never sees a changing defaultValue prop (which triggers an uncontrolled→controlled
+  // warning). Re-initialised naturally on full unmount/remount (tab switch, new record).
+  const initialDefaultsRef = useRef<Record<string, string> | null>(null);
+  if (initialDefaultsRef.current === null) {
+    initialDefaultsRef.current = {
+      full_name_en:             getDraftDefault("full_name_en",             employee?.full_name_en              ?? ""),
+      full_name_ar:             getDraftDefault("full_name_ar",             employee?.full_name_ar              ?? ""),
+      known_name:               getDraftDefault("known_name",               employee?.known_name                ?? ""),
+      date_of_birth:            getDraftDefault("date_of_birth",            employee?.date_of_birth             ?? ""),
+      mobile_number:            getDraftDefault("mobile_number",            employee?.mobile_number             ?? ""),
+      personal_email:           getDraftDefault("personal_email",           employee?.personal_email            ?? ""),
+      uae_address:              getDraftDefault("uae_address",              employee?.uae_address               ?? ""),
+      home_country_address:     getDraftDefault("home_country_address",     employee?.home_country_address      ?? ""),
+      joining_date:             getDraftDefault("joining_date",             employee?.joining_date              ?? ""),
+      actual_joining_date:      getDraftDefault("actual_joining_date",      employee?.actual_joining_date       ?? ""),
+      contract_start_date:      getDraftDefault("contract_start_date",      employee?.contract_start_date       ?? ""),
+      contract_end_date:        getDraftDefault("contract_end_date",        employee?.contract_end_date         ?? ""),
+      probation_start_date:     getDraftDefault("probation_start_date",     employee?.probation_start_date      ?? ""),
+      probation_end_date:       getDraftDefault("probation_end_date",       employee?.probation_end_date        ?? ""),
+      notice_period_days:       getDraftDefault("notice_period_days",       employee?.notice_period_days?.toString() ?? ""),
+      emergency_contact_name:   getDraftDefault("emergency_contact_name",   employee?.emergency_contact_name   ?? ""),
+      emergency_contact_mobile: getDraftDefault("emergency_contact_mobile", employee?.emergency_contact_mobile ?? ""),
+    };
+  }
+  const d = initialDefaultsRef.current;
 
   // ── Lookup Queries ──────────────────────────────────────────────────────────
 
@@ -219,7 +246,7 @@ export function EmployeeProfileTab({
             <Input
               id="full_name_en"
               name="full_name_en"
-              defaultValue={getDraftDefault("full_name_en", employee?.full_name_en ?? "")}
+              defaultValue={d.full_name_en}
               disabled={disabled}
               required
             />
@@ -230,7 +257,7 @@ export function EmployeeProfileTab({
               id="full_name_ar"
               name="full_name_ar"
               dir="rtl"
-              defaultValue={getDraftDefault("full_name_ar", employee?.full_name_ar ?? "")}
+              defaultValue={d.full_name_ar}
               disabled={disabled}
             />
           </div>
@@ -239,7 +266,7 @@ export function EmployeeProfileTab({
             <Input
               id="known_name"
               name="known_name"
-              defaultValue={getDraftDefault("known_name", employee?.known_name ?? "")}
+              defaultValue={d.known_name}
               disabled={disabled}
             />
           </div>
@@ -280,7 +307,7 @@ export function EmployeeProfileTab({
               id="date_of_birth"
               name="date_of_birth"
               type="date"
-              defaultValue={getDraftDefault("date_of_birth", employee?.date_of_birth ?? "")}
+              defaultValue={d.date_of_birth}
               disabled={disabled}
               required
             />
@@ -301,7 +328,7 @@ export function EmployeeProfileTab({
             <Input
               id="mobile_number"
               name="mobile_number"
-              defaultValue={getDraftDefault("mobile_number", employee?.mobile_number ?? "")}
+              defaultValue={d.mobile_number}
               disabled={disabled}
               required
             />
@@ -312,7 +339,7 @@ export function EmployeeProfileTab({
               id="personal_email"
               name="personal_email"
               type="email"
-              defaultValue={getDraftDefault("personal_email", employee?.personal_email ?? "")}
+              defaultValue={d.personal_email}
               disabled={disabled}
             />
           </div>
@@ -322,7 +349,7 @@ export function EmployeeProfileTab({
               id="uae_address"
               name="uae_address"
               rows={2}
-              defaultValue={getDraftDefault("uae_address", employee?.uae_address ?? "")}
+              defaultValue={d.uae_address}
               disabled={disabled}
             />
           </div>
@@ -332,7 +359,7 @@ export function EmployeeProfileTab({
               id="home_country_address"
               name="home_country_address"
               rows={2}
-              defaultValue={getDraftDefault("home_country_address", employee?.home_country_address ?? "")}
+              defaultValue={d.home_country_address}
               disabled={disabled}
             />
           </div>
@@ -420,7 +447,7 @@ export function EmployeeProfileTab({
               id="joining_date"
               name="joining_date"
               type="date"
-              defaultValue={getDraftDefault("joining_date", employee?.joining_date ?? "")}
+              defaultValue={d.joining_date}
               disabled={disabled}
               required
             />
@@ -431,7 +458,7 @@ export function EmployeeProfileTab({
               id="actual_joining_date"
               name="actual_joining_date"
               type="date"
-              defaultValue={getDraftDefault("actual_joining_date", employee?.actual_joining_date ?? "")}
+              defaultValue={d.actual_joining_date}
               disabled={disabled}
             />
           </div>
@@ -523,7 +550,7 @@ export function EmployeeProfileTab({
               id="contract_start_date"
               name="contract_start_date"
               type="date"
-              defaultValue={getDraftDefault("contract_start_date", employee?.contract_start_date ?? "")}
+              defaultValue={d.contract_start_date}
               disabled={disabled}
             />
           </div>
@@ -533,7 +560,7 @@ export function EmployeeProfileTab({
               id="contract_end_date"
               name="contract_end_date"
               type="date"
-              defaultValue={getDraftDefault("contract_end_date", employee?.contract_end_date ?? "")}
+              defaultValue={d.contract_end_date}
               disabled={disabled}
             />
           </div>
@@ -543,7 +570,7 @@ export function EmployeeProfileTab({
               id="probation_start_date"
               name="probation_start_date"
               type="date"
-              defaultValue={getDraftDefault("probation_start_date", employee?.probation_start_date ?? "")}
+              defaultValue={d.probation_start_date}
               disabled={disabled}
             />
           </div>
@@ -553,7 +580,7 @@ export function EmployeeProfileTab({
               id="probation_end_date"
               name="probation_end_date"
               type="date"
-              defaultValue={getDraftDefault("probation_end_date", employee?.probation_end_date ?? "")}
+              defaultValue={d.probation_end_date}
               disabled={disabled}
             />
           </div>
@@ -564,7 +591,7 @@ export function EmployeeProfileTab({
               name="notice_period_days"
               type="number"
               min={0}
-              defaultValue={getDraftDefault("notice_period_days", employee?.notice_period_days?.toString() ?? "")}
+              defaultValue={d.notice_period_days}
               disabled={disabled}
             />
           </div>
@@ -582,7 +609,7 @@ export function EmployeeProfileTab({
             <Input
               id="emergency_contact_name"
               name="emergency_contact_name"
-              defaultValue={getDraftDefault("emergency_contact_name", employee?.emergency_contact_name ?? "")}
+              defaultValue={d.emergency_contact_name}
               disabled={disabled}
               required
             />
@@ -592,7 +619,7 @@ export function EmployeeProfileTab({
             <Input
               id="emergency_contact_mobile"
               name="emergency_contact_mobile"
-              defaultValue={getDraftDefault("emergency_contact_mobile", employee?.emergency_contact_mobile ?? "")}
+              defaultValue={d.emergency_contact_mobile}
               disabled={disabled}
               required
             />

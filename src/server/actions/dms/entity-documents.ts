@@ -562,6 +562,7 @@ export type AvailableDmsDocumentOption = {
   title: string;
   document_type_name: string | null;
   status: string;
+  expiry_date: string | null;
 };
 
 export async function getAvailableDmsDocumentsForLink(
@@ -589,7 +590,7 @@ export async function getAvailableDmsDocumentsForLink(
 
     let query = supabase
       .from("dms_documents")
-      .select("id, document_no, title, document_type:dms_document_types(name_en)")
+      .select("id, document_no, title, status, expiry_date, document_type:dms_document_types(name_en)")
       .is("deleted_at", null)
       .neq("status", "deleted")
       .order("created_at", { ascending: false })
@@ -613,6 +614,7 @@ export async function getAvailableDmsDocumentsForLink(
       title: d.title as string,
       document_type_name: (d.document_type as { name_en?: string } | null)?.name_en ?? null,
       status: d.status as string,
+      expiry_date: (d.expiry_date as string | null) ?? null,
     }));
 
     return { success: true, data: rows };

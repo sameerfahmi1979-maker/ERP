@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { ERPPageHeader } from "@/components/erp/page-header";
 import { HrSearchPageClient } from "@/features/hr/search";
 import type { HrSearchPermissions } from "@/features/hr/search";
 
@@ -41,15 +42,16 @@ export default async function HrSearchPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6 p-6 max-w-5xl mx-auto w-full">
-      {/* Page header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">HR Search</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Search across employees, candidates, compliance, time, payroll, operations, and HR actions.
-        </p>
-      </div>
-
+    <div className="p-6 space-y-4">
+      <ERPPageHeader
+        title="HR Search"
+        description="Search across employees, candidates, compliance, time, payroll, operations, and HR actions."
+        breadcrumbs={[
+          { label: "Dashboard", href: "/dashboard" },
+          { label: "HR" },
+          { label: "HR Search" },
+        ]}
+      />
       <HrSearchPageClient permissions={permissions} />
     </div>
   );

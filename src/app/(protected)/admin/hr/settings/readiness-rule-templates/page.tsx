@@ -2,7 +2,6 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { redirect } from "next/navigation";
 import { listHrReadinessRuleTemplates } from "@/server/actions/hr/settings";
 import { ERPPageHeader } from "@/components/erp/page-header";
-import { ERPSectionCard } from "@/components/erp/section-card";
 import { ERPEmptyState } from "@/components/erp/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { CheckSquare } from "lucide-react";
@@ -14,16 +13,16 @@ export default async function HrReadinessRuleTemplatesPage() {
   const rows = result.data?.data ?? [];
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="p-6 space-y-4">
       <ERPPageHeader
         title="Readiness Rule Templates"
         description="Master template rules defining which documents, training, or access cards employees require"
         breadcrumbs={[{ label: "Dashboard", href: "/dashboard" }, { label: "HR Settings", href: "/admin/hr/settings" }, { label: "Readiness Rule Templates" }]}
       />
-      <ERPSectionCard title="Readiness Rules" description={`${rows.length} rule${rows.length !== 1 ? "s" : ""}`} noPadding>
-        {rows.length === 0 ? (
-          <ERPEmptyState icon={CheckSquare} title="No readiness rules configured" description="Readiness rules define mandatory compliance requirements for employees." />
-        ) : (
+      {rows.length === 0 ? (
+        <ERPEmptyState icon={CheckSquare} title="No readiness rules configured" description="Readiness rules define mandatory compliance requirements for employees." />
+      ) : (
+        <div className="rounded-md border overflow-hidden">
           <div className="divide-y">
             {rows.map((row) => (
               <div key={row.id} className="flex items-start justify-between px-4 py-3">
@@ -40,8 +39,8 @@ export default async function HrReadinessRuleTemplatesPage() {
               </div>
             ))}
           </div>
-        )}
-      </ERPSectionCard>
+        </div>
+      )}
     </div>
   );
 }

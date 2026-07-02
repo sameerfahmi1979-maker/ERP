@@ -22,7 +22,7 @@ export default async function NotificationTemplatesPage() {
   const templates = result.success ? (result.data ?? []) : [];
 
   return (
-    <div className="flex flex-col gap-6 p-8">
+    <div className="p-6 space-y-4">
       <NotificationTemplatesPageClient
         initialTemplates={templates}
         canManage={hasPermission(ctx, "notifications.templates.manage") || hasPermission(ctx, "notifications.admin")}

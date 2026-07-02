@@ -19,7 +19,7 @@ export default async function AiSettingsPage() {
   const usageLogs = logsResult.success ? (logsResult.data ?? []) : [];
 
   return (
-    <div className="flex flex-col gap-6 p-8">
+    <div className="p-6 space-y-4">
       <AiSettingsPageClient
         configs={configs}
         featureFlags={featureFlags}

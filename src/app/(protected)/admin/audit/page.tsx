@@ -1,11 +1,9 @@
 import { ERPPageHeader } from "@/components/erp/page-header";
-import { ERPSectionCard } from "@/components/erp/section-card";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { listAuditLogs } from "@/server/queries/audit";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AuditLogsTable } from "@/features/audit/audit-logs-table";
 import { AuditFiltersBar } from "@/features/audit/audit-filters-bar";
-import { FileText } from "lucide-react";
 import { Suspense } from "react";
 
 type AuditPageProps = {
@@ -25,7 +23,7 @@ export default async function AdminAuditPage({ searchParams }: AuditPageProps) {
 
   if (!hasPermission(ctx, "audit.view")) {
     return (
-      <div className="flex flex-col gap-6">
+      <div className="p-6 space-y-4">
         <ERPPageHeader
           title="Audit Logs"
           description="System audit trail"
@@ -60,7 +58,7 @@ export default async function AdminAuditPage({ searchParams }: AuditPageProps) {
   const hasFilters = params.action || params.module || params.date_from || params.date_to || params.search || params.actor;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="p-6 space-y-4">
       <ERPPageHeader
         title="Audit Logs"
         description="System activity and change history"
@@ -70,31 +68,19 @@ export default async function AdminAuditPage({ searchParams }: AuditPageProps) {
           { label: "Audit Logs" },
         ]}
       />
-      <ERPSectionCard
-        title="Activity Log"
-        description={hasFilters ? `${auditLogs.length} filtered results` : `Recent system activities and changes (last 300 entries)`}
-        actions={
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <FileText className="h-3.5 w-3.5" />
-            <span>{auditLogs.length} logs</span>
-          </div>
-        }
-        noPadding
-      >
-        <Suspense>
-          <AuditFiltersBar />
-        </Suspense>
-        <AuditLogsTable 
-          data={auditLogs}
-          userProfileId={ctx.profile?.id || "default"}
-          exportConfig={{
-            title: "Audit Logs Report",
-            subtitle: "System activity and change history",
-            filename: "audit_logs",
-            generatedBy: ctx.profile?.full_name || ctx.profile?.display_name || "System User",
-          }}
-        />
-      </ERPSectionCard>
+      <Suspense>
+        <AuditFiltersBar />
+      </Suspense>
+      <AuditLogsTable 
+        data={auditLogs}
+        userProfileId={ctx.profile?.id || "default"}
+        exportConfig={{
+          title: "Audit Logs Report",
+          subtitle: "System activity and change history",
+          filename: "audit_logs",
+          generatedBy: ctx.profile?.full_name || ctx.profile?.display_name || "System User",
+        }}
+      />
     </div>
   );
 }

@@ -38,7 +38,7 @@ export default async function UomConversionsPage() {
   ];
 
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+    <div className="p-6 space-y-4">
       <ERPPageHeader
         title="UOM Conversions"
         description="Manage special, cross-category, or custom unit conversions"

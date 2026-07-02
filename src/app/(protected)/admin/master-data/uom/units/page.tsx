@@ -38,7 +38,7 @@ export default async function UnitsOfMeasurePage() {
   ];
 
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+    <div className="p-6 space-y-4">
       <ERPPageHeader
         title="Units of Measure"
         description="Manage individual units within categories (KG, L, M, etc.)"

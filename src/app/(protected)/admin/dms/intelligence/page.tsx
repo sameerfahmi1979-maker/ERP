@@ -33,7 +33,7 @@ export default async function DmsIntelligencePage() {
   };
 
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-6">
+    <div className="p-6 space-y-4">
       <ERPPageHeader
         title="DMS Intelligence Admin"
         description="Manage content extraction, AI summaries, completeness/risk scoring, and monitor AI suggestion health"

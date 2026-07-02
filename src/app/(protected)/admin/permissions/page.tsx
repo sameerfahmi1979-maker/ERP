@@ -12,7 +12,7 @@ export default async function AdminPermissionsPage() {
 
   if (!hasPermission(ctx, "permissions.view")) {
     return (
-      <div className="flex flex-col gap-6">
+      <div className="p-6 space-y-4">
         <ERPPageHeader
           title="Role Permission Center"
           description="Search permissions on the left, then assign and review roles on the right."
@@ -48,7 +48,7 @@ export default async function AdminPermissionsPage() {
   }));
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="p-6 space-y-4">
       <ERPPageHeader
         title="Role Permission Center"
         description="Search permissions on the left, then assign and review roles on the right."

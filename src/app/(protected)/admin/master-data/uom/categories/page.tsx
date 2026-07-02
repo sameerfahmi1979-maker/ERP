@@ -38,7 +38,7 @@ export default async function UomCategoriesPage() {
   ];
 
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+    <div className="p-6 space-y-4">
       <ERPPageHeader
         title="UOM Categories"
         description="Manage units of measure categories (WEIGHT, LENGTH, VOLUME, etc.)"

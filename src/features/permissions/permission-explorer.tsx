@@ -3,7 +3,8 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { ChevronDown, ChevronRight, Search, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Permission } from "@/types/database";
 
@@ -121,10 +122,24 @@ export function PermissionExplorer({
     });
   }, [searchLower, grouped]);
 
+  const expandAll = useCallback(() => {
+    const allModules = new Set(grouped.map(([mod]) => mod));
+    setExpandedModules(allModules);
+    saveExpandedModules(allModules);
+  }, [grouped]);
+
+  const collapseAll = useCallback(() => {
+    const empty = new Set<string>();
+    setExpandedModules(empty);
+    saveExpandedModules(empty);
+  }, []);
+
+  const allExpanded = grouped.length > 0 && grouped.every(([mod]) => expandedModules.has(mod));
+
   return (
     <div className="flex flex-col h-full">
       {/* Search */}
-      <div className="px-3 pb-3">
+      <div className="px-3 pb-2">
         <div className="relative">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input
@@ -145,11 +160,44 @@ export function PermissionExplorer({
             </button>
           )}
         </div>
-        {searchLower && (
-          <p className="text-xs text-muted-foreground mt-1.5 px-0.5">
-            {filtered.length} result{filtered.length !== 1 ? "s" : ""}
-          </p>
-        )}
+        {/* Expand / Collapse all + result count */}
+        <div className="flex items-center justify-between mt-1.5 px-0.5">
+          {searchLower ? (
+            <p className="text-xs text-muted-foreground">
+              {filtered.length} result{filtered.length !== 1 ? "s" : ""}
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              {grouped.length} module{grouped.length !== 1 ? "s" : ""}
+            </p>
+          )}
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-[11px] text-muted-foreground gap-1"
+              onClick={expandAll}
+              disabled={allExpanded || grouped.length === 0}
+              title="Expand all modules"
+            >
+              <ChevronsUpDown className="h-3 w-3" />
+              Expand all
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-[11px] text-muted-foreground gap-1"
+              onClick={collapseAll}
+              disabled={expandedModules.size === 0}
+              title="Collapse all modules"
+            >
+              <ChevronsDownUp className="h-3 w-3" />
+              Collapse all
+            </Button>
+          </div>
+        </div>
       </div>
 
       {/* Module list */}

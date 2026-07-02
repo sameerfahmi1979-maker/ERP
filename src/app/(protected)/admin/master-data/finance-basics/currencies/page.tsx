@@ -33,7 +33,7 @@ export default async function CurrenciesPage() {
   }
 
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-6">
+    <div className="p-6 space-y-4">
       <ERPPageHeader
         title="Currencies"
         description="Manage ISO 4217 currency codes, decimal places, and base currency configuration"

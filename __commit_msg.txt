@@ -1,21 +1,15 @@
-fix(dms): scope renewal replacement search by owning entity, relabel superseded status, trim documents table columns
+feat(ui): ERP GLOBAL UI.5 list standard rule + All Documents filter bar redesign
 
-Renewal replacement bugfix:
-- searchDmsDocumentsForRenewalReplacement previously scoped candidates
-  by document_type_id only, so e.g. every employee's Emirates ID/Passport
-  showed up as a valid replacement for one specific employee's renewal.
-- Now resolves the original document's owner via dms_document_links
-  (employee, party, vehicle, etc.) and restricts candidates to documents
-  linked to that same entity. Falls back to type-only scoping for
-  documents with no entity link (generic/company-wide documents).
-- DmsCompleteRenewalDialog now shows which entity the search is scoped
-  to and reflects it in the empty-state message.
+ERP GLOBAL UI.5 — Universal List UI Standard (rule only, no pilot migration yet):
+- Add .cursor/rules/erp-global-list-ui-standard.mdc using All Documents as the
+  approved visual reference for search bar, filter panel, table chrome, row
+  actions, badges, sorting, column resize, pagination, and empty states.
+- Add implementation_Review/ERP_GLOBAL_UI_5_UNIVERSAL_LIST_UI_STANDARD_RULE_REVIEW.md
+  with inspected files, shared components, risks, and UI.5A next-phase suggestion.
 
-Status label:
-- "Superseded" document status now displays as "Renewed" everywhere
-  (badge, filter dropdown, expiry banner, complete-renewal dialog/toast).
-  Underlying DB value/status code is unchanged.
-
-Documents table:
-- Removed the Conf. and Created columns to declutter the list; widened
-  remaining resizable columns to use the freed space.
+All Documents list UX (aligns with the new rule reference):
+- Two-row toolbar: search row + labeled filter panel in bordered bg-muted/10 grid.
+- Replace filter Select dropdowns with searchable ERPCombobox (Type, Category,
+  Status, Confidentiality, Expiry) with allowClear and h-8 text-xs triggers.
+- Active filter chips with per-filter remove + Clear all.
+- Filter state uses null (unset) instead of "all" sentinel.

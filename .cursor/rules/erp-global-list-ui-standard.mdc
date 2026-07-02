@@ -1,0 +1,491 @@
+---
+description: >
+  ERP GLOBAL UI.5 — Universal List UI Standard.
+  Governs layout, search bar, toolbar, table styling, row actions, badges,
+  sorting, column resize/visibility, pagination, and empty/loading states
+  for all ERP list/table screens. All Documents (/dms/documents) is the
+  approved visual reference. Apply when building or reviewing any list screen.
+globs:
+  - "src/features/**/*table*.tsx"
+  - "src/features/**/*list*.tsx"
+  - "src/app/**/page.tsx"
+alwaysApply: false
+---
+
+# ERP Global List UI Standard
+
+**Phase:** ERP GLOBAL UI.5 — Universal List UI Standard Rule (2026-07-02)
+**Status:** RULE APPROVED FOR REVIEW — not yet applied system-wide
+**Visual reference:** `/dms/documents` — All Documents list screen
+
+---
+
+## Purpose
+
+Define one consistent ERP list/table UX for every module — implemented and future — so users can scan, find, filter, and open records with the same visual language everywhere.
+
+This rule extracts the approved pattern from the live **All Documents** screen. Cursor must not invent a new list design. When in doubt, match All Documents.
+
+**Related rules (must also be followed):**
+- `.cursor/rules/erp-combobox-standard.mdc` — filter dropdowns with DB/async options
+- `.cursor/rules/erp-workspace-tabs-standard.mdc` — Rule 17 (list state caching)
+- `.cursor/rules/erp-dropdown-zindex-standard.mdc` — combobox/popover stacking
+- `docs/standards/ERP_GLOBAL_UI_UX_FORM_TABLE_DRAWER_DEVELOPMENT_GUIDE.md` — §11 Combobox, §15 Table/List
+
+---
+
+## Approved Visual Reference
+
+> **The All Documents list screen is the approved visual reference for ERP list screens.**
+> All current and future ERP lists must match its search bar style, filter panel style, icon style, spacing, colors, row style, action style, toolbar style, and overall visual behavior unless a documented exception is approved.
+
+**Canonical reference files:**
+| Role | Path |
+|------|------|
+| Page shell | `src/app/(protected)/dms/documents/page.tsx` |
+| List/table UI | `src/features/dms/documents/dms-documents-table.tsx` |
+| Page header | `src/components/erp/page-header.tsx` (`ERPPageHeader`) |
+| Status badges | `src/features/dms/documents/dms-document-status-badge.tsx` |
+| Sort headers | `src/components/erp/table/sort-col-header.tsx` |
+| Pagination | `src/components/erp/table/table-pagination.tsx` |
+| Column resize hook | `src/components/erp/table/use-resizable-columns.ts` |
+| Sort/paginate hook | `src/hooks/use-sort-paginate.ts` |
+| Shared enterprise table | `src/components/erp/table/erp-data-table.tsx` (`ERPDataTable`) |
+
+---
+
+## Applies To
+
+- All workspace list routes (`tabKind: "list"`) in every ERP module
+- DMS, Party Master, HR, Admin, Finance Basics, Geography, UOM, Reports, Audit, and future modules
+- Both `ERPDataTable`-based lists and custom `<table>` lists (All Documents uses a custom table today)
+
+---
+
+## Non-Goals
+
+This rule does **not** govern:
+- Record/detail/workspace forms (`ERPRecordWorkspaceForm`) — see `erp-record-workspace-form-standard.mdc`
+- Child add/edit dialogs (`ERPChildDialogForm`) — see `erp-child-dialog-form-standard.mdc`
+- App-wide command palette / Ctrl+K global search — see UI guide §30
+- Mobile-native list apps — desktop-first ERP; responsive-safe but not mobile-app conversion
+
+---
+
+## Core Principle
+
+> **Lists are for scanning, finding, filtering, and opening records.**
+> Forms, drawers, detail pages, profile pages, or expandable detail panels are for full record details.
+
+ERP lists often have many database fields. **Do not show every field as a default column.** Show summary data in the list; show full detail after the user opens the record.
+
+---
+
+## List Page Layout
+
+Every list page must:
+
+1. Render inside the workspace content area with consistent outer padding:
+   ```tsx
+   <div className="p-6 space-y-4">
+   ```
+2. Use `ERPPageHeader` for title, optional description, and breadcrumbs:
+   ```tsx
+   <ERPPageHeader
+     title="All Documents"
+     description="Browse, search, and manage all DMS documents."
+     breadcrumbs={[{ label: "DMS", href: "/dms" }, { label: "All Documents" }]}
+   />
+   ```
+3. Wrap the list body in `space-y-4` vertical rhythm (search row → filter row → table → footer count).
+4. **Never** cause full-page horizontal overflow. Horizontal scroll, if needed, must stay **inside** the table container only (`overflow-x-auto` on the table wrapper).
+5. Register the route in `src/lib/workspace/workspace-route-registry.ts` with `tabKind: "list"` and `singleton: true` where appropriate.
+
+---
+
+## Search Bar and Toolbar Standard
+
+All Documents uses a **two-row toolbar**. All ERP lists must follow this pattern (Row 2 may be omitted only when a screen has zero filters).
+
+### Row 1 — Search + primary actions
+
+```tsx
+<div className="flex flex-wrap items-center gap-2">
+  {/* optional mode selector / left controls */}
+  <div className="relative flex-1 min-w-[200px]">
+    <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+    <Input
+      placeholder="Search by number, title, description..."
+      value={search}
+      onChange={(e) => setSearch(e.target.value)}
+      className="pl-8 h-8 text-sm"
+    />
+  </div>
+  <div className="ml-auto flex items-center gap-2 shrink-0">
+    <Button variant="outline" size="sm"><RefreshCw className="h-3.5 w-3.5" /></Button>
+    <Button size="sm" className="gap-1.5"><Plus className="h-3.5 w-3.5" /> New …</Button>
+  </div>
+</div>
+```
+
+**Required tokens (match All Documents):**
+
+| Element | Classes / behavior |
+|---------|-------------------|
+| Search input height | `h-8` |
+| Search input text | `text-sm` |
+| Search icon | `lucide-react` `Search`, `h-3.5 w-3.5`, `left-2.5 top-2.5`, `text-muted-foreground` |
+| Input left padding | `pl-8` (room for icon) |
+| Toolbar gap | `gap-2` |
+| Refresh button | `variant="outline" size="sm"`, icon-only acceptable |
+| Primary create action | `size="sm"`, icon + label, `gap-1.5`, icons `h-3.5 w-3.5` |
+| Action cluster | `ml-auto flex items-center gap-2 shrink-0` |
+
+### Row 2 — Labeled searchable filters
+
+When filters exist, wrap them in a bordered panel (All Documents pattern):
+
+```tsx
+<div className="rounded-lg border border-border bg-muted/10 p-3">
+  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+    <div>
+      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        Type
+      </label>
+      <ERPCombobox
+        value={filterType}
+        onValueChange={…}
+        options={typeOptions}
+        placeholder="All Types"
+        searchPlaceholder="Search document types..."
+        allowClear
+        triggerClassName="h-8 text-xs"
+      />
+    </div>
+    {/* repeat per filter */}
+  </div>
+</div>
+```
+
+**Filter rules:**
+- **Every filter must have a visible label** above the control (`text-[10px] font-semibold uppercase tracking-wide text-muted-foreground`).
+- **Database/async filter options → `ERPCombobox`** (never shadcn `<Select>`). See `erp-combobox-standard.mdc`.
+- Static small enums (e.g. search mode with 6 fixed values) may use shadcn `<Select>` with `h-8 text-xs` trigger — All Documents uses this for search mode only.
+- Combobox trigger in filters: `triggerClassName="h-8 text-xs"`, `allowClear` for optional filters.
+- Additional filters must fit the same grid/panel — do not invent a second filter layout style.
+
+### Active filter chips (required when filters are used)
+
+When any filter is active, show removable chips below the filter grid:
+
+```tsx
+<div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border/60 pt-3">
+  <Badge variant="secondary" className="gap-1 pr-1 text-[11px] font-normal">
+    Type: Passport
+    <button type="button" …><X className="h-2.5 w-2.5" /></button>
+  </Badge>
+  <button type="button" className="text-[11px] text-muted-foreground hover:underline">Clear all</button>
+</div>
+```
+
+### Result count (recommended)
+
+Below the table, show filtered vs total when client-side filtering is used:
+
+```tsx
+<div className="text-xs text-muted-foreground">
+  Showing {filteredCount} of {totalCount} …
+</div>
+```
+
+---
+
+## Table/List Container Standard
+
+```tsx
+<div className="rounded-md border border-border overflow-x-auto">
+  <table className="w-full text-xs table-fixed">…</table>
+  <TablePagination … />
+</div>
+```
+
+| Token | Value |
+|-------|-------|
+| Outer container | `rounded-md border border-border overflow-x-auto` |
+| Table density | `text-xs` |
+| Layout algorithm | `table-fixed` (prevents runaway column width / page overflow) |
+| Header row | `border-b border-border bg-muted/30` |
+| Body row | `border-b border-border hover:bg-muted/20 transition-colors` |
+| Cell padding | `px-3 py-2` |
+| Header cell padding | `px-3 py-2` (SortColHeader default is `px-4 py-2.5` — All Documents overrides to `px-3 py-2`) |
+
+**Primary identifier column:** `font-mono font-medium text-primary`, clickable with `hover:underline truncate`.
+
+**Title/summary column:** primary line `font-medium truncate`; optional secondary line `text-muted-foreground truncate mt-0.5` (italic for AI summary in DMS).
+
+**Empty/missing cell value:** em dash `—` in `text-muted-foreground`.
+
+---
+
+## Column Strategy
+
+**Do not show every database field as a list column.**
+
+### Default column pattern
+
+```text
+Primary identifier / reference / code
+Name / title / description summary (1–2 lines max in list)
+Type / category
+Status badge
+Important date (expiry, due, updated — pick one primary date)
+Owner / company / person (when applicable)
+Actions (fixed width, right-aligned)
+```
+
+### What belongs off-list
+
+Move to record detail, drawer, expandable row, or column-visibility menu:
+- Long descriptions, AI summaries beyond one truncated line
+- Internal IDs, audit metadata, JSON blobs
+- Rarely used secondary fields
+- Confidentiality / internal flags unless business-critical for that list
+
+All Documents default columns (approved): **Doc No, Title, Type, Status, Expiry, Tags, Actions**.
+
+---
+
+## Sorting, Filtering, and Pagination
+
+### Sorting
+
+- Important columns must be sortable via clickable headers.
+- Use `SortColHeader` + `useSortPaginate` for custom tables, or TanStack sorting via `ERPDataTable`.
+- Sort indicator icons: `ArrowUp` / `ArrowDown` when active, `ArrowUpDown opacity-35` when inactive — all `h-3 w-3`.
+
+### Filtering
+
+- Client-side filter for small/medium in-memory lists (All Documents today).
+- Server-side filter/search for large datasets — never load unbounded records into the browser.
+
+### Pagination
+
+- Use `TablePagination` (All Documents) or built-in `ERPDataTable` pagination.
+- Default page size: **25** (options: 10, 25, 50, 100).
+- Show range: `{from}–{to} of {total}` with first/prev/next/last icon buttons (`h-7 w-7` ghost icons, `h-3.5 w-3.5` chevrons).
+
+---
+
+## Column Width and Visibility
+
+### Column resizing (required where practical)
+
+- Drag header right edge to resize (`cursor-col-resize`, `hover:bg-primary/50` handle).
+- Custom tables: `useResizableColumns` + `SortColHeader` `width` + `onResizeStart`.
+- `ERPDataTable`: built-in TanStack column resizing.
+- Persist widths per browser via `localStorage` when a stable `storageKey` / `tableId` is available.
+
+### Column visibility (required for wide lists)
+
+- Lists with more than ~8 possible columns must offer show/hide controls.
+- `ERPDataTable`: use built-in `ERPColumnMenu`.
+- Custom tables: add equivalent column-visibility menu before UI.5A pilot if needed.
+
+### Actions column
+
+- Fixed width (~104px in All Documents), not resizable.
+- Right-aligned icon button group.
+
+---
+
+## Icons and Row Actions
+
+**Icon library:** `lucide-react` (default for all ERP lists).
+
+| Context | Size |
+|---------|------|
+| Toolbar / filter row icons | `h-3.5 w-3.5` |
+| Row action button icons | `h-3 w-3` |
+| Empty-state icon | `h-8 w-8 opacity-30` |
+| Search bar icon | `h-3.5 w-3.5` |
+
+### Row action pattern (All Documents — canonical)
+
+```tsx
+<div className="flex items-center gap-1 justify-end">
+  <Button size="icon" variant="ghost" className="h-6 w-6" title="Open">
+    <ExternalLink className="h-3 w-3" />
+  </Button>
+  <Button size="icon" variant="ghost" className="h-6 w-6" title="Archive">
+    <Archive className="h-3 w-3" />
+  </Button>
+  <Button size="icon" variant="ghost" className="h-6 w-6 text-destructive hover:text-destructive" title="Delete">
+    <Trash2 className="h-3 w-3" />
+  </Button>
+</div>
+```
+
+**Rules:**
+- Icon-only row actions **must** have `title` (tooltip) or `aria-label`.
+- Destructive actions use `text-destructive hover:text-destructive` — never casual inline delete without confirmation.
+- Prefer inline ghost icon buttons for 2–3 common actions; use dropdown menu only when >3 actions or actions are rarely used.
+- **Never** nest `<Button>` inside `<DropdownMenuTrigger>` — style `DropdownMenuTrigger` directly (see workspace save-close standard Rule 2).
+
+---
+
+## Status Badges
+
+Use `Badge variant="outline"` with compact list sizing:
+
+```tsx
+className="text-[10px] font-semibold px-1.5 py-0.5 border"
+```
+
+### Approved semantic color map (extend per module, keep hues consistent)
+
+| Status | Tailwind pattern (light) |
+|--------|--------------------------|
+| Active | `bg-blue-100 text-blue-700 border-blue-200` |
+| Draft | `bg-slate-100 text-slate-700 border-slate-200` |
+| Pending / Pending Review | `bg-amber-100 text-amber-700 border-amber-200` |
+| Approved | `bg-green-100 text-green-700 border-green-200` |
+| Rejected / Failed | `bg-red-100 text-red-700 border-red-200` |
+| Expired | `bg-orange-100 text-orange-700 border-orange-200` |
+| Expiring Soon | orange/amber variant (module-specific component OK) |
+| Inactive / Archived | `bg-gray-100 text-gray-600 border-gray-200` |
+| Suspended / Blocked | red or slate variant — pick one per module, document in module constants |
+| Completed / Renewed / Superseded | `bg-purple-100 text-purple-700 border-purple-200` |
+| AI Draft / AI Suggested | `bg-violet-100 text-violet-700 border-violet-200` |
+| AI Reviewed | violet or amber depending on workflow stage |
+
+**Rule:** The same business status must look the same across HR, DMS, Admin, Parties, Fleet, and future modules. Define module badge components that reuse these hue families — do not invent new colors per screen.
+
+Reference: `src/features/dms/documents/dms-document-status-badge.tsx`
+
+---
+
+## Empty, Loading, and Error States
+
+### Empty (in-table — All Documents pattern)
+
+```tsx
+<td colSpan={N} className="text-center py-10 text-muted-foreground">
+  <div className="flex flex-col items-center gap-2">
+    <FileText className="h-8 w-8 opacity-30" />
+    <p className="text-sm">No documents found</p>
+    <Button size="sm" variant="outline" className="mt-1 gap-1.5">
+      <Plus className="h-3.5 w-3.5" /> Create first …
+    </Button>
+  </div>
+</td>
+```
+
+- Centered, muted, module-appropriate lucide icon, short message, optional primary CTA when user can create.
+
+### Loading
+
+- Inline: `Loader2 className="h-4 w-4 animate-spin"` + muted helper text.
+- Row skeleton or table overlay acceptable for server refetch; do not flash empty state during load.
+
+### Error
+
+- Bordered alert: `rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive`.
+- Preserve user's search/filter state after error.
+
+---
+
+## Permission-Aware Actions
+
+- UI actions must respect module permissions **and** backend/RLS enforcement.
+- Do not show actions as enabled when the server will reject them.
+- Prefer **hide** for unavailable create/delete; **disable + title reason** acceptable for row actions when context-dependent.
+- Destructive / irreversible actions (delete, deactivate, approve, reject, merge, send email) **require confirmation** (`confirm()` minimum; `AlertDialog` preferred).
+- AI-generated changes remain **human-review-first** — no auto-save, auto-approve, auto-delete, or auto-merge unless an explicitly approved workflow says otherwise.
+
+---
+
+## Responsive and Overflow Behavior
+
+- Lists are **desktop-first** but must not break the app on narrow viewports.
+- Table horizontal overflow stays inside `overflow-x-auto` container — never on `<body>`.
+- Filter grid degrades: `grid-cols-2 sm:grid-cols-3 lg:grid-cols-5`.
+- On very narrow screens: fewer visible columns, horizontal scroll, or card-style summaries are acceptable if documented — critical actions must remain reachable.
+- Toolbar wraps with `flex-wrap` — primary actions stay in `ml-auto shrink-0` cluster.
+
+---
+
+## Existing Screens Migration Rule
+
+- Migrate existing list screens **gradually** — do not rewrite all lists in one pass.
+- **UI.5A pilot:** apply to **one** non-DMS list screen first; compare side-by-side with All Documents before wider rollout.
+- Preserve existing business logic, server actions, permissions, filters, and workflows during UI-only migration.
+- `ERPDataTable` lists: align toolbar/filter/chip styling to All Documents; table chrome may already match via shared component — verify visually.
+- Custom table lists: adopt All Documents two-row toolbar + table tokens explicitly.
+
+---
+
+## Future Screens Rule
+
+- Every **new** ERP list screen must follow this standard from day one.
+- No new module may introduce a custom list/search/table visual language without an approved documented exception.
+- Prefer shared building blocks:
+
+| Need | Component |
+|------|-----------|
+| Full-featured list | `ERPDataTable` + unique `tableId` |
+| Custom list (DMS-style) | `SortColHeader`, `TablePagination`, `useSortPaginate`, `useResizableColumns` |
+| Page header | `ERPPageHeader` |
+| Filters (DB options) | `ERPCombobox` |
+| List state cache | `ERPDataTable` prefs or `useWorkspaceTableState` |
+
+---
+
+## Implementation Requirements
+
+1. **Read All Documents first** before building or migrating any list.
+2. **Page shell:** `p-6 space-y-4` + `ERPPageHeader`.
+3. **Toolbar:** two-row pattern (search row + labeled filter panel + chips).
+4. **Table container:** `rounded-md border border-border overflow-x-auto`.
+5. **No page-level horizontal scroll.**
+6. **Sort + paginate** on all non-trivial lists.
+7. **Column resize** where ≥5 data columns.
+8. **Column visibility** where many optional columns exist.
+9. **Persist** search/page/sort/column prefs per workspace tab rules (Rule 17).
+10. **Register** route in workspace route registry.
+11. Cross-check `erp-combobox-standard.mdc` for all filter dropdowns.
+
+---
+
+## QA Checklist
+
+Use after implementing or migrating any list screen:
+
+- [ ] Visually matches All Documents search row (input height, icon, spacing, action buttons)
+- [ ] Filter panel uses labeled `ERPCombobox` controls in bordered `bg-muted/10` panel
+- [ ] Active filter chips + Clear all work correctly
+- [ ] Table container: `rounded-md border`, no full-page horizontal overflow
+- [ ] Header row: `bg-muted/30`; body rows: `hover:bg-muted/20`
+- [ ] Primary code column: mono, primary color, clickable
+- [ ] Row actions: ghost `h-6 w-6` icon buttons, `h-3 w-3` icons, tooltips present
+- [ ] Destructive actions require confirmation
+- [ ] Status badges use compact outline badge pattern
+- [ ] Sorting works on key columns; sort icons visible
+- [ ] Column resize works (where applicable); widths persist if configured
+- [ ] Column visibility works (where applicable)
+- [ ] Pagination shows correct range and page controls
+- [ ] Empty state: centered icon + message + optional CTA
+- [ ] Loading state does not flash false empty results
+- [ ] Error state visible and non-destructive to filter state
+- [ ] Unauthorized actions hidden or disabled correctly
+- [ ] Narrow viewport: layout wraps/degrades without breaking workspace chrome
+- [ ] Business logic, permissions, and server actions unchanged after UI migration
+- [ ] Workspace tab switch preserves list UI state (search, page, sort)
+
+---
+
+## Documented Exceptions
+
+Exceptions require explicit approval note in the phase implementation report:
+- Read-only audit/log viewers with no create action
+- Embedded pickers / sub-lists inside record forms (not primary module lists)
+- AI/semantic search result panels (card layout) — All Documents AI/Semantic modes are acceptable secondary layouts tied to the same list screen

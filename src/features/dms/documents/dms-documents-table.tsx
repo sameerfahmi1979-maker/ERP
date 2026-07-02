@@ -18,10 +18,13 @@ import {
   Loader2,
   ChevronDown,
   ChevronUp,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ERPCombobox } from "@/components/erp/combobox";
+import type { ERPComboboxOption } from "@/components/erp/combobox";
 import { Badge } from "@/components/ui/badge";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { DmsDocumentStatusBadge } from "./dms-document-status-badge";
@@ -56,6 +59,30 @@ const DEFAULT_DOC_COL_WIDTHS: Record<DocColKey, number> = {
 
 type SearchMode = "auto" | "quick" | "safe" | "content" | "ai" | "semantic";
 
+const DMS_STATUS_FILTER_VALUES = [
+  "draft",
+  "pending_review",
+  "approved",
+  "active",
+  "expired",
+  "archived",
+  "rejected",
+  "superseded",
+];
+
+function dmsStatusFilterLabel(s: string): string {
+  return s === "superseded" ? "Renewed" : s.replace("_", " ").replace(/\b\w/g, (l) => l.toUpperCase());
+}
+
+const DMS_CONFIDENTIALITY_FILTER_VALUES = ["internal", "company", "hr", "finance", "legal", "executive"];
+
+const DMS_EXPIRY_FILTER_OPTIONS: ERPComboboxOption[] = [
+  { value: "expired", label: "Expired" },
+  { value: "expiring_30", label: "Expiring ≤ 30d" },
+  { value: "valid", label: "Valid" },
+  { value: "no_expiry", label: "No Expiry" },
+];
+
 interface DmsDocumentsTableProps {
   initialDocuments: DmsDocumentRow[];
   categories: { id: number; name_en: string }[];
@@ -72,11 +99,11 @@ export function DmsDocumentsTable({
   const [isPending, startTransition] = useTransition();
 
   const [search, setSearch] = useState("");
-  const [filterType, setFilterType] = useState("all");
-  const [filterCategory, setFilterCategory] = useState("all");
-  const [filterStatus, setFilterStatus] = useState("all");
-  const [filterConfidentiality, setFilterConfidentiality] = useState("all");
-  const [filterExpiry, setFilterExpiry] = useState("all");
+  const [filterType, setFilterType] = useState<number | null>(null);
+  const [filterCategory, setFilterCategory] = useState<number | null>(null);
+  const [filterStatus, setFilterStatus] = useState<string | null>(null);
+  const [filterConfidentiality, setFilterConfidentiality] = useState<string | null>(null);
+  const [filterExpiry, setFilterExpiry] = useState<string | null>(null);
 
   // AI Search state
   const [searchMode, setSearchMode] = useState<SearchMode>("auto");
@@ -144,12 +171,12 @@ export function DmsDocumentsTable({
         (doc.legacy_document_code ?? "").toLowerCase().includes(s);
       if (!matches) return false;
     }
-    if (filterType !== "all" && doc.document_type_id !== Number(filterType)) return false;
-    if (filterCategory !== "all" && doc.category_id !== Number(filterCategory)) return false;
-    if (filterStatus !== "all" && doc.status !== filterStatus) return false;
-    if (filterConfidentiality !== "all" && doc.confidentiality_level !== filterConfidentiality) return false;
+    if (filterType != null && doc.document_type_id !== filterType) return false;
+    if (filterCategory != null && doc.category_id !== filterCategory) return false;
+    if (filterStatus != null && doc.status !== filterStatus) return false;
+    if (filterConfidentiality != null && doc.confidentiality_level !== filterConfidentiality) return false;
 
-    if (filterExpiry !== "all") {
+    if (filterExpiry != null) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       if (filterExpiry === "expired") {
@@ -221,9 +248,60 @@ export function DmsDocumentsTable({
     });
   }
 
+  // ── Filter combobox options ──────────────────────────────────────────────
+  const typeOptions: ERPComboboxOption[] = useMemo(
+    () => documentTypes.map((t) => ({ value: t.id, label: t.name_en })),
+    [documentTypes]
+  );
+  const categoryOptions: ERPComboboxOption[] = useMemo(
+    () => categories.map((c) => ({ value: c.id, label: c.name_en })),
+    [categories]
+  );
+  const statusOptions: ERPComboboxOption[] = useMemo(
+    () => DMS_STATUS_FILTER_VALUES.map((s) => ({ value: s, label: dmsStatusFilterLabel(s) })),
+    []
+  );
+  const confidentialityOptions: ERPComboboxOption[] = useMemo(
+    () => DMS_CONFIDENTIALITY_FILTER_VALUES.map((c) => ({ value: c, label: c.charAt(0).toUpperCase() + c.slice(1) })),
+    []
+  );
+
+  // ── Active filter chips ───────────────────────────────────────────────────
+  const activeFilterChips = useMemo(() => {
+    const chips: { key: string; label: string; onRemove: () => void }[] = [];
+    if (filterType != null) {
+      const opt = typeOptions.find((o) => o.value === filterType);
+      chips.push({ key: "type", label: `Type: ${opt?.label ?? filterType}`, onRemove: () => setFilterType(null) });
+    }
+    if (filterCategory != null) {
+      const opt = categoryOptions.find((o) => o.value === filterCategory);
+      chips.push({ key: "category", label: `Category: ${opt?.label ?? filterCategory}`, onRemove: () => setFilterCategory(null) });
+    }
+    if (filterStatus != null) {
+      chips.push({ key: "status", label: `Status: ${dmsStatusFilterLabel(filterStatus)}`, onRemove: () => setFilterStatus(null) });
+    }
+    if (filterConfidentiality != null) {
+      const label = filterConfidentiality.charAt(0).toUpperCase() + filterConfidentiality.slice(1);
+      chips.push({ key: "confidentiality", label: `Confidentiality: ${label}`, onRemove: () => setFilterConfidentiality(null) });
+    }
+    if (filterExpiry != null) {
+      const opt = DMS_EXPIRY_FILTER_OPTIONS.find((o) => o.value === filterExpiry);
+      chips.push({ key: "expiry", label: `Expiry: ${opt?.label ?? filterExpiry}`, onRemove: () => setFilterExpiry(null) });
+    }
+    return chips;
+  }, [filterType, filterCategory, filterStatus, filterConfidentiality, filterExpiry, typeOptions, categoryOptions]);
+
+  const clearAllFilters = () => {
+    setFilterType(null);
+    setFilterCategory(null);
+    setFilterStatus(null);
+    setFilterConfidentiality(null);
+    setFilterExpiry(null);
+  };
+
   return (
     <div className="space-y-4">
-      {/* Toolbar */}
+      {/* Row 1: Search */}
       <div className="flex flex-wrap items-center gap-2">
         {/* Search mode selector */}
         <Select value={searchMode} onValueChange={(v) => {
@@ -233,7 +311,7 @@ export function DmsDocumentsTable({
           setSemanticResults(null);
           setSemanticError(null);
         }}>
-          <SelectTrigger className="h-8 w-[160px] text-xs gap-1">
+          <SelectTrigger className="h-8 w-[160px] text-xs gap-1 shrink-0">
             {searchMode === "ai" && <Sparkles className="h-3 w-3 text-purple-500" />}
             {searchMode === "semantic" && <Compass className="h-3 w-3 text-sky-500" />}
             <SelectValue />
@@ -316,70 +394,7 @@ export function DmsDocumentsTable({
           </div>
         )}
 
-        <Select value={filterType} onValueChange={(v) => setFilterType(v ?? "all")}>
-          <SelectTrigger className="h-8 w-[160px] text-xs">
-            <SelectValue placeholder="All Types" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            {documentTypes.map((t) => (
-              <SelectItem key={t.id} value={String(t.id)}>{t.name_en}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={filterCategory} onValueChange={(v) => setFilterCategory(v ?? "all")}>
-          <SelectTrigger className="h-8 w-[150px] text-xs">
-            <SelectValue placeholder="All Categories" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Categories</SelectItem>
-            {categories.map((c) => (
-              <SelectItem key={c.id} value={String(c.id)}>{c.name_en}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v ?? "all")}>
-          <SelectTrigger className="h-8 w-[130px] text-xs">
-            <SelectValue placeholder="All Statuses" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Statuses</SelectItem>
-            {["draft", "pending_review", "approved", "active", "expired", "archived", "rejected", "superseded"].map((s) => (
-              <SelectItem key={s} value={s}>
-                {s === "superseded" ? "Renewed" : s.replace("_", " ").replace(/\b\w/g, (l) => l.toUpperCase())}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={filterConfidentiality} onValueChange={(v) => setFilterConfidentiality(v ?? "all")}>
-          <SelectTrigger className="h-8 w-[130px] text-xs">
-            <SelectValue placeholder="Confidentiality" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Levels</SelectItem>
-            {["internal", "company", "hr", "finance", "legal", "executive"].map((c) => (
-              <SelectItem key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={filterExpiry} onValueChange={(v) => setFilterExpiry(v ?? "all")}>
-          <SelectTrigger className="h-8 w-[130px] text-xs">
-            <SelectValue placeholder="Expiry" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Expiry</SelectItem>
-            <SelectItem value="expired">Expired</SelectItem>
-            <SelectItem value="expiring_30">Expiring ≤ 30d</SelectItem>
-            <SelectItem value="valid">Valid</SelectItem>
-            <SelectItem value="no_expiry">No Expiry</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-2 shrink-0">
           <Button variant="outline" size="sm" onClick={() => router.refresh()} disabled={isPending}>
             <RefreshCw className="h-3.5 w-3.5" />
           </Button>
@@ -389,6 +404,118 @@ export function DmsDocumentsTable({
           </Button>
         </div>
       </div>
+
+      {/* Row 2: Labeled, searchable filters */}
+      {searchMode !== "ai" && searchMode !== "semantic" && (
+        <div className="rounded-lg border border-border bg-muted/10 p-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Type
+              </label>
+              <ERPCombobox
+                value={filterType}
+                onValueChange={(v) => setFilterType(v == null ? null : Number(v))}
+                options={typeOptions}
+                placeholder="All Types"
+                searchPlaceholder="Search document types..."
+                allowClear
+                triggerClassName="h-8 text-xs"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Category
+              </label>
+              <ERPCombobox
+                value={filterCategory}
+                onValueChange={(v) => setFilterCategory(v == null ? null : Number(v))}
+                options={categoryOptions}
+                placeholder="All Categories"
+                searchPlaceholder="Search categories..."
+                allowClear
+                triggerClassName="h-8 text-xs"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Status
+              </label>
+              <ERPCombobox
+                value={filterStatus}
+                onValueChange={(v) => setFilterStatus(v == null ? null : String(v))}
+                options={statusOptions}
+                placeholder="All Statuses"
+                searchPlaceholder="Search statuses..."
+                allowClear
+                triggerClassName="h-8 text-xs"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Confidentiality
+              </label>
+              <ERPCombobox
+                value={filterConfidentiality}
+                onValueChange={(v) => setFilterConfidentiality(v == null ? null : String(v))}
+                options={confidentialityOptions}
+                placeholder="All Levels"
+                searchPlaceholder="Search levels..."
+                allowClear
+                triggerClassName="h-8 text-xs"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Expiry
+              </label>
+              <ERPCombobox
+                value={filterExpiry}
+                onValueChange={(v) => setFilterExpiry(v == null ? null : String(v))}
+                options={DMS_EXPIRY_FILTER_OPTIONS}
+                placeholder="All Expiry"
+                searchPlaceholder="Search expiry..."
+                allowClear
+                triggerClassName="h-8 text-xs"
+              />
+            </div>
+          </div>
+
+          {/* Active filter chips */}
+          {activeFilterChips.length > 0 && (
+            <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border/60 pt-3">
+              {activeFilterChips.map((chip) => (
+                <Badge
+                  key={chip.key}
+                  variant="secondary"
+                  className="gap-1 pr-1 text-[11px] font-normal"
+                >
+                  {chip.label}
+                  <button
+                    type="button"
+                    onClick={chip.onRemove}
+                    className="ml-0.5 rounded-full p-0.5 hover:bg-muted-foreground/20"
+                    aria-label={`Remove ${chip.label} filter`}
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                </Badge>
+              ))}
+              <button
+                type="button"
+                onClick={clearAllFilters}
+                className="text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+              >
+                Clear all
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Search mode helper text */}
       {searchMode !== "auto" && (

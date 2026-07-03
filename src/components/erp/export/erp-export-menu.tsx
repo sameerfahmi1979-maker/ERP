@@ -164,7 +164,7 @@ export function ERPExportMenu<T = any>({
           result = await exportToExcel(options);
           break;
         case "pdf":
-          result = exportToPDF(options);
+          result = await exportToPDF(options);
           break;
         case "print":
           result = exportToPrint(options);

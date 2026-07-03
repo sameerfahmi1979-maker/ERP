@@ -7,6 +7,46 @@
  */
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Template governance types (BRANDING.7)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type TemplateGovernanceStatus =
+  | "draft"
+  | "in_review"
+  | "approved"
+  | "published"
+  | "archived"
+  | "rejected";
+
+export type TemplateSecurityReviewStatus =
+  | "pending"
+  | "passed"
+  | "failed"
+  | "skipped";
+
+export type TemplateEventType =
+  | "template_created"
+  | "template_updated"
+  | "template_submitted_for_review"
+  | "template_approved"
+  | "template_rejected"
+  | "template_published"
+  | "template_archived"
+  | "template_new_version_created"
+  | "template_security_review_failed"
+  | "template_security_review_passed";
+
+export interface ReportTemplateEvent {
+  id: number;
+  template_id: number;
+  event_type: TemplateEventType;
+  actor_user_profile_id: number | null;
+  occurred_at: string;
+  payload_json: Record<string, unknown>;
+  notes: string | null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Enum-like string literal types
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -113,6 +153,11 @@ export interface ReportBrandingProfile {
   updated_by: number | null;
   deleted_at: string | null;
   deleted_by: number | null;
+  /** Populated by listBrandingProfiles — true if an active asset exists in erp_branding_assets */
+  has_report_logo?: boolean;
+  has_stamp?: boolean;
+  has_signature?: boolean;
+  has_small_logo?: boolean;
 }
 
 export interface ReportTemplate {
@@ -145,6 +190,26 @@ export interface ReportTemplate {
   version_no: number;
   is_default: boolean;
   is_active: boolean;
+  // Governance (BRANDING.7)
+  parent_template_id: number | null;
+  governance_status: TemplateGovernanceStatus;
+  submitted_at: string | null;
+  submitted_by: number | null;
+  approved_at: string | null;
+  approved_by: number | null;
+  approval_notes: string | null;
+  rejected_at: string | null;
+  rejected_by: number | null;
+  rejection_reason: string | null;
+  published_at: string | null;
+  published_by: number | null;
+  archived_at: string | null;
+  archived_by: number | null;
+  archive_reason: string | null;
+  security_review_status: TemplateSecurityReviewStatus;
+  security_review_notes: string | null;
+  security_review_at: string | null;
+  security_review_by: number | null;
   created_at: string;
   updated_at: string;
   created_by: number | null;

@@ -90,6 +90,14 @@ const REGISTRY: WorkspaceRouteConfig[] = [
     moduleCode: "NUMBERING",
   },
   {
+    route: "/admin/settings/branding",
+    title: "App Branding",
+    icon: "Palette",
+    tabKind: "settings",
+    singleton: true,
+    moduleCode: "BRANDING",
+  },
+  {
     route: "/admin/master-data",
     title: "Master Data",
     icon: "Database",
@@ -575,6 +583,26 @@ const REGISTRY: WorkspaceRouteConfig[] = [
     tabKind: "list",
     singleton: true,
     moduleCode: "NOTIFICATIONS",
+  },
+
+  // ── Reports / Public Verification ─────────────────────────────────────────
+  {
+    route: "/admin/reports/public-links",
+    title: "Verification Links",
+    icon: "QrCode",
+    tabKind: "list",
+    singleton: true,
+    moduleCode: "REPORTS",
+  },
+
+  // ── Reports / Template Governance Dashboard ────────────────────────────────
+  {
+    route: "/admin/reports/templates/governance",
+    title: "Template Governance",
+    icon: "ShieldCheck",
+    tabKind: "list",
+    singleton: true,
+    moduleCode: "REPORTS",
   },
 
   {

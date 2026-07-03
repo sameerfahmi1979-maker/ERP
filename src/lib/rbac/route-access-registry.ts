@@ -73,6 +73,8 @@ export const ROUTE_ACCESS_REGISTRY: Record<string, RouteAccess> = {
   // ── Reports ────────────────────────────────────────────────────────────────
   "/admin/reports":                               { requiredAnyPermissions: ["reports.view", "reports.manage"] },
   "/admin/reports/templates":                     { requiredAnyPermissions: ["reports.manage"] },
+  "/admin/reports/public-links":                  { requiredAnyPermissions: ["reports.view", "reports.publish", "reports.verify.admin", "reports.manage"] },
+  "/admin/reports/templates/governance":          { requiredAnyPermissions: ["reports.view", "reports.manage", "reports.template.approve"] },
   "/admin/reports/history":                       { requiredAnyPermissions: ["reports.view", "reports.history.view"] },
   "/admin/reports/schedules":                     { requiredAnyPermissions: ["reports.schedule.view", "reports.schedule.manage"] },
 
@@ -119,6 +121,7 @@ export const ROUTE_ACCESS_REGISTRY: Record<string, RouteAccess> = {
   "/admin/permissions":                           { requiredPermission: "permissions.view" },
   "/admin/settings/numbering":                    { requiredAnyPermissions: ["numbering.rules.view", "numbering.rules.manage"] },
   "/admin/settings/email":                        { requiredAnyPermissions: ["settings.email.view", "settings.email.manage"] },
+  "/admin/settings/branding":                     { requiredAnyPermissions: ["branding.app.view", "branding.app.manage", "reports.manage"] },
   "/admin/notifications":                         { requiredAnyPermissions: ["notifications.manage", "notifications.admin"] },
   "/admin/notifications/email-queue":             { requiredAnyPermissions: ["notifications.email_queue.view", "notifications.email_queue.manage"] },
   "/admin/notifications/templates":               { requiredAnyPermissions: ["notifications.templates.view", "notifications.templates.manage"] },

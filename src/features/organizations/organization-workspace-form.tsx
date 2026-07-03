@@ -16,7 +16,7 @@ import { CitySelect } from "@/components/erp/geography/city-select";
 import { AreaZoneSelect } from "@/components/erp/geography/area-zone-select";
 import { CurrencySelect } from "@/components/erp/finance-basics/currency-select";
 import { createClient } from "@/lib/supabase/client";
-import { Building2, MapPin, ShieldCheck, FileCode2, ScrollText, Briefcase, Files, PlusCircle, Pencil, Trash2, Brain } from "lucide-react";
+import { Building2, MapPin, ShieldCheck, FileCode2, ScrollText, Briefcase, Files, PlusCircle, Pencil, Trash2, Brain, Palette } from "lucide-react";
 import type { AuthContext } from "@/lib/rbac/check";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
@@ -34,6 +34,7 @@ import { AiFieldSuggestionsPanel } from "@/features/ai/common/field-suggestions"
 import { DuplicateCandidateAlert } from "@/features/ai/common/duplicate-detection";
 import { ComplianceFindingAlert } from "@/features/ai/common/compliance-checker";
 import { RiskScoreAlert } from "@/features/ai/common/risk-scoring";
+import { OrganizationBrandingSection } from "./organization-branding-section";
 
 type OrganizationWorkspaceFormProps = {
   organization?: OwnerCompany | null;
@@ -41,9 +42,8 @@ type OrganizationWorkspaceFormProps = {
   authContext: AuthContext;
 };
 
-const FORM_ID = "organization-workspace-form";
-
-export function OrganizationWorkspaceForm({ organization, mode }: OrganizationWorkspaceFormProps) {
+export function OrganizationWorkspaceForm({ organization, mode, authContext }: OrganizationWorkspaceFormProps) {
+  const FORM_ID = "organization-workspace-form";
   const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -66,6 +66,7 @@ export function OrganizationWorkspaceForm({ organization, mode }: OrganizationWo
 
   const isEditing = mode === "edit";
   const isViewing = mode === "view";
+  const canManageReportBranding = authContext.permissionCodes.includes("reports.manage");
 
   const { isDirty, resetDirty } = useFormDirty({ formId: FORM_ID, enabled: !isViewing });
 
@@ -132,6 +133,7 @@ export function OrganizationWorkspaceForm({ organization, mode }: OrganizationWo
     { id: "tax", label: "Tax & Compliance", icon: FileCode2 },
     { id: "extended", label: "Extended Profile", icon: Briefcase },
     { id: "notes", label: "Internal Notes", icon: ScrollText },
+    { id: "report_branding", label: "Report Branding", icon: Palette },
     { id: "signatories", label: "Signatories", icon: Pencil },
     { id: "documents", label: "Documents", icon: Files },
     { id: "ai_review", label: "AI Review & Update", icon: Brain },
@@ -500,6 +502,14 @@ export function OrganizationWorkspaceForm({ organization, mode }: OrganizationWo
           </div>
         </ERPRecordSectionPanel>
       </form>
+
+      {/* BRANDING.3 — Report Branding section */}
+      <ERPRecordSectionPanel id="report_branding" activeId={activeSection} title="Report Branding">
+        <OrganizationBrandingSection
+          companyId={companyId}
+          canManage={canManageReportBranding}
+        />
+      </ERPRecordSectionPanel>
 
       {/* Signatories � child records, managed independently of main form */}
       <ERPRecordSectionPanel id="signatories" activeId={activeSection} title="Authorized Signatories">

@@ -16,6 +16,7 @@ import { ERPCombobox } from "@/components/erp/combobox";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { toast } from "sonner";
 import { createBrandingProfile, updateBrandingProfile } from "@/server/actions/reports/templates";
+import { ReportBrandingAssetsSection } from "@/features/branding/report-branding-assets-section";
 import type { ReportBrandingProfile } from "@/lib/report-center/types";
 
 interface Props {
@@ -23,16 +24,13 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   profile: ReportBrandingProfile | null;
   onSaved: (profile: ReportBrandingProfile, isNew: boolean) => void;
+  canUpload: boolean;
 }
 
 const defaultForm = {
   profile_code: "",
   profile_name: "",
   profile_type: "company" as "company" | "group" | "neutral" | "custom",
-  logo_url: "",
-  small_logo_url: "",
-  stamp_url: "",
-  signature_url: "",
   watermark_text: "",
   theme_primary_color: "#1e293b",
   theme_secondary_color: "#64748b",
@@ -68,7 +66,13 @@ const profileTypeOptions = [
   { value: "custom", label: "Custom" },
 ];
 
-export function BrandingProfileForm({ open, onOpenChange, profile, onSaved }: Props) {
+export function BrandingProfileForm({
+  open,
+  onOpenChange,
+  profile,
+  onSaved,
+  canUpload,
+}: Props) {
   const [form, setForm] = useState(defaultForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isEditing = !!profile;
@@ -80,10 +84,6 @@ export function BrandingProfileForm({ open, onOpenChange, profile, onSaved }: Pr
         profile_code: profile.profile_code,
         profile_name: profile.profile_name,
         profile_type: profile.profile_type as typeof defaultForm.profile_type,
-        logo_url: profile.logo_url ?? "",
-        small_logo_url: profile.small_logo_url ?? "",
-        stamp_url: profile.stamp_url ?? "",
-        signature_url: profile.signature_url ?? "",
         watermark_text: profile.watermark_text ?? "",
         theme_primary_color: profile.theme_primary_color,
         theme_secondary_color: profile.theme_secondary_color,
@@ -125,10 +125,6 @@ export function BrandingProfileForm({ open, onOpenChange, profile, onSaved }: Pr
       let result;
       const payload = {
         ...form,
-        logo_url: form.logo_url || null,
-        small_logo_url: form.small_logo_url || null,
-        stamp_url: form.stamp_url || null,
-        signature_url: form.signature_url || null,
         watermark_text: form.watermark_text || null,
         email: form.email || null,
       };
@@ -147,10 +143,10 @@ export function BrandingProfileForm({ open, onOpenChange, profile, onSaved }: Pr
         ...(profile ?? ({} as ReportBrandingProfile)),
         ...form,
         id: isEditing ? profile!.id : (result.data?.id ?? 0),
-        logo_url: form.logo_url || null,
-        small_logo_url: form.small_logo_url || null,
-        stamp_url: form.stamp_url || null,
-        signature_url: form.signature_url || null,
+        logo_url: profile?.logo_url ?? null,
+        small_logo_url: profile?.small_logo_url ?? null,
+        stamp_url: profile?.stamp_url ?? null,
+        signature_url: profile?.signature_url ?? null,
         watermark_url: null,
         watermark_text: form.watermark_text || null,
         email: form.email || null,
@@ -321,21 +317,20 @@ export function BrandingProfileForm({ open, onOpenChange, profile, onSaved }: Pr
           <div className="h-px bg-border mb-4" />
         </div>
 
-        <div className="col-span-6">
-          <Label className="text-xs font-medium">Logo URL</Label>
-          <Input className="mt-1 h-9 text-sm" placeholder="https://..." {...tf("logo_url")} />
-        </div>
-        <div className="col-span-6">
-          <Label className="text-xs font-medium">Small Logo URL</Label>
-          <Input className="mt-1 h-9 text-sm" placeholder="https://..." {...tf("small_logo_url")} />
-        </div>
-        <div className="col-span-6">
-          <Label className="text-xs font-medium">Stamp URL</Label>
-          <Input className="mt-1 h-9 text-sm" placeholder="https://..." {...tf("stamp_url")} />
-        </div>
-        <div className="col-span-6">
-          <Label className="text-xs font-medium">Signature URL</Label>
-          <Input className="mt-1 h-9 text-sm" placeholder="https://..." {...tf("signature_url")} />
+        <div className="col-span-12">
+          <p className="text-xs font-medium mb-2">Report Logo &amp; Assets</p>
+          {isEditing && profile ? (
+            <ReportBrandingAssetsSection
+              brandingProfileId={profile.id}
+              ownerCompanyId={profile.owner_company_id}
+              canUpload={canUpload}
+            />
+          ) : (
+            <p className="text-xs text-muted-foreground rounded-md border border-dashed border-border/80 bg-muted/20 px-3 py-4">
+              Save the profile first, then edit it to upload report logo, stamp, and signature
+              images.
+            </p>
+          )}
         </div>
 
         <div className="col-span-3">

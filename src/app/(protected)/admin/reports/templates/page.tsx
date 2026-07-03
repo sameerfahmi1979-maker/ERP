@@ -23,12 +23,20 @@ export default async function ReportTemplatesPage() {
   ]);
 
   const canManage = hasPermission(ctx, "reports.manage");
+  const canUpload =
+    canManage && hasPermission(ctx, "branding.assets.upload");
+  const canApprove = hasPermission(ctx, "reports.template.approve");
+  const canPublish =
+    hasPermission(ctx, "reports.publish") || canApprove;
 
   return (
     <ReportTemplatesPageClient
       initialProfiles={profilesResult.data ?? []}
       initialTemplates={templatesResult.data ?? []}
       canManage={canManage}
+      canUpload={canUpload}
+      canApprove={canApprove}
+      canPublish={canPublish}
     />
   );
 }

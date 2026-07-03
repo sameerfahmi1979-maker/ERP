@@ -32,6 +32,7 @@ import { ReportExportToolbar } from "./report-export-toolbar";
 import { ReportPreviewHeader } from "@/components/report-center/report-preview-header";
 import { ReportTemplateSelectDialog } from "@/components/report-center/report-template-select-dialog";
 import { runReportAction } from "@/server/actions/reports/runner";
+import { resolveTemplatePreview } from "@/server/actions/reports/templates";
 import {
   listSavedFilters,
   createSavedFilter,
@@ -220,6 +221,19 @@ export function ReportRunPage({ registryEntry, initialFilters = {} }: ReportRunP
 
       setRunResult(runResult);
       setVisibleColumns(null);
+
+      // Resolve branding for export/preview if the run produced a template
+      const templateId = runResult.resolvedTemplateId ?? selectedTemplateId;
+      if (templateId) {
+        resolveTemplatePreview({
+          templateId,
+          reportCode: registryEntry.report_code,
+        }).then((brandingResult) => {
+          if (brandingResult.success && brandingResult.data) {
+            setResolvedBranding(brandingResult.data);
+          }
+        });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unexpected error");
     } finally {
@@ -275,7 +289,7 @@ export function ReportRunPage({ registryEntry, initialFilters = {} }: ReportRunP
           branding: resolvedBranding,
         });
       } else if (format === "pdf") {
-        exportToPDF({
+        await exportToPDF({
           title: registryEntry.report_name_en,
           filename: `${registryEntry.report_code}_${dateStr}`,
           columns: exportColumns,
@@ -306,6 +320,15 @@ export function ReportRunPage({ registryEntry, initialFilters = {} }: ReportRunP
   const handleTemplateSelected = (templateId: number) => {
     setSelectedTemplateId(templateId);
     setShowTemplateDialog(false);
+    // Pre-resolve branding for the manually selected template
+    resolveTemplatePreview({
+      templateId,
+      reportCode: registryEntry.report_code,
+    }).then((brandingResult) => {
+      if (brandingResult.success && brandingResult.data) {
+        setResolvedBranding(brandingResult.data);
+      }
+    });
     if (pendingExportFormat) {
       handleExport(pendingExportFormat);
     } else {

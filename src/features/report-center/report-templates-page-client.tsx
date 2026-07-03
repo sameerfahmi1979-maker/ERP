@@ -3,11 +3,12 @@
 /**
  * Report Templates & Branding Profiles Page — Client Component
  * Phase REPORT.3 — Template / Branding / Output Adapter Engine
+ * Phase BRANDING.3 — Organization and Company Branding Linkage (profile list improvements)
  */
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Plus, FileText, Building2, CheckCircle2, XCircle, Pencil } from "lucide-react";
+import { Plus, FileText, Building2, CheckCircle2, XCircle, Pencil, RefreshCw, ImageOff, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -16,6 +17,11 @@ import { ERPPageHeader } from "@/components/erp/page-header";
 import { BrandingProfileForm } from "./branding-profile-form";
 import { TemplateForm } from "./template-form";
 import type { ReportBrandingProfile, ReportTemplate } from "@/lib/report-center/types";
+import { toast } from "sonner";
+import { backfillAllOrgBrandingProfiles } from "@/server/actions/organizations";
+import { cn } from "@/lib/utils";
+import { GovernanceStatusBadge, SecurityReviewBadge, GovernanceActionsDropdown } from "./template-governance-actions";
+import Link from "next/link";
 
 const profileTypeColors: Record<string, "default" | "secondary" | "outline"> = {
   company: "default",
@@ -28,9 +34,19 @@ interface Props {
   initialProfiles: ReportBrandingProfile[];
   initialTemplates: ReportTemplate[];
   canManage: boolean;
+  canUpload: boolean;
+  canApprove: boolean;
+  canPublish: boolean;
 }
 
-export function ReportTemplatesPageClient({ initialProfiles, initialTemplates, canManage }: Props) {
+export function ReportTemplatesPageClient({
+  initialProfiles,
+  initialTemplates,
+  canManage,
+  canUpload,
+  canApprove,
+  canPublish,
+}: Props) {
   const [profiles, setProfiles] = useState(initialProfiles);
   const [templates, setTemplates] = useState(initialTemplates);
 
@@ -39,6 +55,8 @@ export function ReportTemplatesPageClient({ initialProfiles, initialTemplates, c
 
   const [templateDrawerOpen, setTemplateDrawerOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<ReportTemplate | null>(null);
+
+  const [isBackfilling, startBackfill] = useTransition();
 
   const handleProfileSaved = (profile: ReportBrandingProfile, isNew: boolean) => {
     setProfiles((prev) =>
@@ -54,6 +72,33 @@ export function ReportTemplatesPageClient({ initialProfiles, initialTemplates, c
     );
     setTemplateDrawerOpen(false);
     setEditingTemplate(null);
+  };
+
+  const handleTemplateGovernanceUpdated = (updated: Partial<ReportTemplate> & { id: number }) => {
+    setTemplates((prev) =>
+      prev.map((t) => (t.id === updated.id ? { ...t, ...updated } : t))
+    );
+  };
+
+  const handleNewVersionCreated = (newTemplate: Partial<ReportTemplate> & { id: number }) => {
+    setTemplates((prev) => [newTemplate as ReportTemplate, ...prev]);
+  };
+
+  const handleBackfill = () => {
+    startBackfill(async () => {
+      const result = await backfillAllOrgBrandingProfiles();
+      if (!result.success) {
+        toast.error(result.error ?? "Backfill failed");
+        return;
+      }
+      const d = result.data!;
+      toast.success(
+        `Backfill complete — ${d.created} created, ${d.skipped} already existed (${d.total} total companies)`
+      );
+      if (d.errors.length > 0) {
+        toast.error(`${d.errors.length} companies had errors`);
+      }
+    });
   };
 
   // ── Branding profile columns ───────────────────────────────────────────────
@@ -77,7 +122,18 @@ export function ReportTemplatesPageClient({ initialProfiles, initialTemplates, c
       size: 240,
       cell: ({ row }) => (
         <div className="min-w-0">
-          <div className="font-medium text-sm truncate">{row.original.profile_name}</div>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="font-medium text-sm truncate">{row.original.profile_name}</span>
+            {row.original.is_default_for_company && (
+              <Badge variant="secondary" className="text-[9px] px-1 py-0 shrink-0">Default</Badge>
+            )}
+            {row.original.is_group_profile && (
+              <Badge variant="outline" className="text-[9px] px-1 py-0 shrink-0">Group</Badge>
+            )}
+            {row.original.is_neutral_profile && (
+              <Badge variant="outline" className="text-[9px] px-1 py-0 shrink-0">Neutral</Badge>
+            )}
+          </div>
           {(row.original.legal_name_en ?? row.original.trade_name_en) && (
             <p className="text-xs text-muted-foreground truncate">
               {row.original.legal_name_en ?? row.original.trade_name_en}
@@ -103,9 +159,61 @@ export function ReportTemplatesPageClient({ initialProfiles, initialTemplates, c
       meta: { exportValue: (row) => row.profile_type },
     },
     {
+      id: "assets",
+      header: "Assets",
+      size: 140,
+      enableSorting: false,
+      cell: ({ row }) => {
+        const p = row.original;
+        // Prefer new has_* flags (erp_branding_assets), fall back to legacy URL columns
+        const hasLogo = p.has_report_logo ?? !!p.logo_url;
+        const hasStamp = p.has_stamp ?? !!p.stamp_url;
+        const hasSig = p.has_signature ?? !!p.signature_url;
+        const allMissing = !hasLogo && !hasStamp && !hasSig;
+        return (
+          <div className="flex items-center gap-2">
+            <span
+              className={cn(
+                "text-[10px] flex items-center gap-0.5",
+                hasLogo ? "text-emerald-600" : "text-muted-foreground/50"
+              )}
+              title="Logo"
+            >
+              {hasLogo ? <CheckCircle2 className="h-3 w-3" /> : <ImageOff className="h-3 w-3" />}
+              Logo
+            </span>
+            <span
+              className={cn(
+                "text-[10px] flex items-center gap-0.5",
+                hasStamp ? "text-emerald-600" : "text-muted-foreground/50"
+              )}
+              title="Stamp"
+            >
+              {hasStamp ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+              Stamp
+            </span>
+            <span
+              className={cn(
+                "text-[10px] flex items-center gap-0.5",
+                hasSig ? "text-emerald-600" : "text-muted-foreground/50"
+              )}
+              title="Signature"
+            >
+              {hasSig ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+              Sig
+            </span>
+            {allMissing && (
+              <span className="text-[9px] text-amber-600 font-medium">No assets</span>
+            )}
+          </div>
+        );
+      },
+      meta: { exportable: false },
+    },
+    {
       id: "theme",
       header: "Theme",
-      size: 150,
+      size: 120,
       enableSorting: false,
       cell: ({ row }) => (
         <div className="flex items-center gap-2">
@@ -228,10 +336,35 @@ export function ReportTemplatesPageClient({ initialProfiles, initialTemplates, c
       meta: { exportValue: (row) => (row.is_default ? "Yes" : "No") },
     },
     {
+      id: "governance_status",
+      header: "Status",
+      size: 110,
+      enableSorting: false,
+      cell: ({ row }) => (
+        <div className="flex items-center gap-1.5">
+          <GovernanceStatusBadge status={row.original.governance_status} />
+          <SecurityReviewBadge status={row.original.security_review_status} />
+        </div>
+      ),
+      meta: { exportValue: (row) => row.governance_status ?? "draft" },
+    },
+    {
+      id: "version_no",
+      accessorKey: "version_no",
+      header: "Ver.",
+      size: 55,
+      cell: ({ row }) => (
+        <span className="text-xs text-muted-foreground font-mono">
+          v{row.original.version_no ?? 1}
+        </span>
+      ),
+      meta: { exportValue: (row) => `v${row.version_no ?? 1}` },
+    },
+    {
       id: "is_active",
       accessorKey: "is_active",
       header: "Active",
-      size: 80,
+      size: 72,
       cell: ({ row }) =>
         row.original.is_active ? (
           <CheckCircle2 className="h-4 w-4 text-emerald-600" />
@@ -240,28 +373,39 @@ export function ReportTemplatesPageClient({ initialProfiles, initialTemplates, c
         ),
       meta: { exportValue: (row) => (row.is_active ? "Yes" : "No") },
     },
-    ...(canManage
-      ? ([
-          {
-            id: "actions",
-            header: "",
-            size: 60,
-            enableSorting: false,
-            enableHiding: false,
-            cell: ({ row }) => (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => { setEditingTemplate(row.original); setTemplateDrawerOpen(true); }}
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </Button>
-            ),
-            meta: { exportable: false },
-          },
-        ] as ColumnDef<ReportTemplate>[])
-      : []),
+    {
+      id: "actions",
+      header: "",
+      size: 80,
+      enableSorting: false,
+      enableHiding: false,
+      cell: ({ row }) => (
+        <div className="flex items-center gap-1">
+          {canManage && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              disabled={row.original.governance_status === "archived"}
+              onClick={() => { setEditingTemplate(row.original); setTemplateDrawerOpen(true); }}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          {(canManage || canApprove || canPublish) && (
+            <GovernanceActionsDropdown
+              template={row.original}
+              canManage={canManage}
+              canApprove={canApprove}
+              canPublish={canPublish}
+              onTemplateUpdated={handleTemplateGovernanceUpdated}
+              onNewVersionCreated={handleNewVersionCreated}
+            />
+          )}
+        </div>
+      ),
+      meta: { exportable: false },
+    },
   ];
 
   return (
@@ -276,25 +420,33 @@ export function ReportTemplatesPageClient({ initialProfiles, initialTemplates, c
           { label: "Templates & Branding" },
         ]}
         actions={
-          canManage ? (
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => { setEditingProfile(null); setProfileDrawerOpen(true); }}
-              >
-                <Plus className="h-3.5 w-3.5 mr-1.5" />
-                New Profile
+          <div className="flex items-center gap-2">
+            <Link href="/admin/reports/templates/governance">
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <ShieldCheck className="h-3.5 w-3.5" />
+                Governance Queue
               </Button>
-              <Button
-                size="sm"
-                onClick={() => { setEditingTemplate(null); setTemplateDrawerOpen(true); }}
-              >
-                <Plus className="h-3.5 w-3.5 mr-1.5" />
-                New Template
-              </Button>
-            </div>
-          ) : null
+            </Link>
+            {canManage && (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => { setEditingProfile(null); setProfileDrawerOpen(true); }}
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1.5" />
+                  New Profile
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => { setEditingTemplate(null); setTemplateDrawerOpen(true); }}
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1.5" />
+                  New Template
+                </Button>
+              </>
+            )}
+          </div>
         }
       />
 
@@ -311,6 +463,24 @@ export function ReportTemplatesPageClient({ initialProfiles, initialTemplates, c
         </TabsList>
 
         <TabsContent value="profiles">
+          {canManage ? (
+            <div className="flex items-center justify-between py-2 px-1 mb-1">
+              <p className="text-xs text-muted-foreground">
+                Profiles linked to owner companies. Missing profiles can be created via the
+                Backfill button.
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5 shrink-0"
+                disabled={isBackfilling}
+                onClick={handleBackfill}
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5", isBackfilling && "animate-spin")} />
+                {isBackfilling ? "Backfilling…" : "Backfill All Companies"}
+              </Button>
+            </div>
+          ) : null}
           <div className="rounded-md border border-border overflow-hidden">
             <ERPDataTable
               tableId="admin.reports.branding-profiles"
@@ -356,6 +526,7 @@ export function ReportTemplatesPageClient({ initialProfiles, initialTemplates, c
         onOpenChange={setProfileDrawerOpen}
         profile={editingProfile}
         onSaved={handleProfileSaved}
+        canUpload={canUpload}
       />
 
       <TemplateForm

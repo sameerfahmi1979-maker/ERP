@@ -8,6 +8,7 @@ import { WorkspaceContent } from "@/components/workspace/workspace-content";
 import { WorkspaceProvider } from "@/components/workspace/workspace-provider";
 import { WorkspaceDraftProvider } from "@/components/workspace/workspace-draft-provider";
 import { canAccessRoute } from "@/lib/rbac/route-access-registry";
+import type { RuntimeAppBranding } from "@/lib/branding/runtime-types";
 
 // ERP USERS.4 — Priority-ordered fallback routes for the workspace home tab
 const HOME_ROUTE_PRIORITY = [
@@ -35,9 +36,18 @@ type ErpShellProps = {
   permissionCodes?: string[];
   /** ERP USERS.4 — true for system_admin and group_admin (bypass all sidebar permission checks) */
   isGlobalAdmin?: boolean;
+  /** BRANDING.2 — tenant-global app shell branding */
+  appBranding?: RuntimeAppBranding;
 };
 
-export function ErpShell({ children, displayName, email, permissionCodes = [], isGlobalAdmin = false }: ErpShellProps) {
+export function ErpShell({
+  children,
+  displayName,
+  email,
+  permissionCodes = [],
+  isGlobalAdmin = false,
+  appBranding,
+}: ErpShellProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Compute the workspace home tab route based on the user's permissions.
@@ -57,6 +67,7 @@ export function ErpShell({ children, displayName, email, permissionCodes = [], i
             email={email}
             permissionCodes={permissionCodes}
             isGlobalAdmin={isGlobalAdmin}
+            appBranding={appBranding}
           />
           <div className="flex flex-1 flex-col overflow-hidden">
             <AppHeader displayName={displayName} email={email} />

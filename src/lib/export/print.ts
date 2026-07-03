@@ -14,6 +14,25 @@ import { format } from "date-fns";
 
 const NEUTRAL_SYSTEM_NAME = "ERP Report";
 
+/** Escape text content for safe HTML injection. */
+function escapeHtml(str: string | null | undefined): string {
+  if (!str) return "";
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;");
+}
+
+/** Escape a URL for use as an HTML attribute value. */
+function escapeAttr(url: string | null | undefined): string {
+  if (!url) return "";
+  // Only allow https:// URLs (signed Supabase storage URLs are always https)
+  if (!url.startsWith("https://")) return "";
+  return escapeHtml(url);
+}
+
 /**
  * Open print preview window with formatted data.
  *
@@ -66,18 +85,16 @@ function buildBrandedHeader(branding: ExportBrandingContext, title: string, subt
 
   const logoHtml =
     branding.showLogo && branding.logoUrl
-      ? `<img src="${branding.logoUrl}" alt="Logo" style="max-height:48px; max-width:140px; object-fit:contain; margin-bottom:4px;" onerror="this.style.display='none'">`
+      ? `<img src="${escapeAttr(branding.logoUrl)}" alt="Logo" style="max-height:48px; max-width:140px; object-fit:contain; margin-bottom:4px;" onerror="this.style.display='none'">`
       : "";
 
-  const companyName = branding.companyNameEn ?? NEUTRAL_SYSTEM_NAME;
+  const companyName = escapeHtml(branding.companyNameEn ?? NEUTRAL_SYSTEM_NAME);
 
   const infoItems: string[] = [];
-  if (branding.showAddress && branding.addressBlockEn) infoItems.push(branding.addressBlockEn);
-  if (branding.phone) infoItems.push(`Tel: ${branding.phone}`);
-  if (branding.showTrn && branding.trn) infoItems.push(`TRN: ${branding.trn}`);
-  if (branding.showLicense && branding.tradeLicenseNo) infoItems.push(`License: ${branding.tradeLicenseNo}`);
-
-  const isRtl = false; // bilingual/AR support placeholder — layout stays LTR for now
+  if (branding.showAddress && branding.addressBlockEn) infoItems.push(escapeHtml(branding.addressBlockEn));
+  if (branding.phone) infoItems.push(`Tel: ${escapeHtml(branding.phone)}`);
+  if (branding.showTrn && branding.trn) infoItems.push(`TRN: ${escapeHtml(branding.trn)}`);
+  if (branding.showLicense && branding.tradeLicenseNo) infoItems.push(`License: ${escapeHtml(branding.tradeLicenseNo)}`);
 
   return `
     <div class="company-header" style="background:${headerBg}; color:${headerTextColor}; padding:12px 20px; display:flex; align-items:center; gap:14px; border-radius:4px 4px 0 0; margin-bottom:0;">
@@ -88,8 +105,8 @@ function buildBrandedHeader(branding: ExportBrandingContext, title: string, subt
       </div>
     </div>
     <div class="report-title-block" style="text-align:center; padding:14px 0 8px; border-bottom:3px solid ${primaryColor};">
-      <h1 style="margin:0 0 4px; font-size:18px; color:#0f172a;">${title}</h1>
-      ${subtitle ? `<p class="subtitle" style="margin:0; font-size:13px; color:#64748b;">${subtitle}</p>` : ""}
+      <h1 style="margin:0 0 4px; font-size:18px; color:#0f172a;">${escapeHtml(title)}</h1>
+      ${subtitle ? `<p class="subtitle" style="margin:0; font-size:13px; color:#64748b;">${escapeHtml(subtitle)}</p>` : ""}
     </div>
   `;
 }
@@ -98,8 +115,8 @@ function buildBrandedHeader(branding: ExportBrandingContext, title: string, subt
 function buildNeutralHeader(title: string, subtitle?: string): string {
   return `
     <div class="header" style="text-align:center; margin-bottom:20px; padding-bottom:15px; border-bottom:2px solid #333;">
-      <h1 style="margin:0 0 5px; font-size:20px; font-weight:bold; color:#000;">${title}</h1>
-      ${subtitle ? `<div class="subtitle" style="margin:0 0 10px; font-size:14px; color:#666;">${subtitle}</div>` : ""}
+      <h1 style="margin:0 0 5px; font-size:20px; font-weight:bold; color:#000;">${escapeHtml(title)}</h1>
+      ${subtitle ? `<div class="subtitle" style="margin:0 0 10px; font-size:14px; color:#666;">${escapeHtml(subtitle)}</div>` : ""}
     </div>
   `;
 }
@@ -157,32 +174,41 @@ function generatePrintHTML<T>(options: ERPExportOptions<T>): string {
       : "";
 
   const watermarkHtml =
-    branding?.showWatermark && branding.watermarkText
-      ? `<div class="watermark">${branding.watermarkText}</div>`
-      : "";
+    branding?.showWatermark && branding.watermarkUrl
+      ? `<div style="position:fixed; top:0; left:0; width:100%; height:100%; z-index:0; pointer-events:none; opacity:0.08; background:url('${escapeAttr(branding.watermarkUrl)}') center/contain no-repeat;"></div>`
+      : branding?.showWatermark && branding.watermarkText
+        ? `<div class="watermark">${escapeHtml(branding.watermarkText)}</div>`
+        : "";
+
+  // Letterhead background: subtle full-page background image
+  const bodyBgStyle = branding?.letterheadBackgroundUrl
+    ? `background-image: url('${escapeAttr(branding.letterheadBackgroundUrl)}'); background-size: cover; background-attachment: fixed; background-position: center;`
+    : "";
 
   const signatoryHtml =
     branding?.showSignatory && branding.signatoryName
       ? `
     <div style="margin-top:40px; padding-top:20px; border-top:1px solid #ddd;">
       <p style="font-size:10px; color:#666; margin:0 0 4px;">Authorized by:</p>
-      <p style="font-weight:bold; font-size:11px; margin:0;">${branding.signatoryName}</p>
-      ${branding.signatoryTitleEn ? `<p style="font-size:10px; color:#666; margin:2px 0 8px;">${branding.signatoryTitleEn}</p>` : ""}
+      ${branding.signatureUrl ? `<img src="${escapeAttr(branding.signatureUrl)}" alt="Signature" style="max-height:60px; max-width:180px; object-fit:contain; display:block; margin-bottom:4px;" onerror="this.style.display='none'">` : ""}
+      <p style="font-weight:bold; font-size:11px; margin:0;">${escapeHtml(branding.signatoryName)}</p>
+      ${branding.signatoryTitleEn ? `<p style="font-size:10px; color:#666; margin:2px 0 8px;">${escapeHtml(branding.signatoryTitleEn)}</p>` : ""}
       <div style="width:120px; border-top:1px solid #333; margin-top:4px;"></div>
+      ${branding.showStamp && branding.stampUrl ? `<img src="${escapeAttr(branding.stampUrl)}" alt="Stamp" style="max-height:80px; max-width:80px; object-fit:contain; display:block; margin-top:8px;" onerror="this.style.display='none'">` : ""}
     </div>`
       : "";
 
   const metadataLines: string[] = [];
-  if (generatedBy) metadataLines.push(`<p><strong>Generated by:</strong> ${generatedBy}</p>`);
+  if (generatedBy) metadataLines.push(`<p><strong>Generated by:</strong> ${escapeHtml(generatedBy)}</p>`);
   if (generatedAt) metadataLines.push(`<p><strong>Generated at:</strong> ${format(generatedAt, "yyyy-MM-dd HH:mm:ss")}</p>`);
-  if (branding?.reportCode) metadataLines.push(`<p><strong>Report:</strong> ${branding.reportCode}</p>`);
-  if (filters && Object.keys(filters).length > 0) metadataLines.push(`<p><strong>Filters:</strong> ${formatFilters(filters)}</p>`);
+  if (branding?.reportCode) metadataLines.push(`<p><strong>Report:</strong> ${escapeHtml(branding.reportCode)}</p>`);
+  if (filters && Object.keys(filters).length > 0) metadataLines.push(`<p><strong>Filters:</strong> ${escapeHtml(formatFilters(filters))}</p>`);
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>${title || "Print"}</title>
+  <title>${escapeHtml(title) || "Print"}</title>
   <style>
     @media print {
       @page { size: auto; margin: 12mm; }
@@ -195,6 +221,7 @@ function generatePrintHTML<T>(options: ERPExportOptions<T>): string {
       color: #333;
       line-height: 1.6;
       padding: 20px;
+      ${bodyBgStyle}
     }
     table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
     th { font-weight: bold; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; }
@@ -222,9 +249,9 @@ function generatePrintHTML<T>(options: ERPExportOptions<T>): string {
   </table>
   ${signatoryHtml}
   <div class="footer">
-    <p>${footerText}</p>
+    <p>${escapeHtml(footerText)}</p>
     <p>Printed on ${format(new Date(), "yyyy-MM-dd HH:mm:ss")}</p>
-    ${branding?.reportCode ? `<p>${branding.reportCode}</p>` : ""}
+    ${branding?.reportCode ? `<p>${escapeHtml(branding.reportCode)}</p>` : ""}
   </div>
 </body>
 </html>`;

@@ -5,7 +5,7 @@ import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit, createAuditDiff } from "@/server/actions/audit";
-import { ensureReportBrandingForOwnerCompany } from "@/lib/report-center/company-onboarding";
+import { ensureReportBrandingForOwnerCompany, syncReportBrandingProfileFromOrganization } from "@/lib/report-center/company-onboarding";
 import {
   createOrganizationSchema,
   updateOrganizationSchema,
@@ -326,6 +326,15 @@ export async function updateOrganization(
     // 7. Revalidate
     revalidatePath("/admin/organizations");
 
+    // 8. BRANDING.3: Sync identity fields to default report branding profile.
+    // Non-blocking — org update always succeeds even if sync fails.
+    syncReportBrandingProfileFromOrganization(id).catch((err) => {
+      logger.warn(
+        `[updateOrganization] Branding profile sync failed for company ${id}:`,
+        err
+      );
+    });
+
     return { success: true, data: { id } };
   } catch (error) {
     logger.error("updateOrganization exception", error);
@@ -448,6 +457,164 @@ export async function updateOrganizationStatus(
     return { success: true };
   } catch (error) {
     logger.error("updateOrganizationStatus exception", error);
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BRANDING.3 — Organization branding summary
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface OrgBrandingProfileSummary {
+  profileId: number;
+  profileCode: string;
+  profileName: string;
+  isDefault: boolean;
+  assetStatus: {
+    report_logo: boolean;
+    report_logo_small: boolean;
+    stamp: boolean;
+    signature: boolean;
+    watermark: boolean;
+    letterhead_background: boolean;
+  };
+}
+
+/**
+ * Load the default report branding profile and asset status for an owner company.
+ * Used by the Organization workspace branding section.
+ */
+export async function getOrganizationBrandingProfile(
+  ownerCompanyId: number
+): Promise<ActionResult<OrgBrandingProfileSummary | null>> {
+  try {
+    const ctx = await getAuthContext();
+    if (!hasPermission(ctx, "organizations.view")) {
+      return { success: false, error: "Permission denied" };
+    }
+
+    const supabase = await createClient();
+
+    const { data: profile, error: profileError } = await supabase
+      .from("erp_report_branding_profiles")
+      .select("id, profile_code, profile_name, is_default_for_company")
+      .eq("owner_company_id", ownerCompanyId)
+      .eq("is_default_for_company", true)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (profileError) return { success: false, error: profileError.message };
+    if (!profile) return { success: true, data: null };
+
+    const { data: assets } = await supabase
+      .from("erp_branding_assets")
+      .select("asset_type")
+      .eq("asset_scope", "report")
+      .eq("branding_profile_id", profile.id)
+      .eq("is_active", true)
+      .is("deleted_at", null);
+
+    const uploadedTypes = new Set((assets ?? []).map((a) => a.asset_type as string));
+
+    return {
+      success: true,
+      data: {
+        profileId: profile.id,
+        profileCode: profile.profile_code,
+        profileName: profile.profile_name,
+        isDefault: profile.is_default_for_company,
+        assetStatus: {
+          report_logo: uploadedTypes.has("report_logo"),
+          report_logo_small: uploadedTypes.has("report_logo_small"),
+          stamp: uploadedTypes.has("stamp"),
+          signature: uploadedTypes.has("signature"),
+          watermark: uploadedTypes.has("watermark"),
+          letterhead_background: uploadedTypes.has("letterhead_background"),
+        },
+      },
+    };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/**
+ * Ensure a default report branding profile exists for the given company.
+ * Exposed as an admin action callable from the org workspace branding section.
+ */
+export async function ensureOrgBrandingProfile(
+  ownerCompanyId: number
+): Promise<ActionResult<{ profileId: number; wasNew: boolean }>> {
+  try {
+    const ctx = await getAuthContext();
+    if (!hasPermission(ctx, "reports.manage")) {
+      return { success: false, error: "Requires reports.manage permission" };
+    }
+
+    const { ensureReportBrandingForOwnerCompany } = await import(
+      "@/lib/report-center/company-onboarding"
+    );
+
+    const result = await ensureReportBrandingForOwnerCompany(ownerCompanyId);
+    if (!result.success) return { success: false, error: result.error };
+
+    return {
+      success: true,
+      data: {
+        profileId: result.brandingProfileId!,
+        wasNew: !result.wasAlreadyPresent,
+      },
+    };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/**
+ * Backfill default report branding profiles for ALL active owner companies.
+ * Requires reports.manage. Non-destructive and idempotent.
+ */
+export async function backfillAllOrgBrandingProfiles(): Promise<
+  ActionResult<{ total: number; created: number; skipped: number; errors: string[] }>
+> {
+  try {
+    const ctx = await getAuthContext();
+    if (!hasPermission(ctx, "reports.manage")) {
+      return { success: false, error: "Requires reports.manage permission" };
+    }
+
+    const { ensureReportBrandingForAllOwnerCompanies } = await import(
+      "@/lib/report-center/company-onboarding"
+    );
+
+    const result = await ensureReportBrandingForAllOwnerCompanies();
+
+    await logAudit({
+      module_code: "BRANDING",
+      entity_name: "erp_report_branding_profiles",
+      entity_id: 0,
+      entity_reference: "BACKFILL_ALL",
+      action: "backfill",
+      new_values: {
+        total: result.total,
+        created: result.created,
+        skipped: result.skipped,
+      },
+    });
+
+    revalidatePath("/admin/reports/templates");
+
+    return {
+      success: result.success,
+      data: {
+        total: result.total,
+        created: result.created,
+        skipped: result.skipped,
+        errors: result.errors,
+      },
+      error: result.errors.length > 0 ? `${result.errors.length} companies failed` : undefined,
+    };
+  } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }

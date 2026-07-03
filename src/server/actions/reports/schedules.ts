@@ -19,6 +19,7 @@ import { revalidatePath } from "next/cache";
 import { runReport } from "@/lib/report-center/report-runner";
 import { sendExportEmail } from "@/server/actions/email";
 import { generateAttachmentByType } from "@/lib/export/generate-attachment";
+import { resolveTemplateForExport } from "@/server/actions/reports/templates";
 import type { ERPExportOptions } from "@/lib/export/export-types";
 
 export type ActionResult<T = unknown> = {
@@ -626,11 +627,28 @@ async function executeScheduleRun(
     Object.fromEntries(columns.map((col) => [col, row[col] ?? ""]))
   );
 
+  // Resolve report branding from the selected (or run-resolved) template
+  const resolvedTemplateId = sched.selected_template_id ?? runResult.resolvedTemplateId;
+  let brandingContext: ERPExportOptions<Record<string, unknown>>["branding"] | undefined;
+  if (resolvedTemplateId) {
+    try {
+      const ctx = await resolveTemplateForExport({
+        templateId: resolvedTemplateId,
+        reportCode: sched.report.report_code,
+        permissionCodes,
+      });
+      brandingContext = ctx ?? undefined;
+    } catch (err) {
+      logger.warn(`[schedules] Branding resolve failed for schedule ${sched.id}:`, err);
+    }
+  }
+
   const exportOptions: ERPExportOptions<Record<string, unknown>> = {
     title: sched.report.report_name_en,
     filename: `${sched.report.report_code}_${new Date().toISOString().split("T")[0]}`,
     columns: exportColumns,
     data: exportData,
+    branding: brandingContext,
   };
 
   let attachment;

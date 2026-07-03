@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/hooks/use-workspace";
@@ -23,6 +24,7 @@ import {
   ListChecks, Shield, Lock,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import type { RuntimeAppBranding } from "@/lib/branding/runtime-types";
 
 // ??? Types ???????????????????????????????????????????????????????????????????
 
@@ -307,6 +309,7 @@ const navSections: NavSection[] = [
       { label: "Branches",             icon: Building,       path: "/admin/branches",                         requiredPermission: "branches.view" },
       { label: "Numbering Rules",      icon: Hash,           path: "/admin/settings/numbering",               requiredAnyPermissions: ["numbering.rules.view", "numbering.rules.manage"] },
       { label: "Email Settings",       icon: Mail,           path: "/admin/settings/email",                   requiredAnyPermissions: ["settings.email.view", "settings.email.manage"] },
+      { label: "App Branding",         icon: Palette,        path: "/admin/settings/branding",                requiredAnyPermissions: ["branding.app.view", "branding.app.manage", "reports.manage"] },
       { label: "Notifications",        icon: Bell,           path: "/admin/notifications",                    requiredAnyPermissions: ["notifications.manage", "notifications.admin"] },
       { label: "Email Queue",          icon: Send,           path: "/admin/notifications/email-queue",         requiredAnyPermissions: ["notifications.email_queue.view", "notifications.email_queue.manage"] },
       { label: "Notif. Templates",     icon: FileText,       path: "/admin/notifications/templates",           requiredAnyPermissions: ["notifications.templates.view", "notifications.templates.manage"] },
@@ -400,9 +403,19 @@ interface AppSidebarProps {
   permissionCodes?: string[];
   /** ERP USERS.4 ? true for system_admin / group_admin (bypass all checks) */
   isGlobalAdmin?: boolean;
+  /** BRANDING.2 — tenant-global app shell branding */
+  appBranding?: RuntimeAppBranding;
 }
 
-export function AppSidebar({ collapsed, onToggle, displayName, email, permissionCodes = [], isGlobalAdmin = false }: AppSidebarProps) {
+export function AppSidebar({
+  collapsed,
+  onToggle,
+  displayName,
+  email,
+  permissionCodes = [],
+  isGlobalAdmin = false,
+  appBranding,
+}: AppSidebarProps) {
   const pathname = usePathname();
   const { openTab, activeTab, isHydrated } = useWorkspace();
 
@@ -568,6 +581,45 @@ export function AppSidebar({ collapsed, onToggle, displayName, email, permission
   const initials = getInitials(displayName, email);
   const displayLabel = displayName ?? email?.split("@")[0] ?? "User";
 
+  const brandingInitials = appBranding?.initials ?? "AG";
+  const sidebarTitle = appBranding?.sidebarTitle ?? "Alliance Gulf";
+  const sidebarSubtitle = appBranding?.sidebarSubtitle ?? "Transport ERP";
+  const expandedLogoUrl = appBranding?.assets.app_logo?.publicUrl ?? null;
+  const collapsedLogoUrl =
+    appBranding?.assets.app_logo_small?.publicUrl ??
+    appBranding?.assets.app_logo?.publicUrl ??
+    null;
+
+  const renderLogoMark = (size: "expanded" | "collapsed") => {
+    const logoUrl = size === "collapsed" ? collapsedLogoUrl : expandedLogoUrl;
+    const boxClass =
+      size === "collapsed"
+        ? "h-8 w-8 mx-auto"
+        : "h-8 w-8 shrink-0";
+
+    if (logoUrl) {
+      return (
+        <div className={`relative ${boxClass} rounded-lg overflow-hidden bg-background`}>
+          <Image
+            src={logoUrl}
+            alt={appBranding?.appName ?? "ERP"}
+            fill
+            unoptimized
+            className="object-contain p-0.5"
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div
+        className={`${boxClass} rounded-lg bg-primary flex items-center justify-center shrink-0`}
+      >
+        <span className="text-xs font-bold text-primary-foreground">{brandingInitials}</span>
+      </div>
+    );
+  };
+
   return (
     <TooltipProvider delay={0}>
       <aside
@@ -579,19 +631,19 @@ export function AppSidebar({ collapsed, onToggle, displayName, email, permission
         {/* ?? Logo ??????????????????????????????????????????????????????????? */}
         <div className="h-14 flex items-center px-4 border-b border-border/40 shrink-0">
           {!collapsed ? (
-            <div className="flex items-center gap-2.5">
-              <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
-                <span className="text-xs font-bold text-primary-foreground">AG</span>
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-foreground leading-none">Alliance Gulf</p>
-                <p className="text-[10px] text-muted-foreground">Transport ERP</p>
+            <div className="flex items-center gap-2.5 min-w-0">
+              {renderLogoMark("expanded")}
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground leading-none truncate">
+                  {sidebarTitle}
+                </p>
+                {sidebarSubtitle ? (
+                  <p className="text-[10px] text-muted-foreground truncate">{sidebarSubtitle}</p>
+                ) : null}
               </div>
             </div>
           ) : (
-            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center mx-auto">
-              <span className="text-xs font-bold text-primary-foreground">AG</span>
-            </div>
+            renderLogoMark("collapsed")
           )}
         </div>
 

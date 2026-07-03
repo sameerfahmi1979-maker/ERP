@@ -260,6 +260,124 @@ export async function ensureReportBrandingForOwnerCompany(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Sync helper — mirror safe org identity fields to default branding profile
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Sync safe organization identity fields into the company's default report
+ * branding profile.
+ *
+ * Rules:
+ * - Only updates fields where the org has a non-null/non-empty value.
+ * - Never nulls out a profile field that has a value.
+ * - Does not touch theme colors, signatory, or manually-customized fields.
+ * - Idempotent: safe to call on every org update.
+ */
+export async function syncReportBrandingProfileFromOrganization(
+  ownerCompanyId: number
+): Promise<{ success: boolean; synced: boolean; error?: string }> {
+  try {
+    const db = createAdminClient();
+
+    // 1. Load org
+    const { data: orgData, error: orgError } = await db
+      .from("owner_companies")
+      .select(
+        "id, legal_name_en, legal_name_ar, short_name, trade_name, " +
+          "trn, trade_license_no, primary_phone, primary_email, website, " +
+          "address_line_1, address_line_2, emirate, city, po_box"
+      )
+      .eq("id", ownerCompanyId)
+      .single();
+
+    if (orgError || !orgData) {
+      return { success: false, synced: false, error: orgError?.message ?? "Org not found" };
+    }
+
+    const org = orgData as unknown as {
+      id: number;
+      legal_name_en: string;
+      legal_name_ar: string | null;
+      short_name: string | null;
+      trade_name: string | null;
+      trn: string | null;
+      trade_license_no: string | null;
+      primary_phone: string | null;
+      primary_email: string | null;
+      website: string | null;
+      address_line_1: string | null;
+      address_line_2: string | null;
+      emirate: string | null;
+      city: string | null;
+      po_box: string | null;
+    };
+
+    // 2. Find default profile
+    const { data: profile } = await db
+      .from("erp_report_branding_profiles")
+      .select("id, legal_name_en, legal_name_ar, trade_name_en, trn, trade_license_no, phone, email, website, address_block_en, po_box")
+      .eq("owner_company_id", ownerCompanyId)
+      .eq("is_default_for_company", true)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (!profile) {
+      // No default profile yet — nothing to sync
+      return { success: true, synced: false };
+    }
+
+    // 3. Build address block from parts
+    const addressParts = [
+      org.address_line_1,
+      org.address_line_2,
+      org.city,
+      org.emirate,
+    ].filter(Boolean);
+    const addressBlock = addressParts.length > 0 ? addressParts.join(", ") : null;
+
+    // 4. Build update — only include fields where org has a non-null value
+    const syncFields: Record<string, string | null> = {};
+
+    if (org.legal_name_en) syncFields.legal_name_en = org.legal_name_en;
+    if (org.legal_name_ar) syncFields.legal_name_ar = org.legal_name_ar;
+    if (org.trade_name) {
+      syncFields.trade_name_en = org.trade_name;
+    } else if (org.short_name) {
+      // Only backfill trade_name_en from short_name if profile has none yet
+      if (!profile.trade_name_en) syncFields.trade_name_en = org.short_name;
+    }
+    if (org.trn) syncFields.trn = org.trn;
+    if (org.trade_license_no) syncFields.trade_license_no = org.trade_license_no;
+    if (org.primary_phone) syncFields.phone = org.primary_phone;
+    if (org.primary_email) syncFields.email = org.primary_email;
+    if (org.website) syncFields.website = org.website;
+    if (addressBlock && !profile.address_block_en) syncFields.address_block_en = addressBlock;
+    if (org.po_box) syncFields.po_box = org.po_box;
+
+    if (Object.keys(syncFields).length === 0) {
+      return { success: true, synced: false };
+    }
+
+    const { error: updateError } = await db
+      .from("erp_report_branding_profiles")
+      .update({ ...syncFields, updated_at: new Date().toISOString() })
+      .eq("id", profile.id);
+
+    if (updateError) {
+      return { success: false, synced: false, error: updateError.message };
+    }
+
+    return { success: true, synced: true };
+  } catch (err) {
+    return {
+      success: false,
+      synced: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Backfill helper — all companies
 // ─────────────────────────────────────────────────────────────────────────────
 

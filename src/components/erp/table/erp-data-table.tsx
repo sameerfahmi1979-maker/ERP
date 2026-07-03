@@ -146,24 +146,29 @@ export function ERPDataTable<TData>({
   // usePathname() is SSR-safe here since ERPDataTable is "use client".
   const pathname = usePathname();
 
-  // Load preferences (client-side only)
-  const savedPrefs = useMemo(() => {
-    if (!enablePreferences || typeof window === "undefined") return null;
-    return loadTablePreferences(userProfileId, tableId, pathname);
-  }, [enablePreferences, userProfileId, tableId, pathname]);
-
-  // Table state — globalFilter and pageIndex are restored from savedPrefs (UI.4E)
-  const [sorting, setSorting] = useState<SortingState>(savedPrefs?.sorting || []);
-  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(savedPrefs?.columnSizing || {});
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(savedPrefs?.columnVisibility || {});
+  // Table state — start with server-safe empty defaults; preferences applied post-mount
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
-  const [globalFilter, setGlobalFilter] = useState(savedPrefs?.globalFilter ?? "");
+  const [globalFilter, setGlobalFilter] = useState("");
   const [mounted, setMounted] = useState(false);
 
-  // Set mounted flag after client hydration
+  // Apply saved preferences after hydration + set mounted flag.
+  // Running this in useEffect guarantees the first render matches SSR output exactly.
   useEffect(() => {
     setMounted(true);
-  }, []);
+    if (!enablePreferences) return;
+    const prefs = loadTablePreferences(userProfileId, tableId, pathname);
+    if (!prefs) return;
+    if (prefs.sorting?.length) setSorting(prefs.sorting);
+    if (prefs.columnSizing && Object.keys(prefs.columnSizing).length) setColumnSizing(prefs.columnSizing);
+    if (prefs.columnVisibility && Object.keys(prefs.columnVisibility).length) setColumnVisibility(prefs.columnVisibility);
+    if (prefs.globalFilter) setGlobalFilter(prefs.globalFilter);
+    if (prefs.pageSize) table.setPageSize(prefs.pageSize);
+    if (prefs.pageIndex) table.setPageIndex(prefs.pageIndex);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once on mount only
 
   // Enhanced columns with selection column
   const enhancedColumns = useMemo<ColumnDef<TData, any>[]>(() => {
@@ -225,9 +230,8 @@ export function ERPDataTable<TData>({
     enableMultiRowSelection: true,
     initialState: {
       pagination: {
-        pageSize: savedPrefs?.pageSize || initialPageSize,
-        // Restore page index from saved prefs (UI.4E workspace session cache)
-        pageIndex: savedPrefs?.pageIndex ?? 0,
+        pageSize: initialPageSize,
+        pageIndex: 0,
       },
     },
   });

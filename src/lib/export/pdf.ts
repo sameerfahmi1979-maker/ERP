@@ -2,9 +2,11 @@
  * PDF Export Utility
  * Phase 002E.2  - Export Engine Foundation
  * Phase REPORT.3 - Template / Branding / Output Adapter Engine
+ * Phase BRANDING.4 - Report Branding Runtime and Asset Upload Integration
  *
  * Uses jspdf and jspdf-autotable for PDF generation.
  * Branding is injected via ExportBrandingContext (optional, fully backward-compatible).
+ * BRANDING.4: Async image embedding for logo, stamp, and signature assets.
  */
 
 import jsPDF from "jspdf";
@@ -34,6 +36,47 @@ function hexToRgb(hex: string | null | undefined): [number, number, number] {
 const NEUTRAL_FOOTER_TEXT = "ERP Report";
 
 /**
+ * Fetch an image URL and return its base64 data URL.
+ * Only accepts https:// URLs (Supabase signed URLs are always https).
+ * Returns null on any failure to allow graceful text fallback.
+ */
+async function fetchImageAsDataUrl(url: string | null | undefined): Promise<string | null> {
+  if (!url || !url.startsWith("https://")) return null;
+  try {
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    return new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string | null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Pre-load branding images needed for PDF embedding.
+ * Returns a map of resolved data URLs (null when unavailable).
+ * Failures are silently swallowed — PDF rendering continues without the image.
+ */
+async function preloadBrandingImages(branding: ExportBrandingContext | undefined): Promise<{
+  logoDataUrl: string | null;
+  stampDataUrl: string | null;
+  signatureDataUrl: string | null;
+}> {
+  if (!branding) return { logoDataUrl: null, stampDataUrl: null, signatureDataUrl: null };
+  const [logoDataUrl, stampDataUrl, signatureDataUrl] = await Promise.all([
+    branding.showLogo ? fetchImageAsDataUrl(branding.logoUrl) : Promise.resolve(null),
+    branding.showStamp ? fetchImageAsDataUrl(branding.stampUrl) : Promise.resolve(null),
+    branding.showSignatory ? fetchImageAsDataUrl(branding.signatureUrl) : Promise.resolve(null),
+  ]);
+  return { logoDataUrl, stampDataUrl, signatureDataUrl };
+}
+
+/**
  * Render the branded company header block at the top of the PDF.
  * Returns the Y position after the header.
  */
@@ -43,20 +86,40 @@ function renderBrandedHeader(
   startY: number,
   branding: ExportBrandingContext,
   title: string,
-  subtitle?: string
+  subtitle?: string,
+  logoDataUrl?: string | null
 ): number {
   let currentY = startY;
   const headerBg = hexToRgb(branding.themeHeaderBgColor ?? branding.themePrimaryColor);
   const headerText = hexToRgb(branding.themeHeaderTextColor);
 
-  // Company name header bar
+  // Company header bar
   const companyName = branding.companyNameEn ?? NEUTRAL_FOOTER_TEXT;
   doc.setFillColor(...headerBg);
   doc.rect(0, 0, pageWidth, 20, "F");
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(...headerText);
-  doc.text(companyName, 15, 13);
+
+  // Embed logo image if available, otherwise render company name text
+  if (logoDataUrl) {
+    try {
+      doc.addImage(logoDataUrl, 15, 3, 0, 14); // auto-fit width at 14mm height
+    } catch {
+      // Image embedding failed — fall back to text
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(...headerText);
+      doc.text(companyName, 15, 13);
+    }
+    // Company name to the right of the logo
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...headerText);
+    doc.text(companyName, 38, 13);
+  } else {
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...headerText);
+    doc.text(companyName, 15, 13);
+  }
   currentY = 25;
 
   // Report title
@@ -137,12 +200,14 @@ function renderNeutralHeader(
  * Export data to PDF format and trigger download.
  *
  * When `options.branding` is provided, the PDF will include company
- * branding (name, colors, address, TRN, footer text, watermark).
+ * branding (name, logo image, colors, address, TRN, footer text, watermark,
+ * stamp/signature images where permitted).
  * When omitted, a neutral fallback is used — no hardcoded company names.
  *
+ * BRANDING.4: Now async to support image pre-loading for logo/stamp/signature.
  * Backward compatible: all existing callers without `branding` continue to work.
  */
-export function exportToPDF<T>(options: ERPExportOptions<T>): ERPExportResult {
+export async function exportToPDF<T>(options: ERPExportOptions<T>): Promise<ERPExportResult> {
   try {
     const {
       columns,
@@ -157,6 +222,9 @@ export function exportToPDF<T>(options: ERPExportOptions<T>): ERPExportResult {
       branding,
     } = options;
 
+    // Pre-load branding images (async, failures are silently swallowed)
+    const { logoDataUrl, stampDataUrl, signatureDataUrl } = await preloadBrandingImages(branding);
+
     const doc = new jsPDF({
       orientation: (branding?.templateOrientation ?? orientation),
       unit: "mm",
@@ -169,7 +237,7 @@ export function exportToPDF<T>(options: ERPExportOptions<T>): ERPExportResult {
     // ── Header ────────────────────────────────────────────────────────────────
     let currentY: number;
     if (branding?.companyNameEn) {
-      currentY = renderBrandedHeader(doc, pageWidth, 15, branding, title, subtitle);
+      currentY = renderBrandedHeader(doc, pageWidth, 15, branding, title, subtitle, logoDataUrl);
     } else {
       currentY = renderNeutralHeader(doc, pageWidth, 15, title, subtitle);
     }
@@ -265,18 +333,40 @@ export function exportToPDF<T>(options: ERPExportOptions<T>): ERPExportResult {
     // ── Signatory block (last page) ────────────────────────────────────────
     if (showSignatory && branding?.signatoryName) {
       const finalY = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? currentY;
-      const sigY = Math.min(finalY + 15, pageHeight - 30);
+      const sigY = Math.min(finalY + 15, pageHeight - 40);
       doc.setFontSize(8);
       doc.setFont("helvetica", "normal");
       doc.setTextColor(60, 60, 60);
       doc.text("Authorized by:", 15, sigY);
+
+      let sigLineY = sigY + 5;
+
+      // Embed signature image if available
+      if (signatureDataUrl) {
+        try {
+          doc.addImage(signatureDataUrl, 15, sigLineY, 40, 0); // 40mm wide, auto height
+          sigLineY += 14;
+        } catch {
+          // fall back to line only
+        }
+      }
+
       doc.setFont("helvetica", "bold");
-      doc.text(branding.signatoryName, 15, sigY + 5);
+      doc.text(branding.signatoryName, 15, sigLineY);
       if (branding.signatoryTitleEn) {
         doc.setFont("helvetica", "normal");
-        doc.text(branding.signatoryTitleEn, 15, sigY + 10);
+        doc.text(branding.signatoryTitleEn, 15, sigLineY + 5);
       }
-      doc.line(15, sigY + 15, 70, sigY + 15);
+      doc.line(15, sigLineY + 10, 70, sigLineY + 10);
+
+      // Embed stamp image if available, to the right of signatory
+      if (branding.showStamp && stampDataUrl) {
+        try {
+          doc.addImage(stampDataUrl, pageWidth - 50, sigY, 30, 30); // 30×30mm at right
+        } catch {
+          // silently skip stamp
+        }
+      }
     }
 
     const downloadFilename = generateFilename(filename, "pdf");

@@ -1,0 +1,156 @@
+# ERP Executive Ledger Output Template Standard
+
+## Phase
+
+BRANDING.5 — Executive Ledger Template Engine (2026-07-02)
+
+---
+
+## Rule 1 — All formal ERP print/PDF output MUST use the Executive Ledger engine
+
+Any new or refactored module producing formal, official documents for print or PDF
+MUST use `renderExecutiveLedgerHtml()` via an `ExecutiveLedgerDocument` definition.
+
+Applicable document types: HR letters, salary certificates, NOCs, PPE forms, clearance forms,
+purchase orders, delivery notes, weighbridge tickets, certificates, official company forms.
+
+**Library location:**
+```
+src/lib/executive-ledger/
+src/features/executive-ledger/
+```
+
+---
+
+## Rule 2 — Build ExecutiveLedgerDocument from pre-formatted data
+
+Never pass raw database rows or server types to the renderer.
+
+### Correct pattern
+
+```tsx
+import { elColumnLabel, elFormatValue, elFormatDate } from "@/lib/executive-ledger/formatters";
+import type { ExecutiveLedgerDocument } from "@/lib/executive-ledger/types";
+
+const doc: ExecutiveLedgerDocument = {
+  documentTitle: "Experience Letter",
+  issuedDate: elFormatDate(new Date().toISOString()),
+  branding: resolvedBranding, // ExportBrandingContext from server
+  sections: [
+    {
+      type: "key_value",
+      title: "Employee Details",
+      rows: [
+        { label: "Full Name", value: elFormatValue(employee.full_name_en) },
+        { label: "Date of Joining", value: elFormatDate(employee.joining_date) },
+      ],
+    },
+  ],
+};
+```
+
+### Forbidden pattern
+
+```tsx
+// ❌ NEVER — raw row data, raw dates, no formatting
+const doc: ExecutiveLedgerDocument = {
+  documentTitle: "Experience Letter",
+  sections: [{
+    type: "key_value",
+    rows: [
+      { label: "Name", value: employee.full_name_en }, // ← might be null
+      { label: "Date", value: employee.joining_date }, // ← raw ISO string
+    ],
+  }],
+};
+```
+
+---
+
+## Rule 3 — Never resolve branding inside the renderer
+
+The renderer (`renderExecutiveLedgerHtml`) is a pure function.
+It never calls Supabase, never generates signed URLs, and never calls any server action.
+
+Pass pre-resolved `ExportBrandingContext` from the server (BRANDING.4 `resolveTemplatePreview()`).
+
+```tsx
+// ✓ Correct — branding passed from server action
+const branding = await resolveTemplatePreview(templateId);
+const doc: ExecutiveLedgerDocument = { ..., branding };
+
+// ❌ Wrong — calling Supabase from inside render context
+// const logoUrl = await supabase.storage.createSignedUrl(...)  ← FORBIDDEN
+```
+
+---
+
+## Rule 4 — Stamp and signature are gated by reports.sign
+
+Stamp and signature URLs are only present in `ExportBrandingContext` when the requesting user
+has the `reports.sign` permission (enforced by BRANDING.4 server actions).
+
+The renderer renders them only when the URLs are non-empty. Do not bypass this gate.
+
+```tsx
+// ✓ Renderer checks: stampUrl is only non-null when user has reports.sign
+// ✓ No need to re-check permission in the renderer
+```
+
+---
+
+## Rule 5 — Always escape dynamic values
+
+All text injected into the HTML output MUST go through `elEscapeHtml()`.
+All URL attributes MUST go through `elEscapeAttr()` (validates https:// only).
+
+These are already enforced inside `renderExecutiveLedgerHtml()` for all built-in fields.
+If you add custom HTML-building functions alongside the renderer, you MUST use them too.
+
+---
+
+## Rule 6 — Preview MUST use the iframe component
+
+When previewing Executive Ledger output in React, always use `ExecutiveLedgerPreview`
+which renders inside an `<iframe srcdoc="">` for isolation.
+
+```tsx
+// ✓ Correct
+import { ExecutiveLedgerPreview } from "@/features/executive-ledger";
+<ExecutiveLedgerPreview document={doc} height={600} />
+
+// ❌ Wrong — dangerouslySetInnerHTML bypasses iframe isolation
+<div dangerouslySetInnerHTML={{ __html: renderExecutiveLedgerHtml(doc) }} />
+```
+
+---
+
+## Rule 7 — QR placeholder vs QR generation
+
+Setting `qrPlaceholder: true` in `ExecutiveLedgerDocument` renders only a visual placeholder.
+It does NOT generate a QR code. QR generation is BRANDING.6.
+
+Do NOT attempt to implement QR generation, verification tokens, or public verify endpoints
+until BRANDING.6 is explicitly approved.
+
+---
+
+## Rule 8 — No hardcoded ALGT / company-specific values in the engine
+
+The Executive Ledger engine is tenant-agnostic. All company identity (name, logo, colors)
+comes from `ExportBrandingContext`. Never hardcode company names, colors, or logos
+in `src/lib/executive-ledger/` or `src/features/executive-ledger/`.
+
+---
+
+## Reference
+
+Full standard:
+```
+docs/standards/ERP_EXECUTIVE_LEDGER_OUTPUT_TEMPLATE_STANDARD.md
+```
+
+Implementation report:
+```
+implementation_Review/Branding/BRANDING_5_EXECUTIVE_LEDGER_TEMPLATE_ENGINE_IMPLEMENTATION_REPORT.md
+```

@@ -22,11 +22,11 @@ export function generateVerificationToken(): string {
 
 /**
  * Build the public URL for a verification link.
- * Uses NEXT_PUBLIC_APP_URL env var with fallback to empty string
- * (caller must handle empty base URL in server context).
+ * Uses NEXT_PUBLIC_SITE_URL env var (consistent with rest of app),
+ * falling back to NEXT_PUBLIC_APP_URL, then empty string.
  */
 export function buildVerificationUrl(token: string): string {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "";
   return `${baseUrl}/verify/${token}`;
 }
 

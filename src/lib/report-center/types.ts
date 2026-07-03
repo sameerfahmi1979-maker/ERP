@@ -187,6 +187,11 @@ export interface ReportTemplate {
   footer_layout_json: Record<string, unknown>;
   body_layout_json: Record<string, unknown>;
   style_json: Record<string, unknown>;
+  // Visual editor tracking (REPORT DESIGNER.1)
+  visual_editor_engine: string | null;
+  visual_layout_schema_version: number | null;
+  visual_layout_updated_at: string | null;
+  visual_layout_updated_by: number | null;
   version_no: number;
   is_default: boolean;
   is_active: boolean;

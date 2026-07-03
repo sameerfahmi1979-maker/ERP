@@ -1,0 +1,126 @@
+# ERP Report Designer — Visual Template Standard
+
+## Phase
+REPORT DESIGNER.1 — DB Schema, Layout Standard, Zod Validation
+
+---
+
+## Core Rules
+
+### Rule 1 — No free-form raw HTML designer
+The visual editor must NEVER allow a designer to input raw HTML.
+All template content must use approved ERP block types only.
+`body_html_en` / `body_html_ar` remain as legacy HTML columns for old templates but are NOT editable in the new visual editor.
+
+### Rule 2 — No PDF-only coordinate editor as primary visual editor
+The approved visual editor is **Puck** (drag-and-drop JSON block editor).
+Do not introduce any tool that positions elements by absolute mm/pt coordinates as the primary editing experience.
+
+### Rule 3 — All blocks must be controlled ERP blocks
+Only block types defined in `REPORT_DESIGNER_BLOCK_TYPES` (from `src/lib/report-designer/constants.ts`) are permitted.
+Do not create custom block types without adding them to:
+1. `src/lib/report-designer/types.ts` (TypeScript interface)
+2. `src/lib/report-designer/layout-schema.ts` (Zod schema)
+3. `docs/standards/ERP_REPORT_DESIGNER_VISUAL_TEMPLATE_STANDARD.md` (this standard)
+
+### Rule 4 — All bindings must be allowlisted
+All `{{binding}}` placeholders and all `binding:` fields in blocks must be keys of `ERP_BINDING_REGISTRY`.
+Unknown bindings fail Zod validation. No arbitrary object paths. No SQL expressions.
+
+Sensitive fields are permanently excluded:
+```
+salary, iban, bank_account, account_number
+passport_number (raw), eid_number (raw)
+medical data, insurance details, ocr_text
+*_id FKs, created_by, updated_by
+api_key, secret, token, service_role
+```
+
+### Rule 5 — All layout JSON must pass Zod before save or render
+Call `validateSaveLayoutInput()` from `src/lib/report-designer/layout-validation.ts` before every write.
+Reject any layout that does not pass. Never save raw unvalidated JSON to the DB.
+
+### Rule 6 — Official renderer remains Executive Ledger
+The final rendering pipeline is:
+```
+ReportDesignerLayoutJson → (mapping layer) → ExecutiveLedgerDocument → renderExecutiveLedgerHtml()
+```
+Never bypass the Executive Ledger renderer to produce direct HTML output from layout JSON.
+Never allow layout JSON to reach `innerHTML` directly on the client.
+
+### Rule 7 — Approved/published templates cannot be edited in place
+Before any visual layout save, gate on governance status:
+```typescript
+const EDITABLE = ["draft", "rejected"];
+if (!EDITABLE.includes(template.governance_status)) {
+  throw new Error("Cannot edit approved/published template — create a new version");
+}
+```
+This check is in `saveReportTemplateVisualLayout()` and must never be bypassed.
+
+### Rule 8 — Live test mode must be read-only and non-mutating
+`runReportDesignerTest()` must NEVER:
+- Create public QR links
+- Write `report_runs` rows
+- Send emails
+- Mutate templates
+- Bypass sensitive-field redaction
+
+All test mode actions are read-only. Full execution (REPORT DESIGNER.5) must maintain these invariants.
+
+### Rule 9 — Only one sidebar item under Reports: Reports Editor
+Do NOT create multiple sidebar items for the visual editor.
+The single entry point is `Reports → Reports Editor`.
+Use a workspace tab/route to open individual templates.
+
+### Rule 10 — No UUID or SERIAL/BIGSERIAL in new migrations
+All new ID columns must be `bigint` references. No UUID, no SERIAL, no BIGSERIAL.
+Follow the ERP DB standard exactly.
+
+---
+
+## Server Action Requirements
+
+Every action in `report-designer-layout.ts` and `report-designer-test.ts` must:
+
+```typescript
+// 1. Auth check
+const authCtx = await getAuthContext();
+if (!authCtx) return { success: false, error: "Not authenticated" };
+
+// 2. Permission gate BEFORE createAdminClient()
+if (!hasPermission(authCtx, "reports", "manage")) { /* reject */ }
+
+// 3. Only after permission check:
+const supabase = createAdminClient();
+
+// 4. Zod validation
+const parsed = MySchema.safeParse(input);
+if (!parsed.success) { /* reject with errors */ }
+
+// 5. Governance guard for writes
+if (!EDITABLE_GOVERNANCE_STATUSES.includes(template.governance_status)) { /* reject */ }
+
+// 6. Audit with structural metadata only
+await logAudit({ action, entity_type, entity_id, payload: structuralMetaOnly });
+
+// 7. Revalidate
+revalidatePath("/admin/reports/templates");
+```
+
+---
+
+## File Ownership
+
+| File | Standard |
+|---|---|
+| `src/lib/report-designer/binding-registry.ts` | Only source for binding allowlist |
+| `src/lib/report-designer/layout-schema.ts` | Only Zod schema source — never duplicate |
+| `src/server/actions/reports/report-designer-layout.ts` | Only write path for visual layout JSON |
+| `docs/standards/ERP_REPORT_DESIGNER_VISUAL_TEMPLATE_STANDARD.md` | Full prose standard |
+
+---
+
+## Reference
+See `docs/standards/ERP_REPORT_DESIGNER_VISUAL_TEMPLATE_STANDARD.md` for full prose.
+See `implementation_Review/Reports/REPORT_DESIGNER_1_DB_SCHEMA_LAYOUT_STANDARD_ZOD_VALIDATION_IMPLEMENTATION_REPORT.md` for phase details.

@@ -176,6 +176,22 @@ export function LetterPreviewDialog({
         setError(result.error ?? "Failed to generate letter.");
       } else {
         setData(result.data.data);
+
+        // Auto-resolve branding from the template the engine selected.
+        // Without this, colours/logo stay at hardcoded defaults because the
+        // dialog receives no `branding` prop from HrLetterGenerator.
+        const resolvedTplId =
+          result.data.resolvedTemplateId ?? null;
+        if (resolvedTplId && !selectedBranding) {
+          resolveTemplatePreview({ templateId: resolvedTplId, reportCode })
+            .then((brandRes) => {
+              if (brandRes.success && brandRes.data) {
+                setSelectedBranding(brandRes.data);
+                setSelectedTemplateId(resolvedTplId);
+              }
+            })
+            .catch(() => {/* non-fatal — letter still shows without branding */});
+        }
       }
     });
   }, [open, reportCode, employeeId]);

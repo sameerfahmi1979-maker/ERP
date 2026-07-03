@@ -75,6 +75,7 @@ export const ROUTE_ACCESS_REGISTRY: Record<string, RouteAccess> = {
   "/admin/reports/templates":                     { requiredAnyPermissions: ["reports.manage"] },
   "/admin/reports/public-links":                  { requiredAnyPermissions: ["reports.view", "reports.publish", "reports.verify.admin", "reports.manage"] },
   "/admin/reports/templates/governance":          { requiredAnyPermissions: ["reports.view", "reports.manage", "reports.template.approve"] },
+  "/admin/reports/editor":                         { requiredAnyPermissions: ["reports.manage"] },
   "/admin/reports/history":                       { requiredAnyPermissions: ["reports.view", "reports.history.view"] },
   "/admin/reports/schedules":                     { requiredAnyPermissions: ["reports.schedule.view", "reports.schedule.manage"] },
 

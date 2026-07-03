@@ -742,6 +742,19 @@ export const queryKeys = {
       p ? (["reports", "branding-profiles", p] as const) : (["reports", "branding-profiles"] as const),
     run: (runId: number) =>
       ["reports", "run", runId] as const,
+    // ── Report Designer (REPORT DESIGNER.2) ─────────────────────────────────
+    designer: {
+      templates: (p?: Record<string, unknown>) =>
+        p ? (["reports", "designer", "templates", p] as const) : (["reports", "designer", "templates"] as const),
+      template: (templateId: number) =>
+        ["reports", "designer", "template", templateId] as const,
+      layout: (templateId: number) =>
+        ["reports", "designer", "layout", templateId] as const,
+      validation: (templateId: number) =>
+        ["reports", "designer", "validation", templateId] as const,
+      testOptions: (templateId: number) =>
+        ["reports", "designer", "test-options", templateId] as const,
+    },
   },
 
   // ── Global ERP Notifications (NOTIFICATIONS.1) ────────────────────────────

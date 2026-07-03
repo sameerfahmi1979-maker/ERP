@@ -15,7 +15,7 @@ import {
   CheckCircle2, CalendarDays, CalendarClock, BriefcaseBusiness, Handshake, ClipboardCheck,
   BadgeDollarSign, Landmark, MonitorCheck, Ban,
   FolderOpen, UploadCloud, Inbox, RefreshCcw, Tags, Database, ShieldCheck, Brain,
-  Truck, Wrench, DollarSign, Boxes, ShoppingCart,
+  Truck, Wrench, DollarSign, Boxes, ShoppingCart, PenLine,
   BarChart3, Palette, History,
   Building2, Building, MapPin, Globe2, Ship, Factory, Scale,
   Banknote, CreditCard, Percent, Ruler, Repeat,
@@ -218,7 +218,8 @@ const navSections: NavSection[] = [
     children: [
       { label: "Report Center",        icon: BarChart3,     path: "/admin/reports",            requiredAnyPermissions: ["reports.view", "reports.manage"] },
       { label: "Templates & Branding", icon: Palette,       path: "/admin/reports/templates",  requiredAnyPermissions: ["reports.manage"] },
-      { label: "Report History",       icon: History,       path: "/admin/reports/history",    requiredAnyPermissions: ["reports.view", "reports.history.view"] },
+      { label: "Reports Editor",        icon: PenLine,       path: "/admin/reports/editor",     requiredAnyPermissions: ["reports.manage"] },
+      { label: "Report History",        icon: History,       path: "/admin/reports/history",    requiredAnyPermissions: ["reports.view", "reports.history.view"] },
       { label: "Report Schedules",     icon: CalendarClock, path: "/admin/reports/schedules",  requiredAnyPermissions: ["reports.schedule.view", "reports.schedule.manage"] },
     ],
   },

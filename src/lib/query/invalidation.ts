@@ -1147,3 +1147,26 @@ export function invalidateReportRun(
 ): void {
   void queryClient.invalidateQueries({ queryKey: ["reports", "run", runId] });
 }
+
+// ── Report Designer (REPORT DESIGNER.2) ─────────────────────────────────────
+
+/** Invalidate all report designer template list caches. */
+export function invalidateReportDesignerTemplates(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: ["reports", "designer", "templates"] });
+}
+
+/** Invalidate a single report designer template cache (metadata + layout). */
+export function invalidateReportDesignerTemplate(queryClient: QueryClient, templateId: number): void {
+  void queryClient.invalidateQueries({ queryKey: ["reports", "designer", "template", templateId] });
+  void queryClient.invalidateQueries({ queryKey: ["reports", "designer", "layout", templateId] });
+}
+
+/** Invalidate report designer layout cache for a specific template. */
+export function invalidateReportDesignerLayout(queryClient: QueryClient, templateId: number): void {
+  void queryClient.invalidateQueries({ queryKey: ["reports", "designer", "layout", templateId] });
+}
+
+/** Invalidate report designer test options cache for a specific template. */
+export function invalidateReportDesignerTestOptions(queryClient: QueryClient, templateId: number): void {
+  void queryClient.invalidateQueries({ queryKey: ["reports", "designer", "test-options", templateId] });
+}

@@ -605,6 +605,25 @@ const REGISTRY: WorkspaceRouteConfig[] = [
     moduleCode: "REPORTS",
   },
 
+  // ── Reports / Visual Editor (REPORT DESIGNER.2) ─────────────────────────
+  {
+    route: "/admin/reports/editor",
+    title: "Reports Editor",
+    icon: "PenLine",
+    tabKind: "list",
+    singleton: true,
+    moduleCode: "REPORTS",
+  },
+  {
+    route: "/admin/reports/editor/",
+    title: "Template Editor",
+    icon: "PenLine",
+    tabKind: "record",
+    closable: true,
+    singleton: false,
+    moduleCode: "REPORTS",
+  },
+
   {
     route: "/dms/documents/record/",
     title: "Document",

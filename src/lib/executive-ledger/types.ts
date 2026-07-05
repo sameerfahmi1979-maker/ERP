@@ -143,11 +143,15 @@ export type ExecutiveLedgerSection =
   | ExecutiveLedgerBodySection
   | ExecutiveLedgerKeyValueSection
   | ExecutiveLedgerTableSection
-  | ExecutiveLedgerDividerSection;
+  | ExecutiveLedgerDividerSection
+  | ExecutiveLedgerColumnSection;
 
 /**
  * Free-form body text section (letter body, certifications, declarations).
  * Text must be pre-formatted; the renderer HTML-escapes it.
+ *
+ * REPORT DESIGNER UX.1: When `richHtml` is present, it is used instead of `content`.
+ * `richHtml` is ONLY set by our server-side ProseMirror renderer — never user input.
  */
 export interface ExecutiveLedgerBodySection {
   type: "body";
@@ -156,6 +160,12 @@ export interface ExecutiveLedgerBodySection {
   /** Multi-line body text. Each newline becomes a paragraph. */
   content: string;
   language?: "en" | "ar" | "bilingual";
+  /**
+   * REPORT DESIGNER UX.1: Pre-rendered safe HTML from the ProseMirror renderer.
+   * When present, this is used directly instead of `content`.
+   * Set ONLY by layout-to-executive-ledger.ts, never from user props.
+   */
+  richHtml?: string;
 }
 
 /**
@@ -196,6 +206,17 @@ export interface ExecutiveLedgerTableSection {
   rows: string[][];
   /** Summary / totals rows displayed below the table with bold formatting */
   totals?: ExecutiveLedgerKeyValueRow[];
+  /**
+   * REPORT DESIGNER.9: When false, the table header row is omitted.
+   * Default: true (header visible).
+   */
+  showHeader?: boolean;
+  /**
+   * REPORT DESIGNER.9: Optional column width hints (e.g. "80px", "15%").
+   * Array length must match `headers`. If shorter or absent, columns size naturally.
+   * Width values are passed only as safe inline CSS — no HTML injection.
+   */
+  columnWidths?: string[];
 }
 
 /**
@@ -205,4 +226,46 @@ export interface ExecutiveLedgerDividerSection {
   type: "divider";
   /** Optional short label centered in the divider line */
   label?: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Column section (REPORT DESIGNER UX.1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * A single slot inside an ExecutiveLedgerColumnSection.
+ * Contains either a regular section OR pre-rendered trusted HTML (for logo/stamp/sig/qr).
+ * The `html` field is ONLY set by our server-side mapper code, never from user input.
+ */
+export interface ExecutiveLedgerColumnSlot {
+  /** A regular EL section rendered by the section renderer */
+  section?: ExecutiveLedgerBodySection | ExecutiveLedgerKeyValueSection;
+  /**
+   * Pre-rendered trusted HTML for special content (logo, signatory, stamp, QR).
+   * Set exclusively by layout-to-executive-ledger.ts mapper — never user input.
+   */
+  html?: string;
+}
+
+/**
+ * Multi-column layout section — 2-col or 3-col.
+ * Maps from ColumnStripBlock in REPORT DESIGNER UX.1.
+ *
+ * Rendered using CSS flexbox with controlled safe width presets.
+ * No arbitrary CSS from user props.
+ */
+export interface ExecutiveLedgerColumnSection {
+  type: "column";
+  /** Layout width preset */
+  layout: "equal" | "left-wide" | "right-wide" | "2-col" | "3-col";
+  /** Vertical alignment of slot contents */
+  verticalAlign?: "top" | "middle" | "bottom";
+  /** Gap size between columns */
+  gap?: "sm" | "md" | "lg";
+  /** Column slot contents */
+  slots: {
+    left?: ExecutiveLedgerColumnSlot;
+    center?: ExecutiveLedgerColumnSlot;
+    right?: ExecutiveLedgerColumnSlot;
+  };
 }

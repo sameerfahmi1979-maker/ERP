@@ -1,19 +1,29 @@
 /**
  * Report Designer — Feature Public API
- * Phase: REPORT DESIGNER.2 — Puck Installation, Type, Query Keys, Editor Shell Prep
- *
- * Re-exports the public surface of the report-designer feature module.
- * Keep this lean — only export what other parts of the app need to import.
+ * Phase: REPORT DESIGNER.3 — ERP Block Library Foundation
  */
 
 // Puck shell (client-only — import dynamically from server components)
 export type { ReportDesignerPuckShellProps } from "./puck/report-designer-puck-shell";
 
-// Puck types
+// Editor client (client-only)
+export type { ReportDesignerEditorClientProps } from "./report-designer-editor-client";
+
+// Test panel (client-only)
+export type { ReportDesignerTestPanelProps } from "./report-designer-test-panel";
+
+// Puck types (all 10 blocks)
 export type {
   HeadingBlockProps,
   BodyTextSectionBlockProps,
+  KeyValueSectionBlockProps,
+  DividerBlockProps,
   SpacerBlockProps,
+  BrandingHeaderBlockProps,
+  CompanyLogoBlockProps,
+  SignatoryBlockProps,
+  StampBlockProps,
+  VerificationQrBlockProps,
   ReportDesignerPuckComponents,
   ReportDesignerPuckConfig,
 } from "./puck/report-designer-puck-types";

@@ -31,6 +31,8 @@ import type {
   ExecutiveLedgerKeyValueRow,
   ExecutiveLedgerTableSection,
   ExecutiveLedgerDividerSection,
+  ExecutiveLedgerColumnSection,
+  ExecutiveLedgerColumnSlot,
   ExecutiveLedgerParty,
 } from "./types";
 import {
@@ -72,12 +74,14 @@ function renderPartyBlock(party: ExecutiveLedgerParty, labelOverride?: string): 
 
 function renderBodySection(section: ExecutiveLedgerBodySection): string {
   const dir = section.language === "ar" ? ' dir="rtl" style="text-align:right;"' : "";
+  // REPORT DESIGNER UX.1: use pre-rendered richHtml when available (set by server-side ProseMirror renderer)
+  const bodyContent = section.richHtml
+    ? section.richHtml  // Already safe HTML from our controlled renderer
+    : `<div style="font-size:10px; line-height:1.7; color:#1a1a1a;">${elTextToParagraphs(section.content)}</div>`;
   return `
     <div class="el-section"${dir}>
       ${section.title ? `<div class="el-section-title">${elEscapeHtml(section.title)}</div>` : ""}
-      <div style="font-size:10px; line-height:1.7; color:#1a1a1a;">
-        ${elTextToParagraphs(section.content)}
-      </div>
+      ${bodyContent}
     </div>`;
 }
 
@@ -112,8 +116,22 @@ function renderKeyValueSection(section: ExecutiveLedgerKeyValueSection): string 
 }
 
 function renderTableSection(section: ExecutiveLedgerTableSection): string {
+  // REPORT DESIGNER.9: showHeader defaults true; honor false to hide header row
+  const showHeader = section.showHeader !== false;
+
+  // REPORT DESIGNER.9: safe column width hints — strip any unsafe patterns
+  const safeWidthPattern = /^(\d+(?:\.\d+)?(?:px|%|em|rem|mm|cm)|auto|unset|inherit)$/;
+  const widths = (section.columnWidths ?? []).map((w, i) =>
+    i < section.headers.length && safeWidthPattern.test(w.trim())
+      ? w.trim()
+      : ""
+  );
+
   const headerCells = section.headers
-    .map((h) => `<th style="padding:5px 8px; text-align:left; font-size:8.5px; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; color:#fff; background:#1e293b;">${elEscapeHtml(h)}</th>`)
+    .map((h, i) => {
+      const widthAttr = widths[i] ? ` style="padding:5px 8px; text-align:left; font-size:8.5px; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; color:#fff; background:#1e293b; width:${elEscapeAttr(widths[i])};"` : ` style="padding:5px 8px; text-align:left; font-size:8.5px; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; color:#fff; background:#1e293b;"`;
+      return `<th${widthAttr}>${elEscapeHtml(h)}</th>`;
+    })
     .join("");
 
   const bodyRows = section.rows
@@ -138,7 +156,7 @@ function renderTableSection(section: ExecutiveLedgerTableSection): string {
     <div class="el-section">
       ${section.title ? `<div class="el-section-title">${elEscapeHtml(section.title)}</div>` : ""}
       <table style="width:100%; border-collapse:collapse; border:1px solid #e2e8f0;">
-        <thead><tr>${headerCells}</tr></thead>
+        ${showHeader ? `<thead><tr>${headerCells}</tr></thead>` : ""}
         <tbody>
           ${bodyRows}
           ${totals}
@@ -158,12 +176,74 @@ function renderDividerSection(section: ExecutiveLedgerDividerSection): string {
   return `<div style="height:1px; background:#e2e8f0; margin:12px 0;"></div>`;
 }
 
+// ─── REPORT DESIGNER UX.1: Column section renderer ───────────────────────────
+
+/** Map layout preset to flex proportions for left / center / right */
+const COLUMN_FLEX_PRESETS: Record<string, [number, number, number]> = {
+  "equal":      [1, 0, 1],      // 50 / 50 (center unused for 2-col)
+  "2-col":      [1, 0, 1],      // alias of equal
+  "left-wide":  [7, 0, 3],      // 70 / 30
+  "right-wide": [3, 0, 7],      // 30 / 70
+  "3-col":      [1, 1, 1],      // 33 / 34 / 33
+};
+
+const COLUMN_GAP_PRESETS: Record<string, string> = {
+  "sm": "8px",
+  "md": "16px",
+  "lg": "24px",
+};
+
+const COLUMN_VALIGN_PRESETS: Record<string, string> = {
+  "top":    "flex-start",
+  "middle": "center",
+  "bottom": "flex-end",
+};
+
+function renderColumnSlot(slot: ExecutiveLedgerColumnSlot): string {
+  if (slot.section) {
+    // Render using existing section renderer (body or key-value only)
+    if (slot.section.type === "body") {
+      return renderBodySection(slot.section as ExecutiveLedgerBodySection);
+    }
+    if (slot.section.type === "key_value") {
+      return renderKeyValueSection(slot.section as ExecutiveLedgerKeyValueSection);
+    }
+  }
+  if (slot.html) {
+    // Pre-rendered trusted HTML from mapper (logo, stamp, signatory, QR)
+    // This is ONLY set by server-side mapper code, never from user input
+    return slot.html;
+  }
+  return "";
+}
+
+function renderColumnSection(section: ExecutiveLedgerColumnSection): string {
+  const layoutKey = section.layout in COLUMN_FLEX_PRESETS ? section.layout : "equal";
+  const [leftFlex, centerFlex, rightFlex] = COLUMN_FLEX_PRESETS[layoutKey];
+  const gap = COLUMN_GAP_PRESETS[section.gap ?? "md"] ?? "16px";
+  const alignItems = COLUMN_VALIGN_PRESETS[section.verticalAlign ?? "top"] ?? "flex-start";
+  const is3col = layoutKey === "3-col";
+
+  const leftHtml   = section.slots.left   ? renderColumnSlot(section.slots.left)   : "";
+  const centerHtml = section.slots.center ? renderColumnSlot(section.slots.center) : "";
+  const rightHtml  = section.slots.right  ? renderColumnSlot(section.slots.right)  : "";
+
+  const leftDiv   = `<div style="flex:${leftFlex}; min-width:0;">${leftHtml}</div>`;
+  const centerDiv = is3col ? `<div style="flex:${centerFlex}; min-width:0;">${centerHtml}</div>` : "";
+  const rightDiv  = `<div style="flex:${rightFlex}; min-width:0;">${rightHtml}</div>`;
+
+  return `<div class="el-section" style="display:flex; gap:${gap}; align-items:${alignItems};">
+    ${leftDiv}${centerDiv}${rightDiv}
+  </div>`;
+}
+
 function renderSection(section: ExecutiveLedgerSection): string {
   switch (section.type) {
     case "body":      return renderBodySection(section as ExecutiveLedgerBodySection);
     case "key_value": return renderKeyValueSection(section as ExecutiveLedgerKeyValueSection);
     case "table":     return renderTableSection(section as ExecutiveLedgerTableSection);
     case "divider":   return renderDividerSection(section as ExecutiveLedgerDividerSection);
+    case "column":    return renderColumnSection(section as ExecutiveLedgerColumnSection);
   }
 }
 

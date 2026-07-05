@@ -10,6 +10,7 @@ import type { ReportDesignerLayoutJson } from "./types";
 import { ReportDesignerLayoutJsonSchema, SaveVisualLayoutInputSchema } from "./layout-schema";
 import type { SaveVisualLayoutInputValidated } from "./layout-schema";
 import { extractBindingsFromText, isAllowlistedBinding } from "./binding-registry";
+import { collectBindingTokens } from "./prosemirror-plaintext";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Validation result type
@@ -75,6 +76,32 @@ export function validateLayoutZone(
           errors.push(`[${zoneName}] Unknown binding "{{${b}}}" in BodyTextSectionBlock`);
         }
       });
+
+      // Guard against corrupt binding tokens (stale editor bundle): every
+      // bindingToken in richContent MUST carry a non-empty path attribute.
+      // Rejecting here prevents silent data destruction on save.
+      const rc = block.props.richContent as Record<string, unknown> | null | undefined;
+      if (rc && rc.type === "doc") {
+        const tokens = collectBindingTokens(rc);
+        const pathless = tokens.filter((t) => {
+          const attrs = t.attrs as Record<string, unknown> | undefined;
+          return !attrs || typeof attrs.path !== "string" || !attrs.path;
+        });
+        if (pathless.length > 0) {
+          errors.push(
+            `[${zoneName}] ${pathless.length} inserted field(s) in the rich text are missing their binding path. ` +
+              `This usually means the editor page is running an outdated version — please hard-refresh the browser (Ctrl+Shift+R) and re-insert the fields.`
+          );
+        } else {
+          for (const t of tokens) {
+            const path = (t.attrs as Record<string, unknown>).path as string;
+            bindingsFound.add(path);
+            if (!isAllowlistedBinding(path)) {
+              errors.push(`[${zoneName}] Unknown binding "{{${path}}}" in rich text field token`);
+            }
+          }
+        }
+      }
     }
 
     if (block.type === "KeyValueSectionBlock") {

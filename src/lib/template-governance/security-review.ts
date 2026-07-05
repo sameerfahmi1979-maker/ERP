@@ -1,8 +1,13 @@
 /**
- * Template Security Review — BRANDING.7
+ * Template Security Review — BRANDING.7 + REPORT DESIGNER.7
  *
  * Deterministic static analysis of template content to detect unsafe patterns
  * before a template can be approved or published.
+ *
+ * REPORT DESIGNER.7: Extended to include visual layout JSON inspection.
+ * `runTemplateSecurityReview` now accepts optional visual layout fields and
+ * delegates to `reviewVisualTemplateLayoutSecurity` from the report designer
+ * library. Findings from both legacy HTML and visual layout are merged.
  *
  * Must never perform I/O. Pure functions only.
  */
@@ -68,6 +73,15 @@ interface TemplateContentFields {
   body_html_ar?: string | null;
   custom_css?: string | null;
   watermark_text?: string | null;
+  // REPORT DESIGNER.7: visual layout fields
+  visual_editor_engine?: string | null;
+  visual_layout_schema_version?: number | null;
+  header_layout_json?: unknown;
+  body_layout_json?: unknown;
+  footer_layout_json?: unknown;
+  style_json?: unknown;
+  // REPORT DESIGNER UX.3: template type for sensitive field governance
+  template_type?: string | null;
 }
 
 function extractSnippet(text: string, match: RegExpMatchArray): string {
@@ -85,6 +99,7 @@ export function runTemplateSecurityReview(
 ): SecurityReviewResult {
   const findings: SecurityFinding[] = [];
 
+  // ── Legacy HTML/CSS field review ─────────────────────────────────────────
   const namedFields: Array<[string, string | null | undefined]> = [
     ["body_html_en", fields.body_html_en],
     ["body_html_ar", fields.body_html_ar],
@@ -118,6 +133,46 @@ export function runTemplateSecurityReview(
         });
       }
     }
+  }
+
+  // ── REPORT DESIGNER.7: Visual layout review ───────────────────────────────
+  const hasVisualFields =
+    fields.visual_editor_engine !== undefined ||
+    fields.header_layout_json !== undefined ||
+    fields.body_layout_json !== undefined ||
+    fields.footer_layout_json !== undefined;
+
+  if (hasVisualFields) {
+    // Lazy import to avoid circular dependency at module level
+    const { reviewVisualTemplateLayoutSecurity } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require("@/lib/report-designer/visual-template-security-review") as {
+        reviewVisualTemplateLayoutSecurity: (
+          input: {
+            visual_editor_engine?: string | null;
+            visual_layout_schema_version?: number | null;
+            header_layout_json?: unknown;
+            body_layout_json?: unknown;
+            footer_layout_json?: unknown;
+            style_json?: unknown;
+            // UX.3: template type for governance-aware sensitive field check
+            template_type?: string | null;
+          }
+        ) => { passed: boolean; severity: string; findings: SecurityFinding[]; hasVisualLayout: boolean };
+      };
+
+    const visualResult = reviewVisualTemplateLayoutSecurity({
+      visual_editor_engine: fields.visual_editor_engine,
+      visual_layout_schema_version: fields.visual_layout_schema_version,
+      header_layout_json: fields.header_layout_json,
+      body_layout_json: fields.body_layout_json,
+      footer_layout_json: fields.footer_layout_json,
+      style_json: fields.style_json,
+      // UX.3: pass template_type for governance-aware sensitive field check
+      template_type: fields.template_type,
+    });
+
+    findings.push(...visualResult.findings);
   }
 
   const hasBlock = findings.some((f) => f.severity === "block");

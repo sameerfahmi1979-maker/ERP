@@ -29,7 +29,7 @@ import { elColumnLabel, elFormatValue } from "@/lib/executive-ledger/formatters"
 import type { ExecutiveLedgerDocument } from "@/lib/executive-ledger/types";
 import { createOutputPublicLink } from "@/server/actions/reports/public-verification";
 import { generateQrDataUrl } from "@/lib/public-verification/qr";
-import { listReportTemplatesForSelection, resolveTemplatePreview, type ReportTemplateForSelection } from "@/server/actions/reports/templates";
+import { listReportTemplatesForSelection, resolveTemplatePreview, renderVisualTemplateForLetterPreview, type ReportTemplateForSelection } from "@/server/actions/reports/templates";
 
 interface LetterPreviewDialogProps {
   open: boolean;
@@ -146,6 +146,10 @@ export function LetterPreviewDialog({
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [templateLoadError, setTemplateLoadError] = useState<string | null>(null);
 
+  // DESIGNER.6: Visual layout rendering for templates with Puck engine
+  const [visualHtml, setVisualHtml] = useState<string | null>(null);
+  const [isLoadingVisual, setIsLoadingVisual] = useState(false);
+
   useEffect(() => {
     if (!open) {
       setData(null);
@@ -159,6 +163,8 @@ export function LetterPreviewDialog({
       setTemplatePickerOpen(false);
       setAvailableTemplates([]);
       setTemplateLoadError(null);
+      setVisualHtml(null);
+      setIsLoadingVisual(false);
       return;
     }
 
@@ -218,6 +224,24 @@ export function LetterPreviewDialog({
       .finally(() => setLoadingTemplates(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, formalView]);
+
+  // DESIGNER.6: When formal view is activated with a template that has a visual layout,
+  // render the visual layout HTML for the Formal View.
+  useEffect(() => {
+    if (!open || !formalView || !selectedTemplateId) { setVisualHtml(null); return; }
+    setIsLoadingVisual(true);
+    renderVisualTemplateForLetterPreview({ templateId: selectedTemplateId, employeeId })
+      .then((res) => {
+        if (res.ok && res.hasVisualLayout && res.html) {
+          setVisualHtml(res.html);
+        } else {
+          setVisualHtml(null);
+        }
+      })
+      .catch(() => setVisualHtml(null))
+      .finally(() => setIsLoadingVisual(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, formalView, selectedTemplateId]);
 
   // Computed values — derived from state; safe when open=false because data=null
   const row = data?.rows?.[0] ?? null;
@@ -318,6 +342,18 @@ export function LetterPreviewDialog({
   };
 
   const handlePDF = async () => {
+    // DESIGNER.7: If visual HTML is rendered (Puck template), use print-to-PDF via window.print.
+    if (formalView && visualHtml) {
+      const win = window.open("", "_blank");
+      if (win) {
+        win.document.open();
+        win.document.write(visualHtml);
+        win.document.close();
+        win.focus();
+        setTimeout(() => win.print(), 600);
+      }
+      return;
+    }
     if (formalView && elDoc) {
       const html = renderExecutiveLedgerHtml(elDoc);
       const win = window.open("", "_blank");
@@ -341,6 +377,18 @@ export function LetterPreviewDialog({
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const handlePrint = useCallback(() => {
+    // DESIGNER.7: If visual HTML is rendered (Puck template), print that instead.
+    if (formalView && visualHtml) {
+      const win = window.open("", "_blank");
+      if (win) {
+        win.document.open();
+        win.document.write(visualHtml);
+        win.document.close();
+        win.focus();
+        setTimeout(() => win.print(), 600);
+      }
+      return;
+    }
     if (formalView && elDoc) {
       const html = renderExecutiveLedgerHtml(elDoc);
       const win = window.open("", "_blank");
@@ -361,7 +409,7 @@ export function LetterPreviewDialog({
       data: data.rows,
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formalView, elDoc, data, reportLabel, reportCode]);
+  }, [formalView, visualHtml, elDoc, data, reportLabel, reportCode]);
 
   // Early return AFTER all hooks — safe per Rules of Hooks
   if (!open) return null;
@@ -535,6 +583,21 @@ export function LetterPreviewDialog({
                   {issueError}
                 </div>
               )}
+              {/* DESIGNER.6: Visual layout iframe (when template has Puck engine) */}
+              {isLoadingVisual && (
+                <div className="flex items-center justify-center gap-2 h-20 text-muted-foreground text-sm">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading visual layout…
+                </div>
+              )}
+              {!isLoadingVisual && visualHtml && (
+                <iframe
+                  srcDoc={visualHtml}
+                  title="Visual Template Preview"
+                  style={{ width: "100%", height: "100%", border: "none", display: "block" }}
+                  sandbox="allow-same-origin"
+                />
+              )}
               {/* BRANDING.8: Template picker for QR issuance */}
               {templatePickerOpen && !verificationData && (
                 <div className="px-4 py-3 border-b bg-muted/40 shrink-0">
@@ -605,7 +668,7 @@ export function LetterPreviewDialog({
               <ExecutiveLedgerPreview
                 document={elDoc}
                 height="100%"
-                className="w-full h-full"
+                className={`w-full h-full${visualHtml ? " hidden" : ""}`}
               />
             </>
           )}

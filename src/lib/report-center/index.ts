@@ -12,3 +12,6 @@ export * from "./branding-resolver";
 export * from "./redaction-engine";
 export * from "./report-runner";
 export { REPORT_FETCHERS } from "./report-fetchers";
+// Preview runner (REPORT DESIGNER.6 — no-write)
+export { runReportFetcherPreview, PREVIEW_ROW_LIMIT } from "./preview-runner";
+export type { PreviewRunInput, PreviewRunResult } from "./preview-runner";

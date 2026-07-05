@@ -4,7 +4,7 @@
  */
 
 /** Current schema version — bump when block shape changes */
-export const REPORT_DESIGNER_SCHEMA_VERSION = 1;
+export const REPORT_DESIGNER_SCHEMA_VERSION = 2;
 
 /** The only approved editor engine for ALGT ERP */
 export const REPORT_DESIGNER_ENGINE = "puck" as const;
@@ -32,7 +32,7 @@ export const PERMITTED_FONT_FAMILIES = [
 
 export type PermittedFontFamily = (typeof PERMITTED_FONT_FAMILIES)[number];
 
-/** Block types defined in REPORT DESIGNER.1 */
+/** Block types defined in REPORT DESIGNER.1 + REPORT DESIGNER.8 + REPORT DESIGNER UX.1 */
 export const REPORT_DESIGNER_BLOCK_TYPES = [
   "HeadingBlock",
   "BodyTextSectionBlock",
@@ -44,6 +44,8 @@ export const REPORT_DESIGNER_BLOCK_TYPES = [
   "SignatoryBlock",
   "StampBlock",
   "VerificationQrBlock",
+  "ReportTableBlock",
+  "ColumnStripBlock",
 ] as const;
 
 export type ReportDesignerBlockType = (typeof REPORT_DESIGNER_BLOCK_TYPES)[number];
@@ -70,3 +72,12 @@ export const BINDING_PATH_REGEX = /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/;
 
 /** Max length of plain text props on blocks */
 export const MAX_BLOCK_TEXT_LENGTH = 4000;
+
+/** Max rows allowed in a ReportTableBlock — hard cap per security rules */
+export const REPORT_TABLE_MAX_ROWS = 50;
+
+/** Default max rows displayed in a ReportTableBlock */
+export const REPORT_TABLE_DEFAULT_MAX_ROWS = 25;
+
+/** Regex for safe column key identifiers in ReportTableBlock (no HTML, no expressions) */
+export const SAFE_COLUMN_KEY_REGEX = /^[a-zA-Z][a-zA-Z0-9_.]*$/ ;

@@ -47,7 +47,7 @@ export async function getReportTemplateVisualLayout(
     const { data, error } = await supabase
       .from("erp_report_templates")
       .select(
-        "id,template_name,template_type,governance_status,body_layout_json,header_layout_json,footer_layout_json,visual_editor_engine,visual_layout_schema_version,visual_layout_updated_at"
+        "id,template_name,template_code,template_type,version_no,governance_status,security_review_status,body_layout_json,header_layout_json,footer_layout_json,visual_editor_engine,visual_layout_schema_version,visual_layout_updated_at,visual_layout_updated_by"
       )
       .eq("id", templateId)
       .is("deleted_at", null)
@@ -59,14 +59,18 @@ export async function getReportTemplateVisualLayout(
     const row = data as {
       id: number;
       template_name: string;
+      template_code: string;
       template_type: string;
+      version_no: number;
       governance_status: string;
+      security_review_status: string | null;
       body_layout_json: unknown;
       header_layout_json: unknown;
       footer_layout_json: unknown;
       visual_editor_engine: string | null;
       visual_layout_schema_version: number | null;
       visual_layout_updated_at: string | null;
+      visual_layout_updated_by: string | null;
     };
 
     const isEditable = (EDITABLE_GOVERNANCE_STATUSES as readonly string[]).includes(
@@ -84,8 +88,11 @@ export async function getReportTemplateVisualLayout(
       data: {
         templateId: row.id,
         templateName: row.template_name,
+        templateCode: row.template_code,
         templateType: row.template_type,
+        versionNo: row.version_no,
         governanceStatus: row.governance_status,
+        securityReviewStatus: row.security_review_status ?? "pending",
         isEditable,
         bodyLayout: parseZone(row.body_layout_json),
         headerLayout: parseZone(row.header_layout_json),
@@ -93,6 +100,7 @@ export async function getReportTemplateVisualLayout(
         visualEditorEngine: row.visual_editor_engine ?? "puck",
         visualLayoutSchemaVersion: row.visual_layout_schema_version ?? 1,
         visualLayoutUpdatedAt: row.visual_layout_updated_at ?? null,
+        visualLayoutUpdatedBy: row.visual_layout_updated_by ?? null,
       },
     };
   } catch (err) {
@@ -120,8 +128,20 @@ export async function saveReportTemplateVisualLayout(
       return { success: false, error: "Insufficient permissions — reports.manage required" };
     }
 
+    // Strip client-side Proxy wrappers from TipTap/Puck state objects before
+    // any property access or Zod parsing. Without this, Next.js RSC boundary
+    // throws "Cannot access X on the server" when validation walks richContent.
+    const sanitize = <T>(v: T): T =>
+      v != null ? (JSON.parse(JSON.stringify(v)) as T) : v;
+    const sanitizedInput = {
+      ...input,
+      bodyLayout: sanitize(input.bodyLayout),
+      headerLayout: sanitize(input.headerLayout),
+      footerLayout: sanitize(input.footerLayout),
+    } satisfies typeof input;
+
     // Zod + binding validation
-    const validation = validateSaveLayoutInput(input);
+    const validation = validateSaveLayoutInput(sanitizedInput);
     if (!validation.valid) {
       return {
         success: false,
@@ -129,7 +149,7 @@ export async function saveReportTemplateVisualLayout(
       };
     }
 
-    const validated = SaveVisualLayoutInputSchema.parse(input);
+    const validated = SaveVisualLayoutInputSchema.parse(sanitizedInput);
     const supabase = createAdminClient();
 
     // Fetch current governance status

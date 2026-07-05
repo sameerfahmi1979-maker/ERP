@@ -1,45 +1,59 @@
 /**
  * Report Designer — Puck Component Type Definitions
- * Phase: REPORT DESIGNER.2 — Puck Installation, Type, Query Keys, Editor Shell Prep
+ * Phase: REPORT DESIGNER.3 — ERP Block Library Foundation
  *
- * Maps REPORT DESIGNER.1 block definitions to Puck's Props/Config type system.
- * Only minimal placeholder blocks are defined here; the full ERP block library
- * comes in REPORT DESIGNER.3.
- *
- * In Puck v0.22, Config<Components> maps component names directly to their prop
- * types (e.g. { HeadingBlock: HeadingBlockProps }), not wrapped in { props: ... }.
+ * Maps all 10 REPORT DESIGNER.1 block definitions to Puck's Props/Config type system.
+ * In Puck v0.22, Config<Components> maps component names directly to their prop types.
  */
 
 import type { Config } from "@puckeditor/core";
+import type {
+  HeadingBlockProps,
+  BodyTextSectionBlockProps,
+  KeyValueSectionBlockProps,
+  DividerBlockProps,
+  SpacerBlockProps,
+  BrandingHeaderBlockProps,
+  CompanyLogoBlockProps,
+  SignatoryBlockProps,
+  StampBlockProps,
+  VerificationQrBlockProps,
+  ReportTableBlockProps,
+  ColumnStripBlockProps,
+} from "../blocks";
+
+export type {
+  HeadingBlockProps,
+  BodyTextSectionBlockProps,
+  KeyValueSectionBlockProps,
+  DividerBlockProps,
+  SpacerBlockProps,
+  BrandingHeaderBlockProps,
+  CompanyLogoBlockProps,
+  SignatoryBlockProps,
+  StampBlockProps,
+  VerificationQrBlockProps,
+  ReportTableBlockProps,
+  ColumnStripBlockProps,
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Minimal placeholder block prop definitions
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface HeadingBlockProps {
-  text: string;
-  level: "h1" | "h2" | "h3" | "h4";
-  alignment: "left" | "center" | "right";
-}
-
-export interface BodyTextSectionBlockProps {
-  text: string;
-  alignment: "left" | "center" | "right" | "justify";
-}
-
-export interface SpacerBlockProps {
-  height: number;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Puck component map
-// In Puck v0.22, Config<Components> maps names directly to prop types.
+// Puck component map — all 12 approved ERP blocks (UX.1 adds ColumnStripBlock)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type ReportDesignerPuckComponents = {
   HeadingBlock: HeadingBlockProps;
   BodyTextSectionBlock: BodyTextSectionBlockProps;
+  KeyValueSectionBlock: KeyValueSectionBlockProps;
+  DividerBlock: DividerBlockProps;
   SpacerBlock: SpacerBlockProps;
+  BrandingHeaderBlock: BrandingHeaderBlockProps;
+  CompanyLogoBlock: CompanyLogoBlockProps;
+  SignatoryBlock: SignatoryBlockProps;
+  StampBlock: StampBlockProps;
+  VerificationQrBlock: VerificationQrBlockProps;
+  ReportTableBlock: ReportTableBlockProps;
+  ColumnStripBlock: ColumnStripBlockProps;
 };
 
 /** Typed Puck Config for the Report Designer editor */

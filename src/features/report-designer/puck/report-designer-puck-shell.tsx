@@ -1,47 +1,37 @@
 "use client";
 
 /**
- * Report Designer — Puck Editor Shell (Scaffold)
- * Phase: REPORT DESIGNER.2 — Puck Installation, Type, Query Keys, Editor Shell Prep
- *
- * This is a minimal shell that proves Puck can load in the Next.js App Router
- * without client/server import violations. It is NOT the final editor UI.
- *
- * Full editor UI with sidebar controls, branding preview, live test panel,
- * and block library comes in REPORT DESIGNER.3+.
- *
- * Limitations (intentional for this phase):
- *  - No save integration yet (save wire-up is REPORT DESIGNER.3)
- *  - No block library panel customization yet
- *  - No Executive Ledger preview rendering yet
- *  - No zone switching (header/body/footer) yet
+ * Report Designer — Puck Editor Shell
+ * Phase: REPORT DESIGNER.3 — ERP Block Library Foundation
  *
  * Security:
  *  - Client component — Puck editor must be client-only
- *  - No direct Supabase calls from this component
+ *  - No direct Supabase calls
  *  - No service role or admin client imports
- *  - All saves must go through server actions (not yet wired here)
+ *  - All saves go through server actions in the parent component
  */
 
-import { Puck } from "@puckeditor/core";
+import { Puck, Render } from "@puckeditor/core";
 import "@puckeditor/core/puck.css";
+import { useState } from "react";
 
 import { reportDesignerPuckConfig } from "./report-designer-puck-config";
 import type { ReportDesignerLayoutJson } from "@/lib/report-designer/types";
 import { EMPTY_LAYOUT } from "@/lib/report-designer/types";
+import {
+  buildProseMirrorDocFromPlainText,
+  isCorruptRichContentDoc,
+} from "@/lib/report-designer/prosemirror-plaintext";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface ReportDesignerPuckShellProps {
-  /** The template ID being edited */
   templateId: number;
-  /** The current body layout JSON, or null for a new/empty layout */
   initialLayout: ReportDesignerLayoutJson | null;
-  /** Called with updated layout JSON on each Puck change (for future save integration) */
+  /** Called on each Puck data change so parent can track unsaved state */
   onLayoutChange?: (layout: ReportDesignerLayoutJson) => void;
-  /** Whether the editor is in read-only/preview mode */
   readOnly?: boolean;
 }
 
@@ -49,16 +39,89 @@ export interface ReportDesignerPuckShellProps {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+type PuckData = Parameters<typeof Puck>[0]["data"];
+type PuckContentItem = NonNullable<PuckData["content"]>[number];
+
 /**
- * Convert our ReportDesignerLayoutJson into the Puck Data format.
- * Puck expects: { content: ComponentData[], root: { props: Record<string, unknown> } }
- * Our layout JSON is structurally compatible.
+ * Puck 0.22 requires every block to have `props.id: string` (via WithId<Props>).
+ * Layout data stored in the DB may pre-date this requirement (no id in props).
+ * Inject a stable random UUID for any block whose props.id is missing/falsy so
+ * Puck's DragDropProvider doesn't crash on `undefined.toString()`.
+ *
+ * The id is intentionally NOT saved back to the DB — the Zod schema strips
+ * unknown block props on save, so each editor session generates fresh IDs.
+ * This is safe: Puck only needs IDs to be stable within a single editing session.
  */
-function toPuckData(layout: ReportDesignerLayoutJson): Parameters<typeof Puck>[0]["data"] {
+function ensureBlockIds(
+  content: ReportDesignerLayoutJson["content"]
+): PuckData["content"] {
+  return content.map((block) => {
+    const props = block.props as Record<string, unknown>;
+    if (props.id) return block as unknown as PuckContentItem;
+    return {
+      ...block,
+      props: { ...props, id: crypto.randomUUID() },
+    } as unknown as PuckContentItem;
+  });
+}
+
+/**
+ * Defensive sanitizer for BodyTextSectionBlock richContent:
+ *
+ * 1. Corrupt richContent (binding tokens saved without their `path` attribute
+ *    by a stale pre-UX.2 editor bundle) → REBUILD the doc from the plain-text
+ *    fallback so the user's text and field chips reappear in the editor.
+ * 2. Missing richContent but non-empty plain text `content` → build richContent
+ *    from the plain text so TipTap always opens with the current content.
+ *
+ * This guarantees the TipTap editor is always populated with what was last
+ * saved, even for templates that pre-date rich text or were corrupted.
+ */
+function sanitizeBlockRichContent<T extends { type: string; props: Record<string, unknown> }>(
+  block: T
+): T {
+  if (block.type !== "BodyTextSectionBlock") return block;
+
+  const rc = block.props.richContent as Record<string, unknown> | null | undefined;
+  const plainText = typeof block.props.content === "string" ? block.props.content : "";
+
+  const needsRebuild =
+    // corrupt: tokens lost their path attributes
+    isCorruptRichContentDoc(rc ?? null) ||
+    // missing: no rich content at all, but plain text exists
+    ((!rc || rc.type !== "doc") && plainText.trim().length > 0);
+
+  if (!needsRebuild) return block;
+
+  const rebuilt = buildProseMirrorDocFromPlainText(plainText);
+  return { ...block, props: { ...block.props, richContent: rebuilt } };
+}
+
+function sanitizeLayoutForEditor(
+  content: ReportDesignerLayoutJson["content"]
+): ReportDesignerLayoutJson["content"] {
+  return content.map((block) =>
+    sanitizeBlockRichContent(block as { type: string; props: Record<string, unknown> }) as typeof block
+  );
+}
+
+function toPuckData(layout: ReportDesignerLayoutJson): PuckData {
   return {
-    content: layout.content as Parameters<typeof Puck>[0]["data"]["content"],
-    root: layout.root as Parameters<typeof Puck>[0]["data"]["root"],
+    content: ensureBlockIds(sanitizeLayoutForEditor(layout.content)),
+    root: layout.root as PuckData["root"],
     zones: {},
+  };
+}
+
+function fromPuckData(
+  data: PuckData,
+  schemaVersion: number
+): ReportDesignerLayoutJson {
+  return {
+    schemaVersion,
+    engine: "puck",
+    content: data.content as ReportDesignerLayoutJson["content"],
+    root: data.root as ReportDesignerLayoutJson["root"],
   };
 }
 
@@ -72,31 +135,40 @@ export function ReportDesignerPuckShell({
   onLayoutChange,
   readOnly = false,
 }: ReportDesignerPuckShellProps) {
-  const puckData = toPuckData(initialLayout ?? EMPTY_LAYOUT);
+  const layout = initialLayout ?? EMPTY_LAYOUT;
+  // Compute initial Puck data ONCE per mount. The parent remounts this shell
+  // (via key) on zone/template switch. Recomputing on every render would feed
+  // Puck new object identities + fresh block UUIDs each time, resetting its
+  // internal state (and the TipTap field) while the user is editing.
+  const [puckData] = useState<PuckData>(() => toPuckData(layout));
 
   if (readOnly) {
-    // Render output only — no editor chrome
     return (
-      <div className="report-designer-preview" aria-label="Report layout preview">
-        <Puck.Preview />
+      <div
+        className="report-designer-preview"
+        aria-label="Report layout preview (read-only)"
+        style={{ padding: "16px" }}
+      >
+        <Render config={reportDesignerPuckConfig} data={puckData} />
       </div>
     );
   }
 
   return (
-    <div className="report-designer-shell" style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+    <div
+      className="report-designer-shell"
+      style={{ height: "100%", display: "flex", flexDirection: "column" }}
+    >
       <Puck
         config={reportDesignerPuckConfig}
         data={puckData}
+        onChange={(data) => {
+          if (!onLayoutChange) return;
+          onLayoutChange(fromPuckData(data, layout.schemaVersion));
+        }}
         onPublish={(data) => {
           if (!onLayoutChange) return;
-          const updated: ReportDesignerLayoutJson = {
-            schemaVersion: (initialLayout?.schemaVersion ?? 1),
-            engine: "puck",
-            content: data.content as ReportDesignerLayoutJson["content"],
-            root: data.root as ReportDesignerLayoutJson["root"],
-          };
-          onLayoutChange(updated);
+          onLayoutChange(fromPuckData(data, layout.schemaVersion));
         }}
       />
     </div>

@@ -1,6 +1,6 @@
 /**
  * Report Designer — ERP Data Binding Registry
- * Phase: REPORT DESIGNER.1
+ * Phase: REPORT DESIGNER.1 (updated UX.2 — now auto-generated from field-registry)
  *
  * SECURITY RULES:
  *  - This file is the ONLY allowlist for visual template data bindings.
@@ -15,10 +15,17 @@
  *  - ocr_text, extracted_text, prompt, embedding, vector
  *  - *_id internal FKs, created_by, updated_by
  *  - service_role, api_key, secret, token values
+ *
+ * UX.2 NOTE:
+ *  - The canonical field list now lives in src/lib/report-designer/field-registry/
+ *  - This file re-exports the generated legacy format for backward compatibility.
+ *  - To add new fields: edit field-registry/registry.ts, NOT this file.
  */
 
+import { GENERATED_ERP_BINDING_REGISTRY } from "./field-registry/legacy-binding-adapter";
+
 // ─────────────────────────────────────────────────────────────────────────────
-// Binding descriptor
+// Binding descriptor — kept here for type compatibility
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface BindingDescriptor {
@@ -37,17 +44,25 @@ export interface BindingDescriptor {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Registry
+// Registry — auto-generated from field-registry/registry.ts
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * The canonical, allowlisted ERP data binding registry.
  * All paths in this object are safe for use in visual templates.
  *
- * To add a binding: add it here AND add validation coverage in layout-schema.ts.
- * To remove a binding: mark it removed here (do not delete, to preserve version diffs).
+ * UX.2: This is now auto-generated from field-registry/registry.ts.
+ * Do NOT edit manually — edit field-registry/registry.ts instead.
  */
-export const ERP_BINDING_REGISTRY: Record<string, BindingDescriptor> = {
+export const ERP_BINDING_REGISTRY: Record<string, BindingDescriptor> =
+  GENERATED_ERP_BINDING_REGISTRY;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Legacy constant block kept for reference (no longer the source of truth)
+// UX.2: Replaced by the auto-generated registry above.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const _LEGACY_REGISTRY_PLACEHOLDER: Record<string, BindingDescriptor> = {
   // ── Employee namespace ────────────────────────────────────────────────────
   "employee.full_name_en": {
     path: "employee.full_name_en",
@@ -112,6 +127,24 @@ export const ERP_BINDING_REGISTRY: Record<string, BindingDescriptor> = {
   "employee.contract_end_date": {
     path: "employee.contract_end_date",
     label: "Contract End Date",
+    namespace: "employee",
+    valueType: "date",
+  },
+  "employee.employment_status": {
+    path: "employee.employment_status",
+    label: "Employment Status",
+    namespace: "employee",
+    valueType: "string",
+  },
+  "employee.work_site": {
+    path: "employee.work_site",
+    label: "Primary Work Site",
+    namespace: "employee",
+    valueType: "string",
+  },
+  "employee.last_working_date": {
+    path: "employee.last_working_date",
+    label: "Last Working Date (Inactive Date)",
     namespace: "employee",
     valueType: "date",
   },
@@ -223,7 +256,9 @@ export const ERP_BINDING_REGISTRY: Record<string, BindingDescriptor> = {
     namespace: "report",
     valueType: "date",
   },
-} as const;
+};
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+void _LEGACY_REGISTRY_PLACEHOLDER;
 
 /** All safe binding paths as a string array — for Zod enum validation */
 export const SAFE_BINDING_PATHS = Object.keys(ERP_BINDING_REGISTRY) as [string, ...string[]];
@@ -257,3 +292,4 @@ export function extractBindingsFromText(text: string): string[] {
 export function validateTextBindings(text: string): string[] {
   return extractBindingsFromText(text).filter((b) => !isAllowlistedBinding(b));
 }
+

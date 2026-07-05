@@ -36,6 +36,8 @@ export interface ReportTemplateForSelection {
   branding_profile_type: string | null;
   company_name: string | null;
   logo_url: string | null;
+  /** Visual editor engine — "puck" if template has visual layout (DESIGNER.6) */
+  visual_editor_engine: string | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -183,6 +185,7 @@ export async function listReportTemplatesForSelection(input?: {
         template_type,
         is_default,
         governance_status,
+        visual_editor_engine,
         branding_profile_id,
         branding_profile:erp_report_branding_profiles (
           id,
@@ -221,6 +224,7 @@ export async function listReportTemplatesForSelection(input?: {
       branding_profile_type: row.branding_profile?.profile_type ?? null,
       company_name: row.branding_profile?.owner_company?.legal_name_en ?? null,
       logo_url: row.branding_profile?.logo_url ?? null,
+      visual_editor_engine: row.visual_editor_engine ?? null,
     }));
 
     return { success: true, data: rows };
@@ -651,5 +655,175 @@ export async function resolveTemplateForExport(input: {
     };
   } catch {
     return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// renderVisualTemplateForLetterPreview  (REPORT DESIGNER.6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface RenderVisualTemplateResult {
+  ok: boolean;
+  hasVisualLayout: boolean;
+  html?: string;
+  warnings?: string[];
+  error?: string;
+}
+
+/**
+ * Render a visual template layout for an official letter/certificate preview.
+ *
+ * Used by LetterPreviewDialog when the selected template has a Puck visual layout.
+ * Falls back gracefully when no valid visual layout exists.
+ *
+ * SAFETY:
+ *  - No QR token creation
+ *  - No erp_output_public_links writes
+ *  - No erp_report_runs writes
+ *  - No emails
+ *  - Read-only DB access (template + branding + employee data)
+ *
+ * Requires: reports.view or reports.manage
+ * For employee data: also requires hr.employees.view
+ */
+export async function renderVisualTemplateForLetterPreview(input: {
+  templateId: number;
+  employeeId?: number;
+  ownerCompanyId?: number;
+}): Promise<RenderVisualTemplateResult> {
+  try {
+    const authCtx = await getAuthContext();
+    if (!hasPermission(authCtx, "reports.view") && !hasPermission(authCtx, "reports.manage")) {
+      return { ok: false, hasVisualLayout: false, error: "Insufficient permissions" };
+    }
+
+    const { templateId, employeeId, ownerCompanyId } = input;
+
+    // Load template with layout zones
+    const db = createAdminClient();
+    const { data: tpl, error: tplErr } = await db
+      .from("erp_report_templates")
+      .select(
+        "id,template_name,template_code,template_type,governance_status," +
+        "visual_editor_engine," +
+        "header_layout_json,body_layout_json,footer_layout_json"
+      )
+      .eq("id", templateId)
+      .is("deleted_at", null)
+      .single();
+
+    if (tplErr || !tpl) {
+      return { ok: false, hasVisualLayout: false, error: tplErr?.message ?? "Template not found" };
+    }
+
+    const template = tpl as unknown as {
+      id: number;
+      template_name: string;
+      template_code: string;
+      template_type: string;
+      governance_status: string;
+      visual_editor_engine: string | null;
+      header_layout_json: unknown;
+      body_layout_json: unknown;
+      footer_layout_json: unknown;
+    };
+
+    // DESIGNER.7: Production visual rendering is only allowed for approved/published templates.
+    // Test Report in Reports Editor may still render draft layouts (it calls runReportDesignerTest
+    // which has no governance gate — by design, it is an explicit test/preview-only path).
+    const PRODUCTION_ISSUABLE: string[] = ["approved", "published"];
+    if (!PRODUCTION_ISSUABLE.includes(template.governance_status)) {
+      return {
+        ok: true,
+        hasVisualLayout: false,
+        // Not an error — caller falls back to legacy rendering
+      };
+    }
+
+    // Check if template has visual layout
+    const { templateHasVisualLayout, renderVisualTemplateZones } =
+      await import("@/lib/report-designer/production-renderer");
+
+    if (!templateHasVisualLayout(template)) {
+      return { ok: true, hasVisualLayout: false };
+    }
+
+    // Resolve branding
+    const brandingResult = await resolveTemplatePreview({ templateId });
+    const branding = brandingResult.success && brandingResult.data ? brandingResult.data : {};
+
+    // Resolve binding values
+    const {
+      resolveEmployeeBindingValues,
+      resolveOwnerCompanyBindingValues: resolveCompanyBindings,
+      resolveDocumentBindingValues,
+      redactDesignerTestBindingValues,
+    } = await import("@/lib/report-designer/test-data-resolver");
+    const { buildSampleBindingValues } = await import("@/lib/report-designer");
+
+    let bindingValues: Record<string, string> = buildSampleBindingValues();
+    const allWarnings: string[] = [];
+
+    if (employeeId) {
+      if (!hasPermission(authCtx, "hr.employees.view") && !hasPermission(authCtx, "reports.manage")) {
+        allWarnings.push("hr.employees.view permission required for employee data — using sample bindings");
+      } else {
+        const empResult = await resolveEmployeeBindingValues(employeeId, db);
+        allWarnings.push(...empResult.warnings);
+        bindingValues = { ...bindingValues, ...empResult.values };
+
+        const coId = ownerCompanyId ?? empResult.ownerCompanyId;
+        if (coId) {
+          const coResult = await resolveCompanyBindings(coId, db);
+          allWarnings.push(...coResult.warnings);
+          bindingValues = { ...bindingValues, ...coResult.values };
+        }
+      }
+    } else if (ownerCompanyId) {
+      const coResult = await resolveCompanyBindings(ownerCompanyId, db);
+      allWarnings.push(...coResult.warnings);
+      bindingValues = { ...bindingValues, ...coResult.values };
+    }
+
+    // Document metadata bindings
+    const docBindings = resolveDocumentBindingValues({
+      templateName: template.template_name,
+      templateCode: template.template_code,
+    });
+    bindingValues = { ...bindingValues, ...docBindings };
+
+    // Defensive redaction
+    const redactResult = redactDesignerTestBindingValues(bindingValues);
+    bindingValues = redactResult.values;
+    if (redactResult.redactedKeys.length > 0) {
+      allWarnings.push(`Defensive redaction removed ${redactResult.redactedKeys.length} sensitive field(s).`);
+    }
+
+    // Render via production renderer
+    const renderResult = renderVisualTemplateZones({
+      templateName: template.template_name,
+      templateType: template.template_type,
+      headerLayoutRaw: template.header_layout_json,
+      bodyLayoutRaw: template.body_layout_json,
+      footerLayoutRaw: template.footer_layout_json,
+      branding,
+      bindingValues,
+    });
+
+    allWarnings.push(...renderResult.warnings);
+
+    return {
+      ok: true,
+      hasVisualLayout: renderResult.hasVisualLayout,
+      html: renderResult.html,
+      warnings: allWarnings.length > 0 ? allWarnings : undefined,
+    };
+  } catch (err) {
+    console.error("[templates] renderVisualTemplateForLetterPreview:", err);
+    return {
+      ok: false,
+      hasVisualLayout: false,
+      error: err instanceof Error ? err.message : "Unexpected error during visual render",
+    };
   }
 }

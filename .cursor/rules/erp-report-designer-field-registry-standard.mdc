@@ -1,0 +1,121 @@
+# ERP Report Designer — Field Registry Standard
+
+## Phase
+
+REPORT DESIGNER UX.2 — Dynamic Expandable Module Field Registry and Field Picker (2026-07-04)
+
+---
+
+## Core Rule
+
+**Every field exposed in the Report Designer MUST be explicitly listed in the Report Field Registry.**
+
+The registry lives at: `src/lib/report-designer/field-registry/registry.ts`
+
+---
+
+## Non-Negotiable Rules
+
+1. **No automatic DB column scanning.** Fields are never exposed just because they exist in the database.
+2. **Every field requires**: `fieldPath`, `fieldLabel`, `dataType`, `sensitivityLevel`, `resolverKey`, `sampleValue`.
+3. **Resolver keys must map to existing server-side functions only.** No raw column names in resolverKey.
+4. **restricted/confidential fields**: `isActive: false` in UX.2. Not insertable until UX.3 governance unlock.
+5. **isPlanned fields**: Shown as "Coming Soon" in the picker. Not insertable. No resolver needed.
+6. **No salary, IBAN, passport, EID, visa, medical data** may be `isActive: true` in UX.2.
+7. **Backward compatibility**: `binding-registry.ts` is auto-generated from the registry. Do NOT manually add fields to `binding-registry.ts`.
+
+---
+
+## Future Module Onboarding Rule
+
+**Whenever a new ERP module is implemented or significantly enhanced:**
+
+The implementation phase MUST review whether that module needs Report Designer field registry support.
+
+If yes, that module's implementation phase MUST include:
+
+- [ ] New `ReportFieldRegistryEntry` definitions in `registry.ts`
+- [ ] Resolver key mappings in `test-data-resolver.ts`
+- [ ] Sample values for each new field
+- [ ] Sensitivity classification (public / internal / restricted / confidential)
+- [ ] Server-side resolver function (in the appropriate resolver file)
+- [ ] Security review coverage (in `visual-template-security-review.ts`)
+- [ ] SOT update marking the new fields as active
+- [ ] Implementation report documenting the fields added
+
+**Trigger condition**: If a module phase adds a table with entities that could appear in reports
+(employees, vehicles, work orders, invoices, trips, incidents, etc.), it MUST add registry entries.
+
+---
+
+## Process for Adding New Active Fields
+
+1. Confirm the DB column/join exists in source code or via Supabase MCP.
+2. Add a `ReportFieldRegistryEntry` to `src/lib/report-designer/field-registry/registry.ts`:
+   - Set `isActive: true`, `isPlanned: false`
+   - Choose `sensitivityLevel` carefully
+3. Update `resolveEmployeeBindingValues` (or the relevant resolver) in `test-data-resolver.ts`.
+4. Add the sample value in `buildSampleBindingValues()` in `live-test-schema.ts`.
+5. Run `npx tsc --noEmit` and `npm run build` — verify no TypeScript errors.
+6. Update SOT with the new field.
+
+## Process for Adding Planned Future Module Fields
+
+1. Add a `ReportFieldRegistryEntry` with `isActive: false`, `isPlanned: true`.
+2. Set a descriptive `description` explaining when it will be active.
+3. No resolver needed until the field becomes active.
+4. The picker will show it as "Coming Soon".
+
+---
+
+## Sensitivity Level Guide
+
+| Level | Description | Insertable in UX.2? |
+|---|---|---|
+| `public` | Safe for any printed document — name, code, title | ✅ Yes |
+| `internal` | HR/company internal — department, joining date, status | ✅ Yes |
+| `restricted` | Requires governance unlock — EOS date, certain HR flags | ❌ No (UX.3) |
+| `confidential` | Salary, IBAN, passport, EID, medical | ❌ Never without UX.3+ |
+
+---
+
+## Registry File Structure
+
+```
+src/lib/report-designer/field-registry/
+  types.ts              — TypeScript interfaces
+  registry.ts           — Canonical field list (SINGLE SOURCE OF TRUTH)
+  registry-utils.ts     — Helper functions
+  legacy-binding-adapter.ts — Auto-generates ERP_BINDING_REGISTRY for backward compat
+  index.ts              — Public exports
+```
+
+---
+
+## Current Active Module Groups
+
+| Module | Status | Fields |
+|---|---|---|
+| HR | Active | full_name_en, employee_code, designation, department, branch, joining_date, nationality, employment_type, contract_end/start_date, probation_end_date, gender, marital_status, mobile_number, known_name, last_working_date, employment_status, work_site |
+| Company | Active | legal_name_en/ar, address, trn, trade_license_no, phone, email, website |
+| Document | Active | title, ref, generated_at, issue_date, qr_verification_url |
+| Report | Active | title, code, total_rows, generated_at |
+| Fleet | Planned | — |
+| Procurement | Planned | — |
+| Finance | Planned | — |
+| Inventory | Planned | — |
+| Transport | Planned | — |
+| HSE | Planned | — |
+| Workshop | Planned | — |
+| Weighbridge | Planned | — |
+
+---
+
+## UX.3 Dependency
+
+Restricted/confidential fields require **REPORT DESIGNER UX.3** governance unlock, which needs:
+- Template type restrictions (`allowedTemplateTypes`)
+- RBAC permission check (`requiredPermission`)
+- Output mode restrictions (`allowedOutputModes`)
+- Audit logging for sensitive field access
+- Management approval flow for sensitive template publishing

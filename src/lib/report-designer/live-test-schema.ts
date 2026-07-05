@@ -74,6 +74,22 @@ export interface ReportDesignerTestInput {
    * Values must be primitives only (string, number, boolean, null).
    */
   filters?: Record<string, string | number | boolean | null>;
+  /**
+   * Current in-memory header zone layout JSON from the editor.
+   * If not provided, the action falls back to the saved DB layout.
+   * Validated server-side using ReportDesignerLayoutJsonSchema.
+   */
+  headerLayoutJson?: unknown;
+  /**
+   * Current in-memory body zone layout JSON from the editor.
+   * If not provided, the action falls back to the saved DB layout.
+   */
+  bodyLayoutJson?: unknown;
+  /**
+   * Current in-memory footer zone layout JSON from the editor.
+   * If not provided, the action falls back to the saved DB layout.
+   */
+  footerLayoutJson?: unknown;
 }
 
 /**
@@ -143,6 +159,9 @@ export const ReportDesignerTestInputSchema = z.object({
   filters: z
     .record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))
     .optional(),
+  headerLayoutJson: z.unknown().optional(),
+  bodyLayoutJson: z.unknown().optional(),
+  footerLayoutJson: z.unknown().optional(),
 });
 
 export type ReportDesignerTestInputValidated = z.output<typeof ReportDesignerTestInputSchema>;
@@ -198,6 +217,16 @@ export function buildSampleBindingValues(): Record<string, string> {
     "employee.nationality": "[SAMPLE] UAE",
     "employee.employment_type": "[SAMPLE] Full-Time Permanent",
     "employee.contract_end_date": "[SAMPLE] 31 Dec 2027",
+    "employee.employment_status": "[SAMPLE] Active",
+    "employee.work_site": "[SAMPLE] Main Office — Dubai",
+    "employee.last_working_date": "",
+    // UX.2: new safe HR fields
+    "employee.known_name": "[SAMPLE] Ahmed",
+    "employee.gender": "[SAMPLE] Male",
+    "employee.marital_status": "[SAMPLE] Single",
+    "employee.mobile_number": "[SAMPLE] +971 50 XXX XXXX",
+    "employee.contract_start_date": "[SAMPLE] 01 Jan 2022",
+    "employee.probation_end_date": "[SAMPLE] 01 Apr 2022",
     "company.legal_name_en": "[SAMPLE] ALGT Holdings LLC",
     "company.legal_name_ar": "[SAMPLE] شركة الجت القابضة ذ.م.م",
     "company.address_block_en": "[SAMPLE] Level 12, Business Bay Tower, Dubai, UAE",

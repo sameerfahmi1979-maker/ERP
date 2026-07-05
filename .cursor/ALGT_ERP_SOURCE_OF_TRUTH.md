@@ -1,9 +1,22 @@
 ﻿# ALGT ERP â€” Source of Truth
 
 **Document:** `.cursor/ALGT_ERP_SOURCE_OF_TRUTH.md`  
-**Last updated:** 2026-07-03 (REPORT DESIGNER.2 — Puck Installation, Type, Query Keys, Editor Shell Prep — CLOSED / PASS)
+**Last updated:** 2026-07-04 (REPORT DESIGNER UX.3 — CLOSED/PASS ✅. Restricted/Sensitive Field Governance & Official Output Controls. Full governance layer: RBAC permission gates, template-type allowlists, output-mode masking, QR verification protection confirmed, audit logging. tsc: PASS. Report: `implementation_Review/Reports/REPORT_DESIGNER_UX_3_RESTRICTED_SENSITIVE_FIELD_GOVERNANCE_OFFICIAL_OUTPUT_CONTROLS_IMPLEMENTATION_REPORT.md`.)
 
-**Last closed gate:** REPORT DESIGNER.2 (**CLOSED / PASS ✅ — 2026-07-03. `@puckeditor/core` v0.22.0 (MIT) installed. ReportTemplate type already included all visual columns from REPORT DESIGNER.1. Report designer query keys added to `query-keys.ts` (5 keys under `queryKeys.reports.designer`). Invalidation helpers added to `invalidation.ts` (4 helpers). Minimal Puck config scaffold created: `src/features/report-designer/puck/` (4 files: types, config, shell, loader). Client-only dynamic loading fixed via `report-designer-puck-shell-loader.tsx` (ssr:false not allowed in Next.js 16 Server Components). Route skeleton `/admin/reports/editor` and `/admin/reports/editor/[templateId]` created and registered in route-access-registry and workspace-route-registry. "Reports Editor" sidebar item added under Reports. tsc: PASS. build: PASS. npm audit: 8 pre-existing vulnerabilities (dompurify, hono, js-yaml, postcss/next, uuid/exceljs, xlsx) — none from @puckeditor/core. Security grep: no dangerouslySetInnerHTML, no createAdminClient, no secrets in client feature code.**)
+**Last closed gate:** REPORT DESIGNER UX.3 (**CLOSED / PASS ✅ — 2026-07-04. Restricted/Sensitive Field Governance & Official Output Controls. No DB schema migration (permissions only). 10 scopes: (A) permissions `reports.sensitive_fields.use` + `.approve` seeded with role assignments. (B) governance.ts with `ReportOutputMode`, `ReportRenderContext`, `canFieldBeInsertedForTemplate`, `canFieldResolveInOutputMode`, `getRestrictedFieldMask`, audit helpers. (C) 11 sensitive registry entries (salary×4, banking×2, identity×2, visa×2, medical×1 planned). (D) Field picker context-aware via `FieldPickerContextProvider`; server page passes `ctx.permissionCodes` to editor client; amber unlock state for permitted restricted fields. (E) Security review template-type-aware: `ALWAYS_BLOCK` vs `GOVERNANCE_SENSITIVE` fragments; `approveTemplate`+`publishTemplate` enforce `reports.sensitive_fields.approve` for sensitive-warning templates. (F) Preview/test masking: `applyDefensiveRestrictedMasking` + test-data-resolver integration. (G) Official output resolvers: identity docs, WPS/IBAN, salary stub. (H) Audit logging: safe metadata only, no sensitive values, non-blocking. (I) QR verification confirmed — existing `sanitizer.ts` BLOCKED_KEY_PATTERNS cover all cases. (J) UX messages: `toast.warning` for restricted field warnings, `toast.error` for template-type violations. tsc: PASS. Report: `implementation_Review/Reports/REPORT_DESIGNER_UX_3_RESTRICTED_SENSITIVE_FIELD_GOVERNANCE_OFFICIAL_OUTPUT_CONTROLS_IMPLEMENTATION_REPORT.md`.**)
+
+**Previous closed gate:** REPORT DESIGNER UX.2 (**CLOSED / PASS ✅ — 2026-07-04. Dynamic Expandable Module Field Registry + Field Picker + bindingToken TipTap node + KeyValueSectionBlock grouped picker + New safe HR fields.**)
+
+**Previous closed gate (legacy):** REPORT DESIGNER.9 (**CLOSED / PASS ✅ — 2026-07-03. Final Rollout & Advanced Format Support. No DB migration. No new dependencies. REPORT DESIGNER SERIES CLOSED. Scope A: Advanced `ReportTableBlock` cell formatting — new `formatCell(value, format)` function: text (passthrough), number (`toLocaleString("en-US")`), money (2 decimal places, locale-formatted), date (`toLocaleDateString("en-GB", short month)`), badge (uppercase plain text). Applied at `mapReportTableBlock()` map time — all outputs are pre-formatted plain strings passed through `elEscapeHtml()` in renderer. Scope B: `ExecutiveLedgerTableSection` extended with `showHeader?: boolean` (default true) and `columnWidths?: string[]`; `renderTableSection()` in `html-renderer.ts` updated to conditionally render `<thead>` and apply width hints via safe CSS regex validation. Legacy callers unaffected. Scope C: jsPDF evaluated — `jspdf-autotable` is installed but jsPDF HTML-to-PDF plugin requires `html2canvas` (NOT installed). Browser `window.print()` (established DESIGNER.7) confirmed as v1 PDF path — safe, no new dependency. Scope F: Two new bindings added: `employee.work_site` → `work_sites.site_name` via `employees.primary_work_site_id`; `employee.last_working_date` → `employees.inactive_date`. Both columns confirmed via live Supabase query. Both added to ERP_BINDING_REGISTRY, `resolveEmployeeBindingValues()` SELECT, and `buildSampleBindingValues()`. All security greps clean. tsc: PASS. build: PASS. npm audit: 8 pre-existing vulnerabilities, 0 new. Report: `implementation_Review/Reports/REPORT_DESIGNER_9_FINAL_ROLLOUT_ADVANCED_FORMAT_SUPPORT_IMPLEMENTATION_REPORT.md`. Next: REPORT DESIGNER SERIES CLOSED / wait for next approved ERP priority from Sameer/Dina.**)
+
+**Previous closed gate:** REPORT DESIGNER.7 (**CLOSED / PASS ✅ — 2026-07-03. Governance, Approval & Security Review Integration. No DB migration. 6 deliverables: (1) `src/lib/report-designer/visual-template-security-review.ts` — pure security review for visual layout JSON; `reviewVisualTemplateLayoutSecurity(input)`: validates engine (puck/null only), schema version, parses all 3 zones with Zod schema, checks all 10 block types against allowlist, recursively scans block props for unsafe HTML tags / event handler keys / unsafe protocols / SQL / credentials; validates `{{binding}}` paths against ERP_BINDING_REGISTRY; blocks sensitive bindings (salary/IBAN/medical/etc.); enforces 64KB per-zone size limit. (2) `src/lib/template-governance/security-review.ts` extended — `TemplateContentFields` now includes visual layout columns; `runTemplateSecurityReview` delegates to `reviewVisualTemplateLayoutSecurity` via lazy require when visual fields present; merged findings returned in same `SecurityReviewResult` contract. (3) `src/server/actions/reports/template-governance.ts` updated — `submitTemplateForReview` and `runTemplateSecurityReviewAction` now fetch and pass visual columns to security review; `createTemplateDraftVersion` now copies `visual_editor_engine` + `visual_layout_schema_version`. (4) Production gate in `renderVisualTemplateForLetterPreview`: visual layout only rendered when `governance_status IN ('approved', 'published')`; silent fallback to legacy for other statuses. (5) `TestPreviewOnlyBanner` component in Reports Editor Test Report tab: shown for non-approved templates; links to governance page. `ReadOnlyBanner` enhanced with per-status colours. (6) Print/PDF path in `LetterPreviewDialog`: `handlePrint` + `handlePDF` now use `visualHtml` when available (window.open → window.print path). Security greps: ALL PASS. tsc: PASS. build: PASS. Report: implementation_Review/Reports/REPORT_DESIGNER_7_GOVERNANCE_APPROVAL_SECURITY_REVIEW_INTEGRATION_IMPLEMENTATION_REPORT.md. Next: REPORT DESIGNER.8 — Runtime UAT Closure and Advanced Table Designer.**)
+
+**Previous closed gate:** REPORT DESIGNER.6 (**CLOSED / PASS ✅ — 2026-07-03. Safe Renderer and Production Output Integration. No DB migration. 9 deliverables: (1) `src/lib/report-designer/production-renderer.ts` — pure server-side visual layout renderer; functions: `parseVisualLayoutZone`, `templateHasVisualLayout`, `renderVisualTemplateZones`, `renderVisualTemplateZonesParsed`; wraps `mapRawZonesToExecutiveLedgerDocument` + `renderExecutiveLedgerHtml`; returns `{ hasVisualLayout, html, document, warnings }`. (2) `src/lib/report-center/preview-runner.ts` — no-write report fetcher runner; calls `REPORT_FETCHERS[reportCode].fetch()` directly; NEVER inserts erp_report_runs/erp_report_delivery_logs/email_queue; caps rows at 50, applies same redaction engine. (3) `report_filters` test mode fully implemented — calls preview-runner, maps `report.*` bindings (title, code, total_rows, generated_at), includes cap/redaction warnings. (4) Company Context test mode — new `live_record` sub-mode with `ownerCompanyId` only; `searchReportDesignerTestCompanies(query)` server action searches `owner_companies` by legal_name_en/company_code. (5) `employee.employment_status` binding — added to registry, test-data-resolver (`employees.employee_status` → humanised string), and sample values. (6) Test Report panel updated to 4 modes: Sample Data, Employee Record, Company Context, Report Filters; company uses `ERPCombobox` + debounced server search; report filters uses text input for report code. (7) `ReportTemplateForSelection` extended with `visual_editor_engine`; `listReportTemplatesForSelection` query includes field. (8) `renderVisualTemplateForLetterPreview(templateId, employeeId?, ownerCompanyId?)` server action — checks `templateHasVisualLayout`, resolves bindings, applies redaction, renders HTML; fallback `hasVisualLayout=false` when no Puck layout. (9) `LetterPreviewDialog` integrated — new `visualHtml`/`isLoadingVisual` state; `useEffect` on `formalView+selectedTemplateId` calls `renderVisualTemplateForLetterPreview`; renders `<iframe srcDoc={visualHtml}>` when visual layout available, hides legacy `ExecutiveLedgerPreview`; full fallback when no visual layout. QR/issuance path 100% unchanged. All safety rules maintained: no QR writes, no erp_report_runs writes, no emails, no mutations, no dangerouslySetInnerHTML, no service_role in client. Security greps PASS. tsc: PASS. build: PASS. Report: implementation_Review/Reports/REPORT_DESIGNER_6_SAFE_RENDERER_PRODUCTION_OUTPUT_INTEGRATION_IMPLEMENTATION_REPORT.md. Next: REPORT DESIGNER.7 — Governance, Approval & Security Review Integration.**)
+ DESIGNER.4 sample-only FormalPreviewPanel replaced with `ReportDesignerTestPanel` supporting two test modes: (1) Sample Data — preserves DESIGNER.4 sample preview behavior, (2) Employee Record — resolves real ERP employee + owner company + document bindings via `runReportDesignerTest` server action. New resolver library `src/lib/report-designer/test-data-resolver.ts`: `resolveEmployeeBindingValues()` (SELECT employees + designation/dept/branch/company/nationality/employment_type joins, no payroll/medical), `resolveOwnerCompanyBindingValues()` (SELECT owner_companies safe columns), `resolveDocumentBindingValues()` (metadata only, no DB), `redactDesignerTestBindingValues()` (deny-list: salary/iban/passport/eid/medical/ocr/api_key/etc.), `buildReportDesignerTestContextSummary()`. New `searchReportDesignerTestEmployees(query)` server action: requires hr.employees.view || reports.manage, returns safe display fields only (id, employee_code, full_name_en, designation). Employee selector uses ERPCombobox with debounced `onSearchQueryChange` server-side search. `ReportDesignerTestInput` extended with `headerLayoutJson/bodyLayoutJson/footerLayoutJson` (z.unknown().optional()) so current in-memory unsaved layout is included in test runs. `runReportDesignerTest` fully implemented: reads template + branding, resolves bindings, maps via `mapRawZonesToExecutiveLedgerDocument`, renders via `renderExecutiveLedgerHtml`, returns HTML + warnings + context summary — NEVER writes QR/report_runs/emails/mutations. Report Filters mode deferred to DESIGNER.6 (falls back to sample with warning). Security: no dangerouslySetInnerHTML, no erp_output_public_links, no erp_report_runs, no email queue, all greps PASS. tsc: PASS. build: PASS. Report: implementation_Review/Reports/REPORT_DESIGNER_5_LIVE_REPORT_TEST_EXECUTION_WITH_REAL_ERP_DATA_IMPLEMENTATION_REPORT.md. Next: REPORT DESIGNER.6 — Safe Renderer and Production Output Integration.**)
+
+**Previous closed gate:** REPORT DESIGNER.3 (**CLOSED / PASS ✅ — 2026-07-03. 10 ERP Puck blocks implemented: HeadingBlock, BodyTextSectionBlock, KeyValueSectionBlock, DividerBlock, SpacerBlock, BrandingHeaderBlock, CompanyLogoBlock, SignatoryBlock, StampBlock, VerificationQrBlock. Each block in its own file under `src/features/report-designer/blocks/`. All block props match REPORT DESIGNER.1 schema. KeyValueSectionBlock uses Puck ArrayField with binding select dropdown from ERP_BINDING_REGISTRY (27 allowlisted paths). Zone switching (Header/Body/Footer) implemented in `report-designer-editor-client.tsx` — all 3 zones preserved in ref on switch, all 3 always passed to saveReportTemplateVisualLayout to prevent destructive `?? {}` overwrites. Governance read-only guard: draft/rejected editable, in_review/approved/published/archived read-only with status-specific banners. Template metadata header: name, code, type, version, governance badge, security review badge, layout updated-at. VisualLayoutResult extended with templateCode, versionNo, securityReviewStatus, visualLayoutUpdatedBy. Editor index page shows live template listing with Edit/View links. Puck shell fixed: read-only mode now uses `<Render>` instead of broken `<Puck.Preview>` outside context. Security: no dangerouslySetInnerHTML, no admin client, no direct Supabase calls in features. tsc: PASS. build: PASS. Report: implementation_Review/Reports/REPORT_DESIGNER_3_ERP_BLOCK_LIBRARY_FOUNDATION_IMPLEMENTATION_REPORT.md. Next: REPORT DESIGNER.4 — Layout JSON to Executive Ledger Mapping.**)
+
+**Previous closed gate:** REPORT DESIGNER.2 (**CLOSED / PASS ✅ — 2026-07-03. `@puckeditor/core` v0.22.0 (MIT) installed. ReportTemplate type already included all visual columns from REPORT DESIGNER.1. Report designer query keys added to `query-keys.ts` (5 keys under `queryKeys.reports.designer`). Invalidation helpers added to `invalidation.ts` (4 helpers). Minimal Puck config scaffold created: `src/features/report-designer/puck/` (4 files: types, config, shell, loader). Client-only dynamic loading fixed via `report-designer-puck-shell-loader.tsx` (ssr:false not allowed in Next.js 16 Server Components). Route skeleton `/admin/reports/editor` and `/admin/reports/editor/[templateId]` created and registered in route-access-registry and workspace-route-registry. "Reports Editor" sidebar item added under Reports. tsc: PASS. build: PASS. npm audit: 8 pre-existing vulnerabilities (dompurify, hono, js-yaml, postcss/next, uuid/exceljs, xlsx) — none from @puckeditor/core. Security grep: no dangerouslySetInnerHTML, no createAdminClient, no secrets in client feature code.**)
 **Maintainer:** Update after **every** completed ERP phase
 **Last closed gate:** REPORT DESIGNER.1 (**CLOSED / PASS ✅ — 2026-07-03. DB Schema, Layout Standard, Zod Validation, and Live Report Test Foundation. Migration applied: `20260703000001_report_designer_1_visual_layout_columns.sql` — 4 new columns on `erp_report_templates`: `visual_editor_engine` (text, default 'puck'), `visual_layout_schema_version` (integer, default 1), `visual_layout_updated_at` (timestamptz, nullable), `visual_layout_updated_by` (bigint FK → user_profiles, nullable). New library `src/lib/report-designer/` (7 files: types.ts, constants.ts, binding-registry.ts, layout-schema.ts, layout-validation.ts, live-test-schema.ts, index.ts). 10-block subset defined: HeadingBlock, BodyTextSectionBlock, KeyValueSectionBlock, DividerBlock, SpacerBlock, BrandingHeaderBlock, CompanyLogoBlock, SignatoryBlock, StampBlock, VerificationQrBlock. 28-path binding allowlist in ERP_BINDING_REGISTRY (employee.*/company.*/document.*/report.* namespaces). Sensitive fields excluded: salary, IBAN, bank_account, passport/eid raw numbers, medical data, ocr_text, *_id FKs, api_key/secret/token. Zod v4 schemas: ReportDesignerLayoutJsonSchema + SaveVisualLayoutInputSchema + all block schemas + ReportDesignerTestInputSchema. Server actions: `src/server/actions/reports/report-designer-layout.ts` (getReportTemplateVisualLayout, saveReportTemplateVisualLayout, validateReportDesignerLayoutAction) + `src/server/actions/reports/report-designer-test.ts` (getReportDesignerTestOptions, validateReportDesignerTestInput, runReportDesignerTest — sample data only, REPORT DESIGNER.5 for live data). Governance guard: only draft/rejected templates may have visual layout saved. Audit log: structural metadata only (no full layout JSON). Standards: `docs/standards/ERP_REPORT_DESIGNER_VISUAL_TEMPLATE_STANDARD.md` + `.cursor/rules/erp-report-designer-visual-template-standard.mdc`. ReportTemplate type updated with 4 new visual_* columns. tsc --noEmit → 0 errors. build → clean. Report: `implementation_Review/Reports/REPORT_DESIGNER_1_DB_SCHEMA_LAYOUT_STANDARD_ZOD_VALIDATION_IMPLEMENTATION_REPORT.md`. Next: REPORT DESIGNER.2 — Puck installation, query-keys, ReportTemplate query updates.**)
 
@@ -967,7 +980,115 @@ ERP_FULL_IMPLEMENTATION_GUIDE_FOR_NEXT_CHAT.md
 - Leave balance auto-deduction not implemented (manual entry only)
 - Report schedule background job runner not implemented (UI+DB ready)
 
-**Next recommended phase:** REPORT DESIGNER.3 — ERP Block Library Foundation (Heading, BodyText, KeyValue, Divider, Spacer, BrandingHeader, CompanyLogo, Signatory, Stamp, VerificationQr blocks with full prop schemas matching REPORT DESIGNER.1 binding registry).
+**Next recommended phase:** Core REPORT DESIGNER series (DESIGNER.1–9) is CLOSED/PASS. REPORT DESIGNER UX.1 is CLOSED/PASS. REPORT DESIGNER UX.2 is CLOSED/PASS. Next approved phase is REPORT DESIGNER UX.3 — requires Sameer/Dina sign-off before starting.
+
+---
+
+## REPORT DESIGNER UX ROADMAP — UPDATED (2026-07-04)
+
+**Source document:** `implementation_Review/Reports/REPORT_DESIGNER_UX_IMPROVEMENT_PLAN.md`  
+**Correction prompt:** `ChatGPT/CURSOR_PROMPT_REPORT_DESIGNER_UX_PLAN_CORRECTION_TIPTAP_DYNAMIC_MODULE_FIELD_BROWSER.md`  
+
+| Phase | Summary | Status |
+|---|---|---|
+| **REPORT DESIGNER UX.1** | TipTap Rich Text + Multi-Column Layout Foundation | **CLOSED / PASS ✅ — 2026-07-04** |
+| **REPORT DESIGNER UX.2** | Dynamic Expandable Module Field Registry and Field Picker | **CLOSED / PASS ✅ — 2026-07-04** |
+| **REPORT DESIGNER UX.3** | Restricted/Sensitive Field Governance and Official Output Controls | PLANNED |
+
+### UX.1 Closure Summary (2026-07-04)
+
+**Status:** CLOSED / PASS ✅  
+**Dependencies installed:** `@tiptap/react`, `@tiptap/starter-kit`, `@tiptap/extension-underline`, `@tiptap/extension-text-style`, `@tiptap/extension-color`, `@tiptap/extension-text-align` (0 new vulnerabilities)  
+**Schema version:** bumped from 1 → 2 (backward compatible)  
+**New block types:** `ColumnStripBlock` (12th ERP block)  
+**New files:** `prosemirror-renderer.ts`, `report-designer-rich-text-editor.tsx`, `column-strip-block.tsx`  
+**Key capabilities added:**
+- Safe TipTap rich text editing for `BodyTextSectionBlock` (bold, italic, underline, alignment, lists, font size 8–36, safe hex color)
+- ProseMirror JSON storage in `richContent` field; legacy `content` string preserved for backward compat
+- Server-side ProseMirror JSON → safe HTML renderer (no TipTap runtime on server)
+- Controlled multi-column layout block (`ColumnStripBlock`) usable in Header, Body, and Footer zones
+- 2-col and 3-col presets with safe CSS flex layout
+- 8 slot content types: none, logo, heading, text, key_value, signatory, stamp, qr
+- `ExecutiveLedgerColumnSection` type + `renderColumnSection()` in html-renderer
+- Security review extended for richContent (ProseMirror JSON node/mark/attr validation) and ColumnStripBlock (slot type validation, no nesting)
+
+**Report:** `implementation_Review/Reports/REPORT_DESIGNER_UX_1_TIPTAP_RICH_TEXT_MULTI_COLUMN_LAYOUT_IMPLEMENTATION_REPORT.md`
+**Status:** PLANNED — Do not implement without explicit Sameer/Dina approval and implementation prompt.
+
+After REPORT DESIGNER.9 closure, the approved UX roadmap is:
+
+| Phase | Title | Status |
+|---|---|---|
+| **REPORT DESIGNER UX.1** | TipTap Rich Text + Multi-Column Layout Foundation | **CLOSED / PASS ✅** |
+| **REPORT DESIGNER UX.2** | Dynamic Expandable Module Field Registry and Field Picker | **CLOSED / PASS ✅** |
+| **REPORT DESIGNER UX.3** | Restricted/Sensitive Field Governance and Official Output Controls | PLANNED |
+
+### UX.2 Closure Summary (2026-07-04)
+
+**Status:** CLOSED / PASS ✅  
+**No new npm dependencies installed** — registry is TypeScript-backed only.  
+**DB migration:** None required.
+
+**Scope delivered:**
+
+- **Scope A**: New `ReportFieldRegistry` in `src/lib/report-designer/field-registry/` — 5 files: `types.ts`, `registry.ts`, `registry-utils.ts`, `legacy-binding-adapter.ts`, `index.ts`.
+- **Scope B**: `binding-registry.ts` updated — `ERP_BINDING_REGISTRY` now auto-generated from `GENERATED_ERP_BINDING_REGISTRY`. All existing imports unchanged.
+- **Scope C**: New safe HR fields added (DB columns confirmed from migration): `employee.known_name`, `employee.gender`, `employee.marital_status`, `employee.mobile_number`, `employee.contract_start_date`, `employee.probation_end_date`. `employee.end_of_service_date` added as planned/restricted. Resolver + sample values updated.
+- **Scope D**: `ReportFieldPicker` + `ReportFieldPickerPopover` + `ReportFieldBadge` UI components in `src/features/report-designer/field-picker/`.
+- **Scope E**: `BindingToken` custom TipTap inline node implemented. "Insert Field" button added to TipTap toolbar. Field picker inserts `bindingToken` chips. Legacy `{{path}}` text typing still supported.
+- **Scope F**: `KeyValueSectionBlock` binding field replaced with custom grouped `BindingPickerField` component. Existing saved blocks backward compatible.
+- **Scope G**: ReportTableBlock column suggestions deferred — documented as safe-to-defer per prompt.
+- **Scope H**: Security review updated — validates `bindingToken.attrs.path` against registry. `extractVisualLayoutBindings` walks ProseMirror JSON for `bindingToken` nodes.
+- **Scope I**: Cursor rule `erp-report-designer-field-registry-standard.mdc` created with future module onboarding rule.
+- **Scope J**: `docs/standards/ERP_REPORT_DESIGNER_FIELD_REGISTRY_STANDARD.md` created.
+
+**Validation:** `npx tsc --noEmit` ✅ Exit 0 | `npm run build` ✅ Exit 0 | Security greps ✅ Clean
+
+### UX.1 Summary
+- TipTap rich text editor replacing plain string `content` in `BodyTextSectionBlock`
+- Content stored as ProseMirror JSON — never raw HTML
+- Allowed marks: bold, italic, underline, text color (safe hex), font size (8–36px)
+- Raw HTML / raw CSS / JavaScript remain permanently blocked
+- `ColumnStripBlock` — new 2-col/3-col layout container for all three zones (Header, Body, Footer)
+- `ExecutiveLedgerColumnSection` added to EL types + renderer
+- No new DB migration expected (schema version bump only)
+
+### UX.2 Summary
+- Expand `ERP_BINDING_REGISTRY` to a full `ReportFieldRegistry` grouped by module/entity
+- Fields classified by sensitivity_level: public / internal / restricted / confidential
+- Field Picker UI: grouped, searchable, click-to-insert into TipTap or block property panel
+- New safe HR fields added (probation_end_date, contract_start_date, mobile_number, etc.)
+- Restricted fields shown with lock badge — not insertable until UX.3 unlocks them
+- TypeScript-backed registry (not DB-backed in v1)
+
+### UX.3 Summary
+- Sensitive fields (salary, IBAN, passport, EID, medical) unlockable in official outputs only
+- Gates: permission + template_type allowlist + governance approval + audit log
+- Preview/test mode always shows `***` masked placeholder for restricted fields
+- New permissions: reports.sensitive_fields.use, reports.sensitive_fields.approve, hr.payroll.view, hr.medical.view
+
+### Sensitive Field Rule (Corrected)
+Sensitive data is **blocked by default** but may be printed in official outputs when authorized by:
+user permission + template type allowlist + governance approval + security review + audit logging.
+Raw HTML / CSS / JavaScript remain blocked regardless of user level or permission.
+
+### Future Module Update Rule (Standing Rule)
+
+> **MANDATORY:** Whenever a new ERP module is implemented or significantly enhanced, the implementation phase MUST review whether the module needs Report Designer field registry support. If yes, the module phase must add:
+> - Allowlisted field definitions in the Report Field Registry
+> - Resolver key mappings (server-side — no arbitrary SQL from UI)
+> - Sample values for each field
+> - Sensitivity classification (public / internal / restricted / confidential)
+> - Security review coverage
+> - Source of Truth update
+>
+> **No field may be exposed to the Report Designer just because it exists in the database. Every field must be explicitly allowlisted, reviewed, and registered.**
+
+**Examples:**
+- Fleet module: add fleet.vehicle_code, fleet.plate_number, fleet.registration_expiry, fleet.assigned_driver
+- Workshop module: add workshop.job_card_no, workshop.vehicle, workshop.complaint, workshop.work_status
+- Procurement module: add procurement.po_number, procurement.supplier_name, procurement.delivery_date
+- Finance module: add finance.invoice_no, finance.due_date (IBAN → confidential, requires UX.3 gates)
 
 ---
 

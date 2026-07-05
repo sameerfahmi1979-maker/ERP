@@ -416,11 +416,42 @@ export function GovernanceActionsDropdown({
       const res = await runTemplateSecurityReviewAction(template.id);
       if (res.success) {
         const review = res.data!;
+
+        // UX.3: check for sensitive field governance warnings
+        const sensitiveWarnings = review.findings.filter(
+          (f) =>
+            f.rule === "restricted_field_elevated_approval_required" ||
+            f.rule === "sensitive_fields_require_elevated_approval" ||
+            f.rule === "restricted_field_template_type_unknown"
+        );
+        const blockingFindings = review.findings.filter((f) => f.severity === "block");
+
         if (review.passed) {
-          toast.success(`Security review passed${review.severity === "warning" ? " (with warnings)" : ""}.`);
+          if (sensitiveWarnings.length > 0) {
+            toast.warning(
+              `Security review passed — ${sensitiveWarnings.length} restricted field warning(s). Template requires reports.sensitive_fields.approve to publish.`,
+              { duration: 8000 }
+            );
+          } else if (review.severity === "warning") {
+            toast.success("Security review passed (with warnings).");
+          } else {
+            toast.success("Security review passed.");
+          }
           onTemplateUpdated({ id: template.id, security_review_status: "passed" });
         } else {
-          toast.error(`Security review failed — ${review.findings.length} issue(s) found.`);
+          const restrictedBlocks = blockingFindings.filter(
+            (f) =>
+              f.rule === "restricted_field_template_type_not_allowed" ||
+              f.rule === "sensitive_binding_path"
+          );
+          if (restrictedBlocks.length > 0) {
+            toast.error(
+              `Security review failed — ${restrictedBlocks.length} restricted/sensitive field(s) not allowed for this template type. Remove them or change the template type.`,
+              { duration: 10000 }
+            );
+          } else {
+            toast.error(`Security review failed — ${review.findings.length} issue(s) found.`);
+          }
           onTemplateUpdated({ id: template.id, security_review_status: "failed" });
         }
       } else {

@@ -31,6 +31,7 @@ import {
   runTemplateSecurityReview,
   type SecurityReviewResult,
 } from "@/lib/template-governance/security-review";
+import { getRestrictedFieldsFromPaths } from "@/lib/report-designer/field-registry";
 import { createNotification } from "@/server/actions/notifications/notifications";
 
 type ActionResult<T = unknown> = { success: boolean; data?: T; error?: string };
@@ -83,7 +84,7 @@ export async function submitTemplateForReview(
     const db = createAdminClient();
     const { data: tpl, error: fetchError } = await db
       .from("erp_report_templates")
-      .select("id, template_code, template_name, governance_status, body_html_en, body_html_ar, custom_css, watermark_text")
+      .select("id, template_code, template_name, template_type, governance_status, body_html_en, body_html_ar, custom_css, watermark_text, visual_editor_engine, visual_layout_schema_version, header_layout_json, body_layout_json, footer_layout_json, style_json")
       .eq("id", templateId)
       .is("deleted_at", null)
       .single();
@@ -93,12 +94,20 @@ export async function submitTemplateForReview(
       return { success: false, error: `Template is in '${tpl.governance_status}' status and cannot be submitted for review.` };
     }
 
-    // Run security review automatically on submission
+    // Run security review automatically on submission (legacy HTML + visual layout)
     const review = runTemplateSecurityReview({
       body_html_en: tpl.body_html_en,
       body_html_ar: tpl.body_html_ar,
       custom_css: tpl.custom_css,
       watermark_text: tpl.watermark_text,
+      visual_editor_engine: tpl.visual_editor_engine,
+      visual_layout_schema_version: tpl.visual_layout_schema_version,
+      header_layout_json: tpl.header_layout_json,
+      body_layout_json: tpl.body_layout_json,
+      footer_layout_json: tpl.footer_layout_json,
+      style_json: tpl.style_json,
+      // UX.3: pass template_type for governance-aware sensitive field check
+      template_type: tpl.template_type,
     });
 
     const secStatus: TemplateSecurityReviewStatus = review.passed
@@ -228,7 +237,7 @@ export async function approveTemplate(
     const db = createAdminClient();
     const { data: tpl, error: fetchError } = await db
       .from("erp_report_templates")
-      .select("id, template_code, governance_status, security_review_status")
+      .select("id, template_code, template_type, governance_status, security_review_status, security_review_notes, header_layout_json, body_layout_json, footer_layout_json")
       .eq("id", templateId)
       .is("deleted_at", null)
       .single();
@@ -239,6 +248,18 @@ export async function approveTemplate(
     }
     if (tpl.security_review_status === "failed") {
       return { success: false, error: "Template has a failed security review. Resolve security findings before approving." };
+    }
+
+    // UX.3: Enforce reports.sensitive_fields.approve if template uses restricted/confidential fields
+    const reviewNotes = (tpl.security_review_notes as string | null) ?? "";
+    const hasSensitiveWarnings =
+      reviewNotes.includes("restricted_field_elevated_approval_required") ||
+      reviewNotes.includes("sensitive_fields_require_elevated_approval");
+    if (hasSensitiveWarnings && !hasPermission(ctx, "reports.sensitive_fields.approve")) {
+      return {
+        success: false,
+        error: "This template uses restricted/confidential fields. You need the 'reports.sensitive_fields.approve' permission to approve it.",
+      };
     }
 
     const { error } = await db.from("erp_report_templates").update({
@@ -343,7 +364,7 @@ export async function publishTemplate(templateId: number): Promise<ActionResult>
     const db = createAdminClient();
     const { data: tpl, error: fetchError } = await db
       .from("erp_report_templates")
-      .select("id, template_code, governance_status")
+      .select("id, template_code, template_type, governance_status, security_review_notes")
       .eq("id", templateId)
       .is("deleted_at", null)
       .single();
@@ -351,6 +372,18 @@ export async function publishTemplate(templateId: number): Promise<ActionResult>
     if (fetchError || !tpl) return { success: false, error: "Template not found." };
     if (tpl.governance_status !== "approved") {
       return { success: false, error: `Template must be 'approved' before publishing. Current status: '${tpl.governance_status}'.` };
+    }
+
+    // UX.3: Enforce reports.sensitive_fields.approve at publish step too
+    const reviewNotes = (tpl.security_review_notes as string | null) ?? "";
+    const hasSensitiveWarnings =
+      reviewNotes.includes("restricted_field_elevated_approval_required") ||
+      reviewNotes.includes("sensitive_fields_require_elevated_approval");
+    if (hasSensitiveWarnings && !hasPermission(ctx, "reports.sensitive_fields.approve")) {
+      return {
+        success: false,
+        error: "This template uses restricted/confidential fields. You need the 'reports.sensitive_fields.approve' permission to publish it.",
+      };
     }
 
     const { error } = await db.from("erp_report_templates").update({
@@ -502,6 +535,12 @@ export async function createTemplateDraftVersion(
         footer_layout_json: source.footer_layout_json,
         body_layout_json: source.body_layout_json,
         style_json: source.style_json,
+        // Visual editor fields — preserve layout engine and version for new draft
+        visual_editor_engine: source.visual_editor_engine ?? null,
+        visual_layout_schema_version: source.visual_layout_schema_version ?? null,
+        // visual_layout_updated_at/by reset to null — the copy is fresh
+        visual_layout_updated_at: null,
+        visual_layout_updated_by: null,
         // Governance reset for the new draft
         version_no: (source.version_no ?? 1) + 1,
         parent_template_id: templateId,
@@ -586,7 +625,7 @@ export async function runTemplateSecurityReviewAction(
     const db = createAdminClient();
     const { data: tpl, error: fetchError } = await db
       .from("erp_report_templates")
-      .select("id, template_code, body_html_en, body_html_ar, custom_css, watermark_text")
+      .select("id, template_code, template_type, body_html_en, body_html_ar, custom_css, watermark_text, visual_editor_engine, visual_layout_schema_version, header_layout_json, body_layout_json, footer_layout_json, style_json")
       .eq("id", templateId)
       .is("deleted_at", null)
       .single();
@@ -598,6 +637,14 @@ export async function runTemplateSecurityReviewAction(
       body_html_ar: tpl.body_html_ar,
       custom_css: tpl.custom_css,
       watermark_text: tpl.watermark_text,
+      visual_editor_engine: tpl.visual_editor_engine,
+      visual_layout_schema_version: tpl.visual_layout_schema_version,
+      header_layout_json: tpl.header_layout_json,
+      body_layout_json: tpl.body_layout_json,
+      footer_layout_json: tpl.footer_layout_json,
+      style_json: tpl.style_json,
+      // UX.3: pass template_type for governance-aware sensitive field check
+      template_type: tpl.template_type,
     });
 
     const secStatus: TemplateSecurityReviewStatus = review.passed

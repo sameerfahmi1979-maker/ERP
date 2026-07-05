@@ -24,6 +24,8 @@ export type {
   SignatoryBlock,
   StampBlock,
   VerificationQrBlock,
+  ReportTableBlock,
+  ReportTableColumnDef,
   SaveVisualLayoutInput,
   VisualLayoutResult,
   LayoutSaveAuditMeta,
@@ -44,6 +46,9 @@ export {
   MAX_BINDING_PATH_LENGTH,
   BINDING_PATH_REGEX,
   MAX_BLOCK_TEXT_LENGTH,
+  REPORT_TABLE_MAX_ROWS,
+  REPORT_TABLE_DEFAULT_MAX_ROWS,
+  SAFE_COLUMN_KEY_REGEX,
 } from "./constants";
 export type { PermittedFontFamily, ReportDesignerBlockType as BlockTypeConstant } from "./constants";
 
@@ -93,3 +98,47 @@ export type {
   ReportDesignerTestOptions,
   ReportDesignerTestInputValidated,
 } from "./live-test-schema";
+
+// Layout to Executive Ledger mapper (REPORT DESIGNER.4)
+export {
+  mapReportDesignerZonesToExecutiveLedgerDocument,
+  mapRawZonesToExecutiveLedgerDocument,
+} from "./layout-to-executive-ledger";
+export type { MapZonesInput, MapZonesResult } from "./layout-to-executive-ledger";
+
+// Test data resolver (REPORT DESIGNER.5)
+export {
+  buildSampleReportDesignerBindingValues,
+  redactDesignerTestBindingValues,
+  resolveDocumentBindingValues,
+  buildReportDesignerTestContextSummary,
+} from "./test-data-resolver";
+export type {
+  ResolveEmployeeBindingValuesResult,
+  ResolveCompanyBindingValuesResult,
+  ReportDesignerTestContextSummary,
+} from "./test-data-resolver";
+
+// Production renderer (REPORT DESIGNER.6)
+export {
+  renderVisualTemplateZones,
+  renderVisualTemplateZonesParsed,
+  parseVisualLayoutZone,
+  templateHasVisualLayout,
+  EMPTY_LAYOUT as PRODUCTION_RENDERER_EMPTY_LAYOUT,
+} from "./production-renderer";
+export type {
+  ProductionRenderInput,
+  ProductionRenderResult,
+} from "./production-renderer";
+
+// Visual template security review (REPORT DESIGNER.7)
+export {
+  reviewVisualTemplateLayoutSecurity,
+  reviewVisualLayoutZone,
+  extractVisualLayoutBindings,
+} from "./visual-template-security-review";
+export type {
+  VisualTemplateSecurityReviewInput,
+  VisualTemplateSecurityReviewResult,
+} from "./visual-template-security-review";

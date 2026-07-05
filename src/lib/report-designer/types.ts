@@ -20,7 +20,7 @@
 export type ReportDesignerEngine = "puck";
 
 /** Current layout JSON schema version — increment when block schema changes */
-export const CURRENT_LAYOUT_SCHEMA_VERSION = 1;
+export const CURRENT_LAYOUT_SCHEMA_VERSION = 2;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Layout root
@@ -79,7 +79,9 @@ export type ReportDesignerBlock =
   | CompanyLogoBlock
   | SignatoryBlock
   | StampBlock
-  | VerificationQrBlock;
+  | VerificationQrBlock
+  | ReportTableBlock
+  | ColumnStripBlock;
 
 /** Discriminated block type literal union */
 export type ReportDesignerBlockType = ReportDesignerBlock["type"];
@@ -100,6 +102,22 @@ export interface HeadingBlock {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ProseMirror JSON (TipTap rich text) — REPORT DESIGNER UX.1
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Minimal type for ProseMirror/TipTap JSON document.
+ * Stored as-is in richContent; validated + rendered server-side.
+ *
+ * Allowed top-level structure: { type: "doc", content: [...nodes] }
+ * All deeper validation is done by layout-schema.ts + visual-template-security-review.ts.
+ */
+export interface ProseMirrorDocJson {
+  type: "doc";
+  content?: unknown[];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Body text section block
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -107,6 +125,9 @@ export interface HeadingBlock {
  * Free-form body text with optional ERP binding placeholders.
  * Bindings use {{namespace.field}} syntax and are resolved server-side.
  * Maps to ExecutiveLedgerBodySection at render time.
+ *
+ * UX.1: richContent (ProseMirror JSON) takes priority over legacy content string.
+ * Backward compat: content is still accepted for existing templates.
  */
 export interface BodyTextSectionBlock {
   type: "BodyTextSectionBlock";
@@ -114,7 +135,15 @@ export interface BodyTextSectionBlock {
     /** Optional section title */
     title?: string;
     /**
-     * Body text with optional {{binding}} placeholders.
+     * REPORT DESIGNER UX.1: Rich text content as ProseMirror JSON.
+     * When present and valid, this takes priority over `content`.
+     * Stored by the TipTap editor in the Puck property panel.
+     * Nullable: Puck defaultProps and cleared legacy rows store null.
+     */
+    richContent?: ProseMirrorDocJson | null;
+    /**
+     * Legacy plain text body with optional {{binding}} placeholders.
+     * Still used as fallback when richContent is absent.
      * Example: "This letter certifies that {{employee.full_name_en}} is employed..."
      * All placeholders are validated against ERP_BINDING_REGISTRY.
      */
@@ -285,6 +314,136 @@ export interface VerificationQrBlock {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Report Table block (REPORT DESIGNER.8)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Column configuration for ReportTableBlock */
+export interface ReportTableColumnDef {
+  /** Column key matching a key in the preview rows. Must be a safe plain identifier. */
+  key: string;
+  /** Display header label */
+  label: string;
+  /** Optional column width hint (e.g. "120px", "10%") */
+  width?: string;
+  align?: "left" | "center" | "right";
+  /** How the cell value is formatted at render time */
+  format?: "text" | "date" | "number" | "money" | "badge";
+}
+
+/**
+ * Safe tabular data block driven by report preview rows.
+ *
+ * `dataSource` must be exactly `"report.preview_rows"` — the only approved source.
+ * Column keys are plain identifiers only; no HTML, no expressions, no bindings.
+ * All cell values pass HTML-escaping at render time.
+ *
+ * Only meaningful in Report Filters test mode or when `previewRows` are provided
+ * to the mapper. Renders an empty state when no rows are available.
+ */
+export interface ReportTableBlock {
+  type: "ReportTableBlock";
+  props: {
+    title?: string;
+    /** Must be exactly "report.preview_rows" */
+    dataSource: "report.preview_rows";
+    /** Column definitions — keys must be safe plain identifiers */
+    columns: ReportTableColumnDef[];
+    /** Max rows to display — capped at 50. Default: 25. */
+    maxRows?: number;
+    showRowNumbers?: boolean;
+    showHeader?: boolean;
+    emptyText?: string;
+    density?: "compact" | "normal";
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Column Strip block (REPORT DESIGNER UX.1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Allowed content types for a ColumnStripBlock slot */
+export type ColumnSlotContentType =
+  | "none"
+  | "logo"
+  | "heading"
+  | "text"
+  | "key_value"
+  | "signatory"
+  | "stamp"
+  | "qr";
+
+/**
+ * A single slot inside a ColumnStripBlock.
+ * Uses a flat structure for Puck prop compatibility.
+ * contentType selects which block renders in this slot.
+ */
+export interface ColumnStripSlot {
+  contentType: ColumnSlotContentType;
+
+  // ── HeadingBlock slot ─────────────────────────────────────────────────────
+  headingText?: string;
+  headingLevel?: "h1" | "h2" | "h3";
+  headingAlign?: "left" | "center" | "right";
+
+  // ── BodyTextSectionBlock slot ─────────────────────────────────────────────
+  bodyTitle?: string;
+  bodyContent?: string;
+
+  // ── KeyValueSectionBlock slot (single field) ──────────────────────────────
+  kvTitle?: string;
+  kvLabel?: string;
+  kvBinding?: string;
+
+  // ── CompanyLogoBlock slot ─────────────────────────────────────────────────
+  logoVariant?: "report_logo" | "small_logo";
+  logoAlign?: "left" | "center" | "right";
+  logoMaxHeightMm?: number;
+
+  // ── SignatoryBlock slot ───────────────────────────────────────────────────
+  showSignature?: boolean;
+  signatoryNameOverride?: string;
+  signatoryTitleOverride?: string;
+
+  // ── StampBlock slot ───────────────────────────────────────────────────────
+  stampSizeMm?: number;
+  stampAlign?: "left" | "center" | "right";
+
+  // ── VerificationQrBlock slot ──────────────────────────────────────────────
+  qrLabel?: string;
+  qrSizeMm?: number;
+  qrAlign?: "left" | "center" | "right";
+}
+
+/**
+ * Controlled multi-column layout container.
+ * Usable in Header, Body, and Footer zones.
+ *
+ * Fixed slot design: each slot holds exactly one block of a permitted type.
+ * No nesting of ColumnStripBlocks allowed.
+ * No ReportTableBlock or BrandingHeaderBlock in slots (full-width only).
+ * No arbitrary width strings — layout presets only.
+ *
+ * Maps to ExecutiveLedgerColumnSection at render time.
+ */
+export interface ColumnStripBlock {
+  type: "ColumnStripBlock";
+  props: {
+    /** Column layout preset */
+    layout: "equal" | "left-wide" | "right-wide" | "2-col" | "3-col";
+    /** Vertical alignment of slot contents */
+    verticalAlign?: "top" | "middle" | "bottom";
+    /** Gap between columns */
+    gap?: "sm" | "md" | "lg";
+    /** Left column slot */
+    leftSlot?: ColumnStripSlot;
+    /** Center column slot (only used in 3-col layout) */
+    centerSlot?: ColumnStripSlot;
+    /** Right column slot */
+    rightSlot?: ColumnStripSlot;
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Layout save / load DTOs
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -300,8 +459,11 @@ export interface SaveVisualLayoutInput {
 export interface VisualLayoutResult {
   templateId: number;
   templateName: string;
+  templateCode: string;
   templateType: string;
+  versionNo: number;
   governanceStatus: string;
+  securityReviewStatus: string;
   isEditable: boolean;
   bodyLayout: ReportDesignerLayoutJson;
   headerLayout: ReportDesignerLayoutJson;
@@ -309,6 +471,7 @@ export interface VisualLayoutResult {
   visualEditorEngine: string;
   visualLayoutSchemaVersion: number;
   visualLayoutUpdatedAt: string | null;
+  visualLayoutUpdatedBy: string | null;
 }
 
 /** Safe audit metadata for layout saves (never includes full layout JSON) */

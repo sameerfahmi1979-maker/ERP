@@ -6,15 +6,26 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { ERPDataTable } from "@/components/erp/table/erp-data-table";
-import { ListTree, PlusCircle, Pencil, Power, Brain, Network, Sparkles, Loader2 } from "lucide-react";
+import { ListTree, PlusCircle, Pencil, Power, Trash2, Brain, Network, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   createDmsMetadataDefinition,
   updateDmsMetadataDefinition,
   activateDmsMetadataDefinition,
   deactivateDmsMetadataDefinition,
+  deleteDmsMetadataDefinition,
   type DmsMetadataDefinitionRow,
   type CreateDmsMetadataDefinitionInput,
 } from "@/server/actions/dms/metadata-definitions";
@@ -67,6 +78,15 @@ const FIELD_TYPE_LABELS: Record<string, string> = {
 };
 
 function canManage(ctx: AuthContext) {
+  return (
+    ctx.permissionCodes?.includes("dms.documents.manage_types") ||
+    ctx.permissionCodes?.includes("dms.admin") ||
+    ctx.roleCodes?.includes("system_admin") ||
+    ctx.roleCodes?.includes("group_admin")
+  );
+}
+
+function canDelete(ctx: AuthContext) {
   return (
     ctx.permissionCodes?.includes("dms.documents.manage_types") ||
     ctx.permissionCodes?.includes("dms.admin") ||
@@ -156,11 +176,33 @@ function formToPayload(form: MetadataDefinitionFormState): CreateDmsMetadataDefi
 export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }: Props) {
   const router = useRouter();
   const manage = canManage(authContext);
+  const allowDelete = canDelete(authContext);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<DmsMetadataDefinitionRow | null>(null);
   const [form, setForm] = useState<MetadataDefinitionFormState>({ ...emptyMetadataDefinitionForm });
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Delete confirmation state
+  const [deleteTarget, setDeleteTarget] = useState<DmsMetadataDefinitionRow | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      const result = await deleteDmsMetadataDefinition(deleteTarget.id);
+      if (!result.success) {
+        toast.error(result.error ?? "Failed to delete metadata field");
+        return;
+      }
+      toast.success(`Metadata field "${deleteTarget.field_code}" deleted`);
+      setDeleteTarget(null);
+      router.refresh();
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   // ERP Mappings dialog state
   const [erpMappingsDialogOpen, setErpMappingsDialogOpen] = useState(false);
@@ -449,6 +491,17 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
                   >
                     <Power className="h-3.5 w-3.5" />
                   </Button>
+                  {allowDelete && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => setDeleteTarget(row.original)}
+                      title="Delete (only if unused)"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
                 </div>
               ),
               meta: { exportable: false },
@@ -457,7 +510,7 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
         : []),
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [manage]
+    [manage, allowDelete]
   );
 
   const toolbarFilters = (
@@ -647,6 +700,39 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
         model={aiModel}
         onCreated={() => router.refresh()}
       />
+
+      {/* Delete confirmation */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete metadata field?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget && (
+                <>
+                  <span className="font-semibold font-mono">{deleteTarget.field_code}</span>
+                  {" — "}
+                  {deleteTarget.field_label_en}
+                  <br /><br />
+                  This will permanently delete the field definition. This action cannot be undone.
+                  <br />
+                  If this field has stored values on any document, the delete will be blocked — deactivate it instead.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Delete Field
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -277,7 +277,7 @@ export async function deactivateDmsMetadataDefinition(id: number): Promise<Actio
 export async function deleteDmsMetadataDefinition(id: number): Promise<ActionResult> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "dms.admin")) return { success: false, error: "Permission denied — requires dms.admin" };
+    if (!hasPermission(ctx, "dms.documents.manage_types")) return { success: false, error: "Permission denied — requires dms.documents.manage_types" };
     const supabase = await createClient();
     const { data: existing } = await supabase.from("dms_metadata_definitions").select("field_code, document_type_id").eq("id", id).single();
     const { count } = await supabase

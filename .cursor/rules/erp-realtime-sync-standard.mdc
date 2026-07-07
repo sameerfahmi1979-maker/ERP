@@ -1,0 +1,156 @@
+---
+description: ERP Realtime sync standard — which tables need Supabase Realtime, patterns for each list type, and what must NOT be subscribed
+globs: ["src/hooks/realtime/**", "src/components/layout/realtime-provider.tsx", "src/features/**/*table*.tsx", "src/features/**/*list*.tsx"]
+alwaysApply: false
+---
+
+# ERP Realtime Sync Standard
+
+## Phase
+
+ERP REALTIME.1 — Supabase Realtime Live Sync (PLANNED — do not implement without explicit Sameer approval)
+
+Full plan: `docs/plans/REALTIME_SYNC_PLAN.md`
+
+---
+
+## The Decision Rule
+
+Before adding a Realtime subscription to any table, ask:
+> **"Are two different users ever looking at a list of this data at the same time, and would it confuse them if it's stale?"**
+
+If YES → add Realtime. If NO → do not add it.
+
+---
+
+## Tables That NEED Realtime (Tier 1 — implement first)
+
+| Table | Module | Invalidation helper | List pattern |
+|-------|--------|---------------------|--------------|
+| `parties` | Party Master | `router.refresh()` | Server-props (B) |
+| `party_contacts` | Party child tab | `invalidatePartyContacts(qc, partyId)` | TanStack Query (A) |
+| `party_addresses` | Party child tab | `invalidatePartyAddresses(qc, partyId)` | TanStack Query (A) |
+| `party_bank_details` | Party child tab | `invalidatePartyBankDetails(qc, partyId)` | TanStack Query (A) |
+| `dms_documents` | DMS | `invalidateDmsDocuments(qc)` + `router.refresh()` | Server-props (B) |
+| `dms_upload_sessions` | DMS Inbox | `invalidateDmsUploadSessions(qc)` | TanStack Query (A) |
+| `employees` | HR | `invalidateHrEmployees(qc)` | Hybrid state (C) |
+| `erp_notifications` | Notifications | `invalidateMyNotifications(qc)` | TanStack Query (A) |
+
+## Tables That NEED Realtime (Tier 2 — implement after Tier 1 is stable)
+
+`dms_expiry_reminders`, `dms_renewal_requests`, `hr_leave_requests`, `hr_attendance_summaries`, `hr_candidates`
+
+---
+
+## Tables That DO NOT Need Realtime
+
+Never add Realtime subscriptions to these categories:
+
+- **Geography/reference data**: `countries`, `emirates`, `cities`, `areas` — changed by admin, never collaborative
+- **Finance master**: `banks`, `currencies`, `payment_terms` — changed quarterly by one admin
+- **DMS config**: `dms_document_types`, `dms_document_categories` — admin setup, not live-collaborative
+- **Permissions/roles**: `permissions`, `roles`, `role_permissions` — system admin only, infrequent
+- **Report templates**: `erp_report_templates` — one designer works at a time
+- **Branding settings**: `erp_app_branding_settings`, `erp_branding_assets` — changed rarely
+- **Audit log**: `audit_logs` — write-only, nobody reads the live stream
+- **Lookup values**: `lookup_values`, `lookup_categories` — reference data
+- **Common MD**: `departments`, `designations`, `work_sites` — HR settings, changed infrequently
+- **Report runs / output links**: `erp_report_runs`, `erp_output_public_links` — user-session specific
+
+---
+
+## The 3 List Patterns and Their Realtime Integration
+
+### Pattern A — TanStack Query lists (most lists)
+
+```tsx
+// The hook fires onEvent → call the existing invalidation helper
+useRealtimeSync({
+  table: "party_contacts",
+  event: "*",
+  filter: `party_id=eq.${partyId}`,   // scope to current entity when applicable
+  onEvent: () => invalidatePartyContacts(queryClient, partyId),
+  enabled: !!partyId,
+});
+```
+
+### Pattern B — Server-props lists (Parties, DMS Documents)
+
+```tsx
+// Server-rendered pages use router.refresh() to trigger a new server fetch
+useRealtimeSync({
+  table: "parties",
+  event: "*",
+  onEvent: () => router.refresh(),
+});
+```
+
+### Pattern C — Hybrid state (Employees)
+
+```tsx
+// Call the existing data-fetch callback from the component
+useRealtimeSync({
+  table: "employees",
+  event: "*",
+  onEvent: () => fetchEmployees(page, pageSize, search, filters),
+});
+```
+
+---
+
+## Core Hook Contract
+
+```typescript
+// src/hooks/realtime/use-realtime-sync.ts
+export function useRealtimeSync(options: {
+  table: string;
+  event?: "INSERT" | "UPDATE" | "DELETE" | "*";
+  filter?: string;          // Supabase filter, e.g. "party_id=eq.42"
+  onEvent: (payload: RealtimePostgresChangesPayload<unknown>) => void;
+  enabled?: boolean;
+  debounceMs?: number;      // default 300ms — prevents thrashing on bulk imports
+}): void
+```
+
+**Rules:**
+- Always use `createClient()` from `src/lib/supabase/client.ts` (browser client, respects RLS)
+- Always clean up with `supabase.removeChannel(channel)` on unmount
+- Channel name must be `realtime:${table}:${filter ?? 'all'}` for deduplication
+- Never use the admin client for Realtime subscriptions
+- Subscription only exists while the list component is mounted
+
+---
+
+## Global Subscriptions (RealtimeProvider)
+
+Two tables are subscribed globally in `src/components/layout/realtime-provider.tsx` (mounted in `ErpShell`):
+- `erp_notifications` — notification bell must always be live
+- `dms_upload_sessions` — inbox badge must always be live
+
+All other subscriptions are per-list (mounted and unmounted with the list component).
+
+---
+
+## What Does NOT Use Realtime
+
+- **Forms (add/edit dialogs)**: Forms load current data once when opened — sufficient. No subscription needed.
+- **Record detail views**: Single record view is fresh on open. Use `invalidateQueries` after mutation.
+- **Mutations**: Server actions already call `revalidatePath` + `invalidateQueries` on success. Realtime is for OTHER users, not the user who triggered the change.
+- **Admin pages**: Governance, permissions, branding, audit — single-user admin flows, no subscription needed.
+
+---
+
+## Security
+
+- Supabase Realtime **enforces RLS** — clients only receive events for rows their RLS policy allows them to SELECT
+- No extra permission work needed — existing RLS policies automatically apply
+- Use `createClient()` (anon key + session cookie), never `createAdminClient()` for subscriptions
+
+---
+
+## Railway and Infrastructure
+
+- **No Railway changes needed** — the WebSocket is `browser → Supabase` directly
+- **No new npm packages** — `supabase-js` is already installed
+- **No DB migrations** — only Supabase dashboard Realtime toggle per table
+- Supabase Pro plan supports up to 200 concurrent WebSocket connections — not a concern at current user volumes

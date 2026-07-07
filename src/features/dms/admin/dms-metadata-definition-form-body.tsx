@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ERPCombobox } from "@/components/erp/combobox";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown, Brain } from "lucide-react";
@@ -122,25 +123,28 @@ type Props = {
 export function DmsMetadataDefinitionFormBody({ form, setForm, editing, documentTypes }: Props) {
   return (
     <>
+      {editing && (
+        <div className="col-span-12 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+          <span className="mt-0.5">⚠</span>
+          <span>
+            All fields are editable. Changing <strong>Document Type</strong> or <strong>Field Code</strong> on a
+            field that already has stored values may break AI extraction rules and existing data lookups — only do
+            this if the field has no values yet.
+          </span>
+        </div>
+      )}
       <Section title="Basic" defaultOpen>
         <div className="col-span-6">
           <RequiredLabel required>Document Type</RequiredLabel>
-          <Select
-            value={form.document_type_id}
-            onValueChange={(v) => setForm((f) => ({ ...f, document_type_id: v ?? "" }))}
-            disabled={!!editing}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select document type" />
-            </SelectTrigger>
-            <SelectContent>
-              {documentTypes.map((dt) => (
-                <SelectItem key={dt.id} value={String(dt.id)}>
-                  {dt.name_en}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <ERPCombobox
+            options={documentTypes.map((dt) => ({ value: dt.id, label: dt.name_en }))}
+            value={form.document_type_id ? Number(form.document_type_id) : null}
+            onValueChange={(v) =>
+              setForm((f) => ({ ...f, document_type_id: v != null ? String(v) : "" }))
+            }
+            placeholder="Select document type"
+            searchPlaceholder="Search types..."
+          />
         </div>
         <div className="col-span-3">
           <RequiredLabel required>Field Type</RequiredLabel>
@@ -176,7 +180,6 @@ export function DmsMetadataDefinitionFormBody({ form, setForm, editing, document
             onChange={(e) => setForm((f) => ({ ...f, field_code: e.target.value.toLowerCase() }))}
             placeholder="e.g. license_number"
             className="font-mono"
-            disabled={!!editing}
           />
         </div>
         <div className="col-span-4">

@@ -7,6 +7,7 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
+import { zNullableDateString } from "@/lib/dms/date-validators";
 
 export type ActionResult<T = unknown> = {
   success: boolean;
@@ -112,8 +113,8 @@ const documentCreateSchema = z.object({
   owning_company_id: z.number().int().positive().nullable().optional(),
   owning_branch_id: z.number().int().positive().nullable().optional(),
   party_id: z.number().int().positive().nullable().optional(),
-  issue_date: z.string().nullable().optional(),
-  expiry_date: z.string().nullable().optional(),
+  issue_date: zNullableDateString,
+  expiry_date: zNullableDateString,
   reminder_policy_id: z.number().int().positive().nullable().optional(),
   legacy_document_code: z.string().nullable().optional(),
 });

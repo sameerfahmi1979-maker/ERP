@@ -394,7 +394,62 @@ Once implemented, verify each table with this manual test:
 
 ---
 
-## 16. References
+## 16. Scope Clarification — Which Tables Are Included
+
+This plan does **NOT** add Realtime to every Supabase table. Only ~15–20 tables that are:
+- Viewed simultaneously by multiple users in a list
+- Changed frequently enough that stale data causes confusion
+
+### Tables INCLUDED in this plan
+
+| Table | Why |
+|-------|-----|
+| `parties` | Core CRM list — sales, logistics, HR all watch it |
+| `party_contacts` | Child tab — multiple users edit the same party |
+| `party_addresses` | Child tab — same reason |
+| `party_bank_details` | Child tab — same reason |
+| `dms_documents` | Central document repository — high traffic |
+| `dms_upload_sessions` | Inbox — uploads from multiple users |
+| `employees` | HR team member lists — managed by several HR roles |
+| `erp_notifications` | Personal — must always be live |
+| `dms_expiry_reminders` | Compliance dashboard — ops team watches |
+| `dms_renewal_requests` | Renewal workflow — multi-assignee |
+| `hr_leave_requests` | Leave queue — HR + line managers watch |
+| `hr_attendance_summaries` | Attendance list — HR ops |
+| `hr_candidates` | Recruitment pipeline — multiple recruiters |
+
+### Tables EXCLUDED (no Realtime needed)
+
+| Category | Tables | Reason |
+|----------|--------|--------|
+| Geography/reference | `countries`, `emirates`, `cities`, `areas` | Admin-only, rarely changed |
+| Finance master | `banks`, `currencies`, `payment_terms` | Quarterly change by one admin |
+| DMS config | `dms_document_types`, `dms_document_categories` | Setup data |
+| Permissions/roles | `permissions`, `roles`, `role_permissions` | System admin only |
+| Report templates | `erp_report_templates` | One designer at a time |
+| Branding | `erp_app_branding_settings`, `erp_branding_assets` | Rarely changed |
+| Audit | `audit_logs` | Write-only, no live viewer |
+| Lookup values | `lookup_values`, `lookup_categories` | Reference data |
+| Report runs | `erp_report_runs`, `erp_output_public_links` | User-session specific |
+| HR config | `departments`, `designations`, `work_sites` | Admin setup |
+
+### Forms and record detail views are NOT subscribed
+
+Forms (add/edit dialogs) load data once when opened — sufficient. No subscription needed on individual record views. Only list/table components get Realtime subscriptions.
+
+---
+
+## 17. Source of Truth and Cursor Rule
+
+This plan is tracked in:
+- **Source of truth:** `.cursor/ALGT_ERP_SOURCE_OF_TRUTH.md` → `ERP REALTIME.1` under "Next important ERP plans"
+- **Cursor rule:** `.cursor/rules/erp-realtime-sync-standard.mdc` — enforces table selection, hook contract, security rules, and forbidden patterns
+
+When implementation begins, the cursor rule will automatically guide the AI agent on exactly which tables to subscribe, which pattern to use for each list type (TanStack Query vs server-props vs hybrid state), and what must not be subscribed.
+
+---
+
+## 18. References
 
 - Supabase Realtime docs: https://supabase.com/docs/guides/realtime
 - `supabase-js` channel API: `supabase.channel().on('postgres_changes', ...).subscribe()`
@@ -403,3 +458,4 @@ Once implemented, verify each table with this manual test:
 - Invalidation helpers: `src/lib/query/invalidation.ts`
 - App shell mount: `src/components/layout/erp-shell.tsx`
 - QueryClient provider: `src/components/layout/app-providers.tsx`
+- Cursor rule: `.cursor/rules/erp-realtime-sync-standard.mdc`

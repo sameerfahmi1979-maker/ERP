@@ -6,6 +6,7 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
+import { zOptionalDateString, clampToValidDate } from "@/lib/dms/date-validators";
 import {
   resolveStandardFileNameForDocumentCreate,
   resolveStandardFileNameForExistingDocument,
@@ -160,7 +161,7 @@ export async function attachUploadToExistingDocument(
           };
         }
 
-        const expirySuggestion = aiResult.expiry_date_suggestion as string | null;
+        const expirySuggestion = clampToValidDate(aiResult.expiry_date_suggestion as string | null);
         const today = new Date().toISOString().slice(0, 10);
         if (expirySuggestion && expirySuggestion < today) {
           return {
@@ -432,8 +433,8 @@ const CreateFromUploadSchema = z.object({
   title: z.string().min(1, "Title is required").max(500),
   document_type_id: z.number().int().positive("Document type is required"),
   description: z.string().max(2000).optional(),
-  issue_date: z.string().optional(),
-  expiry_date: z.string().optional(),
+  issue_date: zOptionalDateString,
+  expiry_date: zOptionalDateString,
   owning_company_id: z.number().int().positive().optional(),
   allowDuplicate: z.boolean().optional().default(false),
 });

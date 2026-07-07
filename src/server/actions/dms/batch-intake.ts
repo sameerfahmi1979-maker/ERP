@@ -36,6 +36,7 @@ import {
 import { DMS_MAX_BATCH_FILES } from "@/features/dms/upload/dms-upload-constants";
 import { resolveStandardFileNameForIntakeApprove } from "@/server/actions/dms/standard-file-name";
 import { validateStandardFileName } from "@/lib/dms/standard-file-name";
+import { clampToValidDate } from "@/lib/dms/date-validators";
 import { runApproveAiIntakeSaga } from "@/lib/dms/approve/approve-ai-intake";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -424,8 +425,8 @@ export async function startAiIntakeAndCreateDraft(
         suggestedTypeId = (ai.suggested_document_type_id as number | null) ?? null;
         suggestedTitle = (ai.suggested_title as string | null) ?? null;
         suggestedDescription = (ai.suggested_description as string | null) ?? null;
-        issueDate = (ai.issue_date_suggestion as string | null) ?? null;
-        expiryDate = (ai.expiry_date_suggestion as string | null) ?? null;
+        issueDate = clampToValidDate(ai.issue_date_suggestion as string | null) ?? null;
+        expiryDate = clampToValidDate(ai.expiry_date_suggestion as string | null) ?? null;
         confidenceLabel = (ai.classification_confidence as string | null) ?? null;
       }
     }

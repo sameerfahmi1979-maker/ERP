@@ -1,12 +1,12 @@
-# DMS AI META.2 — First Upload AI Metadata Suggestions with Authorized Approval
+# DMS AI META.2 ï¿½ First Upload AI Metadata Suggestions with Authorized Approval
 
 **Phase:** DMS AI META.2  
-**Status:** PLANNING — REVISED  
+**Status:** PLANNING ï¿½ REVISED  
 **Date:** 2026-07-01 (original) ? Revised 2026-07-01  
-**Predecessor:** DMS AI META.1 (AI-Suggested Metadata Definitions — CLOSED/PASS)  
+**Predecessor:** DMS AI META.1 (AI-Suggested Metadata Definitions ï¿½ CLOSED/PASS)  
 **Author:** Cursor AI Agent  
-**Approval Required:** Sameer must approve before any implementation begins  
-**Revision Reason:** Original plan removed — silent auto-create without human approval is not acceptable.
+**Approval Required:** Sameer must approve before any implementation begins
+**Revision Reason:** Original plan removed ï¿½ silent auto-create without human approval is not acceptable.
 
 ---
 
@@ -18,7 +18,7 @@ with no definitions during upload or review, the system offers AI-generated fiel
 that the authorized user can inspect, edit, and selectively approve before any definitions
 are created.
 
-**Governance rule — applies everywhere in this phase:**
+**Governance rule ï¿½ applies everywhere in this phase:**
 > AI suggests. Human chooses. System saves only approved items.
 
 This rule is non-negotiable and applies to all flows, job handlers, server actions, and UI
@@ -48,7 +48,7 @@ automatically call an AI generation function and insert metadata definitions int
 `dms_metadata_definitions` without any human review step. That design was rejected because:
 
 1. AI-generated field definitions affect AI extraction behavior for all future documents
-   of that type — incorrect definitions silently degrade extraction quality system-wide.
+   of that type ï¿½ incorrect definitions silently degrade extraction quality system-wide.
 2. Background system processes must not write to administrative configuration tables
    without human authorization.
 3. The ERP's established AI pattern is: AI proposes, human reviews, human approves.
@@ -87,27 +87,27 @@ a separate implementation prompt.
 
 | File | Notes |
 |---|---|
-| `src/server/actions/dms/ai-metadata-suggestions.ts` | META.1 server action — suggestMetadataDefinitions(), checkDmsAiProviderAvailable(), canManageDmsMetadata() |
-| `src/server/actions/dms/metadata-definitions.ts` | createDmsMetadataDefinition() — the only approved create path |
+| `src/server/actions/dms/ai-metadata-suggestions.ts` | META.1 server action ï¿½ suggestMetadataDefinitions(), checkDmsAiProviderAvailable(), canManageDmsMetadata() |
+| `src/server/actions/dms/metadata-definitions.ts` | createDmsMetadataDefinition() ï¿½ the only approved create path |
 | `src/server/actions/dms/review-queue.ts` | Phase 12 review queue server actions |
-| `src/features/dms/admin/dms-ai-metadata-suggestions-dialog.tsx` | META.1 review dialog — reusable |
+| `src/features/dms/admin/dms-ai-metadata-suggestions-dialog.tsx` | META.1 review dialog ï¿½ reusable |
 | `src/features/dms/admin/dms-metadata-definitions-table.tsx` | Admin definitions table |
 | `src/features/dms/review-queue/dms-review-queue-item-drawer.tsx` | Review queue item drawer |
 | `src/lib/dms/review-queue/review-queue-upsert.ts` | upsertDmsReviewQueueItem(), DmsReviewType union |
-| `src/lib/dms/orchestration/system-pipeline.ts` | Post-approve pipeline — step-based |
+| `src/lib/dms/orchestration/system-pipeline.ts` | Post-approve pipeline ï¿½ step-based |
 | `src/lib/dms/ai-jobs/job-types.ts` | DMS_AI_JOB_TYPE, payload schemas |
 | `src/lib/rbac/route-access-registry.ts` | Route permission map |
 
-### 4.2 Existing Permissions (Live DB — 2026-07-01)
+### 4.2 Existing Permissions (Live DB ï¿½ 2026-07-01)
 
 Relevant DMS permissions already in the `permissions` table:
 
 ```
-dms.admin                        — DMS Admin (full DMS admin)
-dms.documents.manage_types       — Manage DMS Document Types
-dms.documents.review_ai          — Review AI Extractions
-dms.review_queue.view            — View Review Queue
-dms.review_queue.manage          — Manage Review Queue Items
+dms.admin                        ï¿½ DMS Admin (full DMS admin)
+dms.documents.manage_types       ï¿½ Manage DMS Document Types
+dms.documents.review_ai          ï¿½ Review AI Extractions
+dms.review_queue.view            ï¿½ View Review Queue
+dms.review_queue.manage          ï¿½ Manage Review Queue Items
 ```
 
 **No `dms.metadata.ai_suggestions.approve` permission exists yet.** This must be seeded in
@@ -116,26 +116,26 @@ the implementation migration.
 ### 4.3 Existing Review Queue Structure
 
 The `dms_review_queue` table has:
-- `review_type TEXT` — identifies the type of review
-- `payload_json JSONB` — safe structured data (not document content)
-- `idempotency_key TEXT` — prevents duplicate items
-- `document_id BIGINT` — the document that triggered the review
-- `upload_session_id BIGINT` — the upload session
-- `status TEXT` — open / resolved / dismissed
+- `review_type TEXT` ï¿½ identifies the type of review
+- `payload_json JSONB` ï¿½ safe structured data (not document content)
+- `idempotency_key TEXT` ï¿½ prevents duplicate items
+- `document_id BIGINT` ï¿½ the document that triggered the review
+- `upload_session_id BIGINT` ï¿½ the upload session
+- `status TEXT` ï¿½ open / resolved / dismissed
 - `resolved_at`, `reviewed_by`, `resolution_code`, `resolution_note`
 
 The `DmsReviewType` union (TypeScript, in `review-queue-upsert.ts`) must be extended with a
 new value: `"metadata_definition_suggestions_review"`.
 
-### 4.4 Feature Flags (Live DB — 2026-07-01)
+### 4.4 Feature Flags (Live DB ï¿½ 2026-07-01)
 
-`DMS_AI_AUTO_CREATE_DEFINITIONS` does NOT exist yet — the old plan proposed it but it was
+`DMS_AI_AUTO_CREATE_DEFINITIONS` does NOT exist yet ï¿½ the old plan proposed it but it was
 never seeded. The revised plan uses `DMS_AI_FIRST_UPLOAD_METADATA_SUGGESTIONS` instead.
 
 Existing relevant flags:
 ```
-DMS_AI_REVIEW             = true   — review queue is active
-DMS_AI_JOB_QUEUE          = true   — job queue is active
+DMS_AI_REVIEW             = true   ï¿½ review queue is active
+DMS_AI_JOB_QUEUE          = true   ï¿½ job queue is active
 DMS_AI_JOB_QUEUE_WORKER_ENABLED = true
 DMS_AI_ORCHESTRATION      = true
 ```
@@ -160,7 +160,7 @@ AI suggests. Human chooses. System saves only approved items.
 Applied:
 - The AI generation step (prompt ? JSON response ? normalize ? deduplicate) runs in
   a background job or inline on button click.
-- The result is stored as a **pending suggestion batch** — NOT inserted into
+- The result is stored as a **pending suggestion batch** ï¿½ NOT inserted into
   `dms_metadata_definitions`.
 - A human authorized user opens the review dialog, inspects each row, selects/deselects
   fields, optionally edits labels/types, and clicks "Create Selected".
@@ -181,8 +181,8 @@ The following principals are authorized to review and create AI-suggested defini
 | `system_admin` | Full system authority |
 | `group_admin` | Full group authority |
 | `dms.admin` | Full DMS administration authority |
-| `dms.documents.manage_types` | Existing "manage types" — creating fields is part of this |
-| `dms.metadata.ai_suggestions.approve` | **New dedicated permission** (planned — see Section 7) |
+| `dms.documents.manage_types` | Existing "manage types" ï¿½ creating fields is part of this |
+| `dms.metadata.ai_suggestions.approve` | **New dedicated permission** (planned ï¿½ see Section 7) |
 
 ### 6.2 Who Must NOT Approve by Default
 
@@ -248,7 +248,7 @@ function canApproveAiMetadataSuggestions(
 ```
 
 This guard is used in:
-- `suggestMetadataDefinitions()` — already uses `canManageDmsMetadata`, to be updated
+- `suggestMetadataDefinitions()` ï¿½ already uses `canManageDmsMetadata`, to be updated
 - New `generateAndQueueMetadataSuggestions()` server action
 - Intake review screen (client-side permission check for showing buttons)
 
@@ -266,7 +266,7 @@ VALUES (
 ON CONFLICT (permission_code) DO NOTHING;
 ```
 
-Role assignment seed (DMS Manager role — adjust role_code to actual value):
+Role assignment seed (DMS Manager role ï¿½ adjust role_code to actual value):
 ```sql
 -- Assign to DMS Manager role (adjust role_code as needed)
 INSERT INTO public.role_permissions (role_code, permission_code)
@@ -293,7 +293,7 @@ ON CONFLICT DO NOTHING;
 
 ### 8.2 Old Flag
 
-`DMS_AI_AUTO_CREATE_DEFINITIONS` — never seeded (was only in the old plan). It must NOT be
+`DMS_AI_AUTO_CREATE_DEFINITIONS` ï¿½ never seeded (was only in the old plan). It must NOT be
 created. The old name is explicitly deprecated in this plan.
 
 ### 8.3 Seed SQL (planned, not executed)
@@ -307,10 +307,10 @@ VALUES (
   'When enabled, the system can suggest metadata fields for document types with no definitions
    during first upload or first approval. Suggestions require authorized human approval before
    any metadata definitions are created.',
-  false,
-  true,
-  0.70
-)
+    false,
+    true,
+    0.70
+  )
 ON CONFLICT (feature_code) DO NOTHING;
 ```
 
@@ -324,14 +324,14 @@ and the classified document type has zero active metadata definitions.
 ### 9.1 Step-by-Step
 
 ```
-Step 1 — User uploads a document.
+Step 1 ï¿½ User uploads a document.
 
-Step 2 — AI classifies the document (or user manually selects the document type).
+Step 2 ï¿½ AI classifies the document (or user manually selects the document type).
 
-Step 3 — The intake review screen loads the metadata section.
+Step 3 ï¿½ The intake review screen loads the metadata section.
          System queries: COUNT(active definitions for this document_type_id)
 
-Step 4 — If count == 0:
+Step 4 ï¿½ If count == 0:
          Show a visible notice in the metadata section:
          ???????????????????????????????????????????????????????????????????????
          ? ?  This document type has no metadata fields yet.                   ?
@@ -345,7 +345,7 @@ Step 4 — If count == 0:
          ?                                                                       ?  ? if non-authorized user
          ???????????????????????????????????????????????????????????????????????
 
-Step 5a — Authorized user clicks [Suggest Fields with AI]:
+Step 5a ï¿½ Authorized user clicks [Suggest Fields with AI]:
   5a-1. Button shows loading spinner.
   5a-2. Client calls suggestMetadataDefinitions(documentTypeId) [existing META.1 action].
   5a-3. AI generates suggestions.
@@ -360,18 +360,18 @@ Step 5a — Authorized user clicks [Suggest Fields with AI]:
   5a-12. Re-extraction is offered: "Fields created. Re-run AI extraction now?" [Yes] [No]
          If [Yes]: triggerReExtraction(uploadSessionId) queues re-extraction for this session.
 
-Step 5b — User clicks [Skip for Now]:
+Step 5b ï¿½ User clicks [Skip for Now]:
   5b-1. Notice is dismissed for this session.
   5b-2. Document is saved with no metadata values.
   5b-3. Admin can still create definitions later via DMS Admin ? Metadata Definitions.
 
-Step 5c — Suggestions already pending review:
+Step 5c ï¿½ Suggestions already pending review:
   Notice changes to:
   "AI metadata suggestions are pending review for this document type."
   Button: [Open Suggestions Review]
   Opens the same dialog showing the pending suggestions.
 
-Step 5d — Non-authorized user:
+Step 5d ï¿½ Non-authorized user:
   No buttons shown.
   Message: "Ask a DMS Manager or authorized admin to create metadata fields."
   The document can still be saved without metadata.
@@ -384,7 +384,7 @@ The component that needs updating is the intake review metadata section, likely 
 - The zero-definition notice is a new UI block rendered when `definitionsCount === 0`
 
 The notice must be:
-- Dismissible per session (not stored in DB — only client state)
+- Dismissible per session (not stored in DB ï¿½ only client state)
 - Rendered above the empty metadata section
 - Visible even when the user is not authorized (shows the "ask admin" message)
 
@@ -394,7 +394,7 @@ The notice must be:
 
 This flow fires in the background after the first document of a zero-definition type is
 approved and a document record is created. The job generates suggestions and stores them
-as pending review data — it does NOT insert definitions.
+as pending review data ï¿½ it does NOT insert definitions.
 
 ### 10.1 Trigger
 
@@ -408,11 +408,11 @@ Fires when:
 ### 10.2 Step-by-Step
 
 ```
-Step 1 — Document approved ? approveAiIntakeAndCreateDocument() creates the document record.
+Step 1 ï¿½ Document approved ? approveAiIntakeAndCreateDocument() creates the document record.
 
-Step 2 — Post-approve orchestration pipeline runs (existing queued job).
+Step 2 ï¿½ Post-approve orchestration pipeline runs (existing queued job).
 
-Step 3 — New step: metadata_suggestions_check
+Step 3 ï¿½ New step: metadata_suggestions_check
   3a. Read feature flag DMS_AI_FIRST_UPLOAD_METADATA_SUGGESTIONS
   3b. If false ? skip (log: "Feature flag disabled")
   3c. Check definition count for documentTypeId
@@ -425,7 +425,7 @@ Step 3 — New step: metadata_suggestions_check
       Payload: { documentTypeId, triggerDocumentId, source: "post_approve" }
       Idempotency key: "meta_suggestions:type:{documentTypeId}"
 
-Step 4 — Job: GENERATE_METADATA_DEFINITION_SUGGESTIONS runs (background worker)
+Step 4 ï¿½ Job: GENERATE_METADATA_DEFINITION_SUGGESTIONS runs (background worker)
   4a. Calls AI to generate field suggestions (same prompt logic as META.1)
   4b. Validates and normalizes suggestions (same Zod + normalizeFieldCode as META.1)
   4c. Does NOT insert into dms_metadata_definitions
@@ -435,8 +435,8 @@ Step 4 — Job: GENERATE_METADATA_DEFINITION_SUGGESTIONS runs (background worker)
       idempotency_key = "meta_suggestions:type:{documentTypeId}"
   4e. Logs audit: DMS_AI_METADATA_SUGGESTIONS_GENERATED
 
-Step 5 — DMS Manager / Authorized user sees review queue item.
-  5a. Opens review queue ? sees item: "AI Metadata Suggestions — [Document Type Name]"
+Step 5 ï¿½ DMS Manager / Authorized user sees review queue item.
+  5a. Opens review queue ? sees item: "AI Metadata Suggestions ï¿½ [Document Type Name]"
   5b. Clicks item ? review drawer opens
   5c. Review drawer renders DmsAiMetadataSuggestionsDialog with suggestions from payload_json
   5d. User selects/deselects fields, edits as needed
@@ -447,7 +447,7 @@ Step 5 — DMS Manager / Authorized user sees review queue item.
   5i. Log audit: DMS_AI_METADATA_SUGGESTIONS_APPROVED
   5j. Re-extraction job enqueued for the trigger document
 
-Step 6 — If user rejects all / dismisses:
+Step 6 ï¿½ If user rejects all / dismisses:
   6a. Review queue item dismissed (resolution_code: "rejected")
   6b. Log audit: DMS_AI_METADATA_SUGGESTIONS_REJECTED
   6c. No definitions created
@@ -466,16 +466,16 @@ Only the authorized human approval step (clicking Create Selected) writes to dms
 
 ## 11. Pending Suggestions Storage Options
 
-### Option A — Use Existing Review Queue (payload_json)
+### Option A ï¿½ Use Existing Review Queue (payload_json)
 
 Store the full suggestion list in `dms_review_queue.payload_json` for the review item.
 
 **Feasibility assessment (based on live DB inspection):**
-- `payload_json` column is `JSONB` — supports arbitrary structure
-- `upsertDmsReviewQueueItem()` accepts `payloadJson: Record<string, unknown>` — flexible
+- `payload_json` column is `JSONB` ï¿½ supports arbitrary structure
+- `upsertDmsReviewQueueItem()` accepts `payloadJson: Record<string, unknown>` ï¿½ flexible
 - The existing `sanitizePayload()` guard strips suspicious keys but allows normal data arrays
 - `idempotency_key` on the review item prevents duplicate suggestion batches
-- Suggestion list for a typical document type is 5–25 fields, ~200–800 bytes of JSON — well within JSONB limits
+- Suggestion list for a typical document type is 5ï¿½25 fields, ~200ï¿½800 bytes of JSON ï¿½ well within JSONB limits
 - Review drawer can read `payload_json` and pass to the dialog component
 - **Verdict: Option A is safe and viable for META.2**
 
@@ -505,11 +505,11 @@ Store the full suggestion list in `dms_review_queue.payload_json` for the review
 ```
 
 **Constraints:**
-- Field codes, labels, hints — safe string data; no document content
-- `ai_reasoning` is display-only metadata — safe
+- Field codes, labels, hints ï¿½ safe string data; no document content
+- `ai_reasoning` is display-only metadata ï¿½ safe
 - No OCR text, no AI raw responses, no document content in payload
 
-### Option B — Dedicated Suggestion Tables
+### Option B ï¿½ Dedicated Suggestion Tables
 
 Create:
 - `dms_ai_metadata_suggestion_batches` (one per document type generation run)
@@ -555,11 +555,11 @@ The review dialog (reusing/extending `DmsAiMetadataSuggestionsDialog` from META.
 | Include checkbox | Checked by default; user unchecks to exclude |
 | Field Code | Read-only (AI-generated, normalized) |
 | Field Label | Editable text input |
-| Field Type | Dropdown (text, number, date, boolean — no select/multi_select) |
+| Field Type | Dropdown (text, number, date, boolean ï¿½ no select/multi_select) |
 | Required | Toggle switch |
 | AI Extractable | Toggle switch (default: true) |
-| AI Hint | Editable text — passed to createDmsMetadataDefinition |
-| Reasoning | Display only — explains AI's rationale; NOT saved to DB |
+| AI Hint | Editable text ï¿½ passed to createDmsMetadataDefinition |
+| Reasoning | Display only ï¿½ explains AI's rationale; NOT saved to DB |
 | Status | pending ? saving ? ? saved / ? failed |
 | Error | Inline error message if creation fails |
 
@@ -603,7 +603,7 @@ The primary admin channel for Flow B suggestions is the DMS Review Queue at `/dm
 
 Review queue item display:
 - **Icon:** Sparkles (AI)
-- **Title:** "AI Metadata Suggestions — [Document Type Name]"
+- **Title:** "AI Metadata Suggestions ï¿½ [Document Type Name]"
 - **Badge:** Normal priority
 - **Reason:** "This document type had no metadata definitions on first upload. AI has suggested fields for review."
 - **Status:** Open / Resolved
@@ -613,7 +613,7 @@ Review queue item display:
 When an authorized user clicks the review item:
 - The review drawer opens (extending `dms-review-queue-item-drawer.tsx`)
 - The drawer reads `payload_json.suggestions` and renders `DmsAiMetadataSuggestionsDialog`
-  in embedded mode (not a modal — fits within the drawer)
+  in embedded mode (not a modal ï¿½ fits within the drawer)
 - User selects/edits/creates fields
 - On completion: item is resolved via `resolveDmsReviewQueueItem()`
 
@@ -664,8 +664,8 @@ Re-extraction for the trigger document runs only after authorized definitions ar
 **Flow A (inline during intake review):**
 After "Create Selected" completes with at least one definition created:
 - Show inline prompt: "Fields created. Re-run AI extraction for this document?"
-- [Yes, Re-run Now] — triggers extraction on the current upload session
-- [No, Continue] — user proceeds without re-extraction
+- [Yes, Re-run Now] ï¿½ triggers extraction on the current upload session
+- [No, Continue] ï¿½ user proceeds without re-extraction
 
 **Flow B (after review queue approval):**
 After `createDmsMetadataDefinition` calls complete:
@@ -695,10 +695,10 @@ What the job does:
 
 ```
 1. Only runs after definitions exist
-2. Does not run as part of suggestion generation — only after approval
+2. Does not run as part of suggestion generation ï¿½ only after approval
 3. Does not overwrite human-approved metadata values
 4. Non-fatal: failure does not affect the document record
-5. Runs at low priority (5) — never preempts normal intake jobs
+5. Runs at low priority (5) ï¿½ never preempts normal intake jobs
 6. Idempotency key: "re_extraction:doc:{documentId}:after_meta_approval"
 ```
 
@@ -712,7 +712,7 @@ What the job does:
 |---|---|
 | Constant | `DMS_AI_JOB_TYPE.GENERATE_METADATA_DEFINITION_SUGGESTIONS` |
 | String value | `"generate_metadata_definition_suggestions"` |
-| Purpose | Generate AI field suggestions, store in review queue — never insert definitions |
+| Purpose | Generate AI field suggestions, store in review queue ï¿½ never insert definitions |
 | Max attempts | 2 |
 | Priority | 4 |
 
@@ -742,7 +742,7 @@ Fires only after definitions are confirmed created. Never fires after suggestion
 
 ### 17.3 Removed Job Type
 
-`AUTO_CREATE_METADATA_DEFINITIONS` — from the old plan — must NOT be created.
+`AUTO_CREATE_METADATA_DEFINITIONS` ï¿½ from the old plan ï¿½ must NOT be created.
 It is explicitly rejected.
 
 ### 17.4 Handler Files (planned paths)
@@ -788,7 +788,7 @@ COMMENT ON COLUMN public.dms_metadata_definitions.ai_suggestion_trigger_document
    created. NULL for manually created definitions or definitions created without a trigger document.';
 ```
 
-### 18.3 New Columns: dms_document_types — Suggestion Tracking
+### 18.3 New Columns: dms_document_types ï¿½ Suggestion Tracking
 
 These track the lifecycle of the suggestion workflow for each document type. They enable
 idempotency in the pipeline step and provide status for the admin UI badge.
@@ -816,7 +816,7 @@ COMMENT ON COLUMN public.dms_document_types.ai_suggestions_approved_at IS
 The old plan proposed `definitions_auto_created_at`. This plan removes it. The column names
 `ai_suggestions_generated_at` and `ai_suggestions_approved_at` replace it with better semantics.
 
-### 18.5 DmsReviewType Union Extension (TypeScript — not SQL)
+### 18.5 DmsReviewType Union Extension (TypeScript ï¿½ not SQL)
 
 Add to `DmsReviewType` in `src/lib/dms/review-queue/review-queue-upsert.ts`:
 ```typescript
@@ -920,12 +920,12 @@ in any audit event name or payload.
 | Event | When | Who Logs |
 |---|---|---|
 | `DMS_AI_METADATA_SUGGESTIONS_GENERATED` | Job completes generating suggestions | Job handler |
-| `DMS_AI_METADATA_SUGGESTIONS_REVIEWED` | User opens the review dialog | Client action (optional — low priority) |
+| `DMS_AI_METADATA_SUGGESTIONS_REVIEWED` | User opens the review dialog | Client action (optional ï¿½ low priority) |
 | `DMS_AI_METADATA_SUGGESTIONS_APPROVED` | User clicks Create Selected and at least 1 field is created | Server action |
 | `DMS_AI_METADATA_SUGGESTIONS_SKIPPED` | User clicks Skip for Now | Client or server (best-effort) |
 | `DMS_AI_METADATA_SUGGESTIONS_REJECTED` | User dismisses/rejects all suggestions | Server action |
 | `DMS_AI_METADATA_REEXTRACTION_ENQUEUED` | Re-extraction job is enqueued after approval | Server action |
-| `DMS_METADATA_FIELD_CREATED` | Each definition row created | Existing — unchanged from META.1 |
+| `DMS_METADATA_FIELD_CREATED` | Each definition row created | Existing ï¿½ unchanged from META.1 |
 
 ### 19.2 Safe Audit Payload Structure
 
@@ -960,7 +960,7 @@ API keys or secret refs
 
 ## 20. UI/UX Plan
 
-### 20.1 Upload Inbox / Intake Review — Zero-Definition Notice
+### 20.1 Upload Inbox / Intake Review ï¿½ Zero-Definition Notice
 
 Location: Metadata tab / section inside the intake review screen  
 Trigger: `definitionsCount === 0` for the confirmed document type
@@ -995,7 +995,7 @@ When suggestions are pending review:
 ### 20.2 DMS Admin ? Metadata Definitions Table
 
 - Column or badge on document types with `ai_suggestions_generated_at IS NOT NULL`
-  and no definitions yet: **"AI Suggestions Pending Review"** — links to review queue item
+  and no definitions yet: **"AI Suggestions Pending Review"** ï¿½ links to review queue item
 - `created_from_ai_suggestion = true` rows show an **"AI-Assisted"** badge next to the label
 - New filter option: "Source: All | Manual | AI-Assisted"
 
@@ -1003,11 +1003,11 @@ When suggestions are pending review:
 
 New item type `metadata_definition_suggestions_review`:
 - Icon: Sparkles
-- Title: "AI Metadata Suggestions — {document_type_name}"
+- Title: "AI Metadata Suggestions ï¿½ {document_type_name}"
 - Description: "AI has suggested {N} metadata fields for this document type. Review and approve the fields you need."
 - Badge: Normal priority (or High if many types pending)
 
-### 20.4 Settings UI — Feature Flag Toggle
+### 20.4 Settings UI ï¿½ Feature Flag Toggle
 
 Location: `/admin/settings/ai` or `/admin/settings` AI section
 
@@ -1015,7 +1015,7 @@ Location: `/admin/settings/ai` or `/admin/settings` AI section
 DMS AI First Upload Metadata Suggestions
 When enabled, the system suggests metadata fields for document types that have no
 definitions when the first document is uploaded. Suggestions always require authorized
-approval — no definitions are created automatically.
+approval ï¿½ no definitions are created automatically.
 [Toggle: OFF]
 ```
 
@@ -1129,7 +1129,7 @@ No definitions are created until an authorized user reviews and approves them.
 
 | Item | Reason |
 |---|---|
-| Silent auto-insertion of definitions without approval | **Explicitly rejected** — see Section 2 |
+| Silent auto-insertion of definitions without approval | **Explicitly rejected** ï¿½ see Section 2 |
 | select/multi_select field types in AI suggestions | Requires options_json; too risky to auto-generate |
 | Arabic labels in auto-generated fields | AI output only produces English labels; add Arabic manually |
 | Retroactive suggestion generation for existing zero-definition types | Separate admin-initiated backfill |
@@ -1172,7 +1172,7 @@ Implement in this order to reduce risk and deliver incrementally:
 | Phase | Work | Deliverable |
 |---|---|---|
 | META.2A | Migration + new permission seed + feature flag seed | DB ready |
-| META.2B | Shared `ai-definition-builder.ts` (extract from META.1 ai-metadata-suggestions.ts) | Refactor — no behavior change |
+| META.2B | Shared `ai-definition-builder.ts` (extract from META.1 ai-metadata-suggestions.ts) | Refactor ï¿½ no behavior change |
 | META.2C | `generateAndQueueMetadataSuggestions()` server action | Background generation, review queue item |
 | META.2D | Job handler: `GENERATE_METADATA_DEFINITION_SUGGESTIONS` | Background flow works |
 | META.2E | Pipeline step: `metadata_suggestions_check` in `system-pipeline.ts` | Flow B auto-trigger |
@@ -1189,7 +1189,7 @@ Implement in this order to reduce risk and deliver incrementally:
 After full implementation and UAT:
 
 1. Update `.cursor/ALGT_ERP_SOURCE_OF_TRUTH.md`:
-   - Phase: DMS AI META.2 — First Upload AI Metadata Suggestions with Authorized Approval
+   - Phase: DMS AI META.2 ï¿½ First Upload AI Metadata Suggestions with Authorized Approval
    - Status: CLOSED / PASS
    - Migration: `20260702000000_dms_ai_meta2_first_upload_suggestions.sql`
    - New columns: `dms_metadata_definitions.created_from_ai_suggestion`, `ai_suggestion_trigger_document_id`
@@ -1217,7 +1217,7 @@ AI suggests. Human chooses. System saves only approved items.
 
 **Recommended first activation scope after full implementation:**
 - Enable `DMS_AI_FIRST_UPLOAD_METADATA_SUGGESTIONS = true`
-- First target document types: EJARI, CONTRACT, CV — where AI has strong domain knowledge
+- First target document types: EJARI, CONTRACT, CV ï¿½ where AI has strong domain knowledge
   and the cost of a wrong definition is low
 
 **Do NOT activate for:**

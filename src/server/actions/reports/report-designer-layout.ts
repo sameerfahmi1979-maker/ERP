@@ -48,7 +48,7 @@ export async function getReportTemplateVisualLayout(
     const { data, error } = await supabase
       .from("erp_report_templates")
       .select(
-        "id,template_name,template_code,template_type,version_no,governance_status,security_review_status,body_layout_json,header_layout_json,footer_layout_json,visual_editor_engine,visual_layout_schema_version,visual_layout_updated_at,visual_layout_updated_by"
+        "id,template_name,template_code,template_type,version_no,governance_status,security_review_status,body_layout_json,header_layout_json,footer_layout_json,visual_editor_engine,visual_layout_schema_version,visual_layout_updated_at,visual_layout_updated_by,parent_template_id"
       )
       .eq("id", templateId)
       .is("deleted_at", null)
@@ -72,7 +72,23 @@ export async function getReportTemplateVisualLayout(
       visual_layout_schema_version: number | null;
       visual_layout_updated_at: string | null;
       visual_layout_updated_by: string | null;
+      parent_template_id: number | null;
     };
+
+    // GOVERNANCE.1: Resolve parent template name for the revision banner
+    let parentTemplateName: string | null = null;
+    let parentVersionNo: number | null = null;
+    if (row.parent_template_id) {
+      const { data: parentRow } = await supabase
+        .from("erp_report_templates")
+        .select("template_name, version_no")
+        .eq("id", row.parent_template_id)
+        .single();
+      if (parentRow) {
+        parentTemplateName = (parentRow as { template_name: string }).template_name;
+        parentVersionNo = (parentRow as { version_no: number }).version_no;
+      }
+    }
 
     const isEditable = (EDITABLE_GOVERNANCE_STATUSES as readonly string[]).includes(
       row.governance_status
@@ -102,6 +118,9 @@ export async function getReportTemplateVisualLayout(
         visualLayoutSchemaVersion: row.visual_layout_schema_version ?? 1,
         visualLayoutUpdatedAt: row.visual_layout_updated_at ?? null,
         visualLayoutUpdatedBy: row.visual_layout_updated_by ?? null,
+        parentTemplateId: row.parent_template_id ?? null,
+        parentTemplateName,
+        parentVersionNo,
       },
     };
   } catch (err) {

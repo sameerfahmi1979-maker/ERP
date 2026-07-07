@@ -293,9 +293,17 @@ export function ReportTemplatesPageClient({
       cell: ({ row }) => (
         <div className="min-w-0">
           <div className="font-medium text-sm truncate">{row.original.template_name}</div>
-          <p className="text-xs text-muted-foreground truncate">
-            {row.original.language_mode} · {row.original.page_size?.toUpperCase()}
-          </p>
+          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+            <span className="text-xs text-muted-foreground truncate">
+              {row.original.language_mode} · {row.original.page_size?.toUpperCase()}
+            </span>
+            {row.original.parent_template_id && (
+              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-200 shrink-0">
+                <RefreshCw className="h-2.5 w-2.5" />
+                Revision
+              </span>
+            )}
+          </div>
         </div>
       ),
       meta: { exportValue: (row) => row.template_name },

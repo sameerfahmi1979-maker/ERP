@@ -364,7 +364,7 @@ export async function publishTemplate(templateId: number): Promise<ActionResult>
     const db = createAdminClient();
     const { data: tpl, error: fetchError } = await db
       .from("erp_report_templates")
-      .select("id, template_code, template_type, governance_status, security_review_notes")
+      .select("id, template_code, template_type, governance_status, security_review_notes, parent_template_id, version_no")
       .eq("id", templateId)
       .is("deleted_at", null)
       .single();
@@ -386,16 +386,19 @@ export async function publishTemplate(templateId: number): Promise<ActionResult>
       };
     }
 
+    const now = new Date().toISOString();
+    const actorId = ctx.profile?.id ?? null;
+
     const { error } = await db.from("erp_report_templates").update({
       governance_status: "published",
-      published_at: new Date().toISOString(),
-      published_by: ctx.profile?.id ?? null,
-      updated_by: ctx.profile?.id ?? null,
+      published_at: now,
+      published_by: actorId,
+      updated_by: actorId,
     }).eq("id", templateId);
 
     if (error) return { success: false, error: error.message };
 
-    await insertTemplateEvent(db, templateId, "template_published", ctx.profile?.id ?? null);
+    await insertTemplateEvent(db, templateId, "template_published", actorId);
     await logAudit({
       module_code: "reports",
       entity_name: "erp_report_templates",
@@ -404,6 +407,50 @@ export async function publishTemplate(templateId: number): Promise<ActionResult>
       action: "update",
       new_values: { governance_status: "published" },
     });
+
+    // GOVERNANCE.1: When a revision is published, auto-archive its parent template.
+    // This ensures only one active published version exists per template lineage.
+    const parentId = (tpl as { parent_template_id: number | null }).parent_template_id;
+    if (parentId) {
+      const { data: parentTpl } = await db
+        .from("erp_report_templates")
+        .select("id, template_code, governance_status")
+        .eq("id", parentId)
+        .is("deleted_at", null)
+        .single();
+
+      if (parentTpl && parentTpl.governance_status !== "archived") {
+        await db.from("erp_report_templates").update({
+          governance_status: "archived",
+          archived_at: now,
+          archived_by: actorId,
+          archive_reason: `Superseded by revision v${(tpl as { version_no: number }).version_no} (template ID ${templateId})`,
+          is_active: false,
+          updated_by: actorId,
+        }).eq("id", parentId);
+
+        await insertTemplateEvent(
+          db,
+          parentId,
+          "template_archived",
+          actorId,
+          { superseded_by_template_id: templateId, superseded_by_version_no: (tpl as { version_no: number }).version_no },
+          `Superseded by revision v${(tpl as { version_no: number }).version_no} (ID ${templateId})`
+        );
+
+        await logAudit({
+          module_code: "reports",
+          entity_name: "erp_report_templates",
+          entity_id: parentId,
+          entity_reference: parentTpl.template_code,
+          action: "update",
+          new_values: {
+            governance_status: "archived",
+            archive_reason: `Superseded by revision v${(tpl as { version_no: number }).version_no} (template ID ${templateId})`,
+          },
+        });
+      }
+    }
 
     revalidateTemplates();
     return { success: true };

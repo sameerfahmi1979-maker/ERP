@@ -6,6 +6,7 @@
  */
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   SendHorizonal,
   CheckCircle2,
@@ -315,6 +316,7 @@ export function GovernanceActionsDropdown({
   onTemplateUpdated,
   onNewVersionCreated,
 }: GovernanceActionsProps) {
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
@@ -384,28 +386,30 @@ export function GovernanceActionsDropdown({
       const res = await createTemplateDraftVersion(template.id);
       if (res.success && res.data) {
         const newId = res.data.id;
+        const nextVersion = (template.version_no ?? 1) + 1;
         // Add the new draft to the table with minimal known fields so it renders immediately
         const draftTemplate: Partial<ReportTemplate> & { id: number } = {
           id: newId,
-          template_code: `${template.template_code}_V${(template.version_no ?? 1) + 1}`,
-          template_name: `${template.template_name} (v${(template.version_no ?? 1) + 1})`,
+          template_code: `${template.template_code}_V${nextVersion}`,
+          template_name: `${template.template_name} (v${nextVersion})`,
           template_type: template.template_type,
           governance_status: "draft",
           security_review_status: "pending",
-          version_no: (template.version_no ?? 1) + 1,
+          version_no: nextVersion,
           parent_template_id: template.id,
           is_active: true,
           is_default: false,
         };
         onNewVersionCreated?.(draftTemplate);
-        toast.success(`New draft v${(template.version_no ?? 1) + 1} created. Edit it in the templates list.`, {
+        toast.success(`Draft v${nextVersion} created — opening editor…`, {
           action: {
-            label: "View Draft",
-            onClick: () => {
-              // Scroll to or highlight — handled by parent via onNewVersionCreated
-            },
+            label: "Open Editor",
+            onClick: () => router.push(`/admin/reports/editor/${newId}`),
           },
+          duration: 8000,
         });
+        // Auto-navigate to the new draft editor
+        router.push(`/admin/reports/editor/${newId}`);
       } else {
         toast.error(res.error ?? "Failed to create new version.");
       }
@@ -520,7 +524,7 @@ export function GovernanceActionsDropdown({
           {canNewVersion && (
             <DropdownMenuItem onClick={handleCreateNewVersion} className="gap-2 text-sm">
               <Copy className="h-3.5 w-3.5" />
-              Create New Version
+              {status === "published" || status === "approved" ? "Create Revision" : "Create New Version"}
             </DropdownMenuItem>
           )}
           {canRunReview && (

@@ -487,6 +487,11 @@ export interface VisualLayoutResult {
   visualLayoutSchemaVersion: number;
   visualLayoutUpdatedAt: string | null;
   visualLayoutUpdatedBy: string | null;
+  /** GOVERNANCE.1: set when this template is a revision of another template */
+  parentTemplateId: number | null;
+  /** GOVERNANCE.1: display name of the parent template (for revision banner) */
+  parentTemplateName: string | null;
+  parentVersionNo: number | null;
 }
 
 /** Safe audit metadata for layout saves (never includes full layout JSON) */

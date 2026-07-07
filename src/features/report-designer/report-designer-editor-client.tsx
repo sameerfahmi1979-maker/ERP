@@ -167,6 +167,40 @@ function ReadOnlyBanner({ governanceStatus }: { governanceStatus: string }) {
   );
 }
 
+// GOVERNANCE.1: Revision banner — shown when the template is a revision of another template
+function RevisionBanner({
+  parentTemplateName,
+  parentVersionNo,
+}: {
+  parentTemplateName: string;
+  parentVersionNo: number | null;
+}) {
+  return (
+    <div
+      role="alert"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "8px 16px",
+        background: "#fffbeb",
+        borderBottom: "1px solid #fde68a",
+        color: "#92400e",
+        fontSize: "0.82rem",
+        fontWeight: 500,
+      }}
+    >
+      <Info style={{ width: 15, height: 15, flexShrink: 0 }} />
+      <span>
+        This is a revision of{" "}
+        <strong>{parentTemplateName}</strong>
+        {parentVersionNo != null ? ` (v${parentVersionNo})` : ""}.
+        {" "}When published, the parent template will be automatically archived.
+      </span>
+    </div>
+  );
+}
+
 function TestPreviewOnlyBanner({ governanceStatus }: { governanceStatus: string }) {
   const isProductionReady = governanceStatus === "approved" || governanceStatus === "published";
   if (isProductionReady) return null;
@@ -503,6 +537,14 @@ export function ReportDesignerEditorClient({ templateId, userPermissions = [] }:
 
       {/* ── Read-only banner ──────────────────────────────────────────────── */}
       {isReadOnly && <ReadOnlyBanner governanceStatus={layoutResult.governanceStatus} />}
+
+      {/* ── Revision banner — shown for draft revisions of other templates ── */}
+      {!isReadOnly && layoutResult.parentTemplateId && layoutResult.parentTemplateName && (
+        <RevisionBanner
+          parentTemplateName={layoutResult.parentTemplateName}
+          parentVersionNo={layoutResult.parentVersionNo}
+        />
+      )}
 
       {/* ── Zone selector + save bar ─────────────────────────────────────── */}
       <div

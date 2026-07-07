@@ -47,6 +47,14 @@ export interface ReportDesignerLayoutRoot {
     pageSize?: "A4" | "A3" | "Letter";
     fontFamily?: string;
     languageMode?: "en" | "ar" | "bilingual";
+    /** Document title bar (the colored band under the company header) */
+    titleBarMode?: "auto" | "custom" | "hidden";
+    /** Custom title text — used when titleBarMode = "custom" */
+    titleBarText?: string;
+    /** Title bar background color (safe 6-digit hex). Empty = branding theme color */
+    titleBarBgColor?: string;
+    /** Title bar text color (safe 6-digit hex). Empty = branding theme color */
+    titleBarTextColor?: string;
   };
 }
 
@@ -149,6 +157,13 @@ export interface BodyTextSectionBlock {
      */
     content: string;
     language?: "en" | "ar" | "bilingual";
+    /**
+     * Block-level text alignment — applies to ALL paragraphs in this block.
+     * Stored as a simple Puck prop (not inside ProseMirror JSON) so it
+     * survives the save cycle reliably. Overrides any per-paragraph
+     * textAlign in richContent.
+     */
+    blockTextAlign?: "left" | "center" | "right" | "justify";
   };
 }
 

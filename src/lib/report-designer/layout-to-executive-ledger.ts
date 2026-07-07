@@ -158,7 +158,8 @@ function mapBodyTextSection(
   if (rc && rc.type === "doc" && !isCorruptRichContent) {
     const richHtml = renderProseMirrorDocToHtml(
       rc as unknown as Record<string, unknown>,
-      values
+      values,
+      block.props.blockTextAlign
     );
     return {
       type: "body",
@@ -554,6 +555,8 @@ interface ZoneProcessResult {
   signatoryOverride?: { name: string; titleEn?: string; titleAr?: string };
   verification?: { label?: string };
   warnings: string[];
+  /** True when a ColumnStripBlock with a signatory slot was found in this zone */
+  hasColumnSignatory: boolean;
 }
 
 function processZone(
@@ -567,6 +570,7 @@ function processZone(
   let brandingOverrides: ExportBrandingContext = { ...initialBranding };
   let signatoryOverride: { name: string; titleEn?: string } | undefined;
   let verification: { label?: string } | undefined;
+  let hasColumnSignatory = false;
 
   for (const block of zone.content) {
     switch (block.type) {
@@ -638,8 +642,18 @@ function processZone(
       }
 
       case "ColumnStripBlock": {
+        const cb = block as ColumnStripBlock;
+        // Detect if any slot has signatory content — suppresses the built-in
+        // html-renderer signatory block to prevent double rendering.
+        if (
+          cb.props.leftSlot?.contentType === "signatory" ||
+          cb.props.centerSlot?.contentType === "signatory" ||
+          cb.props.rightSlot?.contentType === "signatory"
+        ) {
+          hasColumnSignatory = true;
+        }
         sections.push(
-          mapColumnStripBlock(block as ColumnStripBlock, values, brandingOverrides, warnings)
+          mapColumnStripBlock(cb, values, brandingOverrides, warnings)
         );
         break;
       }
@@ -651,7 +665,7 @@ function processZone(
     }
   }
 
-  return { sections, brandingOverrides, signatoryOverride, verification, warnings };
+  return { sections, brandingOverrides, signatoryOverride, verification, warnings, hasColumnSignatory };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -694,11 +708,32 @@ export function mapReportDesignerZonesToExecutiveLedgerDocument(
   const resolvedBranding = footerResult.brandingOverrides;
 
   // ── Determine document title ──────────────────────────────────────────────
-  // Use first h1 HeadingBlock from body zone, or template name
+  // Root titleBarMode: "custom" uses titleBarText, "hidden" removes the bar,
+  // "auto" (default) uses first h1 HeadingBlock from body zone or template name.
+  const rootProps = bodyLayout.root.props;
   const firstH1 = bodyLayout.content.find(
     (b) => b.type === "HeadingBlock" && (b as HeadingBlock).props.level === "h1"
   ) as HeadingBlock | undefined;
-  const documentTitle = firstH1?.props.text ?? templateName;
+  const autoTitle = firstH1?.props.text ?? templateName;
+  const documentTitle =
+    rootProps.titleBarMode === "custom" && rootProps.titleBarText?.trim()
+      ? rootProps.titleBarText.trim()
+      : autoTitle;
+  const hideTitleBlock = rootProps.titleBarMode === "hidden";
+
+  const SAFE_HEX = /^#[0-9a-fA-F]{6}$/;
+  const titleBlockStyle =
+    (rootProps.titleBarBgColor && SAFE_HEX.test(rootProps.titleBarBgColor)) ||
+    (rootProps.titleBarTextColor && SAFE_HEX.test(rootProps.titleBarTextColor))
+      ? {
+          ...(rootProps.titleBarBgColor && SAFE_HEX.test(rootProps.titleBarBgColor)
+            ? { bgColor: rootProps.titleBarBgColor }
+            : {}),
+          ...(rootProps.titleBarTextColor && SAFE_HEX.test(rootProps.titleBarTextColor)
+            ? { textColor: rootProps.titleBarTextColor }
+            : {}),
+        }
+      : undefined;
 
   // ── Combine sections: header → body → footer ──────────────────────────────
   const allSections: ExecutiveLedgerSection[] = [
@@ -713,12 +748,20 @@ export function mapReportDesignerZonesToExecutiveLedgerDocument(
     languageMode === "ar" ? "rtl" : languageMode === "bilingual" ? "auto" : "ltr";
 
   // ── Build ExecutiveLedgerDocument ─────────────────────────────────────────
+  const suppressBuiltinSignatory =
+    headerResult.hasColumnSignatory ||
+    bodyResult.hasColumnSignatory ||
+    footerResult.hasColumnSignatory;
+
   const document: ExecutiveLedgerDocument = {
     documentTitle,
+    ...(hideTitleBlock ? { hideTitleBlock: true } : {}),
+    ...(titleBlockStyle ? { titleBlockStyle } : {}),
     branding: resolvedBranding,
     sections: allSections,
     direction,
     orientation: bodyLayout.root.props.orientation ?? "portrait",
+    ...(suppressBuiltinSignatory ? { suppressBuiltinSignatory: true } : {}),
     ...(footerResult.signatoryOverride
       ? { signatoryOverride: footerResult.signatoryOverride }
       : {}),

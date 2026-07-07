@@ -96,6 +96,11 @@ const BodyTextSectionBlockSchema = z.object({
       .nullable()
       .optional(),
     language: z.enum(["en", "ar", "bilingual"]).optional(),
+    /**
+     * Block-level text alignment — a simple Puck prop that bypasses
+     * ProseMirror paragraph attrs entirely. Reliable across all save cycles.
+     */
+    blockTextAlign: z.enum(["left", "center", "right", "justify"]).optional(),
   }),
 });
 
@@ -305,6 +310,12 @@ export const ReportDesignerBlockSchema = z.discriminatedUnion("type", [
 // Layout root schema
 // ─────────────────────────────────────────────────────────────────────────────
 
+const SafeHexColorSchema = z
+  .string()
+  .refine((val) => val === "" || /^#[0-9a-fA-F]{6}$/.test(val), {
+    message: "Color must be a 6-digit hex value like #1e293b (or empty for theme default)",
+  });
+
 export const ReportDesignerLayoutRootSchema = z.object({
   props: z.object({
     orientation: z.enum(["portrait", "landscape"]).optional(),
@@ -317,6 +328,10 @@ export const ReportDesignerLayoutRootSchema = z.object({
       )
       .optional(),
     languageMode: z.enum(["en", "ar", "bilingual"]).optional(),
+    titleBarMode: z.enum(["auto", "custom", "hidden"]).optional(),
+    titleBarText: safePlainText(200).optional(),
+    titleBarBgColor: SafeHexColorSchema.optional(),
+    titleBarTextColor: SafeHexColorSchema.optional(),
   }),
 });
 

@@ -278,8 +278,15 @@ export function renderExecutiveLedgerHtml(doc: ExecutiveLedgerDocument): string 
     : "";
 
   const themePrimary = branding?.themePrimaryColor ?? "#1e293b";
-  const themeHeaderBg = branding?.themeHeaderBgColor ?? branding?.themePrimaryColor ?? "#1e293b";
-  const themeHeaderText = branding?.themeHeaderTextColor ?? "#ffffff";
+  // Title band colors: Report Designer per-template overrides take priority
+  // over the branding profile theme (doc.titleBlockStyle is validated hex).
+  const themeHeaderBg =
+    doc.titleBlockStyle?.bgColor ??
+    branding?.themeHeaderBgColor ??
+    branding?.themePrimaryColor ??
+    "#1e293b";
+  const themeHeaderText =
+    doc.titleBlockStyle?.textColor ?? branding?.themeHeaderTextColor ?? "#ffffff";
 
   const addressBlock = branding?.addressBlockEn ?? "";
   const phone = branding?.phone ?? "";
@@ -291,7 +298,9 @@ export function renderExecutiveLedgerHtml(doc: ExecutiveLedgerDocument): string 
   // ── Signatory ──────────────────────────────────────────────────────────────
   const sigName = doc.signatoryOverride?.name ?? branding?.signatoryName ?? "";
   const sigTitle = doc.signatoryOverride?.titleEn ?? branding?.signatoryTitleEn ?? "";
-  const showSignatoryBlock = !!(sigName || signatureUrl || stampUrl);
+  // Suppress the built-in signatory when the visual template already renders one
+  // via a ColumnStripBlock signatory slot (prevents double-rendering).
+  const showSignatoryBlock = !doc.suppressBuiltinSignatory && !!(sigName || signatureUrl || stampUrl);
 
   // ── Direction ──────────────────────────────────────────────────────────────
   const dir = doc.direction === "rtl" ? "rtl" : "ltr";
@@ -353,9 +362,9 @@ export function renderExecutiveLedgerHtml(doc: ExecutiveLedgerDocument): string 
       </div>`;
     }
   } else if (doc.qrPlaceholder) {
-    // Legacy placeholder (BRANDING.5 behavior — no real QR yet)
-    qrHtml = `<div style="display:inline-flex; flex-direction:column; align-items:center; gap:3px; border:1px dashed #cbd5e1; width:60px; height:60px; background:#f8fafc; margin-top:4px; align-items:center; justify-content:center;">
-      <span style="font-size:7px; color:#94a3b8; text-align:center; line-height:1.4; padding:4px;">QR<br>Pending</span>
+    // Legacy placeholder — hidden in print so a pending QR box doesn't appear on paper
+    qrHtml = `<div class="el-no-print" style="display:inline-flex; flex-direction:column; align-items:center; gap:3px; border:1px dashed #cbd5e1; width:60px; height:60px; background:#f8fafc; margin-top:4px; align-items:center; justify-content:center;">
+      <span style="font-size:7px; color:#94a3b8; text-align:center; line-height:1.4; padding:4px;">QR<br>Code</span>
     </div>`;
   }
 
@@ -421,9 +430,9 @@ export function renderExecutiveLedgerHtml(doc: ExecutiveLedgerDocument): string 
 
     /* ── Print setup ── */
     @media print {
-      @page { size: ${pageSize}; margin: ${EL_MARGIN_MM}mm; }
+      @page { size: ${pageSize}; margin: 0; }
       body { background: none !important; padding: 0 !important; }
-      .el-outer-frame { box-shadow: none !important; margin: 0 !important; }
+      .el-outer-frame { box-shadow: none !important; margin: 0 !important; padding: ${EL_MARGIN_MM}mm !important; }
       .el-no-print { display: none !important; }
     }
 
@@ -570,6 +579,7 @@ export function renderExecutiveLedgerHtml(doc: ExecutiveLedgerDocument): string 
       </div>
 
       <!-- Document Title Block -->
+      ${doc.hideTitleBlock ? "" : `
       <div class="el-title-block">
         <div>
           <div class="el-doc-title">${elEscapeHtml(doc.documentTitle)}</div>
@@ -580,7 +590,7 @@ export function renderExecutiveLedgerHtml(doc: ExecutiveLedgerDocument): string 
           ${doc.issuedDate ? `<div><strong>Date:</strong> ${elEscapeHtml(doc.issuedDate)}</div>` : ""}
           ${doc.issuedAt ? `<div><strong>Location:</strong> ${elEscapeHtml(doc.issuedAt)}</div>` : ""}
         </div>
-      </div>
+      </div>`}
 
       <!-- Addressee Strip -->
       ${hasAddresseeStrip ? `

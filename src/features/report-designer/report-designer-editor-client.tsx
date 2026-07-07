@@ -228,16 +228,24 @@ export function ReportDesignerEditorClient({ templateId, userPermissions = [] }:
   const [activeZone, setActiveZone] = useState<Zone>("body");
   const [editorMode, setEditorMode] = useState<EditorMode>("designer");
 
-  // All three zones — preserved so saving one zone doesn't wipe others
-  const zonesRef = useRef<Record<Zone, ReportDesignerLayoutJson>>({
+  // Ref mirror of activeZone so async callbacks (Puck onChange events that can
+  // arrive after a tab switch) never act on a stale zone value.
+  const activeZoneRef = useRef<Zone>("body");
+
+  // All three zones — single source of truth for save + test preview.
+  const [zoneLayouts, setZoneLayouts] = useState<Record<Zone, ReportDesignerLayoutJson>>({
     header: EMPTY_LAYOUT,
     body: EMPTY_LAYOUT,
     footer: EMPTY_LAYOUT,
   });
+  const zoneLayoutsRef = useRef(zoneLayouts);
+  zoneLayoutsRef.current = zoneLayouts;
 
-  // Current unsaved Puck data for the active zone
-  const [currentZoneLayout, setCurrentZoneLayout] =
-    useState<ReportDesignerLayoutJson>(EMPTY_LAYOUT);
+  // Bumped after load/save so the active Puck shell remounts with fresh DB data.
+  const [layoutRevision, setLayoutRevision] = useState(0);
+  // Global across ALL zones — saving persists all three zones at once, so
+  // switching tabs must NOT clear it (edits in a previous zone would be
+  // silently lost with the Save button disabled).
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   const [isPending, startTransition] = useTransition();
@@ -254,12 +262,12 @@ export function ReportDesignerEditorClient({ templateId, userPermissions = [] }:
       return;
     }
     const d = result.data;
-    zonesRef.current = {
+    setZoneLayouts({
       header: d.headerLayout,
       body: d.bodyLayout,
       footer: d.footerLayout,
-    };
-    setCurrentZoneLayout(d.bodyLayout);
+    });
+    setLayoutRevision((v) => v + 1);
     setLayoutResult(d);
     setHasUnsavedChanges(false);
     setIsLoading(false);
@@ -269,48 +277,65 @@ export function ReportDesignerEditorClient({ templateId, userPermissions = [] }:
     void loadLayout();
   }, [loadLayout]);
 
+  // Warn before closing/leaving the page with unsaved layout changes
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [hasUnsavedChanges]);
+
   // ── Zone switching ────────────────────────────────────────────────────────
 
-  const handleZoneChange = useCallback(
-    (zone: Zone) => {
-      // Persist any unsaved changes for the current zone before switching
-      zonesRef.current[activeZone] = currentZoneLayout;
-      setActiveZone(zone);
-      setCurrentZoneLayout(zonesRef.current[zone]);
-      setHasUnsavedChanges(false);
-    },
-    [activeZone, currentZoneLayout]
-  );
+  const handleZoneChange = useCallback((zone: Zone) => {
+    // zoneLayouts always has current edits — switching tabs is just a pointer
+    // move. hasUnsavedChanges is NOT reset so edits from the previous zone
+    // are still saved when the user clicks Save Layout.
+    activeZoneRef.current = zone;
+    setActiveZone(zone);
+  }, []);
 
   // ── Layout change from Puck ───────────────────────────────────────────────
 
-  const handleLayoutChange = useCallback((layout: ReportDesignerLayoutJson) => {
-    setCurrentZoneLayout(layout);
-    setHasUnsavedChanges(true);
-  }, []);
+  /**
+   * Receives changes from the Puck shell, tagged with the zone that instance
+   * was mounted for. Late/async events from an unmounting zone editor are
+   * routed to their own zone bucket and can never leak into the active zone.
+   * `initial` marks Puck's automatic mount-time data resolve — synced to the
+   * zone bucket but NOT treated as a user edit.
+   */
+  const handleLayoutChange = useCallback(
+    (zone: Zone, layout: ReportDesignerLayoutJson, opts?: { initial?: boolean }) => {
+      // Update ref synchronously so handleSave always reads the latest data,
+      // even if the React state re-render hasn't committed yet.
+      zoneLayoutsRef.current = { ...zoneLayoutsRef.current, [zone]: layout };
+      setZoneLayouts((prev) => ({ ...prev, [zone]: layout }));
+      if (!opts?.initial) {
+        setHasUnsavedChanges(true);
+      }
+    },
+    []
+  );
 
   // ── Save ──────────────────────────────────────────────────────────────────
 
   const handleSave = useCallback(() => {
     if (!layoutResult) return;
-    // Freeze current zone into the zones map before saving
-    const updatedZones: Record<Zone, ReportDesignerLayoutJson> = {
-      ...zonesRef.current,
-      [activeZone]: currentZoneLayout,
-    };
-    zonesRef.current = updatedZones;
 
     startTransition(async () => {
+      const layouts = zoneLayoutsRef.current;
       const result = await saveReportTemplateVisualLayout({
         templateId,
-        bodyLayout: updatedZones.body,
-        headerLayout: updatedZones.header,
-        footerLayout: updatedZones.footer,
+        bodyLayout: layouts.body,
+        headerLayout: layouts.header,
+        footerLayout: layouts.footer,
       });
 
       if (result.success) {
         toast.success("Layout saved", {
-          description: `${activeZone.charAt(0).toUpperCase() + activeZone.slice(1)} zone saved successfully.`,
+          description: "Header, body and footer zones saved successfully.",
         });
         setHasUnsavedChanges(false);
         // Reload to get updated metadata (updated_at, etc.)
@@ -321,7 +346,7 @@ export function ReportDesignerEditorClient({ templateId, userPermissions = [] }:
         });
       }
     });
-  }, [layoutResult, activeZone, currentZoneLayout, templateId, loadLayout]);
+  }, [layoutResult, templateId, loadLayout]);
 
   // ── States ────────────────────────────────────────────────────────────────
 
@@ -632,8 +657,7 @@ export function ReportDesignerEditorClient({ templateId, userPermissions = [] }:
             ) : (
               <>
                 <Save style={{ width: 14, height: 14 }} />
-                Save{" "}
-                {activeZone.charAt(0).toUpperCase() + activeZone.slice(1)}
+                Save Layout
               </>
             )}
           </button>
@@ -671,18 +695,19 @@ export function ReportDesignerEditorClient({ templateId, userPermissions = [] }:
               <ReportDesignerTestPanel
                 templateId={templateId}
                 templateType={layoutResult.templateType}
-                headerLayout={activeZone === "header" ? currentZoneLayout : zonesRef.current.header}
-                bodyLayout={activeZone === "body" ? currentZoneLayout : zonesRef.current.body}
-                footerLayout={activeZone === "footer" ? currentZoneLayout : zonesRef.current.footer}
+                headerLayout={zoneLayouts.header}
+                bodyLayout={zoneLayouts.body}
+                footerLayout={zoneLayouts.footer}
               />
             </div>
           </>
         ) : (
         <div className="report-designer-puck-container" style={{ height: "100%" }}>
           <ReportDesignerPuckShellLoader
-            key={`${templateId}-${activeZone}`}
+            key={`${templateId}-${activeZone}-${layoutRevision}`}
             templateId={templateId}
-            initialLayout={currentZoneLayout}
+            zone={activeZone}
+            initialLayout={zoneLayouts[activeZone]}
             onLayoutChange={isReadOnly ? undefined : handleLayoutChange}
             readOnly={isReadOnly}
           />

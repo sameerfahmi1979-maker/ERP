@@ -27,6 +27,7 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import {
   ReportDesignerTestInputSchema,
   buildSampleBindingValues,
+  repairLayoutBindingTokenPaths,
 } from "@/lib/report-designer";
 import type {
   ReportDesignerTestDataSource,
@@ -242,6 +243,15 @@ export async function runReportDesignerTest(
     const resolvedHeaderLayout = sanitize(headerLayoutJson ?? template.header_layout_json);
     const resolvedBodyLayout = sanitize(bodyLayoutJson ?? template.body_layout_json);
     const resolvedFooterLayout = sanitize(footerLayoutJson ?? template.footer_layout_json);
+
+    // Self-heal binding chips that lost their path attribute (stale/broken
+    // client bundles) using the plain-text fallback — same repair as the save
+    // action, so live previews resolve data even before a successful save.
+    for (const zone of [resolvedHeaderLayout, resolvedBodyLayout, resolvedFooterLayout]) {
+      if (zone && typeof zone === "object") {
+        repairLayoutBindingTokenPaths(zone as Record<string, unknown>);
+      }
+    }
 
     // ── Resolve branding context ─────────────────────────────────────────────
     const brandingResult = await resolveTemplatePreview({ templateId });

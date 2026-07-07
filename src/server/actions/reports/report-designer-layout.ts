@@ -16,6 +16,7 @@ import {
   buildLayoutAuditMeta,
   ReportDesignerLayoutJsonSchema,
   SaveVisualLayoutInputSchema,
+  repairLayoutBindingTokenPaths,
 } from "@/lib/report-designer";
 import type {
   ReportDesignerLayoutJson,
@@ -78,9 +79,9 @@ export async function getReportTemplateVisualLayout(
     );
 
     const parseZone = (raw: unknown): ReportDesignerLayoutJson => {
+      if (raw == null || raw === "") return EMPTY_LAYOUT;
       const parsed = ReportDesignerLayoutJsonSchema.safeParse(raw);
-      if (parsed.success && parsed.data.content.length > 0) return parsed.data;
-      return EMPTY_LAYOUT;
+      return parsed.success ? parsed.data : EMPTY_LAYOUT;
     };
 
     return {
@@ -139,6 +140,26 @@ export async function saveReportTemplateVisualLayout(
       headerLayout: sanitize(input.headerLayout),
       footerLayout: sanitize(input.footerLayout),
     } satisfies typeof input;
+
+    // Self-heal binding chips that lost their path attribute (stale/broken
+    // client bundles serialize chips without attrs). The plain-text fallback
+    // carries the correct {{path}} tokens in document order, so we can repair
+    // server-side regardless of what version the browser is running.
+    for (const zone of [
+      sanitizedInput.bodyLayout,
+      sanitizedInput.headerLayout,
+      sanitizedInput.footerLayout,
+    ]) {
+      if (!zone) continue;
+      const repairedBlocks = repairLayoutBindingTokenPaths(
+        zone as unknown as Record<string, unknown>
+      );
+      if (repairedBlocks > 0) {
+        console.warn(
+          `[report-designer-layout] save: repaired binding token paths in ${repairedBlocks} block(s) (template ${input.templateId})`
+        );
+      }
+    }
 
     // Zod + binding validation
     const validation = validateSaveLayoutInput(sanitizedInput);

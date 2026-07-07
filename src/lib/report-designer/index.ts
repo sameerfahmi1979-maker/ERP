@@ -81,6 +81,16 @@ export {
   validateSaveLayoutInput,
   buildLayoutAuditMeta,
 } from "./layout-validation";
+
+// Plain text ↔ ProseMirror utilities (client-safe)
+export {
+  buildProseMirrorDocFromPlainText,
+  collectBindingTokens,
+  isCorruptRichContentDoc,
+  normalizeRichContentDoc,
+  rebuildPreservingParagraphAttrs,
+  repairLayoutBindingTokenPaths,
+} from "./prosemirror-plaintext";
 export type { LayoutValidationResult } from "./layout-validation";
 
 // Live test schema

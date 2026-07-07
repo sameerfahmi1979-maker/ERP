@@ -54,6 +54,23 @@ export function isRegisteredSensitiveField(path: string): boolean {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Global admin bypass
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Global administrators (erp.admin) may insert ANY active field into ANY
+ * template type — they are trusted to build salary certificates, pay slips,
+ * and other sensitive documents from any template.
+ *
+ * NOTE: this bypasses the INSERT gates (permission + template-type allowlist)
+ * only. Test/preview masking of restricted values is NEVER bypassed — real
+ * sensitive values still resolve exclusively in official output mode.
+ */
+export function hasSensitiveFieldAdminBypass(userPermissions: string[]): boolean {
+  return userPermissions.includes("erp.admin");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Insertability gate (field picker)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -63,8 +80,8 @@ export function isRegisteredSensitiveField(path: string): boolean {
  *
  * Conditions that must ALL be met:
  * 1. Field is active and not planned.
- * 2. User has the required permission (requiredPermission).
- * 3. Template type is in allowedTemplateTypes for the field.
+ * 2. User has the required permission (requiredPermission) — OR erp.admin.
+ * 3. Template type is in allowedTemplateTypes for the field — OR erp.admin.
  */
 export function canFieldBeInsertedForTemplate(
   field: ReportFieldRegistryEntry,
@@ -77,6 +94,11 @@ export function canFieldBeInsertedForTemplate(
     field.sensitivityLevel === "public" ||
     field.sensitivityLevel === "internal"
   ) {
+    return true;
+  }
+
+  // Global admins bypass both the permission and template-type insert gates
+  if (hasSensitiveFieldAdminBypass(context.userPermissions)) {
     return true;
   }
 
@@ -110,6 +132,11 @@ export function getFieldInsertBlockReason(
   }
 
   if (field.sensitivityLevel === "public" || field.sensitivityLevel === "internal") {
+    return "";
+  }
+
+  // Global admins are never blocked from inserting active fields
+  if (hasSensitiveFieldAdminBypass(context.userPermissions)) {
     return "";
   }
 
@@ -164,7 +191,8 @@ export function canFieldResolveInOutputMode(
     return true;
   }
 
-  // Restricted/confidential require official mode
+  // Restricted/confidential require official mode — NO admin bypass here:
+  // real sensitive values must never appear in preview/test output.
   if (context.outputMode !== "official") return false;
 
   // Check allowedOutputModes if defined
@@ -172,15 +200,17 @@ export function canFieldResolveInOutputMode(
     return false;
   }
 
-  // Check permission
-  if (field.requiredPermission) {
+  const isAdmin = hasSensitiveFieldAdminBypass(context.userPermissions);
+
+  // Check permission (erp.admin implies all report permissions)
+  if (field.requiredPermission && !isAdmin) {
     if (!context.userPermissions.includes(field.requiredPermission)) {
       return false;
     }
   }
 
-  // Check template type
-  if (field.allowedTemplateTypes && field.allowedTemplateTypes.length > 0) {
+  // Check template type (admins may issue sensitive fields from any template type)
+  if (field.allowedTemplateTypes && field.allowedTemplateTypes.length > 0 && !isAdmin) {
     if (!field.allowedTemplateTypes.includes(context.templateType)) {
       return false;
     }

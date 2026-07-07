@@ -55,20 +55,24 @@ function toValueType(
 
 /**
  * Build the legacy ERP_BINDING_REGISTRY Record from the new field registry.
- * Only active, non-planned, non-restricted fields are included —
- * matching the original registry's intent.
+ * All active, non-planned fields are included — INCLUDING restricted and
+ * confidential fields.
+ *
+ * SECURITY NOTE: including restricted fields here does NOT leak values.
+ * This registry is an allowlist of VALID PATHS (save validation, Zod schema,
+ * renderer path lookup). Value resolution is governed separately:
+ *  - test/preview: values are always masked (sensitive-field-masking.ts)
+ *  - official: resolved only via resolveOfficialSensitiveFields after all
+ *    governance gates pass (permission, template type, approval status)
+ * Excluding them here made templates with governed sensitive fields fail
+ * save validation with "Unknown binding" — wrong layer for the gate.
  */
 export function buildLegacyBindingRegistry(): Record<string, BindingDescriptor> {
   const result: Record<string, BindingDescriptor> = {};
 
   for (const entry of REPORT_FIELD_REGISTRY) {
-    // Only include active insertable fields — same as original registry
-    if (
-      !entry.isActive ||
-      entry.isPlanned ||
-      entry.sensitivityLevel === "restricted" ||
-      entry.sensitivityLevel === "confidential"
-    ) {
+    // Only include active, implemented fields
+    if (!entry.isActive || entry.isPlanned) {
       continue;
     }
 

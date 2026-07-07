@@ -24,8 +24,9 @@ import Underline from "@tiptap/extension-underline";
 import { TextStyle } from "@tiptap/extension-text-style";
 import Color from "@tiptap/extension-color";
 import TextAlign from "@tiptap/extension-text-align";
+import Typography from "@tiptap/extension-typography";
 import { Extension, Node, mergeAttributes } from "@tiptap/core";
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { ReportFieldPickerPopover } from "../field-picker";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -80,6 +81,11 @@ export const BindingToken = Node.create({
   group: "inline",
   inline: true,
   atom: true,
+  // Allow all marks (bold/italic/underline/textStyle) to be stored ON chips so
+  // formatting applied to a chip carries into the rendered output. Verified
+  // safe: attrs.path survives selectAll+mark, NodeSelection+mark, and
+  // insertContent with active stored marks (see UX.3 formatting fix).
+  marks: "_",
 
   addAttributes() {
     return {
@@ -183,8 +189,17 @@ export function ReportDesignerRichTextEditor({
   onChange,
   placeholder = "Enter text. Use Insert Field to add dynamic data.",
 }: ReportDesignerRichTextEditorProps) {
+  // Track the JSON string of the last value TipTap itself emitted so we can
+  // distinguish external value changes (e.g. reloaded from DB) from echoes of
+  // our own onUpdate events.
+  const lastEmittedJsonRef = useRef<string | null>(null);
+
   const editor = useEditor({
     immediatelyRender: false,
+    // TipTap v3 defaults to NOT re-rendering on transactions — without this the
+    // toolbar active states (bold/italic/size/color) freeze and never follow
+    // the caret/selection like Word does.
+    shouldRerenderOnTransaction: true,
     extensions: [
       StarterKit.configure({
         blockquote: false,
@@ -196,6 +211,11 @@ export function ReportDesignerRichTextEditor({
         // Disable built-in underline to avoid duplicate extension warning
         // (we add the standalone Underline extension below)
         underline: false,
+        // CRITICAL: StarterKit v3 bundles Link with autolink. Pasting text
+        // containing {{binding.path}} tokens linkified fragments (e.g.
+        // "company.legal"), splitting the binding across text nodes so it
+        // could never resolve. Links are also not rendered in report output.
+        link: false,
       }),
       Underline,
       TextStyle,
@@ -206,6 +226,7 @@ export function ReportDesignerRichTextEditor({
         alignments: ["left", "center", "right", "justify"],
         defaultAlignment: "left",
       }),
+      Typography,
       BindingToken,
     ],
     content: value ?? null,
@@ -224,7 +245,9 @@ export function ReportDesignerRichTextEditor({
       },
     },
     onUpdate({ editor: e }) {
-      onChange(e.getJSON() as JSONContent);
+      const json = e.getJSON() as JSONContent;
+      lastEmittedJsonRef.current = JSON.stringify(json);
+      onChange(json);
     },
   });
 
@@ -262,12 +285,49 @@ export function ReportDesignerRichTextEditor({
     [editor]
   );
 
+  // When the `value` prop changes externally (e.g. after a save+reload cycle
+  // without a full Puck shell remount), push the new content into TipTap so
+  // the editor doesn't show stale data.
+  useEffect(() => {
+    if (!editor || value == null) return;
+    const incoming = JSON.stringify(value);
+    if (incoming !== lastEmittedJsonRef.current) {
+      lastEmittedJsonRef.current = incoming;
+      editor.commands.setContent(value, { emitUpdate: false });
+    }
+  }, [editor, value]);
+
   if (!editor) return null;
 
-  const currentFontSize: number =
-    (editor.getAttributes("textStyle").fontSize as number | undefined) ?? 10;
-  const currentColor: string =
-    (editor.getAttributes("textStyle").color as string | undefined) ?? "#1a1a1a";
+  // Word-like toolbar behavior: when a binding chip is node-selected, derive
+  // active states from the chip's OWN marks. editor.isActive/getAttributes
+  // read text-selection marks and don't reflect marks stored on atom nodes.
+  const selection = editor.state.selection as unknown as {
+    node?: {
+      type: { name: string };
+      marks: ReadonlyArray<{ type: { name: string }; attrs: Record<string, unknown> }>;
+    };
+  };
+  const chipNode =
+    selection.node && selection.node.type.name === "bindingToken"
+      ? selection.node
+      : null;
+  const chipMark = (name: string) =>
+    chipNode?.marks.find((m) => m.type.name === name);
+
+  const isBoldActive = chipNode ? !!chipMark("bold") : editor.isActive("bold");
+  const isItalicActive = chipNode ? !!chipMark("italic") : editor.isActive("italic");
+  const isUnderlineActive = chipNode ? !!chipMark("underline") : editor.isActive("underline");
+
+  const chipTextStyle = chipMark("textStyle")?.attrs as
+    | { fontSize?: number; color?: string }
+    | undefined;
+  const currentFontSize: number = chipNode
+    ? chipTextStyle?.fontSize ?? 10
+    : ((editor.getAttributes("textStyle").fontSize as number | undefined) ?? 10);
+  const currentColor: string = chipNode
+    ? chipTextStyle?.color ?? "#1a1a1a"
+    : ((editor.getAttributes("textStyle").color as string | undefined) ?? "#1a1a1a");
 
   return (
     <div
@@ -292,57 +352,25 @@ export function ReportDesignerRichTextEditor({
       >
         {/* Bold / Italic / Underline */}
         <ToolbarBtn
-          active={editor.isActive("bold")}
+          active={isBoldActive}
           onClick={() => editor.chain().focus().toggleBold().run()}
           title="Bold"
         >
           <strong>B</strong>
         </ToolbarBtn>
         <ToolbarBtn
-          active={editor.isActive("italic")}
+          active={isItalicActive}
           onClick={() => editor.chain().focus().toggleItalic().run()}
           title="Italic"
         >
           <em>I</em>
         </ToolbarBtn>
         <ToolbarBtn
-          active={editor.isActive("underline")}
+          active={isUnderlineActive}
           onClick={() => editor.chain().focus().toggleUnderline().run()}
           title="Underline"
         >
           <u>U</u>
-        </ToolbarBtn>
-
-        <ToolbarSep />
-
-        {/* Alignment */}
-        <ToolbarBtn
-          active={editor.isActive({ textAlign: "left" })}
-          onClick={() => editor.chain().focus().setTextAlign("left").run()}
-          title="Align Left"
-        >
-          ≡
-        </ToolbarBtn>
-        <ToolbarBtn
-          active={editor.isActive({ textAlign: "center" })}
-          onClick={() => editor.chain().focus().setTextAlign("center").run()}
-          title="Center"
-        >
-          ≡
-        </ToolbarBtn>
-        <ToolbarBtn
-          active={editor.isActive({ textAlign: "right" })}
-          onClick={() => editor.chain().focus().setTextAlign("right").run()}
-          title="Align Right"
-        >
-          ≡
-        </ToolbarBtn>
-        <ToolbarBtn
-          active={editor.isActive({ textAlign: "justify" })}
-          onClick={() => editor.chain().focus().setTextAlign("justify").run()}
-          title="Justify"
-        >
-          ≡
         </ToolbarBtn>
 
         <ToolbarSep />

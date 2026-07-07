@@ -9,6 +9,11 @@
  *  - richContent (ProseMirror JSON) stored alongside legacy `content` string.
  *  - Backward compat: existing templates with `content` only still work.
  *
+ * UX.FIX (textAlign persistence):
+ *  - blockTextAlign is now a dedicated Puck prop (not inside ProseMirror JSON).
+ *  - This bypasses TipTap's unreliable paragraph-level attr storage entirely.
+ *  - Alignment toolbar buttons have been removed from the TipTap editor.
+ *
  * Security rules:
  *  - No dangerouslySetInnerHTML in canvas render
  *  - No raw HTML accepted — ProseMirror JSON only
@@ -16,6 +21,7 @@
  *  - {{binding}} placeholders entered as plain text, validated at save/review
  */
 
+import React from "react";
 import type { ComponentConfig } from "@puckeditor/core";
 import type { JSONContent } from "@tiptap/react";
 import { ReportDesignerRichTextEditor } from "./report-designer-rich-text-editor";
@@ -27,13 +33,26 @@ export interface BodyTextSectionBlockProps {
   /** REPORT DESIGNER UX.1: ProseMirror JSON rich text — takes priority over content when present */
   richContent?: JSONContent | null;
   language: "en" | "ar" | "bilingual";
+  /**
+   * Block-level text alignment — stored as a Puck prop, NOT inside ProseMirror JSON.
+   * This survives the full save/load cycle reliably because it is a plain Puck string field.
+   */
+  blockTextAlign?: "left" | "center" | "right" | "justify";
 }
+
+const ALIGN_ICONS: Record<string, string> = {
+  left: "⬛\u200a\u2190",
+  center: "⬛\u200a\u2194",
+  right: "⬛\u200a\u2192",
+  justify: "⬛\u200a\u2194\u2194",
+};
 
 function BodyTextSectionBlockRender({
   title,
   content,
   richContent,
   language,
+  blockTextAlign = "left",
 }: BodyTextSectionBlockProps) {
   const isRtl = language === "ar";
 
@@ -46,7 +65,7 @@ function BodyTextSectionBlockRender({
       style={{
         padding: "4px 0",
         direction: isRtl ? "rtl" : "ltr",
-        textAlign: isRtl ? "right" : "left",
+        textAlign: blockTextAlign as React.CSSProperties["textAlign"],
       }}
     >
       {title && (
@@ -63,18 +82,34 @@ function BodyTextSectionBlockRender({
       )}
       {richContent ? (
         <div>
-          <div
-            style={{
-              display: "inline-block",
-              padding: "1px 6px",
-              background: "#e0e7ff",
-              borderRadius: "3px",
-              fontSize: "0.7rem",
-              color: "#3730a3",
-              marginBottom: "4px",
-            }}
-          >
-            ✦ Rich Text
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginBottom: "4px" }}>
+            <div
+              style={{
+                display: "inline-block",
+                padding: "1px 6px",
+                background: "#e0e7ff",
+                borderRadius: "3px",
+                fontSize: "0.7rem",
+                color: "#3730a3",
+              }}
+            >
+              ✦ Rich Text
+            </div>
+            {blockTextAlign && blockTextAlign !== "left" && (
+              <div
+                style={{
+                  display: "inline-block",
+                  padding: "1px 6px",
+                  background: "#fef9c3",
+                  borderRadius: "3px",
+                  fontSize: "0.7rem",
+                  color: "#854d0e",
+                }}
+                title="Block-level alignment — applied to the generated report"
+              >
+                {ALIGN_ICONS[blockTextAlign] ?? blockTextAlign} aligned
+              </div>
+            )}
           </div>
           <p
             style={{
@@ -124,6 +159,16 @@ export const bodyTextSectionBlockConfig: ComponentConfig<BodyTextSectionBlockPro
         />
       ),
     },
+    blockTextAlign: {
+      type: "radio",
+      label: "Text Alignment",
+      options: [
+        { value: "left",    label: "Left" },
+        { value: "center",  label: "Center" },
+        { value: "right",   label: "Right" },
+        { value: "justify", label: "Justify" },
+      ],
+    },
     content: {
       type: "textarea",
       label: "Plain Text Fallback (auto-synced from rich text)",
@@ -143,6 +188,7 @@ export const bodyTextSectionBlockConfig: ComponentConfig<BodyTextSectionBlockPro
     content: "This letter certifies that {{employee.full_name_en}} is employed as {{employee.designation}} at {{company.legal_name_en}}.",
     richContent: null,
     language: "en",
+    blockTextAlign: "left",
   },
   // TipTap rich text is the source of truth: whenever richContent changes,
   // regenerate the plain-text fallback ({{path}} placeholders included) so the

@@ -70,8 +70,15 @@ export function maskSensitiveBindingValues(
  * Apply defensive masking to ALL registered restricted/confidential paths —
  * even those not currently in the binding map — by injecting masked placeholders.
  *
- * This prevents accidental real-value exposure if a resolver adds a value
- * that should be gated.
+ * This serves two purposes:
+ *  1. Prevents accidental real-value exposure if a resolver adds a value
+ *     that should be gated (overwrite with mask).
+ *  2. Ensures restricted chips in test/preview render their governance mask
+ *     (e.g. "[Restricted — official output only]") instead of a raw {{path}}
+ *     placeholder (inject mask for paths not in the map).
+ *
+ * Only paths that were overwritten (had a real value) are reported in
+ * maskedPaths — injected placeholders are not warnings.
  */
 export function applyDefensiveRestrictedMasking(
   values: Record<string, string>,
@@ -80,13 +87,22 @@ export function applyDefensiveRestrictedMasking(
   const result = { ...values };
   const maskedPaths: string[] = [];
 
+  if (outputMode === "official") return { values: result, maskedPaths };
+
   for (const entry of REPORT_FIELD_REGISTRY) {
     if (
-      (entry.sensitivityLevel === "restricted" || entry.sensitivityLevel === "confidential") &&
-      entry.fieldPath in result &&
-      outputMode !== "official"
+      entry.sensitivityLevel !== "restricted" &&
+      entry.sensitivityLevel !== "confidential"
     ) {
-      result[entry.fieldPath] = getRestrictedFieldMask(entry, outputMode);
+      continue;
+    }
+
+    const hadRealValue =
+      entry.fieldPath in result && (result[entry.fieldPath] ?? "").length > 0;
+
+    result[entry.fieldPath] = getRestrictedFieldMask(entry, outputMode);
+
+    if (hadRealValue) {
       maskedPaths.push(entry.fieldPath);
     }
   }
@@ -230,27 +246,81 @@ interface SalaryResult {
 /**
  * Resolve employee salary fields for official output.
  *
- * NOTE: Salary calculation requires summing salary components by type, which
- * involves hr_salary_component_types and employee_salary_components. This
- * implementation returns safe placeholder values until the full payroll
- * resolver is implemented (planned for a subsequent phase).
+ * Queries employee_salary_components JOIN hr_salary_component_types:
+ *  - basic_salary  = sum of components where is_basic = true
+ *  - total_salary  = sum of all earning components
+ *  - net_salary    = earnings − deductions
+ *  - last_salary   = alias for total_salary (used in experience letters)
  *
  * SECURITY: Only called in official output mode after all governance gates pass.
  */
 export async function resolveEmployeeSalaryFields(
-  _employeeId: number,
-  _supabase: SupabaseClient
+  employeeId: number,
+  supabase: SupabaseClient
 ): Promise<SalaryResult> {
-  // TODO (Future Phase): Implement full salary calculation:
-  // 1. Query employee_salary_components JOIN hr_salary_component_types WHERE employee_id = $1
-  // 2. Sum components by type (basic, allowances, deductions) to compute basic/total/net
-  // For now, return placeholder until payroll resolver is fully implemented.
-  return {
-    basic_salary: "[Salary — payroll resolver pending full implementation]",
-    total_salary: "[Salary — payroll resolver pending full implementation]",
-    net_salary: "[Salary — payroll resolver pending full implementation]",
-    last_salary: "[Salary — payroll resolver pending full implementation]",
+  const result: SalaryResult = {
+    basic_salary: null,
+    total_salary: null,
+    net_salary: null,
+    last_salary: null,
   };
+
+  try {
+    const { data, error } = await supabase
+      .from("employee_salary_components")
+      .select(
+        `
+        amount,
+        is_active,
+        component_type:hr_salary_component_types!component_type_id (
+          component_kind,
+          is_basic
+        )
+        `
+      )
+      .eq("employee_id", employeeId)
+      .eq("is_active", true)
+      .is("deleted_at", null);
+
+    if (error || !data) return result;
+
+    type SalaryRow = {
+      amount: string | number | null;
+      is_active: boolean;
+      component_type: { component_kind: string; is_basic: boolean } | null;
+    };
+
+    let basicTotal = 0;
+    let earningsTotal = 0;
+    let deductionsTotal = 0;
+
+    for (const row of (data as unknown as SalaryRow[])) {
+      const amt = parseFloat(String(row.amount ?? "0"));
+      if (isNaN(amt)) continue;
+      const kind = row.component_type?.component_kind ?? "earning";
+      const isBasic = row.component_type?.is_basic ?? false;
+
+      if (kind === "earning") {
+        earningsTotal += amt;
+        if (isBasic) basicTotal += amt;
+      } else if (kind === "deduction") {
+        deductionsTotal += amt;
+      }
+    }
+
+    const netTotal = earningsTotal - deductionsTotal;
+    const fmt = (n: number) =>
+      `AED ${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+    result.basic_salary = basicTotal > 0 ? fmt(basicTotal) : null;
+    result.total_salary = earningsTotal > 0 ? fmt(earningsTotal) : null;
+    result.net_salary = earningsTotal > 0 ? fmt(netTotal) : null;
+    result.last_salary = earningsTotal > 0 ? fmt(earningsTotal) : null;
+  } catch {
+    // Fail silently — return empty values rather than exposing partial data
+  }
+
+  return result;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -344,7 +414,7 @@ export async function resolveOfficialSensitiveFields(opts: {
     }
   }
 
-  // Resolve salary (stub)
+  // Resolve salary
   if (needsSalary) {
     const salary = await resolveEmployeeSalaryFields(employeeId, supabase);
     const salaryMap: Record<string, string | null | undefined> = {
@@ -363,9 +433,6 @@ export async function resolveOfficialSensitiveFields(opts: {
         }
       }
     }
-    warnings.push(
-      "Salary fields resolved with stub values — full payroll resolver pending implementation."
-    );
   }
 
   // SCOPE H: Audit log — safe metadata only, NO sensitive values

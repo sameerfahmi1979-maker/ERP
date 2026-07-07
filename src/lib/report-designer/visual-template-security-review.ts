@@ -238,9 +238,12 @@ function validateBindingsInRichContent(
                     `{{${path}}} — restricted field in ${templateType} template. Requires reports.sensitive_fields.approve to publish.`)
                 );
               } else {
+                // Outside the recommended template types — allowed for admins
+                // (e.g. salary data in a custom letter) but requires elevated
+                // sensitive-fields approval to publish.
                 findings.push(
-                  blocking(`${fieldPrefix}.bindingToken`, "restricted_field_template_type_not_allowed",
-                    `{{${path}}} — not allowed for template type "${templateType}". Allowed: ${entry.allowedTemplateTypes.join(", ")}`)
+                  warning(`${fieldPrefix}.bindingToken`, "restricted_field_template_type_not_allowed",
+                    `{{${path}}} — outside recommended template types (${entry.allowedTemplateTypes.join(", ")}) for "${templateType}". Publishing requires reports.sensitive_fields.approve.`)
                 );
               }
             } else {
@@ -377,12 +380,14 @@ function validateBindingsInText(
               )
             );
           } else {
-            // Template type NOT allowed for this field
+            // Outside the recommended template types — allowed for admins
+            // (e.g. salary data in a custom letter) but requires elevated
+            // sensitive-fields approval to publish.
             findings.push(
-              blocking(
+              warning(
                 field,
                 "restricted_field_template_type_not_allowed",
-                `{{${binding}}} — not allowed for template type "${templateType}". Allowed: ${entry.allowedTemplateTypes.join(", ")}`
+                `{{${binding}}} — outside recommended template types (${entry.allowedTemplateTypes.join(", ")}) for "${templateType}". Publishing requires reports.sensitive_fields.approve.`
               )
             );
           }
@@ -706,6 +711,7 @@ export function reviewVisualTemplateLayoutSecurity(
   const usesRestrictedFields = findings.some(
     (f) =>
       f.rule === "restricted_field_elevated_approval_required" ||
+      f.rule === "restricted_field_template_type_not_allowed" ||
       f.rule === "restricted_field_template_type_unknown"
   );
   if (usesRestrictedFields) {

@@ -117,9 +117,46 @@ function renderMarkClose(mark: PMMark): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Render inline content (text nodes, hardBreaks, bindingTokens inside a block).
+ * Compute marks that are shared by ALL text nodes in a set of inline nodes.
+ * These become "context marks" for the paragraph — when every piece of typed
+ * text is bold / a certain font-size / a certain color, the binding chip
+ * resolved values should inherit that same formatting in the output.
+ *
+ * Only marks identical in both type AND attrs on every text node are returned
+ * so partial-selection formatting never bleeds onto chips.
  */
-function renderInlineContent(nodes: PMNode[], values: Record<string, string>): string {
+function getContextMarks(nodes: PMNode[]): PMMark[] {
+  const textNodes = nodes.filter((n) => n.type === "text" && (n.marks?.length ?? 0) > 0);
+  if (textNodes.length === 0) return [];
+
+  let common = textNodes[0].marks ?? [];
+  for (let i = 1; i < textNodes.length; i++) {
+    const nodeMarks = textNodes[i].marks ?? [];
+    common = common.filter((cm) =>
+      nodeMarks.some(
+        (nm) =>
+          nm.type === cm.type &&
+          JSON.stringify(nm.attrs ?? {}) === JSON.stringify(cm.attrs ?? {})
+      )
+    );
+    if (common.length === 0) break;
+  }
+  return common;
+}
+
+/**
+ * Render inline content (text nodes, hardBreaks, bindingTokens inside a block).
+ *
+ * contextMarks: marks shared by ALL sibling text nodes (see getContextMarks).
+ * bindingToken chips are atom nodes and cannot carry marks in ProseMirror JSON,
+ * but their resolved values should inherit paragraph-level formatting when the
+ * user selects the whole paragraph and applies bold / font-size / color.
+ */
+function renderInlineContent(
+  nodes: PMNode[],
+  values: Record<string, string>,
+  contextMarks: PMMark[] = []
+): string {
   let html = "";
   for (const node of nodes) {
     switch (node.type) {
@@ -137,13 +174,19 @@ function renderInlineContent(nodes: PMNode[], values: Record<string, string>): s
         html += "<br>";
         break;
       case "bindingToken": {
-        // UX.2: Resolve bindingToken chip nodes (same as {{path}} text tokens)
+        // UX.2: Resolve binding chip. Marks stored ON the chip itself take
+        // priority (user formatted the chip directly); otherwise fall back to
+        // contextMarks (marks shared by all sibling text nodes) so
+        // paragraph-level formatting also reaches the resolved value.
         const path = typeof node.attrs?.path === "string" ? node.attrs.path : "";
+        const chipMarks = node.marks && node.marks.length > 0 ? node.marks : contextMarks;
+        const markOpen  = chipMarks.map(renderMarkOpen).join("");
+        const markClose = [...chipMarks].reverse().map(renderMarkClose).join("");
         if (path && ERP_BINDING_REGISTRY[path] && Object.prototype.hasOwnProperty.call(values, path)) {
-          html += elEscapeHtml(values[path]);
+          html += markOpen + elEscapeHtml(values[path]) + markClose;
         } else if (path) {
           // Unresolved token — render as placeholder
-          html += elEscapeHtml(`{{${path}}}`);
+          html += markOpen + elEscapeHtml(`{{${path}}}`) + markClose;
         }
         break;
       }
@@ -157,28 +200,35 @@ function renderInlineContent(nodes: PMNode[], values: Record<string, string>): s
 
 /**
  * Render a single block-level node.
+ * blockTextAlign: when provided, overrides per-paragraph attrs.textAlign.
  */
-function renderBlockNode(node: PMNode, values: Record<string, string>): string {
+function renderBlockNode(
+  node: PMNode,
+  values: Record<string, string>,
+  blockTextAlign?: string
+): string {
   const children = node.content ?? [];
 
   switch (node.type) {
     case "paragraph": {
       const attrs = node.attrs ?? {};
-      const align = attrs.textAlign as string | undefined;
-      const style = align && ALLOWED_TEXT_ALIGN.has(align)
-        ? ` style="text-align:${align}"`
-        : "";
-      const inner = renderInlineContent(children, values);
-      // Use non-breaking space so empty paragraphs maintain height
-      return `<p${style} style="margin:0 0 6px 0; font-size:10px; line-height:1.7; color:#1a1a1a;${align && ALLOWED_TEXT_ALIGN.has(align) ? ` text-align:${align}` : ""}">${inner || "&nbsp;"}</p>`;
+      // Block-level alignment (from Puck prop) takes priority over paragraph-level.
+      const align =
+        (blockTextAlign && ALLOWED_TEXT_ALIGN.has(blockTextAlign) ? blockTextAlign : null) ??
+        (attrs.textAlign as string | undefined);
+      const alignStyle = align && ALLOWED_TEXT_ALIGN.has(align) ? ` text-align:${align};` : "";
+      const ctxMarks = getContextMarks(children);
+      const inner = renderInlineContent(children, values, ctxMarks);
+      // Single style= attribute: merge base styles + optional text-align
+      return `<p style="margin:0 0 6px 0; font-size:10px; line-height:1.7; color:#1a1a1a;${alignStyle}">${inner || "&nbsp;"}</p>`;
     }
     case "bulletList": {
       const items = children.map(item => {
         const itemContent = item.content ?? [];
         // listItem can contain one or more paragraphs
         const text = itemContent.map(n => {
-          if (n.type === "paragraph") return renderInlineContent(n.content ?? [], values);
-          return renderBlockNode(n, values);
+          if (n.type === "paragraph") return renderInlineContent(n.content ?? [], values, getContextMarks(n.content ?? []));
+          return renderBlockNode(n, values, blockTextAlign);
         }).join("");
         return `<li style="font-size:10px; color:#1a1a1a; margin-bottom:2px;">${text}</li>`;
       }).join("");
@@ -188,8 +238,8 @@ function renderBlockNode(node: PMNode, values: Record<string, string>): string {
       const items = children.map(item => {
         const itemContent = item.content ?? [];
         const text = itemContent.map(n => {
-          if (n.type === "paragraph") return renderInlineContent(n.content ?? [], values);
-          return renderBlockNode(n, values);
+          if (n.type === "paragraph") return renderInlineContent(n.content ?? [], values, getContextMarks(n.content ?? []));
+          return renderBlockNode(n, values, blockTextAlign);
         }).join("");
         return `<li style="font-size:10px; color:#1a1a1a; margin-bottom:2px;">${text}</li>`;
       }).join("");
@@ -197,7 +247,7 @@ function renderBlockNode(node: PMNode, values: Record<string, string>): string {
     }
     case "listItem": {
       // Usually handled inside bulletList/orderedList, but handle standalone gracefully
-      return renderInlineContent(children, values);
+      return renderInlineContent(children, values, getContextMarks(children));
     }
     default:
       return ""; // Unknown block node — silently ignored
@@ -225,11 +275,12 @@ function renderBlockNode(node: PMNode, values: Record<string, string>): string {
  */
 export function renderProseMirrorDocToHtml(
   doc: Record<string, unknown>,
-  bindingValues: Record<string, string>
+  bindingValues: Record<string, string>,
+  blockTextAlign?: string
 ): string {
   if (!doc || doc.type !== "doc") return "";
   const content = (doc.content as PMNode[] | undefined) ?? [];
-  return content.map(node => renderBlockNode(node as PMNode, bindingValues)).join("\n");
+  return content.map(node => renderBlockNode(node as PMNode, bindingValues, blockTextAlign)).join("\n");
 }
 
 /**

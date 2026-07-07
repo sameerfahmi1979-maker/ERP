@@ -15,7 +15,6 @@ import {
   Check,
   Copy,
   Link2,
-  ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { runReportAction } from "@/server/actions/reports/runner";
@@ -142,7 +141,6 @@ export function LetterPreviewDialog({
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(propTemplateId ?? null);
   const [selectedBranding, setSelectedBranding] = useState<ExportBrandingContext | null>(null);
   const [availableTemplates, setAvailableTemplates] = useState<ReportTemplateForSelection[]>([]);
-  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [templateLoadError, setTemplateLoadError] = useState<string | null>(null);
 
@@ -160,7 +158,6 @@ export function LetterPreviewDialog({
       setCopied(false);
       setSelectedTemplateId(propTemplateId ?? null);
       setSelectedBranding(null);
-      setTemplatePickerOpen(false);
       setAvailableTemplates([]);
       setTemplateLoadError(null);
       setVisualHtml(null);
@@ -264,25 +261,23 @@ export function LetterPreviewDialog({
     : null;
 
   /** Open the template picker; if templates failed to load, retry the fetch */
-  const handleOpenTemplatePicker = () => {
-    setTemplatePickerOpen(true);
-    // Retry fetch if templates haven't loaded yet (e.g., prior load failed)
-    if (availableTemplates.length === 0 && !loadingTemplates) {
-      setLoadingTemplates(true);
-      setTemplateLoadError(null);
-      listReportTemplatesForSelection({ issuableOnly: true })
-        .then((res) => {
-          if (res.success) {
-            setAvailableTemplates(res.data ?? []);
-          } else {
-            setTemplateLoadError(res.error ?? "Failed to load templates.");
-          }
-        })
-        .catch((e: unknown) => {
-          setTemplateLoadError(e instanceof Error ? e.message : String(e));
-        })
-        .finally(() => setLoadingTemplates(false));
-    }
+  /** Retry template load if it previously failed */
+  const retryTemplateLoad = () => {
+    if (availableTemplates.length > 0 || loadingTemplates) return;
+    setLoadingTemplates(true);
+    setTemplateLoadError(null);
+    listReportTemplatesForSelection({ issuableOnly: true })
+      .then((res) => {
+        if (res.success) {
+          setAvailableTemplates(res.data ?? []);
+        } else {
+          setTemplateLoadError(res.error ?? "Failed to load templates.");
+        }
+      })
+      .catch((e: unknown) => {
+        setTemplateLoadError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => setLoadingTemplates(false));
   };
 
   /** Issue a public verification link and generate QR */
@@ -292,7 +287,7 @@ export function LetterPreviewDialog({
     // BRANDING.8: template_id is required for official letter issuance
     if (!selectedTemplateId) {
       setIssueError("Select an approved or published template before issuing a verification link.");
-      handleOpenTemplatePicker();
+      retryTemplateLoad();
       return;
     }
 
@@ -322,7 +317,6 @@ export function LetterPreviewDialog({
       const publicUrl = result.data.public_url;
       const qrDataUrl = await generateQrDataUrl(publicUrl);
       setVerificationData({ publicUrl, qrDataUrl });
-      setTemplatePickerOpen(false);
     } catch {
       setIssueError("Failed to generate verification link.");
     } finally {
@@ -341,29 +335,48 @@ export function LetterPreviewDialog({
     }
   };
 
+  /** Print the given HTML in a hidden iframe — avoids opening a new browser tab */
+  const printInHiddenIframe = useCallback((html: string) => {
+    const iframe = document.createElement("iframe");
+    Object.assign(iframe.style, {
+      position: "fixed",
+      width: "0px",
+      height: "0px",
+      border: "none",
+      left: "-9999px",
+      top: "-9999px",
+      visibility: "hidden",
+    });
+    document.body.appendChild(iframe);
+    const doc = iframe.contentDocument ?? iframe.contentWindow?.document;
+    if (!doc) { document.body.removeChild(iframe); return; }
+    doc.open();
+    doc.write(html);
+    doc.close();
+    // Wait for images and fonts to load before triggering print
+    const triggerPrint = () => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      // Remove the iframe after a delay so the print dialog has time to open
+      setTimeout(() => {
+        try { document.body.removeChild(iframe); } catch { /* already removed */ }
+      }, 3000);
+    };
+    // Use load event; if it doesn't fire within 1.5s, print anyway
+    let fired = false;
+    iframe.onload = () => { if (!fired) { fired = true; setTimeout(triggerPrint, 300); } };
+    setTimeout(() => { if (!fired) { fired = true; triggerPrint(); } }, 1500);
+  }, []);
+
   const handlePDF = async () => {
-    // DESIGNER.7: If visual HTML is rendered (Puck template), use print-to-PDF via window.print.
+    // Formal view: render the visual/EL HTML in a hidden iframe and trigger print-to-PDF
     if (formalView && visualHtml) {
-      const win = window.open("", "_blank");
-      if (win) {
-        win.document.open();
-        win.document.write(visualHtml);
-        win.document.close();
-        win.focus();
-        setTimeout(() => win.print(), 600);
-      }
+      printInHiddenIframe(visualHtml);
       return;
     }
     if (formalView && elDoc) {
       const html = renderExecutiveLedgerHtml(elDoc);
-      const win = window.open("", "_blank");
-      if (win) {
-        win.document.open();
-        win.document.write(html);
-        win.document.close();
-        win.focus();
-        setTimeout(() => win.print(), 600);
-      }
+      printInHiddenIframe(html);
       return;
     }
     if (!data) return;
@@ -377,28 +390,13 @@ export function LetterPreviewDialog({
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const handlePrint = useCallback(() => {
-    // DESIGNER.7: If visual HTML is rendered (Puck template), print that instead.
     if (formalView && visualHtml) {
-      const win = window.open("", "_blank");
-      if (win) {
-        win.document.open();
-        win.document.write(visualHtml);
-        win.document.close();
-        win.focus();
-        setTimeout(() => win.print(), 600);
-      }
+      printInHiddenIframe(visualHtml);
       return;
     }
     if (formalView && elDoc) {
       const html = renderExecutiveLedgerHtml(elDoc);
-      const win = window.open("", "_blank");
-      if (win) {
-        win.document.open();
-        win.document.write(html);
-        win.document.close();
-        win.focus();
-        setTimeout(() => win.print(), 600);
-      }
+      printInHiddenIframe(html);
       return;
     }
     if (!data) return;
@@ -409,7 +407,7 @@ export function LetterPreviewDialog({
       data: data.rows,
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formalView, visualHtml, elDoc, data, reportLabel, reportCode]);
+  }, [formalView, visualHtml, elDoc, data, reportLabel, reportCode, printInHiddenIframe]);
 
   // Early return AFTER all hooks — safe per Rules of Hooks
   if (!open) return null;
@@ -504,25 +502,65 @@ export function LetterPreviewDialog({
                   </button>
                 </div>
               ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 text-xs h-8"
-                  onClick={handleIssueVerificationLink}
-                  disabled={issuingLink}
-                  title={
-                    selectedTemplateId
-                      ? "Issue a public verification QR for this document"
-                      : "Select an approved/published template first"
-                  }
-                >
-                  {issuingLink ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Link2 className="h-3.5 w-3.5" />
-                  )}
-                  {issuingLink ? "Issuing…" : selectedTemplateId ? "Issue QR" : "Select Template & Issue QR"}
-                </Button>
+                <div className="flex items-center gap-1.5">
+                  {/* Template combobox — always visible in formal view */}
+                  {loadingTemplates ? (
+                    <div className="inline-flex items-center gap-1 h-8 px-2 text-xs text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Loading…
+                    </div>
+                  ) : templateLoadError ? (
+                    <button
+                      onClick={retryTemplateLoad}
+                      className="inline-flex items-center gap-1 h-8 px-2 text-xs text-destructive border border-destructive/30 rounded-md hover:bg-destructive/5"
+                    >
+                      <AlertCircle className="h-3 w-3" />
+                      Retry
+                    </button>
+                  ) : availableTemplates.length > 0 ? (
+                    <select
+                      className="h-8 text-xs rounded-md border border-input bg-background px-2 pr-6 focus:outline-none focus:ring-1 focus:ring-ring text-foreground"
+                      value={selectedTemplateId ?? ""}
+                      onChange={async (e) => {
+                        const id = Number(e.target.value);
+                        if (!id) return;
+                        setSelectedTemplateId(id);
+                        setIssueError(null);
+                        const brandRes = await resolveTemplatePreview({ templateId: id, reportCode });
+                        if (brandRes.success && brandRes.data) {
+                          setSelectedBranding(brandRes.data);
+                        }
+                      }}
+                    >
+                      {!selectedTemplateId && <option value="">Select template…</option>}
+                      {availableTemplates.map((tpl) => (
+                        <option key={tpl.id} value={tpl.id}>
+                          {tpl.template_name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : null}
+                  {/* Issue QR button */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 text-xs h-8"
+                    onClick={handleIssueVerificationLink}
+                    disabled={issuingLink || !selectedTemplateId}
+                    title={
+                      selectedTemplateId
+                        ? "Issue a public verification QR for this document"
+                        : "Select a template first"
+                    }
+                  >
+                    {issuingLink ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Link2 className="h-3.5 w-3.5" />
+                    )}
+                    {issuingLink ? "Issuing…" : "Issue QR"}
+                  </Button>
+                </div>
               )
             )}
             <button
@@ -576,7 +614,7 @@ export function LetterPreviewDialog({
 
           {/* Formal view — Executive Ledger preview */}
           {!isPending && !error && elDoc && formalView && (
-            <>
+            <div className="flex flex-col h-full overflow-hidden">
               {issueError && (
                 <div className="flex items-start gap-2 px-4 py-2 bg-destructive/5 border-b border-destructive/20 text-destructive text-xs shrink-0">
                   <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
@@ -585,7 +623,7 @@ export function LetterPreviewDialog({
               )}
               {/* DESIGNER.6: Visual layout iframe (when template has Puck engine) */}
               {isLoadingVisual && (
-                <div className="flex items-center justify-center gap-2 h-20 text-muted-foreground text-sm">
+                <div className="flex items-center justify-center gap-2 h-20 text-muted-foreground text-sm shrink-0">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Loading visual layout…
                 </div>
@@ -594,83 +632,16 @@ export function LetterPreviewDialog({
                 <iframe
                   srcDoc={visualHtml}
                   title="Visual Template Preview"
-                  style={{ width: "100%", height: "100%", border: "none", display: "block" }}
+                  className="flex-1 w-full block border-none min-h-0"
                   sandbox="allow-same-origin"
                 />
-              )}
-              {/* BRANDING.8: Template picker for QR issuance */}
-              {templatePickerOpen && !verificationData && (
-                <div className="px-4 py-3 border-b bg-muted/40 shrink-0">
-                  <p className="text-xs font-medium text-foreground mb-2 flex items-center gap-1.5">
-                    <QrCode className="h-3.5 w-3.5 text-primary" />
-                    Select an approved/published template for official QR issuance
-                  </p>
-                  {loadingTemplates ? (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      Loading templates…
-                    </div>
-                  ) : templateLoadError ? (
-                    <div className="flex items-center gap-2">
-                      <p className="text-xs text-destructive">
-                        Could not load templates: {templateLoadError}
-                      </p>
-                      <button
-                        onClick={handleOpenTemplatePicker}
-                        className="px-2 py-0.5 text-xs rounded border border-border hover:bg-muted transition-colors"
-                      >
-                        Retry
-                      </button>
-                    </div>
-                  ) : availableTemplates.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">
-                      No approved or published templates available. Templates must be approved in the Templates &amp; Branding admin.
-                    </p>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {availableTemplates.map((tpl) => (
-                        <button
-                          key={tpl.id}
-                          onClick={async () => {
-                            setSelectedTemplateId(tpl.id);
-                            setTemplatePickerOpen(false);
-                            setIssueError(null);
-                            // Resolve full branding context for the selected template so
-                            // the letter preview re-renders with the template's logo,
-                            // company details, colours, etc.
-                            const brandRes = await resolveTemplatePreview({
-                              templateId: tpl.id,
-                              reportCode,
-                            });
-                            if (brandRes.success && brandRes.data) {
-                              setSelectedBranding(brandRes.data);
-                            }
-                          }}
-                          className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
-                            selectedTemplateId === tpl.id
-                              ? "bg-primary text-primary-foreground border-primary"
-                              : "bg-background border-border hover:bg-muted"
-                          }`}
-                        >
-                          {tpl.template_name}
-                        </button>
-                      ))}
-                      <button
-                        onClick={() => setTemplatePickerOpen(false)}
-                        className="px-2.5 py-1 text-xs rounded-md border border-border text-muted-foreground hover:bg-muted transition-colors"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  )}
-                </div>
               )}
               <ExecutiveLedgerPreview
                 document={elDoc}
                 height="100%"
-                className={`w-full h-full${visualHtml ? " hidden" : ""}`}
+                className={`flex-1 w-full h-full min-h-0${visualHtml ? " hidden" : ""}`}
               />
-            </>
+            </div>
           )}
         </div>
 

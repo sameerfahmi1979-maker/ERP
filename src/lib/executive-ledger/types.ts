@@ -23,6 +23,10 @@ export interface ExecutiveLedgerDocument {
   // ── Identity ───────────────────────────────────────────────────────────────
   /** Main document title, e.g. "Experience Letter", "Salary Certificate" */
   documentTitle: string;
+  /** Hide the colored title band entirely (Report Designer root setting) */
+  hideTitleBlock?: boolean;
+  /** Title band color overrides (safe hex, validated upstream). Empty = branding theme */
+  titleBlockStyle?: { bgColor?: string; textColor?: string };
   /** Optional subtitle or document type descriptor */
   documentSubtitle?: string;
   /** Document reference number, e.g. "EXP/2026/000042" */
@@ -109,6 +113,12 @@ export interface ExecutiveLedgerDocument {
   direction?: "ltr" | "rtl" | "auto";
   /** Override page orientation (default: portrait) */
   orientation?: "portrait" | "landscape";
+  /**
+   * When true, the html-renderer's built-in signatory/stamp block is suppressed.
+   * Set to true when the visual template already renders a signatory via a
+   * ColumnStripBlock signatory slot, to prevent double-rendering.
+   */
+  suppressBuiltinSignatory?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -166,9 +176,7 @@ export interface ExecutiveLedgerBodySection {
    * Set ONLY by layout-to-executive-ledger.ts, never from user props.
    */
   richHtml?: string;
-}
-
-/**
+}/**
  * Key-value detail section — dotted rows style.
  * Used for employee details, salary components, item lists.
  */

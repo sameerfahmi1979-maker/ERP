@@ -88,8 +88,12 @@ export function validateLayoutZone(
           return !attrs || typeof attrs.path !== "string" || !attrs.path;
         });
         if (pathless.length > 0) {
+          // Include a JSON dump of the first 3 failing tokens so errors can be
+          // diagnosed without opening a debugger session.
+          const sample = pathless.slice(0, 3).map((t) => JSON.stringify(t)).join(" | ");
           errors.push(
             `[${zoneName}] ${pathless.length} inserted field(s) in the rich text are missing their binding path. ` +
+              `Failing token(s): ${sample}. ` +
               `This usually means the editor page is running an outdated version — please hard-refresh the browser (Ctrl+Shift+R) and re-insert the fields.`
           );
         } else {

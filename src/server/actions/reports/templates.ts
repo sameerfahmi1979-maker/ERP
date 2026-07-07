@@ -792,11 +792,45 @@ export async function renderVisualTemplateForLetterPreview(input: {
     });
     bindingValues = { ...bindingValues, ...docBindings };
 
-    // Defensive redaction
-    const redactResult = redactDesignerTestBindingValues(bindingValues);
-    bindingValues = redactResult.values;
-    if (redactResult.redactedKeys.length > 0) {
-      allWarnings.push(`Defensive redaction removed ${redactResult.redactedKeys.length} sensitive field(s).`);
+    // ── Sensitive field resolution ────────────────────────────────────────────
+    // If the user has reports.sensitive_fields.use (or is erp.admin), resolve
+    // real values for restricted/confidential fields in "official" mode.
+    // Otherwise fall back to test-mode masking.
+    const canUseSensitiveFields =
+      hasPermission(authCtx, "reports.sensitive_fields.use") ||
+      hasPermission(authCtx, "erp.admin");
+
+    if (canUseSensitiveFields && employeeId) {
+      const { resolveOfficialSensitiveFields } = await import(
+        "@/lib/report-designer/sensitive-field-masking"
+      );
+      const { REPORT_FIELD_REGISTRY } = await import(
+        "@/lib/report-designer/field-registry"
+      );
+      const allPaths = REPORT_FIELD_REGISTRY.map((f) => f.fieldPath);
+      const sensitiveResult = await resolveOfficialSensitiveFields({
+        employeeId,
+        requestedPaths: allPaths,
+        context: {
+          outputMode: "official",
+          userPermissions: authCtx.permissionCodes ?? [],
+          templateType: template.template_type,
+          governanceStatus: template.governance_status,
+        },
+        supabase: db,
+        auditMeta: {
+          templateId: template.id,
+          templateCode: template.template_code,
+          issuedByProfileId: authCtx.profile?.id ? String(authCtx.profile.id) : null,
+        },
+      });
+      // Official values overwrite the masked placeholders from the base resolver
+      bindingValues = { ...bindingValues, ...sensitiveResult.values };
+      allWarnings.push(...sensitiveResult.warnings);
+    } else {
+      // Test mode — mask all restricted/confidential fields
+      const redactResult = redactDesignerTestBindingValues(bindingValues);
+      bindingValues = redactResult.values;
     }
 
     // Render via production renderer

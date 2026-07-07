@@ -13,15 +13,21 @@
 
 import { Puck, Render } from "@puckeditor/core";
 import "@puckeditor/core/puck.css";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { reportDesignerPuckConfig } from "./report-designer-puck-config";
 import type { ReportDesignerLayoutJson } from "@/lib/report-designer/types";
 import { EMPTY_LAYOUT } from "@/lib/report-designer/types";
 import {
   buildProseMirrorDocFromPlainText,
+  collectBindingTokens,
   isCorruptRichContentDoc,
+  normalizeRichContentDoc,
+  rebuildPreservingParagraphAttrs,
 } from "@/lib/report-designer/prosemirror-plaintext";
+
+/** Regex to extract {{binding.path}} tokens from plain text — matches same pattern as BINDING_TOKEN_REGEX in prosemirror-plaintext */
+const BINDING_PATH_RE = /\{\{([a-z][a-z0-9_]*\.[a-z][a-z0-9_]*)\}\}/g;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -29,9 +35,20 @@ import {
 
 export interface ReportDesignerPuckShellProps {
   templateId: number;
+  /** Which layout zone this editor instance is editing (header/body/footer) */
+  zone: "header" | "body" | "footer";
   initialLayout: ReportDesignerLayoutJson | null;
-  /** Called on each Puck data change so parent can track unsaved state */
-  onLayoutChange?: (layout: ReportDesignerLayoutJson) => void;
+  /**
+   * Called on each Puck data change, tagged with this instance's zone so the
+   * parent can never write the data into the wrong zone bucket (even for
+   * late/async events during a tab switch). `opts.initial` is true for Puck's
+   * automatic mount-time data resolve — not a user edit.
+   */
+  onLayoutChange?: (
+    zone: "header" | "body" | "footer",
+    layout: ReportDesignerLayoutJson,
+    opts?: { initial?: boolean }
+  ) => void;
   readOnly?: boolean;
 }
 
@@ -68,33 +85,78 @@ function ensureBlockIds(
 /**
  * Defensive sanitizer for BodyTextSectionBlock richContent:
  *
- * 1. Corrupt richContent (binding tokens saved without their `path` attribute
- *    by a stale pre-UX.2 editor bundle) → REBUILD the doc from the plain-text
- *    fallback so the user's text and field chips reappear in the editor.
- * 2. Missing richContent but non-empty plain text `content` → build richContent
- *    from the plain text so TipTap always opens with the current content.
- *
- * This guarantees the TipTap editor is always populated with what was last
- * saved, even for templates that pre-date rich text or were corrupted.
+ * 1. Missing richContent + non-empty plain text → build richContent from plain
+ *    text so TipTap always opens with the current content.
+ * 2. Corrupt richContent (binding tokens missing `path` attribute, produced by
+ *    stale pre-UX.2 editor bundles) → REPAIR positionally from the plain-text
+ *    fallback first. Positional repair preserves paragraph-level formatting
+ *    (textAlign, etc.). Only falls back to a full rebuild if token counts
+ *    diverge (edge case), which mirrors the server-side
+ *    repairLayoutBindingTokenPaths() logic.
  */
 function sanitizeBlockRichContent<T extends { type: string; props: Record<string, unknown> }>(
   block: T
 ): T {
   if (block.type !== "BodyTextSectionBlock") return block;
 
-  const rc = block.props.richContent as Record<string, unknown> | null | undefined;
+  const rawRc = block.props.richContent as Record<string, unknown> | null | undefined;
   const plainText = typeof block.props.content === "string" ? block.props.content : "";
 
-  const needsRebuild =
-    // corrupt: tokens lost their path attributes
-    isCorruptRichContentDoc(rc ?? null) ||
-    // missing: no rich content at all, but plain text exists
-    ((!rc || rc.type !== "doc") && plainText.trim().length > 0);
+  // Case: no richContent — build from plain text if available
+  if (!rawRc || rawRc.type !== "doc") {
+    if (plainText.trim().length > 0) {
+      const rebuilt = buildProseMirrorDocFromPlainText(plainText);
+      return { ...block, props: { ...block.props, richContent: rebuilt } };
+    }
+    return block;
+  }
 
-  if (!needsRebuild) return block;
+  // Normalize: strip auto-link marks and merge text nodes they split apart.
+  // Pasted text with {{binding.path}} tokens got linkified by TipTap's Link
+  // extension in older sessions, splitting bindings across multiple text
+  // nodes so they could never resolve. Heal that here on load.
+  const normalized = JSON.parse(JSON.stringify(rawRc)) as Record<string, unknown>;
+  const wasNormalized = normalizeRichContentDoc(normalized);
+  const rc = wasNormalized ? normalized : rawRc;
+  const withNormalizedRc: T = wasNormalized
+    ? { ...block, props: { ...block.props, richContent: normalized } }
+    : block;
 
-  const rebuilt = buildProseMirrorDocFromPlainText(plainText);
-  return { ...block, props: { ...block.props, richContent: rebuilt } };
+  // Case: richContent is valid — nothing to do
+  if (!isCorruptRichContentDoc(rc)) return withNormalizedRc;
+
+  // Case: richContent has binding tokens with missing paths (corrupt data).
+  // Try positional repair FIRST — this preserves paragraph attrs (textAlign,
+  // font formatting, etc.). Only fall back to a full rebuild if token counts
+  // diverge and positional fill is not possible.
+  const repairedRc = JSON.parse(JSON.stringify(rc)) as Record<string, unknown>;
+  const tokens = collectBindingTokens(repairedRc);
+  const pathless = tokens.filter((t) => {
+    const attrs = t.attrs as Record<string, unknown> | undefined;
+    return !attrs || typeof attrs.path !== "string" || !attrs.path;
+  });
+
+  if (pathless.length > 0 && plainText.trim()) {
+    BINDING_PATH_RE.lastIndex = 0;
+    const plainPaths = Array.from(plainText.matchAll(BINDING_PATH_RE)).map((m) => m[1]);
+
+    if (plainPaths.length === tokens.length) {
+      // Positional fill: repairs missing binding paths while keeping
+      // all paragraph attributes (textAlign, etc.) intact.
+      tokens.forEach((t, i) => {
+        const attrs = (t.attrs ?? {}) as Record<string, unknown>;
+        if (typeof attrs.path !== "string" || !attrs.path) {
+          attrs.path = plainPaths[i];
+          t.attrs = attrs;
+        }
+      });
+      return { ...block, props: { ...block.props, richContent: repairedRc } };
+    }
+  }
+
+  // Fallback: rebuild from plain text but preserve paragraph attrs (textAlign).
+  const rebuilt = rebuildPreservingParagraphAttrs(plainText, rc);
+  return { ...block, props: { ...block.props, richContent: rebuilt ?? rc } };
 }
 
 function sanitizeLayoutForEditor(
@@ -131,6 +193,7 @@ function fromPuckData(
 
 export function ReportDesignerPuckShell({
   templateId: _templateId,
+  zone,
   initialLayout,
   onLayoutChange,
   readOnly = false,
@@ -141,6 +204,23 @@ export function ReportDesignerPuckShell({
   // Puck new object identities + fresh block UUIDs each time, resetting its
   // internal state (and the TipTap field) while the user is editing.
   const [puckData] = useState<PuckData>(() => toPuckData(layout));
+
+  // Puck fires an onChange right after mount from its automatic
+  // resolveAndCommitData() (setTimeout 0). That event is a data sync (id
+  // injection + plain-text regeneration), NOT a user edit — flag it so the
+  // parent doesn't mark the layout dirty on every tab switch / reload.
+  const mountTimeRef = useRef(Date.now());
+  const seenFirstChangeRef = useRef(false);
+  const mountedRef = useRef(true);
+
+  // Ignore onChange events fired during/after unmount — remounting Puck on tab
+  // switch or post-save reload used to overwrite zonesRef with stale mount data.
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   if (readOnly) {
     return (
@@ -154,6 +234,14 @@ export function ReportDesignerPuckShell({
     );
   }
 
+  const emitChange = (data: PuckData) => {
+    if (!mountedRef.current || !onLayoutChange) return;
+    const initial =
+      !seenFirstChangeRef.current && Date.now() - mountTimeRef.current < 1500;
+    seenFirstChangeRef.current = true;
+    onLayoutChange(zone, fromPuckData(data, layout.schemaVersion), { initial });
+  };
+
   return (
     <div
       className="report-designer-shell"
@@ -162,14 +250,8 @@ export function ReportDesignerPuckShell({
       <Puck
         config={reportDesignerPuckConfig}
         data={puckData}
-        onChange={(data) => {
-          if (!onLayoutChange) return;
-          onLayoutChange(fromPuckData(data, layout.schemaVersion));
-        }}
-        onPublish={(data) => {
-          if (!onLayoutChange) return;
-          onLayoutChange(fromPuckData(data, layout.schemaVersion));
-        }}
+        onChange={emitChange}
+        onPublish={emitChange}
       />
     </div>
   );

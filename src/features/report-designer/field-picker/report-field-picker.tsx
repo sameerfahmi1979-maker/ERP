@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
-import { Search, Lock, ChevronDown, ChevronRight, ShieldAlert } from "lucide-react";
+import { Search, Lock, ChevronDown, ChevronRight, ShieldAlert, Download } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import type { ReportFieldRegistryEntry, ReportFieldModuleGroup } from "@/lib/report-designer/field-registry/types";
 import {
@@ -14,6 +14,7 @@ import {
 } from "@/lib/report-designer/field-registry/governance";
 import { ReportFieldBadge } from "./report-field-badge";
 import { useFieldPickerContext } from "./field-picker-context";
+import { downloadFieldReferenceMd } from "@/lib/report-designer/field-registry/field-reference-md";
 import { cn } from "@/lib/utils";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -228,15 +229,26 @@ export function ReportFieldPicker({
 
   return (
     <div className={cn("flex flex-col gap-2", className)}>
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search fields..."
-          className="pl-8 h-8 text-xs"
-        />
+      {/* Search + Download row */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search fields..."
+            className="pl-8 h-8 text-xs"
+          />
+        </div>
+        <button
+          type="button"
+          title="Download field reference as Markdown — paste into ChatGPT to draft report content"
+          onClick={() => downloadFieldReferenceMd()}
+          className="shrink-0 flex items-center gap-1.5 px-2.5 h-8 rounded-md border border-dashed border-violet-300 bg-violet-50 hover:bg-violet-100 text-violet-700 text-xs font-medium transition-colors"
+        >
+          <Download className="h-3 w-3" />
+          .md
+        </button>
       </div>
 
       {/* Search results (flat list) */}

@@ -19,6 +19,8 @@ import {
 } from "@/server/actions/hr/time";
 import { getLeaveApprovalStatusBadge } from "@/lib/hr/time/status";
 import type { AuthContext } from "@/lib/rbac/check";
+import { useRealtimeSync } from "@/hooks/realtime/use-realtime-sync";
+import { invalidateHrGlobalLeaveRequests } from "@/lib/query/invalidation";
 
 type Props = {
   initialRows: LeaveRequestRow[];
@@ -66,6 +68,16 @@ export function HrLeavePageClient({ initialRows, initialCount, authContext }: Pr
       return r.data ?? { data: [], count: 0 };
     },
     refetchOnMount: "always",
+  });
+
+  // ERP REALTIME.1C — live leave requests list sync.
+  useRealtimeSync({
+    table: "employee_leave_requests",
+    event: "*",
+    debounceMs: 400,
+    onEvent: () => {
+      invalidateHrGlobalLeaveRequests(qc);
+    },
   });
 
   function handleApprove(id: number) {

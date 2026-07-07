@@ -56,6 +56,7 @@ import {
   Loader2,
 } from "lucide-react";
 import type { SortDir } from "@/hooks/use-sort-paginate";
+import { useRealtimeSync } from "@/hooks/realtime/use-realtime-sync";
 
 type EmpColKey =
   | "code"
@@ -246,6 +247,18 @@ export function EmployeesTable({ initialRows, initialTotal, authContext }: Props
     }, 350);
     return () => clearTimeout(timer);
   }, [search, filters, page, pageSize, fetchEmployees]);
+
+  // ERP REALTIME.1C — live employee list sync (Pattern C hybrid).
+  // When another user creates/updates/archives an employee, re-fetch with
+  // current page/search/filter state so this list updates automatically.
+  useRealtimeSync({
+    table: "employees",
+    event: "*",
+    debounceMs: 500,
+    onEvent: () => {
+      fetchEmployees(page, pageSize, search, filters);
+    },
+  });
 
   const setFilter = useCallback(
     (patch: Partial<EmployeeFilters>) => {

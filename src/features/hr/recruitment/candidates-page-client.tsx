@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/query-keys";
 import { listCandidates } from "@/server/actions/hr/recruitment";
 import type { AuthContext } from "@/lib/rbac/check";
@@ -12,6 +12,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ERPCombobox } from "@/components/erp/combobox";
 import { Plus, Users, ArrowRight, Mail, Phone } from "lucide-react";
 import Link from "next/link";
+import { useRealtimeSync } from "@/hooks/realtime/use-realtime-sync";
+import { invalidateHrCandidates } from "@/lib/query/invalidation";
 
 type Props = { authContext: AuthContext };
 
@@ -56,6 +58,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 export function CandidatesPageClient({ authContext }: Props) {
   const canManage = authContext.permissionCodes.includes("hr.recruitment.manage") || authContext.roleCodes.includes("system_admin");
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [pipelineFilter, setPipelineFilter] = useState<string | null>(null);
@@ -65,6 +68,16 @@ export function CandidatesPageClient({ authContext }: Props) {
     queryKey: queryKeys.recruitment.candidates({ search, status: statusFilter, pipelineStage: pipelineFilter, page }),
     queryFn: () => listCandidates({ search: search || undefined, status: statusFilter ?? undefined, pipelineStage: pipelineFilter ?? undefined, page }),
     staleTime: 30_000,
+  });
+
+  // ERP REALTIME.1C — live candidates list sync.
+  useRealtimeSync({
+    table: "hr_candidates",
+    event: "*",
+    debounceMs: 400,
+    onEvent: () => {
+      invalidateHrCandidates(queryClient);
+    },
   });
 
   const rows = Array.isArray(res?.data?.rows) ? res.data.rows : [];

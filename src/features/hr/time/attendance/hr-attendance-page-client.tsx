@@ -19,6 +19,8 @@ import {
 import { getAttendanceStatusBadge, getAttendanceTypeLabel } from "@/lib/hr/time/status";
 import { formatHours } from "@/lib/hr/time/date-utils";
 import type { AuthContext } from "@/lib/rbac/check";
+import { useRealtimeSync } from "@/hooks/realtime/use-realtime-sync";
+import { invalidateHrDailyAttendance } from "@/lib/query/invalidation";
 
 type Props = {
   initialRows: AttendanceDailySummaryRow[];
@@ -64,6 +66,16 @@ export function HrAttendancePageClient({ initialRows, initialCount, authContext 
     },
     initialData: { data: initialRows, count: initialCount },
     staleTime: 30_000,
+  });
+
+  // ERP REALTIME.1C — live daily attendance list sync.
+  useRealtimeSync({
+    table: "employee_attendance_daily_summary",
+    event: "*",
+    debounceMs: 400,
+    onEvent: () => {
+      invalidateHrDailyAttendance(qc);
+    },
   });
 
   function handleApprove(id: number) {

@@ -16,6 +16,7 @@ import { ERPCombobox } from "@/components/erp/combobox";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { usePartyContactsQuery } from "./hooks/use-party-child-queries";
 import { invalidatePartyContacts } from "@/lib/query/invalidation";
+import { useRealtimeSync } from "@/hooks/realtime/use-realtime-sync";
 import {
   createPartyContact,
   updatePartyContact,
@@ -60,6 +61,19 @@ export function PartyContactsTab({ partyId, disabled, onChildOpen }: PartyContac
   const [editing, setEditing] = useState<PartyContact | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [form, setForm] = useState({ ...emptyForm });
+
+  // ERP REALTIME.1B — scoped live sync for this party's contacts.
+  // Subscription is suppressed while a child dialog is open to protect unsaved form data.
+  useRealtimeSync({
+    table: "party_contacts",
+    event: "*",
+    filter: `party_id=eq.${partyId}`,
+    enabled: !isDialogOpen,
+    debounceMs: 400,
+    onEvent: () => {
+      invalidatePartyContacts(queryClient, partyId);
+    },
+  });
 
   const { data: roles } = useQuery({
     queryKey: ["party_contact_roles"],

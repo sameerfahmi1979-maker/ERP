@@ -19,6 +19,7 @@ import { CountrySelect } from "@/components/erp/geography";
 import { usePartyBankDetailsQuery } from "./hooks/use-party-child-queries";
 import { useBanksQuery } from "@/hooks/lookups";
 import { invalidatePartyBankDetails } from "@/lib/query/invalidation";
+import { useRealtimeSync } from "@/hooks/realtime/use-realtime-sync";
 import { useWorkspace } from "@/hooks/use-workspace";
 import {
   createPartyBankDetail,
@@ -69,6 +70,20 @@ export function PartyBankDetailsTab({ partyId, disabled, authContext, onChildOpe
   const [editing, setEditing] = useState<PartyBankDetail | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [form, setForm] = useState({ ...emptyForm });
+
+  // ERP REALTIME.1B — scoped live sync for this party's bank details.
+  // Subscription is suppressed while a child dialog is open to protect unsaved form data.
+  // Bank details are permission-gated — subscription also gated on canView.
+  useRealtimeSync({
+    table: "party_bank_details",
+    event: "*",
+    filter: `party_id=eq.${partyId}`,
+    enabled: canView && !isDialogOpen,
+    debounceMs: 400,
+    onEvent: () => {
+      invalidatePartyBankDetails(queryClient, partyId);
+    },
+  });
   const [ibanWarning, setIbanWarning] = useState<string | null>(null);
 
   if (!canView) {

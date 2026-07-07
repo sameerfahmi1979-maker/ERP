@@ -17,6 +17,7 @@ import { RequiredLabel } from "@/components/erp/required-label";
 import { CountrySelect, EmirateSelect, CitySelect, AreaZoneSelect } from "@/components/erp/geography";
 import { usePartyAddressesQuery } from "./hooks/use-party-child-queries";
 import { invalidatePartyAddresses } from "@/lib/query/invalidation";
+import { useRealtimeSync } from "@/hooks/realtime/use-realtime-sync";
 import {
   createPartyAddress,
   updatePartyAddress,
@@ -61,6 +62,19 @@ export function PartyAddressesTab({ partyId, disabled, onChildOpen }: PartyAddre
   const [editing, setEditing] = useState<PartyAddress | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [form, setForm] = useState({ ...emptyForm });
+
+  // ERP REALTIME.1B — scoped live sync for this party's addresses.
+  // Subscription is suppressed while a child dialog is open to protect unsaved form data.
+  useRealtimeSync({
+    table: "party_addresses",
+    event: "*",
+    filter: `party_id=eq.${partyId}`,
+    enabled: !isDialogOpen,
+    debounceMs: 400,
+    onEvent: () => {
+      invalidatePartyAddresses(queryClient, partyId);
+    },
+  });
 
   const { data: addressTypes } = useQuery({
     queryKey: ["party_address_types"],

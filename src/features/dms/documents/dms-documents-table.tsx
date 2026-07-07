@@ -39,6 +39,7 @@ import { SortColHeader } from "@/components/erp/table/sort-col-header";
 import { TablePagination } from "@/components/erp/table/table-pagination";
 import { useSortPaginate } from "@/hooks/use-sort-paginate";
 import { useResizableColumns } from "@/components/erp/table/use-resizable-columns";
+import { useRealtimeSync } from "@/hooks/realtime/use-realtime-sync";
 
 type DocColKey =
   | "docNo"
@@ -97,6 +98,21 @@ export function DmsDocumentsTable({
   const router = useRouter();
   const { openTab } = useWorkspace();
   const [isPending, startTransition] = useTransition();
+
+  // ERP REALTIME.1B — live DMS document list sync.
+  // When another user creates/updates/archives/deletes a document, router.refresh()
+  // triggers a new server fetch so this list updates automatically.
+  // Wrapped in startTransition to avoid marking the list as "pending" on every event.
+  useRealtimeSync({
+    table: "dms_documents",
+    event: "*",
+    debounceMs: 500,
+    onEvent: () => {
+      startTransition(() => {
+        router.refresh();
+      });
+    },
+  });
 
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState<number | null>(null);

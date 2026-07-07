@@ -7,6 +7,7 @@ import { WorkspaceTabBar } from "@/components/workspace/workspace-tab-bar";
 import { WorkspaceContent } from "@/components/workspace/workspace-content";
 import { WorkspaceProvider } from "@/components/workspace/workspace-provider";
 import { WorkspaceDraftProvider } from "@/components/workspace/workspace-draft-provider";
+import { RealtimeProvider } from "@/components/layout/realtime-provider";
 import { canAccessRoute } from "@/lib/rbac/route-access-registry";
 import type { RuntimeAppBranding } from "@/lib/branding/runtime-types";
 
@@ -59,24 +60,26 @@ export function ErpShell({
     // store context to clear drafts on tab close.
     <WorkspaceDraftProvider>
       <WorkspaceProvider defaultRoute={defaultRoute}>
-        <div className="flex h-screen w-full overflow-hidden bg-background">
-          <AppSidebar
-            collapsed={sidebarCollapsed}
-            onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
-            displayName={displayName}
-            email={email}
-            permissionCodes={permissionCodes}
-            isGlobalAdmin={isGlobalAdmin}
-            appBranding={appBranding}
-          />
-          <div className="flex flex-1 flex-col overflow-hidden">
-            <AppHeader displayName={displayName} email={email} />
-            <WorkspaceTabBar />
-            <WorkspaceContent>
-              {children}
-            </WorkspaceContent>
+        <RealtimeProvider>
+          <div className="flex h-screen w-full overflow-hidden bg-background">
+            <AppSidebar
+              collapsed={sidebarCollapsed}
+              onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+              displayName={displayName}
+              email={email}
+              permissionCodes={permissionCodes}
+              isGlobalAdmin={isGlobalAdmin}
+              appBranding={appBranding}
+            />
+            <div className="flex flex-1 flex-col overflow-hidden">
+              <AppHeader displayName={displayName} email={email} />
+              <WorkspaceTabBar />
+              <WorkspaceContent>
+                {children}
+              </WorkspaceContent>
+            </div>
           </div>
-        </div>
+        </RealtimeProvider>
       </WorkspaceProvider>
     </WorkspaceDraftProvider>
   );

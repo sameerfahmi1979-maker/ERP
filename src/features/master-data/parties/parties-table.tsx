@@ -29,6 +29,7 @@ import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { prefetchPartyFormData } from "./party-form-prefetch";
 import { useWorkspace } from "@/hooks/use-workspace";
+import { useRealtimeSync } from "@/hooks/realtime/use-realtime-sync";
 
 type PartiesTableProps = {
   parties: Party[];
@@ -66,6 +67,18 @@ export function PartiesTable({ parties, authContext, onRefresh, defaultTypeCode,
     if (onRefresh) onRefresh();
     else router.refresh();
   };
+
+  // ERP REALTIME.1A — live party list sync.
+  // When another user creates/edits/deletes a party, router.refresh() triggers
+  // a new server fetch so this list updates automatically.
+  useRealtimeSync({
+    table: "parties",
+    event: "*",
+    debounceMs: 400,
+    onEvent: () => {
+      handleRefresh();
+    },
+  });
 
   // ── Open record workspace tab ──────────────────────────────────────────────
 

@@ -426,7 +426,7 @@ If the user says "continue" or "next" after Phase 17, Cursor must first ask whet
 2. HR module enhancement.
 3. Future module-wide AI write-back pattern after module implementations are stable.
 4. **ERP GLOBAL UI.4H** â€” Workspace tab bar overflow menu, auto-scroll, drag reorder (PLANNED â€” see Â§6.16.1; lower priority than Users/HR unless Sameer prioritizes).
-5. **ERP REALTIME.1** - Supabase Realtime live-sync for collaborative list pages (PLANNED - see `docs/plans/REALTIME_SYNC_PLAN.md` and `.cursor/rules/erp-realtime-sync-standard.mdc`). Covers ~15-20 high-traffic collaborative tables only (parties, employees, dms_documents, notifications, etc.). No Railway changes. No new npm packages. No DB migration. Do NOT start without explicit Sameer approval.
+5. **ERP REALTIME.1A** - Foundation + Safe Pilot - **CLOSED / PASS WITH NOTES**. Implemented: `src/hooks/realtime/use-realtime-sync.ts` (core debounced hook), `src/components/layout/realtime-provider.tsx` (global erp_notifications + dms_upload_sessions sync), `erp-shell.tsx` RealtimeProvider mount, `parties-table.tsx` parties subscription. Runtime switch: `NEXT_PUBLIC_ERP_REALTIME_SYNC_ENABLED` (default false). No DB migration. No new npm packages. No Railway changes. Requires manual Supabase dashboard Realtime toggle for 3 tables. See `implementation_Review/Realtime/ERP_REALTIME_1A_FOUNDATION_SAFE_PILOT_IMPLEMENTATION_REPORT.md`. Full plan: `docs/plans/REALTIME_SYNC_PLAN.md`. Future: REALTIME.1B DMS Documents + Party child tabs; REALTIME.1C Employees/HR lists; REALTIME.2 Tier 2 queues.
 
 **Do NOT start without explicit Sameer approval:**
 - Any new Phase 19+ AI feature

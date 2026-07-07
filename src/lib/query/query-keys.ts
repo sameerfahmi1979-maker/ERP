@@ -123,6 +123,8 @@ export const queryKeys = {
 
   // ── DMS Admin ─────────────────────────────────────────────────────────────
   dms: {
+    dashboard: (rangeDays?: number) =>
+      rangeDays ? (["dms", "dashboard", rangeDays] as const) : (["dms", "dashboard"] as const),
     adminOverview: () => ["dms", "admin", "overview"] as const,
     categories: () => ["dms", "admin", "categories"] as const,
     documentTypes: (filters?: Record<string, unknown>) =>

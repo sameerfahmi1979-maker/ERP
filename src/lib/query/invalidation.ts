@@ -167,6 +167,10 @@ export const invalidatePartyServiceCategories = createChildInvalidator("party_se
 
 // ── DMS Admin ──────────────────────────────────────────────────────────────────
 
+export function invalidateDmsDashboard(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: ["dms", "dashboard"] });
+}
+
 export function invalidateDmsAdminOverview(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: ["dms", "admin", "overview"] });
 }

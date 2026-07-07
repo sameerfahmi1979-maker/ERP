@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CalendarX, AlertTriangle, Clock, HelpCircle, Bell, RefreshCw, CheckCircle2 } from "lucide-react";
+import { CalendarX, AlertTriangle, Clock, HelpCircle, Bell, RefreshCw, CheckCircle2, EyeOff } from "lucide-react";
 import { queryKeys } from "@/lib/query/query-keys";
 import { getDmsExpiryDashboardStats } from "@/server/actions/dms/expiry-reminders";
 
@@ -51,6 +51,7 @@ export function DmsExpirySummaryCards() {
   const s = stats ?? {
     expired: 0, expiring_7: 0, expiring_30: 0, expiring_60: 0, expiring_90: 0,
     missing_expiry: 0, pending_reminders: 0, dismissed_reminders: 0, open_renewals: 0,
+    expiry_ignored: 0,
   };
 
   return (
@@ -76,6 +77,8 @@ export function DmsExpirySummaryCards() {
         iconClass="bg-green-100 text-green-600 dark:bg-green-950/40 dark:text-green-400" />
       <StatCard label="Open Renewals" count={s.open_renewals} icon={RefreshCw}
         iconClass="bg-blue-100 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400" />
+      <StatCard label="Expiry Ignored" count={s.expiry_ignored} icon={EyeOff}
+        iconClass="bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400" />
     </div>
   );
 }

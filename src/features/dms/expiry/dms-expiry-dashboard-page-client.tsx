@@ -164,6 +164,7 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false }: Dms
           <TabsTrigger value="expiring">Expiring Soon</TabsTrigger>
           <TabsTrigger value="missing">Missing Expiry</TabsTrigger>
           <TabsTrigger value="renewals">Renewal Requests</TabsTrigger>
+          <TabsTrigger value="ignored">Ignored</TabsTrigger>
         </TabsList>
 
         <TabsContent value="expired" className="mt-4">
@@ -186,6 +187,14 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false }: Dms
 
         <TabsContent value="renewals" className="mt-4">
           <DmsRenewalRequestsTable />
+        </TabsContent>
+
+        <TabsContent value="ignored" className="mt-4">
+          <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+            Documents listed here have been manually excluded from expiry dashboards.
+            Click <strong>Restore</strong> on any row to resume normal tracking.
+          </div>
+          <DmsExpiringDocumentsTable view="ignored" />
         </TabsContent>
       </Tabs>
 

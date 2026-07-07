@@ -50,6 +50,8 @@ export type DmsExpiryDashboardStats = {
   pending_reminders: number;
   dismissed_reminders: number;
   open_renewals: number;
+  /** DMS EXPIRY.IGNORE.1 — documents with expiry_tracking_override = 'ignored' */
+  expiry_ignored: number;
 };
 
 export type DmsExpiringDocumentRow = {
@@ -67,6 +69,9 @@ export type DmsExpiringDocumentRow = {
   category: string | null;
   owner: string | null;
   latest_reminder_status: string | null;
+  /** DMS EXPIRY.IGNORE.1 — set to 'ignored' when expiry tracking is suppressed */
+  expiry_tracking_override: string | null;
+  expiry_override_reason: string | null;
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -119,23 +124,26 @@ export async function getDmsExpiryDashboardStats(): Promise<ActionResult<DmsExpi
       { count: pending_reminders },
       { count: dismissed_reminders },
       { count: open_renewals },
+      { count: expiry_ignored },
     ] = await Promise.all([
       supabase.from("dms_documents").select("id", { count: "exact", head: true })
-        .not("expiry_date", "is", null).lt("expiry_date", today).is("deleted_at", null).neq("status", "archived").neq("status", "superseded"),
+        .not("expiry_date", "is", null).lt("expiry_date", today).is("deleted_at", null).neq("status", "archived").neq("status", "superseded").is("expiry_tracking_override", null),
       supabase.from("dms_documents").select("id", { count: "exact", head: true })
-        .not("expiry_date", "is", null).gte("expiry_date", today).lte("expiry_date", in7).is("deleted_at", null).neq("status", "superseded"),
+        .not("expiry_date", "is", null).gte("expiry_date", today).lte("expiry_date", in7).is("deleted_at", null).neq("status", "superseded").is("expiry_tracking_override", null),
       supabase.from("dms_documents").select("id", { count: "exact", head: true })
-        .not("expiry_date", "is", null).gt("expiry_date", in7).lte("expiry_date", in30).is("deleted_at", null).neq("status", "superseded"),
+        .not("expiry_date", "is", null).gt("expiry_date", in7).lte("expiry_date", in30).is("deleted_at", null).neq("status", "superseded").is("expiry_tracking_override", null),
       supabase.from("dms_documents").select("id", { count: "exact", head: true })
-        .not("expiry_date", "is", null).gt("expiry_date", in30).lte("expiry_date", in60).is("deleted_at", null).neq("status", "superseded"),
+        .not("expiry_date", "is", null).gt("expiry_date", in30).lte("expiry_date", in60).is("deleted_at", null).neq("status", "superseded").is("expiry_tracking_override", null),
       supabase.from("dms_documents").select("id", { count: "exact", head: true })
-        .not("expiry_date", "is", null).gt("expiry_date", in60).lte("expiry_date", in90).is("deleted_at", null).neq("status", "superseded"),
+        .not("expiry_date", "is", null).gt("expiry_date", in60).lte("expiry_date", in90).is("deleted_at", null).neq("status", "superseded").is("expiry_tracking_override", null),
       supabase.from("dms_documents").select("id", { count: "exact", head: true })
-        .is("expiry_date", null).is("deleted_at", null).neq("status", "archived").neq("status", "superseded"),
+        .is("expiry_date", null).is("deleted_at", null).neq("status", "archived").neq("status", "superseded").is("expiry_tracking_override", null),
       supabase.from("dms_expiry_reminders").select("id", { count: "exact", head: true }).eq("status", "pending"),
       supabase.from("dms_expiry_reminders").select("id", { count: "exact", head: true }).eq("status", "dismissed"),
       supabase.from("dms_renewal_requests").select("id", { count: "exact", head: true })
         .in("status", ["draft", "requested", "in_progress", "waiting_for_document"]).is("deleted_at", null),
+      supabase.from("dms_documents").select("id", { count: "exact", head: true })
+        .eq("expiry_tracking_override", "ignored").is("deleted_at", null),
     ]);
 
     return {
@@ -150,6 +158,7 @@ export async function getDmsExpiryDashboardStats(): Promise<ActionResult<DmsExpi
         pending_reminders: pending_reminders ?? 0,
         dismissed_reminders: dismissed_reminders ?? 0,
         open_renewals: open_renewals ?? 0,
+        expiry_ignored: expiry_ignored ?? 0,
       },
     };
   } catch (e) {
@@ -160,7 +169,7 @@ export async function getDmsExpiryDashboardStats(): Promise<ActionResult<DmsExpi
 // ── getDmsExpiringDocuments ───────────────────────────────────────────────────
 
 export type ExpiringDocumentsFilter = {
-  view: "expired" | "expiring" | "missing_expiry" | "all";
+  view: "expired" | "expiring" | "missing_expiry" | "all" | "ignored";
   limit?: number;
 };
 
@@ -180,6 +189,7 @@ export async function getDmsExpiringDocuments(
       .from("dms_documents")
       .select(
         `id, document_no, title, expiry_date, issue_date, status, confidentiality:confidentiality_level,
+         expiry_tracking_override, expiry_override_reason,
          document_type:dms_document_types!document_type_id(name_en, is_renewable),
          category:dms_document_types!document_type_id(category:dms_document_categories!category_id(name_en))`,
       )
@@ -191,11 +201,14 @@ export async function getDmsExpiringDocuments(
       .limit(filter.limit ?? 200);
 
     if (filter.view === "expired") {
-      query = query.not("expiry_date", "is", null).lt("expiry_date", today);
+      query = query.not("expiry_date", "is", null).lt("expiry_date", today).is("expiry_tracking_override", null);
     } else if (filter.view === "expiring") {
-      query = query.not("expiry_date", "is", null).gte("expiry_date", today).lte("expiry_date", in90);
+      query = query.not("expiry_date", "is", null).gte("expiry_date", today).lte("expiry_date", in90).is("expiry_tracking_override", null);
     } else if (filter.view === "missing_expiry") {
-      query = query.is("expiry_date", null).neq("status", "archived");
+      query = query.is("expiry_date", null).neq("status", "archived").is("expiry_tracking_override", null);
+    } else if (filter.view === "ignored") {
+      // DMS EXPIRY.IGNORE.1 — show only documents with expiry tracking suppressed
+      query = query.eq("expiry_tracking_override", "ignored");
     }
 
     const { data, error } = await query;
@@ -226,10 +239,83 @@ export async function getDmsExpiringDocuments(
         category: catWrapper?.category?.name_en ?? null,
         owner: null,
         latest_reminder_status: null,
+        expiry_tracking_override: (raw.expiry_tracking_override as string | null) ?? null,
+        expiry_override_reason: (raw.expiry_override_reason as string | null) ?? null,
       };
     });
 
     return { success: true, data: rows };
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
+}
+
+// ── setDmsExpiryTrackingOverride ───────────────────────────────────────────────
+// DMS EXPIRY.IGNORE.1
+// Mark a document as "expiry ignored" so it disappears from the Expired,
+// Expiring Soon, and Missing Expiry dashboards without being renewed or archived.
+// Passing override = null clears the ignore flag and restores normal tracking.
+
+const setExpiryOverrideSchema = z.object({
+  documentId: z.number().int().positive(),
+  override: z.enum(["ignored"]).nullable(),
+  reason: z.string().max(500).optional(),
+});
+
+export async function setDmsExpiryTrackingOverride(
+  input: z.infer<typeof setExpiryOverrideSchema>
+): Promise<ActionResult<{ id: number }>> {
+  try {
+    const supabase = await createClient();
+    const ctx = await getAuthContext();
+    if (!ctx.profile) return { success: false, error: "Not authenticated" };
+    if (!canManageExpiry(ctx)) return { success: false, error: "Permission denied — dms.expiry.manage required" };
+
+    const parsed = setExpiryOverrideSchema.safeParse(input);
+    if (!parsed.success) return { success: false, error: parsed.error.issues.map((i) => i.message).join("; ") };
+    const { documentId, override, reason } = parsed.data;
+
+    const now = new Date().toISOString();
+    const actorId = ctx.profile.id;
+
+    const updatePayload =
+      override === null
+        ? {
+            expiry_tracking_override: null,
+            expiry_override_reason: null,
+            expiry_override_by: null,
+            expiry_override_at: null,
+            updated_by: actorId,
+            updated_at: now,
+          }
+        : {
+            expiry_tracking_override: override,
+            expiry_override_reason: reason ?? null,
+            expiry_override_by: actorId,
+            expiry_override_at: now,
+            updated_by: actorId,
+            updated_at: now,
+          };
+
+    const { error } = await supabase
+      .from("dms_documents")
+      .update(updatePayload)
+      .eq("id", documentId)
+      .is("deleted_at", null);
+
+    if (error) return { success: false, error: error.message };
+
+    await logAudit({
+      module_code: "dms",
+      entity_name: "dms_documents",
+      entity_id: documentId,
+      entity_reference: `DOC-${documentId}`,
+      action: "update",
+      new_values: { expiry_tracking_override: override, expiry_override_reason: reason ?? null },
+    });
+
+    revalidatePath("/dms/expiring");
+    return { success: true, data: { id: documentId } };
   } catch (e) {
     return { success: false, error: String(e) };
   }

@@ -98,7 +98,7 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated }
 
   // Source link
   const sourceUrl = item.documentId
-    ? `/dms/documents/record/${item.documentId}`
+    ? `/dms/documents/record/${item.documentId}?mode=edit`
     : item.uploadSessionId
     ? `/dms/intake/${item.uploadSession?.session_code ?? item.uploadSessionId}`
     : null;

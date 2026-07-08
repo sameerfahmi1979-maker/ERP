@@ -150,11 +150,12 @@ export async function getDmsDashboardStats(
         .gte("created_at", lastMonthStart)
         .lt("created_at", lastMonthEnd),
 
-      // KPI: inbox pending
+      // KPI: inbox pending (exclude discarded sessions — user explicitly discarded them)
       supabase
         .from("dms_upload_sessions")
         .select("id", { count: "exact", head: true })
         .in("status", ["uploaded", "processing"])
+        .not("intake_status", "eq", "discarded")
         .is("deleted_at", null),
 
       // KPI: expiring in ≤30 days
@@ -267,11 +268,12 @@ export async function getDmsDashboardStats(
         .is("deleted_at", null)
         .neq("status", "superseded"),
 
-      // Action panel: inbox items needing processing (latest 5)
+      // Action panel: inbox items needing processing (latest 5, exclude discarded)
       supabase
         .from("dms_upload_sessions")
         .select("id, original_filename, status, intake_status, created_at, session_code")
         .in("status", ["uploaded", "processing"])
+        .not("intake_status", "eq", "discarded")
         .is("deleted_at", null)
         .order("created_at", { ascending: false })
         .limit(5),

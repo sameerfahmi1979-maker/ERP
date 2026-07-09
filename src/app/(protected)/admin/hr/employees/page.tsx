@@ -4,6 +4,7 @@ import { listEmployees } from "@/server/actions/hr/employees";
 import { EmployeesTable } from "@/features/hr/employees/employees-table";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { HrReportsMenu } from "@/components/erp/hr-reports-menu";
+import { isHrAiFeatureEnabled } from "@/lib/hr/ai/feature-flags";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -21,6 +22,10 @@ export default async function EmployeesPage() {
   const result = await listEmployees({ page: 1, pageSize: 25 });
   const rows = result.success && result.data ? result.data.rows : [];
   const totalCount = result.success && result.data ? result.data.totalCount : 0;
+
+  const documentWizardEnabled = authContext.roleCodes?.includes("system_admin")
+    ? true
+    : await isHrAiFeatureEnabled("ERP_AI_HR_DOCUMENT_TO_EMPLOYEE");
 
   return (
     <div className="p-6 space-y-4">
@@ -45,6 +50,7 @@ export default async function EmployeesPage() {
         initialRows={rows}
         initialTotal={totalCount}
         authContext={authContext}
+        documentWizardEnabled={documentWizardEnabled}
       />
     </div>
   );

@@ -156,14 +156,20 @@ export function DmsEntityDocumentsTab({
   // ── Attach existing dialog ────────────────────────────────────────────────
   const [attachOpen, setAttachOpen] = useState(false);
   const [attachSearch, setAttachSearch] = useState("");
-  const [attachSelectedId, setAttachSelectedId] = useState<number | null>(null);
+  const [attachSelectedIds, setAttachSelectedIds] = useState<number[]>([]);
   const [isAttaching, setIsAttaching] = useState(false);
 
   const openAttach = () => {
-    setAttachSelectedId(null);
+    setAttachSelectedIds([]);
     setAttachSearch("");
     setAttachOpen(true);
     onChildOpen?.(true);
+  };
+
+  const toggleAttachSelection = (documentId: number) => {
+    setAttachSelectedIds((prev) =>
+      prev.includes(documentId) ? prev.filter((id) => id !== documentId) : [...prev, documentId]
+    );
   };
 
   const closeAttach = (open: boolean) => {
@@ -182,21 +188,35 @@ export function DmsEntityDocumentsTab({
   });
 
   const handleAttach = async () => {
-    if (!attachSelectedId) {
-      toast.error("Please select a document");
+    if (attachSelectedIds.length === 0) {
+      toast.error("Please select at least one document");
       return;
     }
     setIsAttaching(true);
     try {
-      const result = await linkDmsDocumentToEntity(attachSelectedId, entityType, entityId);
-      if (result.success) {
-        toast.success("Document linked");
-        setAttachOpen(false);
-        onChildOpen?.(false);
+      const results = await Promise.all(
+        attachSelectedIds.map((docId) => linkDmsDocumentToEntity(docId, entityType, entityId))
+      );
+      const failed = results.filter((r) => !r.success);
+      const succeededCount = results.length - failed.length;
+
+      if (succeededCount > 0) {
+        toast.success(
+          succeededCount === 1 ? "Document linked" : `${succeededCount} documents linked`
+        );
         invalidateDmsEntityDocuments(queryClient, entityType, entityId);
         invalidateDmsAvailableForLink(queryClient);
-      } else {
-        toast.error(result.error ?? "Failed to link document");
+      }
+      if (failed.length > 0) {
+        toast.error(
+          failed.length === 1
+            ? failed[0]?.error ?? "Failed to link a document"
+            : `${failed.length} document(s) could not be linked`
+        );
+      }
+      if (failed.length === 0) {
+        setAttachOpen(false);
+        onChildOpen?.(false);
       }
     } finally {
       setIsAttaching(false);
@@ -382,20 +402,24 @@ export function DmsEntityDocumentsTab({
         open={attachOpen}
         onOpenChange={closeAttach}
         title="Attach Existing Document"
-        subtitle={`Link a DMS document to this ${label}`}
+        subtitle={`Link one or more DMS documents to this ${label}`}
         icon={<Link2 className="h-5 w-5" />}
         size="lg"
         onSubmit={handleAttach}
         isSubmitting={isAttaching}
-        submitLabel="Link Document"
+        submitLabel={
+          attachSelectedIds.length > 1
+            ? `Link ${attachSelectedIds.length} Documents`
+            : "Link Document"
+        }
       >
         <DmsAttachDocumentPicker
           search={attachSearch}
           onSearchChange={setAttachSearch}
           documents={availableDocuments ?? []}
           isLoading={attachDocsLoading}
-          selectedId={attachSelectedId}
-          onSelect={setAttachSelectedId}
+          selectedIds={attachSelectedIds}
+          onToggle={toggleAttachSelection}
         />
       </ERPChildDialogForm>
     </div>

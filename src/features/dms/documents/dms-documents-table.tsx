@@ -23,6 +23,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { ERPCombobox } from "@/components/erp/combobox";
 import type { ERPComboboxOption } from "@/components/erp/combobox";
 import { Badge } from "@/components/ui/badge";
@@ -88,16 +93,20 @@ interface DmsDocumentsTableProps {
   initialDocuments: DmsDocumentRow[];
   categories: { id: number; name_en: string }[];
   documentTypes: { id: number; name_en: string }[];
+  /** Only system_admin users — hard delete is permanently irreversible */
+  canHardDelete?: boolean;
 }
 
 export function DmsDocumentsTable({
   initialDocuments,
   categories,
   documentTypes,
+  canHardDelete = false,
 }: DmsDocumentsTableProps) {
   const router = useRouter();
   const { openTab } = useWorkspace();
   const [isPending, startTransition] = useTransition();
+  const [deleteTarget, setDeleteTarget] = useState<DmsDocumentRow | null>(null);
 
   // ERP REALTIME.1B — live DMS document list sync.
   // When another user creates/updates/archives/deletes a document, router.refresh()
@@ -252,11 +261,17 @@ export function DmsDocumentsTable({
   }
 
   function handleDelete(doc: DmsDocumentRow) {
-    if (!confirm(`Soft-delete "${doc.title}"? This cannot be undone easily.`)) return;
+    setDeleteTarget(doc);
+  }
+
+  function confirmDelete() {
+    if (!deleteTarget) return;
+    const doc = deleteTarget;
+    setDeleteTarget(null);
     startTransition(async () => {
       const result = await deleteDmsDocument(doc.id);
       if (result.success) {
-        toast.success("Document deleted");
+        toast.success(`Document "${doc.document_no}" permanently deleted`);
         router.refresh();
       } else {
         toast.error(result.error ?? "Delete failed");
@@ -925,17 +940,18 @@ export function DmsDocumentsTable({
                           <Archive className="h-3 w-3" />
                         )}
                       </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-6 w-6 text-destructive hover:text-destructive"
-                        onClick={() => handleDelete(doc)}
-                        disabled={isPending}
-                        title="Delete"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
+                      {canHardDelete && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6 text-destructive hover:text-destructive"
+                          onClick={() => handleDelete(doc)}
+                          disabled={isPending}
+                          title="Permanently Delete (system admin only)"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      )}                    </div>
                   </td>
                 </tr>
               ))
@@ -958,6 +974,41 @@ export function DmsDocumentsTable({
           Showing {table.total} of {initialDocuments.length} document{initialDocuments.length !== 1 ? "s" : ""}
         </div>
       )}
+
+      {/* ── Hard Delete Confirmation Dialog ─────────────────────────────────── */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive">Permanently Delete Document?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  You are about to permanently delete{" "}
+                  <span className="font-semibold text-foreground">{deleteTarget?.document_no}</span>
+                  {deleteTarget?.title ? ` — ${deleteTarget.title}` : ""}.
+                </p>
+                <p className="font-medium text-destructive">
+                  This action is irreversible. The document and all associated data
+                  (files, versions, metadata, review queue items, upload sessions) will be
+                  permanently removed from the system.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Only system administrators may perform this action.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Permanently Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -17,20 +17,23 @@ export function useResizableColumns<K extends string>(
   const minWidth = options?.minWidth ?? DEFAULT_MIN_COL_WIDTH;
   const storageKey = options?.storageKey;
 
-  const [widths, setWidths] = useState<Record<K, number>>(() => {
-    if (storageKey && typeof window !== "undefined") {
-      try {
-        const saved = window.localStorage.getItem(storageKey);
-        if (saved) {
-          const parsed = JSON.parse(saved) as Partial<Record<K, number>>;
-          return { ...defaultWidths, ...parsed };
-        }
-      } catch {
-        // Ignore corrupt/blocked storage — fall back to defaults.
+  const [widths, setWidths] = useState<Record<K, number>>(defaultWidths);
+
+  // Restore persisted widths from localStorage only after mount to avoid
+  // SSR/client hydration mismatch (server always renders defaultWidths).
+  useEffect(() => {
+    if (!storageKey) return;
+    try {
+      const saved = window.localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved) as Partial<Record<K, number>>;
+        setWidths((prev) => ({ ...prev, ...parsed }));
       }
+    } catch {
+      // Ignore corrupt/blocked storage.
     }
-    return defaultWidths;
-  });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once on mount
 
   const resizing = useRef<{ key: K; startX: number; startWidth: number } | null>(null);
 

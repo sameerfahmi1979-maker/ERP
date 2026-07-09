@@ -561,8 +561,13 @@ export type AvailableDmsDocumentOption = {
   document_no: string;
   title: string;
   document_type_name: string | null;
+  document_type_code: string | null;
   status: string;
+  issue_date: string | null;
   expiry_date: string | null;
+  has_extraction: boolean;
+  has_ocr: boolean;
+  extracted_person_name: string | null;
 };
 
 export async function getAvailableDmsDocumentsForLink(
@@ -572,14 +577,15 @@ export async function getAvailableDmsDocumentsForLink(
 ): Promise<ActionResult<AvailableDmsDocumentOption[]>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "dms.documents.view") && !hasPermission(ctx, "dms.admin")) {
-      return { success: false, error: "Permission denied" };
+    const isAdmin = ctx.roleCodes?.includes("system_admin") || ctx.roleCodes?.includes("group_admin");
+    if (!isAdmin && !hasPermission(ctx, "dms.documents.view") && !hasPermission(ctx, "dms.admin")) {
+      return { success: false, error: "Permission denied: dms.documents.view required" };
     }
 
-    const supabase = await createClient();
+    const adminClient = createAdminClient();
 
     // Get already-linked document IDs to exclude
-    const { data: existing } = await supabase
+    const { data: existing } = await adminClient
       .from("dms_document_links")
       .select("document_id")
       .eq("entity_type", entityType)
@@ -588,9 +594,12 @@ export async function getAvailableDmsDocumentsForLink(
 
     const excludeIds = (existing ?? []).map((r: { document_id: number }) => r.document_id);
 
-    let query = supabase
+    let query = adminClient
       .from("dms_documents")
-      .select("id, document_no, title, status, expiry_date, document_type:dms_document_types(name_en)")
+      .select(
+        `id, document_no, title, status, issue_date, expiry_date,
+        document_type:dms_document_types(name_en, code:type_code)`
+      )
       .is("deleted_at", null)
       .neq("status", "deleted")
       .order("created_at", { ascending: false })
@@ -608,14 +617,63 @@ export async function getAvailableDmsDocumentsForLink(
     const { data, error } = await query;
     if (error) return { success: false, error: error.message };
 
-    const rows = (data ?? []).map((d: Record<string, unknown>) => ({
-      id: d.id as number,
-      document_no: d.document_no as string,
-      title: d.title as string,
-      document_type_name: (d.document_type as { name_en?: string } | null)?.name_en ?? null,
-      status: d.status as string,
-      expiry_date: (d.expiry_date as string | null) ?? null,
-    }));
+    const docIds = (data ?? []).map((d: Record<string, unknown>) => d.id as number);
+
+    const [extractionRows, ocrRows] = await Promise.all([
+      docIds.length > 0
+        ? adminClient
+            .from("dms_ai_extraction_results")
+            .select("document_id, extracted_fields_json")
+            .in("document_id", docIds)
+            .neq("ai_status", "superseded")
+            .order("created_at", { ascending: false })
+        : { data: [] as Array<{ document_id: number; extracted_fields_json: Record<string, unknown> }>, error: null },
+      docIds.length > 0
+        ? adminClient
+            .from("dms_document_files")
+            .select("document_id")
+            .in("document_id", docIds)
+            .not("ocr_text", "is", null)
+            .is("deleted_at", null)
+        : { data: [] as Array<{ document_id: number }>, error: null },
+    ]);
+
+    const extractionByDocId = new Map<number, Record<string, unknown>>();
+    for (const row of (extractionRows.data ?? []) as Array<{ document_id: number; extracted_fields_json: Record<string, unknown> }>) {
+      if (!extractionByDocId.has(row.document_id)) {
+        extractionByDocId.set(row.document_id, row.extracted_fields_json ?? {});
+      }
+    }
+
+    const ocrDocIds = new Set(
+      (ocrRows.data ?? []).map((r: { document_id: number }) => r.document_id)
+    );
+
+    const rows: AvailableDmsDocumentOption[] = (data ?? []).map((d: Record<string, unknown>) => {
+      const typeInfo = d.document_type as { name_en?: string; code?: string } | null;
+      const ef = extractionByDocId.get(d.id as number);
+      const extractedPersonName = ef
+        ? ((ef.full_name_en as string | null) ??
+            (ef.full_name as string | null) ??
+            (ef.holder_name as string | null) ??
+            (ef.person_name as string | null) ??
+            null)
+        : null;
+
+      return {
+        id: d.id as number,
+        document_no: d.document_no as string,
+        title: d.title as string,
+        document_type_name: typeInfo?.name_en ?? null,
+        document_type_code: typeInfo?.code ?? null,
+        status: d.status as string,
+        issue_date: (d.issue_date as string | null) ?? null,
+        expiry_date: (d.expiry_date as string | null) ?? null,
+        has_extraction: extractionByDocId.has(d.id as number),
+        has_ocr: ocrDocIds.has(d.id as number),
+        extracted_person_name: extractedPersonName,
+      };
+    });
 
     return { success: true, data: rows };
   } catch (err) {

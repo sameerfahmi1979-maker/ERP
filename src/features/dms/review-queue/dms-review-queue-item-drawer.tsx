@@ -37,15 +37,16 @@ const RESOLUTION_CODES = [
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface Props {
-  item:       ReviewQueueItem;
-  canManage:  boolean;
-  onClose:    () => void;
-  onMutated:  () => void;
+  item:             ReviewQueueItem;
+  canManage:        boolean;
+  onClose:          () => void;
+  onMutated:        () => void;
+  onItemRefreshed?: () => void; // refresh item in-place without closing drawer
 }
 
 // ── Detail drawer ─────────────────────────────────────────────────────────────
 
-export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated }: Props) {
+export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, onItemRefreshed }: Props) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError]               = useState<string | null>(null);
   const [resolutionCode, setResolutionCode] = useState(RESOLUTION_CODES[0].value);
@@ -71,8 +72,17 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated }
   const handleStart = async () => {
     setIsSubmitting(true); setError(null);
     const result = await startDmsReviewQueueItem(item.id);
-    if (!result.success) setError(result.error ?? "Failed to start");
-    else onMutated();
+    if (!result.success) {
+      setError(result.error ?? "Failed to start");
+      setIsSubmitting(false);
+      return;
+    }
+    // Open source document in a new tab so the reviewer can do their work,
+    // then refresh the item in-place (keeps drawer open for Resolve/Dismiss).
+    if (sourceUrl) {
+      window.open(sourceUrl, "_blank", "noreferrer");
+    }
+    onItemRefreshed?.();
     setIsSubmitting(false);
   };
 
@@ -96,8 +106,11 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated }
     setIsSubmitting(false);
   };
 
-  // Source link
-  const sourceUrl = item.documentId
+  // Source link — prefer the final document (via session.document_id) in edit mode
+  const sessionDocumentId = item.uploadSession?.document_id ?? null;
+  const sourceUrl = sessionDocumentId
+    ? `/dms/documents/record/${sessionDocumentId}?mode=edit`
+    : item.documentId
     ? `/dms/documents/record/${item.documentId}?mode=edit`
     : item.uploadSessionId
     ? `/dms/intake/${item.uploadSession?.session_code ?? item.uploadSessionId}`

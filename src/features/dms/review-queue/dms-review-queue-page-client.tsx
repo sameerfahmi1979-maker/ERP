@@ -84,6 +84,15 @@ export function DmsReviewQueuePageClient({
     refresh();
   };
 
+  // Refresh the open drawer item in-place without closing it (used after Start Review)
+  const handleItemRefreshed = useCallback(() => {
+    if (!selectedItem) return;
+    getDmsReviewQueueItem(selectedItem.id).then((result) => {
+      if (result.success && result.data) setSelectedItem(result.data);
+    }).catch(() => { /* non-fatal */ });
+    refresh();
+  }, [selectedItem, refresh]);
+
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
@@ -165,6 +174,7 @@ export function DmsReviewQueuePageClient({
               canManage={canManage}
               onClose={() => { setDrawerOpen(false); setSelectedItem(null); }}
               onMutated={handleMutated}
+              onItemRefreshed={handleItemRefreshed}
             />
           </div>
         </>

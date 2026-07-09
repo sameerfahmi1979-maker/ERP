@@ -1,6 +1,9 @@
 ﻿# ALGT ERP â€” Source of Truth
 
 **Document:** `.cursor/ALGT_ERP_SOURCE_OF_TRUTH.md`  
+**Last updated:** 2026-07-09 (HR.14B CLOSED/PASS)
+
+**HR.14B CLOSED / PASS — 2026-07-09:** Existing Employee Record Updates from Existing DMS Documents. Migration: 20260709140000_hr14b_document_to_record_feature_flag.sql (ERP_AI_HR_DOCUMENT_TO_RECORD flag, default disabled). New: src/server/actions/hr/document-to-record.ts (8 server actions), src/features/hr/employees/document-to-record/hr-doc-to-record-wizard.tsx (shared 2-step wizard). Compliance tab: SectionHeader extended; From Documents buttons in Identity Docs, Insurance, Dependents. Passport/EID duplicate blocking. DMS links with link_role=hr14b_source. tsc: PASS. build: PASS. Report: implementation_Review/HR_Module/HR_14B_EXISTING_EMPLOYEE_RECORD_UPDATES_FROM_EXISTING_DMS_DOCUMENTS_IMPLEMENTATION_REPORT.md. Next recommended: HR.14B QA.
 **Last updated:** 2026-07-04 (REPORT DESIGNER UX.3 — CLOSED/PASS ✅. Restricted/Sensitive Field Governance & Official Output Controls. Full governance layer: RBAC permission gates, template-type allowlists, output-mode masking, QR verification protection confirmed, audit logging. tsc: PASS. Report: `implementation_Review/Reports/REPORT_DESIGNER_UX_3_RESTRICTED_SENSITIVE_FIELD_GOVERNANCE_OFFICIAL_OUTPUT_CONTROLS_IMPLEMENTATION_REPORT.md`.)
 
 **Last closed gate:** REPORT DESIGNER UX.3 (**CLOSED / PASS ✅ — 2026-07-04. Restricted/Sensitive Field Governance & Official Output Controls. No DB schema migration (permissions only). 10 scopes: (A) permissions `reports.sensitive_fields.use` + `.approve` seeded with role assignments. (B) governance.ts with `ReportOutputMode`, `ReportRenderContext`, `canFieldBeInsertedForTemplate`, `canFieldResolveInOutputMode`, `getRestrictedFieldMask`, audit helpers. (C) 11 sensitive registry entries (salary×4, banking×2, identity×2, visa×2, medical×1 planned). (D) Field picker context-aware via `FieldPickerContextProvider`; server page passes `ctx.permissionCodes` to editor client; amber unlock state for permitted restricted fields. (E) Security review template-type-aware: `ALWAYS_BLOCK` vs `GOVERNANCE_SENSITIVE` fragments; `approveTemplate`+`publishTemplate` enforce `reports.sensitive_fields.approve` for sensitive-warning templates. (F) Preview/test masking: `applyDefensiveRestrictedMasking` + test-data-resolver integration. (G) Official output resolvers: identity docs, WPS/IBAN, salary stub. (H) Audit logging: safe metadata only, no sensitive values, non-blocking. (I) QR verification confirmed — existing `sanitizer.ts` BLOCKED_KEY_PATTERNS cover all cases. (J) UX messages: `toast.warning` for restricted field warnings, `toast.error` for template-type violations. tsc: PASS. Report: `implementation_Review/Reports/REPORT_DESIGNER_UX_3_RESTRICTED_SENSITIVE_FIELD_GOVERNANCE_OFFICIAL_OUTPUT_CONTROLS_IMPLEMENTATION_REPORT.md`.**)
@@ -989,7 +992,100 @@ ERP_FULL_IMPLEMENTATION_GUIDE_FOR_NEXT_CHAT.md
 
 ---
 
-## REPORT DESIGNER UX ROADMAP — UPDATED (2026-07-04)
+## HR.14A — Employee Creation from Existing DMS Documents
+
+**Status:** CLOSED / PASS ✅ (QA PASS ✅ — 2026-07-09)
+**Date:** 2026-07-09
+**Report:** `implementation_Review/HR_Module/HR_14A_EMPLOYEE_CREATION_FROM_EXISTING_DMS_DOCUMENTS_IMPLEMENTATION_REPORT.md`
+**QA Report:** `implementation_Review/HR_Module/HR_14A_QA_RUNTIME_SECURITY_GAP_REPORT.md`
+**SQL QA Checks:** `implementation_Review/HR_Module/HR_14A_QA_CHECKS.sql`
+**Migration:** `20260709130000_hr14a_employee_creation_from_existing_dms_documents.sql` — feature flag `ERP_AI_HR_DOCUMENT_TO_EMPLOYEE` (applied via MCP, default disabled)
+
+**Summary:**
+- Added "Add from Documents" button on HR → Employees page (beside "Add Employee"), visible only to users with `hr.employees.create` or `system_admin` AND `ERP_AI_HR_DOCUMENT_TO_EMPLOYEE` flag enabled
+- Implemented 4-step wizard: (1) Select Existing DMS Documents, (2) Employee Draft Review, (3) Compliance Suggestion Review, (4) Confirm & Save
+- Reads existing DMS OCR/AI extraction results — no new upload flow, no new DMS menu
+- Deterministic field mapping from extraction → employee draft + compliance suggestions (identity documents, medical insurance)
+- Employee draft pre-populates: name, gender, DOB, nationality, mobile, email from document extractions
+- Compliance suggestions: identity documents (passport/EID/visa/labour card) and medical insurance
+- Conflict detection: fields disagreeing across multiple documents shown with resolution UI
+- Duplicate checks: mobile, email, name+DOB (server-side before save)
+- Human-confirmed save creates: employee + status event + selected compliance records + DMS entity links
+- Audit log: `document_to_employee.aggregate`, `document_to_employee.create`, `document_to_employee.duplicate_check`
+- No new sidebar menu, no new intake system, no HR.14B implemented
+- tsc: PASS. build: PASS.
+
+**QA Fixes Applied (2026-07-09):**
+- Added `DOCUMENT_TO_EMPLOYEE` to `HR_AI_FEATURE_FLAGS` TypeScript enum in `src/lib/hr/ai/types.ts`
+- Feature flag `ERP_AI_HR_DOCUMENT_TO_EMPLOYEE` now enforced in `aggregateEmployeeDraftFromDmsDocuments` and `createEmployeeFromDmsDocuments` (system_admin bypass)
+- `documentWizardEnabled` prop added to `EmployeesTable`; button hidden when flag disabled
+- Employees page server component checks flag at request time and passes to table
+- tsc: PASS. build: PASS (post-fix).
+
+**Gap Register (non-critical, documented):**
+- GAP-HR14A-003: Branch/dept/designation/category/employment-type fields use raw ID inputs (UX gap — fix in HR.14A FIX)
+- GAP-HR14A-004: Passport/EID duplicate blocking not implemented (fix in HR.14A FIX or HR.14B)
+- GAP-HR14A-005: Document ID injection risk in DMS linking (low severity — fix in HR.14B)
+
+**Files Created:**
+- `src/lib/hr/document-to-record/types.ts`
+- `src/lib/hr/document-to-record/document-classifier.ts`
+- `src/lib/hr/document-to-record/dms-employee-draft-mapper.ts`
+- `src/lib/hr/document-to-record/dms-compliance-suggestion-mapper.ts`
+- `src/lib/hr/document-to-record/duplicate-checks.ts`
+- `src/server/actions/hr/document-to-employee.ts`
+- `src/features/hr/employees/document-create/hr-document-employee-create-wizard.tsx`
+- `src/features/hr/employees/document-create/hr-document-picker-step.tsx`
+- `src/features/hr/employees/document-create/hr-document-employee-review-step.tsx`
+- `src/features/hr/employees/document-create/hr-document-compliance-review-step.tsx`
+- `src/features/hr/employees/document-create/hr-document-create-summary-step.tsx`
+- `src/features/hr/employees/document-create/hr-document-confidence-badge.tsx`
+- `src/features/hr/employees/document-create/hr-document-conflict-card.tsx`
+- `implementation_Review/HR_Module/HR_14A_QA_RUNTIME_SECURITY_GAP_REPORT.md`
+- `implementation_Review/HR_Module/HR_14A_QA_CHECKS.sql`
+
+**Files Modified:**
+- `src/features/hr/employees/employees-table.tsx` — added "Add from Documents" button + wizard mount + `documentWizardEnabled` prop
+- `src/app/(protected)/admin/hr/employees/page.tsx` — added feature flag check + prop pass (QA fix)
+- `src/lib/hr/ai/types.ts` — added `DOCUMENT_TO_EMPLOYEE` to `HR_AI_FEATURE_FLAGS` (QA fix)
+- `src/server/actions/hr/document-to-employee.ts` — added feature flag enforcement (QA fix)
+
+**Next recommended phase:** ~~HR.14A FIX (ERPCombobox for lookup fields + EID/passport duplicate checks)~~ → **HR.14B**
+
+---
+
+## HR.14A FIX — ERPCombobox Upgrade + Passport/EID Duplicate Check
+**Status:** CLOSED / PASS ✅
+**Date:** 2026-07-09
+
+**Gaps Fixed:**
+- GAP-HR14A-003: branch_id, department_id, designation_id, employee_category_id, employment_type_id upgraded from missing/raw inputs to ERPCombobox controls in the employee review step. Branch filtered by owner_company_id.
+- GAP-HR14A-004: Passport and Emirates ID duplicate checks implemented (client display + server-side hard block before insert).
+
+**Summary:**
+- Replaced missing lookup fields in HR.14A employee review step with ERPCombobox controls using existing server actions and hooks.
+- Added `normalizeDocumentNumber()` and `runIdentityDocumentDuplicateChecks()` to `duplicate-checks.ts`.
+- Identity document duplicate check runs at aggregation time (for early UI warning) and again at save time (hard server-side block).
+- Same Emirates ID = blocking. Same passport = blocking. Mobile/email/name+DOB remain warn-only.
+- Full document numbers never appear in error messages or audit log metadata.
+- No new DB tables. No HR.14B code. No new DMS menu.
+
+**QA SQL:** `implementation_Review/HR_Module/HR_14A_FIX_QA_CHECKS.sql`
+**Report:** `implementation_Review/HR_Module/HR_14A_FIX_ERPCOMBOBOX_DUPLICATE_CHECK_IMPLEMENTATION_REPORT.md`
+**tsc:** Exit 0 ✅  |  **build:** Exit 0 ✅
+
+**Files Modified:**
+- `src/features/hr/employees/document-create/hr-document-employee-review-step.tsx`
+- `src/lib/hr/document-to-record/duplicate-checks.ts`
+- `src/lib/hr/document-to-record/types.ts`
+- `src/server/actions/hr/document-to-employee.ts`
+- `src/features/hr/employees/document-create/hr-document-employee-create-wizard.tsx`
+
+**Next recommended phase:** HR.14B — Existing Employee Record Updates from Existing DMS Documents
+
+---
+
+
 
 **Source document:** `implementation_Review/Reports/REPORT_DESIGNER_UX_IMPROVEMENT_PLAN.md`  
 **Correction prompt:** `ChatGPT/CURSOR_PROMPT_REPORT_DESIGNER_UX_PLAN_CORRECTION_TIPTAP_DYNAMIC_MODULE_FIELD_BROWSER.md`  
@@ -1098,3 +1194,4 @@ Raw HTML / CSS / JavaScript remain blocked regardless of user level or permissio
 ---
 
 *End of ALGT ERP Source of Truth. Update after every phase.*
+

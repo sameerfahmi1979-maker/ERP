@@ -17,7 +17,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   Shield, FileText, Heart, Users, CreditCard, GraduationCap, Activity,
-  Plus, Edit2, Archive, CheckCircle, RefreshCw, ExternalLink, Lock,
+  Plus, Edit2, Archive, CheckCircle, RefreshCw, ExternalLink, Lock, FileStack,
 } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -93,6 +93,8 @@ import { invalidateDmsEntityDocuments } from "@/lib/query/invalidation";
 import { IdentityDocumentAddDialog } from "@/features/hr/employees/compliance/identity-document-add-dialog";
 import { ComplianceDmsAddDialog } from "@/features/hr/employees/compliance/compliance-dms-add-dialog";
 import { ComplianceDmsPrefillBanner } from "@/features/hr/employees/compliance/compliance-dms-prefill-banner";
+import { HrDocumentToRecordWizard } from "@/features/hr/employees/document-to-record/hr-doc-to-record-wizard";
+import { checkHrDocumentToRecordEnabled } from "@/server/actions/hr/document-to-record";
 import { IdentityDocumentFormFields } from "@/features/hr/employees/compliance/identity-document-form-fields";
 import {
   createEmptyIdentityDocumentForm,
@@ -128,7 +130,7 @@ function formatDate(d: string | null | undefined) {
   try { return format(new Date(d), "dd MMM yyyy"); } catch { return d; }
 }
 
-function SectionHeader({ icon: Icon, title, count, onAdd, canAdd }: { icon: React.ElementType; title: string; count?: number; onAdd?: () => void; canAdd?: boolean }) {
+function SectionHeader({ icon: Icon, title, count, onAdd, canAdd, onAddFromDocs, canAddFromDocs }: { icon: React.ElementType; title: string; count?: number; onAdd?: () => void; canAdd?: boolean; onAddFromDocs?: () => void; canAddFromDocs?: boolean }) {
   return (
     <div className="flex items-center justify-between mb-3">
       <div className="flex items-center gap-2">
@@ -138,11 +140,18 @@ function SectionHeader({ icon: Icon, title, count, onAdd, canAdd }: { icon: Reac
           <Badge variant="secondary" className="text-xs">{count}</Badge>
         )}
       </div>
-      {canAdd && onAdd && (
-        <Button size="sm" variant="outline" onClick={onAdd} type="button">
-          <Plus className="h-3.5 w-3.5 mr-1" /> Add
-        </Button>
-      )}
+      <div className="flex items-center gap-2">
+        {canAddFromDocs && onAddFromDocs && (
+          <Button size="sm" variant="outline" onClick={onAddFromDocs} type="button" className="text-xs">
+            <FileStack className="h-3.5 w-3.5 mr-1" /> From Documents
+          </Button>
+        )}
+        {canAdd && onAdd && (
+          <Button size="sm" variant="outline" onClick={onAdd} type="button">
+            <Plus className="h-3.5 w-3.5 mr-1" /> Add
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
@@ -198,10 +207,11 @@ const VERIFICATION_OPTIONS = [
 
 // ── 1. IDENTITY DOCUMENTS SECTION ─────────────────────────────────────────────
 
-function IdentityDocumentsSection({ employeeId, canManageDoc, onChildOpen }: { employeeId: number; canManageDoc: boolean; onChildOpen?: (open: boolean) => void }) {
+function IdentityDocumentsSection({ employeeId, canManageDoc, onChildOpen, documentWizardEnabled }: { employeeId: number; canManageDoc: boolean; onChildOpen?: (open: boolean) => void; documentWizardEnabled?: boolean }) {
   const qc = useQueryClient();
   const [addDialogOpen, setAddDialogOpenRaw] = useState(false);
   const [editDialogOpen, setEditDialogOpenRaw] = useState(false);
+  const [dmsWizardOpen, setDmsWizardOpenRaw] = useState(false);
   const [editing, setEditing] = useState<EmployeeIdentityDocumentRow | null>(null);
   const [isSubmitting, startTransition] = useTransition();
 
@@ -212,6 +222,11 @@ function IdentityDocumentsSection({ employeeId, canManageDoc, onChildOpen }: { e
 
   const setEditDialogOpen = useCallback((open: boolean) => {
     setEditDialogOpenRaw(open);
+    onChildOpen?.(open);
+  }, [onChildOpen]);
+
+  const setDmsWizardOpen = useCallback((open: boolean) => {
+    setDmsWizardOpenRaw(open);
     onChildOpen?.(open);
   }, [onChildOpen]);
 
@@ -310,7 +325,7 @@ function IdentityDocumentsSection({ employeeId, canManageDoc, onChildOpen }: { e
 
   return (
     <div className="mb-8">
-      <SectionHeader icon={FileText} title="Legal Documents" count={docs?.length} onAdd={openAdd} canAdd={canManageDoc} />
+      <SectionHeader icon={FileText} title="Legal Documents" count={docs?.length} onAdd={openAdd} canAdd={canManageDoc} onAddFromDocs={() => setDmsWizardOpen(true)} canAddFromDocs={canManageDoc && documentWizardEnabled} />
 
       {isLoading && <Skeleton className="h-20 w-full" />}
       {!isLoading && (!docs || docs.length === 0) && <EmptyState message="No identity documents added yet." />}
@@ -385,6 +400,15 @@ function IdentityDocumentsSection({ employeeId, canManageDoc, onChildOpen }: { e
           docTypeOptions={docTypeOptions}
         />
       </ERPChildDialogForm>
+
+      <HrDocumentToRecordWizard
+        employeeId={employeeId}
+        targetType="identity_document"
+        open={dmsWizardOpen}
+        onOpenChange={setDmsWizardOpen}
+        onSaved={() => void qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.identityDocuments(employeeId) })}
+        onChildOpen={onChildOpen}
+      />
     </div>
   );
 }
@@ -404,10 +428,11 @@ function handleComplianceAddSaved(
 
 // ── 2. MEDICAL INSURANCE SECTION ──────────────────────────────────────────────
 
-function MedicalInsurancesSection({ employeeId, canManageDoc, onChildOpen }: { employeeId: number; canManageDoc: boolean; onChildOpen?: (open: boolean) => void }) {
+function MedicalInsurancesSection({ employeeId, canManageDoc, onChildOpen, documentWizardEnabled }: { employeeId: number; canManageDoc: boolean; onChildOpen?: (open: boolean) => void; documentWizardEnabled?: boolean }) {
   const qc = useQueryClient();
   const [addDialogOpen, setAddDialogOpenRaw] = useState(false);
   const [editDialogOpen, setEditDialogOpenRaw] = useState(false);
+  const [dmsWizardOpen, setDmsWizardOpenRaw] = useState(false);
   const [editing, setEditing] = useState<EmployeeMedicalInsuranceRow | null>(null);
   const [isSubmitting, startTransition] = useTransition();
 
@@ -418,6 +443,11 @@ function MedicalInsurancesSection({ employeeId, canManageDoc, onChildOpen }: { e
 
   const setEditDialogOpen = useCallback((open: boolean) => {
     setEditDialogOpenRaw(open);
+    onChildOpen?.(open);
+  }, [onChildOpen]);
+
+  const setDmsWizardOpen = useCallback((open: boolean) => {
+    setDmsWizardOpenRaw(open);
     onChildOpen?.(open);
   }, [onChildOpen]);
 
@@ -524,7 +554,7 @@ function MedicalInsurancesSection({ employeeId, canManageDoc, onChildOpen }: { e
 
   return (
     <div className="mb-8">
-      <SectionHeader icon={Heart} title="Medical Insurance" count={records?.length} onAdd={openAdd} canAdd={canManageDoc} />
+      <SectionHeader icon={Heart} title="Medical Insurance" count={records?.length} onAdd={openAdd} canAdd={canManageDoc} onAddFromDocs={() => setDmsWizardOpen(true)} canAddFromDocs={canManageDoc && documentWizardEnabled} />
       {isLoading && <Skeleton className="h-16 w-full" />}
       {!isLoading && (!records || records.length === 0) && <EmptyState message="No medical insurance records added yet." />}
       {!isLoading && records && records.length > 0 && (
@@ -603,21 +633,32 @@ function MedicalInsurancesSection({ employeeId, canManageDoc, onChildOpen }: { e
           <div className="col-span-12"><Label>Notes</Label><Textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} rows={2} /></div>
         </div>
       </ERPChildDialogForm>
+
+      <HrDocumentToRecordWizard
+        employeeId={employeeId}
+        targetType="medical_insurance"
+        open={dmsWizardOpen}
+        onOpenChange={setDmsWizardOpen}
+        onSaved={() => void qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.medicalInsurances(employeeId) })}
+        onChildOpen={onChildOpen}
+      />
     </div>
   );
 }
 
 // ── 3. DEPENDENTS SECTION ─────────────────────────────────────────────────────
 
-function DependentsSection({ employeeId, canManageDoc, onChildOpen }: { employeeId: number; canManageDoc: boolean; onChildOpen?: (open: boolean) => void }) {
+function DependentsSection({ employeeId, canManageDoc, onChildOpen, documentWizardEnabled }: { employeeId: number; canManageDoc: boolean; onChildOpen?: (open: boolean) => void; documentWizardEnabled?: boolean }) {
   const qc = useQueryClient();
   const [addDialogOpen, setAddDialogOpenRaw] = useState(false);
+  const [dmsWizardOpen, setDmsWizardOpenRaw] = useState(false);
   const [editDialogOpen, setEditDialogOpenRaw] = useState(false);
   const [editing, setEditing] = useState<EmployeeDependentRow | null>(null);
   const [isSubmitting, startTransition] = useTransition();
 
   const setAddDialogOpen = useCallback((open: boolean) => { setAddDialogOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
   const setEditDialogOpen = useCallback((open: boolean) => { setEditDialogOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
+  const setDmsWizardOpen = useCallback((open: boolean) => { setDmsWizardOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
 
   const initialForm = () => ({
     dms_document_id: null as number | null,
@@ -745,7 +786,7 @@ function DependentsSection({ employeeId, canManageDoc, onChildOpen }: { employee
 
   return (
     <div className="mb-8">
-      <SectionHeader icon={Users} title="Dependents" count={records?.length} onAdd={openAdd} canAdd={canManageDoc} />
+      <SectionHeader icon={Users} title="Dependents" count={records?.length} onAdd={openAdd} canAdd={canManageDoc} onAddFromDocs={() => setDmsWizardOpen(true)} canAddFromDocs={canManageDoc && documentWizardEnabled} />
       {isLoading && <Skeleton className="h-16 w-full" />}
       {!isLoading && (!records || records.length === 0) && <EmptyState message="No dependents added yet." />}
       {!isLoading && records && records.length > 0 && (
@@ -798,6 +839,15 @@ function DependentsSection({ employeeId, canManageDoc, onChildOpen }: { employee
       <ERPChildDialogForm open={editDialogOpen} onOpenChange={setEditDialogOpen} title="Edit Dependent" icon={<Users className="h-5 w-5" />} mode="edit" size="xl" isSubmitting={isSubmitting} onSubmit={handleEditSubmit}>
         {renderDependentFields(form, setForm, null)}
       </ERPChildDialogForm>
+
+      <HrDocumentToRecordWizard
+        employeeId={employeeId}
+        targetType="dependent"
+        open={dmsWizardOpen}
+        onOpenChange={setDmsWizardOpen}
+        onSaved={() => void qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.dependents(employeeId) })}
+        onChildOpen={onChildOpen}
+      />
     </div>
   );
 }
@@ -1374,6 +1424,17 @@ export function EmployeeComplianceTab({ employeeId, authContext, onChildOpen }: 
   const medView = canMedicalView(authContext);
   const medManage = canMedicalManage(authContext);
 
+  // HR.14B — check if document-to-record wizard is enabled for this user
+  const { data: wizardStatus } = useQuery({
+    queryKey: ["hr14b", "wizard-enabled"],
+    queryFn: async () => {
+      const r = await checkHrDocumentToRecordEnabled();
+      return r.data?.enabled ?? false;
+    },
+    staleTime: 60_000,
+  });
+  const documentWizardEnabled = wizardStatus ?? false;
+
   if (!canView(authContext)) {
     return (
       <div className="flex items-center gap-3 p-6 bg-muted/30 rounded-lg border">
@@ -1393,9 +1454,9 @@ export function EmployeeComplianceTab({ employeeId, authContext, onChildOpen }: 
         <Badge variant="secondary" className="text-xs">HR.3</Badge>
       </div>
 
-      <IdentityDocumentsSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} />
-      <MedicalInsurancesSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} />
-      <DependentsSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} />
+      <IdentityDocumentsSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} documentWizardEnabled={documentWizardEnabled} />
+      <MedicalInsurancesSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} documentWizardEnabled={documentWizardEnabled} />
+      <DependentsSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} documentWizardEnabled={documentWizardEnabled} />
       <AccessCardsSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} />
       <TrainingCertificatesSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} />
       <MedicalRecordsSection employeeId={employeeId} canMedView={medView} canMedManage={medManage} onChildOpen={onChildOpen} />

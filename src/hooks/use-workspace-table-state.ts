@@ -33,7 +33,7 @@ import {
   writePageState,
   type WorkspacePageStateScope,
 } from "@/lib/workspace/workspace-page-state";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface PaginationState {
   pageIndex: number;
@@ -105,9 +105,16 @@ export function useWorkspaceTableState(
     []
   );
 
-  const [tableState, setTableState] = useState<StoredTableState>(() =>
-    readPageState<StoredTableState>(storageKey, defaults)
-  );
+  // Initialize with defaults so the first client render matches the server-rendered HTML.
+  // Read the persisted localStorage state in useEffect (after hydration) to avoid the
+  // SSR/client mismatch that occurs when localStorage is read synchronously during render.
+  const [tableState, setTableState] = useState<StoredTableState>(defaults);
+
+  useEffect(() => {
+    const persisted = readPageState<StoredTableState>(storageKey, defaults);
+    setTableState(persisted);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once on mount — storageKey and defaults are stable after first render
 
   const persist = useCallback(
     (next: StoredTableState) => {

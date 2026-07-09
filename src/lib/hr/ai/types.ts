@@ -12,15 +12,19 @@ import { z } from "zod";
 // ── Feature flag codes ────────────────────────────────────────────────────────
 
 export const HR_AI_FEATURE_FLAGS = {
-  EMPLOYEE_ASSIST: "ERP_AI_HR_EMPLOYEE_ASSIST",
-  FILL:            "ERP_AI_HR_FILL",
-  CORRECTIONS:     "ERP_AI_HR_CORRECTIONS",
-  DUPLICATES:      "ERP_AI_HR_DUPLICATES",
-  SEARCH_ASSIST:   "ERP_AI_HR_SEARCH_ASSIST",
+  EMPLOYEE_ASSIST:    "ERP_AI_HR_EMPLOYEE_ASSIST",
+  FILL:               "ERP_AI_HR_FILL",
+  CORRECTIONS:        "ERP_AI_HR_CORRECTIONS",
+  DUPLICATES:         "ERP_AI_HR_DUPLICATES",
+  SEARCH_ASSIST:      "ERP_AI_HR_SEARCH_ASSIST",
   COMPLIANCE_EXPLAIN: "ERP_AI_HR_COMPLIANCE_EXPLAIN",
   READINESS_EXPLAIN:  "ERP_AI_HR_READINESS_EXPLAIN",
-  LETTER_DRAFT:    "ERP_AI_HR_LETTER_DRAFT",
-  EMAIL_DRAFT:     "ERP_AI_HR_EMAIL_DRAFT",
+  LETTER_DRAFT:       "ERP_AI_HR_LETTER_DRAFT",
+  EMAIL_DRAFT:        "ERP_AI_HR_EMAIL_DRAFT",
+  // HR.14A — Document-to-Employee wizard
+  DOCUMENT_TO_EMPLOYEE: "ERP_AI_HR_DOCUMENT_TO_EMPLOYEE",
+  /** HR.14B — Creates compliance child records from existing DMS documents for an existing employee */
+  DOCUMENT_TO_RECORD:   "ERP_AI_HR_DOCUMENT_TO_RECORD",
 } as const;
 
 export type HrAiFeatureFlagCode = (typeof HR_AI_FEATURE_FLAGS)[keyof typeof HR_AI_FEATURE_FLAGS];

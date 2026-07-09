@@ -72,7 +72,7 @@ export type ReviewQueueItem = {
   entityMatchCandidateId:   number | null;
   // joined
   document?:                { document_no: string; title: string; confidentiality_level: string } | null;
-  uploadSession?:            { session_code: string } | null;
+  uploadSession?:            { session_code: string; document_id: number | null } | null;
   assignedUser?:             { full_name: string | null } | null;
   // Phase 13 joined details (only on getDmsReviewQueueItem)
   validationFinding?:        ValidationFindingDetail | null;
@@ -215,7 +215,7 @@ const QUEUE_SELECT = `
   queued_at, created_at, updated_at,
   validation_finding_id, entity_match_candidate_id,
   document:dms_documents!document_id (document_no, title, confidentiality_level),
-  upload_session:dms_upload_sessions!upload_session_id (session_code),
+  upload_session:dms_upload_sessions!upload_session_id (session_code, document_id),
   assigned_user:user_profiles!assigned_to (full_name)
 ` as const;
 
@@ -295,6 +295,8 @@ export async function getDmsReviewQueueItems(
       .from("dms_review_queue")
       .select(QUEUE_SELECT, { count: "exact" })
       .is("deleted_at", null)
+      // Hide orphaned items where both source FKs were nullified (e.g. document hard-deleted)
+      .or("document_id.not.is.null,upload_session_id.not.is.null")
       .order("queued_at", { ascending: true })
       .range(from, to);
 

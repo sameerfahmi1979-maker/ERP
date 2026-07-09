@@ -754,14 +754,17 @@ export async function unarchiveDmsDocument(id: number): Promise<ActionResult> {
 export async function deleteDmsDocument(id: number): Promise<ActionResult> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "dms.documents.delete") && !hasPermission(ctx, "dms.admin")) {
-      return { success: false, error: "Permission denied" };
+    // Hard delete is system_admin only — no exceptions.
+    if (!ctx.roleCodes.includes("system_admin")) {
+      return { success: false, error: "Permission denied — only system administrators may permanently delete documents" };
     }
 
     const supabase = await createClient();
     const adminClient = createAdminClient();
 
     // ── 1. Call purge_dms_document() RPC — atomic hard-delete ────────────────
+    // The RPC handles pre-delete cleanup (sessions, indirect review queue items)
+    // and then hard-deletes the document. DB CASCADE removes all DMS child rows.
     const { data: rpcRows, error: rpcError } = await supabase
       .rpc("purge_dms_document", { p_id: id });
 

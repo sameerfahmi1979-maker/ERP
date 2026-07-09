@@ -122,14 +122,20 @@ export function PartyDmsDocumentsTab({
   // ── Attach existing document dialog ───────────────────────────────────────
   const [attachOpen, setAttachOpen] = useState(false);
   const [attachSearch, setAttachSearch] = useState("");
-  const [attachSelectedId, setAttachSelectedId] = useState<number | null>(null);
+  const [attachSelectedIds, setAttachSelectedIds] = useState<number[]>([]);
   const [isAttaching, setIsAttaching] = useState(false);
 
   const openAttach = () => {
-    setAttachSelectedId(null);
+    setAttachSelectedIds([]);
     setAttachSearch("");
     setAttachOpen(true);
     onChildOpen?.(true);
+  };
+
+  const toggleAttachSelection = (documentId: number) => {
+    setAttachSelectedIds((prev) =>
+      prev.includes(documentId) ? prev.filter((id) => id !== documentId) : [...prev, documentId]
+    );
   };
 
   const closeAttach = (open: boolean) => {
@@ -148,21 +154,35 @@ export function PartyDmsDocumentsTab({
   });
 
   const handleAttach = async () => {
-    if (!attachSelectedId) {
-      toast.error("Please select a document");
+    if (attachSelectedIds.length === 0) {
+      toast.error("Please select at least one document");
       return;
     }
     setIsAttaching(true);
     try {
-      const result = await attachExistingDmsDocumentToParty(partyId, attachSelectedId);
-      if (result.success) {
-        toast.success("Document linked to party");
-        setAttachOpen(false);
-        onChildOpen?.(false);
+      const results = await Promise.all(
+        attachSelectedIds.map((docId) => attachExistingDmsDocumentToParty(partyId, docId))
+      );
+      const failed = results.filter((r) => !r.success);
+      const succeededCount = results.length - failed.length;
+
+      if (succeededCount > 0) {
+        toast.success(
+          succeededCount === 1 ? "Document linked to party" : `${succeededCount} documents linked to party`
+        );
         invalidatePartyDmsDocuments(queryClient, partyId);
         invalidateDmsEntityDocuments(queryClient, "party", partyId);
-      } else {
-        toast.error(result.error ?? "Failed to link document");
+      }
+      if (failed.length > 0) {
+        toast.error(
+          failed.length === 1
+            ? failed[0]?.error ?? "Failed to link a document"
+            : `${failed.length} document(s) could not be linked`
+        );
+      }
+      if (failed.length === 0) {
+        setAttachOpen(false);
+        onChildOpen?.(false);
       }
     } finally {
       setIsAttaching(false);
@@ -324,21 +344,25 @@ export function PartyDmsDocumentsTab({
         open={attachOpen}
         onOpenChange={closeAttach}
         title="Attach Existing DMS Document"
-        subtitle="Search and link an existing DMS document to this party"
+        subtitle="Search and link one or more existing DMS documents to this party"
         icon={<Link2 className="h-5 w-5" />}
         mode="add"
         size="lg"
         isSubmitting={isAttaching}
         onSubmit={handleAttach}
-        submitLabel="Link Document"
+        submitLabel={
+          attachSelectedIds.length > 1
+            ? `Link ${attachSelectedIds.length} Documents`
+            : "Link Document"
+        }
       >
         <DmsAttachDocumentPicker
           search={attachSearch}
           onSearchChange={setAttachSearch}
           documents={availableDocuments ?? []}
           isLoading={attachDocsLoading}
-          selectedId={attachSelectedId}
-          onSelect={setAttachSelectedId}
+          selectedIds={attachSelectedIds}
+          onToggle={toggleAttachSelection}
         />
       </ERPChildDialogForm>
     </div>

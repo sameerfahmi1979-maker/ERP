@@ -54,7 +54,9 @@ import {
   Columns3,
   X,
   Loader2,
+  FileStack,
 } from "lucide-react";
+import { HrDocumentEmployeeCreateWizard } from "./document-create/hr-document-employee-create-wizard";
 import type { SortDir } from "@/hooks/use-sort-paginate";
 import { useRealtimeSync } from "@/hooks/realtime/use-realtime-sync";
 
@@ -97,6 +99,7 @@ type Props = {
   initialRows: EmployeeListRow[];
   initialTotal: number;
   authContext: AuthContext;
+  documentWizardEnabled?: boolean;
 };
 
 function parseFilters(raw: Record<string, unknown>): EmployeeFilters {
@@ -113,7 +116,7 @@ function statusFilterLabel(s: string): string {
   return s.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
 }
 
-export function EmployeesTable({ initialRows, initialTotal, authContext }: Props) {
+export function EmployeesTable({ initialRows, initialTotal, authContext, documentWizardEnabled = false }: Props) {
   const router = useRouter();
   const { openTab } = useWorkspace();
   const [isPending, startTransition] = useTransition();
@@ -149,7 +152,16 @@ export function EmployeesTable({ initialRows, initialTotal, authContext }: Props
 
   const [rows, setRows] = useState<EmployeeListRow[]>(initialRows);
   const [totalCount, setTotalCount] = useState(initialTotal);
+
+  // Re-sync local state whenever the server re-provides fresh props
+  // (e.g. after router.refresh() following a create/update, or on tab return).
+  // Without this, the initial useState() snapshot never updates on re-render.
+  useEffect(() => {
+    setRows(initialRows);
+    setTotalCount(initialTotal);
+  }, [initialRows, initialTotal]);
   const [archiveTarget, setArchiveTarget] = useState<EmployeeListRow | null>(null);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const [sortKey, setSortKey] = useState<string | null>("employee_code");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
@@ -486,10 +498,24 @@ export function EmployeesTable({ initialRows, initialTotal, authContext }: Props
           </Button>
 
           {canCreate && (
-            <Button size="sm" onClick={openAdd} className="gap-1.5">
-              <Plus className="h-3.5 w-3.5" />
-              Add Employee
-            </Button>
+            <>
+              {documentWizardEnabled && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setWizardOpen(true)}
+                  className="gap-1.5"
+                  title="Create employee from existing DMS documents"
+                >
+                  <FileStack className="h-3.5 w-3.5" />
+                  Add from Documents
+                </Button>
+              )}
+              <Button size="sm" onClick={openAdd} className="gap-1.5">
+                <Plus className="h-3.5 w-3.5" />
+                Add Employee
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -853,6 +879,11 @@ export function EmployeesTable({ initialRows, initialTotal, authContext }: Props
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <HrDocumentEmployeeCreateWizard
+        open={wizardOpen}
+        onOpenChange={setWizardOpen}
+      />
     </div>
   );
 }

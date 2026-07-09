@@ -134,7 +134,8 @@ function buildInitialFormState(employee: EmployeeListRow | null | undefined): Em
 }
 
 export function EmployeeWorkspaceForm({ employee, mode, authContext }: Props) {
-  const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
+  const { closeTab, activeTab, markDirty, forceCloseActiveTab, renameTab, updateTabRoute } = useWorkspace();
+  const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSection, setActiveSection] = useState("overview");
   const [childDialogOpen, setChildDialogOpen] = useState(false);
@@ -237,8 +238,17 @@ export function EmployeeWorkspaceForm({ employee, mode, authContext }: Props) {
         resetDirty();
         if (isAdding && (result as { data?: { id: number; employee_code: string } }).data?.id) {
           const newId = (result as { data?: { id: number } }).data!.id;
-          window.history.replaceState(null, "", `/admin/hr/employees/record/${newId}?mode=edit`);
+          const employeeCode = (result as { data?: { employee_code?: string } }).data?.employee_code ?? "";
+          const displayName = (data.full_name_en as string) || employeeCode;
+          const newRoute = `/admin/hr/employees/record/${newId}?mode=edit`;
+          if (activeTab?.id) {
+            renameTab(activeTab.id, `Employee — ${displayName}`, employeeCode);
+            updateTabRoute(activeTab.id, newRoute, newId, "edit");
+          }
+          router.replace(newRoute);
         }
+        // Ensure the employees list re-fetches fresh data once the tab is returned to.
+        router.refresh();
         return true;
       }
       toast.error(result.error ?? "Failed to save employee");
@@ -253,7 +263,10 @@ export function EmployeeWorkspaceForm({ employee, mode, authContext }: Props) {
 
   const handleSaveAndClose = async () => {
     const ok = await handleSave();
-    if (ok) forceCloseActiveTab();
+    if (ok) {
+      forceCloseActiveTab();
+      router.refresh();
+    }
   };
 
   const employeeStatus = employee?.employee_status;

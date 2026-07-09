@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
 import { getDmsDocuments } from "@/server/actions/dms/documents";
 import { getDmsNewDocumentDefaults } from "@/server/actions/dms/documents";
 import { DmsDocumentsTable } from "@/features/dms/documents/dms-documents-table";
@@ -36,6 +36,7 @@ export default async function DmsDocumentsPage() {
         initialDocuments={documents}
         categories={categories}
         documentTypes={documentTypes}
+        canHardDelete={isGlobalAdmin(authContext)}
       />
     </div>
   );

@@ -638,7 +638,7 @@ function DmsDocumentRecordFormInner({
 
         {/* ── Approvals ── */}
         <ERPRecordSectionPanel id="approvals" activeId={activeSection} lazyMount>
-          <DmsDocumentApprovalsSection />
+          <DmsDocumentApprovalsSection documentId={effectiveDocId} />
         </ERPRecordSectionPanel>
 
         {/* ── Comments ── */}

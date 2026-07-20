@@ -189,18 +189,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, sent: 0, failed: 0, message: "No pending items" });
   }
 
-  // ── Process each item sequentially ───────────────────────────────────────
+  // ── Process in parallel batches of 5 with a 25-second hard deadline ──────
+  // Railway has a ~30s request timeout; processing in parallel chunks of 5
+  // lets us send ~50 emails per call comfortably within that window.
+  const CONCURRENCY = 5;
+  const DEADLINE_MS = 25_000;
+  const deadline = Date.now() + DEADLINE_MS;
+
   let sent = 0;
   let failed = 0;
   const errors: string[] = [];
 
-  for (const id of ids) {
-    const result = await processItem(id);
-    if (result.ok) {
-      sent++;
-    } else {
-      failed++;
-      if (result.error) errors.push(`#${id}: ${result.error}`);
+  for (let i = 0; i < ids.length; i += CONCURRENCY) {
+    if (Date.now() > deadline) break; // stop before Railway times out
+    const chunk = ids.slice(i, i + CONCURRENCY);
+    const results = await Promise.allSettled(chunk.map((id) => processItem(id)));
+    for (const res of results) {
+      if (res.status === "fulfilled" && res.value.ok) {
+        sent++;
+      } else {
+        failed++;
+        const err = res.status === "fulfilled" ? res.value.error : String(res.reason);
+        if (err) errors.push(err);
+      }
     }
   }
 

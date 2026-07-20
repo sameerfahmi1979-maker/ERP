@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getDefaultEmailProvider, getEmailProvider } from "@/lib/email/providers/factory";
+import { MicrosoftGraphEmailProvider } from "@/lib/email/providers/microsoft-graph-provider";
+import type { EmailProviderConfig } from "@/lib/email/providers/types";
 import { logger } from "@/lib/logger";
 
 /**
@@ -21,6 +22,39 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET;
+
+function rowToEmailProviderConfig(row: Record<string, unknown>): EmailProviderConfig {
+  return {
+    id: row.id as number,
+    providerCode: row.provider_code as string,
+    providerType: row.provider_type as EmailProviderConfig["providerType"],
+    providerName: row.provider_name as string,
+    isDefault: row.is_default as boolean,
+    isEnabled: row.is_enabled as boolean,
+    isActive: row.is_active as boolean,
+    tenantId: row.tenant_id as string | null,
+    clientId: row.client_id as string | null,
+    authorityUrl: row.authority_url as string | null,
+    graphBaseUrl: row.graph_base_url as string | null,
+    senderEmail: row.sender_email as string | null,
+    senderDisplayName: row.sender_display_name as string | null,
+    replyToEmail: row.reply_to_email as string | null,
+    secretRef: row.secret_ref as string | null,
+    maskedSecretPreview: row.masked_secret_preview as string | null,
+    authMode: (row.auth_mode as EmailProviderConfig["authMode"]) ?? "client_credentials",
+    sendMode: (row.send_mode as EmailProviderConfig["sendMode"]) ?? "graph_send_mail",
+    defaultRecipientForTests: row.default_recipient_for_tests as string | null,
+    throttlePerMinute: row.throttle_per_minute as number | null,
+    dailySendLimit: row.daily_send_limit as number | null,
+    lastTestStatus: row.last_test_status as string | null,
+    lastTestAt: row.last_test_at as string | null,
+    lastTestMessage: row.last_test_message as string | null,
+    configJson: row.config_json as Record<string, unknown> | null,
+    notes: row.notes as string | null,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  };
+}
 
 function calcNextRetry(attemptCount: number): string {
   const delaysMinutes = [5, 15, 60, 240, 1440];
@@ -51,14 +85,24 @@ async function processItem(id: number): Promise<{ ok: boolean; error?: string }>
 
   let sendResult: { ok: boolean; status: string; message: string; externalMessageId?: string | null; durationMs?: number };
   try {
-    const provider = item.provider_config_id
-      ? await (async () => {
-          const { data: prov } = await admin.from("erp_email_provider_configs")
-            .select("provider_code").eq("id", item.provider_config_id).single();
-          const code = (prov as Record<string, unknown> | null)?.provider_code as string | undefined;
-          return code ? await getEmailProvider(code).catch(() => getDefaultEmailProvider()) : getDefaultEmailProvider();
-        })()
-      : await getDefaultEmailProvider();
+    // Resolve provider using admin client (no user session in this route)
+    const providerConfigId = item.provider_config_id as number | null;
+    const { data: provRow } = await admin
+      .from("erp_email_provider_configs")
+      .select("*")
+      .eq(providerConfigId ? "id" : "is_default", providerConfigId ?? true)
+      .eq("is_enabled", true)
+      .eq("is_active", true)
+      .is("deleted_at", null)
+      .limit(1)
+      .single();
+
+    if (!provRow) {
+      return { ok: false, error: "No enabled email provider found" };
+    }
+
+    const config = rowToEmailProviderConfig(provRow as Record<string, unknown>);
+    const provider = new MicrosoftGraphEmailProvider(config);
 
     sendResult = await provider.sendEmail({
       to: item.to_emails as string[],

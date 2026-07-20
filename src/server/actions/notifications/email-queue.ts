@@ -7,6 +7,76 @@ import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
 import { getDefaultEmailProvider, getEmailProvider } from "@/lib/email/providers/factory";
+import { MicrosoftGraphEmailProvider } from "@/lib/email/providers/microsoft-graph-provider";
+import type { EmailProviderConfig } from "@/lib/email/providers/types";
+
+// Resolves the email provider using admin client — bypasses RLS on erp_email_provider_configs.
+// Used by processEmailQueueItemAdmin which runs without a user session.
+async function resolveEmailProviderAdmin(providerConfigId?: number | null) {
+  const admin = createAdminClient();
+  const query = admin
+    .from("erp_email_provider_configs")
+    .select("*")
+    .eq("is_enabled", true)
+    .eq("is_active", true)
+    .is("deleted_at", null)
+    .limit(1);
+
+  if (providerConfigId) query.eq("id", providerConfigId);
+  else query.eq("is_default", true);
+
+  let { data } = await query.single();
+
+  // Fallback: any enabled provider
+  if (!data) {
+    const fb = await admin
+      .from("erp_email_provider_configs")
+      .select("*")
+      .eq("is_enabled", true)
+      .eq("is_active", true)
+      .is("deleted_at", null)
+      .limit(1)
+      .single();
+    data = fb.data;
+  }
+
+  if (!data) {
+    throw new Error("No email provider is enabled. Configure one in Admin → Settings → Email Settings.");
+  }
+
+  const row = data as Record<string, unknown>;
+  const config: EmailProviderConfig = {
+    id: row.id as number,
+    providerCode: row.provider_code as string,
+    providerType: row.provider_type as EmailProviderConfig["providerType"],
+    providerName: row.provider_name as string,
+    isDefault: row.is_default as boolean,
+    isEnabled: row.is_enabled as boolean,
+    isActive: row.is_active as boolean,
+    tenantId: row.tenant_id as string | null,
+    clientId: row.client_id as string | null,
+    authorityUrl: row.authority_url as string | null,
+    graphBaseUrl: row.graph_base_url as string | null,
+    senderEmail: row.sender_email as string | null,
+    senderDisplayName: row.sender_display_name as string | null,
+    replyToEmail: row.reply_to_email as string | null,
+    secretRef: row.secret_ref as string | null,
+    maskedSecretPreview: row.masked_secret_preview as string | null,
+    authMode: (row.auth_mode as EmailProviderConfig["authMode"]) ?? "client_credentials",
+    sendMode: (row.send_mode as EmailProviderConfig["sendMode"]) ?? "graph_send_mail",
+    defaultRecipientForTests: row.default_recipient_for_tests as string | null,
+    throttlePerMinute: row.throttle_per_minute as number | null,
+    dailySendLimit: row.daily_send_limit as number | null,
+    lastTestStatus: null,
+    lastTestAt: null,
+    lastTestMessage: null,
+    configJson: row.config_json as Record<string, unknown> | null,
+    notes: row.notes as string | null,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  };
+  return new MicrosoftGraphEmailProvider(config);
+}
 import { logger } from "@/lib/logger";
 
 const REVALIDATE_PATH = "/admin/notifications/email-queue";
@@ -227,20 +297,7 @@ async function processEmailQueueItemAdmin(id: number): Promise<boolean> {
 
   let sendResult: { ok: boolean; status: string; message: string; externalMessageId?: string | null; durationMs?: number };
   try {
-    let provider;
-    if (item.provider_config_id) {
-      const { data: provRow } = await admin
-        .from("erp_email_provider_configs")
-        .select("provider_code")
-        .eq("id", item.provider_config_id)
-        .single();
-      const provCode = (provRow as Record<string, unknown> | null)?.provider_code as string | undefined;
-      provider = provCode
-        ? await getEmailProvider(provCode).catch(() => getDefaultEmailProvider())
-        : await getDefaultEmailProvider();
-    } else {
-      provider = await getDefaultEmailProvider();
-    }
+    const provider = await resolveEmailProviderAdmin(item.provider_config_id as number | null);
 
     sendResult = await provider.sendEmail({
       to: item.to_emails as string[],

@@ -50,7 +50,7 @@ const DEFAULT_SETTINGS: DmsNotificationSettingsRow = {
   config_name: "Default DMS Notification Settings",
   notes: null,
   updated_by: null,
-  updated_at: new Date().toISOString(),
+  updated_at: "",   // empty — only set from DB; avoids server/client timestamp mismatch
 };
 
 // ── Props ─────────────────────────────────────────────────────────────────────

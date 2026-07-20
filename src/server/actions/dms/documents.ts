@@ -8,6 +8,11 @@ import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
 import { zNullableDateString } from "@/lib/dms/date-validators";
+import {
+  generateDmsExpiryRemindersForDocument,
+  rebuildDmsExpiryReminders,
+} from "@/server/actions/dms/expiry-reminders";
+import { getDmsNotificationSettingsForScheduler } from "@/server/actions/dms/notification-settings";
 
 export type ActionResult<T = unknown> = {
   success: boolean;
@@ -615,6 +620,19 @@ export async function createDmsDocument(
 
     revalidateDmsDocuments();
 
+    // Auto-generate expiry reminders if expiry_date is set
+    if (data.expiry_date) {
+      try {
+        const settings = await getDmsNotificationSettingsForScheduler();
+        const reminderDays = settings?.reminder_days_before?.length
+          ? settings.reminder_days_before
+          : undefined;
+        await generateDmsExpiryRemindersForDocument(doc.id, { reminderDays });
+      } catch {
+        // Non-fatal: reminder generation failure should not block document creation
+      }
+    }
+
     return { success: true, data: { id: doc.id, document_no: documentNo } };
   } catch (err) {
     logger.error("createDmsDocument error", err);
@@ -672,6 +690,19 @@ export async function updateDmsDocument(
     });
 
     revalidateDmsDocuments(id);
+
+    // Rebuild expiry reminders if expiry_date was changed
+    if (data.expiry_date !== undefined) {
+      try {
+        const settings = await getDmsNotificationSettingsForScheduler();
+        const reminderDays = settings?.reminder_days_before?.length
+          ? settings.reminder_days_before
+          : undefined;
+        await rebuildDmsExpiryReminders(id, { reminderDays });
+      } catch {
+        // Non-fatal: reminder rebuild failure should not block the update
+      }
+    }
 
     return { success: true, data: { id } };
   } catch (err) {

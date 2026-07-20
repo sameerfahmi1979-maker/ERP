@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
+import { getDmsNotificationSettingsForScheduler } from "@/server/actions/dms/notification-settings";
 
 export type ActionResult<T = unknown> = {
   success: boolean;
@@ -116,6 +117,7 @@ export async function getDmsNotifications(
 }
 
 // ── generateDmsExpiryNotifications ────────────────────────────────────────────
+// DMS.1: Enhanced to read global recipient settings for role/user expansion.
 
 export async function generateDmsExpiryNotifications(
   options: { limit?: number } = {}
@@ -133,7 +135,7 @@ export async function generateDmsExpiryNotifications(
       .from("dms_expiry_reminders")
       .select(
         `id, document_id, reminder_days_before, reminder_date, notification_status,
-         document:dms_documents!document_id(id, document_no, title, expiry_date, created_by)`
+         document:dms_documents!document_id(id, document_no, title, expiry_date, created_by, owner_user_id)`
       )
       .lte("reminder_date", today)
       .eq("status", "pending")
@@ -141,6 +143,9 @@ export async function generateDmsExpiryNotifications(
       .limit(options.limit ?? 100);
 
     if (remError) return { success: false, error: remError.message };
+
+    // Load global settings once for the batch
+    const globalSettings = await getDmsNotificationSettingsForScheduler();
 
     let created = 0;
     let skipped = 0;
@@ -164,25 +169,66 @@ export async function generateDmsExpiryNotifications(
         ? `Document ${doc.document_no} (${doc.title}) has expired on ${expiryDate ?? "N/A"}. Please review and start renewal if required.`
         : `Document ${doc.document_no} (${doc.title}) expires on ${expiryDate}. Reminder: ${daysBefore} days before expiry. Please review and start renewal if required.`;
 
-      const recipientId = (doc.created_by as number | null) ?? ctx.profile.id;
+      // ── Build recipient list ──────────────────────────────────────────────
+      const recipientIds: Set<number> = new Set();
 
-      // in_app channel
-      const { error: insertErr } = await supabase.from("dms_notification_queue").insert({
-        document_id: documentId,
-        reminder_id: remId,
-        notification_type: isExpired ? "document_expired" : "expiry_reminder",
-        channel: "in_app",
-        status: "pending",
-        recipient_user_id: recipientId,
-        subject,
-        message,
-        scheduled_for: now,
-        metadata_json: { days_before: daysBefore, expiry_date: expiryDate },
-        created_at: now,
-        updated_at: now,
-      });
+      // Always include owner and creator if settings allow
+      const includeOwner = globalSettings?.include_document_owner ?? true;
+      const includeCreator = globalSettings?.include_document_creator ?? true;
+      if (includeOwner && doc.owner_user_id) recipientIds.add(doc.owner_user_id as number);
+      if (includeCreator && doc.created_by) recipientIds.add(doc.created_by as number);
 
-      if (!insertErr) {
+      // Additional global user recipients
+      if (globalSettings?.recipient_user_ids?.length) {
+        for (const uid of globalSettings.recipient_user_ids) {
+          recipientIds.add(uid);
+        }
+      }
+
+      // Expand role recipients to user IDs
+      // user_roles table uses user_profile_id + role_id (FK to roles.role_code)
+      if (globalSettings?.recipient_roles?.length) {
+        const { data: roleUsers } = await supabase
+          .from("user_roles")
+          .select("user_profile_id, role:roles!role_id(role_code)")
+          .eq("is_active", true);
+        for (const ru of roleUsers ?? []) {
+          const rur = ru as Record<string, unknown>;
+          const roleRow = rur.role as Record<string, unknown> | null;
+          if (
+            roleRow?.role_code &&
+            globalSettings.recipient_roles.includes(roleRow.role_code as string) &&
+            rur.user_profile_id
+          ) {
+            recipientIds.add(rur.user_profile_id as number);
+          }
+        }
+      }
+
+      // Fallback if still empty
+      if (recipientIds.size === 0) recipientIds.add(ctx.profile.id);
+
+      // ── Insert one notification per unique recipient ───────────────────────
+      let anyInserted = false;
+      for (const rid of recipientIds) {
+        const { error: insertErr } = await supabase.from("dms_notification_queue").insert({
+          document_id: documentId,
+          reminder_id: remId,
+          notification_type: isExpired ? "document_expired" : "expiry_reminder",
+          channel: "in_app",
+          status: "pending",
+          recipient_user_id: rid,
+          subject,
+          message,
+          scheduled_for: now,
+          metadata_json: { days_before: daysBefore, expiry_date: expiryDate },
+          created_at: now,
+          updated_at: now,
+        });
+        if (!insertErr) anyInserted = true;
+      }
+
+      if (anyInserted) {
         // Mark reminder notification_status = sent
         await supabase
           .from("dms_expiry_reminders")

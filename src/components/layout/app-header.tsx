@@ -12,9 +12,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Bell, Search, Moon, Sun, User, Settings, LogOut } from "lucide-react";
+import { Search, Moon, Sun, User, Settings, LogOut } from "lucide-react";
 import { useTheme } from "next-themes";
 import { signOut } from "@/features/auth/actions";
+import { NotificationBell } from "@/components/erp/notification-bell";
 
 type AppHeaderProps = {
   displayName?: string | null;
@@ -82,10 +83,7 @@ export function AppHeader({ displayName, email }: AppHeaderProps) {
         </Button>
 
         {/* Notifications */}
-        <Button variant="ghost" size="sm" className="h-9 w-9 p-0 relative">
-          <Bell className="h-4 w-4 text-muted-foreground" />
-          <span className="absolute top-1.5 right-1.5 h-2 w-2 bg-red-500 rounded-full" />
-        </Button>
+        <NotificationBell />
 
         {/* User menu */}
         <DropdownMenu>

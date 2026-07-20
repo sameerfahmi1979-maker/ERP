@@ -96,8 +96,8 @@ function canDismissReminder(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
   );
 }
 
-// Standard reminder days schedule
-const REMINDER_DAYS = [90, 60, 30, 14, 7, 1, 0] as const;
+// Standard reminder days schedule — used as fallback when settings are not available
+const DEFAULT_REMINDER_DAYS = [90, 60, 30, 14, 7, 3, 1, 0] as const;
 
 // ── getDmsExpiryDashboardStats ─────────────────────────────────────────────────
 
@@ -370,7 +370,8 @@ export async function getDmsExpiryReminders(
 // ── generateDmsExpiryRemindersForDocument ─────────────────────────────────────
 
 export async function generateDmsExpiryRemindersForDocument(
-  documentId: number
+  documentId: number,
+  options?: { reminderDays?: number[] }
 ): Promise<ActionResult<{ created: number; skipped: number }>> {
   try {
     const supabase = await createClient();
@@ -397,7 +398,10 @@ export async function generateDmsExpiryRemindersForDocument(
     let created = 0;
     let skipped = 0;
 
-    for (const daysBefore of REMINDER_DAYS) {
+    // Use caller-provided windows, fall back to default schedule
+    const reminderDays = options?.reminderDays ?? [...DEFAULT_REMINDER_DAYS];
+
+    for (const daysBefore of reminderDays) {
       const reminderDate = new Date(expiry);
       reminderDate.setDate(reminderDate.getDate() - daysBefore);
 
@@ -450,7 +454,8 @@ export async function generateDmsExpiryRemindersForDocument(
 // ── rebuildDmsExpiryReminders ──────────────────────────────────────────────────
 
 export async function rebuildDmsExpiryReminders(
-  documentId: number
+  documentId: number,
+  options?: { reminderDays?: number[] }
 ): Promise<ActionResult<{ created: number; cancelled: number }>> {
   try {
     const supabase = await createClient();
@@ -467,8 +472,8 @@ export async function rebuildDmsExpiryReminders(
       .select("id");
     const cancelled = cancelResult.data?.length ?? 0;
 
-    // Regenerate
-    const result = await generateDmsExpiryRemindersForDocument(documentId);
+    // Regenerate with same windows
+    const result = await generateDmsExpiryRemindersForDocument(documentId, options);
     if (!result.success) return { success: false, error: result.error };
 
     await supabase.from("dms_document_events").insert({

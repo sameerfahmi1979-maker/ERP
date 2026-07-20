@@ -330,6 +330,23 @@ export async function setDmsExpiryTrackingOverride(
 
     if (error) return { success: false, error: error.message };
 
+    // When ignoring a document, cancel all pending reminder rows and any queued
+    // notification queue entries so no further notifications are ever sent for it.
+    if (override === "ignored") {
+      const now = new Date().toISOString();
+      await supabase
+        .from("dms_expiry_reminders")
+        .update({ status: "cancelled", updated_at: now })
+        .eq("document_id", documentId)
+        .eq("status", "pending");
+
+      await supabase
+        .from("dms_notification_queue")
+        .update({ status: "cancelled", updated_at: now })
+        .eq("document_id", documentId)
+        .in("status", ["pending", "queued", "email_ready"]);
+    }
+
     await logAudit({
       module_code: "dms",
       entity_name: "dms_documents",
@@ -406,14 +423,24 @@ export async function generateDmsExpiryRemindersForDocument(
 
     const { data: doc, error: docError } = await supabase
       .from("dms_documents")
-      .select("id, document_no, title, expiry_date, status")
+      .select("id, document_no, title, expiry_date, status, expiry_tracking_override")
       .eq("id", documentId)
       .is("deleted_at", null)
       .single();
 
     if (docError || !doc) return { success: false, error: "Document not found" };
 
-    const expiryDate = (doc as Record<string, unknown>).expiry_date as string | null;
+    const raw = doc as Record<string, unknown>;
+
+    // Never generate reminders for ignored or inactive documents
+    if (raw.expiry_tracking_override === "ignored") {
+      return { success: false, error: "Document has expiry tracking ignored — reminders not generated" };
+    }
+    if (["superseded", "archived", "deleted"].includes(raw.status as string)) {
+      return { success: false, error: `Document status is '${raw.status}' — reminders not generated` };
+    }
+
+    const expiryDate = raw.expiry_date as string | null;
     if (!expiryDate) {
       return { success: false, error: "Document has no expiry date set" };
     }
@@ -462,7 +489,7 @@ export async function generateDmsExpiryRemindersForDocument(
       module_code: "DMS",
       entity_name: "dms_expiry_reminders",
       entity_id: documentId,
-      entity_reference: (doc as Record<string, unknown>).document_no as string,
+      entity_reference: raw.document_no as string,
       action: "create",
       new_values: { expiry_date: expiryDate, created, skipped },
     });
@@ -533,8 +560,10 @@ export async function generateDmsExpiryRemindersBulk(
       .select("id, document_no")
       .not("expiry_date", "is", null)
       .is("deleted_at", null)
+      .is("expiry_tracking_override", null)
       .neq("status", "archived")
       .neq("status", "superseded")
+      .neq("status", "deleted")
       .limit(options.limit ?? 100);
 
     if (error) return { success: false, error: error.message };

@@ -87,7 +87,7 @@ Deno.serve(async (req: Request) => {
       .from("dms_expiry_reminders")
       .select(`
         id, document_id, reminder_days_before, reminder_date, notification_status,
-        document:dms_documents!document_id(id, document_no, title, expiry_date, created_by, owner_user_id)
+        document:dms_documents!document_id(id, document_no, title, expiry_date, created_by, owner_user_id, status, expiry_tracking_override)
       `)
       .lte("reminder_date", today)
       .eq("status", "pending")
@@ -111,6 +111,23 @@ Deno.serve(async (req: Request) => {
         const remId = rem.id as number;
         const daysBefore = rem.reminder_days_before as number;
         const expiryDate = doc.expiry_date as string | null;
+
+        // Skip if document is ignored, superseded, archived, or deleted
+        const docStatus = doc.status as string | null;
+        if (doc.expiry_tracking_override === "ignored") {
+          record(`Skipping reminder ${remId}: document ${documentId} has expiry tracking ignored.`);
+          // Also cancel this reminder row so it never re-triggers
+          await supabase.from("dms_expiry_reminders").update({ status: "cancelled", updated_at: now }).eq("id", remId);
+          skipped++;
+          continue;
+        }
+        if (docStatus && ["superseded", "archived", "deleted"].includes(docStatus)) {
+          record(`Skipping reminder ${remId}: document ${documentId} status is '${docStatus}'.`);
+          await supabase.from("dms_expiry_reminders").update({ status: "cancelled", updated_at: now }).eq("id", remId);
+          skipped++;
+          continue;
+        }
+
         const isExpired = daysBefore === 0 || (expiryDate && new Date(expiryDate) < new Date());
 
         const subject = isExpired

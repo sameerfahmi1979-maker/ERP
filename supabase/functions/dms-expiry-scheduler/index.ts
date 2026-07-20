@@ -18,6 +18,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SCHEDULER_SECRET = Deno.env.get("DMS_SCHEDULER_SECRET");
+const APP_URL = (Deno.env.get("APP_URL") ?? "https://erp.algt.net").replace(/\/$/, "");
 
 Deno.serve(async (req: Request) => {
   // ── Auth gate: only allow requests with matching scheduler secret ──────────
@@ -236,7 +237,7 @@ Deno.serve(async (req: Request) => {
             channel_in_app: true,
             channel_email: !!(r.recipient_email),
             scheduled_for: r.scheduled_for as string ?? new Date().toISOString(),
-            action_url: docId ? `/dms/documents/record/${docId}` : null,
+            action_url: docId ? `${APP_URL}/dms/documents/record/${docId}` : null,
             action_label: "View Document",
             metadata_json: { dms_notification_id: dmsId, run_id: runId },
             created_at: new Date().toISOString(),

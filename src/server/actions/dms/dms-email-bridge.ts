@@ -225,7 +225,7 @@ export async function bridgeDmsNotificationToGlobal(
       days_remaining: daysRemaining,
       reminder_days_before: daysRemaining,
       owner_name: (doc?.owner as Record<string, unknown> | null)?.full_name as string ?? "",
-      action_url: `/dms/documents/record/${doc?.id ?? row.document_id}`,
+      action_url: `${(process.env.NEXT_PUBLIC_APP_URL ?? "https://erp.algt.net").replace(/\/$/, "")}/dms/documents/record/${doc?.id ?? row.document_id}`,
       company_name: "ALGT",
     };
 

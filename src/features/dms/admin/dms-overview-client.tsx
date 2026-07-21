@@ -79,6 +79,14 @@ export function DmsOverviewClient({ stats }: Props) {
       href: "/admin/dms/retention-policies",
       color: "text-rose-600 bg-rose-50 dark:bg-rose-950/30",
     },
+    {
+      title: "Approval Workflows",
+      value: 0,
+      subtitle: "Configure approval steps",
+      icon: CheckCircle2,
+      href: "/admin/dms/approval-workflows",
+      color: "text-teal-600 bg-teal-50 dark:bg-teal-950/30",
+    },
   ];
 
   return (

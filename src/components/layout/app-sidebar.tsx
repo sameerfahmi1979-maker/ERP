@@ -183,6 +183,7 @@ const navSections: NavSection[] = [
           { label: "AI Intelligence",      icon: Brain,       path: "/admin/dms/intelligence",          requiredAnyPermissions: ["dms.admin"] },
           { label: "AI Observability",     icon: CircleGauge, path: "/admin/dms/ai-observability",      requiredAnyPermissions: ["dms.admin"] },
           { label: "Notification Settings", icon: Bell,       path: "/admin/dms/notification-settings", requiredAnyPermissions: ["dms.admin", "dms.notifications.manage", "dms.notifications.settings.manage"] },
+          { label: "Approval Workflows",   icon: ClipboardCheck, path: "/admin/dms/approval-workflows",  requiredAnyPermissions: ["dms.approvals.admin", "dms.admin"] },
         ],
       },
     ],

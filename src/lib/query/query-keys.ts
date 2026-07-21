@@ -263,6 +263,12 @@ export const queryKeys = {
     notifications: (filters?: Record<string, unknown>) =>
       filters ? (["dms", "notifications", filters] as const) : (["dms", "notifications"] as const),
     notificationsUnreadCount: () => ["dms", "notifications", "unread-count"] as const,
+
+    // DMS.2 — Approval System
+    approvalState: (documentId: number) => ["dms", "approval-state", documentId] as const,
+    approvalHistory: (documentId: number) => ["dms", "approval-history", documentId] as const,
+    approvalsQueue: (filters?: Record<string, unknown>) =>
+      filters ? (["dms", "approvals", "queue", filters] as const) : (["dms", "approvals", "queue"] as const),
   },
 
   // ── Party DMS Documents ───────────────────────────────────────────────────

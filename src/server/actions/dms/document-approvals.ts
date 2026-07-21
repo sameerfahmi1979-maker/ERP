@@ -61,7 +61,7 @@ const workflowCreateSchema = z.object({
   name_en: z.string().min(1).max(200),
   name_ar: z.string().max(200).optional(),
   description: z.string().max(1000).optional(),
-  document_type_id: positiveInt.optional(),
+  document_type_ids: z.array(positiveInt).optional(),
   steps: z.array(z.object({
     step_code: z.string().min(1).max(100),
     step_name: z.string().min(1).max(200),
@@ -343,8 +343,8 @@ export type WorkflowRow = {
   nameEn: string;
   nameAr: string | null;
   description: string | null;
-  documentTypeId: number | null;
-  documentTypeName: string | null;
+  documentTypeIds: number[];
+  documentTypeNames: string[];
   isActive: boolean;
   stepCount: number;
   createdAt: string;
@@ -1210,15 +1210,28 @@ async function resolveWorkflow(
   supabase: Awaited<ReturnType<typeof createClient>>,
   documentTypeId: number,
 ): Promise<WorkflowWithSteps | null> {
+  // Find active workflow IDs that cover this document type via junction table
+  const { data: junctionRows } = await supabase
+    .from("dms_workflow_document_types")
+    .select("workflow_id")
+    .eq("document_type_id", documentTypeId);
+
+  const workflowIds = (junctionRows ?? []).map((r) => (r as unknown as { workflow_id: number }).workflow_id);
+
+  if (workflowIds.length === 0) return null;
+
   const { data: wf } = await supabase
     .from("dms_document_workflows")
     .select(`
-      id, workflow_code, name_en, name_ar, description, document_type_id, is_active,
+      id, workflow_code, name_en, name_ar, description, is_active,
       created_at, updated_at,
-      document_type:dms_document_types!document_type_id(name_en),
+      doc_types:dms_workflow_document_types!workflow_id(
+        document_type_id,
+        doc_type:dms_document_types!document_type_id(name_en)
+      ),
       steps:dms_document_workflow_steps!workflow_id(id, step_code, step_name, is_initial, is_final, requires_role, sort_order, is_active)
     `)
-    .eq("document_type_id", documentTypeId)
+    .in("id", workflowIds)
     .eq("is_active", true)
     .is("deleted_at", null)
     .order("created_at", { ascending: false })
@@ -1229,23 +1242,24 @@ async function resolveWorkflow(
 
   const w = wf as unknown as {
     id: number; workflow_code: string; name_en: string; name_ar: string | null;
-    description: string | null; document_type_id: number | null; is_active: boolean;
+    description: string | null; is_active: boolean;
     created_at: string; updated_at: string;
-    document_type: { name_en: string } | null;
+    doc_types: Array<{ document_type_id: number; doc_type: { name_en: string } | null }>;
     steps: Array<{
       id: number; step_code: string; step_name: string; is_initial: boolean;
       is_final: boolean; requires_role: string | null; sort_order: number; is_active: boolean;
     }>;
   };
 
+  const docTypes = w.doc_types ?? [];
   return {
     id: w.id,
     workflowCode: w.workflow_code,
     nameEn: w.name_en,
     nameAr: w.name_ar,
     description: w.description,
-    documentTypeId: w.document_type_id,
-    documentTypeName: w.document_type?.name_en ?? null,
+    documentTypeIds: docTypes.map((dt) => dt.document_type_id),
+    documentTypeNames: docTypes.map((dt) => dt.doc_type?.name_en ?? "").filter(Boolean),
     isActive: w.is_active,
     stepCount: (w.steps ?? []).filter((s) => s.is_active).length,
     createdAt: w.created_at,
@@ -1299,9 +1313,12 @@ export async function adminListApprovalWorkflows(): Promise<ActionResult<Workflo
     const { data, error } = await supabase
       .from("dms_document_workflows")
       .select(`
-        id, workflow_code, name_en, name_ar, description, document_type_id, is_active,
+        id, workflow_code, name_en, name_ar, description, is_active,
         created_at, updated_at,
-        document_type:dms_document_types!document_type_id(name_en),
+        doc_types:dms_workflow_document_types!workflow_id(
+          document_type_id,
+          doc_type:dms_document_types!document_type_id(name_en)
+        ),
         steps:dms_document_workflow_steps!workflow_id(id, is_active)
       `)
       .is("deleted_at", null)
@@ -1312,19 +1329,20 @@ export async function adminListApprovalWorkflows(): Promise<ActionResult<Workflo
     const rows: WorkflowRow[] = (data ?? []).map((w) => {
       const wf = w as unknown as {
         id: number; workflow_code: string; name_en: string; name_ar: string | null;
-        description: string | null; document_type_id: number | null; is_active: boolean;
+        description: string | null; is_active: boolean;
         created_at: string; updated_at: string;
-        document_type: { name_en: string } | null;
+        doc_types: Array<{ document_type_id: number; doc_type: { name_en: string } | null }>;
         steps: Array<{ id: number; is_active: boolean }>;
       };
+      const docTypes = wf.doc_types ?? [];
       return {
         id: wf.id,
         workflowCode: wf.workflow_code,
         nameEn: wf.name_en,
         nameAr: wf.name_ar,
         description: wf.description,
-        documentTypeId: wf.document_type_id,
-        documentTypeName: wf.document_type?.name_en ?? null,
+        documentTypeIds: docTypes.map((dt) => dt.document_type_id),
+        documentTypeNames: docTypes.map((dt) => dt.doc_type?.name_en ?? "").filter(Boolean),
         isActive: wf.is_active,
         stepCount: (wf.steps ?? []).filter((s) => s.is_active).length,
         createdAt: wf.created_at,
@@ -1356,9 +1374,12 @@ export async function adminGetApprovalWorkflow(id: number): Promise<ActionResult
     const { data: wf, error } = await supabase
       .from("dms_document_workflows")
       .select(`
-        id, workflow_code, name_en, name_ar, description, document_type_id, is_active,
+        id, workflow_code, name_en, name_ar, description, is_active,
         created_at, updated_at,
-        document_type:dms_document_types!document_type_id(name_en),
+        doc_types:dms_workflow_document_types!workflow_id(
+          document_type_id,
+          doc_type:dms_document_types!document_type_id(name_en)
+        ),
         steps:dms_document_workflow_steps!workflow_id(id, step_code, step_name, is_initial, is_final, requires_role, sort_order, is_active)
       `)
       .eq("id", id)
@@ -1369,23 +1390,24 @@ export async function adminGetApprovalWorkflow(id: number): Promise<ActionResult
 
     const w = wf as unknown as {
       id: number; workflow_code: string; name_en: string; name_ar: string | null;
-      description: string | null; document_type_id: number | null; is_active: boolean;
+      description: string | null; is_active: boolean;
       created_at: string; updated_at: string;
-      document_type: { name_en: string } | null;
+      doc_types: Array<{ document_type_id: number; doc_type: { name_en: string } | null }>;
       steps: Array<{
         id: number; step_code: string; step_name: string; is_initial: boolean;
         is_final: boolean; requires_role: string | null; sort_order: number; is_active: boolean;
       }>;
     };
 
+    const docTypes = w.doc_types ?? [];
     const result: WorkflowWithSteps = {
       id: w.id,
       workflowCode: w.workflow_code,
       nameEn: w.name_en,
       nameAr: w.name_ar,
       description: w.description,
-      documentTypeId: w.document_type_id,
-      documentTypeName: w.document_type?.name_en ?? null,
+      documentTypeIds: docTypes.map((dt) => dt.document_type_id),
+      documentTypeNames: docTypes.map((dt) => dt.doc_type?.name_en ?? "").filter(Boolean),
       isActive: w.is_active,
       stepCount: (w.steps ?? []).filter((s) => s.is_active).length,
       createdAt: w.created_at,
@@ -1447,7 +1469,6 @@ export async function adminCreateApprovalWorkflow(
         name_en: parsed.data.name_en,
         name_ar: parsed.data.name_ar ?? null,
         description: parsed.data.description ?? null,
-        document_type_id: parsed.data.document_type_id ?? null,
         is_active: true,
         created_by: profileId,
         created_at: now,
@@ -1460,6 +1481,14 @@ export async function adminCreateApprovalWorkflow(
     if (wfErr || !wf) return { success: false, error: wfErr?.message ?? "Failed to create workflow" };
 
     const wfRow = wf as { id: number };
+
+    // Insert document type assignments into junction table
+    const docTypeIds = parsed.data.document_type_ids ?? [];
+    if (docTypeIds.length > 0) {
+      await supabase.from("dms_workflow_document_types").insert(
+        docTypeIds.map((dtId) => ({ workflow_id: wfRow.id, document_type_id: dtId })),
+      );
+    }
 
     // Insert steps if provided
     if (parsed.data.steps?.length) {
@@ -1517,9 +1546,9 @@ export async function adminUpdateApprovalWorkflow(
     const now = new Date().toISOString();
     const profileId = ctx.profile.id;
 
-    const { steps, ...wfFields } = parsed.data;
+    const { steps, document_type_ids, ...wfFields } = parsed.data;
 
-    // Update workflow record
+    // Update workflow record (exclude document_type_ids — managed via junction table)
     const updatePayload: Record<string, unknown> = { ...wfFields, updated_by: profileId, updated_at: now };
     const { error: wfErr } = await supabase
       .from("dms_document_workflows")
@@ -1528,6 +1557,16 @@ export async function adminUpdateApprovalWorkflow(
       .is("deleted_at", null);
 
     if (wfErr) return { success: false, error: wfErr.message };
+
+    // Replace document type assignments if provided
+    if (document_type_ids !== undefined) {
+      await supabase.from("dms_workflow_document_types").delete().eq("workflow_id", id);
+      if (document_type_ids.length > 0) {
+        await supabase.from("dms_workflow_document_types").insert(
+          document_type_ids.map((dtId) => ({ workflow_id: id, document_type_id: dtId })),
+        );
+      }
+    }
 
     // Deactivate old steps and insert new ones if provided
     if (steps?.length) {

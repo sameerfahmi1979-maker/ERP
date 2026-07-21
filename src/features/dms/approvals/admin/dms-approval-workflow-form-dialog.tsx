@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ERPCombobox } from "@/components/erp/combobox";
+import { cn } from "@/lib/utils";
 
 import {
   adminCreateApprovalWorkflow,
@@ -103,7 +103,7 @@ export function DmsApprovalWorkflowFormDialog({
   const [nameEn, setNameEn] = useState(editing?.nameEn ?? "");
   const [nameAr, setNameAr] = useState(editing?.nameAr ?? "");
   const [description, setDescription] = useState(editing?.description ?? "");
-  const [docTypeId, setDocTypeId] = useState<number | null>(editing?.documentTypeId ?? null);
+  const [docTypeIds, setDocTypeIds] = useState<number[]>(editing?.documentTypeIds ?? []);
   const [isActive, setIsActive] = useState(editing?.isActive ?? true);
   const [steps, setSteps] = useState<StepDraft[]>(
     editing?.steps?.length
@@ -130,7 +130,7 @@ export function DmsApprovalWorkflowFormDialog({
       setNameEn(editing?.nameEn ?? "");
       setNameAr(editing?.nameAr ?? "");
       setDescription(editing?.description ?? "");
-      setDocTypeId(editing?.documentTypeId ?? null);
+      setDocTypeIds(editing?.documentTypeIds ?? []);
       setIsActive(editing?.isActive ?? true);
       setSteps(
         editing?.steps?.length
@@ -212,7 +212,7 @@ export function DmsApprovalWorkflowFormDialog({
           name_en: nameEn.trim(),
           name_ar: nameAr.trim() || undefined,
           description: description.trim() || undefined,
-          document_type_id: docTypeId ?? undefined,
+          document_type_ids: docTypeIds,
           is_active: isActive,
           steps: activeSteps,
         });
@@ -222,7 +222,7 @@ export function DmsApprovalWorkflowFormDialog({
           name_en: nameEn.trim(),
           name_ar: nameAr.trim() || undefined,
           description: description.trim() || undefined,
-          document_type_id: docTypeId ?? undefined,
+          document_type_ids: docTypeIds,
           steps: activeSteps,
         });
       }
@@ -317,15 +317,58 @@ export function DmsApprovalWorkflowFormDialog({
         </div>
 
         <div className="col-span-6">
-          <Label className="text-xs text-muted-foreground">Document Type <span className="text-muted-foreground/60">(optional)</span></Label>
-          <ERPCombobox
-            value={docTypeId ?? null}
-            onValueChange={(v) => setDocTypeId(v ? Number(v) : null)}
-            options={docTypeOptions}
-            placeholder="Any document type"
-            className="mt-1"
-            allowClear
-          />
+          <Label className="text-xs text-muted-foreground">
+            Document Types{" "}
+            <span className="text-muted-foreground/60">(optional)</span>
+            {docTypeIds.length > 0 && (
+              <Badge variant="secondary" className="ml-1.5 h-4 px-1.5 text-[10px]">
+                {docTypeIds.length}
+              </Badge>
+            )}
+          </Label>
+          <div className="mt-1 rounded-md border border-border overflow-y-auto max-h-36">
+            {docTypeOptions.length === 0 ? (
+              <div className="px-3 py-2 text-xs text-muted-foreground">No document types available.</div>
+            ) : (
+              docTypeOptions.map((opt) => {
+                const selected = docTypeIds.includes(opt.value as number);
+                return (
+                  <label
+                    key={opt.value}
+                    className={cn(
+                      "flex items-center gap-2 px-3 py-2 cursor-pointer select-none text-sm transition-colors hover:bg-muted/50",
+                      selected && "bg-primary/5",
+                      submitting && "pointer-events-none opacity-60",
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() => {
+                        const id = opt.value as number;
+                        setDocTypeIds((prev) =>
+                          selected ? prev.filter((x) => x !== id) : [...prev, id],
+                        );
+                      }}
+                      disabled={submitting}
+                      className="h-3.5 w-3.5 shrink-0 rounded border-input accent-primary"
+                    />
+                    <span className="truncate">{opt.label}</span>
+                  </label>
+                );
+              })
+            )}
+          </div>
+          {docTypeIds.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setDocTypeIds([])}
+              disabled={submitting}
+              className="mt-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-50"
+            >
+              Clear all
+            </button>
+          )}
         </div>
 
         <div className="col-span-12">

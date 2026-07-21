@@ -35,7 +35,7 @@ import { queryKeys } from "@/lib/query/query-keys";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type SortKey = "workflowCode" | "nameEn" | "documentTypeName" | "stepCount" | "updatedAt";
+type SortKey = "workflowCode" | "nameEn" | "documentTypeNames" | "stepCount" | "updatedAt";
 type SortDir = "asc" | "desc";
 
 function useSortFilter(rows: WorkflowRow[], search: string, statusFilter: "all" | "active" | "inactive") {
@@ -48,17 +48,24 @@ function useSortFilter(rows: WorkflowRow[], search: string, statusFilter: "all" 
   };
 
   const filtered = rows.filter((r) => {
-    const matchSearch = !search || [r.workflowCode, r.nameEn, r.nameAr ?? "", r.documentTypeName ?? ""]
+    const matchSearch = !search || [r.workflowCode, r.nameEn, r.nameAr ?? "", ...(r.documentTypeNames ?? [])]
       .join(" ").toLowerCase().includes(search.toLowerCase());
     const matchStatus = statusFilter === "all" || (statusFilter === "active" ? r.isActive : !r.isActive);
     return matchSearch && matchStatus;
   });
 
   const sorted = [...filtered].sort((a, b) => {
-    let va = a[sortKey] ?? "";
-    let vb = b[sortKey] ?? "";
-    if (typeof va === "string") va = va.toLowerCase();
-    if (typeof vb === "string") vb = vb.toLowerCase();
+    let va: string | number;
+    let vb: string | number;
+    if (sortKey === "documentTypeNames") {
+      va = (a.documentTypeNames ?? []).join(", ").toLowerCase();
+      vb = (b.documentTypeNames ?? []).join(", ").toLowerCase();
+    } else {
+      va = (a[sortKey] ?? "") as string | number;
+      vb = (b[sortKey] ?? "") as string | number;
+      if (typeof va === "string") va = va.toLowerCase();
+      if (typeof vb === "string") vb = vb.toLowerCase();
+    }
     if (va < vb) return sortDir === "asc" ? -1 : 1;
     if (va > vb) return sortDir === "asc" ? 1 : -1;
     return 0;
@@ -300,7 +307,7 @@ export function DmsApprovalWorkflowsAdminPageClient({ initialWorkflows, document
                 <tr>
                   <SortHeader field="workflowCode" label="Code" sortKey={sortKey} sortDir={sortDir} onSort={toggle} />
                   <SortHeader field="nameEn" label="Name" sortKey={sortKey} sortDir={sortDir} onSort={toggle} />
-                  <SortHeader field="documentTypeName" label="Document Type" sortKey={sortKey} sortDir={sortDir} onSort={toggle} />
+                  <SortHeader field="documentTypeNames" label="Document Types" sortKey={sortKey} sortDir={sortDir} onSort={toggle} />
                   <SortHeader field="stepCount" label="Steps" sortKey={sortKey} sortDir={sortDir} onSort={toggle} className="w-16" />
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Status</th>
                   <SortHeader field="updatedAt" label="Updated" sortKey={sortKey} sortDir={sortDir} onSort={toggle} className="w-32" />
@@ -318,8 +325,23 @@ export function DmsApprovalWorkflowsAdminPageClient({ initialWorkflows, document
                       {row.nameAr && <div className="text-xs text-muted-foreground" dir="rtl">{row.nameAr}</div>}
                       {row.description && <div className="text-xs text-muted-foreground/70 line-clamp-1 mt-0.5">{row.description}</div>}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className="text-xs text-muted-foreground">{row.documentTypeName ?? "—"}</span>
+                    <td className="px-4 py-3">
+                      {(row.documentTypeNames ?? []).length === 0 ? (
+                        <span className="text-xs text-muted-foreground/50">—</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {row.documentTypeNames.slice(0, 2).map((name) => (
+                            <Badge key={name} variant="secondary" className="text-[10px] font-normal px-1.5 py-0.5">
+                              {name}
+                            </Badge>
+                          ))}
+                          {row.documentTypeNames.length > 2 && (
+                            <Badge variant="outline" className="text-[10px] font-normal px-1.5 py-0.5 text-muted-foreground">
+                              +{row.documentTypeNames.length - 2} more
+                            </Badge>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-center">
                       <Badge variant="outline" className="text-[10px] font-semibold">{row.stepCount}</Badge>

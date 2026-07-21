@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useTransition } from "react";
+import { useState, useCallback, useTransition, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { RefreshCw, ClipboardCheck, ExternalLink, CheckCircle2, XCircle, Undo2, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { formatDistanceToNow, parseISO } from "date-fns";
@@ -145,12 +145,11 @@ export function DmsApprovalsQueuePageClient({ canAct, isAdmin }: Props) {
     });
   }, []);
 
-  // Auto-fetch on mount
-  const [didMount, setDidMount] = useState(false);
-  if (!didMount) {
-    setDidMount(true);
+  // Initial fetch on mount
+  useEffect(() => {
     fetchQueue(filters);
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 

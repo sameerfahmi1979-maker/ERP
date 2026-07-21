@@ -420,14 +420,14 @@ export function EmployeeProfileTab({
             />
           </div>
           <div className="col-span-4 space-y-1.5">
-            <Label>Employee Category</Label>
+            <RequiredLabel>Employee Category</RequiredLabel>
             <ERPCombobox
               value={form.employee_category_id}
               onValueChange={(v) => setForm((p) => ({ ...p, employee_category_id: Number(v) || null }))}
               options={(employeeCategories ?? []).map((c) => ({ value: c.id, label: c.name_en }))}
               placeholder="Select category..."
               disabled={disabled}
-              allowClear
+              required
             />
           </div>
           <div className="col-span-4 space-y-1.5">

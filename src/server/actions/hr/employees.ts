@@ -127,7 +127,7 @@ const employeeCreateSchema = z.object({
   branch_id: z.number().int().positive().nullish(),
   department_id: z.number().int().positive().nullish(),
   designation_id: z.number().int().positive().nullish(),
-  employee_category_id: z.number().int().positive().nullish(),
+  employee_category_id: z.number().int().positive({ message: "Employee Category is required" }),
   employment_type_id: z.number().int().positive().nullish(),
   joining_date: z.string().min(1, "Joining date is required"),
   actual_joining_date: z.string().nullish(),
@@ -151,6 +151,7 @@ const employeeCreateSchema = z.object({
 });
 
 const employeeUpdateSchema = employeeCreateSchema.partial().extend({
+  employee_category_id: z.number().int().positive().nullish(),
   inactive_date: z.string().nullish(),
   inactive_reason: z.string().nullish(),
 });

@@ -20,6 +20,8 @@ export type DmsAdminOverviewStats = {
   tags_active: number;
   retention_policies_total: number;
   retention_policies_active: number;
+  approval_workflows_total: number;
+  approval_workflows_active: number;
 };
 
 export async function getDmsAdminOverviewStats(): Promise<ActionResult<DmsAdminOverviewStats>> {
@@ -37,6 +39,8 @@ export async function getDmsAdminOverviewStats(): Promise<ActionResult<DmsAdminO
       tagsActive,
       retAll,
       retActive,
+      wfAll,
+      wfActive,
     ] = await Promise.all([
       supabase.from("dms_document_categories").select("id", { count: "exact", head: true }).is("deleted_at", null),
       supabase.from("dms_document_categories").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("is_active", true),
@@ -48,6 +52,8 @@ export async function getDmsAdminOverviewStats(): Promise<ActionResult<DmsAdminO
       supabase.from("dms_tags").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("is_active", true),
       supabase.from("dms_retention_policies").select("id", { count: "exact", head: true }).is("deleted_at", null),
       supabase.from("dms_retention_policies").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("is_active", true),
+      supabase.from("dms_document_workflows").select("id", { count: "exact", head: true }).is("deleted_at", null),
+      supabase.from("dms_document_workflows").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("is_active", true),
     ]);
 
     const typesTotal = typesAll.count ?? 0;
@@ -67,6 +73,8 @@ export async function getDmsAdminOverviewStats(): Promise<ActionResult<DmsAdminO
         tags_active: tagsActive.count ?? 0,
         retention_policies_total: retAll.count ?? 0,
         retention_policies_active: retActive.count ?? 0,
+        approval_workflows_total: wfAll.count ?? 0,
+        approval_workflows_active: wfActive.count ?? 0,
       },
     };
   } catch (err) {

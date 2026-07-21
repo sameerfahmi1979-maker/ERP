@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useTransition, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { PlusCircle, RefreshCw, Pencil, Power, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { PlusCircle, RefreshCw, Pencil, Power, ArrowUp, ArrowDown, ArrowUpDown, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -155,21 +155,28 @@ export function DmsApprovalWorkflowsAdminPageClient({ initialWorkflows, document
     qc.invalidateQueries({ queryKey: queryKeys.dms.approvalsQueue() });
   };
 
+  // Per-row edit loading state
+  const [editingId, setEditingId] = useState<number | null>(null);
+
   const handleNewWorkflow = () => {
     setEditingWorkflow(null);
     setFormOpen(true);
   };
 
   const handleEditWorkflow = async (row: WorkflowRow) => {
+    setEditingId(row.id);
     startTransition(async () => {
-      const result = await adminGetApprovalWorkflow(row.id);
-      if (result.success && result.data) {
-        setEditingWorkflow(result.data);
-      } else {
-        toast.error(result.error ?? "Failed to load workflow details.");
-        return;
+      try {
+        const result = await adminGetApprovalWorkflow(row.id);
+        if (result.success && result.data) {
+          setEditingWorkflow(result.data);
+          setFormOpen(true);
+        } else {
+          toast.error(result.error ?? "Failed to load workflow details.");
+        }
+      } finally {
+        setEditingId(null);
       }
-      setFormOpen(true);
     });
   };
 
@@ -332,9 +339,11 @@ export function DmsApprovalWorkflowsAdminPageClient({ initialWorkflows, document
                           size="sm"
                           className="h-7 px-2 gap-1 text-xs"
                           onClick={() => handleEditWorkflow(row)}
-                          disabled={isPending}
+                          disabled={isPending || editingId === row.id}
                         >
-                          <Pencil className="h-3 w-3" />
+                          {editingId === row.id
+                            ? <Loader2 className="h-3 w-3 animate-spin" />
+                            : <Pencil className="h-3 w-3" />}
                           Edit
                         </Button>
                         {row.isActive ? (

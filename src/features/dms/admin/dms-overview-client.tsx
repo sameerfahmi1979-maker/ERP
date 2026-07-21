@@ -81,8 +81,8 @@ export function DmsOverviewClient({ stats }: Props) {
     },
     {
       title: "Approval Workflows",
-      value: 0,
-      subtitle: "Configure approval steps",
+      value: stats.approval_workflows_total,
+      subtitle: `${stats.approval_workflows_active} active`,
       icon: CheckCircle2,
       href: "/admin/dms/approval-workflows",
       color: "text-teal-600 bg-teal-50 dark:bg-teal-950/30",

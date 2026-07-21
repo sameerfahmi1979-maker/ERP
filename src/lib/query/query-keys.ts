@@ -686,6 +686,7 @@ export const queryKeys = {
         p ? (["hr", "dashboard", "recruitment-overview", p] as const) : (["hr", "dashboard", "recruitment-overview"] as const),
       attentionItems: (p?: Record<string, unknown>) =>
         p ? (["hr", "dashboard", "attention-items", p] as const) : (["hr", "dashboard", "attention-items"] as const),
+      headcountByCategory: () => ["hr", "dashboard", "headcount-by-category"] as const,
     },
   },
 

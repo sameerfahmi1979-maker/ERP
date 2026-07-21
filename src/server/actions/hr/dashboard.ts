@@ -3,6 +3,12 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 
+type ActionResult<T = unknown> = {
+  success: boolean;
+  data?: T;
+  error?: string;
+};
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -741,4 +747,66 @@ export async function getHrDashboardSummary(
     active_blocks: blocksRes.count ?? 0,
     recruitment_active: canRecruitment ? (recruitmentRes.count ?? 0) : null,
   };
+}
+
+// ============================================================================
+// getHeadcountByCategory
+// ============================================================================
+
+export type HeadcountByCategoryItem = {
+  categoryId: number | null;
+  categoryName: string;
+  count: number;
+};
+
+export async function getHeadcountByCategory(): Promise<ActionResult<HeadcountByCategoryItem[]>> {
+  const ctx = await getAuthContext();
+  if (!hasPermission(ctx, "hr.employees.view")) {
+    return { success: false, error: "Permission denied" };
+  }
+
+  const admin = createAdminClient();
+
+  const [empRes, catRes] = await Promise.all([
+    admin
+      .from("employees")
+      .select("employee_category_id")
+      .in("employee_status", ["active", "probation"])
+      .is("deleted_at", null),
+    admin
+      .from("hr_employee_categories")
+      .select("id, name_en")
+      .is("deleted_at", null)
+      .order("name_en", { ascending: true }),
+  ]);
+
+  if (empRes.error) return { success: false, error: empRes.error.message };
+  if (catRes.error) return { success: false, error: catRes.error.message };
+
+  const employees = (empRes.data ?? []) as { employee_category_id: number | null }[];
+  const categories = (catRes.data ?? []) as { id: number; name_en: string }[];
+
+  const countMap = new Map<number | null, number>();
+  for (const emp of employees) {
+    const key = emp.employee_category_id;
+    countMap.set(key, (countMap.get(key) ?? 0) + 1);
+  }
+
+  const result: HeadcountByCategoryItem[] = [];
+
+  for (const cat of categories) {
+    const count = countMap.get(cat.id) ?? 0;
+    if (count > 0) {
+      result.push({ categoryId: cat.id, categoryName: cat.name_en, count });
+    }
+  }
+
+  const uncatCount = countMap.get(null) ?? 0;
+  if (uncatCount > 0) {
+    result.push({ categoryId: null, categoryName: "Uncategorised", count: uncatCount });
+  }
+
+  result.sort((a, b) => b.count - a.count);
+
+  return { success: true, data: result };
 }

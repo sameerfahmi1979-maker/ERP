@@ -15,6 +15,7 @@ import { ERPStatCard } from "@/components/erp/stat-card";
 import { ERPSectionCard } from "@/components/erp/section-card";
 import { HrDashboardSectionCard, HrDashboardStatItem } from "./hr-dashboard-section-card";
 import { HrDashboardAlerts } from "./hr-dashboard-alerts";
+import { HrHeadcountByCategoryWidget } from "./hr-headcount-by-category-widget";
 import { queryKeys } from "@/lib/query/query-keys";
 import {
   getHrDashboardEmployeeOverview,
@@ -419,6 +420,9 @@ export function HrDashboardPageClient({ permissions, initialFilters = {} }: HrDa
             </>
           )}
         </HrDashboardSectionCard>
+
+        {/* 8. Headcount by Category */}
+        {permissions.canViewEmployees && <HrHeadcountByCategoryWidget />}
 
       </div>
 

@@ -24,6 +24,7 @@ import { DmsApprovalWorkflowFormDialog } from "./dms-approval-workflow-form-dial
 
 import {
   adminListApprovalWorkflows,
+  adminGetApprovalWorkflow,
   adminDeactivateApprovalWorkflow,
   adminUpdateApprovalWorkflow,
   type WorkflowRow,
@@ -160,17 +161,14 @@ export function DmsApprovalWorkflowsAdminPageClient({ initialWorkflows, document
   };
 
   const handleEditWorkflow = async (row: WorkflowRow) => {
-    // Fetch full workflow with steps to populate the form
     startTransition(async () => {
-      // Re-use adminListApprovalWorkflows then find the full row — or we can use
-      // getApprovalWorkflowForDocumentType if docTypeId is set, otherwise build from list data
-      // Since we may not have steps in WorkflowRow, we call the list action and reconstruct
-      // For the simplest approach: use the row we have and set steps from the overview
-      const wws: WorkflowWithSteps = {
-        ...row,
-        steps: [],  // steps not available in WorkflowRow; form will start with empty steps in edit mode
-      };
-      setEditingWorkflow(wws);
+      const result = await adminGetApprovalWorkflow(row.id);
+      if (result.success && result.data) {
+        setEditingWorkflow(result.data);
+      } else {
+        toast.error(result.error ?? "Failed to load workflow details.");
+        return;
+      }
       setFormOpen(true);
     });
   };

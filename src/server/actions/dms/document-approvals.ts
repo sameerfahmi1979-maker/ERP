@@ -1340,6 +1340,78 @@ export async function adminListApprovalWorkflows(): Promise<ActionResult<Workflo
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 9b. adminGetApprovalWorkflow — fetch single workflow with full step details
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function adminGetApprovalWorkflow(id: number): Promise<ActionResult<WorkflowWithSteps>> {
+  try {
+    const validId = positiveInt.safeParse(id);
+    if (!validId.success) return { success: false, error: "Invalid workflow ID" };
+
+    const ctx = await getAuthContext();
+    if (!ctx.profile) return { success: false, error: "Not authenticated" };
+    if (!isDmsAdmin(ctx)) return { success: false, error: "Permission denied" };
+
+    const supabase = await createClient();
+    const { data: wf, error } = await supabase
+      .from("dms_document_workflows")
+      .select(`
+        id, workflow_code, name_en, name_ar, description, document_type_id, is_active,
+        created_at, updated_at,
+        document_type:dms_document_types!document_type_id(name_en),
+        steps:dms_document_workflow_steps!workflow_id(id, step_code, step_name, is_initial, is_final, requires_role, sort_order, is_active)
+      `)
+      .eq("id", id)
+      .is("deleted_at", null)
+      .single();
+
+    if (error || !wf) return { success: false, error: error?.message ?? "Workflow not found" };
+
+    const w = wf as unknown as {
+      id: number; workflow_code: string; name_en: string; name_ar: string | null;
+      description: string | null; document_type_id: number | null; is_active: boolean;
+      created_at: string; updated_at: string;
+      document_type: { name_en: string } | null;
+      steps: Array<{
+        id: number; step_code: string; step_name: string; is_initial: boolean;
+        is_final: boolean; requires_role: string | null; sort_order: number; is_active: boolean;
+      }>;
+    };
+
+    const result: WorkflowWithSteps = {
+      id: w.id,
+      workflowCode: w.workflow_code,
+      nameEn: w.name_en,
+      nameAr: w.name_ar,
+      description: w.description,
+      documentTypeId: w.document_type_id,
+      documentTypeName: w.document_type?.name_en ?? null,
+      isActive: w.is_active,
+      stepCount: (w.steps ?? []).filter((s) => s.is_active).length,
+      createdAt: w.created_at,
+      updatedAt: w.updated_at,
+      steps: (w.steps ?? [])
+        .sort((a, b) => a.sort_order - b.sort_order)
+        .map((s) => ({
+          id: s.id,
+          stepCode: s.step_code,
+          stepName: s.step_name,
+          isInitial: s.is_initial,
+          isFinal: s.is_final,
+          requiresRole: s.requires_role,
+          sortOrder: s.sort_order,
+          isActive: s.is_active,
+        })),
+    };
+
+    return { success: true, data: result };
+  } catch (err) {
+    logger.error("adminGetApprovalWorkflow error", err);
+    return { success: false, error: "Failed to load workflow" };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 10. adminCreateApprovalWorkflow
 // ─────────────────────────────────────────────────────────────────────────────
 

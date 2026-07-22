@@ -48,20 +48,28 @@ function exportDataHasArabic<T>(options: ERPExportOptions<T>): boolean {
 /**
  * Same html2canvas-based fallback as in pdf.ts, but returns an ArrayBuffer
  * instead of calling doc.save() — used for email attachment generation.
+ * Bug fixed: pxPerMm uses canvas.width (canvas pixels), not canvas.width/2.
  */
 async function buildPdfArrayBufferViaHtmlCanvas<T>(options: ERPExportOptions<T>): Promise<ArrayBuffer> {
   const { default: html2canvas } = await import("html2canvas");
   const { columns, data, title, subtitle, orientation = "portrait" } = options;
 
-  const containerWidthPx = orientation === "landscape" ? 1123 : 794;
+  const doc = new jsPDF({ orientation, unit: "mm", format: "a4" });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const margin = 10;
+  const contentW = pageW - 2 * margin;
+
+  const containerWidthPx = Math.round(contentW * (96 / 25.4));
   const container = document.createElement("div");
   container.style.cssText = [
     "position:fixed",
     "top:-99999px",
     "left:0",
     `width:${containerWidthPx}px`,
-    "background:white",
-    "padding:20px",
+    "background:#fff",
+    "padding:0",
+    "margin:0",
     "font-family:Arial,'Noto Sans Arabic',sans-serif",
     "font-size:8pt",
     "line-height:1.2",
@@ -70,15 +78,15 @@ async function buildPdfArrayBufferViaHtmlCanvas<T>(options: ERPExportOptions<T>)
   ].join(";");
 
   if (title) {
-    const h = document.createElement("h2");
+    const h = document.createElement("div");
     h.textContent = title;
-    h.style.cssText = "margin:0 0 4px;font-size:12px;font-family:Arial,sans-serif;text-align:center;font-weight:bold;";
+    h.style.cssText = "text-align:center;font-weight:bold;font-size:11pt;margin-bottom:4px;font-family:Arial,sans-serif;";
     container.appendChild(h);
   }
   if (subtitle) {
-    const s = document.createElement("p");
+    const s = document.createElement("div");
     s.textContent = subtitle;
-    s.style.cssText = "margin:0 0 8px;font-size:8px;font-family:Arial,sans-serif;text-align:center;color:#555;";
+    s.style.cssText = "text-align:center;font-size:8pt;color:#555;margin-bottom:6px;font-family:Arial,sans-serif;";
     container.appendChild(s);
   }
 
@@ -87,11 +95,11 @@ async function buildPdfArrayBufferViaHtmlCanvas<T>(options: ERPExportOptions<T>)
 
   const thead = table.createTHead();
   const headerRow = thead.insertRow();
-  headerRow.style.cssText = "background:#424242;color:white;";
+  headerRow.style.cssText = "background:#424242;color:#fff;";
   for (const col of columns) {
     const th = document.createElement("th");
     th.textContent = col.header;
-    th.style.cssText = "padding:2px 4px;text-align:left;font-weight:bold;border:1px solid #666;white-space:nowrap;line-height:1.2;";
+    th.style.cssText = "padding:3px 4px;text-align:left;font-weight:bold;border:1px solid #555;white-space:nowrap;";
     headerRow.appendChild(th);
   }
 
@@ -102,7 +110,7 @@ async function buildPdfArrayBufferViaHtmlCanvas<T>(options: ERPExportOptions<T>)
     for (const col of columns) {
       const td = tr.insertCell();
       td.textContent = getColumnValue(row, col);
-      td.style.cssText = "padding:2px 4px;border:1px solid #ddd;direction:auto;unicode-bidi:plaintext;line-height:1.2;";
+      td.style.cssText = "padding:3px 4px;border:1px solid #ddd;direction:auto;unicode-bidi:plaintext;";
     }
   });
 
@@ -118,36 +126,32 @@ async function buildPdfArrayBufferViaHtmlCanvas<T>(options: ERPExportOptions<T>)
       logging: false,
       onclone: (clonedDoc) => {
         clonedDoc
-          .querySelectorAll('style, link[rel="stylesheet"]')
+          .querySelectorAll("style, link[rel='stylesheet']")
           .forEach((el) => el.remove());
       },
     });
 
-    const doc = new jsPDF({ orientation, unit: "mm", format: "a4" });
-    const pageW = doc.internal.pageSize.getWidth();
-    const pageH = doc.internal.pageSize.getHeight();
-    const margin = 10;
-    const contentW = pageW - 2 * margin;
-    const pxPerMm = (canvas.width / 2) / contentW;
-    const contentHPx = canvas.height;
-    const pageHPx = (pageH - 2 * margin) * pxPerMm;
+    // All measurements in canvas pixels (consistent unit — no /2 conversion)
+    const pxPerMm  = canvas.width / contentW;
+    const totalHPx = canvas.height;
+    const pageHPx  = (pageH - 2 * margin) * pxPerMm;
 
     let srcY = 0;
     let firstPage = true;
 
-    while (srcY < contentHPx) {
+    while (srcY < totalHPx) {
       if (!firstPage) doc.addPage();
       firstPage = false;
 
-      const sliceHPx = Math.min(pageHPx, contentHPx - srcY);
+      const sliceHPx = Math.min(pageHPx, totalHPx - srcY);
       const sliceHMm = sliceHPx / pxPerMm;
 
       const slice = document.createElement("canvas");
-      slice.width = canvas.width;
-      slice.height = sliceHPx;
+      slice.width  = canvas.width;
+      slice.height = Math.ceil(sliceHPx);
       const ctx = slice.getContext("2d");
       if (ctx) {
-        ctx.drawImage(canvas, 0, srcY, canvas.width, sliceHPx, 0, 0, canvas.width, sliceHPx);
+        ctx.drawImage(canvas, 0, srcY, canvas.width, slice.height, 0, 0, canvas.width, slice.height);
       }
 
       doc.addImage(slice.toDataURL("image/png"), "PNG", margin, margin, contentW, sliceHMm);

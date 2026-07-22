@@ -44,29 +44,39 @@ function exportDataHasArabic<T>(options: ERPExportOptions<T>): boolean {
 /**
  * Build a jsPDF document using html2canvas.
  *
- * Renders the data as an off-screen HTML table (using the browser's font stack,
- * which correctly shapes and displays Arabic), captures it via html2canvas, then
- * slices the canvas into A4-page-sized chunks and embeds each as a PNG image.
+ * Renders data as an off-screen HTML table so the browser's font stack
+ * (which correctly shapes Arabic) is used, then slices the captured canvas
+ * into A4-sized pages.
  *
- * This is the fallback path used whenever Arabic text is detected in the data.
- * Returns the jsPDF doc so callers can either `.save()` or `.output("arraybuffer")`.
+ * Bug fixed: pxPerMm must use raw canvas pixels (canvas.width), NOT canvas.width/2,
+ * because both contentHPx and pageHPx must be in the same canvas-pixel unit.
+ * The previous (canvas.width/2) mismatch caused pages to be half-height, slicing rows.
  */
 async function buildPdfViaHtmlCanvas<T>(options: ERPExportOptions<T>): Promise<jsPDF> {
   const { default: html2canvas } = await import("html2canvas");
 
   const { columns, data, title, subtitle, orientation = "portrait" } = options;
 
-  // ── Build off-screen HTML container ────────────────────────────────────────
+  const doc = new jsPDF({ orientation, unit: "mm", format: "a4" });
+  const pageW = doc.internal.pageSize.getWidth();   // mm  e.g. 210
+  const pageH = doc.internal.pageSize.getHeight();  // mm  e.g. 297
+  const margin = 10;                                // mm
+  const contentW = pageW - 2 * margin;              // mm  e.g. 190
+
+  // Render at a width that maps 1:1 to the PDF content area at 96 dpi.
+  // 190 mm × (96 px/in ÷ 25.4 mm/in) ≈ 719 px  (landscape ≈ 1020 px)
+  const containerWidthPx = Math.round(contentW * (96 / 25.4));
+
+  // ── Build off-screen HTML container ──────────────────────────────────────
   const container = document.createElement("div");
-  // 794px ≈ A4 at 96dpi; double that at scale:2 → ~1587px effective resolution
-  const containerWidthPx = orientation === "landscape" ? 1123 : 794;
   container.style.cssText = [
     "position:fixed",
     "top:-99999px",
     "left:0",
     `width:${containerWidthPx}px`,
-    "background:white",
-    "padding:20px",
+    "background:#fff",
+    "padding:0",
+    "margin:0",
     "font-family:Arial,'Noto Sans Arabic',sans-serif",
     "font-size:8pt",
     "line-height:1.2",
@@ -74,46 +84,41 @@ async function buildPdfViaHtmlCanvas<T>(options: ERPExportOptions<T>): Promise<j
     "box-sizing:border-box",
   ].join(";");
 
-  // Title
   if (title) {
-    const h = document.createElement("h2");
+    const h = document.createElement("div");
     h.textContent = title;
-    h.style.cssText = "margin:0 0 4px;font-size:12px;font-family:Arial,sans-serif;text-align:center;font-weight:bold;";
+    h.style.cssText = "text-align:center;font-weight:bold;font-size:11pt;margin-bottom:4px;font-family:Arial,sans-serif;";
     container.appendChild(h);
   }
   if (subtitle) {
-    const s = document.createElement("p");
+    const s = document.createElement("div");
     s.textContent = subtitle;
-    s.style.cssText = "margin:0 0 8px;font-size:8px;font-family:Arial,sans-serif;text-align:center;color:#555;";
+    s.style.cssText = "text-align:center;font-size:8pt;color:#555;margin-bottom:6px;font-family:Arial,sans-serif;";
     container.appendChild(s);
   }
 
-  // Table
+  // ── Table ─────────────────────────────────────────────────────────────────
   const table = document.createElement("table");
   table.style.cssText = "width:100%;border-collapse:collapse;font-size:8pt;line-height:1.2;font-family:Arial,'Noto Sans Arabic',sans-serif;";
 
-  // Header row
   const thead = table.createTHead();
   const headerRow = thead.insertRow();
-  headerRow.style.cssText = "background:#424242;color:white;";
+  headerRow.style.cssText = "background:#424242;color:#fff;";
   for (const col of columns) {
     const th = document.createElement("th");
     th.textContent = col.header;
-    th.style.cssText = "padding:2px 4px;text-align:left;font-weight:bold;border:1px solid #666;white-space:nowrap;line-height:1.2;";
+    th.style.cssText = "padding:3px 4px;text-align:left;font-weight:bold;border:1px solid #555;white-space:nowrap;";
     headerRow.appendChild(th);
   }
 
-  // Data rows
   const tbody = table.createTBody();
   data.forEach((row, i) => {
     const tr = tbody.insertRow();
     tr.style.background = i % 2 === 0 ? "#fff" : "#f5f5f5";
     for (const col of columns) {
       const td = tr.insertCell();
-      const val = getColumnValue(row, col);
-      td.textContent = val;
-      // `direction:auto` lets the browser choose LTR or RTL per cell
-      td.style.cssText = "padding:2px 4px;border:1px solid #ddd;direction:auto;unicode-bidi:plaintext;line-height:1.2;";
+      td.textContent = getColumnValue(row, col);
+      td.style.cssText = "padding:3px 4px;border:1px solid #ddd;direction:auto;unicode-bidi:plaintext;";
     }
   });
 
@@ -127,46 +132,38 @@ async function buildPdfViaHtmlCanvas<T>(options: ERPExportOptions<T>): Promise<j
       allowTaint: true,
       backgroundColor: "#ffffff",
       logging: false,
-      // Strip all document stylesheets from the html2canvas clone.
-      // Tailwind CSS v4 uses lab()/oklch() color functions that html2canvas
-      // cannot parse, which triggers errors and may produce incorrect output.
-      // Our table uses 100% inline styles so removing external sheets is safe.
+      // Strip Tailwind stylesheets — they use lab()/oklch() which html2canvas cannot parse.
+      // All styles here are inline, so removing external sheets is safe.
       onclone: (clonedDoc) => {
         clonedDoc
-          .querySelectorAll('style, link[rel="stylesheet"]')
+          .querySelectorAll("style, link[rel='stylesheet']")
           .forEach((el) => el.remove());
       },
     });
 
     // ── Slice canvas into A4 pages ─────────────────────────────────────────
-    const doc = new jsPDF({ orientation, unit: "mm", format: "a4" });
-    const pageW = doc.internal.pageSize.getWidth();
-    const pageH = doc.internal.pageSize.getHeight();
-    const margin = 10;
-    const contentW = pageW - 2 * margin;
-
-    // px → mm conversion at scale:2
-    const pxPerMm = (canvas.width / 2) / contentW;
-    const contentHPx = canvas.height; // full canvas height at scale:2
-    const pageHPx = (pageH - 2 * margin) * pxPerMm;
+    // All measurements in CANVAS pixels (canvas.width = containerWidthPx × scale).
+    // pxPerMm = canvas pixels per mm (consistent unit throughout).
+    const pxPerMm = canvas.width / contentW;          // canvas px / mm
+    const totalHPx = canvas.height;                    // canvas px
+    const pageHPx  = (pageH - 2 * margin) * pxPerMm; // canvas px per page
 
     let srcY = 0;
     let firstPage = true;
 
-    while (srcY < contentHPx) {
+    while (srcY < totalHPx) {
       if (!firstPage) doc.addPage();
       firstPage = false;
 
-      const sliceHPx = Math.min(pageHPx, contentHPx - srcY);
+      const sliceHPx = Math.min(pageHPx, totalHPx - srcY);
       const sliceHMm = sliceHPx / pxPerMm;
 
-      // Draw just this slice into a temporary canvas
       const slice = document.createElement("canvas");
-      slice.width = canvas.width;
-      slice.height = sliceHPx;
+      slice.width  = canvas.width;
+      slice.height = Math.ceil(sliceHPx);
       const ctx = slice.getContext("2d");
       if (ctx) {
-        ctx.drawImage(canvas, 0, srcY, canvas.width, sliceHPx, 0, 0, canvas.width, sliceHPx);
+        ctx.drawImage(canvas, 0, srcY, canvas.width, slice.height, 0, 0, canvas.width, slice.height);
       }
 
       doc.addImage(slice.toDataURL("image/png"), "PNG", margin, margin, contentW, sliceHMm);

@@ -63,7 +63,8 @@ async function buildPdfArrayBufferViaHtmlCanvas<T>(options: ERPExportOptions<T>)
     "background:white",
     "padding:20px",
     "font-family:Arial,'Noto Sans Arabic',sans-serif",
-    "font-size:8px",
+    "font-size:8pt",
+    "line-height:1.2",
     "color:#000",
     "box-sizing:border-box",
   ].join(";");
@@ -82,7 +83,7 @@ async function buildPdfArrayBufferViaHtmlCanvas<T>(options: ERPExportOptions<T>)
   }
 
   const table = document.createElement("table");
-  table.style.cssText = "width:100%;border-collapse:collapse;font-size:8px;font-family:Arial,'Noto Sans Arabic',sans-serif;";
+  table.style.cssText = "width:100%;border-collapse:collapse;font-size:8pt;line-height:1.2;font-family:Arial,'Noto Sans Arabic',sans-serif;";
 
   const thead = table.createTHead();
   const headerRow = thead.insertRow();
@@ -90,7 +91,7 @@ async function buildPdfArrayBufferViaHtmlCanvas<T>(options: ERPExportOptions<T>)
   for (const col of columns) {
     const th = document.createElement("th");
     th.textContent = col.header;
-    th.style.cssText = "padding:5px 4px;text-align:left;font-weight:bold;border:1px solid #666;white-space:nowrap;";
+    th.style.cssText = "padding:2px 4px;text-align:left;font-weight:bold;border:1px solid #666;white-space:nowrap;line-height:1.2;";
     headerRow.appendChild(th);
   }
 
@@ -101,7 +102,7 @@ async function buildPdfArrayBufferViaHtmlCanvas<T>(options: ERPExportOptions<T>)
     for (const col of columns) {
       const td = tr.insertCell();
       td.textContent = getColumnValue(row, col);
-      td.style.cssText = "padding:4px;border:1px solid #ddd;direction:auto;unicode-bidi:plaintext;";
+      td.style.cssText = "padding:2px 4px;border:1px solid #ddd;direction:auto;unicode-bidi:plaintext;line-height:1.2;";
     }
   });
 

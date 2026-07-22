@@ -68,7 +68,8 @@ async function buildPdfViaHtmlCanvas<T>(options: ERPExportOptions<T>): Promise<j
     "background:white",
     "padding:20px",
     "font-family:Arial,'Noto Sans Arabic',sans-serif",
-    "font-size:8px",
+    "font-size:8pt",
+    "line-height:1.2",
     "color:#000",
     "box-sizing:border-box",
   ].join(";");
@@ -89,7 +90,7 @@ async function buildPdfViaHtmlCanvas<T>(options: ERPExportOptions<T>): Promise<j
 
   // Table
   const table = document.createElement("table");
-  table.style.cssText = "width:100%;border-collapse:collapse;font-size:8px;font-family:Arial,'Noto Sans Arabic',sans-serif;";
+  table.style.cssText = "width:100%;border-collapse:collapse;font-size:8pt;line-height:1.2;font-family:Arial,'Noto Sans Arabic',sans-serif;";
 
   // Header row
   const thead = table.createTHead();
@@ -98,7 +99,7 @@ async function buildPdfViaHtmlCanvas<T>(options: ERPExportOptions<T>): Promise<j
   for (const col of columns) {
     const th = document.createElement("th");
     th.textContent = col.header;
-    th.style.cssText = "padding:5px 4px;text-align:left;font-weight:bold;border:1px solid #666;white-space:nowrap;";
+    th.style.cssText = "padding:2px 4px;text-align:left;font-weight:bold;border:1px solid #666;white-space:nowrap;line-height:1.2;";
     headerRow.appendChild(th);
   }
 
@@ -112,7 +113,7 @@ async function buildPdfViaHtmlCanvas<T>(options: ERPExportOptions<T>): Promise<j
       const val = getColumnValue(row, col);
       td.textContent = val;
       // `direction:auto` lets the browser choose LTR or RTL per cell
-      td.style.cssText = "padding:4px;border:1px solid #ddd;direction:auto;unicode-bidi:plaintext;";
+      td.style.cssText = "padding:2px 4px;border:1px solid #ddd;direction:auto;unicode-bidi:plaintext;line-height:1.2;";
     }
   });
 

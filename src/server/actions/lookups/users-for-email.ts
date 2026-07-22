@@ -10,10 +10,11 @@ export type UserEmailOption = {
 };
 
 /**
- * Search user profiles for email recipient selection.
- * Uses the admin (service-role) client to bypass RLS — user_profiles
- * has row-level security that prevents the normal client from reading
- * other users' rows, which would return an empty list.
+ * Search users for email recipient selection.
+ *
+ * `user_profiles` does NOT store email — it lives in `auth.users`.
+ * This calls the `search_users_for_email` Postgres RPC (SECURITY DEFINER)
+ * which crosses the auth/public schema boundary via the service-role key.
  */
 export async function getUsersForEmailSelect(
   search: string
@@ -22,43 +23,25 @@ export async function getUsersForEmailSelect(
     const ctx = await getAuthContext();
     if (!ctx.profile) return [];
 
-    // Must use admin client — RLS on user_profiles restricts to own row
     const supabase = createAdminClient();
     const term = search.trim();
 
-    let query = supabase
-      .from("user_profiles")
-      .select("id, full_name, email")
-      .not("email", "is", null);
-
-    if (term) {
-      query = query.or(
-        `full_name.ilike.%${term}%,email.ilike.%${term}%`
-      );
-    }
-
-    const { data, error } = await query
-      .order("full_name", { ascending: true })
-      .limit(20);
+    const { data, error } = await supabase.rpc("search_users_for_email", {
+      p_search: term,
+    });
 
     if (error) {
-      console.error("[getUsersForEmailSelect]", error.message);
+      console.error("[getUsersForEmailSelect] rpc error:", error.message);
       return [];
     }
 
-    return (data ?? [])
-      .filter((u) => {
-        const row = u as Record<string, unknown>;
-        return !!row.email;
+    return (data ?? []).map(
+      (u: { id: number; full_name: string | null; email: string }) => ({
+        id: u.id,
+        label: u.full_name || u.email,
+        email: u.email,
       })
-      .map((u) => {
-        const row = u as Record<string, unknown>;
-        return {
-          id: row.id as number,
-          label: (row.full_name as string | null) || (row.email as string),
-          email: row.email as string,
-        };
-      });
+    );
   } catch (err) {
     console.error("[getUsersForEmailSelect] unexpected error:", err);
     return [];

@@ -9,8 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
+import { ERPCombobox } from "@/components/erp/combobox";
 import {
   getDmsDocumentLinks,
   addDmsDocumentLink,
@@ -28,6 +28,11 @@ import {
   rejectDmsLinkSuggestions,
   type DmsLinkSuggestionRow,
 } from "@/server/actions/dms/ai-links";
+
+const ENTITY_TYPE_OPTIONS = DMS_ENTITY_TYPES.map((t) => ({
+  value: t,
+  label: DMS_ENTITY_TYPE_LABELS[t],
+}));
 
 interface DmsDocumentLinksSectionProps {
   documentId: number | null;
@@ -398,22 +403,18 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label className="text-xs">Entity Type</Label>
-              <Select
-                value={entityType}
-                onValueChange={(v) => {
-                  setEntityType(v ?? "employee");
-                  setEntityId(null);
-                }}
-              >
-                <SelectTrigger className="mt-1 h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {DMS_ENTITY_TYPES.map((t) => (
-                    <SelectItem key={t} value={t}>{DMS_ENTITY_TYPE_LABELS[t]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="mt-1">
+                <ERPCombobox
+                  value={entityType}
+                  onValueChange={(v) => {
+                    setEntityType((v as string) ?? "employee");
+                    setEntityId(null);
+                  }}
+                  options={ENTITY_TYPE_OPTIONS}
+                  placeholder="Select entity type..."
+                  required
+                />
+              </div>
             </div>
             <div>
               <Label className="text-xs">Entity</Label>
@@ -475,22 +476,18 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-6">
             <Label className="text-xs">Entity Type</Label>
-            <Select
-              value={editEntityType}
-              onValueChange={(v) => {
-                setEditEntityType(v ?? "employee");
-                setEditEntityId(null);
-              }}
-            >
-              <SelectTrigger className="mt-1 h-8 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {DMS_ENTITY_TYPES.map((t) => (
-                  <SelectItem key={t} value={t}>{DMS_ENTITY_TYPE_LABELS[t]}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="mt-1">
+              <ERPCombobox
+                value={editEntityType}
+                onValueChange={(v) => {
+                  setEditEntityType((v as string) ?? "employee");
+                  setEditEntityId(null);
+                }}
+                options={ENTITY_TYPE_OPTIONS}
+                placeholder="Select entity type..."
+                required
+              />
+            </div>
           </div>
           <div className="col-span-6">
             <Label className="text-xs">Entity</Label>

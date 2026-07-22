@@ -125,6 +125,16 @@ async function buildPdfViaHtmlCanvas<T>(options: ERPExportOptions<T>): Promise<j
       useCORS: true,
       allowTaint: true,
       backgroundColor: "#ffffff",
+      logging: false,
+      // Strip all document stylesheets from the html2canvas clone.
+      // Tailwind CSS v4 uses lab()/oklch() color functions that html2canvas
+      // cannot parse, which triggers errors and may produce incorrect output.
+      // Our table uses 100% inline styles so removing external sheets is safe.
+      onclone: (clonedDoc) => {
+        clonedDoc
+          .querySelectorAll('style, link[rel="stylesheet"]')
+          .forEach((el) => el.remove());
+      },
     });
 
     // ── Slice canvas into A4 pages ─────────────────────────────────────────

@@ -114,6 +114,12 @@ async function buildPdfArrayBufferViaHtmlCanvas<T>(options: ERPExportOptions<T>)
       useCORS: true,
       allowTaint: true,
       backgroundColor: "#ffffff",
+      logging: false,
+      onclone: (clonedDoc) => {
+        clonedDoc
+          .querySelectorAll('style, link[rel="stylesheet"]')
+          .forEach((el) => el.remove());
+      },
     });
 
     const doc = new jsPDF({ orientation, unit: "mm", format: "a4" });

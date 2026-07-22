@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext } from "@/lib/rbac/check";
 
 export type UserEmailOption = {
@@ -11,18 +11,19 @@ export type UserEmailOption = {
 
 /**
  * Search user profiles for email recipient selection.
- * Returns up to 20 matches ordered by full_name.
- * Intentionally includes all users with a valid email address (no status filter)
- * so that admins can still reach inactive accounts if needed.
+ * Uses the admin (service-role) client to bypass RLS — user_profiles
+ * has row-level security that prevents the normal client from reading
+ * other users' rows, which would return an empty list.
  */
 export async function getUsersForEmailSelect(
   search: string
 ): Promise<UserEmailOption[]> {
   try {
-    const supabase = await createClient();
     const ctx = await getAuthContext();
     if (!ctx.profile) return [];
 
+    // Must use admin client — RLS on user_profiles restricts to own row
+    const supabase = createAdminClient();
     const term = search.trim();
 
     let query = supabase
@@ -31,7 +32,6 @@ export async function getUsersForEmailSelect(
       .not("email", "is", null);
 
     if (term) {
-      // Supabase .or() filter: match name OR email
       query = query.or(
         `full_name.ilike.%${term}%,email.ilike.%${term}%`
       );

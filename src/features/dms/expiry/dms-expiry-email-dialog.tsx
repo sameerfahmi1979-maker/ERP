@@ -116,25 +116,51 @@ export function DmsExpiryEmailDialog({
     setSearchQuery("");
   }, [userOptions, addRecipient]);
 
+  /** Try to commit whatever is currently in the raw email input as a chip */
+  const flushRawEmail = useCallback((): boolean => {
+    const email = rawEmailInput.trim().replace(/[,;]+$/, "");
+    if (!email) return true; // nothing to flush — OK
+    if (!validateEmail(email)) {
+      toast.error(`Invalid email address: ${email}`);
+      return false;
+    }
+    addRecipient({ label: email, email });
+    setRawEmailInput("");
+    return true;
+  }, [rawEmailInput, addRecipient]);
+
   const handleRawEmailKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === "Enter" || e.key === ",") {
+      if (e.key === "Enter" || e.key === "," || e.key === ";") {
         e.preventDefault();
-        const email = rawEmailInput.trim().replace(/,+$/, "");
-        if (!email) return;
-        if (!validateEmail(email)) {
-          toast.error(`Invalid email address: ${email}`);
-          return;
-        }
-        addRecipient({ label: email, email });
-        setRawEmailInput("");
+        flushRawEmail();
       }
     },
-    [rawEmailInput, addRecipient]
+    [flushRawEmail]
   );
 
+  const handleRawEmailBlur = useCallback(() => {
+    if (rawEmailInput.trim()) flushRawEmail();
+  }, [rawEmailInput, flushRawEmail]);
+
   const handleSubmit = useCallback(async () => {
-    if (recipients.length === 0) {
+    // Build final recipients list — include any email typed but not yet chip-ified
+    let finalRecipients = [...recipients];
+    const rawEmail = rawEmailInput.trim().replace(/[,;]+$/, "");
+    if (rawEmail) {
+      if (!validateEmail(rawEmail)) {
+        toast.error(`Invalid email address: ${rawEmail}`);
+        return;
+      }
+      if (!finalRecipients.some((r) => r.email.toLowerCase() === rawEmail.toLowerCase())) {
+        finalRecipients = [...finalRecipients, { label: rawEmail, email: rawEmail }];
+        // Also commit visually so the chip appears
+        addRecipient({ label: rawEmail, email: rawEmail });
+        setRawEmailInput("");
+      }
+    }
+
+    if (finalRecipients.length === 0) {
       toast.error("Add at least one recipient");
       return;
     }
@@ -149,7 +175,7 @@ export function DmsExpiryEmailDialog({
 
     setIsSubmitting(true);
     try {
-      const toEmails = recipients.map((r) => r.email);
+      const toEmails = finalRecipients.map((r) => r.email);
       const exportOptions = {
         title: tabTitle,
         filename: tabTitle.toLowerCase().replace(/\s+/g, "-"),
@@ -191,7 +217,7 @@ export function DmsExpiryEmailDialog({
     } finally {
       setIsSubmitting(false);
     }
-  }, [recipients, subject, body, docs, attachmentFormat, tabTitle, onOpenChange]);
+  }, [recipients, rawEmailInput, subject, body, docs, attachmentFormat, tabTitle, onOpenChange, addRecipient]);
 
   const FORMAT_OPTIONS: { value: AttachmentFormat; label: string }[] = [
     { value: "pdf", label: "PDF" },
@@ -233,12 +259,13 @@ export function DmsExpiryEmailDialog({
         {/* Free-text email input */}
         <div className="col-span-12">
           <label className="text-sm font-medium block mb-1.5">
-            Or type email address <span className="text-muted-foreground font-normal text-xs">(press Enter or comma to add)</span>
+            Or type email address <span className="text-muted-foreground font-normal text-xs">(press Enter, comma, or click away to add)</span>
           </label>
           <Input
             value={rawEmailInput}
             onChange={(e) => setRawEmailInput(e.target.value)}
             onKeyDown={handleRawEmailKeyDown}
+            onBlur={handleRawEmailBlur}
             placeholder="someone@example.com"
             className="h-9"
           />

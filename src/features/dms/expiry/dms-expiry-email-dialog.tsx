@@ -63,7 +63,7 @@ export function DmsExpiryEmailDialog({
   const [userOptions, setUserOptions] = useState<{ value: string | number; label: string; email?: string }[]>([]);
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Reset on open
+  // Reset on open; then trigger an initial user load for the empty query
   useEffect(() => {
     if (open) {
       setRecipients([]);
@@ -72,12 +72,19 @@ export function DmsExpiryEmailDialog({
       setBody(`Please find attached the ${tabTitle} document list.\n\nTotal records: ${docs.length}\nGenerated: ${format(new Date(), "dd MMM yyyy HH:mm")}`);
       setAttachmentFormat("pdf");
       setSearchQuery("");
-      setUserOptions([]);
+      // Pre-load users list immediately (without waiting for the user to type)
+      getUsersForEmailSelect("").then((results) => {
+        setUserOptions(
+          results.map((u) => ({ value: u.email, label: `${u.label} (${u.email})`, email: u.email }))
+        );
+      });
     }
   }, [open, tabTitle, docs.length]);
 
-  // Search users on searchQuery change
+  // Re-search when user types in the combobox
   useEffect(() => {
+    if (!open) return;
+    if (searchQuery === "") return; // handled by the open effect above
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
     searchTimeout.current = setTimeout(async () => {
       const results = await getUsersForEmailSelect(searchQuery);
@@ -88,7 +95,7 @@ export function DmsExpiryEmailDialog({
     return () => {
       if (searchTimeout.current) clearTimeout(searchTimeout.current);
     };
-  }, [searchQuery]);
+  }, [searchQuery, open]);
 
   const addRecipient = useCallback((chip: RecipientChip) => {
     setRecipients((prev) => {

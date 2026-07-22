@@ -10,8 +10,10 @@ export type UserEmailOption = {
 };
 
 /**
- * Search active user profiles for email recipient selection.
+ * Search user profiles for email recipient selection.
  * Returns up to 20 matches ordered by full_name.
+ * Intentionally includes all users with a valid email address (no status filter)
+ * so that admins can still reach inactive accounts if needed.
  */
 export async function getUsersForEmailSelect(
   search: string
@@ -21,21 +23,28 @@ export async function getUsersForEmailSelect(
     const ctx = await getAuthContext();
     if (!ctx.profile) return [];
 
+    const term = search.trim();
+
     let query = supabase
       .from("user_profiles")
       .select("id, full_name, email")
-      .or("status.is.null,status.eq.active");
+      .not("email", "is", null);
 
-    const term = search.trim();
     if (term) {
+      // Supabase .or() filter: match name OR email
       query = query.or(
         `full_name.ilike.%${term}%,email.ilike.%${term}%`
       );
     }
 
-    const { data } = await query
+    const { data, error } = await query
       .order("full_name", { ascending: true })
       .limit(20);
+
+    if (error) {
+      console.error("[getUsersForEmailSelect]", error.message);
+      return [];
+    }
 
     return (data ?? [])
       .filter((u) => {
@@ -50,7 +59,8 @@ export async function getUsersForEmailSelect(
           email: row.email as string,
         };
       });
-  } catch {
+  } catch (err) {
+    console.error("[getUsersForEmailSelect] unexpected error:", err);
     return [];
   }
 }

@@ -60,11 +60,18 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false }: Dms
 
   // Advanced filter (shared across tabs)
   const [advancedFilter, setAdvancedFilter] = useState<ExpiryAdvancedFilter>({});
-  // Debounce filter changes
+  // Debounce filter changes; use JSON comparison to avoid spurious state updates
   const filterDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastFilterJson = useRef("{}");
   const handleFilterChange = useCallback((f: ExpiryAdvancedFilter) => {
     if (filterDebounceRef.current) clearTimeout(filterDebounceRef.current);
-    filterDebounceRef.current = setTimeout(() => setAdvancedFilter(f), 300);
+    filterDebounceRef.current = setTimeout(() => {
+      const json = JSON.stringify(f);
+      if (json !== lastFilterJson.current) {
+        lastFilterJson.current = json;
+        setAdvancedFilter(f);
+      }
+    }, 300);
   }, []);
 
   // Current tab's rows (for export and email)

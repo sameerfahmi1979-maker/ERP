@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -75,6 +75,13 @@ export function DmsExpiryFilterBar({ onChange, className }: DmsExpiryFilterBarPr
   const [entityType, setEntityType] = useState<string | null>(null);
   const [entityIdText, setEntityIdText] = useState("");
 
+  // Keep a stable ref to `onChange` so the emit effect doesn't need it as a dep
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  // Track first render — skip emitting on mount (parent starts with empty filter `{}`)
+  const didMountRef = useRef(false);
+
   // Load lookup data on mount
   useEffect(() => {
     getDmsDocumentTypes().then((r) => {
@@ -105,10 +112,30 @@ export function DmsExpiryFilterBar({ onChange, className }: DmsExpiryFilterBarPr
     };
   }, [searchText, documentTypeId, categoryId, status, expiryDateFrom, expiryDateTo, daysPreset, entityType, entityIdText]);
 
-  // Emit upward whenever anything changes (parent debounces)
+  // Emit filter changes upward — depends only on individual state values (not on the
+  // `onChange` callback itself) so parent re-renders don't re-trigger this effect.
+  // Skips the initial mount to avoid a spurious empty-filter emission that would
+  // change parent state and cause a second render immediately on load.
   useEffect(() => {
-    onChange(buildFilter());
-  }, [onChange, buildFilter]);
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
+    const entityId = entityIdText.trim() ? parseInt(entityIdText, 10) : undefined;
+    onChangeRef.current({
+      searchText: searchText.trim() || undefined,
+      documentTypeId: documentTypeId ?? undefined,
+      categoryId: categoryId ?? undefined,
+      status: status ?? undefined,
+      expiryDateFrom: expiryDateFrom || undefined,
+      expiryDateTo: expiryDateTo || undefined,
+      daysRemainingMin: daysPreset?.min,
+      daysRemainingMax: daysPreset?.max,
+      entityType: entityType ?? undefined,
+      entityId: entityId && !isNaN(entityId) ? entityId : undefined,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchText, documentTypeId, categoryId, status, expiryDateFrom, expiryDateTo, daysPreset, entityType, entityIdText]);
 
   const handleClearAll = () => {
     setSearchText("");

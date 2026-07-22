@@ -3,6 +3,10 @@
 import { useState, useTransition, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
+
+// Stable reference so the `onRowsLoaded` useEffect doesn't fire on every render
+// while the query is loading (avoids infinite setState loop from new [] each render)
+const EMPTY_DOCS: DmsExpiringDocumentRow[] = [];
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -85,7 +89,7 @@ export function DmsExpiringDocumentsTable({ view, onStartRenewal, advancedFilter
 
   const filterKey: ExpiringDocumentsFilter = { view, ...(advancedFilter ?? {}) };
 
-  const { data: docs = [], isLoading } = useQuery({
+  const { data: queryData, isLoading } = useQuery({
     queryKey: queryKeys.dms.expiringDocuments(filterKey as Record<string, unknown>),
     queryFn: async () => {
       const result = await getDmsExpiringDocuments(filterKey);
@@ -94,6 +98,7 @@ export function DmsExpiringDocumentsTable({ view, onStartRenewal, advancedFilter
     },
     staleTime: 60_000,
   });
+  const docs = queryData ?? EMPTY_DOCS;
 
   // Expose full row set to parent (for export / email)
   useEffect(() => {

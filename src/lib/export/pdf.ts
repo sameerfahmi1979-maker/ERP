@@ -67,8 +67,8 @@ async function buildPdfViaHtmlCanvas<T>(options: ERPExportOptions<T>): Promise<j
     `width:${containerWidthPx}px`,
     "background:white",
     "padding:20px",
-    "font-family:'Segoe UI',Tahoma,Arial,'Noto Sans Arabic',sans-serif",
-    "font-size:11px",
+    "font-family:Arial,'Noto Sans Arabic',sans-serif",
+    "font-size:8px",
     "color:#000",
     "box-sizing:border-box",
   ].join(";");
@@ -77,19 +77,19 @@ async function buildPdfViaHtmlCanvas<T>(options: ERPExportOptions<T>): Promise<j
   if (title) {
     const h = document.createElement("h2");
     h.textContent = title;
-    h.style.cssText = "margin:0 0 4px;font-size:14px;text-align:center;font-weight:bold;";
+    h.style.cssText = "margin:0 0 4px;font-size:12px;font-family:Arial,sans-serif;text-align:center;font-weight:bold;";
     container.appendChild(h);
   }
   if (subtitle) {
     const s = document.createElement("p");
     s.textContent = subtitle;
-    s.style.cssText = "margin:0 0 8px;font-size:10px;text-align:center;color:#555;";
+    s.style.cssText = "margin:0 0 8px;font-size:8px;font-family:Arial,sans-serif;text-align:center;color:#555;";
     container.appendChild(s);
   }
 
   // Table
   const table = document.createElement("table");
-  table.style.cssText = "width:100%;border-collapse:collapse;font-size:9px;";
+  table.style.cssText = "width:100%;border-collapse:collapse;font-size:8px;font-family:Arial,'Noto Sans Arabic',sans-serif;";
 
   // Header row
   const thead = table.createTHead();

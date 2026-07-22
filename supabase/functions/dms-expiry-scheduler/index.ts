@@ -164,6 +164,14 @@ Deno.serve(async (req: Request) => {
           }
         }
 
+        // Include all explicit recipient_user_ids from notification settings
+        // This ensures configured users (e.g. sameer@algt.net) always receive
+        // every expiry notification regardless of document ownership.
+        const settingsUserIds = ((settings as Record<string, unknown> | null)?.recipient_user_ids as number[] | null) ?? [];
+        for (const uid of settingsUserIds) {
+          recipientIds.push(uid);
+        }
+
         // Deduplicate and insert one notification per recipient
         const uniqueRecipients = [...new Set(recipientIds)];
         if (uniqueRecipients.length === 0) {

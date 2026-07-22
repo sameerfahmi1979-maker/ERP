@@ -185,6 +185,23 @@ export async function getDmsExpiryDashboardStats(): Promise<ActionResult<DmsExpi
 export type ExpiringDocumentsFilter = {
   view: "expired" | "expiring" | "missing_expiry" | "all" | "ignored";
   limit?: number;
+  /** Filter by specific document type */
+  documentTypeId?: number;
+  /** Filter by category — resolves to a set of document_type_ids */
+  categoryId?: number;
+  /** Expiry date range — ISO date string (YYYY-MM-DD) */
+  expiryDateFrom?: string;
+  expiryDateTo?: string;
+  /** Days remaining range — translates to expiry_date arithmetic vs today */
+  daysRemainingMin?: number;
+  daysRemainingMax?: number;
+  /** Entity link filter — shows only documents linked to this entity */
+  entityType?: string;
+  entityId?: number;
+  /** Document status filter */
+  status?: string;
+  /** Full-text search across title and document_no */
+  searchText?: string;
 };
 
 export async function getDmsExpiringDocuments(
@@ -206,6 +223,30 @@ export async function getDmsExpiringDocuments(
       .eq("requires_expiry_tracking", false)
       .is("deleted_at", null);
     const noExpiryTypeIds = (noExpiryTypes ?? []).map((t) => (t as Record<string, unknown>).id as number);
+
+    // ── Category filter: resolve to document_type_ids ────────────────────────
+    let categoryTypeIds: number[] | null = null;
+    if (filter.categoryId) {
+      const { data: catTypes } = await supabase
+        .from("dms_document_types")
+        .select("id")
+        .eq("category_id", filter.categoryId)
+        .is("deleted_at", null);
+      categoryTypeIds = (catTypes ?? []).map((t) => (t as Record<string, unknown>).id as number);
+      if (categoryTypeIds.length === 0) return { success: true, data: [] };
+    }
+
+    // ── Entity link filter: resolve to document_ids ──────────────────────────
+    let entityLinkedDocIds: number[] | null = null;
+    if (filter.entityType && filter.entityId) {
+      const { data: linkRows } = await supabase
+        .from("dms_document_links")
+        .select("document_id")
+        .eq("entity_type", filter.entityType)
+        .eq("entity_id", filter.entityId);
+      entityLinkedDocIds = (linkRows ?? []).map((r) => (r as Record<string, unknown>).document_id as number);
+      if (entityLinkedDocIds.length === 0) return { success: true, data: [] };
+    }
 
     let query = supabase
       .from("dms_documents")
@@ -234,6 +275,38 @@ export async function getDmsExpiringDocuments(
     } else if (filter.view === "ignored") {
       // DMS EXPIRY.IGNORE.1 — show only documents with expiry tracking suppressed
       query = query.eq("expiry_tracking_override", "ignored");
+    }
+
+    // ── Advanced filters (additive, applied after view filter) ───────────────
+    if (filter.documentTypeId) {
+      query = query.eq("document_type_id", filter.documentTypeId);
+    }
+    if (categoryTypeIds && categoryTypeIds.length > 0) {
+      query = query.in("document_type_id", categoryTypeIds);
+    }
+    if (filter.status) {
+      query = query.eq("status", filter.status);
+    }
+    if (filter.searchText?.trim()) {
+      const t = filter.searchText.trim();
+      query = query.or(`title.ilike.%${t}%,document_no.ilike.%${t}%`);
+    }
+    if (filter.expiryDateFrom) {
+      query = query.gte("expiry_date", filter.expiryDateFrom);
+    }
+    if (filter.expiryDateTo) {
+      query = query.lte("expiry_date", filter.expiryDateTo);
+    }
+    if (filter.daysRemainingMin !== undefined) {
+      const minDate = new Date(Date.now() + filter.daysRemainingMin * 86400000).toISOString().split("T")[0];
+      query = query.gte("expiry_date", minDate);
+    }
+    if (filter.daysRemainingMax !== undefined) {
+      const maxDate = new Date(Date.now() + filter.daysRemainingMax * 86400000).toISOString().split("T")[0];
+      query = query.lte("expiry_date", maxDate);
+    }
+    if (entityLinkedDocIds && entityLinkedDocIds.length > 0) {
+      query = query.in("id", entityLinkedDocIds);
     }
 
     const { data, error } = await query;

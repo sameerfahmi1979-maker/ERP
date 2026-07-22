@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Zap, GitMerge, Send } from "lucide-react";
+import { RefreshCw, Zap, GitMerge, Send, Mail, Download } from "lucide-react";
 import { DmsExpirySummaryCards } from "./dms-expiry-summary-cards";
 import { DmsExpiringDocumentsTable } from "./dms-expiring-documents-table";
+import { DmsExpiryFilterBar, type ExpiryAdvancedFilter } from "./dms-expiry-filter-bar";
+import { DmsExpiryEmailDialog } from "./dms-expiry-email-dialog";
 import { DmsStartRenewalDialog } from "@/features/dms/renewals/dms-start-renewal-dialog";
 import { DmsRenewalRequestsTable } from "@/features/dms/renewals/dms-renewal-requests-table";
 import { generateDmsExpiryRemindersBulk } from "@/server/actions/dms/expiry-reminders";
@@ -17,12 +19,33 @@ import {
   processDmsExpiryEmailQueue,
 } from "@/server/actions/dms/dms-email-bridge";
 import { invalidateDmsExpiry, invalidateDmsNotifications, invalidateEmailQueue } from "@/lib/query/invalidation";
+import { ERPExportMenu } from "@/components/erp/export/erp-export-menu";
+import { format } from "date-fns";
 import type { DmsExpiringDocumentRow } from "@/server/actions/dms/expiry-reminders";
+import type { ERPExportColumn } from "@/lib/export";
 
 interface DmsExpiryDashboardPageClientProps {
   isAdmin: boolean;
   canBridge?: boolean;
 }
+
+const EXPIRY_EXPORT_COLUMNS: ERPExportColumn<DmsExpiringDocumentRow>[] = [
+  { key: "document_no", header: "Doc No", width: 14 },
+  { key: "title", header: "Title", width: 30 },
+  { key: "document_type", header: "Type", width: 20 },
+  { key: "category", header: "Category", width: 18 },
+  { key: "expiry_date", header: "Expiry Date", width: 14 },
+  { key: "days_remaining", header: "Days Remaining", width: 14 },
+  { key: "status", header: "Status", width: 12 },
+];
+
+const TAB_TITLES: Record<string, string> = {
+  expired: "Expired Documents",
+  expiring: "Expiring Soon",
+  missing: "Missing Expiry",
+  renewals: "Renewal Requests",
+  ignored: "Ignored Documents",
+};
 
 export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false }: DmsExpiryDashboardPageClientProps) {
   const queryClient = useQueryClient();
@@ -31,6 +54,30 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false }: Dms
   const [bridging, setBridging] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [startRenewalDoc, setStartRenewalDoc] = useState<DmsExpiringDocumentRow | null>(null);
+
+  // Active tab
+  const [activeTab, setActiveTab] = useState("expired");
+
+  // Advanced filter (shared across tabs)
+  const [advancedFilter, setAdvancedFilter] = useState<ExpiryAdvancedFilter>({});
+  // Debounce filter changes
+  const filterDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleFilterChange = useCallback((f: ExpiryAdvancedFilter) => {
+    if (filterDebounceRef.current) clearTimeout(filterDebounceRef.current);
+    filterDebounceRef.current = setTimeout(() => setAdvancedFilter(f), 300);
+  }, []);
+
+  // Current tab's rows (for export and email)
+  const [currentRows, setCurrentRows] = useState<DmsExpiringDocumentRow[]>([]);
+  const handleRowsLoaded = useCallback((rows: DmsExpiringDocumentRow[]) => {
+    setCurrentRows(rows);
+  }, []);
+
+  // Email dialog
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+
+  const exportTitle = `${TAB_TITLES[activeTab] ?? "Documents"} — ${format(new Date(), "dd MMM yyyy")}`;
+  const exportFilename = `${(TAB_TITLES[activeTab] ?? "documents").toLowerCase().replace(/\s+/g, "-")}-${format(new Date(), "yyyy-MM-dd")}`;
 
   const handleBulkGenerate = async () => {
     setBulkGenerating(true);
@@ -99,7 +146,7 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false }: Dms
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Expiry & Renewals</h1>
+          <h1 className="text-xl font-semibold">Expiry &amp; Renewals</h1>
           <p className="text-sm text-muted-foreground">
             Monitor document expiry, manage reminder schedules, and track renewals.
           </p>
@@ -157,19 +204,60 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false }: Dms
       {/* Summary Cards */}
       <DmsExpirySummaryCards />
 
+      {/* Filter Bar */}
+      <DmsExpiryFilterBar onChange={handleFilterChange} />
+
       {/* Tabs */}
-      <Tabs defaultValue="expired">
-        <TabsList>
-          <TabsTrigger value="expired">Expired</TabsTrigger>
-          <TabsTrigger value="expiring">Expiring Soon</TabsTrigger>
-          <TabsTrigger value="missing">Missing Expiry</TabsTrigger>
-          <TabsTrigger value="renewals">Renewal Requests</TabsTrigger>
-          <TabsTrigger value="ignored">Ignored</TabsTrigger>
-        </TabsList>
+      <Tabs
+        defaultValue="expired"
+        value={activeTab}
+        onValueChange={(v) => {
+          setActiveTab(v);
+          setCurrentRows([]); // reset while new tab loads
+        }}
+      >
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <TabsList>
+            <TabsTrigger value="expired">Expired</TabsTrigger>
+            <TabsTrigger value="expiring">Expiring Soon</TabsTrigger>
+            <TabsTrigger value="missing">Missing Expiry</TabsTrigger>
+            <TabsTrigger value="renewals">Renewal Requests</TabsTrigger>
+            <TabsTrigger value="ignored">Ignored</TabsTrigger>
+          </TabsList>
+
+          {/* Export + Email toolbar — hidden for Renewals tab */}
+          {activeTab !== "renewals" && (
+            <div className="flex items-center gap-2">
+              <ERPExportMenu
+                title={exportTitle}
+                filename={exportFilename}
+                data={currentRows}
+                columns={EXPIRY_EXPORT_COLUMNS}
+                moduleCode="DMS"
+                exportMode="filtered"
+                orientation="landscape"
+                size="sm"
+                variant="outline"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                disabled={currentRows.length === 0}
+                onClick={() => setEmailDialogOpen(true)}
+              >
+                <Mail className="h-4 w-4" />
+                Send by Email
+              </Button>
+            </div>
+          )}
+        </div>
 
         <TabsContent value="expired" className="mt-4">
           <DmsExpiringDocumentsTable
             view="expired"
+            advancedFilter={advancedFilter}
+            onRowsLoaded={handleRowsLoaded}
             onStartRenewal={(doc) => setStartRenewalDoc(doc)}
           />
         </TabsContent>
@@ -177,12 +265,18 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false }: Dms
         <TabsContent value="expiring" className="mt-4">
           <DmsExpiringDocumentsTable
             view="expiring"
+            advancedFilter={advancedFilter}
+            onRowsLoaded={handleRowsLoaded}
             onStartRenewal={(doc) => setStartRenewalDoc(doc)}
           />
         </TabsContent>
 
         <TabsContent value="missing" className="mt-4">
-          <DmsExpiringDocumentsTable view="missing_expiry" />
+          <DmsExpiringDocumentsTable
+            view="missing_expiry"
+            advancedFilter={advancedFilter}
+            onRowsLoaded={handleRowsLoaded}
+          />
         </TabsContent>
 
         <TabsContent value="renewals" className="mt-4">
@@ -194,7 +288,11 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false }: Dms
             Documents listed here have been manually excluded from expiry dashboards.
             Click <strong>Restore</strong> on any row to resume normal tracking.
           </div>
-          <DmsExpiringDocumentsTable view="ignored" />
+          <DmsExpiringDocumentsTable
+            view="ignored"
+            advancedFilter={advancedFilter}
+            onRowsLoaded={handleRowsLoaded}
+          />
         </TabsContent>
       </Tabs>
 
@@ -208,6 +306,13 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false }: Dms
           onSuccess={() => setStartRenewalDoc(null)}
         />
       )}
+
+      <DmsExpiryEmailDialog
+        open={emailDialogOpen}
+        onOpenChange={setEmailDialogOpen}
+        docs={currentRows}
+        tabTitle={TAB_TITLES[activeTab] ?? "Documents"}
+      />
     </div>
   );
 }

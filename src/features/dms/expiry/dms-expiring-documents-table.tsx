@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
@@ -26,6 +26,10 @@ import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 interface DmsExpiringDocumentsTableProps {
   view: "expired" | "expiring" | "missing_expiry" | "ignored";
   onStartRenewal?: (doc: DmsExpiringDocumentRow) => void;
+  /** Advanced filter params from the filter bar (optional) */
+  advancedFilter?: Omit<ExpiringDocumentsFilter, "view" | "limit">;
+  /** Called whenever the full (pre-pagination) row set changes — used for export */
+  onRowsLoaded?: (rows: DmsExpiringDocumentRow[]) => void;
 }
 
 // ── Ignore reason dialog ───────────────────────────────────────────────────────
@@ -73,16 +77,16 @@ function IgnoreDialog({ doc, onClose, onConfirm, isSubmitting }: IgnoreDialogPro
   );
 }
 
-export function DmsExpiringDocumentsTable({ view, onStartRenewal }: DmsExpiringDocumentsTableProps) {
+export function DmsExpiringDocumentsTable({ view, onStartRenewal, advancedFilter, onRowsLoaded }: DmsExpiringDocumentsTableProps) {
   const queryClient = useQueryClient();
   const [generatingId, setGeneratingId] = useState<number | null>(null);
   const [ignoreTarget, setIgnoreTarget] = useState<DmsExpiringDocumentRow | null>(null);
   const [isIgnoring, startIgnoreTransition] = useTransition();
 
-  const filterKey: ExpiringDocumentsFilter = { view };
+  const filterKey: ExpiringDocumentsFilter = { view, ...(advancedFilter ?? {}) };
 
   const { data: docs = [], isLoading } = useQuery({
-    queryKey: queryKeys.dms.expiringDocuments(filterKey),
+    queryKey: queryKeys.dms.expiringDocuments(filterKey as Record<string, unknown>),
     queryFn: async () => {
       const result = await getDmsExpiringDocuments(filterKey);
       if (!result.success) throw new Error(result.error);
@@ -90,6 +94,11 @@ export function DmsExpiringDocumentsTable({ view, onStartRenewal }: DmsExpiringD
     },
     staleTime: 60_000,
   });
+
+  // Expose full row set to parent (for export / email)
+  useEffect(() => {
+    onRowsLoaded?.(docs);
+  }, [docs, onRowsLoaded]);
 
   const table = useSortPaginate(docs, {
     defaultSortKey: view === "missing_expiry" || view === "ignored" ? "title" : "expiry_date",

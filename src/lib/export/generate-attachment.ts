@@ -6,6 +6,7 @@
  * Bridges existing export engine to email system by generating base64 attachments
  * instead of triggering downloads.
  * Branding is forwarded via ExportBrandingContext (optional, backward-compatible).
+ * Arabic fix: PDF path detects Arabic text and falls back to html2canvas rendering.
  */
 
 import ExcelJS from "exceljs";
@@ -25,6 +26,132 @@ import {
   stringToBase64Utf8,
   arrayBufferToBase64,
 } from "../email/attachment-utils";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Arabic detection (same logic as pdf.ts — kept local to avoid a circular import)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function containsArabic(text: string): boolean {
+  return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(text);
+}
+
+function exportDataHasArabic<T>(options: ERPExportOptions<T>): boolean {
+  if (containsArabic(options.title ?? "")) return true;
+  return options.data.some((row) =>
+    options.columns.some((col) => {
+      const val = getColumnValue(row, col);
+      return typeof val === "string" && containsArabic(val);
+    })
+  );
+}
+
+/**
+ * Same html2canvas-based fallback as in pdf.ts, but returns an ArrayBuffer
+ * instead of calling doc.save() — used for email attachment generation.
+ */
+async function buildPdfArrayBufferViaHtmlCanvas<T>(options: ERPExportOptions<T>): Promise<ArrayBuffer> {
+  const { default: html2canvas } = await import("html2canvas");
+  const { columns, data, title, subtitle, orientation = "portrait" } = options;
+
+  const containerWidthPx = orientation === "landscape" ? 1123 : 794;
+  const container = document.createElement("div");
+  container.style.cssText = [
+    "position:fixed",
+    "top:-99999px",
+    "left:0",
+    `width:${containerWidthPx}px`,
+    "background:white",
+    "padding:20px",
+    "font-family:'Segoe UI',Tahoma,Arial,'Noto Sans Arabic',sans-serif",
+    "font-size:11px",
+    "color:#000",
+    "box-sizing:border-box",
+  ].join(";");
+
+  if (title) {
+    const h = document.createElement("h2");
+    h.textContent = title;
+    h.style.cssText = "margin:0 0 4px;font-size:14px;text-align:center;font-weight:bold;";
+    container.appendChild(h);
+  }
+  if (subtitle) {
+    const s = document.createElement("p");
+    s.textContent = subtitle;
+    s.style.cssText = "margin:0 0 8px;font-size:10px;text-align:center;color:#555;";
+    container.appendChild(s);
+  }
+
+  const table = document.createElement("table");
+  table.style.cssText = "width:100%;border-collapse:collapse;font-size:9px;";
+
+  const thead = table.createTHead();
+  const headerRow = thead.insertRow();
+  headerRow.style.cssText = "background:#424242;color:white;";
+  for (const col of columns) {
+    const th = document.createElement("th");
+    th.textContent = col.header;
+    th.style.cssText = "padding:5px 4px;text-align:left;font-weight:bold;border:1px solid #666;white-space:nowrap;";
+    headerRow.appendChild(th);
+  }
+
+  const tbody = table.createTBody();
+  data.forEach((row, i) => {
+    const tr = tbody.insertRow();
+    tr.style.background = i % 2 === 0 ? "#fff" : "#f5f5f5";
+    for (const col of columns) {
+      const td = tr.insertCell();
+      td.textContent = getColumnValue(row, col);
+      td.style.cssText = "padding:4px;border:1px solid #ddd;direction:auto;unicode-bidi:plaintext;";
+    }
+  });
+
+  container.appendChild(table);
+  document.body.appendChild(container);
+
+  try {
+    const canvas = await html2canvas(container, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: "#ffffff",
+    });
+
+    const doc = new jsPDF({ orientation, unit: "mm", format: "a4" });
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    const margin = 10;
+    const contentW = pageW - 2 * margin;
+    const pxPerMm = (canvas.width / 2) / contentW;
+    const contentHPx = canvas.height;
+    const pageHPx = (pageH - 2 * margin) * pxPerMm;
+
+    let srcY = 0;
+    let firstPage = true;
+
+    while (srcY < contentHPx) {
+      if (!firstPage) doc.addPage();
+      firstPage = false;
+
+      const sliceHPx = Math.min(pageHPx, contentHPx - srcY);
+      const sliceHMm = sliceHPx / pxPerMm;
+
+      const slice = document.createElement("canvas");
+      slice.width = canvas.width;
+      slice.height = sliceHPx;
+      const ctx = slice.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(canvas, 0, srcY, canvas.width, sliceHPx, 0, 0, canvas.width, sliceHPx);
+      }
+
+      doc.addImage(slice.toDataURL("image/png"), "PNG", margin, margin, contentW, sliceHMm);
+      srcY += sliceHPx;
+    }
+
+    return doc.output("arraybuffer") as ArrayBuffer;
+  } finally {
+    document.body.removeChild(container);
+  }
+}
 
 /**
  * Generate CSV attachment for email
@@ -209,9 +336,21 @@ export async function generateExcelAttachment<T>(
  * });
  * ```
  */
-export function generatePDFAttachment<T>(
+export async function generatePDFAttachment<T>(
   options: ERPExportOptions<T>
-): EmailAttachment {
+): Promise<EmailAttachment> {
+  // ── Arabic fallback ──────────────────────────────────────────────────────
+  if (exportDataHasArabic(options)) {
+    const arrayBuffer = await buildPdfArrayBufferViaHtmlCanvas(options);
+    return {
+      filename: generateFilename(options.filename, "pdf"),
+      contentType: "application/pdf",
+      base64Content: arrayBufferToBase64(arrayBuffer),
+      sizeBytes: arrayBuffer.byteLength,
+    };
+  }
+
+  // ── Standard jsPDF path (Latin / numeric data only) ──────────────────────
   const {
     columns,
     data,
@@ -352,7 +491,7 @@ export async function generateAttachmentByType<T>(
     case "excel":
       return await generateExcelAttachment(options);
     case "pdf":
-      return generatePDFAttachment(options);
+      return await generatePDFAttachment(options);
     default:
       // TypeScript exhaustiveness check
       const _exhaustive: never = type;

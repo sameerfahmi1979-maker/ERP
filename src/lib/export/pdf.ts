@@ -3,6 +3,8 @@
  * Phase 002E.2  - Export Engine Foundation
  * Phase REPORT.3 - Template / Branding / Output Adapter Engine
  * Phase BRANDING.4 - Report Branding Runtime and Asset Upload Integration
+ * Arabic fix: When data contains Arabic text, falls back to html2canvas rendering
+ *             so the browser's own font stack (which supports Arabic) is used.
  *
  * Uses jspdf and jspdf-autotable for PDF generation.
  * Branding is injected via ExportBrandingContext (optional, fully backward-compatible).
@@ -15,6 +17,156 @@ import autoTable from "jspdf-autotable";
 import type { ERPExportOptions, ERPExportResult, ExportBrandingContext } from "./export-types";
 import { getColumnValue, generateFilename, formatFilters } from "./format-export-data";
 import { format } from "date-fns";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Arabic detection & html2canvas fallback
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** True when the string contains any Arabic/Arabic-Extended Unicode characters. */
+function containsArabic(text: string): boolean {
+  return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(text);
+}
+
+/**
+ * Scan all cell values in the export options.
+ * Returns true when at least one cell value contains Arabic text.
+ */
+function exportDataHasArabic<T>(options: ERPExportOptions<T>): boolean {
+  if (containsArabic(options.title ?? "")) return true;
+  return options.data.some((row) =>
+    options.columns.some((col) => {
+      const val = getColumnValue(row, col);
+      return typeof val === "string" && containsArabic(val);
+    })
+  );
+}
+
+/**
+ * Build a jsPDF document using html2canvas.
+ *
+ * Renders the data as an off-screen HTML table (using the browser's font stack,
+ * which correctly shapes and displays Arabic), captures it via html2canvas, then
+ * slices the canvas into A4-page-sized chunks and embeds each as a PNG image.
+ *
+ * This is the fallback path used whenever Arabic text is detected in the data.
+ * Returns the jsPDF doc so callers can either `.save()` or `.output("arraybuffer")`.
+ */
+async function buildPdfViaHtmlCanvas<T>(options: ERPExportOptions<T>): Promise<jsPDF> {
+  const { default: html2canvas } = await import("html2canvas");
+
+  const { columns, data, title, subtitle, orientation = "portrait" } = options;
+
+  // ── Build off-screen HTML container ────────────────────────────────────────
+  const container = document.createElement("div");
+  // 794px ≈ A4 at 96dpi; double that at scale:2 → ~1587px effective resolution
+  const containerWidthPx = orientation === "landscape" ? 1123 : 794;
+  container.style.cssText = [
+    "position:fixed",
+    "top:-99999px",
+    "left:0",
+    `width:${containerWidthPx}px`,
+    "background:white",
+    "padding:20px",
+    "font-family:'Segoe UI',Tahoma,Arial,'Noto Sans Arabic',sans-serif",
+    "font-size:11px",
+    "color:#000",
+    "box-sizing:border-box",
+  ].join(";");
+
+  // Title
+  if (title) {
+    const h = document.createElement("h2");
+    h.textContent = title;
+    h.style.cssText = "margin:0 0 4px;font-size:14px;text-align:center;font-weight:bold;";
+    container.appendChild(h);
+  }
+  if (subtitle) {
+    const s = document.createElement("p");
+    s.textContent = subtitle;
+    s.style.cssText = "margin:0 0 8px;font-size:10px;text-align:center;color:#555;";
+    container.appendChild(s);
+  }
+
+  // Table
+  const table = document.createElement("table");
+  table.style.cssText = "width:100%;border-collapse:collapse;font-size:9px;";
+
+  // Header row
+  const thead = table.createTHead();
+  const headerRow = thead.insertRow();
+  headerRow.style.cssText = "background:#424242;color:white;";
+  for (const col of columns) {
+    const th = document.createElement("th");
+    th.textContent = col.header;
+    th.style.cssText = "padding:5px 4px;text-align:left;font-weight:bold;border:1px solid #666;white-space:nowrap;";
+    headerRow.appendChild(th);
+  }
+
+  // Data rows
+  const tbody = table.createTBody();
+  data.forEach((row, i) => {
+    const tr = tbody.insertRow();
+    tr.style.background = i % 2 === 0 ? "#fff" : "#f5f5f5";
+    for (const col of columns) {
+      const td = tr.insertCell();
+      const val = getColumnValue(row, col);
+      td.textContent = val;
+      // `direction:auto` lets the browser choose LTR or RTL per cell
+      td.style.cssText = "padding:4px;border:1px solid #ddd;direction:auto;unicode-bidi:plaintext;";
+    }
+  });
+
+  container.appendChild(table);
+  document.body.appendChild(container);
+
+  try {
+    const canvas = await html2canvas(container, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: "#ffffff",
+    });
+
+    // ── Slice canvas into A4 pages ─────────────────────────────────────────
+    const doc = new jsPDF({ orientation, unit: "mm", format: "a4" });
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    const margin = 10;
+    const contentW = pageW - 2 * margin;
+
+    // px → mm conversion at scale:2
+    const pxPerMm = (canvas.width / 2) / contentW;
+    const contentHPx = canvas.height; // full canvas height at scale:2
+    const pageHPx = (pageH - 2 * margin) * pxPerMm;
+
+    let srcY = 0;
+    let firstPage = true;
+
+    while (srcY < contentHPx) {
+      if (!firstPage) doc.addPage();
+      firstPage = false;
+
+      const sliceHPx = Math.min(pageHPx, contentHPx - srcY);
+      const sliceHMm = sliceHPx / pxPerMm;
+
+      // Draw just this slice into a temporary canvas
+      const slice = document.createElement("canvas");
+      slice.width = canvas.width;
+      slice.height = sliceHPx;
+      const ctx = slice.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(canvas, 0, srcY, canvas.width, sliceHPx, 0, 0, canvas.width, sliceHPx);
+      }
+
+      doc.addImage(slice.toDataURL("image/png"), "PNG", margin, margin, contentW, sliceHMm);
+      srcY += sliceHPx;
+    }
+
+    return doc;
+  } finally {
+    document.body.removeChild(container);
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -209,6 +361,17 @@ function renderNeutralHeader(
  */
 export async function exportToPDF<T>(options: ERPExportOptions<T>): Promise<ERPExportResult> {
   try {
+    // ── Arabic fallback ────────────────────────────────────────────────────
+    // jsPDF's built-in Helvetica has no Arabic glyphs. When Arabic text is
+    // detected we render via html2canvas instead so the browser's font stack
+    // (which correctly shapes Arabic) is used.
+    if (exportDataHasArabic(options)) {
+      const doc = await buildPdfViaHtmlCanvas(options);
+      const downloadFilename = generateFilename(options.filename, "pdf");
+      doc.save(downloadFilename);
+      return { success: true, filename: downloadFilename };
+    }
+
     const {
       columns,
       data,

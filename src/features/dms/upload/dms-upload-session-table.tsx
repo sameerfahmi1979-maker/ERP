@@ -11,7 +11,9 @@ import {
   Copy,
   AlertTriangle,
   Bot,
+  ClipboardCheck,
 } from "lucide-react";
+import Link from "next/link";
 import type { DmsUploadSessionRow } from "@/server/actions/dms/upload-sessions";
 import { FileTypeIcon } from "./dms-file-type-icon";
 import { FileSize } from "./dms-file-size";
@@ -125,18 +127,32 @@ export function DmsUploadSessionTable({
                 <td className="px-4 py-2.5">
                   {isActionable && (
                     <div className="flex items-center gap-1 justify-end">
-                      {onAiFill && (
-                        <Button
-                          size="sm"
-                          variant="default"
-                          className="h-7 text-xs gap-1 bg-violet-600 hover:bg-violet-700"
-                          onClick={() => onAiFill(s)}
-                          disabled={isSubmitting}
-                          title="Upload & AI Fill"
-                        >
-                          <Bot className="h-3 w-3" />
-                          AI Fill
-                        </Button>
+                      {/* AI review already complete — show direct Review link instead of re-running AI */}
+                      {isAiReviewed ? (
+                        <Link href={`/dms/intake/${s.session_code}`}>
+                          <Button
+                            size="sm"
+                            className="h-7 text-xs gap-1 bg-green-600 hover:bg-green-700 text-white"
+                            title="AI review is ready — click to review and create document"
+                          >
+                            <ClipboardCheck className="h-3 w-3" />
+                            Review
+                          </Button>
+                        </Link>
+                      ) : (
+                        onAiFill && (
+                          <Button
+                            size="sm"
+                            variant="default"
+                            className="h-7 text-xs gap-1 bg-violet-600 hover:bg-violet-700"
+                            onClick={() => onAiFill(s)}
+                            disabled={isSubmitting}
+                            title="Upload & AI Fill"
+                          >
+                            <Bot className="h-3 w-3" />
+                            AI Fill
+                          </Button>
+                        )
                       )}
                       <Button
                         size="sm"

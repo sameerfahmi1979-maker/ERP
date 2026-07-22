@@ -292,6 +292,12 @@ export async function startAiIntakeFromUploadSession(
     if (!typedSession.temp_storage_path) return { success: false, error: "Temporary file path is missing" };
     if ((typedSession.intake_status as string) === "approved") return { success: false, error: "Intake already approved" };
     if ((typedSession.intake_status as string) === "discarded") return { success: false, error: "Intake was discarded" };
+    // AI review already completed — return immediately so the UI can redirect to the
+    // review page without re-running a full AI pass (which can take 60+ seconds for
+    // large documents and cause a server-action timeout).
+    if ((typedSession.intake_status as string) === "review_pending" || (typedSession.intake_status as string) === "review_in_progress") {
+      return { success: true, data: { sessionCode: typedSession.session_code as string, status: "review_pending" } };
+    }
     // Duplicate detection is informational only — the UI shows a warning badge.
     // Admins may intentionally create a second document from the same file.
 

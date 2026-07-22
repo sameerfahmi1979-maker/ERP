@@ -125,7 +125,10 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
     setUploadState({ phase: "ai_processing", session });
     const result = await startAiIntakeFromUploadSession({ uploadSessionId: session.id });
     if (result.success && result.data) {
-      toast.success("AI analysis complete — opening review screen…");
+      const msg = result.data.status === "review_pending"
+        ? "AI review is ready — opening review screen…"
+        : "AI analysis complete — opening review screen…";
+      toast.success(msg);
       router.push(`/dms/intake/${result.data.sessionCode}`);
     } else if (!result.success && result.data?.status === "provider_not_configured") {
       toast.error("No AI provider configured. Create the document manually instead.", { duration: 6000 });

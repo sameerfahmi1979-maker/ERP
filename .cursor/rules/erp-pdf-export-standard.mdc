@@ -1,0 +1,241 @@
+---
+description: ERP Export-Utility PDF Standard — Arabic rendering, file size, and font rules
+globs:
+  - src/lib/export/pdf.ts
+  - src/lib/export/generate-attachment.ts
+  - src/server/actions/dms/expiry-reminders.ts
+  - src/lib/export/**
+alwaysApply: false
+---
+
+# ERP Export-Utility PDF Standard
+
+## Phase
+ERP PDF EXPORT.1 — Arabic Vector PDF via bidi-shaper + Noto Sans Arabic (2026-07-23)
+
+---
+
+## The Problem This Standard Solves
+
+jsPDF's built-in Helvetica font has **no Arabic glyphs**. Two previous broken approaches and why they fail:
+
+| Approach | Problem |
+|---|---|
+| jsPDF with Helvetica + Arabic text | Every Arabic letter renders in isolation form — disconnected, unreadable. Characters show as `þÎþèþô` garbled symbols. |
+| html2canvas → image embedded in jsPDF | File sizes 10–20 MB for a 2-page list. Text is not selectable, blurry when zoomed, non-searchable. |
+
+---
+
+## Correct Approach — REQUIRED for All New Code
+
+Use **`bidi-shaper` + embedded `Noto Sans Arabic` TTF** to produce proper vector PDFs:
+
+1. **`bidi-shaper/jspdf`** — zero-dependency plugin that implements the full Unicode Bidirectional Algorithm (UAX #9) and Arabic contextual shaping (connecting letters, lam-alef ligatures). Install once on `jsPDF.API`.
+2. **Noto Sans Arabic TTF** — font file at `public/fonts/noto-sans-arabic-400.ttf` (192 KB, self-hosted). Contains Arabic + Latin glyphs including Arabic Presentation Forms B (U+FB50–U+FEFF) which bidi-shaper targets.
+3. **Detection** — `exportDataHasArabic()` scans title, subtitle, and all cell values. Only registers the font + switches body font when Arabic is actually present (no overhead for Latin-only exports).
+
+### Result
+- Vector PDF — text is selectable, searchable, copy-pasteable
+- Correct Arabic: connected glyphs, proper lam-alef ligatures, RTL direction
+- Latin text in the same table renders normally (Noto Sans Arabic has full Latin coverage)
+- File size < 300 KB regardless of row count
+
+---
+
+## Implementation Pattern
+
+### Client-side download (`src/lib/export/pdf.ts`)
+
+```typescript
+import { installJsPdfShaper } from "bidi-shaper/jspdf";
+
+// Install once at module load — hooks into every doc.text() call automatically
+installJsPdfShaper(jsPDF.API as Parameters<typeof installJsPdfShaper>[0]);
+
+// Module-level font cache — fetched once per browser session
+let _arabicFontData: string | null = null;
+
+async function loadArabicFont(): Promise<string | null> {
+  if (_arabicFontData) return _arabicFontData;
+  const res = await fetch("/fonts/noto-sans-arabic-400.ttf");
+  if (!res.ok) return null;
+  const buf = await res.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  const CHUNK = 0x8000;
+  const parts: string[] = [];
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    parts.push(String.fromCharCode(...bytes.subarray(i, i + CHUNK)));
+  }
+  return (_arabicFontData = parts.join(""));
+}
+
+async function registerArabicFont(doc: jsPDF): Promise<boolean> {
+  const data = await loadArabicFont();
+  if (!data) return false;
+  doc.addFileToVFS("NotoSansArabic.ttf", data);
+  doc.addFont("NotoSansArabic.ttf", "NotoSansArabic", "normal");
+  return true;
+}
+
+// In exportToPDF():
+const hasArabic = exportDataHasArabic(options);
+let bodyFont = "helvetica";
+if (hasArabic) {
+  const ok = await registerArabicFont(doc);
+  if (ok) bodyFont = "NotoSansArabic";
+}
+
+// Pass to autoTable:
+autoTable(doc, {
+  styles: { font: bodyFont },
+  headStyles: { font: "helvetica" }, // headers are always Latin
+  // ...
+});
+```
+
+### Server-side attachment (`src/server/actions/dms/expiry-reminders.ts`)
+
+For server actions, read the font from the filesystem instead of `fetch()`:
+
+```typescript
+const { installJsPdfShaper } = await import("bidi-shaper/jspdf");
+installJsPdfShaper((jsPDF as { API: ... }).API);
+
+const fs = await import("fs");
+const path = await import("path");
+const fontBuffer = fs.readFileSync(
+  path.join(process.cwd(), "public", "fonts", "noto-sans-arabic-400.ttf")
+);
+const CHUNK = 0x8000;
+const parts: string[] = [];
+for (let i = 0; i < fontBuffer.length; i += CHUNK) {
+  parts.push(String.fromCharCode(...fontBuffer.subarray(i, i + CHUNK)));
+}
+doc.addFileToVFS("NotoSansArabic.ttf", parts.join(""));
+doc.addFont("NotoSansArabic.ttf", "NotoSansArabic", "normal");
+```
+
+---
+
+## Font File
+
+| File | Location | Size | Source |
+|---|---|---|---|
+| `noto-sans-arabic-400.ttf` | `public/fonts/` | 192 KB | Downloaded from Google Fonts static CDN |
+
+The TTF file is committed to the repository. Do **not** rely on a CDN fetch at runtime — the file must be available locally.
+
+If you need to re-download it:
+```powershell
+Invoke-WebRequest `
+  -Uri "https://fonts.gstatic.com/s/notosansarabic/v33/nwpxtLGrOAZMl5nJ_wfgRg3DrWFZWsnVBJ_sS6tlqHHFlhQ5l3sQWIHPqzCfyGyvuw.ttf" `
+  -OutFile "public\fonts\noto-sans-arabic-400.ttf"
+```
+
+---
+
+## Rules
+
+### Rule 1 — NEVER use html2canvas for PDF table exports
+
+`html2canvas` produces image-based PDFs. Image PDFs are:
+- Not selectable / not searchable
+- Blurry at high zoom
+- 10–20 MB for a 2-page list (vs < 300 KB for vector)
+- Unacceptable for a production ERP
+
+```typescript
+// ❌ FORBIDDEN — image PDF
+const canvas = await html2canvas(container);
+doc.addImage(canvas.toDataURL("image/png"), ...);
+
+// ❌ FORBIDDEN — even with JPEG (still an image)
+doc.addImage(canvas.toDataURL("image/jpeg", 0.8), ...);
+```
+
+### Rule 2 — ALWAYS use bidi-shaper for any new PDF that may contain Arabic
+
+If you create a new PDF export function anywhere in the codebase and the data could contain Arabic (employee names, document titles, location names, etc.), you MUST:
+1. Import and install `installJsPdfShaper`
+2. Load and register `NotoSansArabic` font
+3. Pass `font: "NotoSansArabic"` to autoTable body styles
+
+### Rule 3 — jsPDF `addFileToVFS` expects a binary string, NOT base64
+
+```typescript
+// ✓ Correct — binary string via String.fromCharCode
+const bytes = new Uint8Array(arrayBuffer);
+const parts: string[] = [];
+for (let i = 0; i < bytes.length; i += 0x8000) {
+  parts.push(String.fromCharCode(...bytes.subarray(i, i + 0x8000)));
+}
+doc.addFileToVFS("MyFont.ttf", parts.join(""));
+
+// ❌ Wrong — base64 string
+doc.addFileToVFS("MyFont.ttf", btoa(rawString));
+```
+
+### Rule 4 — Keep header rows in `helvetica`
+
+Table header labels are always in English. Use `helvetica` for `headStyles.font` to keep them crisp even when the body uses `NotoSansArabic`.
+
+```typescript
+autoTable(doc, {
+  styles:     { font: bodyFont },          // NotoSansArabic for body cells
+  headStyles: { font: "helvetica" },       // Helvetica for header labels
+});
+```
+
+### Rule 5 — Module-level font cache is mandatory
+
+Loading the 192 KB TTF from disk/network on every export is wasteful. The module-level `_arabicFontData` cache pattern (see Implementation Pattern above) must be used. The font is loaded once per browser session / server worker lifecycle.
+
+### Rule 6 — Arabic detection must cover title AND cell values
+
+```typescript
+function exportDataHasArabic<T>(options: ERPExportOptions<T>): boolean {
+  if (containsArabic(options.title ?? "")) return true;
+  if (containsArabic(options.subtitle ?? "")) return true;   // ← include subtitle
+  return options.data.some((row) =>
+    options.columns.some((col) => {
+      const val = getColumnValue(row, col);
+      return typeof val === "string" && containsArabic(val);
+    })
+  );
+}
+```
+
+---
+
+## File Size Expectations
+
+| Content | Font | Expected size |
+|---|---|---|
+| 50-row Latin-only table | Helvetica (built-in) | 40–80 KB |
+| 50-row Arabic + Latin table | NotoSansArabic TTF embedded | 200–280 KB |
+| 500-row Arabic + Latin table | NotoSansArabic TTF embedded | 250–400 KB |
+
+The font is embedded once per document regardless of row count, so size scales with rows only for the cell data.
+
+---
+
+## Why NOT `@react-pdf/renderer` for Table Exports
+
+`@react-pdf/renderer` is a full layout engine (PDFKit-backed). For simple tabular data:
+- Heavy bundle (adds 200+ KB to client bundle)
+- Slower (layout engine overhead)
+- More complex API for a table-only use case
+- RTL requires manual `flexDirection: "row-reverse"` on every component
+
+jsPDF + bidi-shaper is the correct tool for flat table exports. Use `@react-pdf/renderer` only if you need complex page layouts (multi-column, flowing text, complex RTL documents).
+
+---
+
+## Canonical Reference Files
+
+| File | Role |
+|---|---|
+| `src/lib/export/pdf.ts` | Client-side download PDF export |
+| `src/lib/export/generate-attachment.ts` | Client-side PDF email attachment |
+| `src/server/actions/dms/expiry-reminders.ts` | Server-side PDF email attachment (Node.js fs pattern) |
+| `public/fonts/noto-sans-arabic-400.ttf` | Self-hosted Arabic font TTF |

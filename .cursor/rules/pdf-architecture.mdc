@@ -19,7 +19,7 @@ ERP PDF.1 — Production PDF Generation Framework (2026-07-23)
 |---|---|---|
 | Rich HTML reports, letters, certificates | **Gotenberg Chromium** (server) | `src/lib/pdf/gotenberg.ts` → `src/app/print/` routes |
 | Simple tabular data exports | **jsPDF + jspdf-autotable** (client) | `src/lib/export/pdf.ts` |
-| Arabic/bilingual table exports | **html2canvas → jsPDF** (client fallback) | Same file, auto-detected |
+| Arabic/bilingual table exports | **jsPDF + bidi-shaper + Noto Sans Arabic TTF** (client, auto-detected) | Same file — see `erp-pdf-export-standard.mdc` |
 | Browser immediate print | **window.print()** (client) | `src/lib/export/print.ts` |
 | Merging, stamping, metadata, form-fill | **pdf-lib** | `src/lib/pdf/post-process.ts` |
 | PDF/A or PDF/UA validation | **veraPDF** (CLI, optional) | CI/validation pipeline only |

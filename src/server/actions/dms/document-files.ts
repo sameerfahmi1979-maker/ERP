@@ -20,8 +20,9 @@ export type DmsDocumentFileRow = {
   document_id: number;
   version_id: number | null;
   file_role: string;
-  storage_bucket: string;
-  storage_path: string;
+  // DMS.3C: storage_bucket and storage_path are intentionally NOT included here.
+  // They are internal storage fields and must not be returned to the UI.
+  // Use getDmsDocumentFileSignedUrl(fileId, action) to generate download/preview URLs.
   file_name: string;
   mime_type: string;
   file_size_bytes: number;
@@ -69,6 +70,40 @@ function canViewDms(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
   return hasPermission(ctx, "dms.documents.view") || hasPermission(ctx, "dms.admin");
 }
 
+/** DMS.3C — Check confidentiality access for a document. Returns true if access is allowed. */
+async function checkDocumentConfidentialityAccess(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  documentId: number,
+  ctx: Awaited<ReturnType<typeof getAuthContext>>
+): Promise<{ allowed: boolean; error?: string }> {
+  const isAdmin = hasPermission(ctx, "dms.admin") || ctx.roleCodes.includes("system_admin");
+  if (isAdmin) return { allowed: true };
+
+  const { data: doc, error } = await supabase
+    .from("dms_documents")
+    .select("id, confidentiality_level, owner_user_id, created_by")
+    .eq("id", documentId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (error || !doc) return { allowed: false, error: "Document not found" };
+
+  const level = doc.confidentiality_level as string;
+  const profileId = ctx.profile?.id ?? null;
+
+  // Owner or creator always has access
+  if (profileId && (doc.owner_user_id === profileId || doc.created_by === profileId)) {
+    return { allowed: true };
+  }
+
+  const SENSITIVE = ["hr", "finance", "legal", "executive"];
+  if (!SENSITIVE.includes(level)) return { allowed: true }; // internal/company — base view is sufficient
+
+  if (hasPermission(ctx, `dms.documents.view.${level}`)) return { allowed: true };
+
+  return { allowed: false, error: "Document access is restricted." };
+}
+
 // ── Get files for a document ──────────────────────────────────────────────────
 
 export async function getDmsDocumentFiles(
@@ -80,10 +115,14 @@ export async function getDmsDocumentFiles(
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
     if (!canViewDms(ctx)) return { success: false, error: "Permission denied" };
 
+    // DMS.3C — confidentiality check before returning files
+    const access = await checkDocumentConfidentialityAccess(supabase, documentId, ctx);
+    if (!access.allowed) return { success: false, error: access.error ?? "Document access is restricted." };
+
     const { data, error } = await supabase
       .from("dms_document_files")
       .select(
-        `id, document_id, version_id, file_role, storage_bucket, storage_path,
+        `id, document_id, version_id, file_role,
          file_name, mime_type, file_size_bytes, sha256_hash, page_count, language,
          integrity_status, integrity_checked_at, integrity_error_message,
          ocr_status, ocr_provider, ocr_model, ocr_started_at, ocr_completed_at,
@@ -161,6 +200,10 @@ export async function getDmsDocumentFileSignedUrl(
       .single();
 
     if (fileError || !file) return { success: false, error: "File not found" };
+
+    // DMS.3C — confidentiality check before issuing signed URL
+    const access = await checkDocumentConfidentialityAccess(supabase, file.document_id as number, ctx);
+    if (!access.allowed) return { success: false, error: access.error ?? "Document access is restricted." };
 
     const expiresIn = action === "preview" ? PREVIEW_EXPIRY_SECONDS : DOWNLOAD_EXPIRY_SECONDS;
 

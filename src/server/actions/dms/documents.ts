@@ -141,6 +141,64 @@ function revalidateDmsDocuments(id?: number) {
   }
 }
 
+// ── Confidentiality access helpers ────────────────────────────────────────────
+
+/**
+ * Levels that require a matching per-level permission beyond `dms.documents.view`.
+ * `internal` and `company` are accessible to anyone with the base view permission.
+ */
+const SENSITIVE_LEVELS = ["hr", "finance", "legal", "executive"] as const;
+type ConfidentialityLevel = "internal" | "company" | "hr" | "finance" | "legal" | "executive";
+
+/**
+ * Returns the set of confidentiality levels the current user may access.
+ * Admins/system_admin get all levels.
+ * Otherwise, `internal` and `company` are always included (base view permission already checked).
+ * Per-sensitive level: included only when the user holds the matching per-level permission.
+ */
+function getAllowedConfidentialityLevels(
+  ctx: Awaited<ReturnType<typeof getAuthContext>>
+): ConfidentialityLevel[] {
+  const isAdmin =
+    hasPermission(ctx, "dms.admin") || ctx.roleCodes.includes("system_admin");
+  if (isAdmin) return ["internal", "company", "hr", "finance", "legal", "executive"];
+
+  const allowed: ConfidentialityLevel[] = ["internal", "company"];
+  for (const level of SENSITIVE_LEVELS) {
+    if (hasPermission(ctx, `dms.documents.view.${level}`)) {
+      allowed.push(level);
+    }
+  }
+  return allowed;
+}
+
+/**
+ * Returns true if the user can access a document with the given confidentiality_level.
+ * Admin/system_admin: always allowed.
+ * Owner (owner_user_id) or creator (created_by): always allowed for their own docs.
+ * Otherwise: user must have the matching per-level permission.
+ */
+function canAccessDocumentByConfidentiality(
+  ctx: Awaited<ReturnType<typeof getAuthContext>>,
+  confidentialityLevel: string,
+  ownerUserId: number | null,
+  createdBy: number | null
+): boolean {
+  const isAdmin =
+    hasPermission(ctx, "dms.admin") || ctx.roleCodes.includes("system_admin");
+  if (isAdmin) return true;
+
+  const profileId = ctx.profile?.id ?? null;
+  if (profileId && (ownerUserId === profileId || createdBy === profileId)) return true;
+
+  if (!SENSITIVE_LEVELS.includes(confidentialityLevel as (typeof SENSITIVE_LEVELS)[number])) {
+    // internal or company — base view permission (already checked by callers) is sufficient
+    return true;
+  }
+
+  return hasPermission(ctx, `dms.documents.view.${confidentialityLevel}`);
+}
+
 // ── Insert event helper ────────────────────────────────────────────────────────
 
 async function insertDmsEvent(
@@ -173,6 +231,10 @@ export async function getDmsDocuments(
 
     const supabase = await createClient();
     const isAdmin = hasPermission(ctx, "dms.admin") || ctx.roleCodes.includes("system_admin");
+    const profileId = ctx.profile?.id ?? null;
+
+    // DMS.3C — build allowed confidentiality levels for this user
+    const allowedLevels = getAllowedConfidentialityLevels(ctx);
 
     let query = supabase
       .from("dms_documents")
@@ -184,6 +246,18 @@ export async function getDmsDocuments(
       `)
       .is("deleted_at", null)
       .order("created_at", { ascending: false });
+
+    // DMS.3C — enforce confidentiality: show only allowed levels OR docs the user owns/created
+    if (!isAdmin) {
+      // owner_user_id = profileId OR created_by = profileId OR level in allowed set
+      if (profileId) {
+        query = query.or(
+          `confidentiality_level.in.(${allowedLevels.join(",")}),owner_user_id.eq.${profileId},created_by.eq.${profileId}`
+        );
+      } else {
+        query = query.in("confidentiality_level", allowedLevels);
+      }
+    }
 
     // ── Search ───────────────────────────────────────────────────────────────────
     if (filters?.search) {
@@ -214,11 +288,17 @@ export async function getDmsDocuments(
           return { success: true, data: [] };
         }
 
-        // For non-admin users, exclude confidential documents from content search results
+        // DMS.3C — for non-admin users, content search respects allowed confidentiality levels
         if (!isAdmin) {
-          query = query
-            .in("id", matchedIds)
-            .not("confidentiality_level", "in", `(hr,legal,executive)`);
+          if (profileId) {
+            query = query
+              .in("id", matchedIds)
+              .or(
+                `confidentiality_level.in.(${allowedLevels.join(",")}),owner_user_id.eq.${profileId},created_by.eq.${profileId}`
+              );
+          } else {
+            query = query.in("id", matchedIds).in("confidentiality_level", allowedLevels);
+          }
         } else {
           query = query.in("id", matchedIds);
         }
@@ -367,7 +447,14 @@ export async function getDmsDocument(
     if (error) return { success: false, error: error.message };
     if (!data) return { success: false, error: "Document not found" };
 
-    return { success: true, data: data as DmsDocumentRow };
+    const doc = data as DmsDocumentRow;
+
+    // DMS.3C — enforce confidentiality access
+    if (!canAccessDocumentByConfidentiality(ctx, doc.confidentiality_level, doc.owner_user_id ?? null, doc.created_by ?? null)) {
+      return { success: false, error: "Document access is restricted." };
+    }
+
+    return { success: true, data: doc };
   } catch (err) {
     logger.error("getDmsDocument error", err);
     return { success: false, error: "Failed to load document" };
@@ -483,8 +570,15 @@ export async function getDmsDocumentRecordData(
       return { success: false, error: docResult.error?.message ?? "Document not found" };
     }
 
+    const docRow = docResult.data as DmsDocumentRow;
+
+    // DMS.3C — enforce confidentiality access on full record
+    if (!canAccessDocumentByConfidentiality(ctx, docRow.confidentiality_level, docRow.owner_user_id ?? null, docRow.created_by ?? null)) {
+      return { success: false, error: "Document access is restricted." };
+    }
+
     const record: DmsDocumentRecordData = {
-      ...(docResult.data as DmsDocumentRow),
+      ...docRow,
       metadata_values: (metaResult.data ?? []) as unknown as DmsDocumentRecordData["metadata_values"],
       links: (linksResult.data ?? []) as unknown as DmsDocumentRecordData["links"],
       versions: (versionsResult.data ?? []) as unknown as DmsDocumentRecordData["versions"],
@@ -557,6 +651,17 @@ export async function createDmsDocument(
 
     if (data.expiry_date && data.issue_date && data.expiry_date < data.issue_date) {
       return { success: false, error: "Expiry date must be on or after issue date" };
+    }
+
+    // DMS.3C — creating a sensitive-level document requires matching per-level permission
+    if (SENSITIVE_LEVELS.includes(data.confidentiality_level as (typeof SENSITIVE_LEVELS)[number])) {
+      const isAdminCreate = hasPermission(ctx, "dms.admin") || ctx.roleCodes.includes("system_admin");
+      if (!isAdminCreate && !hasPermission(ctx, `dms.documents.view.${data.confidentiality_level}`)) {
+        return {
+          success: false,
+          error: `Permission denied: creating a ${data.confidentiality_level}-level document requires dms.documents.view.${data.confidentiality_level}`,
+        };
+      }
     }
 
     const supabase = await createClient();
@@ -662,6 +767,20 @@ export async function updateDmsDocument(
 
     if (data.expiry_date && data.issue_date && data.expiry_date < data.issue_date) {
       return { success: false, error: "Expiry date must be on or after issue date" };
+    }
+
+    // DMS.3C — updating confidentiality to a sensitive level requires matching permission
+    if (
+      data.confidentiality_level &&
+      SENSITIVE_LEVELS.includes(data.confidentiality_level as (typeof SENSITIVE_LEVELS)[number])
+    ) {
+      const isAdminUpdate = hasPermission(ctx, "dms.admin") || ctx.roleCodes.includes("system_admin");
+      if (!isAdminUpdate && !hasPermission(ctx, `dms.documents.view.${data.confidentiality_level}`)) {
+        return {
+          success: false,
+          error: `Permission denied: setting ${data.confidentiality_level} confidentiality requires dms.documents.view.${data.confidentiality_level}`,
+        };
+      }
     }
 
     const supabase = await createClient();

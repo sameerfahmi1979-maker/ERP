@@ -11,24 +11,8 @@ import { X, Users, Mail, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { getUsersForEmailSelect } from "@/server/actions/lookups/users-for-email";
-import { sendExportEmail } from "@/server/actions/email";
-import {
-  generatePDFAttachment,
-  generateExcelAttachment,
-  generateCSVAttachment,
-} from "@/lib/export";
+import { sendExpiryDocumentsEmail } from "@/server/actions/dms/expiry-reminders";
 import type { DmsExpiringDocumentRow } from "@/server/actions/dms/expiry-reminders";
-import type { ERPExportColumn } from "@/lib/export";
-
-const EXPIRY_EXPORT_COLUMNS: ERPExportColumn<DmsExpiringDocumentRow>[] = [
-  { key: "document_no", header: "Doc No", width: 14 },
-  { key: "title", header: "Title", width: 30 },
-  { key: "document_type", header: "Type", width: 20 },
-  { key: "category", header: "Category", width: 18 },
-  { key: "expiry_date", header: "Expiry Date", width: 14 },
-  { key: "days_remaining", header: "Days Remaining", width: 14 },
-  { key: "status", header: "Status", width: 12 },
-];
 
 type AttachmentFormat = "pdf" | "excel" | "csv" | "none";
 
@@ -176,35 +160,25 @@ export function DmsExpiryEmailDialog({
     setIsSubmitting(true);
     try {
       const toEmails = finalRecipients.map((r) => r.email);
-      const exportOptions = {
-        title: tabTitle,
-        filename: tabTitle.toLowerCase().replace(/\s+/g, "-"),
-        columns: EXPIRY_EXPORT_COLUMNS,
-        data: docs,
-        generatedAt: new Date(),
-      };
 
-      let attachment;
-      if (attachmentFormat === "pdf") {
-        attachment = generatePDFAttachment(exportOptions);
-      } else if (attachmentFormat === "excel") {
-        attachment = await generateExcelAttachment(exportOptions);
-      } else if (attachmentFormat === "csv") {
-        attachment = generateCSVAttachment(exportOptions);
-      }
-
-      if (!attachment && attachmentFormat !== "none") {
-        toast.error("Failed to generate attachment");
-        return;
-      }
-
-      const result = await sendExportEmail({
+      // Generate attachment server-side to avoid exceeding the 10 MB server action body limit.
+      // The client sends only the lean doc rows (JSON) + email params.
+      const result = await sendExpiryDocumentsEmail({
         to: toEmails,
         subject: subject.trim(),
         body: body.trim() || `Please find the ${tabTitle} list attached.`,
-        ...(attachment ? { attachment } : {}),
-        context: { moduleCode: "DMS", recordCount: docs.length, exportMode: "filtered" },
-      } as Parameters<typeof sendExportEmail>[0]);
+        attachmentFormat,
+        docs: docs.map((r) => ({
+          document_no: r.document_no,
+          title: r.title,
+          document_type: r.document_type ?? null,
+          category: r.category ?? null,
+          expiry_date: r.expiry_date ?? null,
+          days_remaining: r.days_remaining ?? null,
+          status: r.status,
+        })),
+        tabTitle,
+      });
 
       if (result.success) {
         toast.success(`Email sent to ${toEmails.length} recipient${toEmails.length !== 1 ? "s" : ""}`);

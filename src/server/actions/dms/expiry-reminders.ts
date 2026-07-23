@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { sendExportEmail } from "@/server/actions/email";
 import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -758,6 +759,134 @@ export async function markDmsExpiryReminderHandled(reminderId: number): Promise<
     revalidatePath("/dms/expiring");
     return { success: true };
   } catch (e) {
+    return { success: false, error: String(e) };
+  }
+}
+
+// ── Server-side email sending for expiry lists ───────────────────────────────
+// Generates the attachment on the server so no large base64 is ever passed
+// through the server action body (avoids the 10 MB body-size-limit error).
+
+export type SendExpiryEmailInput = {
+  to: string[];
+  subject: string;
+  body: string;
+  attachmentFormat: "pdf" | "excel" | "csv" | "none";
+  docs: Pick<
+    DmsExpiringDocumentRow,
+    "document_no" | "title" | "document_type" | "category" | "expiry_date" | "days_remaining" | "status"
+  >[];
+  tabTitle: string;
+};
+
+export async function sendExpiryDocumentsEmail(
+  input: SendExpiryEmailInput,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const ctx = await getAuthContext();
+    if (!ctx.profile) return { success: false, error: "Authentication required" };
+    if (!canViewExpiry(ctx)) return { success: false, error: "Permission denied" };
+
+    let attachment: { base64Content: string; filename: string; mimeType: string } | undefined;
+    const filename = input.tabTitle.toLowerCase().replace(/\s+/g, "-");
+
+    if (input.attachmentFormat === "csv") {
+      const escField = (v: string | number | null) => {
+        const s = v == null ? "" : String(v);
+        return s.includes(",") || s.includes('"') || s.includes("\n")
+          ? `"${s.replace(/"/g, '""')}"`
+          : s;
+      };
+      const csvRows = [
+        ["Doc No", "Title", "Type", "Category", "Expiry Date", "Days Remaining", "Status"].join(","),
+        ...input.docs.map((r) =>
+          [r.document_no, r.title, r.document_type ?? "", r.category ?? "",
+           r.expiry_date ?? "", r.days_remaining ?? "", r.status]
+            .map(escField)
+            .join(",")
+        ),
+      ].join("\r\n");
+      const { stringToBase64Utf8 } = await import("@/lib/email/attachment-utils");
+      attachment = { base64Content: stringToBase64Utf8(csvRows), filename: `${filename}.csv`, mimeType: "text/csv" };
+
+    } else if (input.attachmentFormat === "excel") {
+      const ExcelJS = (await import("exceljs")).default;
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet(input.tabTitle.substring(0, 31));
+      ws.columns = [
+        { header: "Doc No", key: "document_no", width: 16 },
+        { header: "Title", key: "title", width: 32 },
+        { header: "Type", key: "document_type", width: 22 },
+        { header: "Category", key: "category", width: 20 },
+        { header: "Expiry Date", key: "expiry_date", width: 14 },
+        { header: "Days Remaining", key: "days_remaining", width: 16 },
+        { header: "Status", key: "status", width: 14 },
+      ];
+      ws.getRow(1).eachCell((cell) => {
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1a237e" } };
+        cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+        cell.alignment = { vertical: "middle", horizontal: "center" };
+      });
+      input.docs.forEach((r) => ws.addRow(r));
+      const buffer = await wb.xlsx.writeBuffer();
+      const { arrayBufferToBase64 } = await import("@/lib/email/attachment-utils");
+      attachment = {
+        base64Content: arrayBufferToBase64(buffer as ArrayBuffer),
+        filename: `${filename}.xlsx`,
+        mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      };
+
+    } else if (input.attachmentFormat === "pdf") {
+      // Server-side text-based PDF — uses jsPDF + autoTable (no html2canvas, Node.js compatible).
+      // Produces a compact vector PDF suitable for email; no image-based rendering.
+      const jsPDFModule = await import("jspdf");
+      const jsPDF = jsPDFModule.default ?? jsPDFModule;
+      const autoTableModule = await import("jspdf-autotable");
+      const autoTable = autoTableModule.default ?? autoTableModule;
+      const doc = new (jsPDF as new (opts: object) => InstanceType<typeof jsPDF>)({
+        orientation: "landscape", unit: "mm", format: "a4",
+      });
+      const now = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+      (doc as { setFont: (f: string, s: string) => void }).setFont("helvetica", "bold");
+      (doc as { setFontSize: (n: number) => void }).setFontSize(14);
+      (doc as { text: (t: string, x: number, y: number) => void }).text(input.tabTitle, 14, 14);
+      (doc as { setFont: (f: string, s: string) => void }).setFont("helvetica", "normal");
+      (doc as { setFontSize: (n: number) => void }).setFontSize(9);
+      (doc as { text: (t: string, x: number, y: number) => void })
+        .text(`Generated: ${now}  |  Total: ${input.docs.length} records`, 14, 21);
+      (autoTable as (doc: unknown, opts: object) => void)(doc, {
+        startY: 26,
+        head: [["Doc No", "Title", "Type", "Category", "Expiry Date", "Days Left", "Status"]],
+        body: input.docs.map((r) => [
+          r.document_no, r.title, r.document_type ?? "", r.category ?? "",
+          r.expiry_date ?? "", r.days_remaining == null ? "" : String(r.days_remaining), r.status,
+        ]),
+        headStyles: { fillColor: [26, 35, 126], textColor: 255, fontStyle: "bold", fontSize: 8 },
+        bodyStyles: { fontSize: 8 },
+        alternateRowStyles: { fillColor: [245, 245, 245] },
+        columnStyles: {
+          0: { cellWidth: 24 }, 1: { cellWidth: 55 }, 2: { cellWidth: 35 },
+          3: { cellWidth: 30 }, 4: { cellWidth: 24 }, 5: { cellWidth: 18 }, 6: { cellWidth: 22 },
+        },
+        margin: { left: 14, right: 14 },
+        styles: { overflow: "linebreak" },
+      });
+      const pdfBuffer = (doc as { output: (t: string) => ArrayBuffer }).output("arraybuffer");
+      const { arrayBufferToBase64 } = await import("@/lib/email/attachment-utils");
+      attachment = { base64Content: arrayBufferToBase64(pdfBuffer), filename: `${filename}.pdf`, mimeType: "application/pdf" };
+    }
+
+    const result = await sendExportEmail({
+      to: input.to,
+      subject: input.subject,
+      body: input.body,
+      ...(attachment ? { attachment } : {}),
+      context: { moduleCode: "DMS", recordCount: input.docs.length, exportMode: "filtered" },
+    } as Parameters<typeof sendExportEmail>[0]);
+
+    return result.success ? { success: true } : { success: false, error: result.error ?? "Failed to send email" };
+  } catch (e) {
+    logger.error("[sendExpiryDocumentsEmail] Error:", e);
     return { success: false, error: String(e) };
   }
 }

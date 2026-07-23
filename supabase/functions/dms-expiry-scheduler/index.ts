@@ -262,7 +262,7 @@ Deno.serve(async (req: Request) => {
             channel_in_app: true,
             channel_email: !!(r.recipient_email),
             scheduled_for: r.scheduled_for as string ?? new Date().toISOString(),
-            action_url: docId ? `${APP_URL}/dms/documents/record/${docId}` : null,
+            action_url: docId ? `/dms/documents/record/${docId}` : null,
             action_label: "View Document",
             metadata_json: { dms_notification_id: dmsId, run_id: runId },
             created_at: new Date().toISOString(),
@@ -331,6 +331,7 @@ Deno.serve(async (req: Request) => {
         if (!recipientEmail) { emailsFailed++; continue; }
 
         const actionUrl = n.action_url as string | null;
+        const absoluteActionUrl = actionUrl ? `${APP_URL}${actionUrl}` : null;
         const { error: emailErr } = await supabase.from("erp_email_queue").insert({
           source_module: "DMS",
           source_entity_type: "dms_notification",
@@ -340,8 +341,8 @@ Deno.serve(async (req: Request) => {
           status: "pending",
           to_emails: [recipientEmail],
           subject: n.title as string,
-          html_body: `<p>${n.message as string}</p>${actionUrl ? `<p><a href="${actionUrl}">View Document</a></p>` : ""}`,
-          text_body: `${n.message as string}${actionUrl ? `\n\nView: ${actionUrl}` : ""}`,
+          html_body: `<p>${n.message as string}</p>${absoluteActionUrl ? `<p><a href="${absoluteActionUrl}">View Document</a></p>` : ""}`,
+          text_body: `${n.message as string}${absoluteActionUrl ? `\n\nView: ${absoluteActionUrl}` : ""}`,
           template_code: "DMS_EXPIRY_NOTIFICATION",
           scheduled_for: new Date().toISOString(),
           created_at: new Date().toISOString(),

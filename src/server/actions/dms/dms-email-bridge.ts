@@ -225,9 +225,12 @@ export async function bridgeDmsNotificationToGlobal(
       days_remaining: daysRemaining,
       reminder_days_before: daysRemaining,
       owner_name: (doc?.owner as Record<string, unknown> | null)?.full_name as string ?? "",
+      // Absolute URL is used in email templates where a clickable link must be fully-qualified
       action_url: `${(process.env.NEXT_PUBLIC_APP_URL ?? "https://erp.algt.net").replace(/\/$/, "")}/dms/documents/record/${doc?.id ?? row.document_id}`,
       company_name: "ALGT",
     };
+    // Relative path for erp_notifications.action_url (in-app bell / allowlist-safe)
+    const notificationActionUrl = `/dms/documents/record/${doc?.id ?? row.document_id}`;
 
     const rendered = await renderNotificationTemplate(templateCode, variables);
     if (!rendered.success || !rendered.data) {
@@ -266,7 +269,7 @@ export async function bridgeDmsNotificationToGlobal(
         channel_in_app: true,
         channel_email: !!(recipientEmail),
         scheduled_for: row.scheduled_for as string ?? nowTs,
-        action_url: variables.action_url,
+        action_url: notificationActionUrl,
         action_label: "View Document",
         metadata_json: {
           dms_notification_id: dmsNotificationId,

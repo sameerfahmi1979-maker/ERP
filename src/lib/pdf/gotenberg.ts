@@ -5,14 +5,39 @@
  * Gotenberg is the primary production PDF renderer.
  * It must only be called from server-side code (server actions, API routes).
  *
- * Local Docker:
- *   docker run --rm -p 3100:3100 gotenberg/gotenberg:8 \
- *     gotenberg --api-timeout=60s \
- *     --chromium-deny-list="^(file|ftp)://.*"
+ * ─── Docker Setup ────────────────────────────────────────────────────────
  *
- * Env vars:
- *   GOTENBERG_URL=http://localhost:3100
+ * Gotenberg listens on port 3000 INSIDE the container.
+ * Map it to a host port of your choice (e.g. 3100):
+ *
+ *   docker run --rm -p 3100:3000 gotenberg/gotenberg:8
+ *
+ * Then set GOTENBERG_URL=http://localhost:3100 in .env.local.
+ *
+ * ─── Docker-to-Host Networking ───────────────────────────────────────────
+ *
+ * When Gotenberg runs in Docker and must fetch the ERP print route,
+ * it CANNOT use `localhost` — that resolves to the container itself.
+ *
+ * Use one of these approaches:
+ *
+ * Option A (recommended for local dev on Windows/Mac):
+ *   INTERNAL_SITE_URL=http://host.docker.internal:3000
+ *
+ * Option B (Linux Docker):
+ *   INTERNAL_SITE_URL=http://172.17.0.1:3000  (or docker0 bridge IP)
+ *
+ * Option C (same Docker Compose network):
+ *   INTERNAL_SITE_URL=http://erp-app:3000
+ *
+ * INTERNAL_SITE_URL is used to build the URL that Gotenberg fetches.
+ * NEXT_PUBLIC_SITE_URL (https://erp.algt.net) is the public URL shown to users.
+ *
+ * ─── Env vars ────────────────────────────────────────────────────────────
+ *   GOTENBERG_URL=http://localhost:3100         # host → Gotenberg
  *   GOTENBERG_TIMEOUT_MS=30000
+ *   INTERNAL_SITE_URL=http://host.docker.internal:3000   # Gotenberg → ERP
+ *   PDF_PRINT_TOKEN_SECRET=<random-secret-min-32-chars>
  */
 
 import { createHash } from "crypto";
@@ -20,10 +45,24 @@ import { createHash } from "crypto";
 const GOTENBERG_URL = process.env.GOTENBERG_URL ?? "http://localhost:3100";
 const GOTENBERG_TIMEOUT_MS = Number(process.env.GOTENBERG_TIMEOUT_MS ?? "30000");
 
-// Allowlist pattern: only render our own internal print routes
-const ALLOWED_PRINT_URL_PATTERN =
-  process.env.GOTENBERG_ALLOWED_URL_PATTERN ??
-  `^${process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"}/print/`;
+// The INTERNAL_SITE_URL is what Gotenberg fetches — must be reachable from the Gotenberg container.
+// Allow: localhost, host.docker.internal, internal hostnames, and the configured INTERNAL_SITE_URL.
+// Block: public internet URLs that don't start with the expected print path,
+//        file:// URLs, ftp:// URLs, metadata endpoints.
+const INTERNAL_SITE_URL =
+  process.env.INTERNAL_SITE_URL ??
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  "http://localhost:3000";
+
+function buildAllowedPrintUrlPattern(): RegExp {
+  const base = INTERNAL_SITE_URL.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+  // Also allow host.docker.internal and localhost variants
+  return new RegExp(
+    `^(${base}|http://host\\.docker\\.internal:\\d+|http://localhost:\\d+|http://127\\.0\\.0\\.1:\\d+)/print/`,
+  );
+}
+
+const ALLOWED_PRINT_URL_PATTERN = buildAllowedPrintUrlPattern();
 
 /**
  * Health-check: returns true if Gotenberg is reachable.
@@ -96,8 +135,7 @@ export async function gotenbergConvertUrl(options: GotenbergUrlOptions): Promise
   const { url, timeout = GOTENBERG_TIMEOUT_MS } = options;
 
   // SSRF guard — only allow our own internal print routes
-  const urlPattern = new RegExp(ALLOWED_PRINT_URL_PATTERN);
-  if (!urlPattern.test(url)) {
+  if (!ALLOWED_PRINT_URL_PATTERN.test(url)) {
     throw new Error(
       `[Gotenberg] Rejected URL that does not match ALLOWED_PRINT_URL_PATTERN: ${url.substring(0, 80)}`,
     );

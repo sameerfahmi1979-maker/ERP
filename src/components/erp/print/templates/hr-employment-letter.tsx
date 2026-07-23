@@ -71,22 +71,15 @@ export async function loadHrEmploymentLetterData(params: {
       employee_code,
       full_name_en,
       full_name_ar,
-      join_date,
+      joining_date,
       employment_type_id,
       owner_company_id,
-      designations!employees_designation_id_fkey(name_en),
-      departments!employees_department_id_fkey(name_en),
+      designations!employees_designation_id_fkey(designation_name_en),
+      departments!employees_department_id_fkey(department_name_en),
       owner_companies!employees_owner_company_id_fkey(
         legal_name_en,
         legal_name_ar,
-        tax_registration_number
-      ),
-      erp_report_branding_profiles(
-        address_block_en,
-        address_block_ar,
-        phone,
-        email,
-        footer_text_en
+        trn
       )
     `)
     .eq("id", params.recordId)
@@ -94,11 +87,20 @@ export async function loadHrEmploymentLetterData(params: {
     .single();
 
   if (empErr || !emp) {
-    throw new Error(`Employee not found: id=${params.recordId}, company=${params.ownerCompanyId}`);
+    console.error(`[PrintRoute] Employee query failed: id=${params.recordId}, company=${params.ownerCompanyId}, error:`, empErr);
+    throw new Error(`Employee not found: id=${params.recordId}, company=${params.ownerCompanyId}${empErr ? ` (${empErr.message})` : ""}`);
   }
 
+  // Load branding profile for the owner company (separate query — no FK from employees)
+  const { data: brandingRow } = await supabase
+    .from("erp_report_branding_profiles")
+    .select("address_block_en, address_block_ar, phone, email, footer_text_en")
+    .eq("owner_company_id", params.ownerCompanyId)
+    .limit(1)
+    .maybeSingle();
+
   const company = emp.owner_companies as unknown as Record<string, string> | null;
-  const branding = (emp.erp_report_branding_profiles as unknown as Record<string, string>[] | null)?.[0] ?? null;
+  const branding = brandingRow ?? null;
 
   return {
     letterRef: `EMP-LTR-${emp.employee_code}-${new Date().getFullYear()}`,
@@ -106,15 +108,15 @@ export async function loadHrEmploymentLetterData(params: {
     employeeCode: emp.employee_code as string,
     fullNameEn: emp.full_name_en as string,
     fullNameAr: emp.full_name_ar as string | undefined,
-    jobTitle: (emp.designations as unknown as Record<string, string> | null)?.name_en ?? "—",
-    department: (emp.departments as unknown as Record<string, string> | null)?.name_en ?? undefined,
-    joinDate: emp.join_date
-      ? new Date(emp.join_date as string).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })
+    jobTitle: (emp.designations as unknown as Record<string, string> | null)?.designation_name_en ?? "—",
+    department: (emp.departments as unknown as Record<string, string> | null)?.department_name_en ?? undefined,
+    joinDate: emp.joining_date
+      ? new Date(emp.joining_date as string).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })
       : "—",
     employmentType: "Full-Time",
     companyNameEn: company?.legal_name_en ?? "Company",
     companyNameAr: company?.legal_name_ar ?? undefined,
-    taxNumber: company?.tax_registration_number ?? undefined,
+    taxNumber: company?.trn ?? undefined,
     addressBlockEn: branding?.address_block_en ?? undefined,
     addressBlockAr: branding?.address_block_ar ?? undefined,
     phone: branding?.phone ?? undefined,

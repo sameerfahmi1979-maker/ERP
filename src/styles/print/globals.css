@@ -6,10 +6,42 @@
  *   import "@/styles/print/globals.css";
  *
  * It is a no-op in screen view — only activates in @media print or Gotenberg capture.
+ *
+ * FONT STRATEGY (self-hosted — no CDN dependency):
+ *   Noto Sans Arabic woff2 files are served from /public/fonts/
+ *   Copied from @fontsource/noto-sans-arabic during build/setup.
+ *   This ensures Gotenberg (which may run without internet access) can load Arabic fonts.
+ *   Gotenberg fetches fonts via the same URL it uses for the print route
+ *   (using INTERNAL_SITE_URL, e.g. http://host.docker.internal:3000/fonts/...).
  */
 
-/* ─── Google Fonts: Arabic + Latin ──────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;600;700&family=Noto+Sans:ital,wght@0,400;0,600;0,700;1,400&display=swap');
+/* ─── Self-hosted Fonts: Noto Sans Arabic ────────────────────────────────── */
+@font-face {
+  font-family: 'Noto Sans Arabic';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/noto-sans-arabic-arabic-400-normal.woff2') format('woff2');
+  unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF;
+}
+
+@font-face {
+  font-family: 'Noto Sans Arabic';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/noto-sans-arabic-arabic-600-normal.woff2') format('woff2');
+  unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF;
+}
+
+@font-face {
+  font-family: 'Noto Sans Arabic';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/noto-sans-arabic-arabic-700-normal.woff2') format('woff2');
+  unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF;
+}
 
 /* ─── CSS Custom Properties ──────────────────────────────────────────────── */
 :root {

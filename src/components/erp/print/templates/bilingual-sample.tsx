@@ -1,16 +1,18 @@
 /**
- * Template: Bilingual Sample (English + Arabic)
+ * Template: Bilingual Employment Confirmation (English + Arabic)
  * Template Key: bilingual-sample-en-ar
  * Phase: ERP PDF.1 — Production PDF Generation Framework (2026-07-23)
  *
- * Proof-set: Bilingual/Arabic document demonstrating:
- *  - RTL Arabic text correctly shaped via Noto Sans Arabic
- *  - Bilingual two-column layout
- *  - Mixed Arabic+English metadata
- *  - Arabic company name in header
+ * Bilingual proof template demonstrating Arabic RTL support.
+ * Uses real employee data (same as hr-employment-letter-en).
+ * recordType: 'employee', recordId: employee.id
+ *
+ * Governance status: DRAFT — promote to 'published' once Arabic/bilingual
+ * visual QA passes with real Gotenberg runtime.
  */
 
 import React from "react";
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
   DocumentPage,
   DocumentHeader,
@@ -37,7 +39,8 @@ export interface BilingualSampleData {
   footerTextAr?: string;
 }
 
-// ─── Data Loader (Stub) ────────────────────────────────────────────────────
+// ─── Data Loader (Real — uses employee data) ─────────────────────────────────
+// recordType: 'employee' | recordId: employees.id
 
 export async function loadBilingualSampleData(params: {
   recordType: string;
@@ -45,18 +48,62 @@ export async function loadBilingualSampleData(params: {
   ownerCompanyId: number;
   locale: string;
 }): Promise<BilingualSampleData> {
-  void params;
+  const supabase = createAdminClient();
+
+  const { data: emp } = await supabase
+    .from("employees")
+    .select(`
+      employee_code,
+      full_name_en,
+      full_name_ar,
+      joining_date,
+      owner_company_id,
+      designations!employees_designation_id_fkey(designation_name_en, designation_name_ar),
+      owner_companies!employees_owner_company_id_fkey(
+        legal_name_en,
+        legal_name_ar,
+        trn
+      )
+    `)
+    .eq("id", params.recordId)
+    .eq("owner_company_id", params.ownerCompanyId)
+    .single();
+
+  const { data: brandingRow } = await supabase
+    .from("erp_report_branding_profiles")
+    .select("footer_text_en, footer_text_ar")
+    .eq("owner_company_id", params.ownerCompanyId)
+    .limit(1)
+    .maybeSingle();
+
+  const today = new Date();
+  const dateEn = today.toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+  const dateAr = today.toLocaleDateString("ar-AE", { day: "2-digit", month: "long", year: "numeric" });
+
+  const company = (emp?.owner_companies as unknown as Record<string, string> | null);
+  const branding = Array.isArray(brandingRow)
+    ? (brandingRow[0] as unknown as Record<string, string> | null)
+    : (brandingRow as unknown as Record<string, string> | null);
+  const designation = Array.isArray(emp?.designations)
+    ? (emp?.designations[0] as unknown as Record<string, string> | null)
+    : (emp?.designations as unknown as Record<string, string> | null);
+
+  const nameEn = emp?.full_name_en ?? `Employee #${params.recordId}`;
+  const nameAr = emp?.full_name_ar ?? nameEn;
+  const titleEn = designation?.designation_name_en ?? "Employee";
+  const titleAr = designation?.designation_name_ar ?? titleEn;
+
   return {
-    refNo: "BILINGUAL-DEMO-001",
-    date: "23 يوليو 2026 / 23 July 2026",
-    companyNameEn: "Alliance Gulf Transport & Construction",
-    companyNameAr: "تحالف الخليج للنقل والإنشاءات",
-    recipientNameEn: "Mohammed Al-Rashidi",
-    recipientNameAr: "محمد الراشدي",
-    bodyEn: `To Whom It May Concern,\n\nThis letter is issued to confirm that the above-named individual is an employee of our organization. All information contained herein is accurate and valid as of the date of issuance.\n\nThis document is issued upon the employee's request for official use only.`,
-    bodyAr: `إلى من يهمه الأمر،\n\nيُصدر هذا الخطاب لتأكيد أن الشخص المذكور أعلاه موظف لدى منظمتنا. جميع المعلومات الواردة هنا دقيقة وصحيحة اعتباراً من تاريخ الإصدار.\n\nيُصدر هذا الوثيقة بناءً على طلب الموظف للاستخدام الرسمي فقط.`,
-    footerTextEn: "Alliance Gulf Transport & Construction LLC",
-    footerTextAr: "تحالف الخليج للنقل والإنشاءات ش.ذ.م.م",
+    refNo: `CONFIRM-${emp?.employee_code ?? params.recordId}-${today.getFullYear()}`,
+    date: `${dateAr} / ${dateEn}`,
+    companyNameEn: company?.legal_name_en ?? "Alliance Gulf Transport & Construction",
+    companyNameAr: company?.legal_name_ar ?? "تحالف الخليج للنقل والإنشاءات",
+    recipientNameEn: nameEn,
+    recipientNameAr: nameAr,
+    bodyEn: `To Whom It May Concern,\n\nThis letter confirms that ${nameEn}, holding the position of ${titleEn}, is a full-time employee of this organization. The employee's tenure commenced on ${emp?.joining_date ?? "—"} and remains active as of the date of this letter.\n\nThis document is issued upon the employee's request for official use only.`,
+    bodyAr: `إلى من يهمه الأمر،\n\nيُقر هذا الخطاب بأن السيد/السيدة ${nameAr}، الذي يشغل منصب ${titleAr}، موظف بدوام كامل لدى هذه المنظمة. بدأت خدمة الموظف في ${emp?.joining_date ?? "—"} ولا تزال سارية حتى تاريخ هذا الخطاب.\n\nيُصدر هذا الخطاب بناءً على طلب الموظف للاستخدام الرسمي فقط.`,
+    footerTextEn: branding?.footer_text_en ?? (company?.legal_name_en ?? "ALGT"),
+    footerTextAr: branding?.footer_text_ar ?? (company?.legal_name_ar ?? "تحالف الخليج"),
   };
 }
 

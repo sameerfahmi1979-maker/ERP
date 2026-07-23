@@ -2,11 +2,17 @@
  * ERP PDF Generation — Renderer Dispatcher
  * Phase: ERP PDF.1 — Production PDF Generation Framework (2026-07-23)
  *
- * This is the primary entry point for server-side PDF generation.
- * It dispatches to Gotenberg, jsPDF, or print depending on the request.
- *
  * SECURITY: Never call from client-side code.
  * Always resolve branding, template, and ownership on the server.
+ *
+ * ─── URL configuration ────────────────────────────────────────────────────
+ * INTERNAL_SITE_URL  — The URL that Gotenberg (inside Docker) uses to fetch the
+ *                      print route. On Windows/Mac local dev: http://host.docker.internal:3000
+ *                      On Linux: http://172.17.0.1:3000 (docker0 bridge) or compose service name.
+ *                      In production: internal app hostname (not public internet URL).
+ *
+ * NEXT_PUBLIC_SITE_URL — The public-facing URL (https://erp.algt.net).
+ *                        NOT used for Gotenberg fetches.
  */
 
 import {
@@ -22,9 +28,15 @@ import {
 import { signPrintToken } from "./print-token";
 import { createHash } from "crypto";
 
-const SITE_URL =
+/**
+ * The URL that Gotenberg (inside Docker) uses to reach the ERP print route.
+ * MUST NOT be the public internet URL when Gotenberg cannot reach it.
+ *
+ * Priority: INTERNAL_SITE_URL > NEXT_PUBLIC_SITE_URL > localhost:3000
+ */
+const INTERNAL_SITE_URL =
+  process.env.INTERNAL_SITE_URL ??
   process.env.NEXT_PUBLIC_SITE_URL ??
-  process.env.NEXTAUTH_URL ??
   "http://localhost:3000";
 
 /**
@@ -56,12 +68,34 @@ export async function renderPdf(
 ): Promise<PdfRenderResult> {
   const req = PdfRenderRequestSchema.parse(input);
 
+  // Guard: PDF/A and PDF/UA are not supported without veraPDF.
+  // Remove these profile requests until veraPDF is installed and wired.
+  if (req.outputProfile === "pdfa" || req.outputProfile === "pdfua") {
+    throw new Error(
+      `[PDF] Output profile "${req.outputProfile}" requires veraPDF validation which is not installed. ` +
+        "Use outputProfile: 'standard' until veraPDF is configured. " +
+        "See .cursor/rules/pdf-testing.mdc for setup instructions.",
+    );
+  }
+
+  // Guard: PDF_PRINT_TOKEN_SECRET must be set
+  if (!process.env.PDF_PRINT_TOKEN_SECRET || process.env.PDF_PRINT_TOKEN_SECRET.length < 32) {
+    throw new Error(
+      "[PDF] PDF_PRINT_TOKEN_SECRET is not set or too short (min 32 chars). " +
+        "Add it to .env.local or your production secrets.",
+    );
+  }
+
   // Gotenberg health check
   const healthy = await isGotenbergHealthy();
   if (!healthy) {
     throw new Error(
-      "[PDF] Gotenberg service is unavailable. Check GOTENBERG_URL and ensure the Docker container is running. " +
-        "PDF generation cannot proceed without Gotenberg for official ERP documents.",
+      `[PDF] Gotenberg service is unavailable at ${process.env.GOTENBERG_URL ?? "http://localhost:3100"}. ` +
+        "Start it with: docker run --rm -p 3100:3000 gotenberg/gotenberg:8\n" +
+        "Then set GOTENBERG_URL=http://localhost:3100 in .env.local.\n" +
+        "If Gotenberg runs in Docker and the app is on the host, also set:\n" +
+        "  INTERNAL_SITE_URL=http://host.docker.internal:3000 (Windows/Mac)\n" +
+        "  INTERNAL_SITE_URL=http://172.17.0.1:3000 (Linux)",
     );
   }
 
@@ -76,8 +110,8 @@ export async function renderPdf(
     ownerCompanyId: req.ownerCompanyId,
   });
 
-  // Build the secure print URL
-  const printUrl = `${SITE_URL}/print/${encodeURIComponent(req.templateKey)}/${encodeURIComponent(req.sourceRecordType)}/${req.sourceRecordId}?token=${token}`;
+  // Build the secure print URL — this is what GOTENBERG fetches, not the public URL
+  const printUrl = `${INTERNAL_SITE_URL}/print/${encodeURIComponent(req.templateKey)}/${encodeURIComponent(req.sourceRecordType)}/${req.sourceRecordId}?token=${token}`;
 
   // Landscape dimensions
   const isLandscape = req.orientation === "landscape";

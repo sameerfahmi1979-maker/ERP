@@ -12,7 +12,8 @@ import { defineConfig, devices } from "@playwright/test";
  *   APP_BASE_URL      — defaults to http://localhost:3000
  */
 export default defineConfig({
-  testDir: "./tests/e2e",
+  testDir: "./tests",
+  testMatch: ["**/e2e/**/*.spec.ts", "**/pdf/**/*.spec.ts"],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,

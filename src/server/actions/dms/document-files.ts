@@ -153,6 +153,10 @@ export async function getDmsDocumentVersions(
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
     if (!canViewDms(ctx)) return { success: false, error: "Permission denied" };
 
+    // DMS.3D/E — confidentiality check before returning version history
+    const access = await checkDocumentConfidentialityAccess(supabase, documentId, ctx);
+    if (!access.allowed) return { success: false, error: access.error ?? "Document access is restricted." };
+
     const { data, error } = await supabase
       .from("dms_document_versions")
       .select(

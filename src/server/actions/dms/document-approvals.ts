@@ -7,6 +7,7 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
+import { assertInternalActionUrl } from "@/lib/security/action-url";
 
 // ── Result type (matches project pattern) ─────────────────────────────────────
 
@@ -158,7 +159,7 @@ async function sendApprovalNotification(opts: {
   try {
     const admin = createAdminClient();
     const now = new Date().toISOString();
-    const actionUrl = PATHS.docRecord(opts.documentId);
+    const actionUrl = assertInternalActionUrl(PATHS.docRecord(opts.documentId), PATHS.dmsApprovals);
     const actionDate = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 
     const message = buildNotificationMessage(opts.notificationCode, {
@@ -335,6 +336,7 @@ export type ApprovalQueueRow = {
   daysPending: number | null;
   canAct: boolean;
   canWithdraw: boolean;
+  isRedacted?: boolean;
 };
 
 export type WorkflowRow = {
@@ -1126,7 +1128,7 @@ export async function listPendingDocumentApprovalsForCurrentUser(
       .from("dms_documents")
       .select(`
         id, document_no, title, approval_status, submitted_by, submitted_at,
-        owner_user_id, created_by,
+        owner_user_id, created_by, confidentiality_level,
         document_type:dms_document_types!document_type_id(name_en),
         submitter:user_profiles!submitted_by(display_name),
         owner:user_profiles!owner_user_id(display_name),
@@ -1167,6 +1169,7 @@ export async function listPendingDocumentApprovalsForCurrentUser(
         id: number; document_no: string; title: string; approval_status: string | null;
         submitted_by: number | null; submitted_at: string | null;
         owner_user_id: number | null; created_by: number | null;
+        confidentiality_level: string | null;
         document_type: { name_en: string } | null;
         submitter: { display_name: string } | null;
         owner: { display_name: string } | null;
@@ -1178,12 +1181,23 @@ export async function listPendingDocumentApprovalsForCurrentUser(
         : null;
 
       const isOwnSubmission = doc.submitted_by === profileId;
+      const isOwnerOrCreator = doc.owner_user_id === profileId || doc.created_by === profileId;
+      const level = doc.confidentiality_level ?? "internal";
+      const isSensitive = ["hr", "finance", "legal", "executive"].includes(level);
+      const isActorOnPendingApproval = canAct(ctx) && doc.approval_status === "pending_approval" && !isOwnSubmission;
+
+      const canSeeSensitiveDetails =
+        !isSensitive
+        || isDmsAdmin(ctx)
+        || isOwnerOrCreator
+        || hasPermission(ctx, `dms.documents.view.${level}`)
+        || isActorOnPendingApproval;
 
       return {
         documentId: doc.id,
-        documentNo: doc.document_no,
-        title: doc.title,
-        documentTypeName: doc.document_type?.name_en ?? null,
+        documentNo: canSeeSensitiveDetails ? doc.document_no : "—",
+        title: canSeeSensitiveDetails ? doc.title : "[Restricted Document]",
+        documentTypeName: canSeeSensitiveDetails ? (doc.document_type?.name_en ?? null) : null,
         ownerName: doc.owner?.display_name ?? null,
         submittedByName: doc.submitter?.display_name ?? null,
         submittedAt: doc.submitted_at,
@@ -1192,6 +1206,7 @@ export async function listPendingDocumentApprovalsForCurrentUser(
         daysPending,
         canAct: canAct(ctx) && doc.approval_status === "pending_approval" && !isOwnSubmission,
         canWithdraw: doc.approval_status === "pending_approval" && (canWithdraw(ctx) || isOwnSubmission),
+        isRedacted: !canSeeSensitiveDetails,
       };
     });
 

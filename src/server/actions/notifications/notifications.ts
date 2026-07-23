@@ -5,6 +5,7 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
+import { assertInternalActionUrl } from "@/lib/security/action-url";
 
 const REVALIDATE_PATH = "/notifications";
 const REVALIDATE_ADMIN_PATH = "/admin/notifications";
@@ -193,10 +194,12 @@ export async function createNotification(
     if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
     const now = new Date().toISOString();
+    const safeActionUrl = assertInternalActionUrl(parsed.data.action_url);
     const { data, error } = await supabase
       .from("erp_notifications")
       .insert({
         ...parsed.data,
+        action_url: safeActionUrl,
         scheduled_for: parsed.data.scheduled_for ?? now,
         created_by: ctx.profile.id,
         created_at: now,

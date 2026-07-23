@@ -837,15 +837,39 @@ export async function sendExpiryDocumentsEmail(
       };
 
     } else if (input.attachmentFormat === "pdf") {
-      // Server-side text-based PDF — uses jsPDF + autoTable (no html2canvas, Node.js compatible).
-      // Produces a compact vector PDF suitable for email; no image-based rendering.
+      // Server-side vector PDF with full Arabic shaping support.
+      // Uses bidi-shaper (BiDi + contextual forms) + embedded Noto Sans Arabic TTF.
       const jsPDFModule = await import("jspdf");
       const jsPDF = jsPDFModule.default ?? jsPDFModule;
       const autoTableModule = await import("jspdf-autotable");
       const autoTable = autoTableModule.default ?? autoTableModule;
+      const { installJsPdfShaper } = await import("bidi-shaper/jspdf");
+      installJsPdfShaper((jsPDF as { API: Parameters<typeof installJsPdfShaper>[0] }).API);
+
       const doc = new (jsPDF as new (opts: object) => InstanceType<typeof jsPDF>)({
         orientation: "landscape", unit: "mm", format: "a4",
       });
+
+      // Embed Noto Sans Arabic from the public/fonts directory
+      let bodyFont = "helvetica";
+      try {
+        const fs = await import("fs");
+        const path = await import("path");
+        const fontPath = path.join(process.cwd(), "public", "fonts", "noto-sans-arabic-400.ttf");
+        const fontBuffer = fs.readFileSync(fontPath);
+        const CHUNK = 0x8000;
+        const parts: string[] = [];
+        for (let i = 0; i < fontBuffer.length; i += CHUNK) {
+          parts.push(String.fromCharCode(...fontBuffer.subarray(i, i + CHUNK)));
+        }
+        const fontBinaryStr = parts.join("");
+        (doc as { addFileToVFS: (f: string, d: string) => void }).addFileToVFS("NotoSansArabic.ttf", fontBinaryStr);
+        (doc as { addFont: (f: string, n: string, s: string) => void }).addFont("NotoSansArabic.ttf", "NotoSansArabic", "normal");
+        bodyFont = "NotoSansArabic";
+      } catch {
+        // Font unavailable — fall back to Helvetica (Latin renders fine; Arabic may show as boxes)
+      }
+
       const now = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
       (doc as { setFont: (f: string, s: string) => void }).setFont("helvetica", "bold");
       (doc as { setFontSize: (n: number) => void }).setFontSize(14);
@@ -861,8 +885,8 @@ export async function sendExpiryDocumentsEmail(
           r.document_no, r.title, r.document_type ?? "", r.category ?? "",
           r.expiry_date ?? "", r.days_remaining == null ? "" : String(r.days_remaining), r.status,
         ]),
-        headStyles: { fillColor: [26, 35, 126], textColor: 255, fontStyle: "bold", fontSize: 8 },
-        bodyStyles: { fontSize: 8 },
+        headStyles: { fillColor: [26, 35, 126], textColor: 255, fontStyle: "bold", fontSize: 8, font: "helvetica" },
+        bodyStyles: { fontSize: 8, font: bodyFont },
         alternateRowStyles: { fillColor: [245, 245, 245] },
         columnStyles: {
           0: { cellWidth: 24 }, 1: { cellWidth: 55 }, 2: { cellWidth: 35 },

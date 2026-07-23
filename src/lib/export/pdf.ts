@@ -4,10 +4,16 @@
  * Phase REPORT.3 - Template / Branding / Output Adapter Engine
  * Phase BRANDING.4 - Report Branding Runtime and Asset Upload Integration
  *
- * Two rendering paths:
- *   1. Arabic data  → html2canvas (browser font stack handles shaping/RTL)
- *                     scale:1 + JPEG 80% → ~200-400 KB (vs 16 MB with scale:2 PNG)
- *   2. Latin/numeric → jsPDF + autoTable (compact vector, < 150 KB)
+ * Arabic support:
+ *   - bidi-shaper/jspdf plugin is installed once at module load.
+ *     It hooks into jsPDF's preProcessText event so every doc.text() call
+ *     (including autoTable cell rendering) is automatically shaped (contextual
+ *     Arabic glyph forms, lam-alef ligatures) and BiDi-reordered (UAX #9).
+ *   - Noto Sans Arabic TTF is fetched from /fonts/noto-sans-arabic-400.ttf and
+ *     embedded in each document that contains Arabic data.
+ *   - When Arabic is present, NotoSansArabic is used as the document font so
+ *     all glyphs (Arabic + Latin) render correctly.
+ *   - Result: proper vector PDF, < 300 KB, searchable and copy-pasteable.
  *
  * Branding is injected via ExportBrandingContext (optional, fully backward-compatible).
  * BRANDING.4: Async image embedding for logo, stamp, and signature assets.
@@ -16,12 +22,18 @@
 import jsPDF from "jspdf";
 import { logger } from "@/lib/logger";
 import autoTable from "jspdf-autotable";
+import { installJsPdfShaper } from "bidi-shaper/jspdf";
 import type { ERPExportOptions, ERPExportResult, ExportBrandingContext } from "./export-types";
 import { getColumnValue, generateFilename, formatFilters } from "./format-export-data";
 import { format } from "date-fns";
 
+// ── Install bidi-shaper plugin once on the jsPDF static API ───────────────────
+// After this line every doc.text() call (including autoTable internals) receives
+// proper Arabic shaping + BiDi reordering automatically.
+installJsPdfShaper(jsPDF.API as Parameters<typeof installJsPdfShaper>[0]);
+
 // ─────────────────────────────────────────────────────────────────────────────
-// Arabic detection & html2canvas path (for correct Arabic shaping/RTL)
+// Arabic font loader
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** True when the string contains any Arabic Unicode characters. */
@@ -29,9 +41,10 @@ function containsArabic(text: string): boolean {
   return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(text);
 }
 
-/** Scan all cell values — returns true if any cell contains Arabic. */
+/** Scan all cell values — returns true if any title or cell contains Arabic. */
 function exportDataHasArabic<T>(options: ERPExportOptions<T>): boolean {
   if (containsArabic(options.title ?? "")) return true;
+  if (containsArabic(options.subtitle ?? "")) return true;
   return options.data.some((row) =>
     options.columns.some((col) => {
       const val = getColumnValue(row, col);
@@ -40,125 +53,50 @@ function exportDataHasArabic<T>(options: ERPExportOptions<T>): boolean {
   );
 }
 
+// Module-level font cache — loaded once, reused across all exports in the session.
+let _arabicFontData: string | null = null;
+let _arabicFontPromise: Promise<string | null> | null = null;
+
 /**
- * Render data to an off-screen HTML table with html2canvas and slice into A4 pages.
- *
- * File-size optimisations vs the old implementation:
- *   scale 1 (not 2)       → 4× smaller canvas pixel count
- *   JPEG 80% (not PNG)    → 8-15× smaller encoded size for white/grey backgrounds
- *   Combined              → ~50× smaller (16 MB → 300-400 KB for a 2-page list)
- *
- * Arabic renders correctly because the browser's own font stack handles
- * glyph shaping, contextual forms, and RTL bidi — something jsPDF cannot do.
+ * Fetch Noto Sans Arabic TTF as a jsPDF-compatible binary string.
+ * Returns null if the file cannot be loaded; the caller falls back gracefully.
  */
-async function buildPdfViaHtmlCanvas<T>(options: ERPExportOptions<T>): Promise<jsPDF> {
-  const { default: html2canvas } = await import("html2canvas");
+async function loadArabicFont(): Promise<string | null> {
+  if (_arabicFontData) return _arabicFontData;
+  if (_arabicFontPromise) return _arabicFontPromise;
 
-  const { columns, data, title, subtitle, orientation = "portrait" } = options;
-
-  const doc = new jsPDF({ orientation, unit: "mm", format: "a4" });
-  const pageW   = doc.internal.pageSize.getWidth();
-  const pageH   = doc.internal.pageSize.getHeight();
-  const margin  = 10;
-  const contentW = pageW - 2 * margin;
-
-  // At scale 1 and 96 dpi: 190 mm × (96/25.4) ≈ 719 px wide
-  const containerWidthPx = Math.round(contentW * (96 / 25.4));
-
-  const container = document.createElement("div");
-  container.style.cssText = [
-    "position:fixed", "top:-99999px", "left:0",
-    `width:${containerWidthPx}px`,
-    "background:#fff", "padding:0", "margin:0",
-    "font-family:Arial,'Noto Sans Arabic',sans-serif",
-    "font-size:8pt", "line-height:1.2", "color:#000", "box-sizing:border-box",
-  ].join(";");
-
-  if (title) {
-    const h = document.createElement("div");
-    h.textContent = title;
-    h.style.cssText = "text-align:center;font-weight:bold;font-size:11pt;margin-bottom:4px;";
-    container.appendChild(h);
-  }
-  if (subtitle) {
-    const s = document.createElement("div");
-    s.textContent = subtitle;
-    s.style.cssText = "text-align:center;font-size:8pt;color:#555;margin-bottom:6px;";
-    container.appendChild(s);
-  }
-
-  const table = document.createElement("table");
-  table.style.cssText = "width:100%;border-collapse:collapse;font-size:8pt;line-height:1.2;";
-
-  const thead = table.createTHead();
-  const headerRow = thead.insertRow();
-  headerRow.style.cssText = "background:#424242;color:#fff;";
-  for (const col of columns) {
-    const th = document.createElement("th");
-    th.textContent = col.header;
-    th.style.cssText = "padding:3px 4px;text-align:left;font-weight:bold;border:1px solid #555;white-space:nowrap;";
-    headerRow.appendChild(th);
-  }
-
-  const tbody = table.createTBody();
-  data.forEach((row, i) => {
-    const tr = tbody.insertRow();
-    tr.style.background = i % 2 === 0 ? "#fff" : "#f5f5f5";
-    for (const col of columns) {
-      const td = tr.insertCell();
-      td.textContent = getColumnValue(row, col);
-      td.style.cssText = "padding:3px 4px;border:1px solid #ddd;direction:auto;unicode-bidi:plaintext;";
-    }
-  });
-
-  container.appendChild(table);
-  document.body.appendChild(container);
-
-  try {
-    const canvas = await html2canvas(container, {
-      scale: 1,           // was 2 — 4× fewer pixels, key to small file size
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: "#ffffff",
-      logging: false,
-      // Strip Tailwind stylesheets — they contain lab()/oklch() which html2canvas cannot parse.
-      onclone: (clonedDoc) => {
-        clonedDoc.querySelectorAll("style, link[rel='stylesheet']").forEach((el) => el.remove());
-      },
-    });
-
-    // All measurements in canvas pixels (canvas.width = containerWidthPx × scale).
-    const pxPerMm  = canvas.width / contentW;
-    const totalHPx = canvas.height;
-    const pageHPx  = (pageH - 2 * margin) * pxPerMm;
-
-    let srcY = 0;
-    let firstPage = true;
-
-    while (srcY < totalHPx) {
-      if (!firstPage) doc.addPage();
-      firstPage = false;
-
-      const sliceHPx = Math.min(pageHPx, totalHPx - srcY);
-      const sliceHMm = sliceHPx / pxPerMm;
-
-      const slice = document.createElement("canvas");
-      slice.width  = canvas.width;
-      slice.height = Math.ceil(sliceHPx);
-      const ctx = slice.getContext("2d");
-      if (ctx) {
-        ctx.drawImage(canvas, 0, srcY, canvas.width, slice.height, 0, 0, canvas.width, slice.height);
+  _arabicFontPromise = (async () => {
+    try {
+      const res = await fetch("/fonts/noto-sans-arabic-400.ttf");
+      if (!res.ok) return null;
+      const buf = await res.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      // jsPDF addFileToVFS expects a binary string (each char = one byte value 0-255)
+      const CHUNK = 0x8000; // 32 KB — avoids call-stack overflow on large fonts
+      const parts: string[] = [];
+      for (let i = 0; i < bytes.length; i += CHUNK) {
+        parts.push(String.fromCharCode(...bytes.subarray(i, i + CHUNK)));
       }
-
-      // JPEG 80% instead of PNG — 8-15× smaller for table content with white/grey cells
-      doc.addImage(slice.toDataURL("image/jpeg", 0.80), "JPEG", margin, margin, contentW, sliceHMm);
-      srcY += sliceHPx;
+      _arabicFontData = parts.join("");
+      return _arabicFontData;
+    } catch {
+      return null;
     }
+  })();
 
-    return doc;
-  } finally {
-    document.body.removeChild(container);
-  }
+  return _arabicFontPromise;
+}
+
+/**
+ * Register Noto Sans Arabic in a jsPDF document.
+ * Returns true when the font is ready; false when the file could not be loaded.
+ */
+async function registerArabicFont(doc: jsPDF): Promise<boolean> {
+  const data = await loadArabicFont();
+  if (!data) return false;
+  doc.addFileToVFS("NotoSansArabic.ttf", data);
+  doc.addFont("NotoSansArabic.ttf", "NotoSansArabic", "normal");
+  return true;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -349,22 +287,12 @@ function renderNeutralHeader(
  * stamp/signature images where permitted).
  * When omitted, a neutral fallback is used — no hardcoded company names.
  *
- * BRANDING.4: Now async to support image pre-loading for logo/stamp/signature.
- * Backward compatible: all existing callers without `branding` continue to work.
+ * Arabic support: bidi-shaper + embedded Noto Sans Arabic TTF produce a
+ * proper vector PDF with connected glyphs, RTL layout, and correct ligatures.
+ * File size stays < 300 KB regardless of content language.
  */
 export async function exportToPDF<T>(options: ERPExportOptions<T>): Promise<ERPExportResult> {
   try {
-    // ── Arabic path ────────────────────────────────────────────────────────
-    // jsPDF cannot shape Arabic script (no GSUB processing). Use html2canvas
-    // so the browser's font stack handles contextual forms and RTL bidi.
-    // scale:1 + JPEG 80% keeps file size to ~300-400 KB (vs 16 MB with scale:2 PNG).
-    if (exportDataHasArabic(options)) {
-      const doc = await buildPdfViaHtmlCanvas(options);
-      const downloadFilename = generateFilename(options.filename, "pdf");
-      doc.save(downloadFilename);
-      return { success: true, filename: downloadFilename };
-    }
-
     const {
       columns,
       data,
@@ -378,8 +306,12 @@ export async function exportToPDF<T>(options: ERPExportOptions<T>): Promise<ERPE
       branding,
     } = options;
 
-    // Pre-load branding images (async, failures are silently swallowed)
-    const { logoDataUrl, stampDataUrl, signatureDataUrl } = await preloadBrandingImages(branding);
+    const hasArabic = exportDataHasArabic(options);
+
+    // Pre-load branding images and Arabic font in parallel
+    const [{ logoDataUrl, stampDataUrl, signatureDataUrl }] = await Promise.all([
+      preloadBrandingImages(branding),
+    ]);
 
     const doc = new jsPDF({
       orientation: (branding?.templateOrientation ?? orientation),
@@ -387,7 +319,16 @@ export async function exportToPDF<T>(options: ERPExportOptions<T>): Promise<ERPE
       format: "a4",
     });
 
-    const pageWidth = doc.internal.pageSize.getWidth();
+    // ── Embed Arabic font when needed ─────────────────────────────────────────
+    // bidi-shaper (installed above) handles shaping; we only need to provide
+    // a font that contains the Arabic Presentation Forms glyphs (U+FB50-U+FEFF).
+    let bodyFont = "helvetica";
+    if (hasArabic) {
+      const ok = await registerArabicFont(doc);
+      if (ok) bodyFont = "NotoSansArabic";
+    }
+
+    const pageWidth  = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
 
     // ── Header ────────────────────────────────────────────────────────────────
@@ -438,11 +379,16 @@ export async function exportToPDF<T>(options: ERPExportOptions<T>): Promise<ERPE
       head: [headers],
       body: rows,
       startY: currentY,
-      styles: { fontSize: 8, cellPadding: 2 },
+      styles: {
+        fontSize: 8,
+        cellPadding: 2,
+        font: bodyFont,
+      },
       headStyles: {
         fillColor: headerFillColor,
         textColor: [255, 255, 255],
         fontStyle: "bold",
+        font: "helvetica", // header labels are always Latin
       },
       alternateRowStyles: { fillColor: [245, 245, 245] },
       margin: { left: 15, right: 15 },

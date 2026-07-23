@@ -1,0 +1,65 @@
+---
+description: ERP PDF Generation Architecture Standard
+globs:
+  - src/lib/pdf/**
+  - src/app/print/**
+  - src/components/erp/print/**
+  - src/styles/print/**
+alwaysApply: false
+---
+
+# ERP PDF Generation Architecture Standard
+
+## Phase
+ERP PDF.1 — Production PDF Generation Framework (2026-07-23)
+
+## Renderer Decision
+
+| Use Case | Renderer | Location |
+|---|---|---|
+| Rich HTML reports, letters, certificates | **Gotenberg Chromium** (server) | `src/lib/pdf/gotenberg.ts` → `src/app/print/` routes |
+| Simple tabular data exports | **jsPDF + jspdf-autotable** (client) | `src/lib/export/pdf.ts` |
+| Arabic/bilingual table exports | **html2canvas → jsPDF** (client fallback) | Same file, auto-detected |
+| Browser immediate print | **window.print()** (client) | `src/lib/export/print.ts` |
+| Merging, stamping, metadata, form-fill | **pdf-lib** | `src/lib/pdf/post-process.ts` |
+| PDF/A or PDF/UA validation | **veraPDF** (CLI, optional) | CI/validation pipeline only |
+
+## Core Files
+
+- `src/lib/pdf/types.ts` — `PdfRenderRequest`, `PdfRenderResult` types
+- `src/lib/pdf/gotenberg.ts` — Gotenberg HTTP adapter
+- `src/lib/pdf/renderer.ts` — Dispatcher: selects Gotenberg or fallback
+- `src/lib/pdf/storage.ts` — Generated PDF upload to `erp-generated-pdfs` bucket
+- `src/lib/pdf/history.ts` — Writes `erp_generated_pdf_documents` rows
+- `src/app/print/[templateKey]/[recordType]/[recordId]/route.tsx` — Secure HTML route
+
+## Rules
+
+1. **Gotenberg is the PRIMARY server PDF path.** Never call `window.print()` or jsPDF from a server action.
+2. **jsPDF is the fallback for simple tabular exports ONLY.** It does NOT replace Gotenberg for letters/certificates/reports.
+3. **Never embed service-role credentials in frontend code.** All PDF generation that requires private data must go through a server action or secure API route.
+4. **The frontend provides only the source record type + ID.** All template resolution, branding, and ownership are resolved server-side from the authenticated user and source record.
+5. **Never hardcode ALGT or any company name.** All branding resolves from `owner_company_id` via `src/lib/branding/branding-resolver.ts`.
+6. **Secure print routes** (`src/app/print/`) require auth + permission + row-level access checks. They must never accept arbitrary HTML or URL parameters as rendering targets.
+7. **Every generated PDF must write an `erp_generated_pdf_documents` row** with template_id, renderer, checksum, page count, and storage path.
+8. **Gotenberg must NOT be exposed to the public internet.** Use an internal Docker network in production; local Docker in development.
+9. **Deprecated path:** Any feature that currently calls `window.print()` for official documents should eventually migrate to the Gotenberg path. Do NOT break the existing path until the replacement is proven.
+10. **PDF/A is opt-in.** Set `outputProfile: "pdfa"` in the request only when required by the document type. Do not default to PDF/A.
+
+## Environment Variables Required
+
+```
+GOTENBERG_URL=http://localhost:3100     # local dev
+GOTENBERG_URL=http://gotenberg:3100     # production (internal Docker network)
+GOTENBERG_TIMEOUT_MS=30000
+PDF_PRINT_TOKEN_SECRET=<random-secret>  # signs one-time tokens for print routes
+```
+
+## Gotenberg Local Docker
+
+```bash
+docker run --rm -p 3100:3100 gotenberg/gotenberg:8 \
+  gotenberg --api-timeout=60s \
+  --chromium-deny-list="^(file|ftp)://.*" \
+  --api-enable-basic-auth=false
+```

@@ -1,0 +1,134 @@
+/**
+ * ERP PDF Generation — Renderer Dispatcher
+ * Phase: ERP PDF.1 — Production PDF Generation Framework (2026-07-23)
+ *
+ * This is the primary entry point for server-side PDF generation.
+ * It dispatches to Gotenberg, jsPDF, or print depending on the request.
+ *
+ * SECURITY: Never call from client-side code.
+ * Always resolve branding, template, and ownership on the server.
+ */
+
+import {
+  PdfRenderRequest,
+  PdfRenderRequestSchema,
+  PdfRenderResult,
+} from "./types";
+import {
+  gotenbergConvertUrl,
+  getGotenbergVersion,
+  isGotenbergHealthy,
+} from "./gotenberg";
+import { signPrintToken } from "./print-token";
+import { createHash } from "crypto";
+
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  process.env.NEXTAUTH_URL ??
+  "http://localhost:3000";
+
+/**
+ * Main PDF render dispatcher.
+ *
+ * Flow:
+ *   1. Validate the request (Zod schema).
+ *   2. Check if Gotenberg is available.
+ *   3. Sign a short-lived print token.
+ *   4. Build the private print URL.
+ *   5. Call Gotenberg to convert the URL to PDF.
+ *   6. Return the PDF buffer with metadata.
+ *
+ * If Gotenberg is unavailable and `allowFallback` is true,
+ * throws a descriptive error — do NOT silently fall back to
+ * lower-quality client-side PDF generation for official documents.
+ */
+export async function renderPdf(
+  input: PdfRenderRequest,
+  options?: {
+    /** User ID performing the generation (for token signing) */
+    userId: number;
+    /** If true, passes a Gotenberg footer with page numbers */
+    includePageNumbers?: boolean;
+    /** Extra Gotenberg options */
+    paperWidth?: number;
+    paperHeight?: number;
+  },
+): Promise<PdfRenderResult> {
+  const req = PdfRenderRequestSchema.parse(input);
+
+  // Gotenberg health check
+  const healthy = await isGotenbergHealthy();
+  if (!healthy) {
+    throw new Error(
+      "[PDF] Gotenberg service is unavailable. Check GOTENBERG_URL and ensure the Docker container is running. " +
+        "PDF generation cannot proceed without Gotenberg for official ERP documents.",
+    );
+  }
+
+  const userId = options?.userId ?? 0;
+
+  // Sign a short-lived print token
+  const token = signPrintToken({
+    templateKey: req.templateKey,
+    recordType: req.sourceRecordType,
+    recordId: req.sourceRecordId,
+    userId,
+    ownerCompanyId: req.ownerCompanyId,
+  });
+
+  // Build the secure print URL
+  const printUrl = `${SITE_URL}/print/${encodeURIComponent(req.templateKey)}/${encodeURIComponent(req.sourceRecordType)}/${req.sourceRecordId}?token=${token}`;
+
+  // Landscape dimensions
+  const isLandscape = req.orientation === "landscape";
+  const paperWidth = options?.paperWidth ?? (isLandscape ? 297 : 210);
+  const paperHeight = options?.paperHeight ?? (isLandscape ? 210 : 297);
+
+  // Optional footer with page numbers (Gotenberg footer template HTML)
+  const footerHtml = options?.includePageNumbers
+    ? `<html><body style="font-size:8pt;color:#757575;font-family:Arial;margin:0;padding:2mm 14mm;display:flex;justify-content:space-between;">
+         <span><span class="pageNumber"></span> / <span class="totalPages"></span></span>
+       </body></html>`
+    : undefined;
+
+  const { buffer, checksum, fileSizeBytes } = await gotenbergConvertUrl({
+    url: printUrl,
+    paperWidth,
+    paperHeight,
+    marginTop: 18,
+    marginBottom: 20,
+    marginLeft: 14,
+    marginRight: 14,
+    printBackground: true,
+    scale: 1.0,
+    footerHtml,
+    waitForExpression: "document.fonts.ready",
+    timeout: 45000,
+  });
+
+  const rendererVersion = await getGotenbergVersion();
+
+  // Page count — read from PDF cross-reference (simple heuristic)
+  const pageCount = countPdfPages(buffer);
+
+  return {
+    fileBuffer: buffer,
+    pageCount,
+    renderer: "gotenberg",
+    rendererVersion,
+    checksum,
+    validationStatus: "skipped",
+    fileSizeBytes,
+  };
+}
+
+/**
+ * Simple heuristic page-count from PDF bytes.
+ * Counts "/Type /Page" (non-Pages) occurrences.
+ * Not perfectly accurate for all PDFs — use as estimate only.
+ */
+function countPdfPages(buffer: Buffer): number {
+  const str = buffer.toString("latin1");
+  const matches = str.match(/\/Type\s*\/Page[^s]/g);
+  return matches ? matches.length : 1;
+}

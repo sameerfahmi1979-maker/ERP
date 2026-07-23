@@ -1,0 +1,88 @@
+---
+description: ERP PDF Testing Standard
+globs:
+  - src/lib/pdf/**
+  - tests/pdf/**
+  - .cursor/skills/erp-pdf-visual-qa/**
+alwaysApply: false
+---
+
+# ERP PDF Testing Standard
+
+## Phase
+ERP PDF.1 — Production PDF Generation Framework (2026-07-23)
+
+## Playwright Preflight Checklist (before PDF generation)
+
+Every `generatePdf()` call should optionally run a preflight check in CI/testing:
+
+1. Open the private print route (`/print/...?token=...`).
+2. Assert HTTP 200.
+3. Wait for `document.fonts.ready`.
+4. Wait for all `<img>` to load (`networkidle`).
+5. Assert `document.title` matches the expected template name.
+6. Assert the source record ID is present in the page.
+7. Assert no `console.error` entries unrelated to test setup.
+8. Assert no horizontal overflow (check `document.documentElement.scrollWidth <= innerWidth`).
+9. Assert no elements with `visibility: hidden` that should be visible.
+10. Assert expected table row count (where applicable).
+
+## PDF Visual QA Checklist (after generation)
+
+Use Poppler's `pdftoppm` or `pdfimages` to rasterize, then assert:
+
+1. Page count is within expected range.
+2. No blank pages (pixel variance > threshold).
+3. No near-blank pages.
+4. Content does not touch the unsafe margin (15px buffer from edges).
+5. Table headers repeat on every page.
+6. Totals / signature / approval blocks are not split across pages.
+7. Arabic text is correctly shaped (visual snapshot or text extraction).
+8. Logo and branding appear on every page.
+9. Footer page numbers are correct (Page X of N).
+10. No trailing blank page.
+
+## Fixture Coverage Required
+
+| Fixture | Description |
+|---|---|
+| `fixture-one-row.ts` | 1 data row — minimum table |
+| `fixture-25-rows.ts` | 25 rows — standard table |
+| `fixture-200-rows.ts` | 200 rows — multi-page |
+| `fixture-arabic.ts` | Arabic names, addresses, descriptions |
+| `fixture-bilingual.ts` | Mixed Arabic+English in same document |
+| `fixture-long-desc.ts` | Very long English description (5000+ chars) |
+| `fixture-no-logo.ts` | Missing logo — fallback text |
+| `fixture-landscape.ts` | Landscape report |
+| `fixture-totals-near-bottom.ts` | Signature block near page boundary |
+| `fixture-multi-company.ts` | Two different company branding profiles |
+| `fixture-unavailable-gotenberg.ts` | Gotenberg down — expected error |
+| `fixture-unauthorized.ts` | No session — expected 401 |
+| `fixture-cross-company.ts` | User from company A accessing company B record — expected 403 |
+
+## RLS Test Matrix
+
+| Scenario | Expected Result |
+|---|---|
+| Authenticated user reads own company PDF history | Pass |
+| Authenticated user reads other company PDF history | Blocked |
+| Anon reads `erp_generated_pdf_documents` | Blocked |
+| Frontend direct insert to `erp_generated_pdf_documents` | Blocked |
+| Storage download without permission | Blocked |
+| Request to generate with unapproved template | Error: template not approved |
+
+## Test Commands
+
+```bash
+# Unit tests
+npx vitest run src/lib/pdf/
+
+# E2E (requires Playwright browsers and running app)
+npx playwright test tests/pdf/
+
+# PDF rasterization QA (requires Poppler)
+pdftoppm -r 150 output/test.pdf /tmp/qa-pages/page
+
+# veraPDF validation (requires Java + veraPDF)
+verapdf --flavour 3b --format mrr output/test.pdf > /tmp/verapdf-report.xml
+```

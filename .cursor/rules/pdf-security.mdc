@@ -1,0 +1,69 @@
+---
+description: ERP PDF Security Standard
+globs:
+  - src/lib/pdf/**
+  - src/app/print/**
+alwaysApply: false
+---
+
+# ERP PDF Security Standard
+
+## Phase
+ERP PDF.1 — Production PDF Generation Framework (2026-07-23)
+
+## Mandatory Security Checks in Every PDF Server Action or Route
+
+1. **Authenticate** — `getAuthContext()`, reject if no session.
+2. **Authorize module** — `hasPermission(ctx, "reports.generate")` or the module-specific permission.
+3. **Authorize row** — verify the source record `owner_company_id` matches the user's accessible companies.
+4. **Validate template** — template must have `governance_status = 'approved'` or `'published'`.
+5. **Validate source record** — source record must exist and be accessible to the user.
+
+## SSRF Prevention
+
+- The Gotenberg adapter in `src/lib/pdf/gotenberg.ts` accepts **only** an `allowedPrintUrl` that is:
+  - Internal to the ERP server (same origin or internal network).
+  - Validated against `ALLOWED_PRINT_URL_PATTERN` (e.g., `^http://localhost:\d+/print/`).
+- **Never** pass user-provided URLs to Gotenberg.
+- **Never** pass raw HTML from the frontend to Gotenberg.
+
+## Print Route Token Pattern
+
+Secure print routes use short-lived signed tokens to grant Gotenberg access:
+
+```ts
+// Server action signs a token for one-time Gotenberg access
+const token = signPrintToken({ recordType, recordId, templateKey, userId, exp: now + 120 });
+const printUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/print/${templateKey}/${recordType}/${recordId}?token=${token}`;
+// Pass printUrl to Gotenberg — it fetches the route, which validates the token
+```
+
+- Tokens expire in 120 seconds.
+- Tokens are single-use (stored in Redis/DB if enforced, or short-TTL JWT).
+- The print route validates the token before rendering.
+
+## Forbidden Patterns
+
+```ts
+// ❌ NEVER — arbitrary URL to Gotenberg
+await gotenberg.convertUrl(userProvidedUrl);
+
+// ❌ NEVER — raw HTML from frontend
+await gotenberg.convertHtml(req.body.html);
+
+// ❌ NEVER — service-role key in client code
+const supabase = createClient(url, serviceKey); // in browser/client component
+
+// ❌ NEVER — skip auth in print route
+export async function GET(req: Request) {
+  // no auth check
+  return renderTemplate(req.params);
+}
+```
+
+## Content Security in Templates
+
+- All untrusted data (names, addresses, descriptions) MUST be HTML-escaped before injection into print templates.
+- Rich-text fields MUST be sanitized with DOMPurify or equivalent before rendering.
+- External images MUST be fetched from Supabase Storage only (no arbitrary URLs).
+- QR code destination URLs MUST be validated against the project's allowlist (`sanitizer.ts`).

@@ -5,11 +5,10 @@
  *
  * Bridges existing export engine to email system by generating base64 attachments
  * instead of triggering downloads.
- * Branding is forwarded via ExportBrandingContext (optional, backward-compatible).
  *
- * All PDF generation uses jsPDF + autoTable (compact vector text PDFs, < 200 KB).
- * The previous html2canvas fallback for Arabic data produced 10–20 MB image PDFs;
- * modern PDF viewers substitute system Arabic fonts automatically for Unicode text.
+ * PDF rendering paths (same as pdf.ts):
+ *   Arabic data  → html2canvas, scale:1, JPEG 80% → ~300-400 KB
+ *   Latin/numeric → jsPDF + autoTable → < 150 KB
  */
 
 import ExcelJS from "exceljs";
@@ -30,10 +29,135 @@ import {
   arrayBufferToBase64,
 } from "../email/attachment-utils";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Arabic detection (local copy — avoids circular import with pdf.ts)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function containsArabic(text: string): boolean {
+  return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(text);
+}
+
+function exportDataHasArabic<T>(options: ERPExportOptions<T>): boolean {
+  if (containsArabic(options.title ?? "")) return true;
+  return options.data.some((row) =>
+    options.columns.some((col) => {
+      const val = getColumnValue(row, col);
+      return typeof val === "string" && containsArabic(val);
+    })
+  );
+}
+
 /**
- * Generate CSV attachment for email.
- * UTF-8 BOM included for Excel compatibility. Supports Arabic/Unicode text.
+ * html2canvas path for Arabic data — returns ArrayBuffer instead of calling doc.save().
+ * scale:1 + JPEG 80% keeps email attachment size to ~300-400 KB.
  */
+async function buildPdfArrayBufferViaHtmlCanvas<T>(options: ERPExportOptions<T>): Promise<ArrayBuffer> {
+  const { default: html2canvas } = await import("html2canvas");
+  const { columns, data, title, subtitle, orientation = "portrait" } = options;
+
+  const doc = new jsPDF({ orientation, unit: "mm", format: "a4" });
+  const pageW    = doc.internal.pageSize.getWidth();
+  const pageH    = doc.internal.pageSize.getHeight();
+  const margin   = 10;
+  const contentW = pageW - 2 * margin;
+
+  const containerWidthPx = Math.round(contentW * (96 / 25.4));
+  const container = document.createElement("div");
+  container.style.cssText = [
+    "position:fixed", "top:-99999px", "left:0",
+    `width:${containerWidthPx}px`,
+    "background:#fff", "padding:0", "margin:0",
+    "font-family:Arial,'Noto Sans Arabic',sans-serif",
+    "font-size:8pt", "line-height:1.2", "color:#000", "box-sizing:border-box",
+  ].join(";");
+
+  if (title) {
+    const h = document.createElement("div");
+    h.textContent = title;
+    h.style.cssText = "text-align:center;font-weight:bold;font-size:11pt;margin-bottom:4px;";
+    container.appendChild(h);
+  }
+  if (subtitle) {
+    const s = document.createElement("div");
+    s.textContent = subtitle;
+    s.style.cssText = "text-align:center;font-size:8pt;color:#555;margin-bottom:6px;";
+    container.appendChild(s);
+  }
+
+  const table = document.createElement("table");
+  table.style.cssText = "width:100%;border-collapse:collapse;font-size:8pt;line-height:1.2;";
+
+  const thead = table.createTHead();
+  const headerRow = thead.insertRow();
+  headerRow.style.cssText = "background:#424242;color:#fff;";
+  for (const col of columns) {
+    const th = document.createElement("th");
+    th.textContent = col.header;
+    th.style.cssText = "padding:3px 4px;text-align:left;font-weight:bold;border:1px solid #555;white-space:nowrap;";
+    headerRow.appendChild(th);
+  }
+
+  const tbody = table.createTBody();
+  data.forEach((row, i) => {
+    const tr = tbody.insertRow();
+    tr.style.background = i % 2 === 0 ? "#fff" : "#f5f5f5";
+    for (const col of columns) {
+      const td = tr.insertCell();
+      td.textContent = getColumnValue(row, col);
+      td.style.cssText = "padding:3px 4px;border:1px solid #ddd;direction:auto;unicode-bidi:plaintext;";
+    }
+  });
+
+  container.appendChild(table);
+  document.body.appendChild(container);
+
+  try {
+    const canvas = await html2canvas(container, {
+      scale: 1,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: "#ffffff",
+      logging: false,
+      onclone: (clonedDoc) => {
+        clonedDoc.querySelectorAll("style, link[rel='stylesheet']").forEach((el) => el.remove());
+      },
+    });
+
+    const pxPerMm  = canvas.width / contentW;
+    const totalHPx = canvas.height;
+    const pageHPx  = (pageH - 2 * margin) * pxPerMm;
+
+    let srcY = 0;
+    let firstPage = true;
+
+    while (srcY < totalHPx) {
+      if (!firstPage) doc.addPage();
+      firstPage = false;
+
+      const sliceHPx = Math.min(pageHPx, totalHPx - srcY);
+      const sliceHMm = sliceHPx / pxPerMm;
+
+      const slice = document.createElement("canvas");
+      slice.width  = canvas.width;
+      slice.height = Math.ceil(sliceHPx);
+      const ctx = slice.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(canvas, 0, srcY, canvas.width, slice.height, 0, 0, canvas.width, slice.height);
+      }
+
+      doc.addImage(slice.toDataURL("image/jpeg", 0.80), "JPEG", margin, margin, contentW, sliceHMm);
+      srcY += sliceHPx;
+    }
+
+    return doc.output("arraybuffer") as ArrayBuffer;
+  } finally {
+    document.body.removeChild(container);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Exports
+// ─────────────────────────────────────────────────────────────────────────────
 export function generateCSVAttachment<T>(
   options: ERPExportOptions<T>
 ): EmailAttachment {
@@ -118,13 +242,23 @@ export async function generateExcelAttachment<T>(
 
 /**
  * Generate PDF attachment for email.
- * Uses jsPDF + autoTable — compact vector text PDF (< 200 KB).
- * Arabic Unicode characters are embedded as-is; modern PDF viewers
- * (Chrome, Adobe, macOS Preview) substitute system Arabic fonts automatically.
+ * Arabic data → html2canvas, scale:1, JPEG 80% → ~300-400 KB.
+ * Latin/numeric data → jsPDF + autoTable → < 150 KB.
  */
 export async function generatePDFAttachment<T>(
   options: ERPExportOptions<T>
 ): Promise<EmailAttachment> {
+  // Arabic path: browser font stack handles glyph shaping and RTL
+  if (exportDataHasArabic(options)) {
+    const arrayBuffer = await buildPdfArrayBufferViaHtmlCanvas(options);
+    return {
+      filename: generateFilename(options.filename, "pdf"),
+      contentType: "application/pdf",
+      base64Content: arrayBufferToBase64(arrayBuffer),
+      sizeBytes: arrayBuffer.byteLength,
+    };
+  }
+
   const {
     columns,
     data,

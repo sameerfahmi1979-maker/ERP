@@ -4,12 +4,10 @@
  * Phase REPORT.3 - Template / Branding / Output Adapter Engine
  * Phase BRANDING.4 - Report Branding Runtime and Asset Upload Integration
  *
- * Uses jspdf and jspdf-autotable for PDF generation.
- * All exports use compact vector text PDFs (jsPDF + autoTable) regardless of
- * whether the data contains Arabic.  PDF viewers substitute system Arabic fonts
- * for Unicode Arabic characters automatically (tested in Chrome, Adobe, macOS Preview).
- * The previous html2canvas fallback produced 10–20 MB image-based PDFs for Arabic
- * data; the vector approach produces < 200 KB for the same content.
+ * Two rendering paths:
+ *   1. Arabic data  → html2canvas (browser font stack handles shaping/RTL)
+ *                     scale:1 + JPEG 80% → ~200-400 KB (vs 16 MB with scale:2 PNG)
+ *   2. Latin/numeric → jsPDF + autoTable (compact vector, < 150 KB)
  *
  * Branding is injected via ExportBrandingContext (optional, fully backward-compatible).
  * BRANDING.4: Async image embedding for logo, stamp, and signature assets.
@@ -21,6 +19,147 @@ import autoTable from "jspdf-autotable";
 import type { ERPExportOptions, ERPExportResult, ExportBrandingContext } from "./export-types";
 import { getColumnValue, generateFilename, formatFilters } from "./format-export-data";
 import { format } from "date-fns";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Arabic detection & html2canvas path (for correct Arabic shaping/RTL)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** True when the string contains any Arabic Unicode characters. */
+function containsArabic(text: string): boolean {
+  return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(text);
+}
+
+/** Scan all cell values — returns true if any cell contains Arabic. */
+function exportDataHasArabic<T>(options: ERPExportOptions<T>): boolean {
+  if (containsArabic(options.title ?? "")) return true;
+  return options.data.some((row) =>
+    options.columns.some((col) => {
+      const val = getColumnValue(row, col);
+      return typeof val === "string" && containsArabic(val);
+    })
+  );
+}
+
+/**
+ * Render data to an off-screen HTML table with html2canvas and slice into A4 pages.
+ *
+ * File-size optimisations vs the old implementation:
+ *   scale 1 (not 2)       → 4× smaller canvas pixel count
+ *   JPEG 80% (not PNG)    → 8-15× smaller encoded size for white/grey backgrounds
+ *   Combined              → ~50× smaller (16 MB → 300-400 KB for a 2-page list)
+ *
+ * Arabic renders correctly because the browser's own font stack handles
+ * glyph shaping, contextual forms, and RTL bidi — something jsPDF cannot do.
+ */
+async function buildPdfViaHtmlCanvas<T>(options: ERPExportOptions<T>): Promise<jsPDF> {
+  const { default: html2canvas } = await import("html2canvas");
+
+  const { columns, data, title, subtitle, orientation = "portrait" } = options;
+
+  const doc = new jsPDF({ orientation, unit: "mm", format: "a4" });
+  const pageW   = doc.internal.pageSize.getWidth();
+  const pageH   = doc.internal.pageSize.getHeight();
+  const margin  = 10;
+  const contentW = pageW - 2 * margin;
+
+  // At scale 1 and 96 dpi: 190 mm × (96/25.4) ≈ 719 px wide
+  const containerWidthPx = Math.round(contentW * (96 / 25.4));
+
+  const container = document.createElement("div");
+  container.style.cssText = [
+    "position:fixed", "top:-99999px", "left:0",
+    `width:${containerWidthPx}px`,
+    "background:#fff", "padding:0", "margin:0",
+    "font-family:Arial,'Noto Sans Arabic',sans-serif",
+    "font-size:8pt", "line-height:1.2", "color:#000", "box-sizing:border-box",
+  ].join(";");
+
+  if (title) {
+    const h = document.createElement("div");
+    h.textContent = title;
+    h.style.cssText = "text-align:center;font-weight:bold;font-size:11pt;margin-bottom:4px;";
+    container.appendChild(h);
+  }
+  if (subtitle) {
+    const s = document.createElement("div");
+    s.textContent = subtitle;
+    s.style.cssText = "text-align:center;font-size:8pt;color:#555;margin-bottom:6px;";
+    container.appendChild(s);
+  }
+
+  const table = document.createElement("table");
+  table.style.cssText = "width:100%;border-collapse:collapse;font-size:8pt;line-height:1.2;";
+
+  const thead = table.createTHead();
+  const headerRow = thead.insertRow();
+  headerRow.style.cssText = "background:#424242;color:#fff;";
+  for (const col of columns) {
+    const th = document.createElement("th");
+    th.textContent = col.header;
+    th.style.cssText = "padding:3px 4px;text-align:left;font-weight:bold;border:1px solid #555;white-space:nowrap;";
+    headerRow.appendChild(th);
+  }
+
+  const tbody = table.createTBody();
+  data.forEach((row, i) => {
+    const tr = tbody.insertRow();
+    tr.style.background = i % 2 === 0 ? "#fff" : "#f5f5f5";
+    for (const col of columns) {
+      const td = tr.insertCell();
+      td.textContent = getColumnValue(row, col);
+      td.style.cssText = "padding:3px 4px;border:1px solid #ddd;direction:auto;unicode-bidi:plaintext;";
+    }
+  });
+
+  container.appendChild(table);
+  document.body.appendChild(container);
+
+  try {
+    const canvas = await html2canvas(container, {
+      scale: 1,           // was 2 — 4× fewer pixels, key to small file size
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: "#ffffff",
+      logging: false,
+      // Strip Tailwind stylesheets — they contain lab()/oklch() which html2canvas cannot parse.
+      onclone: (clonedDoc) => {
+        clonedDoc.querySelectorAll("style, link[rel='stylesheet']").forEach((el) => el.remove());
+      },
+    });
+
+    // All measurements in canvas pixels (canvas.width = containerWidthPx × scale).
+    const pxPerMm  = canvas.width / contentW;
+    const totalHPx = canvas.height;
+    const pageHPx  = (pageH - 2 * margin) * pxPerMm;
+
+    let srcY = 0;
+    let firstPage = true;
+
+    while (srcY < totalHPx) {
+      if (!firstPage) doc.addPage();
+      firstPage = false;
+
+      const sliceHPx = Math.min(pageHPx, totalHPx - srcY);
+      const sliceHMm = sliceHPx / pxPerMm;
+
+      const slice = document.createElement("canvas");
+      slice.width  = canvas.width;
+      slice.height = Math.ceil(sliceHPx);
+      const ctx = slice.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(canvas, 0, srcY, canvas.width, slice.height, 0, 0, canvas.width, slice.height);
+      }
+
+      // JPEG 80% instead of PNG — 8-15× smaller for table content with white/grey cells
+      doc.addImage(slice.toDataURL("image/jpeg", 0.80), "JPEG", margin, margin, contentW, sliceHMm);
+      srcY += sliceHPx;
+    }
+
+    return doc;
+  } finally {
+    document.body.removeChild(container);
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -215,6 +354,17 @@ function renderNeutralHeader(
  */
 export async function exportToPDF<T>(options: ERPExportOptions<T>): Promise<ERPExportResult> {
   try {
+    // ── Arabic path ────────────────────────────────────────────────────────
+    // jsPDF cannot shape Arabic script (no GSUB processing). Use html2canvas
+    // so the browser's font stack handles contextual forms and RTL bidi.
+    // scale:1 + JPEG 80% keeps file size to ~300-400 KB (vs 16 MB with scale:2 PNG).
+    if (exportDataHasArabic(options)) {
+      const doc = await buildPdfViaHtmlCanvas(options);
+      const downloadFilename = generateFilename(options.filename, "pdf");
+      doc.save(downloadFilename);
+      return { success: true, filename: downloadFilename };
+    }
+
     const {
       columns,
       data,

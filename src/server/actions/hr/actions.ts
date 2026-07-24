@@ -155,6 +155,7 @@ export type DisciplinaryRow = {
   deleted_at: string | null;
   // joined
   issued_by_profile?: { display_name: string } | null;
+  employee?: { full_name_en: string; employee_code: string } | null;
 };
 
 export type HrNoteRow = {
@@ -373,8 +374,8 @@ export async function listGlobalProProcesses(
 ): Promise<ProProcessRow[]> {
   const ctx = await getAuthContext();
   if (!hasPermission(ctx, "hr.actions.view")) throw new Error("No permission");
-  const supabase = await createClient();
-  let query = supabase
+  const admin = createAdminClient();
+  let query = admin
     .from("employee_pro_processes")
     .select("*, process_type:hr_pro_process_types(name_en), assigned_to_profile:user_profiles!assigned_to(display_name)")
     .is("deleted_at", null)
@@ -515,8 +516,8 @@ export async function listEmployeeHrActions(
 export async function listGlobalHrActions(params?: Record<string, unknown>): Promise<HrActionRow[]> {
   const ctx = await getAuthContext();
   if (!hasPermission(ctx, "hr.actions.view")) throw new Error("No permission");
-  const supabase = await createClient();
-  let query = supabase
+  const admin = createAdminClient();
+  let query = admin
     .from("employee_hr_actions")
     .select("*")
     .is("deleted_at", null)
@@ -787,10 +788,10 @@ export async function listEmployeeDisciplinaryRecords(
 export async function listGlobalDisciplinaryRecords(params?: Record<string, unknown>): Promise<DisciplinaryRow[]> {
   const ctx = await getAuthContext();
   if (!hasPermission(ctx, "hr.actions.view")) throw new Error("No permission");
-  const supabase = await createClient();
-  let query = supabase
+  const admin = createAdminClient();
+  let query = admin
     .from("employee_disciplinary_records")
-    .select("*, issued_by_profile:user_profiles!issued_by(display_name)")
+    .select("*, issued_by_profile:user_profiles!issued_by(display_name), employee:employees!employee_id(full_name_en, employee_code)")
     .is("deleted_at", null)
     .order("record_date", { ascending: false });
   if (params?.status) query = query.eq("status", params.status as string);
@@ -990,8 +991,8 @@ export async function listEmployeeApprovalRequests(
 export async function listGlobalApprovalRequests(params?: Record<string, unknown>): Promise<ApprovalRequestRow[]> {
   const ctx = await getAuthContext();
   if (!hasPermission(ctx, "hr.actions.view")) throw new Error("No permission");
-  const supabase = await createClient();
-  let query = supabase
+  const admin = createAdminClient();
+  let query = admin
     .from("employee_approval_requests")
     .select("*, approval_role:approval_roles(name), requested_by_profile:user_profiles!requested_by(display_name)")
     .is("deleted_at", null)
@@ -1148,8 +1149,8 @@ export async function listEmployeeEosCases(
 export async function listGlobalEosCases(params?: Record<string, unknown>): Promise<EosCaseRow[]> {
   const ctx = await getAuthContext();
   if (!hasPermission(ctx, "hr.actions.view") && !hasPermission(ctx, "hr.eos.view")) throw new Error("No permission");
-  const supabase = await createClient();
-  let query = supabase
+  const admin = createAdminClient();
+  let query = admin
     .from("employee_eos_cases")
     .select("*")
     .is("deleted_at", null)

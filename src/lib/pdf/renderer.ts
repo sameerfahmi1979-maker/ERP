@@ -139,7 +139,7 @@ export async function renderPdf(
     printBackground: true,
     scale: 1.0,
     footerHtml,
-    waitForExpression: "document.fonts.ready",
+    waitForExpression: "document.fonts.status === 'loaded'",
     timeout: 45000,
   });
 

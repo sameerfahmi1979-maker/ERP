@@ -89,13 +89,16 @@ export async function renderPdf(
   // Gotenberg health check
   const healthy = await isGotenbergHealthy();
   if (!healthy) {
+    const gotenbergUrl = process.env.GOTENBERG_URL ?? "http://localhost:3100";
+    const isLocal = gotenbergUrl.includes("localhost") || gotenbergUrl.includes("127.0.0.1");
+    const hint = isLocal
+      ? "Local dev: docker run --rm -p 3100:3100 gotenberg/gotenberg:8\n" +
+        "Set GOTENBERG_URL=http://localhost:3100 and INTERNAL_SITE_URL=http://host.docker.internal:3000 (Windows/Mac) or http://172.17.0.1:3000 (Linux) in .env.local."
+      : "Production: ensure the Gotenberg service is running and reachable at the configured GOTENBERG_URL.\n" +
+        "On Railway: add a Gotenberg Docker service and set GOTENBERG_URL=http://<service>.railway.internal:3100\n" +
+        "Also set INTERNAL_SITE_URL to your app's public URL so Gotenberg can fetch print routes.";
     throw new Error(
-      `[PDF] Gotenberg service is unavailable at ${process.env.GOTENBERG_URL ?? "http://localhost:3100"}. ` +
-        "Start it with: docker run --rm -p 3100:3000 gotenberg/gotenberg:8\n" +
-        "Then set GOTENBERG_URL=http://localhost:3100 in .env.local.\n" +
-        "If Gotenberg runs in Docker and the app is on the host, also set:\n" +
-        "  INTERNAL_SITE_URL=http://host.docker.internal:3000 (Windows/Mac)\n" +
-        "  INTERNAL_SITE_URL=http://172.17.0.1:3000 (Linux)",
+      `[PDF] Gotenberg service is unavailable at ${gotenbergUrl}.\n${hint}`,
     );
   }
 

@@ -1,0 +1,85 @@
+---
+description: >
+  Antigravity UI & Frontend Design Guidelines — spatial depth, glassmorphism,
+  weightlessness, and heavy motion aesthetic. SCOPE-LIMITED: applies only to
+  public-facing / marketing / auth screens outside the ERP admin workspace
+  (e.g. login, marketing landing pages). Does NOT apply to any ERP admin
+  screen (lists, workspace forms, child dialogs, drawers, dashboards) — those
+  are governed by the erp-*-standard.mdc rules, which take precedence.
+globs:
+  - "src/app/(auth)/**/*.tsx"
+  - "src/app/(public)/**/*.tsx"
+  - "src/app/(marketing)/**/*.tsx"
+alwaysApply: false
+---
+
+# Antigravity UI & Frontend Design Guidelines
+
+## Scope — read this first
+
+This rule is **intentionally NOT global**. It only applies to public-facing,
+non-ERP-admin screens — currently the auth/login screens
+(`src/app/(auth)/**`), and any future public marketing/landing pages
+(`src/app/(public)/**`, `src/app/(marketing)/**`).
+
+**Do NOT apply this aesthetic to:**
+- Any ERP admin/workspace screen (lists, record forms, child dialogs, drawers,
+  dashboards, reports, HR/DMS/Finance/Party Master/etc. modules)
+- Anything governed by `erp-global-list-ui-standard.mdc`,
+  `erp-record-workspace-form-standard.mdc`, `erp-child-dialog-form-standard.mdc`,
+  `erp-workspace-tabs-standard.mdc`, or any other `erp-*-standard.mdc` rule
+
+Those ERP rules are deliberately flat, dense, and low-motion for data-heavy
+back-office use, and they take precedence over this file wherever they
+overlap. If a task touches both a public screen and an ERP screen, follow
+this rule only for the public screen's portion of the work.
+
+When in doubt about whether a file is in scope, check whether it sits under
+an ERP module route (`/admin/**`, `/dms/**`, `/hr/**`, workspace tabs) — if
+so, this rule does not apply.
+
+---
+
+## Design Direction
+
+Avoid safe, generic, flat layouts. Commit to spatial depth, glassmorphism,
+weightlessness, and heavy motion.
+
+## Motion & Weightlessness
+
+Never snap state changes instantly. All UI interactions must have smooth
+transitions. Use GSAP (and ScrollTrigger) to animate elements floating gently
+into view along the Y-axis.
+
+## Spatial Depth & Glassmorphism
+
+Do not use flat borders. Use layered, soft, diffused drop-shadows (e.g.,
+`box-shadow: 0 20px 40px rgba(0,0,0,0.05)`). Apply subtle translucency and
+background blurs (`backdrop-filter: blur(12px)`) for a premium glassy feel.
+Use 3D CSS transforms like `rotateX` and `perspective` on cards and grids to
+create Z-axis layering.
+
+## Typography
+
+Never use generic fonts like Arial or Inter. Choose distinctive display
+fonts paired with refined body fonts from Google Fonts. Vary font weights at
+extremes (e.g., 200 vs 800) rather than subtle steps.
+
+## Details & Atmosphere
+
+Do not default to solid background colors. Use gradient meshes, geometric
+patterns, layered transparencies, and dramatic lighting to create atmosphere.
+
+---
+
+## Implementation Notes
+
+- **GSAP is not currently installed** in this project (`package.json` has no
+  `gsap` dependency). Install it (`npm install gsap`) before using
+  ScrollTrigger-based float-in animations on an in-scope page.
+- Keep bundle-size and accessibility in mind: respect
+  `prefers-reduced-motion` and provide a non-animated fallback for users who
+  have it enabled.
+- This rule is `alwaysApply: false` and glob-scoped — attach it manually (or
+  rely on the glob match) when working on an in-scope public/auth screen. It
+  will not be auto-injected into ERP admin module work.

@@ -13,6 +13,7 @@ import { passwordPolicySchema } from "@/lib/validation/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { sanitizeSecurityAuditPayload, sanitizeServerActionError } from "@/lib/audit/sanitizers";
+import { checkRateLimit, getRequestIp } from "@/lib/security/rate-limit";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -282,6 +283,15 @@ export async function getUserSecurityStatus(
  * Public forgot-password: generate a recovery link and send ERP-branded email.
  * Public — no session required. Never reveals whether email exists.
  * Never logs action_link.
+ *
+ * Rate-limited two ways to prevent abuse of this public, unauthenticated
+ * endpoint (see src/lib/security/rate-limit.ts):
+ *   - Per IP: bounds scripted hammering of the endpoint (costs a Supabase
+ *     Admin API `listUsers` call + optional `generateLink`/email send).
+ *   - Per email: bounds "email-bombing" a specific person's inbox even if
+ *     the requests come from rotating IPs.
+ * Both limits fail silently (return GENERIC_SUCCESS) — consistent with the
+ * existing anti-enumeration design, callers never learn a limit was hit.
  */
 export async function requestPasswordReset(email: string): Promise<ActionResult> {
   // Always return generic success to prevent email enumeration
@@ -290,6 +300,27 @@ export async function requestPasswordReset(email: string): Promise<ActionResult>
   try {
     const emailTrimmed = email.trim().toLowerCase();
     if (!emailTrimmed || !emailTrimmed.includes("@")) return GENERIC_SUCCESS;
+
+    const ip = await getRequestIp();
+    const ipCheck = checkRateLimit(`pwreset:ip:${ip}`, {
+      windowMs: 15 * 60_000,
+      max: 8,
+    });
+    if (!ipCheck.allowed) {
+      logger.warn("requestPasswordReset: IP rate limit exceeded", { ip });
+      return GENERIC_SUCCESS;
+    }
+
+    const emailCheck = checkRateLimit(`pwreset:email:${emailTrimmed}`, {
+      windowMs: 15 * 60_000,
+      max: 3,
+    });
+    if (!emailCheck.allowed) {
+      logger.warn("requestPasswordReset: email rate limit exceeded", {
+        email: emailTrimmed,
+      });
+      return GENERIC_SUCCESS;
+    }
 
     const admin = createAdminClient();
 

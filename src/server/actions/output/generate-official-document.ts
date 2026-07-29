@@ -180,8 +180,10 @@ export async function generateOfficialDocument(
           success: false,
           blocked: "validation_failed",
           error:
-            `'${registry.report_name_en}' is awaiting approved wording and cannot be generated yet ` +
-            `(status: ${definition.status}).`,
+            `'${registry.report_name_en}' — Pending Business Wording Approval. ` +
+            `Official wording for this document has not been reviewed and approved yet ` +
+            `(definition status: ${definition.status}). ` +
+            `Generation remains blocked until explicit approved wording is provided by the business owner.`,
         };
       }
       if (!supportsLanguage(definition, language)) {

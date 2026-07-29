@@ -143,6 +143,7 @@ export async function listRecordIssuances(input: {
       items,
       canRevoke: hasPermission(ctx, "outputs.ops.revoke") || hasPermission(ctx, "reports.pdf.approve"),
       canReissue: hasPermission(ctx, "reports.pdf.approve") || hasPermission(ctx, "outputs.ops.retry"),
+      /** canDelete = may remove FAILED generation artifacts only — never issued documents. */
       canDelete: ctx.roleCodes.includes("system_admin") || ctx.roleCodes.includes("group_admin"),
     },
   };
@@ -342,32 +343,69 @@ export async function reissueOfficialDocument(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Permanent delete (system_admin only)
+// Cleanup of failed generation artifacts (system_admin only)
+//
+// GOVERNANCE: Issued official documents are immutable records. Hard deletion is
+// NEVER permitted for any document in the `issued` lifecycle state. Use
+// revokeIssuance to invalidate a document — the DB row, PDF, hash, audit trail,
+// and supersession links are all retained. Serial numbers are never reused.
+//
+// This action is ONLY permitted for documents that failed before reaching the
+// `issued` state (failed_retryable, failed_terminal, cancelled, pending orphans)
+// and have no associated official issuance record.
 // ─────────────────────────────────────────────────────────────────────────────
+
+const DELETABLE_LIFECYCLE_STATES = new Set([
+  "failed_retryable",
+  "failed_terminal",
+  "cancelled",
+  "pending",
+]);
 
 export async function deleteIssuance(input: { issuanceId: number }): Promise<ActionResult<void>> {
   const ctx = await getAuthContext();
   const isGlobalAdmin = ctx.roleCodes.includes("system_admin") || ctx.roleCodes.includes("group_admin");
   if (!isGlobalAdmin) {
-    return { success: false, error: "Only System Administrators can permanently delete issued documents." };
+    return { success: false, error: "Only System Administrators can remove failed document artifacts." };
   }
 
   const db = createAdminClient();
   const { data: doc, error: fetchErr } = await db
     .from("erp_generated_pdf_documents")
-    .select("id, storage_path, file_name, output_code, lifecycle_state")
+    .select("id, storage_path, file_name, output_code, lifecycle_state, serial_no, issued_at")
     .eq("id", input.issuanceId)
     .single();
 
   if (fetchErr || !doc) return { success: false, error: "Document not found." };
 
-  // Delete storage file (best-effort — continue even if missing)
+  // IMMUTABILITY GUARD — issued documents can NEVER be hard-deleted.
+  // `uploaded` is also protected: it reached storage before the issued transition.
+  if (
+    doc.lifecycle_state === "issued" ||
+    doc.lifecycle_state === "uploaded" ||
+    doc.lifecycle_state === "rendering"
+  ) {
+    return {
+      success: false,
+      error:
+        `Official document '${doc.file_name}' is in state '${doc.lifecycle_state}' and cannot be permanently deleted. ` +
+        "Issued documents are immutable records. Use Revoke to invalidate the document while retaining the compliance record, " +
+        "or Generate New to create a fresh issuance.",
+    };
+  }
+
+  if (!DELETABLE_LIFECYCLE_STATES.has(doc.lifecycle_state as string)) {
+    return {
+      success: false,
+      error: `Document lifecycle state '${doc.lifecycle_state}' does not permit deletion.`,
+    };
+  }
+
+  // For failed artifacts, remove any orphan storage object (these were never
+  // officially issued and may not exist — best-effort only).
   if (doc.storage_path) {
     await db.storage.from("erp-generated-pdfs").remove([doc.storage_path as string]).catch(() => {});
   }
-
-  // Delete dependent QR/verification links
-  await db.from("erp_output_public_links").delete().eq("generated_pdf_document_id", input.issuanceId);
 
   // Clear self-referencing FK columns on rows that supersede/were superseded by this one
   await db
@@ -392,7 +430,7 @@ export async function deleteIssuance(input: { issuanceId: number }): Promise<Act
     entity_name: "erp_generated_pdf_documents",
     entity_id: input.issuanceId,
     entity_reference: (doc.output_code as string | null) ?? String(input.issuanceId),
-    new_values: { event: "output_permanent_delete", file_name: doc.file_name, lifecycle_state: doc.lifecycle_state },
+    new_values: { event: "output_failed_artifact_removed", file_name: doc.file_name, lifecycle_state: doc.lifecycle_state },
   }).catch(() => {});
 
   return { success: true };

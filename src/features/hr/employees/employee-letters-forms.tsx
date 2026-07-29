@@ -182,6 +182,14 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
   const [actionPending, setActionPending] = useState(false);
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
 
+  // Repeat-generation: when a duplicate_content_warning is returned, store the
+  // originating item so the user can confirm a deliberate new issuance.
+  const [repeatTarget, setRepeatTarget] = useState<{
+    item: EmployeeOutputCatalogItem;
+    language: OfficialDocumentLanguage;
+    inputs: Record<string, string>;
+  } | null>(null);
+
   const refreshHistory = useCallback(async () => {
     const res = await listRecordIssuances({ sourceRecordType: "employee", recordId: employeeId });
     if (res.success && res.data) {
@@ -240,17 +248,20 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
   const handleOfficialIssue = async (
     item: EmployeeOutputCatalogItem,
     language: OfficialDocumentLanguage = "en",
-    inputs: Record<string, string> = {}
+    inputs: Record<string, string> = {},
+    authorizeReissue = false
   ) => {
     if (issuingCode) return;
     setIssuingCode(item.outputCode);
     setGenerateResult(null);
+    setRepeatTarget(null);
     try {
       const outcome = await generateOfficialDocument(item.outputCode, employeeId, {
         issueQr: item.qrPolicy !== "none",
         clientRequestToken: crypto.randomUUID(),
         language,
         inputs,
+        authorizeReissue,
       });
       if (outcome.success) {
         toast.success(`${item.name} issued`, {
@@ -269,17 +280,19 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
         if (outcome.downloadUrl) window.open(outcome.downloadUrl, "_blank");
         await refreshHistory();
       } else if (outcome.blocked === "duplicate_content_warning") {
-        toast.warning("Identical document already issued", {
-          description:
-            "This exact document already exists in the issued history below. Use Reissue there if a superseding copy is required.",
-        });
+        // The exact same content was already issued. Present a deliberate repeat-
+        // generation confirmation — a new issuance with a new serial and new hash.
+        // This is separate from Reissue/Supersede which marks the old copy superseded.
+        setRepeatTarget({ item, language, inputs });
+        setGenerateTarget(null);
         setGenerateResult({
           kind: "warning",
-          title: "Identical document already issued",
+          title: "An identical document is already issued",
           message:
-            "This exact document already exists in the issued history below. Use Reissue there if a superseding copy is required.",
+            "The existing issuance is shown in Issued Documents below. " +
+            "To open or reprint the original, use the Download button there. " +
+            "To create a new independent issuance with a fresh serial, click Generate New Issuance.",
         });
-        setGenerateTarget(null);
         await refreshHistory();
       } else if (outcome.blocked === "approval_required") {
         toast.error("Approval required", {
@@ -343,13 +356,13 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
     try {
       const res = await deleteIssuance({ issuanceId: deleteTarget.id });
       if (res.success) {
-        toast.success("Document permanently deleted", {
-          description: "The record, file, and verification link have been removed.",
+        toast.success("Failed artifact removed", {
+          description: "The failed generation record has been cleaned up.",
         });
         setDeleteTarget(null);
         await refreshHistory();
       } else {
-        toast.error("Delete failed", { description: res.error });
+        toast.error("Remove failed", { description: res.error });
       }
     } finally {
       setActionPending(false);
@@ -473,12 +486,33 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
           <div className="flex-1 min-w-0">
             <p className="font-medium">{generateResult.title}</p>
             <p className="mt-0.5 opacity-90">{generateResult.message}</p>
+            {/* Deliberate repeat generation — only shown when a duplicate was detected */}
+            {generateResult.kind === "warning" && repeatTarget && (
+              <div className="mt-2.5 flex items-center gap-2">
+                <Button
+                  size="sm"
+                  className="h-7 text-xs gap-1"
+                  disabled={issuingCode !== null}
+                  onClick={() => {
+                    const t = repeatTarget;
+                    setRepeatTarget(null);
+                    void handleOfficialIssue(t.item, t.language, t.inputs, true);
+                  }}
+                >
+                  {issuingCode ? <Loader2 className="h-3 w-3 animate-spin" /> : <Stamp className="h-3 w-3" />}
+                  Generate New Issuance
+                </Button>
+                <span className="text-[11px] opacity-75">
+                  Creates a new independent copy with a fresh serial and date.
+                </span>
+              </div>
+            )}
           </div>
           <button
             type="button"
             aria-label="Dismiss"
             className="shrink-0 opacity-60 hover:opacity-100"
-            onClick={() => setGenerateResult(null)}
+            onClick={() => { setGenerateResult(null); setRepeatTarget(null); }}
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -545,7 +579,7 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
                             variant="outline"
                             className="text-[10px] gap-0.5 border-slate-300 text-slate-500 dark:text-slate-400"
                           >
-                            <Hourglass className="h-2.5 w-2.5" /> Awaiting approved wording
+                            <Hourglass className="h-2.5 w-2.5" /> Pending Wording Approval
                           </Badge>
                         )}
                       </div>
@@ -562,8 +596,7 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
                       )}
                       {item.canGenerate && !item.generatable && (
                         <p className="flex items-center gap-1 text-[11px] text-muted-foreground mt-1">
-                          <Hourglass className="h-3 w-3" /> This document is registered but its
-                          official wording has not been approved yet.
+                          <Hourglass className="h-3 w-3" /> Pending Business Wording Approval — official wording for this document must be reviewed and approved before generation is enabled.
                         </p>
                       )}
                     </div>
@@ -761,13 +794,13 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
                           </Button>
                         )}
 
-                        {/* Permanent delete — system admin only */}
-                        {canDelete && (
+                        {/* Remove failed artifact — system admin only, never for issued/revoked/superseded */}
+                        {canDelete && (item.status === "failed" || item.status === "cancelled") && (
                           <Button
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
-                            title="Permanently delete record"
+                            title="Remove failed generation artifact"
                             onClick={() => setDeleteTarget(item)}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -840,6 +873,51 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
               </div>
             </div>
           )}
+
+          {/* ── Effective generation policy (governed, not user-selectable) ── */}
+          {generateTarget && (
+            <div className="col-span-12 rounded-md border bg-muted/30 px-3 py-2.5 space-y-1.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Effective Policy
+              </p>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <Shield className="h-3 w-3" />
+                  Company letterhead:{" "}
+                  <span className="text-foreground font-medium">
+                    Employee&apos;s company (auto-resolved)
+                  </span>
+                </span>
+                <span className="flex items-center gap-1">
+                  <QrCode className="h-3 w-3" />
+                  QR verification:{" "}
+                  <span className="text-foreground font-medium">
+                    {generateTarget.qrPolicy === "none"
+                      ? "Not issued (policy)"
+                      : generateTarget.qrPolicy === "days" && generateTarget.qrValidityDays
+                      ? `${generateTarget.qrValidityDays}-day token`
+                      : generateTarget.qrPolicy === "long_term"
+                      ? "Long-term token"
+                      : "Until revoked"}
+                  </span>
+                </span>
+                <span className="flex items-center gap-1">
+                  <Stamp className="h-3 w-3" />
+                  Stamp/signature:{" "}
+                  <span className="text-foreground font-medium">
+                    Applied if authorized (server-side)
+                  </span>
+                </span>
+                {generateTarget.approvalRequired && (
+                  <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
+                    <BadgeCheck className="h-3 w-3" />
+                    Approval required to issue
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
           {generateTarget && generateTarget.languages.length > 1 && (
             <div className="col-span-12">
               <label className="text-sm font-medium">Language</label>
@@ -969,31 +1047,33 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
         </div>
       </ERPChildDialogForm>
 
-      {/* ── Permanent delete dialog (system admin only) ──────────────────── */}
+      {/* ── Remove failed artifact dialog (system admin only) ───────────── */}
+      {/* NOTE: This dialog only appears for failed/cancelled generation artifacts.
+               Issued official documents cannot be deleted — use Revoke instead. */}
       <ERPChildDialogForm
         open={!!deleteTarget}
         onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
-        title="Permanently Delete Document"
-        subtitle="This removes the record, the stored file, and the verification link. This cannot be undone."
+        title="Remove Failed Generation Artifact"
+        subtitle="This cleans up a failed or cancelled generation attempt. Issued documents cannot be removed this way."
         icon={<Trash2 className="h-5 w-5" />}
         mode="edit"
         size="sm"
         isSubmitting={actionPending}
         onSubmit={handleDeleteSubmit}
-        submitLabel="Delete Permanently"
+        submitLabel="Remove Artifact"
       >
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12 rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive">
-            You are permanently deleting{" "}
+            Removing failed generation record:{" "}
             <span className="font-semibold">
               {deleteTarget?.file_name.replace(/\.pdf$/i, "").replace(/_/g, " ")}
             </span>
-            {deleteTarget?.serial_no && (
-              <span className="block text-[11px] mt-0.5 font-mono opacity-80">{deleteTarget.serial_no}</span>
-            )}
+            <span className="block text-[11px] mt-0.5 opacity-80">
+              Status: {deleteTarget?.status} — no official issuance record exists for this entry.
+            </span>
           </div>
           <div className="col-span-12 text-xs text-muted-foreground">
-            The PDF file, issuance record, and any QR verification link will be permanently removed. The serial number will not be reused.
+            This removes the failed generation record and any orphan storage file. Issued, revoked, and superseded documents are permanent compliance records and cannot be removed here — use Revoke for those.
           </div>
         </div>
       </ERPChildDialogForm>

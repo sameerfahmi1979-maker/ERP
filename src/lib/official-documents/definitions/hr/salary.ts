@@ -58,8 +58,9 @@ export const salaryCertificateWithAmountDefinition: OfficialDocumentDefinition =
     en: {
       source:
         "supabase/migrations/20260618100000_erp_hr_1_settings_foundation.sql (HR_SALARY_CERTIFICATE template seed)",
-      status: "verified_migration",
-      note: "Seed token {{total_salary}} maps to the payroll profile gross_salary; mapping recorded in the wording register.",
+      provenance: "verified_migration",
+      businessApprovalStatus: "pending_business_approval",
+      note: "Seed token {{total_salary}} maps to payroll profile gross_salary. Business-owner approval not yet formally recorded.",
     },
   },
   build: (ctx) => {
@@ -125,7 +126,9 @@ export const salaryCertificateGeneralDefinition: OfficialDocumentDefinition = {
     en: {
       source:
         "src/server/actions/reports/hr/hr-letter-documents.ts (salaryCertGeneralFetcher certificate_body, REPORT.4) + HR.1 HR_SALARY_CERTIFICATE seed closing sentence",
-      status: "verified_code",
+      provenance: "verified_code",
+      businessApprovalStatus: "pending_business_approval",
+      note: "Business-owner approval not yet formally recorded.",
     },
   },
   build: (ctx) => {

@@ -40,8 +40,9 @@ export const employmentCertificateDefinition: OfficialDocumentDefinition = {
   wording: {
     en: {
       source: "src/components/erp/print/templates/hr-employment-letter.tsx",
-      status: "verified_code",
-      note: "ERP PDF.1 production template prose, migrated verbatim with the same data bindings.",
+      provenance: "verified_code",
+      businessApprovalStatus: "pending_business_approval",
+      note: "ERP PDF.1 production template prose, migrated verbatim. Business-owner approval not yet formally recorded — required before production activation.",
     },
   },
   build: (ctx) => {
@@ -106,13 +107,15 @@ export const employmentConfirmationDefinition: OfficialDocumentDefinition = {
   wording: {
     en: {
       source: "src/components/erp/print/templates/bilingual-sample.tsx",
-      status: "verified_code",
-      note: "ERP PDF.1 bilingual template EN prose, migrated verbatim.",
+      provenance: "verified_code",
+      businessApprovalStatus: "pending_business_approval",
+      note: "ERP PDF.1 bilingual template EN prose, migrated verbatim. Business-owner approval not yet formally recorded.",
     },
     ar: {
       source: "src/components/erp/print/templates/bilingual-sample.tsx",
-      status: "verified_code",
-      note: "ERP PDF.1 bilingual template AR prose, migrated verbatim (draft gate was pending visual QA, executed in this program).",
+      provenance: "verified_code",
+      businessApprovalStatus: "pending_business_approval",
+      note: "ERP PDF.1 bilingual template AR prose, migrated verbatim. Business-owner approval not yet formally recorded.",
     },
   },
   build: (ctx) => {
@@ -182,8 +185,9 @@ export const experienceCertificateDefinition: OfficialDocumentDefinition = {
   wording: {
     en: {
       source: "src/server/actions/reports/hr/hr-letter-documents.ts (experienceLetterFetcher, REPORT.4)",
-      status: "verified_code",
-      note: "Published as the verified structured field layout. Narrative prose upgrade is pending approved wording (recorded in the wording register).",
+      provenance: "verified_code",
+      businessApprovalStatus: "pending_business_approval",
+      note: "Published as the verified structured field layout. Business-owner approval not yet formally recorded. Narrative prose upgrade pending approved wording.",
     },
   },
   build: (ctx) => {

@@ -190,6 +190,13 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
     inputs: Record<string, string>;
   } | null>(null);
 
+  // Lookup map: outputCode → catalog item (for Generate New in history table)
+  const catalogByCode = useMemo(() => {
+    const m = new Map<string, EmployeeOutputCatalogItem>();
+    for (const item of catalog) m.set(item.outputCode, item);
+    return m;
+  }, [catalog]);
+
   const refreshHistory = useCallback(async () => {
     const res = await listRecordIssuances({ sourceRecordType: "employee", recordId: employeeId });
     if (res.success && res.data) {
@@ -234,15 +241,28 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
   }, [filtered]);
 
   /** Opens the generation panel when needed, otherwise issues in one click. */
-  const handleGenerateClick = (item: EmployeeOutputCatalogItem) => {
+  const handleGenerateClick = (item: EmployeeOutputCatalogItem, autoAuthorizeReissue = false) => {
     setGenerateResult(null);
+    setRepeatTarget(null);
     if (item.languages.length > 1 || item.optionalInputs.length > 0) {
       setGenLanguage(item.languages[0] ?? "en");
       setGenInputs({});
       setGenerateTarget(item);
     } else {
-      void handleOfficialIssue(item);
+      void handleOfficialIssue(item, "en", {}, autoAuthorizeReissue);
     }
+  };
+
+  /**
+   * "Generate New" from an issued-document history row.
+   * Always passes authorizeReissue=true since the user is deliberately requesting
+   * a new issuance — this is distinct from Reissue/Supersede which marks the
+   * old copy superseded and formally links the two.
+   */
+  const handleGenerateNewFromHistory = (histItem: IssuanceHistoryItem) => {
+    const catalogItem = histItem.output_code ? catalogByCode.get(histItem.output_code) : undefined;
+    if (!catalogItem || !catalogItem.canGenerate || !catalogItem.generatable) return;
+    handleGenerateClick(catalogItem, true);
   };
 
   const handleOfficialIssue = async (
@@ -507,6 +527,31 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
                 </span>
               </div>
             )}
+            {/* Warning Letter prerequisite UX — actionable route to disciplinary record */}
+            {generateResult.kind === "error" &&
+              (generateResult.message.toLowerCase().includes("disciplinary record") ||
+                generateResult.message.toLowerCase().includes("incident_date") ||
+                generateResult.message.toLowerCase().includes("incident date")) && (
+                <div className="mt-2.5 flex flex-col gap-1.5">
+                  <p className="text-[11px] font-medium opacity-80">
+                    To resolve this, complete the disciplinary record with a valid incident date:
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <a
+                      href="/admin/hr/actions/disciplinary"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex h-7 items-center gap-1 rounded-md border border-input bg-background px-2 text-xs font-medium shadow-sm hover:bg-accent hover:text-accent-foreground transition-colors"
+                    >
+                      <ClipboardList className="h-3 w-3" />
+                      Open Disciplinary Records
+                    </a>
+                    <span className="text-[11px] opacity-75">
+                      Find or create the disciplinary record for this employee and set the incident date.
+                    </span>
+                  </div>
+                </div>
+              )}
           </div>
           <button
             type="button"
@@ -757,7 +802,7 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7"
-                          title="Download PDF"
+                          title="Download / Reprint Original PDF"
                           onClick={() => handleDownload(item)}
                           disabled={downloadingId === item.id || item.status === "failed" || item.status === "cancelled"}
                         >
@@ -768,13 +813,38 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
                           )}
                         </Button>
 
-                        {/* Reissue */}
+                        {/* Generate New — creates a separate new issuance with current data.
+                            Distinct from Reissue/Supersede: the original is NOT marked superseded.
+                            Shown for any official document whose catalog entry the user can still generate. */}
+                        {item.output_code &&
+                          (() => {
+                            const catItem = catalogByCode.get(item.output_code!);
+                            return catItem?.canGenerate && catItem?.generatable &&
+                              (item.status === "issued" || item.status === "revoked" || item.status === "superseded");
+                          })() && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+                            title="Generate New — create a fresh independent issuance with current ERP data"
+                            disabled={issuingCode !== null}
+                            onClick={() => handleGenerateNewFromHistory(item)}
+                          >
+                            {issuingCode === item.output_code ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                        )}
+
+                        {/* Reissue — formally supersedes the original and links both records */}
                         {item.status === "issued" && canReissue && (
                           <Button
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7"
-                            title="Reissue (superseding copy)"
+                            title="Reissue / Supersede (formal linked replacement)"
                             onClick={() => { setActionReason(""); setReissueTarget(item); }}
                           >
                             <RotateCcw className="h-3.5 w-3.5" />
@@ -874,47 +944,72 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
             </div>
           )}
 
-          {/* ── Effective generation policy (governed, not user-selectable) ── */}
+          {/* ── Effective generation policy (governed controls) ── */}
           {generateTarget && (
-            <div className="col-span-12 rounded-md border bg-muted/30 px-3 py-2.5 space-y-1.5">
+            <div className="col-span-12 rounded-md border bg-muted/30 px-3 py-2.5 space-y-2">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                 Effective Policy
               </p>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <Shield className="h-3 w-3" />
+
+              {/* Company / letterhead */}
+              <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                <Shield className="h-3 w-3 mt-0.5 shrink-0" />
+                <span>
                   Company letterhead:{" "}
                   <span className="text-foreground font-medium">
                     Employee&apos;s company (auto-resolved)
                   </span>
+                  {generateTarget.canBrandingOverride && (
+                    <span className="ml-1.5 text-[10px] text-blue-600 dark:text-blue-400 font-normal">
+                      · Override available — select a template when prompted
+                    </span>
+                  )}
                 </span>
-                <span className="flex items-center gap-1">
-                  <QrCode className="h-3 w-3" />
+              </div>
+
+              {/* QR verification — locked on/off by policy */}
+              <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                <QrCode className="h-3 w-3 mt-0.5 shrink-0" />
+                <span>
                   QR verification:{" "}
                   <span className="text-foreground font-medium">
                     {generateTarget.qrPolicy === "none"
-                      ? "Not issued (policy)"
+                      ? "Not issued — policy prohibits QR for this document"
                       : generateTarget.qrPolicy === "days" && generateTarget.qrValidityDays
-                      ? `${generateTarget.qrValidityDays}-day token`
+                      ? `${generateTarget.qrValidityDays}-day token (mandatory)`
                       : generateTarget.qrPolicy === "long_term"
-                      ? "Long-term token"
-                      : "Until revoked"}
+                      ? "Long-term token (mandatory)"
+                      : "Valid until revoked (mandatory)"}
                   </span>
                 </span>
-                <span className="flex items-center gap-1">
-                  <Stamp className="h-3 w-3" />
-                  Stamp/signature:{" "}
-                  <span className="text-foreground font-medium">
-                    Applied if authorized (server-side)
-                  </span>
-                </span>
-                {generateTarget.approvalRequired && (
-                  <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
-                    <BadgeCheck className="h-3 w-3" />
-                    Approval required to issue
-                  </span>
-                )}
               </div>
+
+              {/* Stamp / signature — server-side, permission-governed */}
+              <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                <Stamp className="h-3 w-3 mt-0.5 shrink-0" />
+                <span>
+                  Stamp / signature:{" "}
+                  {generateTarget.userCanSign ? (
+                    <span className="text-emerald-700 dark:text-emerald-400 font-medium">
+                      Will be applied — you hold the stamp/signature permission (reports.sign)
+                    </span>
+                  ) : (
+                    <span className="text-foreground font-medium">
+                      Not applied — requires reports.sign permission
+                    </span>
+                  )}
+                </span>
+              </div>
+
+              {/* Approval required */}
+              {generateTarget.approvalRequired && (
+                <div className="flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400">
+                  <BadgeCheck className="h-3 w-3 shrink-0" />
+                  <span className="font-medium">
+                    Approval required — you must hold reports.pdf.approve to issue this document
+                  </span>
+                </div>
+              )}
             </div>
           )}
 

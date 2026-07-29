@@ -51,8 +51,9 @@ export const nocDefinition: OfficialDocumentDefinition = {
     en: {
       source:
         "supabase/migrations/20260618100000_erp_hr_1_settings_foundation.sql (HR_NOC_LETTER template seed)",
-      status: "verified_migration",
-      note: "Validity sentence is conditional — included only when a validity period is provided.",
+      provenance: "verified_migration",
+      businessApprovalStatus: "pending_business_approval",
+      note: "Validity sentence is conditional. Business-owner approval not yet formally recorded.",
     },
   },
   build: (ctx) => {
@@ -123,7 +124,9 @@ export const warningLetterDefinition: OfficialDocumentDefinition = {
     en: {
       source:
         "supabase/migrations/20260618100000_erp_hr_1_settings_foundation.sql (HR_WARNING_LETTER template seed)",
-      status: "verified_migration",
+      provenance: "verified_migration",
+      businessApprovalStatus: "pending_business_approval",
+      note: "Business-owner approval not yet formally recorded.",
     },
   },
   build: (ctx) => {

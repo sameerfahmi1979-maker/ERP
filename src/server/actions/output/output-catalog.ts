@@ -71,6 +71,16 @@ export interface EmployeeOutputCatalogItem {
   languages: OfficialDocumentLanguage[];
   /** Optional user inputs declared by the fixed definition (e.g. NOC purpose). */
   optionalInputs: CatalogInputField[];
+  /**
+   * True when the current user holds `reports.branding.override`.
+   * When true, a letterhead/template override dropdown is shown in the generation dialog.
+   */
+  canBrandingOverride: boolean;
+  /**
+   * True when the current user holds `reports.sign`.
+   * When true, the stamp/signature is applied by the server; shown in the generation dialog.
+   */
+  userCanSign: boolean;
 }
 
 /**
@@ -148,6 +158,8 @@ export async function listEmployeeOutputCatalog(): Promise<
         placeholder: f.placeholder,
         helpText: f.helpText,
       })),
+      canBrandingOverride: ctx.permissionCodes.includes("reports.branding.override"),
+      userCanSign: ctx.permissionCodes.includes("reports.sign"),
     });
   }
 

@@ -34,12 +34,15 @@ export const clearanceFormDefinition: OfficialDocumentDefinition = {
   wording: {
     en: {
       source: "src/server/actions/reports/hr/hr-letter-documents.ts (clearanceFormFetcher, REPORT.4)",
-      status: "verified_code",
+      provenance: "verified_code",
+      businessApprovalStatus: "pending_business_approval",
+      note: "Business-owner approval not yet formally recorded.",
     },
     ar: {
       source: "Program prompt Section 9.4 bilingual label pairs + HR seed title نموذج تسوية الموظف",
-      status: "verified_prompt",
-      note: "Arabic is label-level only (bilingual_form_table); no Arabic narrative prose exists or is required.",
+      provenance: "verified_prompt",
+      businessApprovalStatus: "pending_business_approval",
+      note: "Arabic is label-level only (bilingual_form_table); no Arabic narrative prose exists or is required. Business-owner approval not yet formally recorded.",
     },
   },
   build: (ctx) => {
@@ -98,8 +101,9 @@ export const joiningChecklistDefinition: OfficialDocumentDefinition = {
   wording: {
     en: {
       source: "src/server/actions/reports/hr/hr-letter-documents.ts (joiningChecklistFetcher, REPORT.4)",
-      status: "verified_code",
-      note: "Checklist items migrated verbatim from the fetcher's item list.",
+      provenance: "verified_code",
+      businessApprovalStatus: "pending_business_approval",
+      note: "Checklist items migrated verbatim from the fetcher's item list. Business-owner approval not yet formally recorded.",
     },
   },
   build: (ctx) => ({
@@ -141,7 +145,9 @@ export const ppeIssueFormDefinition: OfficialDocumentDefinition = {
   wording: {
     en: {
       source: "src/server/actions/reports/hr/hr-letter-documents.ts (ppeIssueFormFetcher, REPORT.4)",
-      status: "verified_code",
+      provenance: "verified_code",
+      businessApprovalStatus: "pending_business_approval",
+      note: "Business-owner approval not yet formally recorded.",
     },
   },
   build: (ctx) => {
@@ -200,7 +206,8 @@ function pendingWording(documentCode: string, titleEn: string, businessPurpose: 
     wording: {
       en: {
         source: "none",
-        status: "pending",
+        provenance: "pending",
+        businessApprovalStatus: "draft",
         note: "No verified approved wording exists in the repository. Provide approved English (and Arabic where needed) wording to enable this document.",
       },
     },

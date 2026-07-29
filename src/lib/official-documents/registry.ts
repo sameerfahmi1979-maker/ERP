@@ -88,10 +88,10 @@ export function validateOfficialDocumentDefinition(def: OfficialDocumentDefiniti
       def.supportedLanguages.includes("en") || def.supportedLanguages.includes("bilingual");
     const needsArabic =
       def.supportedLanguages.includes("ar") || def.supportedLanguages.includes("bilingual");
-    if (needsEnglish && !VERIFIED_STATUSES.has(def.wording.en.status)) {
-      errors.push(`${code}: cannot publish — English wording is not verified (${def.wording.en.status}).`);
+    if (needsEnglish && !VERIFIED_STATUSES.has(def.wording.en.provenance)) {
+      errors.push(`${code}: cannot publish — English wording is not verified (${def.wording.en.provenance}).`);
     }
-    if (needsArabic && (!def.wording.ar || !VERIFIED_STATUSES.has(def.wording.ar.status))) {
+    if (needsArabic && (!def.wording.ar || !VERIFIED_STATUSES.has(def.wording.ar.provenance))) {
       errors.push(`${code}: cannot publish — Arabic wording is not verified.`);
     }
     if (def.supportedLanguages.includes("bilingual") && !def.bilingualLayoutType) {

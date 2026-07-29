@@ -119,7 +119,7 @@ describe("official document registry governance", () => {
       requiredSourceFields: [],
       optionalInputs: [],
       sensitiveFields: [],
-      wording: { en: { source: "none", status: "pending" } },
+      wording: { en: { source: "none", provenance: "pending", businessApprovalStatus: "draft" } },
       build: () => ({ titleEn: "Bad Doc", blocks: [] }),
     };
     const errors = validateOfficialDocumentDefinition(bad);
@@ -140,7 +140,7 @@ describe("official document registry governance", () => {
       requiredSourceFields: [],
       optionalInputs: [],
       sensitiveFields: [],
-      wording: { en: { source: "x", status: "verified_code" } },
+      wording: { en: { source: "x", provenance: "verified_code", businessApprovalStatus: "approved" } },
       build: () => ({ titleEn: "Bad Bilingual", blocks: [] }),
     };
     const errors = validateOfficialDocumentDefinition(bad);

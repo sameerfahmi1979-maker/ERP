@@ -34,17 +34,55 @@ export type BilingualLayoutType =
  */
 export type OfficialDocumentStatus = "published" | "draft" | "disabled_pending_wording";
 
-/** Where a piece of official wording came from, and how strong the evidence is. */
+/**
+ * Where a piece of official wording came from, and its business-approval status.
+ *
+ * GOVERNANCE SEPARATION (OFFICIAL DOCS.1A-R2):
+ * `provenance` describes the technical origin of the text.
+ * `businessApprovalStatus` describes whether the business owner has explicitly approved it.
+ * These are independent — verified code/migration/prompt provenance does NOT constitute
+ * business approval for official issuance.
+ */
 export interface WordingEvidence {
   /** Repo-relative file (or migration) containing the exact source wording. */
   source: string;
+
   /**
-   * - `verified_code` — wording exists in live production source code.
-   * - `verified_migration` — wording seeded by an applied migration.
-   * - `verified_prompt` — wording/labels supplied verbatim by the approved business prompt.
+   * PROVENANCE — technical origin of the wording text only.
+   * None of these values alone constitute business approval.
+   *
+   * - `verified_code` — text exists in live production source code.
+   * - `verified_migration` — text seeded by an applied DB migration.
+   * - `verified_prompt` — text supplied verbatim by an approved business program prompt.
    * - `pending` — no verified source; must NOT be published.
    */
-  status: "verified_code" | "verified_migration" | "verified_prompt" | "pending";
+  provenance: "verified_code" | "verified_migration" | "verified_prompt" | "pending";
+
+  /**
+   * BUSINESS APPROVAL STATUS — whether the business owner has explicitly approved
+   * this wording for official issuance. Separate from and independent of provenance.
+   *
+   * - `draft` — wording is implemented but not yet submitted for business approval.
+   * - `pending_business_approval` — submitted; awaiting explicit decision.
+   * - `approved` — explicit approval received from the business owner or authorized HR approver.
+   * - `rejected` — business owner rejected; wording must be revised.
+   * - `superseded` — replaced by a newer approved version.
+   *
+   * Only `approved` permits production activation as an official issued document.
+   * Technical UAT in non-production environments may proceed under `pending_business_approval`
+   * provided the production activation gate (OUTPUT_OFFICIAL_ISSUANCE_ENABLED) remains closed.
+   */
+  businessApprovalStatus: "draft" | "pending_business_approval" | "approved" | "rejected" | "superseded";
+
+  /** Identifier (name/role) of the person who approved. Never fabricated. */
+  approvedBy?: string;
+  /** ISO date of approval. Never fabricated. */
+  approvalDate?: string;
+  /** Free-text approval notes or decision summary. */
+  approvalNotes?: string;
+  /** Ticket, email thread, or document reference for audit trail. */
+  approvalReference?: string;
+
   note?: string;
 }
 

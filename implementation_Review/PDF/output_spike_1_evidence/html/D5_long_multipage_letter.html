@@ -1,0 +1,139 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"/><style>
+  @font-face {
+    font-family: "Noto Sans Arabic";
+    src: url("noto-arabic-400.woff2") format("woff2");
+    font-weight: 400;
+  }
+  @font-face {
+    font-family: "Noto Sans Arabic";
+    src: url("noto-arabic-700.woff2") format("woff2");
+    font-weight: 700;
+  }
+  :root { --accent: #1d4ed8; --accent-dark: #172554; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family:  Arial, Helvetica, sans-serif;
+    color: #111827; font-size: 11pt; line-height: 1.55;
+    
+  }
+  p { orphans: 3; widows: 3; }
+  .doc-header {
+    display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 3px solid var(--accent); padding-bottom: 4mm; margin-bottom: 6mm;
+  }
+  .doc-header .co-name { font-size: 13pt; font-weight: 700; color: var(--accent-dark); }
+  .doc-header .co-sub { font-size: 8pt; color: #6b7280; }
+  .doc-footer {
+    border-top: 1px solid #d1d5db; margin-top: 8mm; padding-top: 3mm;
+    font-size: 8pt; color: #6b7280; display: flex; justify-content: space-between;
+  }
+  h1.title { text-align: center; text-decoration: underline; font-size: 14pt; letter-spacing: 1px; color: var(--accent-dark); }
+  h2.section { font-size: 11.5pt; color: var(--accent-dark); border-bottom: 1px solid var(--accent); padding-bottom: 1mm; }
+  table.data { width: 100%; border-collapse: collapse; margin: 4mm 0; }
+  table.data th { background: var(--accent); color: #fff; text-align: left; padding: 2mm 3mm; font-size: 9.5pt; }
+  table.data td { border: 0.3mm solid #d1d5db; padding: 1.8mm 3mm; font-size: 9.5pt; }
+  table.data thead { display: table-header-group; }  /* repeating header across pages */
+  table.data tr { page-break-inside: avoid; }
+  .kv { margin: 1mm 0; }
+  .kv b { display: inline-block; min-width: 52mm; }
+  .watermark {
+    position: fixed; top: 40%; left: 8%; transform: rotate(-30deg);
+    font-size: 46pt; font-weight: 700; color: rgba(107, 114, 128, 0.12);
+    pointer-events: none; z-index: 0; letter-spacing: 6px;
+  }
+  .protected-ph {
+    border: 1.5px dashed #b91c1c; color: #b91c1c; background: #fef2f2;
+    font-size: 7.5pt; font-weight: 700; text-align: center; padding: 3mm;
+    display: inline-block;
+  }
+  .stamp-ph { width: 34mm; height: 34mm; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; }
+  .sig-ph { width: 52mm; }
+  .qr-block { text-align: center; font-size: 7pt; color: #6b7280; }
+  .qr-block img { width: 22mm; height: 22mm; }
+  .page-break { page-break-before: always; }
+  .sig-row { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 12mm; }
+  </style></head><body>
+  <div class="watermark">SPIKE FIXTURE</div>
+  <div class="doc-header">
+    <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjAiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCAxMjAgNDgiPjxyZWN0IHdpZHRoPSIxMjAiIGhlaWdodD0iNDgiIHJ4PSI2IiBmaWxsPSIjMWQ0ZWQ4Ii8+PHRleHQgeD0iNjAiIHk9IjMxIiBmb250LWZhbWlseT0iQXJpYWwsSGVsdmV0aWNhLHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjAiIGZvbnQtd2VpZ2h0PSI3MDAiIGZpbGw9IiNmZmZmZmYiIHRleHQtYW5jaG9yPSJtaWRkbGUiPlNHPC90ZXh0Pjwvc3ZnPg==" alt="logo" width="120" height="48"/>
+    <div style="text-align:right">
+      <div class="co-name">SYNTHETIC GULF TRANSPORT LLC</div>
+      <div class="co-sub">P.O. Box 11111, Test City, UAE · TRN 100000000000001</div>
+    </div>
+  </div>
+  <h1 class="title">SYNTHETIC LONG-FORM EMPLOYMENT LETTER</h1>
+  <p>This paragraph exists to prove flowing multi-page text layout, widow and orphan
+  control, and consistent typographic rhythm across page boundaries. The quick brown fox jumps
+  over the lazy dog while the committee reviews clause after clause of the synthetic employment
+  agreement, ensuring that no line of a paragraph is stranded alone at the top or bottom of a
+  page when the document is paginated by the print engine.</p>
+<p>This paragraph exists to prove flowing multi-page text layout, widow and orphan
+  control, and consistent typographic rhythm across page boundaries. The quick brown fox jumps
+  over the lazy dog while the committee reviews clause after clause of the synthetic employment
+  agreement, ensuring that no line of a paragraph is stranded alone at the top or bottom of a
+  page when the document is paginated by the print engine.</p>
+<p>This paragraph exists to prove flowing multi-page text layout, widow and orphan
+  control, and consistent typographic rhythm across page boundaries. The quick brown fox jumps
+  over the lazy dog while the committee reviews clause after clause of the synthetic employment
+  agreement, ensuring that no line of a paragraph is stranded alone at the top or bottom of a
+  page when the document is paginated by the print engine.</p>
+<p>This paragraph exists to prove flowing multi-page text layout, widow and orphan
+  control, and consistent typographic rhythm across page boundaries. The quick brown fox jumps
+  over the lazy dog while the committee reviews clause after clause of the synthetic employment
+  agreement, ensuring that no line of a paragraph is stranded alone at the top or bottom of a
+  page when the document is paginated by the print engine.</p>
+<p>This paragraph exists to prove flowing multi-page text layout, widow and orphan
+  control, and consistent typographic rhythm across page boundaries. The quick brown fox jumps
+  over the lazy dog while the committee reviews clause after clause of the synthetic employment
+  agreement, ensuring that no line of a paragraph is stranded alone at the top or bottom of a
+  page when the document is paginated by the print engine.</p>
+<p>This paragraph exists to prove flowing multi-page text layout, widow and orphan
+  control, and consistent typographic rhythm across page boundaries. The quick brown fox jumps
+  over the lazy dog while the committee reviews clause after clause of the synthetic employment
+  agreement, ensuring that no line of a paragraph is stranded alone at the top or bottom of a
+  page when the document is paginated by the print engine.</p>
+  <h2 class="section">Section 2 — Deliberate Page Break Follows</h2>
+  <p>The next heading is forced onto a new page via an explicit page break.</p>
+  <div class="page-break"></div>
+  <h2 class="section">Section 3 — Repeating Table Header Proof (60 rows)</h2>
+  <table class="data">
+    <thead><tr><th>#</th><th>Description</th><th>Amount</th><th>Frequency</th></tr></thead>
+    <tbody><tr><td>1</td><td>Synthetic allowance line item 1</td><td>AED 1,000</td><td>Monthly</td></tr><tr><td>2</td><td>Synthetic allowance line item 2</td><td>AED 1,007</td><td>Monthly</td></tr><tr><td>3</td><td>Synthetic allowance line item 3</td><td>AED 1,014</td><td>Monthly</td></tr><tr><td>4</td><td>Synthetic allowance line item 4</td><td>AED 1,021</td><td>Monthly</td></tr><tr><td>5</td><td>Synthetic allowance line item 5</td><td>AED 1,028</td><td>Monthly</td></tr><tr><td>6</td><td>Synthetic allowance line item 6</td><td>AED 1,035</td><td>Monthly</td></tr><tr><td>7</td><td>Synthetic allowance line item 7</td><td>AED 1,042</td><td>Monthly</td></tr><tr><td>8</td><td>Synthetic allowance line item 8</td><td>AED 1,049</td><td>Monthly</td></tr><tr><td>9</td><td>Synthetic allowance line item 9</td><td>AED 1,056</td><td>Monthly</td></tr><tr><td>10</td><td>Synthetic allowance line item 10</td><td>AED 1,063</td><td>Monthly</td></tr><tr><td>11</td><td>Synthetic allowance line item 11</td><td>AED 1,070</td><td>Monthly</td></tr><tr><td>12</td><td>Synthetic allowance line item 12</td><td>AED 1,077</td><td>Monthly</td></tr><tr><td>13</td><td>Synthetic allowance line item 13</td><td>AED 1,084</td><td>Monthly</td></tr><tr><td>14</td><td>Synthetic allowance line item 14</td><td>AED 1,091</td><td>Monthly</td></tr><tr><td>15</td><td>Synthetic allowance line item 15</td><td>AED 1,098</td><td>Monthly</td></tr><tr><td>16</td><td>Synthetic allowance line item 16</td><td>AED 1,105</td><td>Monthly</td></tr><tr><td>17</td><td>Synthetic allowance line item 17</td><td>AED 1,112</td><td>Monthly</td></tr><tr><td>18</td><td>Synthetic allowance line item 18</td><td>AED 1,119</td><td>Monthly</td></tr><tr><td>19</td><td>Synthetic allowance line item 19</td><td>AED 1,126</td><td>Monthly</td></tr><tr><td>20</td><td>Synthetic allowance line item 20</td><td>AED 1,133</td><td>Monthly</td></tr><tr><td>21</td><td>Synthetic allowance line item 21</td><td>AED 1,140</td><td>Monthly</td></tr><tr><td>22</td><td>Synthetic allowance line item 22</td><td>AED 1,147</td><td>Monthly</td></tr><tr><td>23</td><td>Synthetic allowance line item 23</td><td>AED 1,154</td><td>Monthly</td></tr><tr><td>24</td><td>Synthetic allowance line item 24</td><td>AED 1,161</td><td>Monthly</td></tr><tr><td>25</td><td>Synthetic allowance line item 25</td><td>AED 1,168</td><td>Monthly</td></tr><tr><td>26</td><td>Synthetic allowance line item 26</td><td>AED 1,175</td><td>Monthly</td></tr><tr><td>27</td><td>Synthetic allowance line item 27</td><td>AED 1,182</td><td>Monthly</td></tr><tr><td>28</td><td>Synthetic allowance line item 28</td><td>AED 1,189</td><td>Monthly</td></tr><tr><td>29</td><td>Synthetic allowance line item 29</td><td>AED 1,196</td><td>Monthly</td></tr><tr><td>30</td><td>Synthetic allowance line item 30</td><td>AED 1,203</td><td>Monthly</td></tr><tr><td>31</td><td>Synthetic allowance line item 31</td><td>AED 1,210</td><td>Monthly</td></tr><tr><td>32</td><td>Synthetic allowance line item 32</td><td>AED 1,217</td><td>Monthly</td></tr><tr><td>33</td><td>Synthetic allowance line item 33</td><td>AED 1,224</td><td>Monthly</td></tr><tr><td>34</td><td>Synthetic allowance line item 34</td><td>AED 1,231</td><td>Monthly</td></tr><tr><td>35</td><td>Synthetic allowance line item 35</td><td>AED 1,238</td><td>Monthly</td></tr><tr><td>36</td><td>Synthetic allowance line item 36</td><td>AED 1,245</td><td>Monthly</td></tr><tr><td>37</td><td>Synthetic allowance line item 37</td><td>AED 1,252</td><td>Monthly</td></tr><tr><td>38</td><td>Synthetic allowance line item 38</td><td>AED 1,259</td><td>Monthly</td></tr><tr><td>39</td><td>Synthetic allowance line item 39</td><td>AED 1,266</td><td>Monthly</td></tr><tr><td>40</td><td>Synthetic allowance line item 40</td><td>AED 1,273</td><td>Monthly</td></tr><tr><td>41</td><td>Synthetic allowance line item 41</td><td>AED 1,280</td><td>Monthly</td></tr><tr><td>42</td><td>Synthetic allowance line item 42</td><td>AED 1,287</td><td>Monthly</td></tr><tr><td>43</td><td>Synthetic allowance line item 43</td><td>AED 1,294</td><td>Monthly</td></tr><tr><td>44</td><td>Synthetic allowance line item 44</td><td>AED 1,301</td><td>Monthly</td></tr><tr><td>45</td><td>Synthetic allowance line item 45</td><td>AED 1,308</td><td>Monthly</td></tr><tr><td>46</td><td>Synthetic allowance line item 46</td><td>AED 1,315</td><td>Monthly</td></tr><tr><td>47</td><td>Synthetic allowance line item 47</td><td>AED 1,322</td><td>Monthly</td></tr><tr><td>48</td><td>Synthetic allowance line item 48</td><td>AED 1,329</td><td>Monthly</td></tr><tr><td>49</td><td>Synthetic allowance line item 49</td><td>AED 1,336</td><td>Monthly</td></tr><tr><td>50</td><td>Synthetic allowance line item 50</td><td>AED 1,343</td><td>Monthly</td></tr><tr><td>51</td><td>Synthetic allowance line item 51</td><td>AED 1,350</td><td>Monthly</td></tr><tr><td>52</td><td>Synthetic allowance line item 52</td><td>AED 1,357</td><td>Monthly</td></tr><tr><td>53</td><td>Synthetic allowance line item 53</td><td>AED 1,364</td><td>Monthly</td></tr><tr><td>54</td><td>Synthetic allowance line item 54</td><td>AED 1,371</td><td>Monthly</td></tr><tr><td>55</td><td>Synthetic allowance line item 55</td><td>AED 1,378</td><td>Monthly</td></tr><tr><td>56</td><td>Synthetic allowance line item 56</td><td>AED 1,385</td><td>Monthly</td></tr><tr><td>57</td><td>Synthetic allowance line item 57</td><td>AED 1,392</td><td>Monthly</td></tr><tr><td>58</td><td>Synthetic allowance line item 58</td><td>AED 1,399</td><td>Monthly</td></tr><tr><td>59</td><td>Synthetic allowance line item 59</td><td>AED 1,406</td><td>Monthly</td></tr><tr><td>60</td><td>Synthetic allowance line item 60</td><td>AED 1,413</td><td>Monthly</td></tr></tbody>
+  </table>
+  <p>This paragraph exists to prove flowing multi-page text layout, widow and orphan
+  control, and consistent typographic rhythm across page boundaries. The quick brown fox jumps
+  over the lazy dog while the committee reviews clause after clause of the synthetic employment
+  agreement, ensuring that no line of a paragraph is stranded alone at the top or bottom of a
+  page when the document is paginated by the print engine.</p>
+<p>This paragraph exists to prove flowing multi-page text layout, widow and orphan
+  control, and consistent typographic rhythm across page boundaries. The quick brown fox jumps
+  over the lazy dog while the committee reviews clause after clause of the synthetic employment
+  agreement, ensuring that no line of a paragraph is stranded alone at the top or bottom of a
+  page when the document is paginated by the print engine.</p>
+<p>This paragraph exists to prove flowing multi-page text layout, widow and orphan
+  control, and consistent typographic rhythm across page boundaries. The quick brown fox jumps
+  over the lazy dog while the committee reviews clause after clause of the synthetic employment
+  agreement, ensuring that no line of a paragraph is stranded alone at the top or bottom of a
+  page when the document is paginated by the print engine.</p>
+<p>This paragraph exists to prove flowing multi-page text layout, widow and orphan
+  control, and consistent typographic rhythm across page boundaries. The quick brown fox jumps
+  over the lazy dog while the committee reviews clause after clause of the synthetic employment
+  agreement, ensuring that no line of a paragraph is stranded alone at the top or bottom of a
+  page when the document is paginated by the print engine.</p>
+  <div class="sig-row">
+    <div>
+      <div>For and on behalf of<br/><b>SYNTHETIC GULF TRANSPORT LLC</b></div>
+      <div class="protected-ph sig-ph">PROTECTED SIGNATURE PLACEHOLDER</div>
+    </div>
+    <div class="protected-ph stamp-ph">PROTECTED STAMP<br/>PLACEHOLDER</div>
+    <div class="qr-block">
+    <img src="data:image/png;base64,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" alt="verification qr"/>
+    <div>Verify: (inactive spike token)<br/>SpzIbgE2C-2f…</div>
+  </div>
+  </div>
+  <div class="doc-footer">
+    <span>SYNTHETIC GULF TRANSPORT LLC · +971-0-111-1111 · fixture-a@example.com</span>
+    <span>Ref: SPIKE-D5 · SPIKE FIXTURE — NOT AN OFFICIAL DOCUMENT</span>
+  </div>
+  </body></html>

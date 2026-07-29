@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>SPIKE — TipTap v2 + community pagination (tiptap-extension-pagination 2.1.4)</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #e2e8f0; margin: 0; padding: 24px; }
+    .toolbar { position: sticky; top: 0; background: #0f172a; color: #fff; padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; z-index: 10; }
+    #editor { background: transparent; }
+    /* A4 page look — the pagination extension injects page break nodes */
+    .ProseMirror { outline: none; }
+    .rtl-block { direction: rtl; text-align: right; }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    SPIKE FIXTURE — TipTap v2.x + tiptap-extension-pagination 2.1.4 (ISC, community) —
+    A4 pages, 25mm margins. NOT production code.
+    <span id="status">loading…</span>
+  </div>
+  <div id="editor"></div>
+  <script type="module" src="/main.js"></script>
+</body>
+</html>

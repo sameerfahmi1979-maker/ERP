@@ -1,0 +1,122 @@
+{
+  "id": 15,
+  "template_code": "DEFAULT_CERTIFICATE_TEMPLATE_V2_V3_V4",
+  "template_name": "To Whom It May Concern (v4)",
+  "template_type": "certificate",
+  "branding_profile_id": 4,
+  "default_orientation": "portrait",
+  "page_size": "a4",
+  "font_family": "Inter",
+  "language_mode": "bilingual",
+  "show_logo": true,
+  "show_small_logo": false,
+  "show_address": true,
+  "show_trn": true,
+  "show_license": true,
+  "show_signatory": false,
+  "show_stamp": false,
+  "show_watermark": false,
+  "requires_stamp_permission": false,
+  "watermark_text": null,
+  "body_html_en": null,
+  "body_html_ar": null,
+  "custom_css": null,
+  "header_layout_json": {
+    "root": {
+      "props": {
+        "titleBarMode": "hidden",
+        "titleBarText": "",
+        "titleBarBgColor": "",
+        "titleBarTextColor": ""
+      }
+    },
+    "engine": "puck",
+    "content": [
+      {
+        "type": "BrandingHeaderBlock",
+        "props": {
+          "showLogo": true,
+          "showName": true,
+          "showAddress": true,
+          "showContact": true
+        }
+      }
+    ],
+    "schemaVersion": 2
+  },
+  "footer_layout_json": {
+    "root": {
+      "props": {
+        "titleBarMode": "hidden",
+        "titleBarText": "",
+        "titleBarBgColor": "",
+        "titleBarTextColor": ""
+      }
+    },
+    "engine": "puck",
+    "content": [
+      {
+        "type": "ColumnStripBlock",
+        "props": {
+          "gap": "md",
+          "layout": "3-col",
+          "leftSlot": {
+            "stampAlign": "center",
+            "contentType": "signatory",
+            "stampSizeMm": 60,
+            "showSignature": true
+          },
+          "rightSlot": {
+            "qrAlign": "right",
+            "qrLabel": "Scan to verify",
+            "qrSizeMm": 35,
+            "kvBinding": "document.qr_verification_url",
+            "logoAlign": "center",
+            "contentType": "qr"
+          },
+          "centerSlot": {
+            "stampAlign": "center",
+            "contentType": "stamp",
+            "stampSizeMm": 60,
+            "showSignature": false
+          },
+          "verticalAlign": "middle"
+        }
+      }
+    ],
+    "schemaVersion": 2
+  },
+  "style_json": {},
+  "version_no": 4,
+  "is_default": false,
+  "is_active": true,
+  "created_at": "2026-07-06T13:05:34.169836+00:00",
+  "updated_at": "2026-07-06T13:32:50.116+00:00",
+  "created_by": 1,
+  "updated_by": 1,
+  "deleted_at": null,
+  "deleted_by": null,
+  "parent_template_id": 14,
+  "governance_status": "draft",
+  "submitted_at": null,
+  "submitted_by": null,
+  "approved_at": null,
+  "approved_by": null,
+  "approval_notes": null,
+  "rejected_at": null,
+  "rejected_by": null,
+  "rejection_reason": null,
+  "published_at": null,
+  "published_by": null,
+  "archived_at": null,
+  "archived_by": null,
+  "archive_reason": null,
+  "security_review_status": "passed",
+  "security_review_notes": "[WARNING] visual.body.block[1].props.richContent.content[15].content[2].text: restricted_field_elevated_approval_required — \"{{employee.passport_number}} — restricted field in certificate template. Requires reports.sensitive_fields.approve to publish.\"\n[WARNING] visual.body.block[1].props.richContent.content[16].content[2].text: restricted_field_elevated_approval_required — \"{{employee.emirates_id_number}} — restricted field in certificate template. Requires reports.sensitive_fields.approve to publish.\"\n[WARNING] visual.body.block[1].props.richContent.content[18].content[1].text: restricted_field_elevated_approval_required — \"{{employee.basic_salary}} — restricted field in certificate template. Requires reports.sensitive_fields.approve to publish.\"\n[WARNING] visual.body.block[1].props.richContent.content[18].content[4].text: restricted_field_elevated_approval_required — \"{{employee.total_salary}} — restricted field in certificate template. Requires reports.sensitive_fields.approve to publish.\"\n[WARNING] visual.body.block[1].props.richContent.content[18].content[7].text: restricted_field_elevated_approval_required — \"{{employee.net_salary}} — restricted field in certificate template. Requires reports.sensitive_fields.approve to publish.\"\n[WARNING] visual.body.block[1].props.content: restricted_field_elevated_approval_required — \"{{employee.passport_number}} — restricted field in certificate template. Requires reports.sensitive_fields.approve to publish.\"\n[WARNING] visual.body.block[1].props.content: restricted_field_elevated_approval_required — \"{{employee.emirates_id_number}} — restricted field in certificate template. Requires reports.sensitive_fields.approve to publish.\"\n[WARNING] visual.body.block[1].props.content: restricted_field_elevated_approval_required — \"{{employee.basic_salary}} — restricted field in certificate template. Requires reports.sensitive_fields.approve to publish.\"\n[WARNING] visual.body.block[1].props.content: restricted_field_elevated_approval_required — \"{{employee.total_salary}} — restricted field in certificate template. Requires reports.sensitive_fields.approve to publish.\"\n[WARNING] visual.body.block[1].props.content: restricted_field_elevated_approval_required — \"{{employee.net_salary}} — restricted field in certificate template. Requires reports.sensitive_fields.approve to publish.\"\n[WARNING] visual.governance: sensitive_fields_require_elevated_approval — \"This template uses restricted/confidential fields. Approving/publishing requires reports.sensitive_fields.approve permission.\"",
+  "security_review_at": "2026-07-06T13:34:19.091+00:00",
+  "security_review_by": 1,
+  "visual_editor_engine": "puck",
+  "visual_layout_schema_version": 2,
+  "visual_layout_updated_at": "2026-07-06T13:32:50.116+00:00",
+  "visual_layout_updated_by": 1
+}

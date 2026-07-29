@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>شهادة راتب</title>
+  <style>
+    /* ── Reset ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+      font-size: 10px;
+      color: #1a1a1a;
+      background: #e5e7eb;
+      
+    }
+
+    /* ── Print setup ── */
+    @media print {
+      @page { size: A4 portrait; margin: 0; }
+      body { background: none !important; padding: 0 !important; }
+      .el-outer-frame { box-shadow: none !important; margin: 0 !important; padding: 12mm !important; }
+      .el-no-print { display: none !important; }
+    }
+
+    /* ── A4 container ── */
+    .el-outer-frame {
+      width: 210mm;
+      min-height: 270mm;
+      margin: 20px auto;
+      background: #fff;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.12);
+      padding: 10px;
+      position: relative;
+    }
+    .el-inner-frame {
+      border: 2px solid #1e293b;
+      padding: 16px 20px;
+      min-height: 250mm;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Company header ── */
+    .el-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid #1e3a8a;
+      margin-bottom: 0;
+    }
+    .el-header-logo img {
+      max-height: 56px;
+      max-width: 140px;
+      object-fit: contain;
+      display: block;
+    }
+    .el-header-info { flex: 1; }
+    .el-company-name {
+      font-size: 13px;
+      font-weight: 800;
+      color: #1e3a8a;
+      letter-spacing: 0.3px;
+      line-height: 1.2;
+    }
+    .el-company-sub {
+      font-size: 8.5px;
+      color: #555;
+      margin-top: 2px;
+      line-height: 1.5;
+    }
+
+    /* ── Title block ── */
+    .el-title-block {
+      background: #1e3a8a;
+      color: #ffffff;
+      padding: 10px 16px;
+      margin: 0 -20px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .el-doc-title {
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .el-doc-subtitle {
+      font-size: 9px;
+      opacity: 0.85;
+      margin-top: 2px;
+    }
+    .el-doc-meta {
+      text-align: right;
+      font-size: 9px;
+      opacity: 0.9;
+      line-height: 1.6;
+      white-space: nowrap;
+    }
+
+    /* ── Addressee strip ── */
+    .el-addressee-strip {
+      border-bottom: 1px solid #e2e8f0;
+      padding: 10px 0 8px;
+      margin-bottom: 0;
+    }
+
+    /* ── Subject line ── */
+    .el-subject-line {
+      padding: 6px 0 10px;
+      font-size: 9.5px;
+      color: #334155;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .el-subject-label {
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-right: 6px;
+      color: #555;
+      font-size: 8px;
+    }
+
+    /* ── Sections ── */
+    .el-body { flex: 1; padding: 14px 0; }
+    .el-section { margin-bottom: 16px; }
+    .el-section-title {
+      font-size: 8.5px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #1e3a8a;
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 4px;
+      margin-bottom: 8px;
+    }
+
+    /* ── Footer ── */
+    .el-footer {
+      border-top: 2px solid #1e3a8a;
+      padding-top: 8px;
+      margin-top: auto;
+      font-size: 8px;
+      color: #777;
+      text-align: center;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  
+  <div class="el-outer-frame">
+    <div class="el-inner-frame">
+
+      <!-- Company Header -->
+      <div class="el-header">
+        
+        <div class="el-header-info">
+          <div class="el-company-name">Falcon Gulf Logistics L.L.C (FIXTURE)</div>
+          <div class="el-company-sub" dir="rtl">شركة صقر الخليج للخدمات اللوجستية ذ.م.م (تجريبي)</div>
+          <div class="el-company-sub">Plot 12, Industrial Area 9, Sharjah, United Arab Emirates — P.O. Box 99001  ·  Tel: +971 6 000 0001</div>
+        </div>
+      </div>
+
+      <!-- Document Title Block -->
+      
+      <div class="el-title-block">
+        <div>
+          <div class="el-doc-title">شهادة راتب</div>
+          <div class="el-doc-subtitle">سري — مستند تجريبي</div>
+        </div>
+        <div class="el-doc-meta">
+          <div><strong>Ref:</strong> FIX/SAL-CERT-AR/2026/0004</div>
+          <div><strong>Date:</strong> ٢٦ يوليو ٢٠٢٦</div>
+          
+        </div>
+      </div>
+
+      <!-- Addressee Strip -->
+      
+
+      <!-- Document Body -->
+      <div class="el-body">
+        
+    <div class="el-section" dir="rtl" style="text-align:right;">
+      
+      <div style="font-size:10px; line-height:1.7; color:#1a1a1a;"><p style="margin:0 0 6px;">تشهد شركة صقر الخليج للخدمات اللوجستية ذ.م.م (تجريبي) بأن الموظف عبدالرحمن خالد المنصوري (تجريبي) (الرقم الوظيفي FIX-EMP-AR-001) يعمل لدى الشركة منذ 01 June 2021 بوظيفة مشرف عمليات النقل والخدمات اللوجستية ويتقاضى راتباً شهرياً إجمالياً قدره ٢٤,٠٠٠ درهم إماراتي.</p></div>
+    </div>
+    <div class="el-section">
+      <div class="el-section-title">تفاصيل الراتب الشهري (قيم تجريبية)</div>
+      <table style="width:100%; border-collapse:collapse;">
+        <tbody>
+          <tr>
+    <td style="padding:4px 0; font-size:9.5px; color:#555; width:40%; vertical-align:top;">الراتب الأساسي</td>
+    <td style="padding:4px 4px; color:#999; font-size:8px; vertical-align:top; white-space:nowrap;">···</td>
+    <td style="padding:4px 0; font-size:10px; color:#1a1a1a; vertical-align:top;">١٤,٤٠٠ درهم</td>
+  </tr><tr>
+    <td style="padding:4px 0; font-size:9.5px; color:#555; width:40%; vertical-align:top;">بدل السكن</td>
+    <td style="padding:4px 4px; color:#999; font-size:8px; vertical-align:top; white-space:nowrap;">···</td>
+    <td style="padding:4px 0; font-size:10px; color:#1a1a1a; vertical-align:top;">٦,٠٠٠ درهم</td>
+  </tr><tr>
+    <td style="padding:4px 0; font-size:9.5px; color:#555; width:40%; vertical-align:top;">بدل المواصلات</td>
+    <td style="padding:4px 4px; color:#999; font-size:8px; vertical-align:top; white-space:nowrap;">···</td>
+    <td style="padding:4px 0; font-size:10px; color:#1a1a1a; vertical-align:top;">٢,٤٠٠ درهم</td>
+  </tr><tr>
+    <td style="padding:4px 0; font-size:9.5px; color:#555; width:40%; vertical-align:top;">الإجمالي</td>
+    <td style="padding:4px 4px; color:#999; font-size:8px; vertical-align:top; white-space:nowrap;">···</td>
+    <td style="padding:4px 0; font-size:10px; font-weight:700; color:#1a1a1a; vertical-align:top;">٢٤,٠٠٠ درهم</td>
+  </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="el-section" dir="rtl" style="text-align:right;">
+      
+      <div style="font-size:10px; line-height:1.7; color:#1a1a1a;"><p style="margin:0 0 6px;">وقد صدرت هذه الشهادة بناءً على طلب الموظف لاستخدامها فيما يراه مناسباً، دون أدنى مسؤولية على الشركة تجاه أي طرف ثالث. نؤكد أن جميع البيانات الواردة في هذه الشهادة صحيحة وفقاً لسجلات الشركة الرسمية.</p></div>
+    </div>
+        
+        
+        <div style="margin-top:24px; padding-top:16px; border-top:1px solid #e2e8f0;">
+         <table style="width:100%; border-collapse:collapse;">
+           <tr>
+             <td style="width:55%; vertical-align:bottom; padding-right:20px;">
+               
+               <div style="border-top:1px solid #1a1a1a; width:140px; padding-top:4px; margin-top:32px;">
+                 <div style="font-size:10px; font-weight:700; color:#1a1a1a;">Fixture Manager One</div>
+                 <div style="font-size:9px; color:#555;">Group Human Resources Manager</div>
+               </div>
+             </td>
+             <td style="width:45%; vertical-align:bottom; text-align:right;">
+               
+               <div style="display:inline-block; vertical-align:bottom;"><div style="display:inline-flex; flex-direction:column; align-items:center; gap:3px; margin-top:4px;">
+      <img src="data:image/png;base64,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" alt="QR Code — امسح للتحقق" style="width:70px; height:70px; display:block; image-rendering:pixelated;" />
+      <span style="font-size:7px; color:#64748b; text-align:center; letter-spacing:0.3px;">امسح للتحقق</span>
+    </div></div>
+             </td>
+           </tr>
+         </table>
+       </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="el-footer">
+        Falcon Gulf Logistics L.L.C (FIXTURE) — This is a synthetic audit fixture document. Not an official record.  ·  TRN: 100000000000001
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>

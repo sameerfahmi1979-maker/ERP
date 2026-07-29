@@ -53,7 +53,7 @@ import { EmployeePayrollTab } from "./tabs/employee-payroll-tab";
 import { EmployeeOperationsTab } from "./tabs/employee-operations-tab";
 import { EmployeeHrActionsTab } from "./tabs/employee-hr-actions-tab";
 import { DmsEntityDocumentsTab } from "@/features/dms/entity-documents";
-import { HrLetterGenerator } from "@/features/report-center/hr-letter-generator";
+import { EmployeeLettersForms } from "@/features/hr/employees/employee-letters-forms";
 import { HrAiReviewTab } from "@/features/hr/ai/hr-ai-review-tab";
 
 const FORM_ID = "employee-workspace-form";
@@ -440,18 +440,13 @@ export function EmployeeWorkspaceForm({ employee, mode, authContext }: Props) {
           )}
         </ERPRecordSectionPanel>
 
-        {/* Letters & Forms — HR.11 / REPORT.4 */}
-        <ERPRecordSectionPanel id="letters" activeId={activeSection} title="Generate Letters & Forms" lazyMount>
+        {/* Letters & Forms — OUTPUT.4 (global output framework first adopter) */}
+        <ERPRecordSectionPanel id="letters" activeId={activeSection} title="Letters & Forms" lazyMount>
           {employee ? (
             <div className="p-4">
-              <p className="text-xs text-muted-foreground mb-3">
-                Generate official HR letters, certificates, and forms for this employee.
-                Each document opens in the global Report Center and can be exported as PDF or printed.
-              </p>
-              <HrLetterGenerator
+              <EmployeeLettersForms
                 employeeId={employee.id}
                 employeeName={employee.full_name_en ?? undefined}
-                canViewPayroll={checkPermission(authContext, "hr.payroll.view")}
               />
             </div>
           ) : (

@@ -1,0 +1,11 @@
+{
+  "algorithm": "sha256(exact stored bytes)",
+  "hashes": {
+    "D1_short_cert_companyA": "79eb23eaf3e59ae698d8002797fe053d0dffd7ba402cc5eba34c04d2a0df44e7",
+    "D2_short_cert_companyB": "d7355c973f50d86d483b52034f7fa7fd7ceddd6a56f97191b395d0aeefa6d9b8",
+    "D3_short_cert_companyC": "5d8837790a89fe31d1ccd939e0635741c7b38ff42125fb55d63c0628f0c92f5c",
+    "D4_arabic_rtl_cert": "a9a8a552f998579a2d5a00fd6dc418dedea208b392c522fad43fc7be549fda2a",
+    "D5_long_multipage_letter": "936a1113638eba62576de20c388e6ec6491e5bdb67f2b9cb662aaa11f0dbd4fd",
+    "D6_fixed_card_cr80": "4d0abdffe2aa9f90913b2289df657db01b384eed9113488e3fa458d0e31dff13"
+  }
+}

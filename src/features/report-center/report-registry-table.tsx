@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Lock, Play } from "lucide-react";
+import { Lock, Play, UserRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ERPDataTable } from "@/components/erp/table/erp-data-table";
@@ -28,6 +28,20 @@ const categoryLabels: Record<string, string> = {
 interface Props {
   entries: ReportRegistryEntry[];
 }
+
+/**
+ * OUTPUT.4 — Report Center boundary: routine per-employee document generation
+ * (letters, certificates, forms, checklists, badges) moved to the Employee
+ * Profile "Letters & Forms" area, which routes official issuance through the
+ * global output coordinator. The Report Center keeps analytical reports only.
+ */
+const EMPLOYEE_DOCUMENT_CATEGORIES = new Set([
+  "letter",
+  "certificate",
+  "form",
+  "checklist",
+  "badge",
+]);
 
 const columns: ColumnDef<ReportRegistryEntry>[] = [
   {
@@ -121,18 +135,30 @@ const columns: ColumnDef<ReportRegistryEntry>[] = [
   {
     id: "actions",
     header: "",
-    size: 90,
+    size: 150,
     enableSorting: false,
     enableHiding: false,
-    cell: ({ row }) =>
-      row.original.is_active ? (
+    cell: ({ row }) => {
+      if (!row.original.is_active) return null;
+      if (EMPLOYEE_DOCUMENT_CATEGORIES.has(row.original.report_category)) {
+        return (
+          <Link href="/admin/hr/employees" title="Generate from the employee's Letters & Forms area">
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1 text-muted-foreground">
+              <UserRound className="h-3 w-3" />
+              Employee Profile
+            </Button>
+          </Link>
+        );
+      }
+      return (
         <Link href={`/admin/reports/run/${row.original.report_code}`}>
           <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1">
             <Play className="h-3 w-3" />
             Run
           </Button>
         </Link>
-      ) : null,
+      );
+    },
     meta: { exportable: false },
   },
 ];

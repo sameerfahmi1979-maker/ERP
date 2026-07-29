@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Nested package.json files (e.g. under spikes/) confuse Turbopack's
+  // workspace-root inference and crash the dev server with "Next.js package
+  // not found". Pin the root explicitly to this repository.
+  turbopack: {
+    root: __dirname,
+  },
   // Branding/DMS uploads use Server Actions with FormData; default 1 MB is too small.
   experimental: {
     serverActions: {

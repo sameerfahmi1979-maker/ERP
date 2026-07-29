@@ -1,0 +1,12 @@
+{
+  "baseline-certificate-en": {
+    "htmlSha256": "03d3188e15ec09707ea10c1e83cd649f6fb7ccb170e21fdba3515b004c60a31f",
+    "pdfPages": 1,
+    "pdfBytes": 29693
+  },
+  "baseline-certificate-ar": {
+    "htmlSha256": "f77f198f483b235766952c0e4bbf87cd8123ba771d0908a4c6f8ef78baeece07",
+    "pdfPages": 1,
+    "pdfBytes": 65660
+  }
+}

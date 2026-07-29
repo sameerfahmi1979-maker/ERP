@@ -1,0 +1,101 @@
+{
+  "candidate": "B — Carbone community v3.8.2 + DOCX + Gotenberg LibreOffice",
+  "converterPath": "carbone.render (docx→docx, pure JS) → gotenberg /forms/libreoffice/convert",
+  "materialConstraints": [
+    "Dynamic image injection ({d.logo} pictures) is an Enterprise v4 feature — NOT available in community v3; cross-company logos require one template per company or server-side pre-processing",
+    "PDF conversion requires LibreOffice (via Gotenberg module) — rendering engine differs from Chromium used by Executive Ledger path"
+  ],
+  "generatedAt": "2026-07-26T13:50:41.100Z",
+  "results": [
+    {
+      "id": "B1-employment-cert-en",
+      "description": "English Employment Certificate — Carbone markers, Word header/footer, page numbers",
+      "status": "PROVEN",
+      "carboneInjectionMs": 23,
+      "libreOfficePdfMs": 736,
+      "pdfBytes": 41563,
+      "pages": 1,
+      "converter": "gotenberg/forms/libreoffice/convert"
+    },
+    {
+      "id": "B2-experience-cert-bilingual",
+      "description": "Bilingual Experience Certificate — Arabic RTL paragraphs via LibreOffice",
+      "status": "PROVEN",
+      "carboneInjectionMs": 11,
+      "libreOfficePdfMs": 266,
+      "pdfBytes": 70227,
+      "pages": 1,
+      "converter": "gotenberg/forms/libreoffice/convert"
+    },
+    {
+      "id": "B3-salary-cert-en",
+      "description": "Salary Certificate — table + sensitive fixture salary",
+      "status": "PROVEN",
+      "carboneInjectionMs": 18,
+      "libreOfficePdfMs": 223,
+      "pdfBytes": 53051,
+      "pages": 1,
+      "converter": "gotenberg/forms/libreoffice/convert"
+    },
+    {
+      "id": "B4-long-letter",
+      "description": "Multi-page HR letter — Word pagination, manual PageBreak, header/footer continuity",
+      "status": "PROVEN",
+      "carboneInjectionMs": 12,
+      "libreOfficePdfMs": 293,
+      "pdfBytes": 46954,
+      "pages": 4,
+      "converter": "gotenberg/forms/libreoffice/convert"
+    },
+    {
+      "id": "B5-analytical-report-120rows",
+      "description": "Analytical report — Carbone {d.rows[i]} table loop, 120 rows, landscape, tableHeader repeat",
+      "status": "PROVEN",
+      "carboneInjectionMs": 20,
+      "libreOfficePdfMs": 524,
+      "pdfBytes": 89694,
+      "pages": 11,
+      "converter": "gotenberg/forms/libreoffice/convert"
+    },
+    {
+      "id": "B6-official-form",
+      "description": "Complex official form — bordered table, checkbox glyphs, aligned label cells",
+      "status": "PROVEN",
+      "carboneInjectionMs": 13,
+      "libreOfficePdfMs": 244,
+      "pdfBytes": 45647,
+      "pages": 1,
+      "converter": "gotenberg/forms/libreoffice/convert"
+    },
+    {
+      "id": "B7-id-card-cr80",
+      "description": "Fixed-size CR80 card — Word custom page size (no absolute positioning tested)",
+      "status": "PROVEN",
+      "carboneInjectionMs": 8,
+      "libreOfficePdfMs": 208,
+      "pdfBytes": 31304,
+      "pages": 1,
+      "converter": "gotenberg/forms/libreoffice/convert"
+    },
+    {
+      "id": "B8-cross-company-companyA",
+      "description": "Cross-company — same DOCX template, data for FIX-COMPANY-A",
+      "status": "PROVEN",
+      "carboneInjectionMs": 13,
+      "libreOfficePdfMs": 733,
+      "pdfBytes": 38624,
+      "pages": 1,
+      "converter": "gotenberg/forms/libreoffice/convert"
+    },
+    {
+      "id": "B8-cross-company-companyB",
+      "description": "Cross-company — same DOCX template, data for FIX-COMPANY-B",
+      "status": "PROVEN",
+      "carboneInjectionMs": 16,
+      "libreOfficePdfMs": 215,
+      "pdfBytes": 39024,
+      "pages": 1,
+      "converter": "gotenberg/forms/libreoffice/convert"
+    }
+  ]
+}

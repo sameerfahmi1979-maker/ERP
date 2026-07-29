@@ -1,0 +1,44 @@
+{
+  "ranAt": "2026-07-26T20:01:45.640Z",
+  "service": "http://localhost:3100",
+  "cold": {
+    "ms": 885,
+    "bytes": 19015,
+    "sha": "d006f842f3038f18"
+  },
+  "warm": {
+    "ms": 512,
+    "bytes": 19015,
+    "sha": "df349ee24189405a"
+  },
+  "concurrency": {
+    "b1": {
+      "count": 1,
+      "wallMs": 259,
+      "minMs": 259,
+      "maxMs": 259,
+      "avgMs": 259,
+      "throughputPerSec": 3.86,
+      "allSucceeded": true
+    },
+    "b5": {
+      "count": 5,
+      "wallMs": 708,
+      "minMs": 405,
+      "maxMs": 707,
+      "avgMs": 582,
+      "throughputPerSec": 7.06,
+      "allSucceeded": true
+    },
+    "b10": {
+      "count": 10,
+      "wallMs": 844,
+      "minMs": 458,
+      "maxMs": 843,
+      "avgMs": 682,
+      "throughputPerSec": 11.85,
+      "allSucceeded": true
+    }
+  },
+  "determinism": "Chromium HTML→PDF timestamps make bytes non-deterministic; stored-byte hash is computed post-render for integrity, not for reproducibility."
+}

@@ -1,21 +1,34 @@
 # Implementation Review Documentation
 
-This folder contains all implementation reports, planning documents, and phase documentation organized by phase and sub-phase.
+This folder contains all implementation reports, planning documents, and phase documentation.
 
-> **Reorganized 2026-06-16:** Phase folders are grouped under category parent folders. If a path breaks, see [`FILE_INDEX.md`](./FILE_INDEX.md).
+> **Reorganized 2026-07-25:** **One folder per module** (parallel to `ChatGPT/`).  
+> Canonical map + old→new path table: [`Project_Summaries/FILE_INDEX.md`](./Project_Summaries/FILE_INDEX.md).
 
-### Category Folders (Top Level)
+### Module Folders (Top Level)
 
 | Folder | Contents |
 |---|---|
-| [`DMS_Phases/`](./DMS_Phases/) | All DMS phases (DMS.1–DMS.15, OCR-AI FIX, 12.x sub-phases) |
-| [`Party_Master_Phases/`](./Party_Master_Phases/) | Party Master 002F.5A database, UI, views, hotfixes |
-| [`Foundation_Phases/`](./Foundation_Phases/) | Phase 001–002F base ERP, master data, customers, future 003–005 |
-| [`Global_Phases/`](./Global_Phases/) | GLOBAL UI.2–4G workspace architecture + CLEANUP |
-| [`Platform_Phases/`](./Platform_Phases/) | Settings, Notifications, COMMON MD, Admin, Bank Master |
-| [`AI_Phases/`](./AI_Phases/) | AI roadmap planning |
-| [`Meta/`](./Meta/) | Trackers, guides, reorganization reports |
+| [`DMS/`](./DMS/) | Document Management System (+ `Phases/`) |
+| [`AI_DMS/`](./AI_DMS/) | DMS AI enhancement & META reports |
+| [`AI_Common/`](./AI_Common/) | Common AI / ERP AI roadmap & foundation |
+| [`HR/`](./HR/) | HR module (+ `Phases/`) |
+| [`Party_Master/`](./Party_Master/) | Party Master 002F.5A |
+| [`Foundation/`](./Foundation/) | Base ERP Phase 001–002F (excl. Party Master) |
+| [`Global_UI/`](./Global_UI/) | GLOBAL UI, navigation, list UI standard |
+| [`Users/`](./Users/) | Users / roles / permissions |
+| [`Platform/`](./Platform/) | Settings, Notifications engine, Bank Master, Admin, Common MD |
+| [`Reports/`](./Reports/) | Report Center & Report Designer |
+| [`Branding/`](./Branding/) | Branding system |
+| [`PDF/`](./PDF/) | PDF generation |
+| [`Realtime/`](./Realtime/) | Realtime pilots |
+| [`Audits/`](./Audits/) | Code audits |
+| [`00_Meta/`](./00_Meta/) | Meta / handoffs / trackers |
+| [`Project_Summaries/`](./Project_Summaries/) | Summaries & file index |
 | [`screenshots/`](./screenshots/) | Visual validation screenshots |
+| [`sql_review/`](./sql_review/) | SQL review artifacts |
+
+> Historical detail below still describes phase content; **folder paths above supersede older `*_Phases/` names**.
 
 ---
 

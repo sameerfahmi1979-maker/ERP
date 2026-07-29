@@ -1,0 +1,572 @@
+{
+  "generatedAt": "2026-07-26T19:12:27.229Z",
+  "scoringScale": "0=absent/failed, 1=severe deficiencies, 2=major workarounds, 3=acceptable, 4=strong, 5=excellent and proven in spike",
+  "formula": "weightedTotal = SUM(weight_pct * score) / 100 (max 5.0)",
+  "criteria": [
+    {
+      "id": "usability",
+      "label": "Administrator authoring usability",
+      "weight": 14
+    },
+    {
+      "id": "fidelity",
+      "label": "Preview-to-final-PDF fidelity",
+      "weight": 14
+    },
+    {
+      "id": "coverage",
+      "label": "Document-family capability coverage",
+      "weight": 12
+    },
+    {
+      "id": "pagination",
+      "label": "Pagination and table quality",
+      "weight": 10
+    },
+    {
+      "id": "arabic",
+      "label": "Arabic/RTL and embedded fonts",
+      "weight": 10
+    },
+    {
+      "id": "security",
+      "label": "Security and multi-company isolation",
+      "weight": 10
+    },
+    {
+      "id": "integration",
+      "label": "Integration with existing Global Output Framework",
+      "weight": 8
+    },
+    {
+      "id": "maintainability",
+      "label": "Maintainability and ecosystem health",
+      "weight": 6
+    },
+    {
+      "id": "licensing",
+      "label": "Licensing and total cost",
+      "weight": 5
+    },
+    {
+      "id": "performance",
+      "label": "Performance and operational complexity",
+      "weight": 5
+    },
+    {
+      "id": "accessibility",
+      "label": "Accessibility and governance UX",
+      "weight": 3
+    },
+    {
+      "id": "migration",
+      "label": "Migration effort and preservation risk",
+      "weight": 3
+    }
+  ],
+  "candidates": [
+    {
+      "id": "A",
+      "name": "A — TipTap Pages (official BLOCKED; community pagination prototype tested)",
+      "scores": {
+        "usability": 3,
+        "fidelity": 1,
+        "coverage": 2,
+        "pagination": 2,
+        "arabic": 2,
+        "security": 4,
+        "integration": 4,
+        "maintainability": 3,
+        "licensing": 2,
+        "performance": 4,
+        "accessibility": 3,
+        "migration": 3
+      },
+      "knockouts": [
+        "Official Pages: BLOCKED — npm 404 without paid Tiptap subscription/private-registry token; every Pages capability remains DOCUMENTATION ONLY",
+        "Community pagination (tiptap-extension-pagination 2.1.4): peer-dep requires @tiptap/core ^2.11.5 — INCOMPATIBLE with ERP TipTap 3.27.1"
+      ],
+      "notes": {
+        "usability": "Rich-text editing familiar; page canvas professional-looking in prototype. Score reflects existing Studio UX audit + prototype; official Pages UNTESTED.",
+        "fidelity": "Editor pagination is decoupled from the Gotenberg PDF renderer — no proven preview/PDF parity. Community ext: initial load NOT paginated until first edit (PROVEN defect).",
+        "pagination": "No intra-paragraph page splitting (whole paragraph moves, large bottom gaps — PROVEN); no table page-break management tested.",
+        "arabic": "Browser shapes Arabic natively BUT dir=rtl stripped by StarterKit schema — Arabic rendered LTR (PROVEN). Needs custom direction extensions.",
+        "licensing": "Pages requires Tiptap plan from $49/mo (annual) + private registry; community alternative ISC but v2-only."
+      }
+    },
+    {
+      "id": "B",
+      "name": "B — Carbone community 3.8.2 + DOCX + Gotenberg LibreOffice",
+      "scores": {
+        "usability": 4,
+        "fidelity": 3,
+        "coverage": 4,
+        "pagination": 4,
+        "arabic": 4,
+        "security": 3,
+        "integration": 3,
+        "maintainability": 4,
+        "licensing": 4,
+        "performance": 4,
+        "accessibility": 3,
+        "migration": 3
+      },
+      "knockouts": [],
+      "notes": {
+        "usability": "Word authoring is the most familiar admin tool; {d.x} markers learnable. HEURISTIC — templates in spike were built programmatically, not by a real admin in Word.",
+        "fidelity": "Word view ≈ LibreOffice PDF with FONT SUBSTITUTION differences (Liberation serif observed). Fidelity gate required per template.",
+        "coverage": "Letters/certs/salary PROVEN; 120-row loop report 11 pages PROVEN; fixed-layout cards weak (no absolute positioning tested).",
+        "pagination": "Word pagination engine + repeating tableHeader rows PROVEN through LibreOffice; manual page break PROVEN.",
+        "arabic": "Arabic shaping and RTL paragraphs CORRECT via LibreOffice (PROVEN, B2). Bidi mixed-run care needed.",
+        "security": "DOCX macro/zip-bomb risks require validation + sandboxed converter (Gotenberg container). Server-side injection only.",
+        "licensing": "CCL: free as embedded component of a value-added product (this ERP qualifies). Community v3 is one major version behind EE; DYNAMIC IMAGES (per-company logos from one template) are Enterprise-only — one template per company or server-side preprocessing needed."
+      }
+    },
+    {
+      "id": "C",
+      "name": "C — pdfme 6.1.12 (MIT, pdf-lib based fixed layout)",
+      "scores": {
+        "usability": 3,
+        "fidelity": 3,
+        "coverage": 2,
+        "pagination": 2,
+        "arabic": 1,
+        "security": 4,
+        "integration": 3,
+        "maintainability": 4,
+        "licensing": 5,
+        "performance": 5,
+        "accessibility": 3,
+        "migration": 4
+      },
+      "knockouts": [
+        "Arabic/RTL: maintainer states RTL is out of scope (pdfme PR #1300, Jan 2026); spike PROVED broken standalone Arabic text (faint/disconnected), bidi punctuation errors on ID card — KNOCKED OUT for any Arabic-bearing document family",
+        "Flowing documents: 18-paragraph letter compressed into one page at unreadable size — no reflow across pages (PROVEN, C4) — KNOCKED OUT for flowing letters"
+      ],
+      "notes": {
+        "usability": "Drag-and-drop designer exists but was NOT hands-on tested in spike (generator only) — score capped and flagged.",
+        "fidelity": "Same JSON drives designer/preview/generator; BUT standalone text rendered hairline-faint with embedded Noto Arabic font across 3 independent rasterizers (PROVEN defect as configured).",
+        "pagination": "Table schema DOES auto-paginate (120 rows → 4 pages, PROVEN) but WITHOUT repeating header rows on continuation pages.",
+        "performance": "34–270 ms in-process generation, no container dependency (PROVEN).",
+        "licensing": "MIT — free including designer."
+      }
+    },
+    {
+      "id": "D",
+      "name": "D — Executive Ledger + Gotenberg/Chromium (existing code-first)",
+      "scores": {
+        "usability": 1,
+        "fidelity": 5,
+        "coverage": 5,
+        "pagination": 5,
+        "arabic": 5,
+        "security": 5,
+        "integration": 5,
+        "maintainability": 4,
+        "licensing": 5,
+        "performance": 4,
+        "accessibility": 4,
+        "migration": 5
+      },
+      "knockouts": [],
+      "notes": {
+        "usability": "Developer-only. NO business-admin self-service — honest score per spike rules. Template Studio (structured blocks → EL) is the existing partial mitigation.",
+        "fidelity": "Same HTML → same Chromium for preview PNG and PDF — parity PROVEN across all 10 outputs.",
+        "coverage": "All 8 mandatory documents PROVEN including CR80 card (@page mm sizing), 10-page landscape report, full-RTL salary certificate.",
+        "pagination": "Repeating thead, totals, landscape, break control all PROVEN (D5 p2/p10).",
+        "arabic": "Shaped Arabic, full RTL direction, Arabic-Indic numerals, embedded WOFF2 fonts PROVEN. Minor care: LTR runs inside RTL sentences need bidi isolation.",
+        "security": "Existing RLS/permissions/protected-asset governance; two-company branding isolation PROVEN (D8A/D8B).",
+        "performance": "234–842 ms per PDF via Gotenberg (PROVEN); requires Gotenberg container (already operated).",
+        "migration": "Zero migration — it is the live framework."
+      }
+    }
+  ],
+  "overall": {
+    "weights": {
+      "usability": 14,
+      "fidelity": 14,
+      "coverage": 12,
+      "pagination": 10,
+      "arabic": 10,
+      "security": 10,
+      "integration": 8,
+      "maintainability": 6,
+      "licensing": 5,
+      "performance": 5,
+      "accessibility": 3,
+      "migration": 3
+    },
+    "totals": [
+      {
+        "id": "A",
+        "name": "A — TipTap Pages (official BLOCKED; community pagination prototype tested)",
+        "weightedTotal": 2.58,
+        "knockouts": [
+          "Official Pages: BLOCKED — npm 404 without paid Tiptap subscription/private-registry token; every Pages capability remains DOCUMENTATION ONLY",
+          "Community pagination (tiptap-extension-pagination 2.1.4): peer-dep requires @tiptap/core ^2.11.5 — INCOMPATIBLE with ERP TipTap 3.27.1"
+        ]
+      },
+      {
+        "id": "B",
+        "name": "B — Carbone community 3.8.2 + DOCX + Gotenberg LibreOffice",
+        "weightedTotal": 3.62,
+        "knockouts": []
+      },
+      {
+        "id": "C",
+        "name": "C — pdfme 6.1.12 (MIT, pdf-lib based fixed layout)",
+        "weightedTotal": 2.97,
+        "knockouts": [
+          "Arabic/RTL: maintainer states RTL is out of scope (pdfme PR #1300, Jan 2026); spike PROVED broken standalone Arabic text (faint/disconnected), bidi punctuation errors on ID card — KNOCKED OUT for any Arabic-bearing document family",
+          "Flowing documents: 18-paragraph letter compressed into one page at unreadable size — no reflow across pages (PROVEN, C4) — KNOCKED OUT for flowing letters"
+        ]
+      },
+      {
+        "id": "D",
+        "name": "D — Executive Ledger + Gotenberg/Chromium (existing code-first)",
+        "weightedTotal": 4.3,
+        "knockouts": []
+      }
+    ]
+  },
+  "perMode": {
+    "mode1_flowing_letters": {
+      "weights": {
+        "usability": 16,
+        "fidelity": 16,
+        "coverage": 6,
+        "pagination": 12,
+        "arabic": 14,
+        "security": 10,
+        "integration": 8,
+        "maintainability": 5,
+        "licensing": 4,
+        "performance": 3,
+        "accessibility": 3,
+        "migration": 3
+      },
+      "totals": [
+        {
+          "id": "A",
+          "name": "A — TipTap Pages (official BLOCKED; community pagination prototype tested)",
+          "weightedTotal": 2.53,
+          "knockouts": [
+            "Official Pages: BLOCKED — npm 404 without paid Tiptap subscription/private-registry token; every Pages capability remains DOCUMENTATION ONLY",
+            "Community pagination (tiptap-extension-pagination 2.1.4): peer-dep requires @tiptap/core ^2.11.5 — INCOMPATIBLE with ERP TipTap 3.27.1"
+          ]
+        },
+        {
+          "id": "B",
+          "name": "B — Carbone community 3.8.2 + DOCX + Gotenberg LibreOffice",
+          "weightedTotal": 3.6,
+          "knockouts": []
+        },
+        {
+          "id": "C",
+          "name": "C — pdfme 6.1.12 (MIT, pdf-lib based fixed layout)",
+          "weightedTotal": 2.86,
+          "knockouts": [
+            "Arabic/RTL: maintainer states RTL is out of scope (pdfme PR #1300, Jan 2026); spike PROVED broken standalone Arabic text (faint/disconnected), bidi punctuation errors on ID card — KNOCKED OUT for any Arabic-bearing document family",
+            "Flowing documents: 18-paragraph letter compressed into one page at unreadable size — no reflow across pages (PROVEN, C4) — KNOCKED OUT for flowing letters"
+          ]
+        },
+        {
+          "id": "D",
+          "name": "D — Executive Ledger + Gotenberg/Chromium (existing code-first)",
+          "weightedTotal": 4.25,
+          "knockouts": []
+        }
+      ]
+    },
+    "mode2_tabular_reports": {
+      "weights": {
+        "usability": 8,
+        "fidelity": 12,
+        "coverage": 8,
+        "pagination": 22,
+        "arabic": 10,
+        "security": 10,
+        "integration": 10,
+        "maintainability": 6,
+        "licensing": 4,
+        "performance": 6,
+        "accessibility": 2,
+        "migration": 2
+      },
+      "totals": [
+        {
+          "id": "A",
+          "name": "A — TipTap Pages (official BLOCKED; community pagination prototype tested)",
+          "weightedTotal": 2.58,
+          "knockouts": [
+            "Official Pages: BLOCKED — npm 404 without paid Tiptap subscription/private-registry token; every Pages capability remains DOCUMENTATION ONLY",
+            "Community pagination (tiptap-extension-pagination 2.1.4): peer-dep requires @tiptap/core ^2.11.5 — INCOMPATIBLE with ERP TipTap 3.27.1"
+          ]
+        },
+        {
+          "id": "B",
+          "name": "B — Carbone community 3.8.2 + DOCX + Gotenberg LibreOffice",
+          "weightedTotal": 3.64,
+          "knockouts": []
+        },
+        {
+          "id": "C",
+          "name": "C — pdfme 6.1.12 (MIT, pdf-lib based fixed layout)",
+          "weightedTotal": 2.88,
+          "knockouts": [
+            "Arabic/RTL: maintainer states RTL is out of scope (pdfme PR #1300, Jan 2026); spike PROVED broken standalone Arabic text (faint/disconnected), bidi punctuation errors on ID card — KNOCKED OUT for any Arabic-bearing document family",
+            "Flowing documents: 18-paragraph letter compressed into one page at unreadable size — no reflow across pages (PROVEN, C4) — KNOCKED OUT for flowing letters"
+          ]
+        },
+        {
+          "id": "D",
+          "name": "D — Executive Ledger + Gotenberg/Chromium (existing code-first)",
+          "weightedTotal": 4.54,
+          "knockouts": []
+        }
+      ]
+    },
+    "mode3_fixed_layout": {
+      "weights": {
+        "usability": 14,
+        "fidelity": 16,
+        "coverage": 6,
+        "pagination": 4,
+        "arabic": 14,
+        "security": 10,
+        "integration": 10,
+        "maintainability": 6,
+        "licensing": 6,
+        "performance": 6,
+        "accessibility": 4,
+        "migration": 4
+      },
+      "totals": [
+        {
+          "id": "A",
+          "name": "A — TipTap Pages (official BLOCKED; community pagination prototype tested)",
+          "weightedTotal": 2.64,
+          "knockouts": [
+            "Official Pages: BLOCKED — npm 404 without paid Tiptap subscription/private-registry token; every Pages capability remains DOCUMENTATION ONLY",
+            "Community pagination (tiptap-extension-pagination 2.1.4): peer-dep requires @tiptap/core ^2.11.5 — INCOMPATIBLE with ERP TipTap 3.27.1"
+          ]
+        },
+        {
+          "id": "B",
+          "name": "B — Carbone community 3.8.2 + DOCX + Gotenberg LibreOffice",
+          "weightedTotal": 3.56,
+          "knockouts": []
+        },
+        {
+          "id": "C",
+          "name": "C — pdfme 6.1.12 (MIT, pdf-lib based fixed layout)",
+          "weightedTotal": 3.06,
+          "knockouts": [
+            "Arabic/RTL: maintainer states RTL is out of scope (pdfme PR #1300, Jan 2026); spike PROVED broken standalone Arabic text (faint/disconnected), bidi punctuation errors on ID card — KNOCKED OUT for any Arabic-bearing document family",
+            "Flowing documents: 18-paragraph letter compressed into one page at unreadable size — no reflow across pages (PROVEN, C4) — KNOCKED OUT for flowing letters"
+          ]
+        },
+        {
+          "id": "D",
+          "name": "D — Executive Ledger + Gotenberg/Chromium (existing code-first)",
+          "weightedTotal": 4.28,
+          "knockouts": []
+        }
+      ]
+    }
+  },
+  "sensitivity": {
+    "usability_first": {
+      "weights": {
+        "usability": 26,
+        "fidelity": 12,
+        "coverage": 10,
+        "pagination": 8,
+        "arabic": 8,
+        "security": 8,
+        "integration": 6,
+        "maintainability": 6,
+        "licensing": 5,
+        "performance": 5,
+        "accessibility": 3,
+        "migration": 3
+      },
+      "totals": [
+        {
+          "id": "A",
+          "name": "A — TipTap Pages (official BLOCKED; community pagination prototype tested)",
+          "weightedTotal": 2.64,
+          "knockouts": [
+            "Official Pages: BLOCKED — npm 404 without paid Tiptap subscription/private-registry token; every Pages capability remains DOCUMENTATION ONLY",
+            "Community pagination (tiptap-extension-pagination 2.1.4): peer-dep requires @tiptap/core ^2.11.5 — INCOMPATIBLE with ERP TipTap 3.27.1"
+          ]
+        },
+        {
+          "id": "B",
+          "name": "B — Carbone community 3.8.2 + DOCX + Gotenberg LibreOffice",
+          "weightedTotal": 3.68,
+          "knockouts": []
+        },
+        {
+          "id": "C",
+          "name": "C — pdfme 6.1.12 (MIT, pdf-lib based fixed layout)",
+          "weightedTotal": 3.03,
+          "knockouts": [
+            "Arabic/RTL: maintainer states RTL is out of scope (pdfme PR #1300, Jan 2026); spike PROVED broken standalone Arabic text (faint/disconnected), bidi punctuation errors on ID card — KNOCKED OUT for any Arabic-bearing document family",
+            "Flowing documents: 18-paragraph letter compressed into one page at unreadable size — no reflow across pages (PROVEN, C4) — KNOCKED OUT for flowing letters"
+          ]
+        },
+        {
+          "id": "D",
+          "name": "D — Executive Ledger + Gotenberg/Chromium (existing code-first)",
+          "weightedTotal": 3.82,
+          "knockouts": []
+        }
+      ]
+    },
+    "fidelity_print_first": {
+      "weights": {
+        "usability": 8,
+        "fidelity": 24,
+        "coverage": 10,
+        "pagination": 16,
+        "arabic": 10,
+        "security": 8,
+        "integration": 8,
+        "maintainability": 4,
+        "licensing": 4,
+        "performance": 4,
+        "accessibility": 2,
+        "migration": 2
+      },
+      "totals": [
+        {
+          "id": "A",
+          "name": "A — TipTap Pages (official BLOCKED; community pagination prototype tested)",
+          "weightedTotal": 2.32,
+          "knockouts": [
+            "Official Pages: BLOCKED — npm 404 without paid Tiptap subscription/private-registry token; every Pages capability remains DOCUMENTATION ONLY",
+            "Community pagination (tiptap-extension-pagination 2.1.4): peer-dep requires @tiptap/core ^2.11.5 — INCOMPATIBLE with ERP TipTap 3.27.1"
+          ]
+        },
+        {
+          "id": "B",
+          "name": "B — Carbone community 3.8.2 + DOCX + Gotenberg LibreOffice",
+          "weightedTotal": 3.56,
+          "knockouts": []
+        },
+        {
+          "id": "C",
+          "name": "C — pdfme 6.1.12 (MIT, pdf-lib based fixed layout)",
+          "weightedTotal": 2.84,
+          "knockouts": [
+            "Arabic/RTL: maintainer states RTL is out of scope (pdfme PR #1300, Jan 2026); spike PROVED broken standalone Arabic text (faint/disconnected), bidi punctuation errors on ID card — KNOCKED OUT for any Arabic-bearing document family",
+            "Flowing documents: 18-paragraph letter compressed into one page at unreadable size — no reflow across pages (PROVEN, C4) — KNOCKED OUT for flowing letters"
+          ]
+        },
+        {
+          "id": "D",
+          "name": "D — Executive Ledger + Gotenberg/Chromium (existing code-first)",
+          "weightedTotal": 4.58,
+          "knockouts": []
+        }
+      ]
+    },
+    "arabic_security_first": {
+      "weights": {
+        "usability": 8,
+        "fidelity": 10,
+        "coverage": 8,
+        "pagination": 8,
+        "arabic": 22,
+        "security": 20,
+        "integration": 8,
+        "maintainability": 4,
+        "licensing": 4,
+        "performance": 4,
+        "accessibility": 2,
+        "migration": 2
+      },
+      "totals": [
+        {
+          "id": "A",
+          "name": "A — TipTap Pages (official BLOCKED; community pagination prototype tested)",
+          "weightedTotal": 2.7,
+          "knockouts": [
+            "Official Pages: BLOCKED — npm 404 without paid Tiptap subscription/private-registry token; every Pages capability remains DOCUMENTATION ONLY",
+            "Community pagination (tiptap-extension-pagination 2.1.4): peer-dep requires @tiptap/core ^2.11.5 — INCOMPATIBLE with ERP TipTap 3.27.1"
+          ]
+        },
+        {
+          "id": "B",
+          "name": "B — Carbone community 3.8.2 + DOCX + Gotenberg LibreOffice",
+          "weightedTotal": 3.58,
+          "knockouts": []
+        },
+        {
+          "id": "C",
+          "name": "C — pdfme 6.1.12 (MIT, pdf-lib based fixed layout)",
+          "weightedTotal": 2.82,
+          "knockouts": [
+            "Arabic/RTL: maintainer states RTL is out of scope (pdfme PR #1300, Jan 2026); spike PROVED broken standalone Arabic text (faint/disconnected), bidi punctuation errors on ID card — KNOCKED OUT for any Arabic-bearing document family",
+            "Flowing documents: 18-paragraph letter compressed into one page at unreadable size — no reflow across pages (PROVEN, C4) — KNOCKED OUT for flowing letters"
+          ]
+        },
+        {
+          "id": "D",
+          "name": "D — Executive Ledger + Gotenberg/Chromium (existing code-first)",
+          "weightedTotal": 4.58,
+          "knockouts": []
+        }
+      ]
+    },
+    "cost_maintenance_first": {
+      "weights": {
+        "usability": 10,
+        "fidelity": 10,
+        "coverage": 8,
+        "pagination": 8,
+        "arabic": 8,
+        "security": 8,
+        "integration": 8,
+        "maintainability": 14,
+        "licensing": 14,
+        "performance": 6,
+        "accessibility": 2,
+        "migration": 4
+      },
+      "totals": [
+        {
+          "id": "A",
+          "name": "A — TipTap Pages (official BLOCKED; community pagination prototype tested)",
+          "weightedTotal": 2.64,
+          "knockouts": [
+            "Official Pages: BLOCKED — npm 404 without paid Tiptap subscription/private-registry token; every Pages capability remains DOCUMENTATION ONLY",
+            "Community pagination (tiptap-extension-pagination 2.1.4): peer-dep requires @tiptap/core ^2.11.5 — INCOMPATIBLE with ERP TipTap 3.27.1"
+          ]
+        },
+        {
+          "id": "B",
+          "name": "B — Carbone community 3.8.2 + DOCX + Gotenberg LibreOffice",
+          "weightedTotal": 3.68,
+          "knockouts": []
+        },
+        {
+          "id": "C",
+          "name": "C — pdfme 6.1.12 (MIT, pdf-lib based fixed layout)",
+          "weightedTotal": 3.34,
+          "knockouts": [
+            "Arabic/RTL: maintainer states RTL is out of scope (pdfme PR #1300, Jan 2026); spike PROVED broken standalone Arabic text (faint/disconnected), bidi punctuation errors on ID card — KNOCKED OUT for any Arabic-bearing document family",
+            "Flowing documents: 18-paragraph letter compressed into one page at unreadable size — no reflow across pages (PROVEN, C4) — KNOCKED OUT for flowing letters"
+          ]
+        },
+        {
+          "id": "D",
+          "name": "D — Executive Ledger + Gotenberg/Chromium (existing code-first)",
+          "weightedTotal": 4.38,
+          "knockouts": []
+        }
+      ]
+    }
+  }
+}

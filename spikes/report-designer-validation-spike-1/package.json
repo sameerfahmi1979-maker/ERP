@@ -1,0 +1,19 @@
+{
+  "name": "report-designer-validation-spike-1",
+  "version": "0.0.1",
+  "private": true,
+  "description": "ISOLATED SPIKE - REPORT.DESIGNER.VALIDATION.SPIKE.1 - disposable prototypes, never imported by production routes",
+  "type": "module",
+  "scripts": {
+    "note": "echo All scripts run with npx tsx from repo root"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^1.0.2",
+    "@pdfme/common": "^6.1.12",
+    "@pdfme/generator": "^6.1.12",
+    "@pdfme/schemas": "^6.1.12",
+    "carbone": "^3.8.2",
+    "docx": "^9.7.1",
+    "pdf-to-img": "^6.2.0"
+  }
+}

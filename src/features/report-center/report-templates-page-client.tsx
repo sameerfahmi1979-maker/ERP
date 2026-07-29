@@ -8,7 +8,7 @@
 
 import { useState, useTransition } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Plus, FileText, Building2, CheckCircle2, XCircle, Pencil, RefreshCw, ImageOff, ShieldCheck, Eye } from "lucide-react";
+import { Plus, FileText, Building2, CheckCircle2, XCircle, Pencil, RefreshCw, ImageOff, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -400,20 +400,8 @@ export function ReportTemplatesPageClient({
               <Pencil className="h-3.5 w-3.5" />
             </Button>
           )}
-          {/* Open in Visual Editor — shown to users with reports.manage or canApprove/canPublish */}
-          {(canManage || canApprove || canPublish) && (
-            <Link
-              href={`/admin/reports/editor/${row.original.id}`}
-              title={
-                canManage && ["draft", "rejected"].includes(row.original.governance_status)
-                  ? "Open in Visual Editor (edit)"
-                  : "Open in Visual Editor (read-only)"
-              }
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground"
-            >
-              <Eye className="h-3.5 w-3.5" />
-            </Link>
-          )}
+          {/* OFFICIAL DOCS.1 Package 8: Template Studio link retired — official
+              documents use fixed code-based templates (src/lib/official-documents). */}
           {(canManage || canApprove || canPublish) && (
             <GovernanceActionsDropdown
               template={row.original}

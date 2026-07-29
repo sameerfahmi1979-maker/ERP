@@ -1,0 +1,560 @@
+{
+  "builtAt": "2026-07-26T20:03:17.783Z",
+  "scale": "0-5",
+  "criteria": [
+    {
+      "id": "authoring_usability",
+      "label": "Administrator authoring usability",
+      "weight": 0.18
+    },
+    {
+      "id": "fidelity",
+      "label": "Editor/preview/final-PDF fidelity",
+      "weight": 0.15
+    },
+    {
+      "id": "arabic_rtl",
+      "label": "Arabic/RTL and bilingual quality",
+      "weight": 0.12
+    },
+    {
+      "id": "pagination_family",
+      "label": "Pagination, tables and document-family fit",
+      "weight": 0.1
+    },
+    {
+      "id": "security_isolation",
+      "label": "Security, governance and multi-company isolation",
+      "weight": 0.15
+    },
+    {
+      "id": "backend_integration",
+      "label": "Integration with accepted backend",
+      "weight": 0.08
+    },
+    {
+      "id": "performance",
+      "label": "Performance and reliability",
+      "weight": 0.07
+    },
+    {
+      "id": "maintainability",
+      "label": "Maintainability and upgrade risk",
+      "weight": 0.06
+    },
+    {
+      "id": "licensing_cost",
+      "label": "Licensing and total cost",
+      "weight": 0.05
+    },
+    {
+      "id": "accessibility",
+      "label": "Accessibility and responsive UX",
+      "weight": 0.04
+    }
+  ],
+  "candidates": [
+    {
+      "id": "D",
+      "name": "Executive Ledger + Gotenberg (code-first official renderer)",
+      "scores": {
+        "authoring_usability": 0,
+        "fidelity": 5,
+        "arabic_rtl": 5,
+        "pagination_family": 5,
+        "security_isolation": 5,
+        "backend_integration": 5,
+        "performance": 5,
+        "maintainability": 4,
+        "licensing_cost": 5,
+        "accessibility": 3
+      },
+      "notes": {
+        "authoring_usability": "No business-user visual editor exists; changes require a developer. Knockout for visual-authoring families.",
+        "fidelity": "Preview iframe srcdoc uses the SAME renderExecutiveLedgerHtml as issuance — structurally identical.",
+        "performance": "evidence/performance/gotenberg-concurrency-results.json: warm 512ms, 10-concurrent 11.85/s all-succeeded."
+      }
+    },
+    {
+      "id": "TS",
+      "name": "Enhanced TipTap v3 Template Studio (LIVE admin designer)",
+      "scores": {
+        "authoring_usability": 3,
+        "fidelity": 5,
+        "arabic_rtl": 4,
+        "pagination_family": 3,
+        "security_isolation": 5,
+        "backend_integration": 5,
+        "performance": 4,
+        "maintainability": 3,
+        "licensing_cost": 5,
+        "accessibility": 3
+      },
+      "notes": {
+        "authoring_usability": "LIVE test: added heading/paragraph/key-value/table, inserted governed field, dirty-tracking works. EXPERT HEURISTIC ONLY — no SUS/human participant.",
+        "arabic_rtl": "CORRECTION: live RTL mode produced <html dir=rtl>. Prior spike's RTL defect was the isolated TipTap-v2 community prototype, not this production Studio.",
+        "security_isolation": "evidence/security/studio-security-battery-results.json — 13/13 as expected; server actions gated by hasPermission(reports.manage)."
+      }
+    },
+    {
+      "id": "B",
+      "name": "Carbone / DOCX (Word authoring)",
+      "scores": {
+        "authoring_usability": 2,
+        "fidelity": 3,
+        "arabic_rtl": 3,
+        "pagination_family": 4,
+        "security_isolation": 3,
+        "backend_integration": 3,
+        "performance": 4,
+        "maintainability": 3,
+        "licensing_cost": 4,
+        "accessibility": 3
+      },
+      "notes": {
+        "authoring_usability": "GUI admin authoring + SUS = BLOCKED (no human participant; cannot fabricate). Word installed but hand-authoring/usability not measured. Raw token typing is error-prone without a field picker.",
+        "security_isolation": "evidence/security/docx-security-battery-results.json — 8/8 threats detected by proposed guards; NONE implemented in production yet."
+      }
+    },
+    {
+      "id": "C",
+      "name": "pdfme visual Designer",
+      "scores": {
+        "authoring_usability": 4,
+        "fidelity": 4,
+        "arabic_rtl": 0,
+        "pagination_family": 2,
+        "security_isolation": 3,
+        "backend_integration": 2,
+        "performance": 4,
+        "maintainability": 3,
+        "licensing_cost": 5,
+        "accessibility": 3
+      },
+      "notes": {
+        "arabic_rtl": "KNOCKOUT confirmed executed: evidence/pdfme-designer/pages/designer-card-arabic-p1.png shows Arabic as disconnected boxes. Do NOT use for Arabic-bearing content.",
+        "authoring_usability": "LIVE prototype: drag/drop canvas, element toolbar, export 1754B JSON, reopen, Company A/B branding switch, generate 88ms — all proven.",
+        "performance": "Bundle: dist main 6.88MB (2.33MB gzip) + clawpdf worker 11.26MB — heavy for a route."
+      }
+    },
+    {
+      "id": "A",
+      "name": "Official TipTap Pages (@tiptap-pro/extension-pages)",
+      "blocked": true,
+      "scores": {
+        "authoring_usability": 0,
+        "fidelity": 0,
+        "arabic_rtl": 0,
+        "pagination_family": 0,
+        "security_isolation": 0,
+        "backend_integration": 0,
+        "performance": 0,
+        "maintainability": 0,
+        "licensing_cost": 0,
+        "accessibility": 0
+      },
+      "notes": {
+        "authoring_usability": "BLOCKED — registry.tiptap.dev returned HTTP 403 (invalid credentials); not on npmjs (404). No authorized token configured. Cannot be scored as proven per prompt rules."
+      }
+    }
+  ],
+  "overall": {
+    "weights": {
+      "authoring_usability": 0.18,
+      "fidelity": 0.15,
+      "arabic_rtl": 0.12,
+      "pagination_family": 0.1,
+      "security_isolation": 0.15,
+      "backend_integration": 0.08,
+      "performance": 0.07,
+      "maintainability": 0.06,
+      "licensing_cost": 0.05,
+      "accessibility": 0.04
+    },
+    "totals": [
+      {
+        "id": "TS",
+        "name": "Enhanced TipTap v3 Template Studio (LIVE admin designer)",
+        "blocked": false,
+        "weightedTotal": 4.05
+      },
+      {
+        "id": "D",
+        "name": "Executive Ledger + Gotenberg (code-first official renderer)",
+        "blocked": false,
+        "weightedTotal": 3.96
+      },
+      {
+        "id": "B",
+        "name": "Carbone / DOCX (Word authoring)",
+        "blocked": false,
+        "weightedTotal": 3.04
+      },
+      {
+        "id": "C",
+        "name": "pdfme visual Designer",
+        "blocked": false,
+        "weightedTotal": 2.96
+      },
+      {
+        "id": "A",
+        "name": "Official TipTap Pages (@tiptap-pro/extension-pages)",
+        "blocked": true,
+        "weightedTotal": null
+      }
+    ]
+  },
+  "perMode": {
+    "flowing_letters": {
+      "weights": {
+        "authoring_usability": 0.22,
+        "fidelity": 0.15,
+        "arabic_rtl": 0.18,
+        "pagination_family": 0.08,
+        "security_isolation": 0.13,
+        "backend_integration": 0.07,
+        "performance": 0.05,
+        "maintainability": 0.05,
+        "licensing_cost": 0.04,
+        "accessibility": 0.03
+      },
+      "totals": [
+        {
+          "id": "TS",
+          "name": "Enhanced TipTap v3 Template Studio (LIVE admin designer)",
+          "blocked": false,
+          "weightedTotal": 4.01
+        },
+        {
+          "id": "D",
+          "name": "Executive Ledger + Gotenberg (code-first official renderer)",
+          "blocked": false,
+          "weightedTotal": 3.79
+        },
+        {
+          "id": "B",
+          "name": "Carbone / DOCX (Word authoring)",
+          "blocked": false,
+          "weightedTotal": 2.95
+        },
+        {
+          "id": "C",
+          "name": "pdfme visual Designer",
+          "blocked": false,
+          "weightedTotal": 2.81
+        },
+        {
+          "id": "A",
+          "name": "Official TipTap Pages (@tiptap-pro/extension-pages)",
+          "blocked": true,
+          "weightedTotal": null
+        }
+      ]
+    },
+    "tabular_reports": {
+      "weights": {
+        "authoring_usability": 0.1,
+        "fidelity": 0.15,
+        "arabic_rtl": 0.08,
+        "pagination_family": 0.22,
+        "security_isolation": 0.15,
+        "backend_integration": 0.1,
+        "performance": 0.1,
+        "maintainability": 0.05,
+        "licensing_cost": 0.03,
+        "accessibility": 0.02
+      },
+      "totals": [
+        {
+          "id": "D",
+          "name": "Executive Ledger + Gotenberg (code-first official renderer)",
+          "blocked": false,
+          "weightedTotal": 4.41
+        },
+        {
+          "id": "TS",
+          "name": "Enhanced TipTap v3 Template Studio (LIVE admin designer)",
+          "blocked": false,
+          "weightedTotal": 4.04
+        },
+        {
+          "id": "B",
+          "name": "Carbone / DOCX (Word authoring)",
+          "blocked": false,
+          "weightedTotal": 3.25
+        },
+        {
+          "id": "C",
+          "name": "pdfme visual Designer",
+          "blocked": false,
+          "weightedTotal": 2.85
+        },
+        {
+          "id": "A",
+          "name": "Official TipTap Pages (@tiptap-pro/extension-pages)",
+          "blocked": true,
+          "weightedTotal": null
+        }
+      ]
+    },
+    "fixed_forms_cards": {
+      "weights": {
+        "authoring_usability": 0.24,
+        "fidelity": 0.2,
+        "arabic_rtl": 0.06,
+        "pagination_family": 0.08,
+        "security_isolation": 0.12,
+        "backend_integration": 0.08,
+        "performance": 0.08,
+        "maintainability": 0.06,
+        "licensing_cost": 0.04,
+        "accessibility": 0.04
+      },
+      "totals": [
+        {
+          "id": "TS",
+          "name": "Enhanced TipTap v3 Template Studio (LIVE admin designer)",
+          "blocked": false,
+          "weightedTotal": 4.02
+        },
+        {
+          "id": "D",
+          "name": "Executive Ledger + Gotenberg (code-first official renderer)",
+          "blocked": false,
+          "weightedTotal": 3.66
+        },
+        {
+          "id": "C",
+          "name": "pdfme visual Designer",
+          "blocked": false,
+          "weightedTotal": 3.26
+        },
+        {
+          "id": "B",
+          "name": "Carbone / DOCX (Word authoring)",
+          "blocked": false,
+          "weightedTotal": 2.96
+        },
+        {
+          "id": "A",
+          "name": "Official TipTap Pages (@tiptap-pro/extension-pages)",
+          "blocked": true,
+          "weightedTotal": null
+        }
+      ]
+    },
+    "framework_integration": {
+      "weights": {
+        "authoring_usability": 0.12,
+        "fidelity": 0.12,
+        "arabic_rtl": 0.1,
+        "pagination_family": 0.08,
+        "security_isolation": 0.2,
+        "backend_integration": 0.18,
+        "performance": 0.08,
+        "maintainability": 0.06,
+        "licensing_cost": 0.03,
+        "accessibility": 0.03
+      },
+      "totals": [
+        {
+          "id": "D",
+          "name": "Executive Ledger + Gotenberg (code-first official renderer)",
+          "blocked": false,
+          "weightedTotal": 4.28
+        },
+        {
+          "id": "TS",
+          "name": "Enhanced TipTap v3 Template Studio (LIVE admin designer)",
+          "blocked": false,
+          "weightedTotal": 4.24
+        },
+        {
+          "id": "B",
+          "name": "Carbone / DOCX (Word authoring)",
+          "blocked": false,
+          "weightedTotal": 3.07
+        },
+        {
+          "id": "C",
+          "name": "pdfme visual Designer",
+          "blocked": false,
+          "weightedTotal": 2.82
+        },
+        {
+          "id": "A",
+          "name": "Official TipTap Pages (@tiptap-pro/extension-pages)",
+          "blocked": true,
+          "weightedTotal": null
+        }
+      ]
+    }
+  },
+  "sensitivity": {
+    "admin_usability_first": [
+      {
+        "id": "TS",
+        "name": "Enhanced TipTap v3 Template Studio (LIVE admin designer)",
+        "blocked": false,
+        "weightedTotal": 3.81
+      },
+      {
+        "id": "C",
+        "name": "pdfme visual Designer",
+        "blocked": false,
+        "weightedTotal": 3.14
+      },
+      {
+        "id": "D",
+        "name": "Executive Ledger + Gotenberg (code-first official renderer)",
+        "blocked": false,
+        "weightedTotal": 3.12
+      },
+      {
+        "id": "B",
+        "name": "Carbone / DOCX (Word authoring)",
+        "blocked": false,
+        "weightedTotal": 2.81
+      },
+      {
+        "id": "A",
+        "name": "Official TipTap Pages (@tiptap-pro/extension-pages)",
+        "blocked": true,
+        "weightedTotal": null
+      }
+    ],
+    "arabic_security_first": [
+      {
+        "id": "D",
+        "name": "Executive Ledger + Gotenberg (code-first official renderer)",
+        "blocked": false,
+        "weightedTotal": 4.42
+      },
+      {
+        "id": "TS",
+        "name": "Enhanced TipTap v3 Template Studio (LIVE admin designer)",
+        "blocked": false,
+        "weightedTotal": 4.2
+      },
+      {
+        "id": "B",
+        "name": "Carbone / DOCX (Word authoring)",
+        "blocked": false,
+        "weightedTotal": 3.04
+      },
+      {
+        "id": "C",
+        "name": "pdfme visual Designer",
+        "blocked": false,
+        "weightedTotal": 2.32
+      },
+      {
+        "id": "A",
+        "name": "Official TipTap Pages (@tiptap-pro/extension-pages)",
+        "blocked": true,
+        "weightedTotal": null
+      }
+    ],
+    "fidelity_print_first": [
+      {
+        "id": "D",
+        "name": "Executive Ledger + Gotenberg (code-first official renderer)",
+        "blocked": false,
+        "weightedTotal": 4.35
+      },
+      {
+        "id": "TS",
+        "name": "Enhanced TipTap v3 Template Studio (LIVE admin designer)",
+        "blocked": false,
+        "weightedTotal": 4.24
+      },
+      {
+        "id": "B",
+        "name": "Carbone / DOCX (Word authoring)",
+        "blocked": false,
+        "weightedTotal": 3.08
+      },
+      {
+        "id": "C",
+        "name": "pdfme visual Designer",
+        "blocked": false,
+        "weightedTotal": 2.98
+      },
+      {
+        "id": "A",
+        "name": "Official TipTap Pages (@tiptap-pro/extension-pages)",
+        "blocked": true,
+        "weightedTotal": null
+      }
+    ],
+    "cost_maintenance_first": [
+      {
+        "id": "D",
+        "name": "Executive Ledger + Gotenberg (code-first official renderer)",
+        "blocked": false,
+        "weightedTotal": 4.06
+      },
+      {
+        "id": "TS",
+        "name": "Enhanced TipTap v3 Template Studio (LIVE admin designer)",
+        "blocked": false,
+        "weightedTotal": 4
+      },
+      {
+        "id": "B",
+        "name": "Carbone / DOCX (Word authoring)",
+        "blocked": false,
+        "weightedTotal": 3.1
+      },
+      {
+        "id": "C",
+        "name": "pdfme visual Designer",
+        "blocked": false,
+        "weightedTotal": 3.06
+      },
+      {
+        "id": "A",
+        "name": "Official TipTap Pages (@tiptap-pro/extension-pages)",
+        "blocked": true,
+        "weightedTotal": null
+      }
+    ],
+    "fixed_layout_first": [
+      {
+        "id": "TS",
+        "name": "Enhanced TipTap v3 Template Studio (LIVE admin designer)",
+        "blocked": false,
+        "weightedTotal": 4.02
+      },
+      {
+        "id": "D",
+        "name": "Executive Ledger + Gotenberg (code-first official renderer)",
+        "blocked": false,
+        "weightedTotal": 3.6
+      },
+      {
+        "id": "C",
+        "name": "pdfme visual Designer",
+        "blocked": false,
+        "weightedTotal": 3.32
+      },
+      {
+        "id": "B",
+        "name": "Carbone / DOCX (Word authoring)",
+        "blocked": false,
+        "weightedTotal": 2.95
+      },
+      {
+        "id": "A",
+        "name": "Official TipTap Pages (@tiptap-pro/extension-pages)",
+        "blocked": true,
+        "weightedTotal": null
+      }
+    ]
+  },
+  "knockouts": {
+    "pdfme_arabic": "Candidate C KNOCKED OUT for all Arabic-bearing families (arabic_rtl=0, executed tofu evidence).",
+    "tiptap_pages_blocked": "Candidate A BLOCKED (no registry access) — not scorable as proven.",
+    "exec_ledger_authoring": "Candidate D scores 0 on authoring_usability — knocked out for visual-authoring families, remains official renderer."
+  }
+}

@@ -1,0 +1,157 @@
+﻿{
+    "generated_at":  "2026-07-28T13:43:20.0483618+04:00",
+    "program":  "OFFICIAL DOCS.1 - Global Official Letters \u0026 Forms Generator",
+    "hash_algorithm":  "SHA-256 (exact file bytes)",
+    "files":  [
+                  {
+                      "path":  "implementation_Review/HR/official-docs-uat-evidence/pkg8-template-studio-retired-route.png",
+                      "sha256":  "4ba8e9d1b1eb0f130d765aa796d5a25b8a973fbc30e19cb9eea0afe2ee74b28f",
+                      "bytes":  57724
+                  },
+                  {
+                      "path":  "implementation_Review/HR/official-docs-uat-evidence/uat-catalog-official-letters-group.png",
+                      "sha256":  "1605daa0f70eef9e2a0d6e24e2ce82092f9557da609ec390aeb8c40e1a5dc426",
+                      "bytes":  148786
+                  },
+                  {
+                      "path":  "implementation_Review/HR/official-docs-uat-evidence/uat-employment-confirmation-arabic-issued.png",
+                      "sha256":  "396c414eced00c4129c396ea22d4aeb5d4b66096bc15934b198d8bc9dae54880",
+                      "bytes":  62455
+                  },
+                  {
+                      "path":  "implementation_Review/HR/official-docs-uat-evidence/uat-employment-confirmation-bilingual-issued.png",
+                      "sha256":  "ca34ffe2cdfb3cbfbe832b4c5cd3ef49f57e19880a641ff263db72e3ae6e272e",
+                      "bytes":  99232
+                  },
+                  {
+                      "path":  "implementation_Review/HR/official-docs-uat-evidence/uat-generation-dialog-language-selector.png",
+                      "sha256":  "715aea901b5c3c68665db7c14e85858ff653d74dea7373eeb2a810fcdab71795",
+                      "bytes":  128427
+                  },
+                  {
+                      "path":  "implementation_Review/HR/official-docs-uat-evidence/uat-ppe-issue-form-generated-after-permission-fix.png",
+                      "sha256":  "483df200770cabaf11e39a078333f005424845a9cb64878c49469698b8d55856",
+                      "bytes":  37320
+                  },
+                  {
+                      "path":  "implementation_Review/HR/official-docs-uat-evidence/uat-public-qr-verification-page.png",
+                      "sha256":  "97e2fad51f81beb6f40488bb2bd987e1f2e1db5bf6a6db2cf681f3468797795a",
+                      "bytes":  49455
+                  },
+                  {
+                      "path":  "implementation_Review/HR/official-docs-uat-evidence/uat-reissued-arabic-preserved-serial6.png",
+                      "sha256":  "6b71f4b80fc9fd1f863eaea41f1e6c9622020bad44ac298daa3eb948173271f9",
+                      "bytes":  53441
+                  },
+                  {
+                      "path":  "implementation_Review/HR/official-docs-uat-evidence/uat-reissued-employment-confirmation-serial5.png",
+                      "sha256":  "54364b4b894363941f836376b505ad5cb30184b800bddfb17cca5a96926835e6",
+                      "bytes":  54826
+                  },
+                  {
+                      "path":  "implementation_Review/HR/official-docs-uat-evidence/uat-revoked-verification-page.png",
+                      "sha256":  "fb903373535b08b548e2f9cdf14ef858944c52a779e8213c38b084903a8dbbe8",
+                      "bytes":  39405
+                  },
+                  {
+                      "path":  "implementation_Review/HR/official-docs-uat-evidence/uat-warning-letter-blocked-missing-incident-date.png",
+                      "sha256":  "72a078ad81d329e373a5d5bdfbdf6b985b36c824e22287b4439784e7d90f72e3",
+                      "bytes":  158916
+                  },
+                  {
+                      "path":  "spikes/official-docs-gate3/evidence/01-employment-certificate-en.html",
+                      "sha256":  "c7ba18217c054e18cea2ef1f0735d9ebc75a1862a5cd4ce81bdcf7b104ff0f09",
+                      "bytes":  14056
+                  },
+                  {
+                      "path":  "spikes/official-docs-gate3/evidence/01-employment-certificate-en.pdf",
+                      "sha256":  "fe1ec650387c9f1e186c9c64bd795350cbf664e2310956f05920abf1c2107273",
+                      "bytes":  60428
+                  },
+                  {
+                      "path":  "spikes/official-docs-gate3/evidence/02-employment-confirmation-ar.html",
+                      "sha256":  "4ad53872188ba895c2c79dd67e46562b4b78fa14b117b1828d699f6132119c7f",
+                      "bytes":  270429
+                  },
+                  {
+                      "path":  "spikes/official-docs-gate3/evidence/02-employment-confirmation-ar.pdf",
+                      "sha256":  "61774a2d9261998eb629e1e5ede276540c37b7633fe8ed07389a67be516a986d",
+                      "bytes":  192587
+                  },
+                  {
+                      "path":  "spikes/official-docs-gate3/evidence/03-employment-confirmation-bilingual.html",
+                      "sha256":  "6cf59f87c4443554d3a69ae69f414a54d537360ebba1f6140b957a2aa5eec840",
+                      "bytes":  271484
+                  },
+                  {
+                      "path":  "spikes/official-docs-gate3/evidence/03-employment-confirmation-bilingual.pdf",
+                      "sha256":  "00b2855ae4fd69de493dd4153baa8d1a827e9fcfecd9e70da3b45ad1b8c63929",
+                      "bytes":  187999
+                  },
+                  {
+                      "path":  "spikes/official-docs-gate3/evidence/04-clearance-form-bilingual.html",
+                      "sha256":  "13323994b23a71d752830b7101ceac8f924630b533948ffeac753f50648e5586",
+                      "bytes":  268696
+                  },
+                  {
+                      "path":  "spikes/official-docs-gate3/evidence/04-clearance-form-bilingual.pdf",
+                      "sha256":  "5cd72e484a5c83c7ccc2e73dae93b3d9dd19524e21a835a9b357ab0d74a7ee04",
+                      "bytes":  159658
+                  },
+                  {
+                      "path":  "spikes/official-docs-gate3/evidence/05-joining-checklist-en-multipage.html",
+                      "sha256":  "d0a20c242b9e9b0b81cb0958f4afc05d92e8ef0af9405cb9cead9eb250d79e32",
+                      "bytes":  17161
+                  },
+                  {
+                      "path":  "spikes/official-docs-gate3/evidence/05-joining-checklist-en-multipage.pdf",
+                      "sha256":  "7054616ad92c237f199fcd8c4514d29c8fdb690b2d97e66ee887f1d844ba1f10",
+                      "bytes":  60291
+                  },
+                  {
+                      "path":  "spikes/official-docs-gate3/evidence/06-ppe-issue-form-en.html",
+                      "sha256":  "cfef6e900b99b1c7502051144c3a4ad928ed8f21fdff33c440c9193f80e966c9",
+                      "bytes":  11510
+                  },
+                  {
+                      "path":  "spikes/official-docs-gate3/evidence/06-ppe-issue-form-en.pdf",
+                      "sha256":  "8684c2153234092d9f35ffb714fafc2fda046ddfc4a527e5df9163ff48635e3e",
+                      "bytes":  55596
+                  },
+                  {
+                      "path":  "spikes/official-docs-gate3/evidence/07-salary-certificate-with-amount-en.html",
+                      "sha256":  "26af6d122d3f512cf8ce50d62ab815854d57a003efe863a1dafa5392e955598c",
+                      "bytes":  14193
+                  },
+                  {
+                      "path":  "spikes/official-docs-gate3/evidence/07-salary-certificate-with-amount-en.pdf",
+                      "sha256":  "da1c38febd0eb592d9036f78c3e8631a2a6f54a2e1fb706dbcdf0104536cafec",
+                      "bytes":  61394
+                  },
+                  {
+                      "path":  "spikes/official-docs-gate3/evidence/08-noc-en.html",
+                      "sha256":  "4cf2849aea248c357024146ca2769223ec733221ccf4a624bb1a11cca34be221",
+                      "bytes":  13904
+                  },
+                  {
+                      "path":  "spikes/official-docs-gate3/evidence/08-noc-en.pdf",
+                      "sha256":  "751398f288aa071b69f96dcc4769ec06f8d0539ec85bef77359604ceb066414a",
+                      "bytes":  60832
+                  },
+                  {
+                      "path":  "spikes/official-docs-gate3/evidence/09-warning-letter-en-no-qr.html",
+                      "sha256":  "a19c734dd09e3495407fc47f93c2945ba315da5912bca2fd3f49e5adaf52c944",
+                      "bytes":  11753
+                  },
+                  {
+                      "path":  "spikes/official-docs-gate3/evidence/09-warning-letter-en-no-qr.pdf",
+                      "sha256":  "e43820ce9e3ca9d959efe2607cc3274bfd5f310f35ca6f47094ff212b605a182",
+                      "bytes":  60024
+                  },
+                  {
+                      "path":  "spikes/official-docs-gate3/evidence/manifest.json",
+                      "sha256":  "d0033cda999ebefd8858ae247a336074897e50cdad406507874b4be3dd355a36",
+                      "bytes":  2494
+                  }
+              ]
+}

@@ -63,6 +63,9 @@ import { ppeIssueReportFetcher } from "@/server/actions/reports/hr/ppe-issue-rep
 import { assetIssueReportFetcher } from "@/server/actions/reports/hr/asset-issue-report";
 import {
   experienceLetterFetcher,
+  employmentLetterFetcher,
+  employmentConfirmationFetcher,
+  warningLetterFetcher,
   salaryCertGeneralFetcher,
   salaryCertWithAmountFetcher,
   nocFetcher,
@@ -104,6 +107,9 @@ export const REPORT_FETCHERS: Record<string, ReportFetcher> = {
 
   // HR Letters / Certificates / Forms
   HR_EXPERIENCE_LETTER: experienceLetterFetcher,
+  HR_EMPLOYMENT_LETTER: employmentLetterFetcher,
+  HR_EMPLOYMENT_CONFIRMATION: employmentConfirmationFetcher,
+  HR_WARNING_LETTER: warningLetterFetcher,
   HR_SALARY_CERT_GENERAL: salaryCertGeneralFetcher,
   HR_SALARY_CERT_WITH_AMOUNT: salaryCertWithAmountFetcher,
   HR_NOC: nocFetcher,

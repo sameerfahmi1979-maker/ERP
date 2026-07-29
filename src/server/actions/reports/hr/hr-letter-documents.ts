@@ -86,6 +86,146 @@ export const experienceLetterFetcher: ReportFetcher = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// HR_EMPLOYMENT_LETTER (OUTPUT.2 — coordinator migration of Pipeline A)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const employmentLetterFetcher: ReportFetcher = {
+  reportCode: "HR_EMPLOYMENT_LETTER",
+
+  async fetch(filters: Record<string, unknown>): Promise<ReportDataResult> {
+    const employeeId = filters.employee_id ? Number(filters.employee_id) : null;
+    if (!employeeId) throw new Error("employee_id is required");
+
+    const emp = await loadEmployeeBase(employeeId);
+    const company = emp.owner_company as unknown as { legal_name_en: string } | null;
+
+    const row = {
+      employee_name: emp.full_name_en,
+      employee_code: emp.employee_code,
+      designation: (emp.designation as unknown as { designation_name_en: string } | null)?.designation_name_en ?? "",
+      department: (emp.department as unknown as { department_name_en: string } | null)?.department_name_en ?? "",
+      employment_type: (emp.employment_type as unknown as { name_en: string } | null)?.name_en ?? "",
+      employee_status: emp.employee_status,
+      joining_date: emp.joining_date,
+      company_name: company?.legal_name_en ?? "",
+      generated_date: new Date().toISOString().split("T")[0],
+      owner_company_id: emp.owner_company_id,
+    };
+
+    return {
+      columns: Object.keys(row).filter((k) => k !== "owner_company_id"),
+      rows: [row],
+      meta: { letter_type: "employment_letter", ownerCompanyIds: [emp.owner_company_id] },
+    };
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HR_EMPLOYMENT_CONFIRMATION (OFFICIAL DOCS.1 — EN/AR/bilingual fixed template)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const employmentConfirmationFetcher: ReportFetcher = {
+  reportCode: "HR_EMPLOYMENT_CONFIRMATION",
+
+  async fetch(filters: Record<string, unknown>): Promise<ReportDataResult> {
+    const employeeId = filters.employee_id ? Number(filters.employee_id) : null;
+    if (!employeeId) throw new Error("employee_id is required");
+
+    const emp = await loadEmployeeBase(employeeId);
+    const company = emp.owner_company as unknown as {
+      legal_name_en: string;
+      legal_name_ar: string | null;
+    } | null;
+    const designation = emp.designation as unknown as {
+      designation_name_en: string;
+      designation_name_ar: string | null;
+    } | null;
+
+    // Arabic fields feed the AR/bilingual variants of the fixed definition;
+    // the definition falls back to English when an Arabic value is absent.
+    const row = {
+      employee_name: emp.full_name_en,
+      employee_name_ar: emp.full_name_ar ?? "",
+      employee_code: emp.employee_code,
+      designation: designation?.designation_name_en ?? "",
+      designation_ar: designation?.designation_name_ar ?? "",
+      joining_date: emp.joining_date,
+      company_name: company?.legal_name_en ?? "",
+      company_name_ar: company?.legal_name_ar ?? "",
+      generated_date: new Date().toISOString().split("T")[0],
+      owner_company_id: emp.owner_company_id,
+    };
+
+    return {
+      columns: Object.keys(row).filter((k) => k !== "owner_company_id"),
+      rows: [row],
+      meta: { letter_type: "employment_confirmation", ownerCompanyIds: [emp.owner_company_id] },
+    };
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HR_WARNING_LETTER (OFFICIAL DOCS.1 — tied to a recorded disciplinary action)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const warningLetterFetcher: ReportFetcher = {
+  reportCode: "HR_WARNING_LETTER",
+
+  async fetch(filters: Record<string, unknown>): Promise<ReportDataResult> {
+    const employeeId = filters.employee_id ? Number(filters.employee_id) : null;
+    if (!employeeId) throw new Error("employee_id is required");
+
+    const emp = await loadEmployeeBase(employeeId);
+    const db = createAdminClient();
+
+    // Optional action_id pins the letter to a specific disciplinary record;
+    // otherwise the latest non-deleted record is used.
+    const actionId = filters.action_id ? Number(filters.action_id) : null;
+    let query = db
+      .from("employee_disciplinary_records")
+      .select("id, disciplinary_type, severity, subject, description, incident_date")
+      .eq("employee_id", employeeId)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    if (actionId) query = query.eq("id", actionId);
+    const { data: records, error } = await query;
+    if (error) throw new Error(`Disciplinary record query failed: ${error.message}`);
+    const record = records?.[0];
+
+    // "written_warning" → "Written Warning" (verified enum labels, no invention)
+    const level = record?.disciplinary_type
+      ? record.disciplinary_type
+          .split("_")
+          .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
+          .join(" ")
+      : "";
+
+    const row = {
+      employee_name: emp.full_name_en,
+      employee_code: emp.employee_code,
+      warning_level: level,
+      warning_reason: record?.subject ?? "",
+      incident_date: record?.incident_date ?? "",
+      incident_description: record?.description ?? "",
+      generated_date: new Date().toISOString().split("T")[0],
+      owner_company_id: emp.owner_company_id,
+    };
+
+    return {
+      columns: Object.keys(row).filter((k) => k !== "owner_company_id"),
+      rows: [row],
+      meta: {
+        letter_type: "warning_letter",
+        ownerCompanyIds: [emp.owner_company_id],
+        sensitive: true,
+        disciplinary_record_id: record?.id ?? null,
+      },
+    };
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // HR_SALARY_CERT_GENERAL
 // ─────────────────────────────────────────────────────────────────────────────
 

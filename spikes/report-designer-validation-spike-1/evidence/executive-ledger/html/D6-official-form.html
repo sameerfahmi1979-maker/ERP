@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Employee Clearance Form</title>
+  <style>
+    /* ── Reset ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+      font-size: 10px;
+      color: #1a1a1a;
+      background: #e5e7eb;
+      
+    }
+
+    /* ── Print setup ── */
+    @media print {
+      @page { size: A4 portrait; margin: 0; }
+      body { background: none !important; padding: 0 !important; }
+      .el-outer-frame { box-shadow: none !important; margin: 0 !important; padding: 12mm !important; }
+      .el-no-print { display: none !important; }
+    }
+
+    /* ── A4 container ── */
+    .el-outer-frame {
+      width: 210mm;
+      min-height: 270mm;
+      margin: 20px auto;
+      background: #fff;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.12);
+      padding: 10px;
+      position: relative;
+    }
+    .el-inner-frame {
+      border: 2px solid #1e293b;
+      padding: 16px 20px;
+      min-height: 250mm;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Company header ── */
+    .el-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid #1e3a8a;
+      margin-bottom: 0;
+    }
+    .el-header-logo img {
+      max-height: 56px;
+      max-width: 140px;
+      object-fit: contain;
+      display: block;
+    }
+    .el-header-info { flex: 1; }
+    .el-company-name {
+      font-size: 13px;
+      font-weight: 800;
+      color: #1e3a8a;
+      letter-spacing: 0.3px;
+      line-height: 1.2;
+    }
+    .el-company-sub {
+      font-size: 8.5px;
+      color: #555;
+      margin-top: 2px;
+      line-height: 1.5;
+    }
+
+    /* ── Title block ── */
+    .el-title-block {
+      background: #1e3a8a;
+      color: #ffffff;
+      padding: 10px 16px;
+      margin: 0 -20px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .el-doc-title {
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .el-doc-subtitle {
+      font-size: 9px;
+      opacity: 0.85;
+      margin-top: 2px;
+    }
+    .el-doc-meta {
+      text-align: right;
+      font-size: 9px;
+      opacity: 0.9;
+      line-height: 1.6;
+      white-space: nowrap;
+    }
+
+    /* ── Addressee strip ── */
+    .el-addressee-strip {
+      border-bottom: 1px solid #e2e8f0;
+      padding: 10px 0 8px;
+      margin-bottom: 0;
+    }
+
+    /* ── Subject line ── */
+    .el-subject-line {
+      padding: 6px 0 10px;
+      font-size: 9.5px;
+      color: #334155;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .el-subject-label {
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-right: 6px;
+      color: #555;
+      font-size: 8px;
+    }
+
+    /* ── Sections ── */
+    .el-body { flex: 1; padding: 14px 0; }
+    .el-section { margin-bottom: 16px; }
+    .el-section-title {
+      font-size: 8.5px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #1e3a8a;
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 4px;
+      margin-bottom: 8px;
+    }
+
+    /* ── Footer ── */
+    .el-footer {
+      border-top: 2px solid #1e3a8a;
+      padding-top: 8px;
+      margin-top: auto;
+      font-size: 8px;
+      color: #777;
+      text-align: center;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  
+  <div class="el-outer-frame">
+    <div class="el-inner-frame">
+
+      <!-- Company Header -->
+      <div class="el-header">
+        
+        <div class="el-header-info">
+          <div class="el-company-name">Falcon Gulf Logistics L.L.C (FIXTURE)</div>
+          <div class="el-company-sub" dir="rtl">شركة صقر الخليج للخدمات اللوجستية ذ.م.م (تجريبي)</div>
+          <div class="el-company-sub">Plot 12, Industrial Area 9, Sharjah, United Arab Emirates — P.O. Box 99001  ·  Tel: +971 6 000 0001</div>
+        </div>
+      </div>
+
+      <!-- Document Title Block -->
+      
+      <div class="el-title-block">
+        <div>
+          <div class="el-doc-title">Employee Clearance Form</div>
+          
+        </div>
+        <div class="el-doc-meta">
+          <div><strong>Ref:</strong> FIX/FORM/2026/0007</div>
+          <div><strong>Date:</strong> 26 July 2026</div>
+          
+        </div>
+      </div>
+
+      <!-- Addressee Strip -->
+      
+
+      <!-- Document Body -->
+      <div class="el-body">
+        
+    <div class="el-section">
+      <div class="el-section-title">Section 1 — Employee Information</div>
+      <table style="width:100%; border-collapse:collapse;">
+        <tbody>
+          <tr>
+    <td style="padding:4px 0; font-size:9.5px; color:#555; width:40%; vertical-align:top;">Employee Name</td>
+    <td style="padding:4px 4px; color:#999; font-size:8px; vertical-align:top; white-space:nowrap;">···</td>
+    <td style="padding:4px 0; font-size:10px; color:#1a1a1a; vertical-align:top;">Jonathan Maximilian Featherstone-Harrington III</td>
+  </tr><tr>
+    <td style="padding:4px 0; font-size:9.5px; color:#555; width:40%; vertical-align:top;">Employee Number</td>
+    <td style="padding:4px 4px; color:#999; font-size:8px; vertical-align:top; white-space:nowrap;">···</td>
+    <td style="padding:4px 0; font-size:10px; color:#1a1a1a; vertical-align:top;">FIX-EMP-001</td>
+  </tr><tr>
+    <td style="padding:4px 0; font-size:9.5px; color:#555; width:40%; vertical-align:top;">Department</td>
+    <td style="padding:4px 4px; color:#999; font-size:8px; vertical-align:top; white-space:nowrap;">···</td>
+    <td style="padding:4px 0; font-size:10px; color:#1a1a1a; vertical-align:top;">Integrated Supply Chain, Fleet Operations and Strategic Procurement Department</td>
+  </tr><tr>
+    <td style="padding:4px 0; font-size:9.5px; color:#555; width:40%; vertical-align:top;">Last Working Date</td>
+    <td style="padding:4px 4px; color:#999; font-size:8px; vertical-align:top; white-space:nowrap;">···</td>
+    <td style="padding:4px 0; font-size:10px; color:#1a1a1a; vertical-align:top;">30 September 2026 (fixture)</td>
+  </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="el-section">
+      <div class="el-section-title">Section 2 — Departmental Clearance</div>
+      <table style="width:100%; border-collapse:collapse; border:1px solid #e2e8f0;">
+        <thead><tr><th style="padding:5px 8px; text-align:left; font-size:8.5px; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; color:#fff; background:#1e293b; width:;">Department</th><th style="padding:5px 8px; text-align:left; font-size:8.5px; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; color:#fff; background:#1e293b; width:;">Item</th><th style="padding:5px 8px; text-align:left; font-size:8.5px; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; color:#fff; background:#1e293b; width:;">Cleared</th><th style="padding:5px 8px; text-align:left; font-size:8.5px; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; color:#fff; background:#1e293b; width:;">Remarks</th><th style="padding:5px 8px; text-align:left; font-size:8.5px; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; color:#fff; background:#1e293b; width:;">Signature</th></tr></thead>
+        <tbody>
+          <tr style="background:#fff;"><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;">IT</td><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;">Laptop &amp; accessories returned</td><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;">[  ] Yes   [  ] No</td><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;"></td><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;"></td></tr><tr style="background:#f9fafb;"><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;">IT</td><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;">Email &amp; system access revoked</td><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;">[  ] Yes   [  ] No</td><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;"></td><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;"></td></tr><tr style="background:#fff;"><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;">Fleet</td><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;">Vehicle &amp; fuel card returned</td><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;">[  ] Yes   [  ] No</td><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;"></td><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;"></td></tr><tr style="background:#f9fafb;"><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;">HR</td><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;">ID card &amp; access badge returned</td><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;">[  ] Yes   [  ] No</td><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;"></td><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;"></td></tr><tr style="background:#fff;"><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;">Finance</td><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;">Outstanding advances settled</td><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;">[  ] Yes   [  ] No</td><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;"></td><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;"></td></tr><tr style="background:#f9fafb;"><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;">Stores</td><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;">PPE and tools returned</td><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;">[  ] Yes   [  ] No</td><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;"></td><td style="padding:5px 8px; font-size:9.5px; color:#1a1a1a; border-bottom:1px solid #eee;"></td></tr>
+          
+        </tbody>
+      </table>
+    </div><div class="el-section" style="display:flex; gap:16px; align-items:flex-start;">
+    <div style="flex:1; min-width:0;">
+    <div class="el-section">
+      <div class="el-section-title">Employee Signature</div>
+      <div style="font-size:10px; line-height:1.7; color:#1a1a1a;"><p style="margin:0 0 6px;">________________________</p><p style="margin:0 0 6px;">Date: ____________</p></div>
+    </div></div><div style="flex:1; min-width:0;">
+    <div class="el-section">
+      <div class="el-section-title">HR Approval</div>
+      <div style="font-size:10px; line-height:1.7; color:#1a1a1a;"><p style="margin:0 0 6px;">________________________</p><p style="margin:0 0 6px;">Date: ____________</p></div>
+    </div></div>
+  </div>
+        
+        
+        <div style="margin-top:24px; padding-top:16px; border-top:1px solid #e2e8f0;">
+         <table style="width:100%; border-collapse:collapse;">
+           <tr>
+             <td style="width:55%; vertical-align:bottom; padding-right:20px;">
+               
+               <div style="border-top:1px solid #1a1a1a; width:140px; padding-top:4px; margin-top:32px;">
+                 <div style="font-size:10px; font-weight:700; color:#1a1a1a;">Fixture Manager One</div>
+                 <div style="font-size:9px; color:#555;">Group Human Resources Manager</div>
+               </div>
+             </td>
+             <td style="width:45%; vertical-align:bottom; text-align:right;">
+               
+               
+             </td>
+           </tr>
+         </table>
+       </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="el-footer">
+        Falcon Gulf Logistics L.L.C (FIXTURE) — This is a synthetic audit fixture document. Not an official record.  ·  TRN: 100000000000001
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>

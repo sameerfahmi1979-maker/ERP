@@ -72,8 +72,10 @@ export async function draftHrLetterOrEmail(
 
     const db = createAdminClient();
 
-    // Load safe employee context
-    const { data: emp } = await db
+    // Load safe employee context.
+    // NOTE: employees has TWO FKs to owner_companies (owner_company_id + sponsor_company_id),
+    // so the join MUST carry an explicit FK hint or PostgREST rejects it as ambiguous (PGRST201).
+    const { data: emp, error: empError } = await db
       .from("employees")
       .select(`
         id, employee_code, full_name_en, employee_status,
@@ -81,11 +83,22 @@ export async function draftHrLetterOrEmail(
         department:departments(department_name_en),
         designation:designations(designation_name_en),
         branch:branches(branch_name_en),
-        owner_company:owner_companies(legal_name_en)
+        owner_company:owner_companies!employees_owner_company_id_fkey(legal_name_en)
       `)
       .eq("id", employeeId)
       .is("deleted_at", null)
       .maybeSingle();
+
+    if (empError) {
+      // Query/relationship failure is NOT "employee not found" — log details server-side,
+      // return a safe actionable message without leaking schema internals.
+      console.error("[HR AI Letters] employee context query failed:", {
+        code: empError.code,
+        message: empError.message,
+        employeeId,
+      });
+      return { success: false, error: "Could not load employee data due to a server error. Please try again or contact an administrator." };
+    }
 
     if (!emp) return { success: false, error: "Employee not found." };
 

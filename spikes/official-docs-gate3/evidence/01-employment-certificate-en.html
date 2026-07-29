@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <title>Employment Certificate</title>
+  <style>
+    
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+      font-size: 10.5pt;
+      color: #1a1a1a;
+      line-height: 1.65;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+      
+    }
+    [lang="ar"], .od-ar {
+      font-family: "Noto Sans Arabic Embedded", "Noto Sans Arabic", "Noto Naskh Arabic", "Segoe UI", Tahoma, Arial, sans-serif;
+      line-height: 1.9;
+    }
+    /*
+     * Page margins are applied by the PDF engine (Chromium print margins via
+     * OFFICIAL_DOCUMENT_PAGE_MARGINS_MM) so every page — including
+     * continuation pages — gets identical white margins. The page container
+     * itself must NOT carry mm padding or a fixed A4 min-height: that is what
+     * pushes content to the paper edge on page 2+ and spills near-blank
+     * trailing pages.
+     */
+    .od-page {
+      min-height: 267mm; /* printable A4 height minus engine margins — pins the footer to the bottom of single-page letters */
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    /* ── Zone: letterhead header ── */
+    .od-header {
+      display: flex;
+      align-items: center;
+      gap: 6mm;
+      padding-bottom: 4mm;
+      border-bottom: 2.5px solid #1e3a5f;
+      break-inside: avoid;
+    }
+    .od-header-logo img { max-height: 62px; max-width: 150px; object-fit: contain; display: block; }
+    .od-header-names { flex: 1; }
+    .od-company-en { font-size: 13.5pt; font-weight: 800; color: #1e3a5f; letter-spacing: 0.2px; line-height: 1.25; }
+    .od-company-ar { font-size: 11.5pt; font-weight: 700; color: #1e3a5f; line-height: 1.5; }
+    .od-header-contact { font-size: 7.5pt; color: #555; margin-top: 1.5mm; line-height: 1.5; }
+
+    /* ── Zone: metadata strip ── */
+    .od-meta-strip {
+      display: flex;
+      justify-content: space-between;
+      gap: 8mm;
+      padding: 3mm 0;
+      font-size: 9pt;
+      color: #334155;
+      border-bottom: 1px solid #e2e8f0;
+      break-inside: avoid;
+    }
+    .od-meta-strip strong { color: #0f172a; }
+
+    /* ── Zone: title ── */
+    .od-title {
+      text-align: center;
+      font-size: 14pt;
+      font-weight: 800;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #1e3a5f;
+      margin: 7mm 0 2mm;
+      text-decoration: underline;
+      text-underline-offset: 4px;
+      break-inside: avoid;
+    }
+    .od-title [lang="ar"] { text-transform: none; letter-spacing: 0; }
+    .od-title-sep { color: #94a3b8; font-weight: 400; padding: 0 2mm; }
+    .od-subtitle { text-align: center; font-size: 9pt; color: #64748b; margin-bottom: 5mm; }
+
+    /* ── Body ── */
+    .od-body { flex: 1; padding-top: 4mm; }
+    .od-para { margin-bottom: 4.5mm; text-align: justify; }
+    .od-para.od-ar { text-align: justify; }
+    .od-para p { margin-bottom: 3mm; }
+    .od-salutation { font-weight: 800; letter-spacing: 0.6px; text-align: center !important; margin: 4mm 0 6mm; }
+    .od-salutation p { margin-bottom: 0; }
+    .od-emph { font-weight: 700; }
+
+    /* ── Bilingual synchronized rows ── */
+    .od-bi-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .od-bi-row { break-inside: avoid; page-break-inside: avoid; }
+    .od-bi-en, .od-bi-ar { width: 48.5%; vertical-align: top; padding-bottom: 4.5mm; text-align: justify; }
+    .od-bi-gap { width: 3%; }
+    .od-bi-en p, .od-bi-ar p { margin-bottom: 3mm; }
+    .od-bi-en.od-salutation, .od-bi-ar.od-salutation { text-align: center !important; }
+
+    /* ── Form tables (bilingual labels) ── */
+    .od-form-block { margin: 3mm 0 5mm; }
+    .od-block-title {
+      font-size: 9pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.8px;
+      color: #1e3a5f; border-bottom: 1px solid #e2e8f0; padding-bottom: 1.5mm; margin-bottom: 2.5mm;
+    }
+    .od-form-table { width: 100%; border-collapse: collapse; }
+    .od-form-row { break-inside: avoid; page-break-inside: avoid; }
+    .od-form-row td { padding: 2mm 2.5mm; border: 1px solid #e2e8f0; font-size: 9.5pt; vertical-align: top; }
+    .od-form-label { width: 42%; background: #f8fafc; color: #334155; font-weight: 600; }
+    .od-label-ar { color: #475569; font-weight: 600; }
+    .od-form-value { color: #0f172a; }
+    .od-sign-line { display: inline-block; width: 60%; border-bottom: 1px solid #94a3b8; height: 7mm; }
+
+    /* ── Checklist tables ── */
+    .od-chk-table { width: 100%; border-collapse: collapse; }
+    .od-chk-table thead { display: table-header-group; }
+    .od-chk-table th {
+      background: #1e3a5f; color: #fff; font-size: 8.5pt; font-weight: 700;
+      text-align: left; padding: 2mm 2.5mm; letter-spacing: 0.4px;
+    }
+    .od-chk-row { break-inside: avoid; page-break-inside: avoid; }
+    .od-chk-row td { padding: 2mm 2.5mm; border: 1px solid #e2e8f0; font-size: 9.5pt; }
+    .od-chk-col-n { width: 8mm; text-align: center; color: #64748b; }
+    .od-chk-col-s { width: 24mm; }
+    .od-chk-col-r { width: 38mm; }
+
+    /* ── Zone: signature/stamp ── */
+    .od-signature { margin-top: 10mm; break-inside: avoid; page-break-inside: avoid; }
+    .od-signature-table { width: 100%; border-collapse: collapse; }
+    .od-sig-left { width: 58%; vertical-align: bottom; }
+    .od-sig-right { width: 42%; vertical-align: bottom; text-align: right; }
+    .od-sig-img { max-height: 46px; max-width: 150px; object-fit: contain; display: block; margin-bottom: 1mm; }
+    .od-sig-rule { border-top: 1.5px solid #0f172a; width: 58mm; padding-top: 1.5mm; margin-top: 12mm; }
+    .od-sig-img + .od-sig-rule { margin-top: 0; }
+    .od-sig-name { font-size: 10pt; font-weight: 700; }
+    .od-sig-title { font-size: 8.5pt; color: #475569; }
+    .od-stamp-img { max-height: 88px; max-width: 88px; object-fit: contain; display: inline-block; }
+
+    /* ── Zone: QR verification ── */
+    .od-qr { margin-top: 5mm; display: flex; flex-direction: column; align-items: flex-end; break-inside: avoid; }
+    .od-qr-img { width: 68px; height: 68px; image-rendering: pixelated; }
+    .od-qr-label { font-size: 6.5pt; color: #64748b; margin-top: 1mm; letter-spacing: 0.3px; }
+
+    /* ── Zone: footer ── */
+    .od-footer {
+      border-top: 2px solid #1e3a5f;
+      margin-top: 6mm;
+      padding-top: 2.5mm;
+      font-size: 7.5pt;
+      color: #64748b;
+      text-align: center;
+      line-height: 1.6;
+      break-inside: avoid;
+    }
+
+    /* ── Watermark (draft previews only) ── */
+    .od-watermark {
+      position: fixed; top: 45%; left: 50%;
+      transform: translate(-50%, -50%) rotate(-32deg);
+      font-size: 74pt; font-weight: 900; color: rgba(15, 23, 42, 0.07);
+      letter-spacing: 8px; pointer-events: none; z-index: 0; white-space: nowrap;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+  <div class="od-watermark">SPECIMEN</div>
+  <div class="od-page">
+
+    <!-- Zone: letterhead header -->
+    <div class="od-header">
+      <div class="od-header-logo"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNTAiIGhlaWdodD0iNjIiPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzFlM2E1ZiIgc3Ryb2tlLXdpZHRoPSIyIiByeD0iOCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTUlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiMxZTNhNWYiIHRleHQtYW5jaG9yPSJtaWRkbGUiPlNQRUNJTUVOIExPR088L3RleHQ+PC9zdmc+" alt="Company logo" onerror="this.parentElement.style.display='none'"></div>
+      <div class="od-header-names">
+        <div class="od-company-en">SPECIMEN TRANSPORT &amp; CONSTRUCTION L.L.C</div>
+        <div class="od-company-ar" lang="ar" dir="rtl">شركة سبيسيمن للنقل والمقاولات ذ.م.م</div>
+        <div class="od-header-contact">P.O. Box 00000, Specimen City, United Arab Emirates</div>
+        <div class="od-header-contact">Tel: +971 0 000 0000  ·  hr@specimen.example  ·  www.specimen.example</div>
+      </div>
+    </div>
+
+    <!-- Zone: document metadata -->
+    <div class="od-meta-strip">
+      <div><strong>Ref:</strong> SPECIMEN/2026/0001</div>
+      <div><strong>Date:</strong> 28 July 2026</div>
+    </div>
+
+    <!-- Zone: title -->
+    <div class="od-title">Employment Certificate</div>
+    
+
+    <!-- Zone: body -->
+    <div class="od-body">
+      <div class="od-form-block"><table class="od-form-table"><tbody><tr class="od-form-row"><td class="od-form-label">Employee Code</td><td class="od-form-value">EMP-SPEC-001</td></tr><tr class="od-form-row"><td class="od-form-label">Employee Name</td><td class="od-form-value">John Specimen</td></tr><tr class="od-form-row"><td class="od-form-label">Job Title</td><td class="od-form-value">Senior Site Engineer</td></tr><tr class="od-form-row"><td class="od-form-label">Department</td><td class="od-form-value">Projects</td></tr><tr class="od-form-row"><td class="od-form-label">Date of Joining</td><td class="od-form-value">15 March 2023</td></tr><tr class="od-form-row"><td class="od-form-label">Employment Type</td><td class="od-form-value">Full-Time</td></tr></tbody></table></div>
+      <div class="od-para" lang="en" dir="ltr"><p>This is to certify that John Specimen, employed as Senior Site Engineer in the Projects department, has been a member of our organization since 15 March 2023 on a full-time basis.</p></div><div class="od-para" lang="en" dir="ltr"><p>This certificate is issued upon the employee&#x27;s request for official purposes only.</p></div>
+      
+      <div class="od-signature">
+        <table class="od-signature-table"><tr>
+          <td class="od-sig-left">
+            <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNDAiIGhlaWdodD0iNDYiPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzMzMzMzMyIgc3Ryb2tlLXdpZHRoPSIyIiByeD0iOCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTUlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiMzMzMzMzMiIHRleHQtYW5jaG9yPSJtaWRkbGUiPlNQRUNJTUVOIFNJR05BVFVSRTwvdGV4dD48L3N2Zz4=" alt="Signature" class="od-sig-img" onerror="this.style.display='none'">
+            <div class="od-sig-rule">
+              <div class="od-sig-name">Specimen Signatory</div>
+              <div class="od-sig-title">Human Resources Manager</div>
+            </div>
+          </td>
+          <td class="od-sig-right">
+            <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMTAiIGhlaWdodD0iMTEwIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJub25lIiBzdHJva2U9IiM3YTFmMWYiIHN0cm9rZS13aWR0aD0iMiIgcng9IjgiLz48dGV4dCB4PSI1MCUiIHk9IjU1JSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE0IiBmaWxsPSIjN2ExZjFmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5TUEVDSU1FTiBTVEFNUDwvdGV4dD48L3N2Zz4=" alt="Stamp" class="od-stamp-img" onerror="this.style.display='none'">
+          </td>
+        </tr></table>
+      </div>
+      <div class="od-qr">
+      <img src="data:image/png;base64,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" alt="QR verification code" class="od-qr-img" />
+      <div class="od-qr-label">Scan to verify</div>
+    </div>
+    </div>
+
+    <!-- Zone: footer -->
+    <div class="od-footer">SPECIMEN — visual baseline only, not an official document.  ·  TRN: 100000000000000  ·  License: CN-0000000</div>
+
+  </div>
+</body>
+</html>

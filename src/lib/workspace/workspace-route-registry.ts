@@ -605,24 +605,28 @@ const REGISTRY: WorkspaceRouteConfig[] = [
     moduleCode: "REPORTS",
   },
 
-  // ── Reports / Visual Editor (REPORT DESIGNER.2) ─────────────────────────
+  // ── Reports / Template Studio (OUTPUT.3A prototype) ───────────────────────
   {
-    route: "/admin/reports/editor",
-    title: "Reports Editor",
-    icon: "PenLine",
+    route: "/admin/reports/template-studio",
+    title: "Template Studio",
+    icon: "FlaskConical",
     tabKind: "list",
     singleton: true,
     moduleCode: "REPORTS",
   },
+
+  // ── Reports / Output Operations Console (OUTPUT.6) ────────────────────────
   {
-    route: "/admin/reports/editor/",
-    title: "Template Editor",
-    icon: "PenLine",
-    tabKind: "record",
-    closable: true,
-    singleton: false,
+    route: "/admin/reports/output-ops",
+    title: "Output Operations",
+    icon: "Activity",
+    tabKind: "list",
+    singleton: true,
     moduleCode: "REPORTS",
   },
+
+  // RETIRE.1: Puck visual editor routes (/admin/reports/editor*) removed —
+  // template design now lives in the Template Studio (/admin/reports/template-studio).
 
   {
     route: "/dms/documents/record/",

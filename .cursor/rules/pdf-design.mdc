@@ -1,0 +1,14 @@
+---
+alwaysApply: true
+---
+---
+description: "Rules for generating high-quality ERP PDF documents (invoices, reports)."
+globs: ["**/*pdf*", "**/*invoice*", "**/*report*"]
+alwaysApply: false
+---
+* Role: Act as an expert Print UI Designer.
+* Tech Stack: Use HTML styled exclusively with Tailwind CSS, intended to be rendered via Puppeteer.
+* Typography: Use a clean, modern sans-serif font (e.g., Inter). Ensure strict visual hierarchy—H1 for document titles, bold text for totals, subtle gray text for metadata.
+* Layout: Use CSS Grid or Flexbox to align data columns perfectly (e.g., Item, Qty, Price). All numerical and currency columns MUST be right-aligned.
+* Spacing & Borders: Enforce generous cell padding (`p-3` or `p-4`). Use a breathable enterprise look with light gray borders (`border-b border-gray-200`) and a subtle background for table headers (`bg-gray-50`).
+* Constraints: Never use raw inline styles unless technically required. Ensure standard A4 page margins are accounted for via CSS print media queries.

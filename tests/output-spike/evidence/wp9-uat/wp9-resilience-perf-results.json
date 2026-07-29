@@ -1,0 +1,27 @@
+[
+  {
+    "name": "unreachable renderer throws clean retryable error",
+    "pass": true,
+    "detail": "THREW retryable=true message=Gotenberg renderer is unavailable (health check failed). in 994ms"
+  },
+  {
+    "name": "1ms timeout aborts cleanly",
+    "pass": true,
+    "detail": "The operation was aborted due to timeout in 47ms"
+  },
+  {
+    "name": "5 parallel renders all succeed",
+    "pass": true,
+    "detail": "wall=865ms, per-render=[561, 589, 545, 863, 559]ms"
+  },
+  {
+    "name": "large multi-page renders within timeout",
+    "pass": true,
+    "detail": "6 pages, 46783 bytes in 803ms"
+  },
+  {
+    "name": "duplicate request_key rejected by unique index",
+    "pass": true,
+    "detail": "duplicate key value violates unique constraint \"uq_gen_pdf_request_key"
+  }
+]

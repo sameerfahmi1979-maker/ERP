@@ -15,7 +15,7 @@
  *  6. Return signed download URL (60 minute TTL)
  *
  * Called from: src/features/hr/employees/tabs/employee-hr-actions-tab.tsx
- *              src/features/report-center/hr-letter-generator.tsx (Gotenberg option)
+ *              src/features/hr/employees/employee-letters-forms.tsx (OUTPUT.4)
  *
  * Error handling:
  *  - Gotenberg offline → descriptive error with startup instructions
@@ -33,6 +33,8 @@ import {
 } from "@/lib/pdf/storage";
 import { createPdfHistoryRow, markPdfGenerationFailed } from "@/lib/pdf/history";
 import type { PdfRenderRequest } from "@/lib/pdf/types";
+import { isLegacyEmploymentLetterPathEnabled } from "@/lib/output/feature-flags";
+import { generateOfficialDocument } from "@/server/actions/output/generate-official-document";
 
 export interface GenerateHrLetterPdfInput {
   employeeId: number;
@@ -57,6 +59,41 @@ export interface GenerateHrLetterPdfError {
 }
 
 export async function generateHrEmploymentLetterPdf(
+  input: GenerateHrLetterPdfInput,
+): Promise<GenerateHrLetterPdfResult | GenerateHrLetterPdfError> {
+  // OUTPUT.2: the employment letter is issued through the global coordinator
+  // (registry code HR_EMPLOYMENT_LETTER, Class B). The legacy standalone
+  // print-route path is preserved behind OUTPUT_LEGACY_EMPLOYMENT_LETTER_ENABLED
+  // as a rollback flag until OUTPUT.5 UAT passes (WP9).
+  if (!isLegacyEmploymentLetterPathEnabled()) {
+    const outcome = await generateOfficialDocument("HR_EMPLOYMENT_LETTER", input.employeeId, {
+      issueQr: true,
+      authorizeReissue: true, // regenerating an employment letter is a routine authorized reissue
+    });
+    if (outcome.success) {
+      return {
+        success: true,
+        downloadUrl: outcome.downloadUrl ?? "",
+        historyId: outcome.issuanceId,
+        pageCount: 0,
+        fileSizeBytes: outcome.fileSizeBytes,
+        renderer: "gotenberg_html",
+      };
+    }
+    const isOffline =
+      outcome.blocked === "render_failed_retryable" &&
+      /unavailable|health check/i.test(outcome.error);
+    return { success: false, error: outcome.error, gotenbergOffline: isOffline };
+  }
+
+  return generateHrEmploymentLetterPdfLegacy(input);
+}
+
+/**
+ * LEGACY Pipeline A (pre-OUTPUT.2) — kept verbatim for rollback only.
+ * Remove after WP9 (OUTPUT.5) passes and the rollback window closes.
+ */
+async function generateHrEmploymentLetterPdfLegacy(
   input: GenerateHrLetterPdfInput,
 ): Promise<GenerateHrLetterPdfResult | GenerateHrLetterPdfError> {
   // 1. Authenticate

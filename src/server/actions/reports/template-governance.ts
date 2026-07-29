@@ -84,7 +84,7 @@ export async function submitTemplateForReview(
     const db = createAdminClient();
     const { data: tpl, error: fetchError } = await db
       .from("erp_report_templates")
-      .select("id, template_code, template_name, template_type, governance_status, body_html_en, body_html_ar, custom_css, watermark_text, visual_editor_engine, visual_layout_schema_version, header_layout_json, body_layout_json, footer_layout_json, style_json")
+      .select("id, template_code, template_name, template_type, governance_status, body_html_en, body_html_ar, custom_css, watermark_text, visual_editor_engine, visual_layout_schema_version, header_layout_json, body_layout_json, footer_layout_json, style_json, body_schema_json")
       .eq("id", templateId)
       .is("deleted_at", null)
       .single();
@@ -108,6 +108,8 @@ export async function submitTemplateForReview(
       style_json: tpl.style_json,
       // UX.3: pass template_type for governance-aware sensitive field check
       template_type: tpl.template_type,
+      // OUTPUT.3B: review the Template Studio structured body too
+      body_schema_json: tpl.body_schema_json,
     });
 
     const secStatus: TemplateSecurityReviewStatus = review.passed
@@ -585,6 +587,9 @@ export async function createTemplateDraftVersion(
         // Visual editor fields — preserve layout engine and version for new draft
         visual_editor_engine: source.visual_editor_engine ?? null,
         visual_layout_schema_version: source.visual_layout_schema_version ?? null,
+        // OUTPUT.3B: carry the Template Studio structured body into the new revision
+        body_schema_json: (source as unknown as { body_schema_json?: unknown }).body_schema_json ?? null,
+        studio_schema_version: (source as unknown as { studio_schema_version?: number }).studio_schema_version ?? 1,
         // visual_layout_updated_at/by reset to null — the copy is fresh
         visual_layout_updated_at: null,
         visual_layout_updated_by: null,
@@ -672,7 +677,7 @@ export async function runTemplateSecurityReviewAction(
     const db = createAdminClient();
     const { data: tpl, error: fetchError } = await db
       .from("erp_report_templates")
-      .select("id, template_code, template_type, body_html_en, body_html_ar, custom_css, watermark_text, visual_editor_engine, visual_layout_schema_version, header_layout_json, body_layout_json, footer_layout_json, style_json")
+      .select("id, template_code, template_type, body_html_en, body_html_ar, custom_css, watermark_text, visual_editor_engine, visual_layout_schema_version, header_layout_json, body_layout_json, footer_layout_json, style_json, body_schema_json")
       .eq("id", templateId)
       .is("deleted_at", null)
       .single();
@@ -692,6 +697,8 @@ export async function runTemplateSecurityReviewAction(
       style_json: tpl.style_json,
       // UX.3: pass template_type for governance-aware sensitive field check
       template_type: tpl.template_type,
+      // OUTPUT.3B: review the Template Studio structured body too
+      body_schema_json: tpl.body_schema_json,
     });
 
     const secStatus: TemplateSecurityReviewStatus = review.passed

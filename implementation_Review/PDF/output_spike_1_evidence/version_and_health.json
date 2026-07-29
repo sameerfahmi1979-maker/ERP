@@ -1,0 +1,19 @@
+{
+  "captured_at": "2026-07-26T07:37:37.519Z",
+  "gotenberg_version": "8.34.0",
+  "health": {
+    "status": "up",
+    "details": {
+      "chromium": {
+        "status": "up",
+        "timestamp": "2026-07-26T07:37:37.506256682Z"
+      },
+      "libreoffice": {
+        "status": "up",
+        "timestamp": "2026-07-26T07:37:37.506182749Z"
+      }
+    }
+  },
+  "chromium_version": "Chromium 149.0.7827.102 (captured via docker exec chromium --version)",
+  "renderer_endpoint": "forms/chromium/convert/html (raw HTML multipart)"
+}

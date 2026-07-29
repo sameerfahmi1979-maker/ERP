@@ -18,7 +18,7 @@ export const wpsReadinessFetcher: ReportFetcher = {
       .from("employees")
       .select(
         `id, employee_code, full_name_en, owner_company_id,
-         owner_company:owner_companies(legal_name_en, company_code)`
+         owner_company:owner_companies!employees_owner_company_id_fkey(legal_name_en, company_code)`
       )
       .is("deleted_at", null)
       .eq("employee_status", "active");

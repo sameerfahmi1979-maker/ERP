@@ -1,0 +1,77 @@
+{
+  "run_at": "2026-07-26T07:37:44.635Z",
+  "results": [
+    {
+      "id": "V0",
+      "description": "Version/health capture",
+      "status": "PASS",
+      "detail": "gotenberg=8.34.0, chromium=149.0.7827.102, health=up"
+    },
+    {
+      "id": "D1_short_cert_companyA",
+      "description": "Short EN certificate, company A branding",
+      "status": "PASS",
+      "detail": "PDF 46057 bytes, sha256=79eb23eaf3e59ae6…, byte-reproducible=true"
+    },
+    {
+      "id": "D2_short_cert_companyB",
+      "description": "Same design, company B branding (data-driven swap)",
+      "status": "PASS",
+      "detail": "PDF 46089 bytes, sha256=d7355c973f50d86d…, byte-reproducible=true"
+    },
+    {
+      "id": "D3_short_cert_companyC",
+      "description": "Same design, synthetic 3rd company (future-company proof)",
+      "status": "PASS",
+      "detail": "PDF 46255 bytes, sha256=5d8837790a89fe31…, byte-reproducible=true"
+    },
+    {
+      "id": "D4_arabic_rtl_cert",
+      "description": "Arabic RTL certificate with embedded Noto Sans Arabic",
+      "status": "PASS",
+      "detail": "PDF 65709 bytes, sha256=a9a8a552f998579a…, byte-reproducible=true"
+    },
+    {
+      "id": "D5_long_multipage_letter",
+      "description": "Long flowing letter: multi-page, page breaks, repeating table headers, widows/orphans",
+      "status": "PASS",
+      "detail": "PDF 57162 bytes, sha256=936a1113638eba62…, byte-reproducible=true"
+    },
+    {
+      "id": "D6_fixed_card_cr80",
+      "description": "Fixed-size CR80 card (85.6x54mm) class-D proof",
+      "status": "PASS",
+      "detail": "PDF 26802 bytes, sha256=4d0abdffe2aa9f90…, byte-reproducible=true"
+    },
+    {
+      "id": "PDFA",
+      "description": "PDF/A-2b post-processing (separate step, hash after conversion)",
+      "status": "PASS",
+      "detail": "converted 69609 bytes, post-conversion sha256=2225cadda6952165…, bytes differ from source=true (integrity hash MUST be taken after this step)"
+    },
+    {
+      "id": "F1_timeout",
+      "description": "Client timeout (30ms abort)",
+      "status": "PASS",
+      "detail": "controlled failure: AbortError: This operation was aborted; no artifact written"
+    },
+    {
+      "id": "F2_unavailable",
+      "description": "Renderer unavailable (closed port)",
+      "status": "PASS",
+      "detail": "controlled failure: TypeError: fetch failed"
+    },
+    {
+      "id": "F3_malformed",
+      "description": "Malformed request (no index.html)",
+      "status": "PASS",
+      "detail": "HTTP 400: Invalid form data: form file 'index.html' is required"
+    },
+    {
+      "id": "F4_partial",
+      "description": "Partial-failure discipline",
+      "status": "PASS",
+      "detail": "artifact writes occur only after full-body buffering + in-memory hash; failed conversions above produced no files"
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "ranAt": "2026-07-26T20:00:49.546Z",
+  "note": "Synthetic inert fixtures only. Demonstrates the REQUIRED DOCX intake guard set for any future Carbone Word-authoring mode. No DOCX intake endpoint ships today — these guards are proposed, not yet implemented in production.",
+  "total": 8,
+  "allDetected": true,
+  "rows": [
+    {
+      "id": "DSEC-01",
+      "threat": ".docm macro-enabled document",
+      "fixture": "warning-letter.docm",
+      "guard": "extensionReject",
+      "detected": true
+    },
+    {
+      "id": "DSEC-02",
+      "threat": "Embedded VBA macro (vbaProject.bin)",
+      "fixture": "macro-embedded.docx",
+      "guard": "hasVbaProject",
+      "detected": true
+    },
+    {
+      "id": "DSEC-03",
+      "threat": "External relationship → SSRF (169.254 metadata)",
+      "fixture": "external-rel-ssrf.docx",
+      "guard": "hasExternalRels",
+      "detected": true
+    },
+    {
+      "id": "DSEC-04",
+      "threat": "Remote image (data exfil / SSRF)",
+      "fixture": "remote-image.docx",
+      "guard": "hasRemoteImage",
+      "detected": true
+    },
+    {
+      "id": "DSEC-05",
+      "threat": "Decompression ratio 999:1 (zip-bomb)",
+      "fixture": "zipbomb-ratio.docx",
+      "guard": "ratio>100",
+      "detected": true
+    },
+    {
+      "id": "DSEC-06",
+      "threat": "Path traversal archive entry (../../)",
+      "fixture": "not-written (unsafe path)",
+      "guard": "entryNameHasDotDot",
+      "detected": true
+    },
+    {
+      "id": "DSEC-07",
+      "threat": "File-type spoofing (.docx without PK zip magic)",
+      "fixture": "spoofed.docx",
+      "guard": "zipMagicPK",
+      "detected": true
+    },
+    {
+      "id": "DSEC-08",
+      "threat": "Unresolved {d.token} after Carbone render",
+      "fixture": "n/a (post-render check)",
+      "guard": "unresolvedToken",
+      "detected": true
+    }
+  ]
+}

@@ -36,7 +36,7 @@ export const complianceExpiryFetcher: ReportFetcher = {
     // Base employee filter
     let empQ = db
       .from("employees")
-      .select("id, employee_code, full_name_en, owner_company_id, department_id, owner_company:owner_companies(legal_name_en), department:departments(department_name_en)")
+      .select("id, employee_code, full_name_en, owner_company_id, department_id, owner_company:owner_companies!employees_owner_company_id_fkey(legal_name_en), department:departments(department_name_en)")
       .is("deleted_at", null)
       .eq("employee_status", "active");
 

@@ -1,0 +1,583 @@
+{
+  "root": {
+    "props": {
+      "titleBarMode": "hidden",
+      "titleBarText": "",
+      "titleBarBgColor": "",
+      "titleBarTextColor": ""
+    }
+  },
+  "engine": "puck",
+  "content": [
+    {
+      "type": "BodyTextSectionBlock",
+      "props": {
+        "title": "",
+        "content": "TO WHOM IT MAY CONCERN",
+        "language": "en",
+        "richContent": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "text": "TO WHOM IT MAY CONCERN",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "textStyle"
+                    },
+                    {
+                      "type": "bold"
+                    },
+                    {
+                      "type": "italic"
+                    },
+                    {
+                      "type": "underline"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph"
+            },
+            {
+              "type": "paragraph"
+            }
+          ]
+        },
+        "blockTextAlign": "center"
+      }
+    },
+    {
+      "type": "BodyTextSectionBlock",
+      "props": {
+        "title": "",
+        "content": "This is to certify that \n{{employee.full_name_en}}, holding Employee Code {{employee.employee_code}}, is currently employed with {{company.legal_name_en}} as {{employee.designation}} in the {{employee.department}} Department.\n \nThe employee’s details as per the company records are as follows:\nEmployee Information\n·       Name: {{employee.full_name_en}}\n·       Employee Code / ID: {{employee.employee_code}}\n·       Designation / Position: {{employee.designation}}\n·       Department: {{employee.department}}\n·       Company / Employer: {{employee.owner_company}}\n·       Branch / Work Location: {{employee.branch}}\n·       Date of Joining: {{employee.joining_date}}\n·       Employment Type: {{employee.employment_type}}\n·       Employment Status: {{employee.employment_status}}\n·       Nationality: {{employee.nationality}}\n·       Passport Number: {{employee.passport_number}}\n·       Emirates ID Number: {{employee.emirates_id_number}}\nSalary Information\nBasic Salary: AED {{employee.basic_salary}}\nTotal / Gross Salary: AED {{employee.total_salary}}\nNet Salary: AED {{employee.net_salary}}\n \nThis certificate is issued upon the employee’s request for official use only. The salary and employment details mentioned above are based on the company’s HR and payroll records as of {{document.issue_date}}.\n\nThis certificate does not constitute any financial guarantee, undertaking, or legal obligation on behalf of {{company.legal_name_en}}.\nFor and on behalf of\n{{company.legal_name_en}}",
+        "language": "en",
+        "richContent": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "text": "This is to certify that ",
+                  "type": "text"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "text": "{{employee.full_name_en}},",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                },
+                {
+                  "text": " holding Employee Code {{employee.employee_code}}, is currently employed with {{company.legal_name_en}} as {{employee.designation}} in the {{employee.department}} Department.",
+                  "type": "text"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "text": " ",
+                  "type": "text"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "text": "The employee’s details as per the company records are as follows:",
+                  "type": "text"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "text": "Employee Information",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    },
+                    {
+                      "type": "underline"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "text": "·       ",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "textStyle"
+                    }
+                  ]
+                },
+                {
+                  "text": "Name: ",
+                  "type": "text"
+                },
+                {
+                  "text": "{{employee.full_name_en}}",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "text": "·       ",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "textStyle"
+                    }
+                  ]
+                },
+                {
+                  "text": "Employee Code / ID: ",
+                  "type": "text"
+                },
+                {
+                  "text": "{{employee.employee_code}}",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "text": "·       ",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "textStyle"
+                    }
+                  ]
+                },
+                {
+                  "text": "Designation / Position: ",
+                  "type": "text"
+                },
+                {
+                  "text": "{{employee.designation}}",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "text": "·       ",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "textStyle"
+                    }
+                  ]
+                },
+                {
+                  "text": "Department: ",
+                  "type": "text"
+                },
+                {
+                  "text": "{{employee.department}}",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "text": "·       ",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "textStyle"
+                    }
+                  ]
+                },
+                {
+                  "text": "Company / Employer: ",
+                  "type": "text"
+                },
+                {
+                  "text": "{{employee.owner_company}}",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "text": "·       ",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "textStyle"
+                    }
+                  ]
+                },
+                {
+                  "text": "Branch / Work Location: ",
+                  "type": "text"
+                },
+                {
+                  "text": "{{employee.branch}}",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "text": "·       ",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "textStyle"
+                    }
+                  ]
+                },
+                {
+                  "text": "Date of Joining: ",
+                  "type": "text"
+                },
+                {
+                  "text": "{{employee.joining_date}}",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "text": "·       ",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "textStyle"
+                    }
+                  ]
+                },
+                {
+                  "text": "Employment Type: ",
+                  "type": "text"
+                },
+                {
+                  "text": "{{employee.employment_type}}",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "text": "·       ",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "textStyle"
+                    }
+                  ]
+                },
+                {
+                  "text": "Employment Status: ",
+                  "type": "text"
+                },
+                {
+                  "text": "{{employee.employment_status}}",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "text": "·       ",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "textStyle"
+                    }
+                  ]
+                },
+                {
+                  "text": "Nationality: ",
+                  "type": "text"
+                },
+                {
+                  "text": "{{employee.nationality}}",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "text": "·       ",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "textStyle"
+                    }
+                  ]
+                },
+                {
+                  "text": "Passport Number: ",
+                  "type": "text"
+                },
+                {
+                  "text": "{{employee.passport_number}}",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "text": "·       ",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "textStyle"
+                    }
+                  ]
+                },
+                {
+                  "text": "Emirates ID Number: ",
+                  "type": "text"
+                },
+                {
+                  "text": "{{employee.emirates_id_number}}",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "text": "Salary Information",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    },
+                    {
+                      "type": "underline"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "text": "Basic Salary: AED ",
+                  "type": "text"
+                },
+                {
+                  "text": "{{employee.basic_salary}}",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                },
+                {
+                  "type": "hardBreak"
+                },
+                {
+                  "text": "Total / Gross Salary: ",
+                  "type": "text"
+                },
+                {
+                  "text": "AED {{employee.total_salary}}",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                },
+                {
+                  "type": "hardBreak"
+                },
+                {
+                  "text": "Net Salary: ",
+                  "type": "text"
+                },
+                {
+                  "text": "AED {{employee.net_salary}}",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "text": " ",
+                  "type": "text"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "text": "This certificate is issued upon the employee’s request for official use only. The salary and employment details mentioned above are based on the company’s HR and payroll records as of {{document.issue_date}}.",
+                  "type": "text"
+                }
+              ]
+            },
+            {
+              "type": "paragraph"
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "text": "This certificate does not constitute any financial guarantee, undertaking, or legal obligation on behalf of {{company.legal_name_en}}.",
+                  "type": "text"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "text": "For and on behalf of",
+                  "type": "text"
+                },
+                {
+                  "type": "hardBreak"
+                },
+                {
+                  "text": "{{company.legal_name_en}}",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "text": " ",
+                  "type": "text"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "schemaVersion": 2
+}

@@ -1,0 +1,80 @@
+﻿
+> erp-foundation@0.1.0 typecheck
+> cross-env NODE_OPTIONS=--max-old-space-size=16384 tsc --noEmit
+
+spikes/report-designer-validation-spike-1-completion/scripts/security-battery.mts(13,36): error TS5097: An import path can only end with a '.ts' extension when 'allowImportingTsExtensions' is enabled.
+spikes/report-designer-validation-spike-1-completion/scripts/security-battery.mts(18,8): error TS5097: An import path can only end with a '.ts' extension when 'allowImportingTsExtensions' is enabled.
+spikes/report-designer-validation-spike-1-completion/scripts/security-battery.mts(104,9): error TS2339: Property 'blocks' does not exist on type 'never'.
+spikes/report-designer-validation-spike-1-completion/scripts/verify-baseline-evidence.mts(41,95): error TS2353: Object literal may only specify known properties, and 'isEvalSupported' does not exist in type 'DocumentInitParameters'.
+spikes/report-designer-validation-spike-1/scripts/candidate-b-carbone-docx.mts(23,8): error TS5097: An import path can only end with a '.mts' extension when 'allowImportingTsExtensions' is enabled.
+spikes/report-designer-validation-spike-1/scripts/candidate-b-carbone-docx.mts(24,41): error TS5097: An import path can only end with a '.mts' extension when 'allowImportingTsExtensions' is enabled.
+spikes/report-designer-validation-spike-1/scripts/candidate-c-pdfme.mts(16,8): error TS5097: An import path can only end with a '.mts' extension when 'allowImportingTsExtensions' is enabled.
+spikes/report-designer-validation-spike-1/scripts/candidate-c-pdfme.mts(17,27): error TS5097: An import path can only end with a '.mts' extension when 'allowImportingTsExtensions' is enabled.
+spikes/report-designer-validation-spike-1/scripts/candidate-c-pdfme.mts(43,15): error TS2339: Property 'destroy' does not exist on type 'PDFDocumentProxy'.
+spikes/report-designer-validation-spike-1/scripts/candidate-d-executive-ledger.mts(27,8): error TS5097: An import path can only end with a '.mts' extension when 'allowImportingTsExtensions' is enabled.
+spikes/report-designer-validation-spike-1/scripts/candidate-d-executive-ledger.mts(28,63): error TS5097: An import path can only end with a '.mts' extension when 'allowImportingTsExtensions' is enabled.
+spikes/report-designer-validation-spike-1/scripts/candidate-d-executive-ledger.mts(30,52): error TS5097: An import path can only end with a '.ts' extension when 'allowImportingTsExtensions' is enabled.
+spikes/report-designer-validation-spike-1/scripts/render-pdf-pages.mts(73,7): error TS2353: Object literal may only specify known properties, and 'canvasFactory' does not exist in type 'URL | ArrayBuffer | TypedArray | DocumentInitParameters'.
+spikes/report-designer-validation-spike-1/scripts/render-pdf-pages.mts(83,25): error TS2345: Argument of type '{ canvasContext: never; viewport: PageViewport; }' is not assignable to parameter of type 'RenderParameters'.
+  Property 'canvas' is missing in type '{ canvasContext: never; viewport: PageViewport; }' but required in type 'RenderParameters'.
+src/features/audit/audit-logs-table.tsx(7,15): error TS2305: Module '"@/types/database"' has no exported member 'AuditLog'.
+src/features/branches/branch-workspace-form.tsx(10,15): error TS2305: Module '"@/types/database"' has no exported member 'BranchWithCompany'.
+src/features/branches/branch-workspace-form.tsx(10,34): error TS2305: Module '"@/types/database"' has no exported member 'OwnerCompany'.
+src/features/branches/branches-table.tsx(16,15): error TS2305: Module '"@/types/database"' has no exported member 'BranchWithCompany'.
+src/features/organizations/organization-workspace-form.tsx(9,15): error TS2305: Module '"@/types/database"' has no exported member 'OwnerCompany'.
+src/features/organizations/organizations-table.tsx(16,15): error TS2305: Module '"@/types/database"' has no exported member 'OwnerCompany'.
+src/features/permissions/permission-command-center.tsx(23,15): error TS2305: Module '"@/types/database"' has no exported member 'Permission'.
+src/features/permissions/permission-command-center.tsx(23,27): error TS2305: Module '"@/types/database"' has no exported member 'Role'.
+src/features/permissions/permission-explorer.tsx(9,15): error TS2305: Module '"@/types/database"' has no exported member 'Permission'.
+src/features/permissions/permissions-matrix.tsx(8,15): error TS2305: Module '"@/types/database"' has no exported member 'Permission'.
+src/features/permissions/permissions-matrix.tsx(8,27): error TS2305: Module '"@/types/database"' has no exported member 'Role'.
+src/features/permissions/permissions-matrix.tsx(104,59): error TS18046: 'perms' is of type 'unknown'.
+src/features/permissions/permissions-matrix.tsx(125,18): error TS18046: 'perms' is of type 'unknown'.
+src/features/permissions/permissions-matrix.tsx(125,29): error TS7006: Parameter 'perm' implicitly has an 'any' type.
+src/features/roles/clone-role-dialog.tsx(12,15): error TS2305: Module '"@/types/database"' has no exported member 'Role'.
+src/features/roles/permissions-table.tsx(5,15): error TS2305: Module '"@/types/database"' has no exported member 'Permission'.
+src/features/roles/role-workspace-form.tsx(8,15): error TS2305: Module '"@/types/database"' has no exported member 'Role'.
+src/features/roles/roles-table.tsx(38,15): error TS2305: Module '"@/types/database"' has no exported member 'Role'.
+src/features/users/assign-role-dialog.tsx(9,15): error TS2305: Module '"@/types/database"' has no exported member 'UserWithRoles'.
+src/features/users/assign-role-dialog.tsx(9,30): error TS2305: Module '"@/types/database"' has no exported member 'Role'.
+src/features/users/assign-role-dialog.tsx(9,36): error TS2305: Module '"@/types/database"' has no exported member 'OwnerCompany'.
+src/features/users/assign-role-dialog.tsx(9,50): error TS2305: Module '"@/types/database"' has no exported member 'Branch'.
+src/features/users/user-security-history-section.tsx(9,15): error TS2305: Module '"@/types/database"' has no exported member 'AuditLog'.
+src/features/users/user-security-section.tsx(34,15): error TS2305: Module '"@/types/database"' has no exported member 'UserWithRoles'.
+src/features/users/user-workspace-form.tsx(11,15): error TS2305: Module '"@/types/database"' has no exported member 'UserWithRoles'.
+src/features/users/user-workspace-form.tsx(11,30): error TS2305: Module '"@/types/database"' has no exported member 'OwnerCompany'.
+src/features/users/user-workspace-form.tsx(11,44): error TS2305: Module '"@/types/database"' has no exported member 'Branch'.
+src/features/users/user-workspace-form.tsx(11,52): error TS2305: Module '"@/types/database"' has no exported member 'Role'.
+src/features/users/user-workspace-form.tsx(11,58): error TS2305: Module '"@/types/database"' has no exported member 'UserRoleAssignment'.
+src/features/users/user-workspace-form.tsx(501,38): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/features/users/users-list-toolbar.tsx(8,15): error TS2305: Module '"@/types/database"' has no exported member 'Role'.
+src/features/users/users-list-toolbar.tsx(8,21): error TS2305: Module '"@/types/database"' has no exported member 'OwnerCompany'.
+src/features/users/users-list-toolbar.tsx(8,35): error TS2305: Module '"@/types/database"' has no exported member 'Branch'.
+src/features/users/users-table.tsx(29,15): error TS2305: Module '"@/types/database"' has no exported member 'UserWithRoles'.
+src/features/users/users-table.tsx(29,30): error TS2305: Module '"@/types/database"' has no exported member 'Role'.
+src/features/users/users-table.tsx(29,36): error TS2305: Module '"@/types/database"' has no exported member 'OwnerCompany'.
+src/features/users/users-table.tsx(29,50): error TS2305: Module '"@/types/database"' has no exported member 'Branch'.
+src/features/users/users-table.tsx(174,17): error TS7006: Parameter 'n' implicitly has an 'any' type.
+src/features/users/users-table.tsx(209,29): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/lib/rbac/check.ts(3,15): error TS2305: Module '"@/types/database"' has no exported member 'UserProfile'.
+src/server/actions/branches.ts(21,98): error TS2694: Namespace '"C:/dev/agt-erp/src/types/database"' has no exported member 'BranchWithCompany'.
+src/server/actions/branches.ts(35,70): error TS2694: Namespace '"C:/dev/agt-erp/src/types/database"' has no exported member 'BranchWithCompany'.
+src/server/actions/dms/expiry-reminders.ts(903,42): error TS2352: Conversion of type '{ context: { moduleCode: string; recordCount: number; exportMode: "filtered"; }; attachment?: { base64Content: string; filename: string; mimeType: string; } | undefined; to: string[]; subject: string; body: string; }' to type 'SendExportEmailInput' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Types of property 'attachment' are incompatible.
+    Type '{ base64Content: string; filename: string; mimeType: string; } | undefined' is not comparable to type 'EmailAttachment'.
+      Type '{ base64Content: string; filename: string; mimeType: string; }' is missing the following properties from type 'EmailAttachment': contentType, sizeBytes
+src/server/actions/organizations.ts(22,104): error TS2694: Namespace '"C:/dev/agt-erp/src/types/database"' has no exported member 'OwnerCompany'.
+src/server/actions/organizations.ts(36,70): error TS2694: Namespace '"C:/dev/agt-erp/src/types/database"' has no exported member 'OwnerCompany'.
+src/server/actions/roles.ts(31,96): error TS2694: Namespace '"C:/dev/agt-erp/src/types/database"' has no exported member 'Role'.
+src/server/actions/roles.ts(45,70): error TS2694: Namespace '"C:/dev/agt-erp/src/types/database"' has no exported member 'Role'.
+src/server/actions/roles.ts(480,36): error TS2694: Namespace '"C:/dev/agt-erp/src/types/database"' has no exported member 'Role'.
+src/server/queries/audit.ts(3,15): error TS2305: Module '"@/types/database"' has no exported member 'AuditLog'.
+src/server/queries/branches.ts(3,15): error TS2305: Module '"@/types/database"' has no exported member 'BranchWithCompany'.
+src/server/queries/organizations.ts(3,15): error TS2305: Module '"@/types/database"' has no exported member 'OwnerCompany'.
+src/server/queries/permissions.ts(4,15): error TS2305: Module '"@/types/database"' has no exported member 'Permission'.
+src/server/queries/roles.ts(4,15): error TS2305: Module '"@/types/database"' has no exported member 'Role'.
+src/server/queries/users.ts(11,3): error TS2305: Module '"@/types/database"' has no exported member 'UserWithRoles'.
+src/server/queries/users.ts(12,3): error TS2305: Module '"@/types/database"' has no exported member 'UserRoleAssignment'.
+src/server/queries/users.ts(13,3): error TS2305: Module '"@/types/database"' has no exported member 'UserAuthMetadata'.
+src/server/queries/users.ts(14,3): error TS2305: Module '"@/types/database"' has no exported member 'OwnerCompany'.
+src/server/queries/users.ts(15,3): error TS2305: Module '"@/types/database"' has no exported member 'Branch'.

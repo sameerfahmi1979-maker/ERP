@@ -1,0 +1,675 @@
+[
+  {
+    "path": "carbone-docx/candidate-b-results.json",
+    "bytes": 3657,
+    "sha256": "0e8733fb3212b525fd5f6431a1c59858c5c832ff3d203dba9169c963e4547d50"
+  },
+  {
+    "path": "carbone-docx/pdf/B1-employment-cert-en.pdf",
+    "bytes": 41563,
+    "sha256": "4118aba3eb798ed9e5b2cc31e420173120afaca81534d590c7a2526ee2a8fffc",
+    "pages": 1
+  },
+  {
+    "path": "carbone-docx/pdf/B2-experience-cert-bilingual.pdf",
+    "bytes": 70227,
+    "sha256": "c2ca67f58573d65dd0983e00480ff14f87ef14f9ff53ce88cef230730ccafe82",
+    "pages": 1
+  },
+  {
+    "path": "carbone-docx/pdf/B3-salary-cert-en.pdf",
+    "bytes": 53051,
+    "sha256": "7130ccaa36e4d3f41adf53861c8a6d8cd15871eac3bd480256f878782ab5e6b2",
+    "pages": 1
+  },
+  {
+    "path": "carbone-docx/pdf/B4-long-letter.pdf",
+    "bytes": 46954,
+    "sha256": "6b0a1b5f77c7c1c253f69867f2c828c4b91cc12f923ea29adc227d3673770c87",
+    "pages": 4
+  },
+  {
+    "path": "carbone-docx/pdf/B5-analytical-report-120rows.pdf",
+    "bytes": 89694,
+    "sha256": "63d4afd4f17b47d511b8a1a607cf8bb74a09c270f80929309d0ae3fbd6b6c407",
+    "pages": 11
+  },
+  {
+    "path": "carbone-docx/pdf/B6-official-form.pdf",
+    "bytes": 45647,
+    "sha256": "aa64fd468462fe138150a7b566922fa8117df6d6f809c486a78771546768e68f",
+    "pages": 1
+  },
+  {
+    "path": "carbone-docx/pdf/B7-id-card-cr80.pdf",
+    "bytes": 31304,
+    "sha256": "501a4bcbd5607895cf677043434c934b53b7aa95da3d4ed7a0bcb5363a5f3886",
+    "pages": 1
+  },
+  {
+    "path": "carbone-docx/pdf/B8-cross-company-companyA.pdf",
+    "bytes": 38624,
+    "sha256": "03ca4d1d8e09dfe9f54184b5c7a42de68dd5b9938752acd10ac927f3d4ea13de",
+    "pages": 1
+  },
+  {
+    "path": "carbone-docx/pdf/B8-cross-company-companyB.pdf",
+    "bytes": 39024,
+    "sha256": "c6b123235693266010a511364a294ccc49e649a4262f4e1becec77d0ae4f2e25",
+    "pages": 1
+  },
+  {
+    "path": "carbone-docx/rendered-docx/B1-employment-cert-en.docx",
+    "bytes": 10990,
+    "sha256": "cbb30b17c8eedff4c761ca4d0d1341f5eca6c2450420b4a52c5cba06da04e3fc"
+  },
+  {
+    "path": "carbone-docx/rendered-docx/B2-experience-cert-bilingual.docx",
+    "bytes": 11441,
+    "sha256": "6c3a73b6626104b6f38a607684ac07a4632c3671d9f15f00454dea019ee23baf"
+  },
+  {
+    "path": "carbone-docx/rendered-docx/B3-salary-cert-en.docx",
+    "bytes": 11034,
+    "sha256": "3436119906e4ccbff470a3a3fbb13bc4e3a096349ae602ca114d1954877aaf09"
+  },
+  {
+    "path": "carbone-docx/rendered-docx/B4-long-letter.docx",
+    "bytes": 11155,
+    "sha256": "a3bd7bbb0decd0bbc43680f0047f229d6a84d967b4ac6eab4acb199139302f59"
+  },
+  {
+    "path": "carbone-docx/rendered-docx/B5-analytical-report-120rows.docx",
+    "bytes": 15118,
+    "sha256": "2aeec589e0ba76fc328ec156022453e552d3eade159984b6cb4f5c9f64a50cfe"
+  },
+  {
+    "path": "carbone-docx/rendered-docx/B6-official-form.docx",
+    "bytes": 11003,
+    "sha256": "175d80cd0ebe5c1e80ec9b1e38ece7d1ea3ad13d654376a03b036c7a5b0c8fa0"
+  },
+  {
+    "path": "carbone-docx/rendered-docx/B7-id-card-cr80.docx",
+    "bytes": 8805,
+    "sha256": "4fbfa4a6818f8acbe0fcae28aefb9dacce55bc5d3b1b341e5018123d938ab50c"
+  },
+  {
+    "path": "carbone-docx/rendered-docx/B8-cross-company-companyA.docx",
+    "bytes": 10753,
+    "sha256": "1ce9c78479fa32be5eede429c24bb0e439776bc91e56778635808a657e761984"
+  },
+  {
+    "path": "carbone-docx/rendered-docx/B8-cross-company-companyB.docx",
+    "bytes": 10769,
+    "sha256": "8259dde1e846cd3f791d11231791cf2fb5e106c3ef7878d0773e4a038e4ade8c"
+  },
+  {
+    "path": "carbone-docx/templates/B1-employment-cert-en.template.docx",
+    "bytes": 10731,
+    "sha256": "c1adb99b797de39e1c43861674feaba8d9f37c3d352f89291278c2a00f418683"
+  },
+  {
+    "path": "carbone-docx/templates/B2-experience-cert-bilingual.template.docx",
+    "bytes": 10706,
+    "sha256": "a3f67f64d1c565ec68129711f1c9aa72d3420fedea08c45aca643e633df7b2c9"
+  },
+  {
+    "path": "carbone-docx/templates/B3-salary-cert-en.template.docx",
+    "bytes": 10890,
+    "sha256": "ba19506d50d84d01637412fb535e784da4383fedf664572be737d22c58ff4a6b"
+  },
+  {
+    "path": "carbone-docx/templates/B4-long-letter.template.docx",
+    "bytes": 11055,
+    "sha256": "66d890742cbc19187cc99ed4f05dc78271495fed9dfe2c28d683d29d483d5035"
+  },
+  {
+    "path": "carbone-docx/templates/B5-analytical-report-120rows.template.docx",
+    "bytes": 10779,
+    "sha256": "5bd260584966915aa5b716663530fe1d70a516e635232c06b18289d066c17939"
+  },
+  {
+    "path": "carbone-docx/templates/B6-official-form.template.docx",
+    "bytes": 10896,
+    "sha256": "56c5e57bc02446381d46d2c629bc279664ba185edae13596a14a7135a2c987f0"
+  },
+  {
+    "path": "carbone-docx/templates/B7-id-card-cr80.template.docx",
+    "bytes": 8618,
+    "sha256": "46d33b8b3a0883c0ec5a5f45d6c28e96b3d25c6f1d9786548722cd9889244363"
+  },
+  {
+    "path": "carbone-docx/templates/B8-cross-company-companyA.template.docx",
+    "bytes": 10647,
+    "sha256": "37afc65f2dd75f72c7576eeb9c9c4105c110e3e334f4693b424ecc6cb05b6676"
+  },
+  {
+    "path": "carbone-docx/templates/B8-cross-company-companyB.template.docx",
+    "bytes": 10646,
+    "sha256": "f262d8e962d98cb0e4c4e93414d9a4aca51d70ee55bb7cf8a9762f416d0cfc21"
+  },
+  {
+    "path": "comparisons/pdf-pages/B1-p1.png",
+    "bytes": 105608,
+    "sha256": "780cac3bad8ce14d379d6fd71858143d9d9d405416ecc5f97be20a1b3abd94fd"
+  },
+  {
+    "path": "comparisons/pdf-pages/B2-p1.png",
+    "bytes": 135767,
+    "sha256": "2f4798529b1e635fdaf5ed132f1e90bf9c3c92f82e91231fb79207e6ab12b654"
+  },
+  {
+    "path": "comparisons/pdf-pages/B3-p1.png",
+    "bytes": 76765,
+    "sha256": "59a8e21e7f04ee1d3a389d7719d8483564445f45701292bf7dc2e085f7f441eb"
+  },
+  {
+    "path": "comparisons/pdf-pages/B4-p1.png",
+    "bytes": 555839,
+    "sha256": "05ef8af7547347ce7e6167ced83e78b3bf068dcbe9ebf86ee6730daa7a7b3674"
+  },
+  {
+    "path": "comparisons/pdf-pages/B4-p2.png",
+    "bytes": 554636,
+    "sha256": "cedb27a4736dc4ce909e89e9dced016bfebc73f8e7304716ccd913f11e6485cd"
+  },
+  {
+    "path": "comparisons/pdf-pages/B5-p1.png",
+    "bytes": 240734,
+    "sha256": "c547855f3404a48d8ce51dece177d0f5f06173fe69f4286a0144334ccda6b1dd"
+  },
+  {
+    "path": "comparisons/pdf-pages/B5-p11.png",
+    "bytes": 27370,
+    "sha256": "ebb1c664870c6d7c564240bedf778e9a75b08c7a5e73fbe90b0bc5e194e06920"
+  },
+  {
+    "path": "comparisons/pdf-pages/B5-p2.png",
+    "bytes": 236533,
+    "sha256": "1212735e1843e5cacbe42068d03a2fa8177b961c755b7e155fc880ab0e2a2f68"
+  },
+  {
+    "path": "comparisons/pdf-pages/B6-p1.png",
+    "bytes": 73812,
+    "sha256": "a70a55d4d9fb599539b2b81fc9abc8947d8664a050cd6b7a00fbfbd2ad7e0fb3"
+  },
+  {
+    "path": "comparisons/pdf-pages/B7-p1.png",
+    "bytes": 12860,
+    "sha256": "a6f2deee39c11f2c1df85051e0e89ab89bc7d653a91d82cd14cf36fae4ffee09"
+  },
+  {
+    "path": "comparisons/pdf-pages/B8A-p1.png",
+    "bytes": 74457,
+    "sha256": "9655b77706cba055b1e77dd7b4a60e0ebc0091e52f866cde662f58933257253c"
+  },
+  {
+    "path": "comparisons/pdf-pages/B8B-p1.png",
+    "bytes": 76450,
+    "sha256": "cb8272b11cb43bba4169ba466b46c1e61cf425d4d3a9c7bf072a22466be1ca3d"
+  },
+  {
+    "path": "comparisons/pdf-pages/C1-p1.png",
+    "bytes": 23325,
+    "sha256": "9aa2692466f710428747e05a26b69da24ef6a21d0ed4b74e4ec7bc35de08ddfc"
+  },
+  {
+    "path": "comparisons/pdf-pages/C2-p1.png",
+    "bytes": 18302,
+    "sha256": "a8ed1513ab1b33f01bf867fa7f90c959f9d2f005d073b9560be17dda397f2027"
+  },
+  {
+    "path": "comparisons/pdf-pages/C3-p1.png",
+    "bytes": 67794,
+    "sha256": "fb892d9425b77904db6c8ef0dd3e777dba43e7250dd9440c00c8720f21a7c4c8"
+  },
+  {
+    "path": "comparisons/pdf-pages/C4-p1.png",
+    "bytes": 50510,
+    "sha256": "2a8676a86279416823e6c2407ddf14b319c7a1bc8cc964b804170ff18969be1d"
+  },
+  {
+    "path": "comparisons/pdf-pages/C5-p1.png",
+    "bytes": 324267,
+    "sha256": "41dc021065bf683b54f2e1cbb7912572ee2f522b65abbc30920b27fb29c8a6d4"
+  },
+  {
+    "path": "comparisons/pdf-pages/C5-p2.png",
+    "bytes": 337462,
+    "sha256": "4709b368c2d9aa1b36396400d6509e9eb6bd5b6c2cbbaa8b36259be7dea180cc"
+  },
+  {
+    "path": "comparisons/pdf-pages/C5-p4.png",
+    "bytes": 71728,
+    "sha256": "09f8bde3354bf4130f2f0a153ea3ce22fae90038de384ed471b4a951166bea7a"
+  },
+  {
+    "path": "comparisons/pdf-pages/C6-p1.png",
+    "bytes": 68844,
+    "sha256": "e255ae5f45ca7a6f008b9e4d7894d164e5688c2d903b2ed960d2979118b37251"
+  },
+  {
+    "path": "comparisons/pdf-pages/C7-p1.png",
+    "bytes": 19705,
+    "sha256": "e408f9e9cfe5957f30461720723b6bdaa10284e8bfaf1f9243867c00e8d4675c"
+  },
+  {
+    "path": "comparisons/pdf-pages/C7-p2.png",
+    "bytes": 18664,
+    "sha256": "a8dc34891b35a76555b8ac364e8f82c296235067bb038c6f57c74cb9b5ae98e2"
+  },
+  {
+    "path": "comparisons/pdf-pages/C8A-p1.png",
+    "bytes": 13002,
+    "sha256": "a99bb453cc6ba25a7daa0ac0d8450ede2ad60441d4114e77b14a2dafa5515d78"
+  },
+  {
+    "path": "comparisons/pdf-pages/C8B-p1.png",
+    "bytes": 13196,
+    "sha256": "91197e8040dbdc666476d5319d090877f1096205d5e3c708f627d2935f29f39f"
+  },
+  {
+    "path": "comparisons/pdf-pages/D1-p1.png",
+    "bytes": 122107,
+    "sha256": "1fc141c926c6109dc0d29a3e0b931edad43c5b7bc5a64d8e5bc040e68ac53c48"
+  },
+  {
+    "path": "comparisons/pdf-pages/D2-p1.png",
+    "bytes": 138151,
+    "sha256": "aab631222beec892b2de041a5ecea837ab4af7ff3acab49b9a6c56b6cf882266"
+  },
+  {
+    "path": "comparisons/pdf-pages/D3b-p1.png",
+    "bytes": 83663,
+    "sha256": "3a307bc5129e04531a1accdeadd0db0f5583fad1429526319fe830523695d54c"
+  },
+  {
+    "path": "comparisons/pdf-pages/D4-p1.png",
+    "bytes": 479506,
+    "sha256": "cb62c9c220931b949ceedd4b8f5d8cd755b397740f95001343c8ccc000820a5e"
+  },
+  {
+    "path": "comparisons/pdf-pages/D4-p2.png",
+    "bytes": 563834,
+    "sha256": "ce9afb52eaa0affaf61f6ffbaa1d1cdb1acc1a0ff459b321e759bf7017b47764"
+  },
+  {
+    "path": "comparisons/pdf-pages/D4-p4.png",
+    "bytes": 6458,
+    "sha256": "047b34040b610dde4e0859767ddc8fb4c8d20244a1e75d2f9d103daad386f3b2"
+  },
+  {
+    "path": "comparisons/pdf-pages/D5-p1.png",
+    "bytes": 209386,
+    "sha256": "1a66f4779a762b59dad82a72ebec68f83f8fd7cc6787eef758693483eda006a7"
+  },
+  {
+    "path": "comparisons/pdf-pages/D5-p10.png",
+    "bytes": 167572,
+    "sha256": "8c729ddb4938408ad9130ce8873c4465d6c3edc5af8b74a5bb042d8aa2c2a101"
+  },
+  {
+    "path": "comparisons/pdf-pages/D5-p2.png",
+    "bytes": 218421,
+    "sha256": "3ce30085909d6b1e22c00fbba123caaec1b0abcd5878679925e50904b6293996"
+  },
+  {
+    "path": "comparisons/pdf-pages/D6-p1.png",
+    "bytes": 96293,
+    "sha256": "df8ec849be32fd4d09281a81f31c4c10232a9dc7ed50943ac7cff12e2ea40c97"
+  },
+  {
+    "path": "comparisons/pdf-pages/D7-p1.png",
+    "bytes": 28546,
+    "sha256": "60cb915fcac6a7c7606b10b93a785cc41648d48f220cb0703dd97b831df9a63f"
+  },
+  {
+    "path": "comparisons/pdf-pages/D7-p2.png",
+    "bytes": 28559,
+    "sha256": "051ba847c778cabf7b585db325ce02a0150c9836fae065538e39d7ddb53df766"
+  },
+  {
+    "path": "comparisons/pdf-pages/D8A-p1.png",
+    "bytes": 86495,
+    "sha256": "cd3279735867cf21ec899dd984252f682f2191637659199bb363a1d8e39d5991"
+  },
+  {
+    "path": "comparisons/pdf-pages/D8B-p1.png",
+    "bytes": 89207,
+    "sha256": "a95ad9bcac11aba4b9f6e4e9c82bdc9026f3414014e879606e37537ee0adb443"
+  },
+  {
+    "path": "executive-ledger/candidate-d-results.json",
+    "bytes": 3223,
+    "sha256": "814318751bcdef8c0942e554f50df32a67e30a846dddf437ee4c2c89ee64866a"
+  },
+  {
+    "path": "executive-ledger/html/D1-employment-cert-en.html",
+    "bytes": 12439,
+    "sha256": "d7453e30ed8fb55e6803be3b2c569e0bbf8f68ced20e71b2c11d3be06856165e"
+  },
+  {
+    "path": "executive-ledger/html/D2-experience-cert-bilingual.html",
+    "bytes": 13281,
+    "sha256": "f9c53f7c87ef54549a36ba4b88fdd43a457fbd38add0864ad4c4b905dc25e092"
+  },
+  {
+    "path": "executive-ledger/html/D3a-salary-cert-en.html",
+    "bytes": 12294,
+    "sha256": "b3b48326249751c9dbf130d1b1b17bdbed8074c48b4ba4c54917400f5843343d"
+  },
+  {
+    "path": "executive-ledger/html/D3b-salary-cert-ar.html",
+    "bytes": 11749,
+    "sha256": "9e665d74f9b6402f240c5a09719861048c31830a9f072e806193d236bab6c2a8"
+  },
+  {
+    "path": "executive-ledger/html/D4-long-letter.html",
+    "bytes": 33042,
+    "sha256": "0029053fd9cd21807b7d3d3ca2c423f0b762d1fc7a59aa62820fa4265b4c22d5"
+  },
+  {
+    "path": "executive-ledger/html/D5-analytical-report-120rows.html",
+    "bytes": 152388,
+    "sha256": "1a814797bea93b52dbdb8c67f5b0311c4393435a4b643bc46df18b67ba687048"
+  },
+  {
+    "path": "executive-ledger/html/D6-official-form.html",
+    "bytes": 12821,
+    "sha256": "032d4067e34493c7c48af83849426e2bc0cfee4a2447723c925ceeebe1cc9083"
+  },
+  {
+    "path": "executive-ledger/html/D7-id-card-cr80.html",
+    "bytes": 6539,
+    "sha256": "8488c336ea6a3863eb2d6577a2bc1515021b237e46b5177c198d86f40b055555"
+  },
+  {
+    "path": "executive-ledger/html/D8-cross-company-companyA.html",
+    "bytes": 10854,
+    "sha256": "24bb77353f0beed0496bb662f93b63f7f392612edd67f01f19f7b8edccc1e1b0"
+  },
+  {
+    "path": "executive-ledger/html/D8-cross-company-companyB.html",
+    "bytes": 10879,
+    "sha256": "034632441836c37c21e349bdf046f633da88be83395824e777276b4632f5d398"
+  },
+  {
+    "path": "executive-ledger/pdf/D1-employment-cert-en.pdf",
+    "bytes": 49317,
+    "sha256": "b6b43eccfce404fe63814c5d0bb6d2b66127cd8a4f08005b4b4904c9046d1198",
+    "pages": 1
+  },
+  {
+    "path": "executive-ledger/pdf/D2-experience-cert-bilingual.pdf",
+    "bytes": 101138,
+    "sha256": "1c201e2c4bfb61113b942d1616a9a068631e3c8f139a076a19e6d2bb94c96fd8",
+    "pages": 1
+  },
+  {
+    "path": "executive-ledger/pdf/D3a-salary-cert-en.pdf",
+    "bytes": 51419,
+    "sha256": "26845ad561aedd9e5d6cd8a0307a59685e5c7a1605787aaabd64a88491cf003b",
+    "pages": 1
+  },
+  {
+    "path": "executive-ledger/pdf/D3b-salary-cert-ar.pdf",
+    "bytes": 98664,
+    "sha256": "c6587a1b4aa3802852ab23c74071bab2a1de4a0063852070fcfbb534738d9011",
+    "pages": 1
+  },
+  {
+    "path": "executive-ledger/pdf/D4-long-letter.pdf",
+    "bytes": 57977,
+    "sha256": "864881e5fa200bb0db2ea3ecb4faccc79f9cd6dcb25c0cbe87135a347f0fbb68",
+    "pages": 4
+  },
+  {
+    "path": "executive-ledger/pdf/D5-analytical-report-120rows.pdf",
+    "bytes": 110228,
+    "sha256": "29bcb8d3b643183499db596c52576ed4c7ec746452c57b5386dce61feabf6075",
+    "pages": 10
+  },
+  {
+    "path": "executive-ledger/pdf/D6-official-form.pdf",
+    "bytes": 44865,
+    "sha256": "8741207174324023db279abc6ae92ae54694554aa7fb74988ea949251d4a4219",
+    "pages": 1
+  },
+  {
+    "path": "executive-ledger/pdf/D7-id-card-cr80.pdf",
+    "bytes": 46238,
+    "sha256": "98e92758743b516a11953c697642f3b2560a44d90f95b8bbee96865846c21317",
+    "pages": 2
+  },
+  {
+    "path": "executive-ledger/pdf/D8-cross-company-companyA.pdf",
+    "bytes": 48076,
+    "sha256": "3eb6520c872a11341e4f813444512d7283dc723f6a5ddce65c5e1703945e0b77",
+    "pages": 1
+  },
+  {
+    "path": "executive-ledger/pdf/D8-cross-company-companyB.pdf",
+    "bytes": 48568,
+    "sha256": "424175548382af1a1dd95de7be3e337e12899e587286c698dbc73bf96d644b50",
+    "pages": 1
+  },
+  {
+    "path": "executive-ledger/preview/D1-employment-cert-en.png",
+    "bytes": 75996,
+    "sha256": "e0e7f77dfaaf9154c027e40ddf3c1a90883d49bee079324f0bbc67d9c092410c"
+  },
+  {
+    "path": "executive-ledger/preview/D2-experience-cert-bilingual.png",
+    "bytes": 88986,
+    "sha256": "cbb570257125af9d60b4e615a4a6a91f9e3dce0e77e2aab5121fc47fa18e571b"
+  },
+  {
+    "path": "executive-ledger/preview/D3a-salary-cert-en.png",
+    "bytes": 67091,
+    "sha256": "4e090d7d04e6f713b7113ac04e37ef10784806ea12c6d2c9e6efdb693592bb8b"
+  },
+  {
+    "path": "executive-ledger/preview/D3b-salary-cert-ar.png",
+    "bytes": 55214,
+    "sha256": "47d07d0a32e68c9477207e0c5da78ff3434c8868cabdd1fd801c29d3501af333"
+  },
+  {
+    "path": "executive-ledger/preview/D4-long-letter.png",
+    "bytes": 767035,
+    "sha256": "ccad260f97b7b9d9f4b7955240813fd550161aafde5ff26a454f572bd46298a3"
+  },
+  {
+    "path": "executive-ledger/preview/D5-analytical-report-120rows.png",
+    "bytes": 1182458,
+    "sha256": "67b54f882d8956bafe927a66d0f897f1172e3410856d788d56e24f39c586e834"
+  },
+  {
+    "path": "executive-ledger/preview/D6-official-form.png",
+    "bytes": 64417,
+    "sha256": "60482207711fd5f951341cc788ac752bf70664beff356e4e0d68725318f1b992"
+  },
+  {
+    "path": "executive-ledger/preview/D7-id-card-cr80.png",
+    "bytes": 56066,
+    "sha256": "e9cf624d6f86c5bf6645d8df66f00673e59c3093fd31eabc410117ef0354cc30"
+  },
+  {
+    "path": "executive-ledger/preview/D8-cross-company-companyA.png",
+    "bytes": 53920,
+    "sha256": "3f61515fc24300d8923e043cdfb96cfbd6a8e001cff9de94a98a6c1d8ed1d438"
+  },
+  {
+    "path": "executive-ledger/preview/D8-cross-company-companyB.png",
+    "bytes": 55780,
+    "sha256": "124e5f6b38aedd935f84ca207d399a263af3c921b90bada47532cc52e356bd36"
+  },
+  {
+    "path": "fixed-layout/candidate-c-results.json",
+    "bytes": 2413,
+    "sha256": "6a41323bb75b989d25678f10ab1bfc73b6c39859a71ed363d6d22fa63e9b16b1"
+  },
+  {
+    "path": "fixed-layout/pdf/C1-employment-cert-en.pdf",
+    "bytes": 15811,
+    "sha256": "4ab278e8741aae72626c9281c48ccb774bf50601a7913229c81015f923e19fce",
+    "pages": 1
+  },
+  {
+    "path": "fixed-layout/pdf/C2-experience-cert-bilingual.pdf",
+    "bytes": 11716,
+    "sha256": "7fe3a43b32c1b044d9a78f7bb2e9f1df0476b560b4d023b60d8cc9f9151cdc91",
+    "pages": 1
+  },
+  {
+    "path": "fixed-layout/pdf/C3-salary-cert-en.pdf",
+    "bytes": 8028,
+    "sha256": "ba49814181de0004b475fd9df1be1aecdc614f179ea8bfb13302fd83cd2042c6",
+    "pages": 1
+  },
+  {
+    "path": "fixed-layout/pdf/C4-long-letter.pdf",
+    "bytes": 11959,
+    "sha256": "06f09ad9da281ed9d9f2008ce5e90faa47e450778ca4f4981cd460a28c183fc1",
+    "pages": 1
+  },
+  {
+    "path": "fixed-layout/pdf/C5-analytical-report-120rows.pdf",
+    "bytes": 76285,
+    "sha256": "851e6085369ac47fc95ac66de4d4031bf90e08a7026ccce92739bc0a35f6e9cd",
+    "pages": 4
+  },
+  {
+    "path": "fixed-layout/pdf/C6-official-form.pdf",
+    "bytes": 7831,
+    "sha256": "b1a4043036ebd7cf3e57479c6392b732f09a436c261580cc288422c90215ce01",
+    "pages": 1
+  },
+  {
+    "path": "fixed-layout/pdf/C7-id-card-cr80.pdf",
+    "bytes": 18210,
+    "sha256": "576e8227ce91df7b36698a0d5255842a59e5674b9510ea8284fd4ac105156f5e",
+    "pages": 2
+  },
+  {
+    "path": "fixed-layout/pdf/C8-cross-company-companyA.pdf",
+    "bytes": 9596,
+    "sha256": "c7117442de99f9634b2252e79679ce62725d562bc1176b1c2950a59481ef0561",
+    "pages": 1
+  },
+  {
+    "path": "fixed-layout/pdf/C8-cross-company-companyB.pdf",
+    "bytes": 9842,
+    "sha256": "7ba718000976376315bc0b07b35b385144343133766abc662f78046bad53232c",
+    "pages": 1
+  },
+  {
+    "path": "fixed-layout/templates/C1-employment-cert-en.template.json",
+    "bytes": 2867,
+    "sha256": "3132c3f52ee1ab7c5fdbdd38819d3952ab2899bd6cf669044df7c24b4ebc2f1f"
+  },
+  {
+    "path": "fixed-layout/templates/C2-experience-cert-bilingual.template.json",
+    "bytes": 1547,
+    "sha256": "53610fd976427e6bed67ea60c18c5ea16cf85f490c02f9204bfa231a66ed6e05"
+  },
+  {
+    "path": "fixed-layout/templates/C3-salary-cert-en.template.json",
+    "bytes": 2993,
+    "sha256": "afb9d9c61a5e854f0bdddb80a591a5ef384b3baf19efea4df95071dd361541f3"
+  },
+  {
+    "path": "fixed-layout/templates/C4-long-letter.template.json",
+    "bytes": 683,
+    "sha256": "286628c0c5b8683595d8a6cc2779cd42b6aa9a9829e768fe6b7b4c5fdd410d0b"
+  },
+  {
+    "path": "fixed-layout/templates/C5-analytical-report-120rows.template.json",
+    "bytes": 2350,
+    "sha256": "61a2b755374d5314456ca1bc87c6ae8e86d8d21a85f19a0d9fd2ba7788c57531"
+  },
+  {
+    "path": "fixed-layout/templates/C6-official-form.template.json",
+    "bytes": 5220,
+    "sha256": "87cbf1b5e145d403ad6eaf35556f14dbfdc1d831d9f9712308afefdbdfaaa231"
+  },
+  {
+    "path": "fixed-layout/templates/C7-id-card-cr80.template.json",
+    "bytes": 3212,
+    "sha256": "bbcc0a50c59adebcd5a860b51d4fbc5dfe3b2a7105e3c2d5611c04cc2e6104d0"
+  },
+  {
+    "path": "fixed-layout/templates/C8-cross-company-companyA.template.json",
+    "bytes": 1437,
+    "sha256": "de4cd21ea6e31e02e6de1892131adba9bb1398b4f2014926c927dbd311fb6f5d"
+  },
+  {
+    "path": "fixed-layout/templates/C8-cross-company-companyB.template.json",
+    "bytes": 1437,
+    "sha256": "de4cd21ea6e31e02e6de1892131adba9bb1398b4f2014926c927dbd311fb6f5d"
+  },
+  {
+    "path": "fixtures/reconciliation-db-counts.json",
+    "bytes": 3291,
+    "sha256": "243c23652659748be17be0a615e918871108568ffe7c0121263b982187c296c3"
+  },
+  {
+    "path": "page-counts.json",
+    "bytes": 1470,
+    "sha256": "74fbcdeedfc03d9373919092c2bcda255ffb2851bb86261fb475e61d24db1ae5"
+  },
+  {
+    "path": "pdfview.html",
+    "bytes": 1676,
+    "sha256": "33aee8e2751d0061adf472fbcd2a74bb78b0d7b7c45e80a54ac120844e222bce"
+  },
+  {
+    "path": "reports/report_designer_evidence_index.md",
+    "bytes": 3709,
+    "sha256": "c9a2020ac3e1b36c815be5b03cd8b106f2b03a1639578ef8df8a0fe3af37383d"
+  },
+  {
+    "path": "reports/report_designer_test_manifest.json",
+    "bytes": 3239,
+    "sha256": "23ca8a01ef9f16a416af30a5ac29c447347ad4cce7999143519f9c58a7c6405c"
+  },
+  {
+    "path": "reports/report_designer_validation_matrix.csv",
+    "bytes": 3594,
+    "sha256": "be3ac3d95134dab537f0ee9d14d0540f6506a087cb0266bd3c952c0614efb369"
+  },
+  {
+    "path": "reports/report_designer_validation_matrix.json",
+    "bytes": 22965,
+    "sha256": "665be92914d62310da35eea1de8e7e83fc02eb823beb62dbc6ddc170da36df3a"
+  },
+  {
+    "path": "tiptap-pages/01-initial-load-single-overflowing-page.png",
+    "bytes": 31856,
+    "sha256": "2684200474b5580aa057cc5d62ea9abb19702a6e5ffddf61898277cd0132c9f1"
+  },
+  {
+    "path": "tiptap-pages/02-page-boundary-after-edit-5pages.png",
+    "bytes": 36091,
+    "sha256": "507fe301dff74f749dfd43a71d258aecae9be4135e31ee8b4a87f0a82b18ff79"
+  },
+  {
+    "path": "tiptap-pages/03-page1-a4-header-footer-scaled.png",
+    "bytes": 57206,
+    "sha256": "8a089ef9f8fe05323e21559fd836236fc9d0bae8e8dd4f09d4bf25e965d0aa07"
+  },
+  {
+    "path": "tiptap-pages/04-arabic-ltr-defect-and-paragraph-gap.png",
+    "bytes": 59181,
+    "sha256": "28bee26ca03a8d56e643cd19eac39c624d33dcd1ea4dfc993ad4ddb9ead0e17d"
+  },
+  {
+    "path": "tiptap-pages/candidate-a-results.json",
+    "bytes": 2751,
+    "sha256": "f880c307b719f8a93820686227ca12ae06d784ad93bde1b499c92e7a1c06443f"
+  },
+  {
+    "path": "viewer.html",
+    "bytes": 1676,
+    "sha256": "33aee8e2751d0061adf472fbcd2a74bb78b0d7b7c45e80a54ac120844e222bce"
+  }
+]

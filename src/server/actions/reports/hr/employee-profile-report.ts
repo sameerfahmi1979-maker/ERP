@@ -25,7 +25,7 @@ export const employeeProfileFetcher: ReportFetcher = {
          employee_status, joining_date, actual_joining_date, contract_type,
          contract_start_date, contract_end_date, probation_end_date,
          owner_company_id,
-         owner_company:owner_companies(id, legal_name_en, company_code),
+         owner_company:owner_companies!employees_owner_company_id_fkey(id, legal_name_en, company_code),
          branch:branches(id, branch_name_en),
          department:departments(id, department_name_en),
          designation:designations(id, designation_name_en),

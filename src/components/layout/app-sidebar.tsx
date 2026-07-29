@@ -15,13 +15,13 @@ import {
   CheckCircle2, CalendarDays, CalendarClock, BriefcaseBusiness, Handshake, ClipboardCheck,
   BadgeDollarSign, Landmark, MonitorCheck, Ban,
   FolderOpen, UploadCloud, Inbox, RefreshCcw, Tags, Database, ShieldCheck, Brain,
-  Truck, Wrench, DollarSign, Boxes, ShoppingCart, PenLine,
+  Truck, Wrench, DollarSign, Boxes, ShoppingCart,
   BarChart3, Palette, History,
   Building2, Building, MapPin, Globe2, Ship, Factory, Scale,
   Banknote, CreditCard, Percent, Ruler, Repeat,
   KeyRound, LockKeyhole, Hash, Mail, Send,
   Bot, Sparkles, ScanSearch, CircleGauge, AlertTriangle, CopyCheck,
-  ListChecks, Shield, Lock,
+  ListChecks, Shield, Lock, Activity,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { RuntimeAppBranding } from "@/lib/branding/runtime-types";
@@ -221,9 +221,12 @@ const navSections: NavSection[] = [
     children: [
       { label: "Report Center",        icon: BarChart3,     path: "/admin/reports",            requiredAnyPermissions: ["reports.view", "reports.manage"] },
       { label: "Templates & Branding", icon: Palette,       path: "/admin/reports/templates",  requiredAnyPermissions: ["reports.manage"] },
-      { label: "Reports Editor",        icon: PenLine,       path: "/admin/reports/editor",     requiredAnyPermissions: ["reports.manage"] },
+      // OFFICIAL DOCS.1 Package 8: Template Studio retired — official documents
+      // are fixed code-based templates. Route remains flag-gated for rollback
+      // (OUTPUT_TEMPLATE_STUDIO_ENABLED=true).
       { label: "Report History",        icon: History,       path: "/admin/reports/history",    requiredAnyPermissions: ["reports.view", "reports.history.view"] },
       { label: "Report Schedules",     icon: CalendarClock, path: "/admin/reports/schedules",  requiredAnyPermissions: ["reports.schedule.view", "reports.schedule.manage"] },
+      { label: "Output Operations",    icon: Activity,      path: "/admin/reports/output-ops", requiredAnyPermissions: ["outputs.ops.view"] },
     ],
   },
   {

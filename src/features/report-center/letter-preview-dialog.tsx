@@ -11,10 +11,6 @@ import {
   AlertCircle,
   LayoutTemplate,
   Table2,
-  QrCode,
-  Check,
-  Copy,
-  Link2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { runReportAction } from "@/server/actions/reports/runner";
@@ -24,10 +20,9 @@ import type { ReportDataResult } from "@/lib/report-center/types";
 import type { ERPExportColumn, ExportBrandingContext } from "@/lib/export/export-types";
 import { ExecutiveLedgerPreview } from "@/features/executive-ledger/executive-ledger-preview";
 import { renderExecutiveLedgerHtml } from "@/lib/executive-ledger/html-renderer";
-import { elColumnLabel, elFormatValue } from "@/lib/executive-ledger/formatters";
+import { buildLetterExecutiveLedgerDocument } from "@/lib/output/letter-document-builder";
+import { injectDraftWatermark } from "@/lib/output/draft-watermark";
 import type { ExecutiveLedgerDocument } from "@/lib/executive-ledger/types";
-import { createOutputPublicLink } from "@/server/actions/reports/public-verification";
-import { generateQrDataUrl } from "@/lib/public-verification/qr";
 import { listReportTemplatesForSelection, resolveTemplatePreview, renderVisualTemplateForLetterPreview, type ReportTemplateForSelection } from "@/server/actions/reports/templates";
 
 interface LetterPreviewDialogProps {
@@ -44,10 +39,15 @@ interface LetterPreviewDialogProps {
    */
   branding?: ExportBrandingContext;
   /**
-   * Pre-selected approved/published template ID for QR issuance (BRANDING.8).
-   * When absent, the user must select a template before QR issuance is allowed.
+   * Pre-selected approved/published template ID for branded preview (BRANDING.8).
    */
   templateId?: number | null;
+  /**
+   * OUTPUT.4 — class policy: whether watermarked Quick Print / draft PDF is
+   * allowed for this output. Official issuance happens outside this dialog via
+   * the global output coordinator.
+   */
+  allowQuickPrint?: boolean;
 }
 
 function formatColumnHeader(key: string): string {
@@ -69,7 +69,11 @@ function formatCellValue(value: unknown): string {
   return s;
 }
 
-/** Build an ExecutiveLedgerDocument from flat report row data */
+/**
+ * Build an ExecutiveLedgerDocument from flat report row data.
+ * OUTPUT.2: delegates to the SHARED builder used by the official issuance
+ * coordinator, guaranteeing preview–final parity.
+ */
 function buildExecutiveLedgerDoc(
   columns: string[],
   row: Record<string, unknown>,
@@ -77,40 +81,13 @@ function buildExecutiveLedgerDoc(
   branding?: ExportBrandingContext,
   verification?: ExecutiveLedgerDocument["verification"]
 ): ExecutiveLedgerDocument {
-  const rows = columns.map((col) => ({
-    label: elColumnLabel(col),
-    value: elFormatValue(row[col]),
-  }));
-
-  const mid = Math.ceil(rows.length / 2);
-  const detailRows = rows.slice(0, mid);
-  const extraRows = rows.slice(mid);
-
-  const sections: ExecutiveLedgerDocument["sections"] = [
-    { type: "key_value", title: "Details", rows: detailRows },
-  ];
-
-  if (extraRows.length > 0) {
-    sections.push({
-      type: "key_value",
-      title: "Additional Information",
-      rows: extraRows,
-    });
-  }
-
-  return {
+  return buildLetterExecutiveLedgerDocument({
+    columns,
+    row,
     documentTitle: reportLabel,
-    issuedDate: new Date().toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "long",
-      year: "numeric",
-    }),
-    branding: branding ?? undefined,
-    sections,
-    // Use real verification context if available, otherwise show placeholder
-    verification: verification ?? undefined,
-    qrPlaceholder: !verification,
-  };
+    branding,
+    verification,
+  });
 }
 
 export function LetterPreviewDialog({
@@ -122,22 +99,14 @@ export function LetterPreviewDialog({
   employeeName,
   branding,
   templateId: propTemplateId,
+  allowQuickPrint = true,
 }: LetterPreviewDialogProps) {
   const [isPending, startTransition] = useTransition();
   const [data, setData] = useState<ReportDataResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [formalView, setFormalView] = useState(false);
 
-  // Verification link state
-  const [verificationData, setVerificationData] = useState<{
-    publicUrl: string;
-    qrDataUrl: string | null;
-  } | null>(null);
-  const [issuingLink, setIssuingLink] = useState(false);
-  const [issueError, setIssueError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-
-  // BRANDING.8: Template selection for QR issuance
+  // BRANDING.8: Template selection for branded preview
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(propTemplateId ?? null);
   const [selectedBranding, setSelectedBranding] = useState<ExportBrandingContext | null>(null);
   const [availableTemplates, setAvailableTemplates] = useState<ReportTemplateForSelection[]>([]);
@@ -153,9 +122,6 @@ export function LetterPreviewDialog({
       setData(null);
       setError(null);
       setFormalView(false);
-      setVerificationData(null);
-      setIssueError(null);
-      setCopied(false);
       setSelectedTemplateId(propTemplateId ?? null);
       setSelectedBranding(null);
       setAvailableTemplates([]);
@@ -182,7 +148,7 @@ export function LetterPreviewDialog({
 
         // Auto-resolve branding from the template the engine selected.
         // Without this, colours/logo stay at hardcoded defaults because the
-        // dialog receives no `branding` prop from HrLetterGenerator.
+        // dialog receives no `branding` prop from the Letters & Forms area.
         const resolvedTplId =
           result.data.resolvedTemplateId ?? null;
         if (resolvedTplId && !selectedBranding) {
@@ -248,16 +214,8 @@ export function LetterPreviewDialog({
     (col) => ({ key: col, header: formatColumnHeader(col) })
   );
 
-  const elVerification = verificationData
-    ? {
-        publicUrl: verificationData.publicUrl,
-        qrDataUrl: verificationData.qrDataUrl,
-        label: "Scan to verify",
-      }
-    : undefined;
-
   const elDoc: ExecutiveLedgerDocument | null = row
-    ? buildExecutiveLedgerDoc(columns, row, reportLabel, selectedBranding ?? branding, elVerification)
+    ? buildExecutiveLedgerDoc(columns, row, reportLabel, selectedBranding ?? branding)
     : null;
 
   /** Open the template picker; if templates failed to load, retry the fetch */
@@ -278,61 +236,6 @@ export function LetterPreviewDialog({
         setTemplateLoadError(e instanceof Error ? e.message : String(e));
       })
       .finally(() => setLoadingTemplates(false));
-  };
-
-  /** Issue a public verification link and generate QR */
-  const handleIssueVerificationLink = async () => {
-    if (!row || issuingLink) return;
-
-    // BRANDING.8: template_id is required for official letter issuance
-    if (!selectedTemplateId) {
-      setIssueError("Select an approved or published template before issuing a verification link.");
-      retryTemplateLoad();
-      return;
-    }
-
-    setIssuingLink(true);
-    setIssueError(null);
-    try {
-      const result = await createOutputPublicLink({
-        output_type: "letter",
-        source_module: "HR",
-        source_entity_type: "employee",
-        source_entity_id: employeeId,
-        template_id: selectedTemplateId,
-        document_title: reportLabel,
-        access_level: "verify_only",
-        verification_summary: {
-          document_type: "HR Letter",
-          document_title: reportLabel,
-          subject_name: employeeName ?? null,
-        },
-      });
-
-      if (!result.success || !result.data) {
-        setIssueError(result.error ?? "Failed to issue verification link.");
-        return;
-      }
-
-      const publicUrl = result.data.public_url;
-      const qrDataUrl = await generateQrDataUrl(publicUrl);
-      setVerificationData({ publicUrl, qrDataUrl });
-    } catch {
-      setIssueError("Failed to generate verification link.");
-    } finally {
-      setIssuingLink(false);
-    }
-  };
-
-  const handleCopyUrl = async () => {
-    if (!verificationData?.publicUrl) return;
-    try {
-      await navigator.clipboard.writeText(verificationData.publicUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Clipboard API not available
-    }
   };
 
   /** Print the given HTML in a hidden iframe — avoids opening a new browser tab */
@@ -369,14 +272,16 @@ export function LetterPreviewDialog({
   }, []);
 
   const handlePDF = async () => {
-    // Formal view: render the visual/EL HTML in a hidden iframe and trigger print-to-PDF
+    // Formal view: render the visual/EL HTML in a hidden iframe and trigger
+    // print-to-PDF. Quick Print output is ALWAYS watermarked as a draft —
+    // officially issued PDFs come only from the output coordinator.
     if (formalView && visualHtml) {
-      printInHiddenIframe(visualHtml);
+      printInHiddenIframe(injectDraftWatermark(visualHtml));
       return;
     }
     if (formalView && elDoc) {
       const html = renderExecutiveLedgerHtml(elDoc);
-      printInHiddenIframe(html);
+      printInHiddenIframe(injectDraftWatermark(html));
       return;
     }
     if (!data) return;
@@ -391,12 +296,12 @@ export function LetterPreviewDialog({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const handlePrint = useCallback(() => {
     if (formalView && visualHtml) {
-      printInHiddenIframe(visualHtml);
+      printInHiddenIframe(injectDraftWatermark(visualHtml));
       return;
     }
     if (formalView && elDoc) {
       const html = renderExecutiveLedgerHtml(elDoc);
-      printInHiddenIframe(html);
+      printInHiddenIframe(injectDraftWatermark(html));
       return;
     }
     if (!data) return;
@@ -476,92 +381,47 @@ export function LetterPreviewDialog({
                 )}
               </Button>
             )}
-            {/* Issue Verification QR — shown only in formal view, when data is loaded */}
+            {/* Template selector — shown only in formal view for branded preview.
+                Official issuance (with QR) is NOT done here — it goes through
+                the global output coordinator via the Letters & Forms area. */}
             {formalView && !isPending && !error && row && (
-              verificationData ? (
-                <div className="flex items-center gap-1.5">
-                  <a
-                    href={verificationData.publicUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-green-50 text-green-700 border border-green-200 rounded-md hover:bg-green-100 transition-colors"
-                  >
-                    <QrCode className="h-3 w-3" />
-                    Verified
-                  </a>
+              <div className="flex items-center gap-1.5">
+                {loadingTemplates ? (
+                  <div className="inline-flex items-center gap-1 h-8 px-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Loading…
+                  </div>
+                ) : templateLoadError ? (
                   <button
-                    onClick={handleCopyUrl}
-                    className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-input bg-background hover:bg-accent text-muted-foreground transition-colors"
-                    title="Copy verification URL"
+                    onClick={retryTemplateLoad}
+                    className="inline-flex items-center gap-1 h-8 px-2 text-xs text-destructive border border-destructive/30 rounded-md hover:bg-destructive/5"
                   >
-                    {copied ? (
-                      <Check className="h-3 w-3 text-green-600" />
-                    ) : (
-                      <Copy className="h-3 w-3" />
-                    )}
+                    <AlertCircle className="h-3 w-3" />
+                    Retry
                   </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-1.5">
-                  {/* Template combobox — always visible in formal view */}
-                  {loadingTemplates ? (
-                    <div className="inline-flex items-center gap-1 h-8 px-2 text-xs text-muted-foreground">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      Loading…
-                    </div>
-                  ) : templateLoadError ? (
-                    <button
-                      onClick={retryTemplateLoad}
-                      className="inline-flex items-center gap-1 h-8 px-2 text-xs text-destructive border border-destructive/30 rounded-md hover:bg-destructive/5"
-                    >
-                      <AlertCircle className="h-3 w-3" />
-                      Retry
-                    </button>
-                  ) : availableTemplates.length > 0 ? (
-                    <select
-                      className="h-8 text-xs rounded-md border border-input bg-background px-2 pr-6 focus:outline-none focus:ring-1 focus:ring-ring text-foreground"
-                      value={selectedTemplateId ?? ""}
-                      onChange={async (e) => {
-                        const id = Number(e.target.value);
-                        if (!id) return;
-                        setSelectedTemplateId(id);
-                        setIssueError(null);
-                        const brandRes = await resolveTemplatePreview({ templateId: id, reportCode });
-                        if (brandRes.success && brandRes.data) {
-                          setSelectedBranding(brandRes.data);
-                        }
-                      }}
-                    >
-                      {!selectedTemplateId && <option value="">Select template…</option>}
-                      {availableTemplates.map((tpl) => (
-                        <option key={tpl.id} value={tpl.id}>
-                          {tpl.template_name}
-                        </option>
-                      ))}
-                    </select>
-                  ) : null}
-                  {/* Issue QR button */}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5 text-xs h-8"
-                    onClick={handleIssueVerificationLink}
-                    disabled={issuingLink || !selectedTemplateId}
-                    title={
-                      selectedTemplateId
-                        ? "Issue a public verification QR for this document"
-                        : "Select a template first"
-                    }
+                ) : availableTemplates.length > 0 ? (
+                  <select
+                    className="h-8 text-xs rounded-md border border-input bg-background px-2 pr-6 focus:outline-none focus:ring-1 focus:ring-ring text-foreground"
+                    value={selectedTemplateId ?? ""}
+                    onChange={async (e) => {
+                      const id = Number(e.target.value);
+                      if (!id) return;
+                      setSelectedTemplateId(id);
+                      const brandRes = await resolveTemplatePreview({ templateId: id, reportCode });
+                      if (brandRes.success && brandRes.data) {
+                        setSelectedBranding(brandRes.data);
+                      }
+                    }}
                   >
-                    {issuingLink ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Link2 className="h-3.5 w-3.5" />
-                    )}
-                    {issuingLink ? "Issuing…" : "Issue QR"}
-                  </Button>
-                </div>
-              )
+                    {!selectedTemplateId && <option value="">Select template…</option>}
+                    {availableTemplates.map((tpl) => (
+                      <option key={tpl.id} value={tpl.id}>
+                        {tpl.template_name}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+              </div>
             )}
             <button
               onClick={() => onOpenChange(false)}
@@ -615,12 +475,11 @@ export function LetterPreviewDialog({
           {/* Formal view — Executive Ledger preview */}
           {!isPending && !error && elDoc && formalView && (
             <div className="flex flex-col h-full overflow-hidden">
-              {issueError && (
-                <div className="flex items-start gap-2 px-4 py-2 bg-destructive/5 border-b border-destructive/20 text-destructive text-xs shrink-0">
-                  <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                  {issueError}
-                </div>
-              )}
+              <div className="px-4 py-1.5 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-900 text-[11px] text-amber-700 dark:text-amber-400 shrink-0">
+                Preview only — printed copies are watermarked as drafts. Use{" "}
+                <span className="font-medium">Issue Official</span> in Letters &amp; Forms for an
+                official, verifiable PDF.
+              </div>
               {/* DESIGNER.6: Visual layout iframe (when template has Puck engine) */}
               {isLoadingVisual && (
                 <div className="flex items-center justify-center gap-2 h-20 text-muted-foreground text-sm shrink-0">
@@ -660,25 +519,29 @@ export function LetterPreviewDialog({
               <ExternalLink className="h-3.5 w-3.5" />
               Open in Report Center
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handlePrint}
-              disabled={!data || isPending}
-              className="gap-1.5"
-            >
-              <Printer className="h-3.5 w-3.5" />
-              Print
-            </Button>
-            <Button
-              size="sm"
-              onClick={handlePDF}
-              disabled={!data || isPending}
-              className="gap-1.5"
-            >
-              <FileDown className="h-3.5 w-3.5" />
-              {formalView ? "Save as PDF" : "Download PDF"}
-            </Button>
+            {allowQuickPrint && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handlePrint}
+                  disabled={!data || isPending}
+                  className="gap-1.5"
+                >
+                  <Printer className="h-3.5 w-3.5" />
+                  {formalView ? "Quick Print (Draft)" : "Print"}
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handlePDF}
+                  disabled={!data || isPending}
+                  className="gap-1.5"
+                >
+                  <FileDown className="h-3.5 w-3.5" />
+                  {formalView ? "Save Draft PDF" : "Download PDF"}
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </div>

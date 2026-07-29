@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { cn } from "@/lib/utils";
 import {
   FileText,
@@ -13,7 +14,7 @@ import {
   TrendingDown,
   Minus,
 } from "lucide-react";
-import type { DmsDashboardStats } from "@/server/actions/dms/dashboard";
+import type { DmsDashboardStats, DmsDocumentsByDay } from "@/server/actions/dms/dashboard";
 
 function formatStorage(bytes: number): string {
   if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(1)} GB`;
@@ -27,6 +28,28 @@ function trendPct(current: number, previous: number): number | null {
   return Math.round(((current - previous) / previous) * 100);
 }
 
+type Accent = "blue" | "emerald" | "amber" | "red" | "violet" | "teal" | "slate";
+
+const ACCENT_BAR: Record<Accent, string> = {
+  blue: "bg-blue-500",
+  emerald: "bg-emerald-500",
+  amber: "bg-amber-500",
+  red: "bg-red-500",
+  violet: "bg-violet-500",
+  teal: "bg-teal-500",
+  slate: "bg-slate-300",
+};
+
+const ACCENT_ICON: Record<Accent, string> = {
+  blue: "text-blue-600",
+  emerald: "text-emerald-600",
+  amber: "text-amber-600",
+  red: "text-red-600",
+  violet: "text-violet-600",
+  teal: "text-teal-600",
+  slate: "text-slate-400",
+};
+
 type KpiCard = {
   label: string;
   value: string;
@@ -34,79 +57,68 @@ type KpiCard = {
   trend?: number | null;
   href: string;
   icon: React.ReactNode;
-  iconBg: string;
-  alertLevel?: "none" | "warn" | "danger";
+  accent: Accent;
+  sparkline?: boolean;
 };
 
 type Props = {
   stats: DmsDashboardStats;
+  sparklineData?: DmsDocumentsByDay[];
 };
 
-export function DmsKpiCards({ stats }: Props) {
+export function DmsKpiCards({ stats, sparklineData }: Props) {
   const trend = trendPct(stats.added_this_month, stats.added_last_month);
 
   const cards: KpiCard[] = [
     {
       label: "Total Documents",
       value: stats.total_documents.toLocaleString(),
+      sub: "in the repository",
       href: "/dms/documents",
-      icon: <FileText className="h-5 w-5" />,
-      iconBg: "bg-blue-100 text-blue-600",
-      alertLevel: "none",
+      icon: <FileText className="h-4 w-4" />,
+      accent: "blue",
+      sparkline: true,
     },
     {
       label: "Added This Month",
       value: stats.added_this_month.toLocaleString(),
-      sub: stats.added_last_month > 0 ? `${stats.added_last_month} last month` : undefined,
+      sub: stats.added_last_month > 0 ? `vs ${stats.added_last_month} last month` : "no prior data",
       trend,
       href: "/dms/documents",
-      icon: <PlusCircle className="h-5 w-5" />,
-      iconBg: "bg-emerald-100 text-emerald-600",
-      alertLevel: "none",
+      icon: <PlusCircle className="h-4 w-4" />,
+      accent: "emerald",
     },
     {
       label: "Inbox Pending",
       value: stats.inbox_pending.toLocaleString(),
       sub: "awaiting processing",
       href: "/dms/inbox",
-      icon: <Inbox className="h-5 w-5" />,
-      iconBg:
-        stats.inbox_pending > 20
-          ? "bg-amber-100 text-amber-600"
-          : "bg-slate-100 text-slate-500",
-      alertLevel: stats.inbox_pending > 20 ? "warn" : "none",
+      icon: <Inbox className="h-4 w-4" />,
+      accent: stats.inbox_pending > 20 ? "amber" : "slate",
     },
     {
       label: "Expiring ≤30 Days",
       value: stats.expiring_30_days.toLocaleString(),
       sub: "require attention",
       href: "/dms/expiring",
-      icon: <AlertTriangle className="h-5 w-5" />,
-      iconBg:
-        stats.expiring_30_days > 0
-          ? "bg-red-100 text-red-600"
-          : "bg-slate-100 text-slate-500",
-      alertLevel: stats.expiring_30_days > 5 ? "danger" : stats.expiring_30_days > 0 ? "warn" : "none",
+      icon: <AlertTriangle className="h-4 w-4" />,
+      accent: stats.expiring_30_days > 5 ? "red" : stats.expiring_30_days > 0 ? "amber" : "slate",
     },
     {
       label: "Review Queue",
       value: stats.review_queue_pending.toLocaleString(),
       sub: "pending AI review",
       href: "/dms/review-queue",
-      icon: <Bot className="h-5 w-5" />,
-      iconBg:
-        stats.review_queue_pending > 0
-          ? "bg-violet-100 text-violet-600"
-          : "bg-slate-100 text-slate-500",
-      alertLevel: stats.review_queue_pending > 10 ? "warn" : "none",
+      icon: <Bot className="h-4 w-4" />,
+      accent: stats.review_queue_pending > 10 ? "violet" : "slate",
     },
     {
       label: "Storage Used",
       value: formatStorage(stats.storage_bytes),
+      sub: "across all documents",
       href: "/admin/dms",
-      icon: <HardDrive className="h-5 w-5" />,
-      iconBg: "bg-teal-100 text-teal-600",
-      alertLevel: "none",
+      icon: <HardDrive className="h-4 w-4" />,
+      accent: "teal",
     },
   ];
 
@@ -117,37 +129,70 @@ export function DmsKpiCards({ stats }: Props) {
           key={card.label}
           href={card.href}
           className={cn(
-            "group flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-sm",
-            "hover:shadow-md hover:border-primary/30 transition-all duration-200",
-            card.alertLevel === "danger" && "border-red-200",
-            card.alertLevel === "warn" && "border-amber-200"
+            "group relative flex flex-col overflow-hidden rounded-xl border bg-card shadow-sm",
+            "hover:shadow-md hover:-translate-y-0.5 transition-all duration-200"
           )}
         >
-          <div className="flex items-center justify-between">
-            <div className={cn("rounded-lg p-2", card.iconBg)}>{card.icon}</div>
-            {card.trend != null && (
-              <span
-                className={cn(
-                  "flex items-center gap-0.5 text-xs font-medium",
-                  card.trend > 0 ? "text-emerald-600" : card.trend < 0 ? "text-red-500" : "text-slate-400"
-                )}
-              >
-                {card.trend > 0 ? (
-                  <TrendingUp className="h-3 w-3" />
-                ) : card.trend < 0 ? (
-                  <TrendingDown className="h-3 w-3" />
-                ) : (
-                  <Minus className="h-3 w-3" />
-                )}
-                {Math.abs(card.trend)}%
+          <span className={cn("absolute inset-y-0 left-0 w-1", ACCENT_BAR[card.accent])} />
+          <div className="flex flex-1 flex-col gap-2.5 p-4 pl-5">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {card.label}
               </span>
-            )}
-          </div>
-          <div>
-            <p className="text-2xl font-bold tracking-tight">{card.value}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">{card.label}</p>
-            {card.sub && (
-              <p className="text-xs text-muted-foreground/70 mt-0.5">{card.sub}</p>
+              <span className={cn("shrink-0", ACCENT_ICON[card.accent])}>{card.icon}</span>
+            </div>
+
+            <div className="flex items-end justify-between gap-2">
+              <p className="text-2xl font-bold tracking-tight tabular-nums leading-none">
+                {card.value}
+              </p>
+              {card.trend != null && (
+                <span
+                  className={cn(
+                    "mb-0.5 flex items-center gap-0.5 text-[11px] font-medium",
+                    card.trend > 0
+                      ? "text-emerald-600"
+                      : card.trend < 0
+                      ? "text-red-500"
+                      : "text-slate-400"
+                  )}
+                >
+                  {card.trend > 0 ? (
+                    <TrendingUp className="h-3 w-3" />
+                  ) : card.trend < 0 ? (
+                    <TrendingDown className="h-3 w-3" />
+                  ) : (
+                    <Minus className="h-3 w-3" />
+                  )}
+                  {Math.abs(card.trend)}%
+                </span>
+              )}
+            </div>
+
+            {card.sub && <p className="text-[11px] text-muted-foreground/80">{card.sub}</p>}
+
+            {card.sparkline && sparklineData && sparklineData.length > 1 && (
+              <div className="-mx-1 -mb-1 mt-auto h-8 opacity-70 group-hover:opacity-100 transition-opacity">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={sparklineData} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="kpiSparkline" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="hsl(217 91% 60%)" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="hsl(217 91% 60%)" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <Area
+                      type="monotone"
+                      dataKey="count"
+                      stroke="hsl(217 91% 60%)"
+                      strokeWidth={1.5}
+                      fill="url(#kpiSparkline)"
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
             )}
           </div>
         </Link>

@@ -1,0 +1,57 @@
+matrix,criterion,weight_pct,score_A,score_B,score_C,score_D
+overall,Administrator authoring usability,14,3,4,3,1
+overall,Preview-to-final-PDF fidelity,14,1,3,3,5
+overall,Document-family capability coverage,12,2,4,2,5
+overall,Pagination and table quality,10,2,4,2,5
+overall,Arabic/RTL and embedded fonts,10,2,4,1,5
+overall,Security and multi-company isolation,10,4,3,4,5
+overall,Integration with existing Global Output Framework,8,4,3,3,5
+overall,Maintainability and ecosystem health,6,3,4,4,4
+overall,Licensing and total cost,5,2,4,5,5
+overall,Performance and operational complexity,5,4,4,5,4
+overall,Accessibility and governance UX,3,3,3,3,4
+overall,Migration effort and preservation risk,3,3,3,4,5
+overall,WEIGHTED TOTAL,100,2.58,3.62,2.97,4.3
+mode1_flowing_letters,Administrator authoring usability,16,3,4,3,1
+mode1_flowing_letters,Preview-to-final-PDF fidelity,16,1,3,3,5
+mode1_flowing_letters,Document-family capability coverage,6,2,4,2,5
+mode1_flowing_letters,Pagination and table quality,12,2,4,2,5
+mode1_flowing_letters,Arabic/RTL and embedded fonts,14,2,4,1,5
+mode1_flowing_letters,Security and multi-company isolation,10,4,3,4,5
+mode1_flowing_letters,Integration with existing Global Output Framework,8,4,3,3,5
+mode1_flowing_letters,Maintainability and ecosystem health,5,3,4,4,4
+mode1_flowing_letters,Licensing and total cost,4,2,4,5,5
+mode1_flowing_letters,Performance and operational complexity,3,4,4,5,4
+mode1_flowing_letters,Accessibility and governance UX,3,3,3,3,4
+mode1_flowing_letters,Migration effort and preservation risk,3,3,3,4,5
+mode1_flowing_letters,WEIGHTED TOTAL,100,2.53,3.6,2.86,4.25
+mode2_tabular_reports,Administrator authoring usability,8,3,4,3,1
+mode2_tabular_reports,Preview-to-final-PDF fidelity,12,1,3,3,5
+mode2_tabular_reports,Document-family capability coverage,8,2,4,2,5
+mode2_tabular_reports,Pagination and table quality,22,2,4,2,5
+mode2_tabular_reports,Arabic/RTL and embedded fonts,10,2,4,1,5
+mode2_tabular_reports,Security and multi-company isolation,10,4,3,4,5
+mode2_tabular_reports,Integration with existing Global Output Framework,10,4,3,3,5
+mode2_tabular_reports,Maintainability and ecosystem health,6,3,4,4,4
+mode2_tabular_reports,Licensing and total cost,4,2,4,5,5
+mode2_tabular_reports,Performance and operational complexity,6,4,4,5,4
+mode2_tabular_reports,Accessibility and governance UX,2,3,3,3,4
+mode2_tabular_reports,Migration effort and preservation risk,2,3,3,4,5
+mode2_tabular_reports,WEIGHTED TOTAL,100,2.58,3.64,2.88,4.54
+mode3_fixed_layout,Administrator authoring usability,14,3,4,3,1
+mode3_fixed_layout,Preview-to-final-PDF fidelity,16,1,3,3,5
+mode3_fixed_layout,Document-family capability coverage,6,2,4,2,5
+mode3_fixed_layout,Pagination and table quality,4,2,4,2,5
+mode3_fixed_layout,Arabic/RTL and embedded fonts,14,2,4,1,5
+mode3_fixed_layout,Security and multi-company isolation,10,4,3,4,5
+mode3_fixed_layout,Integration with existing Global Output Framework,10,4,3,3,5
+mode3_fixed_layout,Maintainability and ecosystem health,6,3,4,4,4
+mode3_fixed_layout,Licensing and total cost,6,2,4,5,5
+mode3_fixed_layout,Performance and operational complexity,6,4,4,5,4
+mode3_fixed_layout,Accessibility and governance UX,4,3,3,3,4
+mode3_fixed_layout,Migration effort and preservation risk,4,3,3,4,5
+mode3_fixed_layout,WEIGHTED TOTAL,100,2.64,3.56,3.06,4.28
+sensitivity_usability_first,WEIGHTED TOTAL,100,2.64,3.68,3.03,3.82
+sensitivity_fidelity_print_first,WEIGHTED TOTAL,100,2.32,3.56,2.84,4.58
+sensitivity_arabic_security_first,WEIGHTED TOTAL,100,2.7,3.58,2.82,4.58
+sensitivity_cost_maintenance_first,WEIGHTED TOTAL,100,2.64,3.68,3.34,4.38

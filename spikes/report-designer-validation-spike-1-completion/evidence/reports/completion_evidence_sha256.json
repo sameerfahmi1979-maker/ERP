@@ -1,0 +1,122 @@
+[
+  {
+    "path": "baseline-verification/baseline-file-manifest-sha256.json",
+    "bytes": 22210,
+    "sha256": "2992f42784caff01de882ad90c0a5a9faedf54da0255596cbaed87c6782859e0"
+  },
+  {
+    "path": "baseline-verification/baseline-verification-summary.json",
+    "bytes": 3727,
+    "sha256": "033eb40e099816c3d68c30f37d16b4d7b34dbb2345bfff57ada04bff443c61e4"
+  },
+  {
+    "path": "live-erp/live-01-dashboard-after-login.png",
+    "bytes": 62847,
+    "sha256": "bee43314ca35275aad006c27e1e521d73531364ed010dc711148ae4b79fe7aaa"
+  },
+  {
+    "path": "live-erp/live-02-template-studio-list.png",
+    "bytes": 53740,
+    "sha256": "dc7c8cd35eca1ce2e489a64e567cd11fa36aa8e0507952a583eb0763d05c99b5"
+  },
+  {
+    "path": "live-erp/live-03-studio-editor-loaded.png",
+    "bytes": 62290,
+    "sha256": "49218ef4e2dafbe3739d91fa7da0613f95233050620598f8e17e1a2481a72dad"
+  },
+  {
+    "path": "live-erp/live-04-field-picker-sensitivity.png",
+    "bytes": 73486,
+    "sha256": "ca7c7226caef07a44c099a3a9eeebf2d12da80647f5b9fd192d8342ed958b16d"
+  },
+  {
+    "path": "live-erp/live-05-studio-rtl-blocks-unsaved.png",
+    "bytes": 73486,
+    "sha256": "ca7c7226caef07a44c099a3a9eeebf2d12da80647f5b9fd192d8342ed958b16d"
+  },
+  {
+    "path": "pdfme-designer/pages/designer-card-arabic-p1.png",
+    "bytes": 22503,
+    "sha256": "77d64cc2693e04a5498639355ca6f809b532338339c3b15cc844cb817cddc2df"
+  },
+  {
+    "path": "pdfme-designer/pages/designer-card-arabic-p2.png",
+    "bytes": 13423,
+    "sha256": "1e470c4ded84f52bdfd11af06d2f65c3df8e99f326fd787244fa2ff1e2f5e0a2"
+  },
+  {
+    "path": "pdfme-designer/pdf/designer-card-arabic.pdf",
+    "bytes": 8060,
+    "sha256": "420e520a02c0a2ce660d78d6ba4ccdad32b8bde60ef9a257bc3a24d3e30f91c3"
+  },
+  {
+    "path": "pdfme-designer/ui-screenshots/pdfme-designer-01-canvas.png",
+    "bytes": 25819,
+    "sha256": "e59fd16413341a2c89d5f029204f481dc5e39d4a06951d93f5dcf81e24bbe4a9"
+  },
+  {
+    "path": "pdfme-designer/ui-screenshots/pdfme-designer-02-company-b.png",
+    "bytes": 25819,
+    "sha256": "e59fd16413341a2c89d5f029204f481dc5e39d4a06951d93f5dcf81e24bbe4a9"
+  },
+  {
+    "path": "performance/gotenberg-concurrency-results.json",
+    "bytes": 962,
+    "sha256": "9936e4d37092412f8217e21c437d9babf08bef0b33b60db8226abe94a2f94573"
+  },
+  {
+    "path": "reports/completion_evidence_sha256.json",
+    "bytes": 3775,
+    "sha256": "28b67e978b20ec91b37cd8ac2d3fa53b5401392a662410aebaf755d5d169035e"
+  },
+  {
+    "path": "reports/report_designer_completion_test_manifest.json",
+    "bytes": 4008,
+    "sha256": "cd705a4ee3b701b31d6bf1d74bbd97a31b94cfb98d7adaef2a9a92303cecf9c8"
+  },
+  {
+    "path": "reports/report_designer_validation_matrix.csv",
+    "bytes": 10844,
+    "sha256": "235b5b3d2ab945a198b080e7e143f29a309de5dd67d563e064c2e364a01ec55a"
+  },
+  {
+    "path": "reports/report_designer_validation_matrix.json",
+    "bytes": 16097,
+    "sha256": "86f941f9d2f78bf22e6418725ebd9a454e12bb75880a8ed6d0df5cffd6fd05b1"
+  },
+  {
+    "path": "security/docx-fixtures/external-rel-ssrf.docx",
+    "bytes": 1350,
+    "sha256": "727d25b1591ee4f7f691b1f223e654548cc53ad53c4e55bc3476512d51e4b1fe"
+  },
+  {
+    "path": "security/docx-fixtures/macro-embedded.docx",
+    "bytes": 928,
+    "sha256": "5db32967db176db7c3619b665a7bfcc11adc4d83dfe6f1f0fe3e8870b691005b"
+  },
+  {
+    "path": "security/docx-fixtures/spoofed.docx",
+    "bytes": 26,
+    "sha256": "7902beaa10012ae939335b2aea07ef2887d96e03106734cb9815a424a028a4c3"
+  },
+  {
+    "path": "security/docx-fixtures/warning-letter.docm",
+    "bytes": 810,
+    "sha256": "39d8191715ba36c65bda3ceb7eaedd5aa69a9c0446c18bd3b25b8807c47a09d5"
+  },
+  {
+    "path": "security/docx-fixtures/zipbomb-ratio.docx",
+    "bytes": 21003,
+    "sha256": "4dfa3ab97d14891e5a480d92d420ac1bd03f3584795f4bfb307b63acc6b8583d"
+  },
+  {
+    "path": "security/docx-security-battery-results.json",
+    "bytes": 1853,
+    "sha256": "243e866d0a35212d9309f2a64109ad193cbc9b2aef2c52a0f5cd2ae6f27627eb"
+  },
+  {
+    "path": "security/studio-security-battery-results.json",
+    "bytes": 3762,
+    "sha256": "bf7113cec0cdd07c178f1c7d5c864c34b3a77afcab6c911a9800f5208eb4ccb6"
+  }
+]

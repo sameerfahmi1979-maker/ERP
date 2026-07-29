@@ -1,0 +1,73 @@
+{
+  "program": "OFFICIAL DOCS.1 — Global Official Letters & Forms Generator + Report Designer Retirement",
+  "generated_at": "2026-07-28T13:45:00+04:00",
+  "environment": {
+    "app": "localhost:3000 (Next.js 16 Turbopack dev)",
+    "pdf_engine": "Gotenberg 8 (local Docker, port 3100)",
+    "database": "live Supabase mmiefuieduzdiiwnqpie",
+    "actor": "System Administrator (Sameer Fahmi)",
+    "test_record": "Employee EMP-000001 (id=1)"
+  },
+  "static_quality": {
+    "typecheck": { "command": "npx tsc --noEmit", "errors": 72, "baseline_errors": 72, "new_errors": 0, "result": "PASS" },
+    "unit_tests": { "command": "npx vitest run", "files": 22, "tests": 433, "passed": 433, "failed": 0, "result": "PASS" },
+    "production_build": { "command": "npm run build", "exit_code": 0, "result": "PASS" },
+    "lint_changed_files": { "errors": 0, "result": "PASS" },
+    "designer_import_scan": { "broken_imports": 0, "unused_designer_files_remaining": 0, "result": "PASS" }
+  },
+  "catalog": {
+    "hr_official_identities_total": 14,
+    "published": 10,
+    "disabled_pending_wording": 4,
+    "published_codes": [
+      "HR_EMPLOYMENT_LETTER", "HR_EMPLOYMENT_CONFIRMATION", "HR_EXPERIENCE_LETTER",
+      "HR_SALARY_CERT_WITH_AMOUNT", "HR_SALARY_CERT_GENERAL", "HR_NOC_GENERAL",
+      "HR_WARNING_LETTER", "HR_CLEARANCE_FORM", "HR_JOINING_CHECKLIST", "HR_PPE_ISSUE_FORM"
+    ],
+    "disabled_pending_wording_codes": [
+      "HR_BANK_SALARY_TRANSFER", "HR_EMBASSY_LETTER", "HR_HANDOVER_FORM", "HR_LEAVE_CONFIRMATION"
+    ]
+  },
+  "tests": [
+    { "id": "GOV-01", "area": "governance", "name": "Published definition with verified wording generates", "result": "PASS" },
+    { "id": "GOV-02", "area": "governance", "name": "disabled_pending_wording definition refuses generation (registry + coordinator)", "result": "PASS" },
+    { "id": "GOV-03", "area": "governance", "name": "Unsupported language rejected (validation_failed)", "result": "PASS" },
+    { "id": "GOV-04", "area": "governance", "name": "Registry governance validation (unit): publish requires verified wording evidence", "result": "PASS" },
+    { "id": "GOV-05", "area": "governance", "name": "Zod strict input schema rejects unknown keys / control characters", "result": "PASS" },
+    { "id": "GOV-06", "area": "governance", "name": "No user-editable wording surface; no HTML/template injection path (escapeImageSrc unit-tested)", "result": "PASS" },
+    { "id": "WF-01", "area": "employee_workflow", "name": "Employee Profile → Letters & Forms catalog (grouped Classes A–D)", "result": "PASS", "evidence": "implementation_Review/HR/official-docs-uat-evidence/uat-catalog-official-letters-group.png" },
+    { "id": "WF-02", "area": "employee_workflow", "name": "One-click generate (single-language, no inputs): 2 clicks from tab", "result": "PASS", "clicks": 2 },
+    { "id": "WF-03", "area": "employee_workflow", "name": "Dialog generate (language/inputs): 4 clicks from tab", "result": "PASS", "clicks": 4, "evidence": "implementation_Review/HR/official-docs-uat-evidence/uat-generation-dialog-language-selector.png" },
+    { "id": "WF-04", "area": "employee_workflow", "name": "PDF opens in new tab + row appears in Issued Documents + re-download original", "result": "PASS" },
+    { "id": "LANG-01", "area": "multilingual", "name": "Arabic Employment Confirmation issued (RTL, Arabic-Indic digits, serial 2)", "result": "PASS", "evidence": "implementation_Review/HR/official-docs-uat-evidence/uat-employment-confirmation-arabic-issued.png" },
+    { "id": "LANG-02", "area": "multilingual", "name": "Bilingual Employment Confirmation issued (EN-left/AR-right two-column, shared header/footer/QR, serial 4)", "result": "PASS", "evidence": "implementation_Review/HR/official-docs-uat-evidence/uat-employment-confirmation-bilingual-issued.png" },
+    { "id": "LANG-03", "area": "multilingual", "name": "9 visual baselines EN/AR/bilingual incl. multipage checklist & bilingual clearance form", "result": "PASS", "evidence": "spikes/official-docs-gate3/evidence/" },
+    { "id": "DATA-01", "area": "data_integrity", "name": "Warning Letter blocked with precise error on missing incident_date", "result": "PASS", "evidence": "implementation_Review/HR/official-docs-uat-evidence/uat-warning-letter-blocked-missing-incident-date.png" },
+    { "id": "DATA-02", "area": "data_integrity", "name": "Duplicate content fingerprint blocks identical regeneration with warning", "result": "PASS" },
+    { "id": "LIFE-01", "area": "lifecycle", "name": "Revoke requires reason (server-side Zod, empty rejected twice), public link → cancelled", "result": "PASS", "evidence": "implementation_Review/HR/official-docs-uat-evidence/uat-revoked-verification-page.png" },
+    { "id": "LIFE-02", "area": "lifecycle", "name": "Reissue creates superseding copy with new serial + both-way supersession links", "result": "PASS", "evidence": "implementation_Review/HR/official-docs-uat-evidence/uat-reissued-employment-confirmation-serial5.png" },
+    { "id": "LIFE-03", "area": "lifecycle", "name": "DEFECT->FIXED: reissue preserves original language variant from data_snapshot_json", "result": "PASS_AFTER_FIX", "evidence": "implementation_Review/HR/official-docs-uat-evidence/uat-reissued-arabic-preserved-serial6.png" },
+    { "id": "LIFE-04", "area": "lifecycle", "name": "Permanent delete (system_admin): DB row + public link + storage object all removed; serial not reused", "result": "PASS" },
+    { "id": "QR-01", "area": "verification", "name": "Public QR verification page shows authenticity without sensitive data", "result": "PASS", "evidence": "implementation_Review/HR/official-docs-uat-evidence/uat-public-qr-verification-page.png" },
+    { "id": "QR-02", "area": "verification", "name": "Warning Letter policy qr_policy_override=none (never publicly verifiable)", "result": "PASS" },
+    { "id": "PERM-01", "area": "permissions", "name": "Required permission enforced server-side per output (registry required_permissions)", "result": "PASS" },
+    { "id": "PERM-02", "area": "permissions", "name": "DEFECT->FIXED: PPE form required non-existent hr.operations.view; corrected to hr.assignments.view by migration", "result": "PASS_AFTER_FIX", "evidence": "implementation_Review/HR/official-docs-uat-evidence/uat-ppe-issue-form-generated-after-permission-fix.png" },
+    { "id": "PERM-03", "area": "permissions", "name": "Branding override requires dedicated audited permission reports.branding.override", "result": "PASS" },
+    { "id": "RLS-01", "area": "rls_storage", "name": "erp-generated-pdfs bucket private; access via short-lived signed URLs only", "result": "PASS" },
+    { "id": "RLS-02", "area": "rls_storage", "name": "RLS policies verified on erp_generated_pdf_documents / erp_output_public_links / erp_report_registry / erp_output_class_policies", "result": "PASS" },
+    { "id": "RET-01", "area": "retirement", "name": "Template Studio removed from sidebar + Templates page; route shows retired notice", "result": "PASS", "evidence": "implementation_Review/HR/official-docs-uat-evidence/pkg8-template-studio-retired-route.png" },
+    { "id": "RET-02", "area": "retirement", "name": "3 designer-era template rows archived non-destructively (reference-guarded migration)", "result": "PASS" },
+    { "id": "RET-03", "area": "retirement", "name": "Historical download after retirement (fresh signed URL issued)", "result": "PASS" },
+    { "id": "RET-04", "area": "retirement", "name": "Designer-only code + 7 TipTap deps removed with proof of non-use; shared libs retained", "result": "PASS" },
+    { "id": "RET-05", "area": "retirement", "name": "Template Governance queue + Templates & Branding functional after cleanup", "result": "PASS" }
+  ],
+  "defects": [
+    { "id": "D1", "package": 7, "severity": "high", "summary": "Reissue lost original language variant", "status": "fixed_and_retested", "fix": "src/server/actions/output/issuance-history.ts" },
+    { "id": "D2", "package": 7, "severity": "high", "summary": "HR_PPE_ISSUE_FORM required non-existent permission — ungeneratable for all users", "status": "fixed_and_retested", "fix": "supabase/migrations/20260728121000_official_docs_1_fix_ppe_form_permission.sql" }
+  ],
+  "not_executed": [
+    { "id": "NX-01", "item": "Representative generation of Bank Salary Transfer / Embassy / Handover / Leave Confirmation", "reason": "disabled_pending_wording — approved wording does not exist; generating them is prohibited by the program (no invented wording)" },
+    { "id": "NX-02", "item": "Multi-user permission matrix with real restricted accounts", "reason": "only the System Administrator account exists in this environment; permission denial paths verified via registry checks and the D2 defect proving server-side enforcement" },
+    { "id": "NX-03", "item": "Production activation (secrets, deployment, cron, operational sign-off)", "reason": "out of scope — development/staging validation only; see production activation checklist in the closure report" }
+  ]
+}

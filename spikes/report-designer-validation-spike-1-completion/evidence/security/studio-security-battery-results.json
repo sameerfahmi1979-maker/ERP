@@ -1,0 +1,112 @@
+{
+  "ranAt": "2026-07-26T19:59:59.219Z",
+  "target": "src/lib/template-studio/validate.ts + src/lib/output/variable-allowlist.ts (production, read-only import)",
+  "total": 13,
+  "unexpected": 0,
+  "results": [
+    {
+      "id": "SEC-01",
+      "attack": "HTML/script node injected as PM node type 'script'",
+      "expected": "reject",
+      "observed": "rejected",
+      "outcome": "BLOCKED (expected)",
+      "detail": "blocks[0] (paragraph): node type 'script' is not allowed."
+    },
+    {
+      "id": "SEC-02",
+      "attack": "Unsafe link mark (javascript: scheme)",
+      "expected": "reject",
+      "observed": "rejected",
+      "outcome": "BLOCKED (expected)",
+      "detail": "blocks[0] (paragraph): mark 'link' is not allowed."
+    },
+    {
+      "id": "SEC-03",
+      "attack": "Arbitrary style attr with remote asset URL",
+      "expected": "reject",
+      "observed": "rejected",
+      "outcome": "BLOCKED (expected)",
+      "detail": "blocks[0] (paragraph): attribute 'style' on 'paragraph' is not allowed."
+    },
+    {
+      "id": "SEC-04",
+      "attack": "Font-size 999 (outside 8–36 clamp)",
+      "expected": "reject",
+      "observed": "rejected",
+      "outcome": "BLOCKED (expected)",
+      "detail": "blocks[0] (paragraph): font size 999 outside approved range 8–36."
+    },
+    {
+      "id": "SEC-05",
+      "attack": "CSS-expression color value",
+      "expected": "reject",
+      "observed": "rejected",
+      "outcome": "BLOCKED (expected)",
+      "detail": "blocks[0] (paragraph): color 'expression(alert(1))' is not a safe 6-digit hex value."
+    },
+    {
+      "id": "SEC-06",
+      "attack": "Restricted salary token in experience-letter (not allowlisted)",
+      "expected": "reject",
+      "observed": "rejected",
+      "outcome": "BLOCKED (expected)",
+      "detail": "Variable 'employee.basic_salary' is not allowlisted for this output."
+    },
+    {
+      "id": "SEC-07",
+      "attack": "Forged field path not in binding registry",
+      "expected": "reject",
+      "observed": "rejected",
+      "outcome": "BLOCKED (expected)",
+      "detail": "Variable 'admin.service_role_key' is not in the approved field registry."
+    },
+    {
+      "id": "SEC-08",
+      "attack": "Binding chip with empty field path",
+      "expected": "reject",
+      "observed": "rejected",
+      "outcome": "BLOCKED (expected)",
+      "detail": "blocks[0] (paragraph): binding chip has no field path."
+    },
+    {
+      "id": "SEC-09",
+      "attack": "Non-approved textAlign value",
+      "expected": "reject",
+      "observed": "rejected",
+      "outcome": "BLOCKED (expected)",
+      "detail": "blocks[0] (paragraph): text alignment 'url(http://evil)' is not allowed."
+    },
+    {
+      "id": "SEC-10",
+      "attack": "Final issued HTML still contains an unresolved token",
+      "expected": "reject",
+      "observed": "rejected",
+      "outcome": "BLOCKED (expected)",
+      "detail": "leftover=employee.employee_name"
+    },
+    {
+      "id": "SEC-11",
+      "attack": "Legitimate approved token (control — must pass)",
+      "expected": "accept",
+      "observed": "accepted",
+      "outcome": "ALLOWED (expected)",
+      "detail": "disallowed="
+    },
+    {
+      "id": "SEC-12",
+      "attack": "Clean valid paragraph with registry+allowlist token (control)",
+      "expected": "accept",
+      "observed": "accepted",
+      "outcome": "ALLOWED (expected)",
+      "detail": "no errors"
+    },
+    {
+      "id": "SEC-13",
+      "attack": "GOVERNANCE DRIFT: allowlist token 'employee.employee_name' missing from binding registry",
+      "expected": "reject",
+      "observed": "rejected",
+      "outcome": "BLOCKED (expected)",
+      "detail": "Variable 'employee.employee_name' is not in the approved field registry."
+    }
+  ]
+}

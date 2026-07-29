@@ -20,7 +20,7 @@ export const attendanceSummaryFetcher: ReportFetcher = {
          employee:employees(
            id, employee_code, full_name_en, owner_company_id,
            department:departments(department_name_en),
-           owner_company:owner_companies(legal_name_en)
+           owner_company:owner_companies!employees_owner_company_id_fkey(legal_name_en)
          ),
          work_site:work_sites(site_name)`
       )

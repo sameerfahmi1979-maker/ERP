@@ -1,0 +1,29 @@
+{
+  "capturedAt": "2026-07-26T23:15:00+04:00",
+  "source": "user-supabase (live project mmiefuieduzdiiwnqpie) — READ-ONLY queries",
+  "worktree": { "commit": "31654f14e7e936e80bdb301a0a00727e0068bc1a", "branch": "main", "uncommittedChanges": 764 },
+  "templatesByEngine": {
+    "puck": { "published": 4, "draft": 12, "archived": 1 },
+    "studio": { "draft": 1 },
+    "total": 18
+  },
+  "puckBodyLayoutPresent": { "published": 4, "draft": 13, "archived": 1 },
+  "criticalReconciliation": {
+    "realPuckContent": "Only 2 of 18 templates contain non-empty Puck body layouts: id=14 DEFAULT_CERTIFICATE_TEMPLATE_V2_V3 (archived) and id=15 DEFAULT_CERTIFICATE_TEMPLATE_V2_V3_V4 (draft) — identical md5 3fff1cf122a76e81dc858a3b4f0d6d10, 7307 bytes ('To Whom It May Concern').",
+    "publishedPuckLayoutsAreEmpty": "ALL 4 published 'puck' templates (ids 11, 12, 13, 19) have body_layout_json = '{}' (md5 99914b932bd37a50b983c5e7c90ae93b, 2 bytes). The 'orphaned published Puck templates' risk from the prior audit is a LABELING problem (visual_editor_engine='puck'), not a content-migration problem.",
+    "columnNameCorrection": "No column named visual_layout_json exists anywhere in the live schema. Actual columns on erp_report_templates: body_layout_json, header_layout_json, footer_layout_json (+ body_schema_json/studio_schema_version for Studio).",
+    "registeredOutputs": "erp_report_registry = 28 rows (class A=1, B=4, C=3, D=1, E=19) — reconciles the '28 registered outputs' claim.",
+    "issuedPdfs": "erp_generated_pdf_documents = 1 row (lifecycle_state=issued). Prior counts are stale because Sameer requested and approved a full issuance clean-slate (documents + QR links + sequence reset) earlier in this program.",
+    "qrLinks": "erp_output_public_links = 1 row (status=valid). The task prompt's '13 existing QR links' figure predates the approved clean-slate deletion; only 1 live link exists now and it was NOT touched by this spike.",
+    "fieldRegistry": "REPORT_FIELD_REGISTRY (src/lib/report-designer/field-registry/registry.ts) = 57 fields across 12 module groups (corrected in the prior audit; the 28/32 figures in older reports referred to earlier binding-path snapshots)."
+  },
+  "puckTemplateInventory": [
+    { "id": 14, "code": "DEFAULT_CERTIFICATE_TEMPLATE_V2_V3", "status": "archived", "body_md5": "3fff1cf122a76e81dc858a3b4f0d6d10", "body_len": 7307 },
+    { "id": 15, "code": "DEFAULT_CERTIFICATE_TEMPLATE_V2_V3_V4", "status": "draft", "body_md5": "3fff1cf122a76e81dc858a3b4f0d6d10", "body_len": 7307 },
+    { "id": 11, "code": "COMPANY_1_REPORT_TEMPLATE", "status": "published", "body_md5": "99914b932bd37a50b983c5e7c90ae93b", "body_len": 2 },
+    { "id": 12, "code": "COMPANY_1_LETTER_TEMPLATE", "status": "published", "body_md5": "99914b932bd37a50b983c5e7c90ae93b", "body_len": 2 },
+    { "id": 13, "code": "DEFAULT_CERTIFICATE_TEMPLATE_V2", "status": "published", "body_md5": "99914b932bd37a50b983c5e7c90ae93b", "body_len": 2 },
+    { "id": 19, "code": "hr-employment-letter-en", "status": "published", "body_md5": "99914b932bd37a50b983c5e7c90ae93b", "body_len": 2 }
+  ],
+  "note": "Full 18-row inventory with header/footer checksums captured in the spike execution log. No template row was modified, nulled or deleted."
+}

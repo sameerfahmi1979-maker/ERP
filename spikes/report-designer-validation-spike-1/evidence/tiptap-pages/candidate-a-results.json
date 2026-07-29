@@ -1,0 +1,31 @@
+{
+  "candidate": "A — TipTap Pages (official Pro) + community pagination fallback",
+  "generatedAt": "2026-07-26T14:00:00+04:00",
+  "officialTipTapPages": {
+    "status": "BLOCKED",
+    "evidence": "npm install @tiptap-pro/extension-pages --dry-run → npm error 404 'could not be found or you do not have permission to access it' (no Pro registry token configured). TipTap Pages is a paid Tiptap subscription feature distributed via private registry (registry.tiptap.dev).",
+    "logPath": "attempt captured in shell output 2026-07-26T13:44Z",
+    "conclusion": "Cannot be practically validated without purchasing a Tiptap plan. All Pages capability claims remain DOCUMENTATION ONLY."
+  },
+  "communityPagination": {
+    "package": "tiptap-extension-pagination@2.1.4",
+    "license": "ISC",
+    "repo": "https://github.com/hugs7/tiptap-extension-pagination",
+    "status": "PROVEN (isolated prototype, TipTap v2 only)",
+    "peerDependencyConflict": {
+      "extensionRequires": "@tiptap/core ^2.11.5",
+      "erpUses": "@tiptap/core 3.27.1",
+      "conclusion": "INCOMPATIBLE with the ERP's TipTap v3 stack — adopting it would require pinning the designer to TipTap v2 or forking the extension."
+    },
+    "findings": [
+      "A4 page nodes render at exact 794x1123 px (A4 @ 96dpi) with 25mm margins, header and footer regions — professional page canvas look. PROVEN (03-page1-a4-header-footer-scaled.png)",
+      "DEFECT: initial content load is NOT paginated — a single overflowing page renders until the first edit transaction triggers repagination (1 page → 5 pages after inserting one character). PROVEN (01 + 02 screenshots + DOM measurements)",
+      "DEFECT: no intra-paragraph splitting — a paragraph that does not fit moves entirely to the next page, leaving large blank gaps at page bottoms. PROVEN (04-arabic-ltr-defect-and-paragraph-gap.png)",
+      "DEFECT: dir=rtl attribute on pasted content is stripped by the StarterKit paragraph schema — Arabic paragraph rendered LTR ('computedDir':'ltr'). Same class of RTL gap as the production Template Studio. PROVEN (CDP measurement + screenshot 04)",
+      "Editor-to-PDF path: the extension paginates the EDITOR VIEW only; there is no coupled PDF export — final PDF still requires a separate renderer (e.g. Gotenberg), so preview/PDF divergence risk remains. INFERENCE from architecture, not disproven in spike"
+    ]
+  },
+  "erpProductionEditor": {
+    "note": "The ERP's existing Template Studio TipTap v3 editor (no pagination, no A4 canvas) was audited hands-on in the prior audit phase (REPORT_DESIGNER_DEEP_UX_ARCHITECTURE_AND_OUTPUT_QUALITY_AUDIT.md) — those findings remain valid for Candidate A's 'current state' baseline."
+  }
+}

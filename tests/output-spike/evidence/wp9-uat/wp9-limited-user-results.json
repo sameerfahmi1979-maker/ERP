@@ -1,0 +1,47 @@
+[
+  {
+    "name": "setup: limited user created with Read Only role",
+    "pass": true,
+    "detail": "wp9.uat.limited@algt.net"
+  },
+  {
+    "name": "limited user can authenticate",
+    "pass": true,
+    "detail": "JWT obtained"
+  },
+  {
+    "name": "limited user cannot read issued documents table",
+    "pass": true,
+    "detail": "0 rows"
+  },
+  {
+    "name": "limited user cannot read public links (tokens)",
+    "pass": true,
+    "detail": "0 rows"
+  },
+  {
+    "name": "limited user cannot download stored official PDF",
+    "pass": true,
+    "detail": "Object not found"
+  },
+  {
+    "name": "limited user cannot revoke via direct table write",
+    "pass": true,
+    "detail": "no error but write must be no-op"
+  },
+  {
+    "name": "limited user cannot weaken class policy",
+    "pass": true,
+    "detail": "no error but write must be no-op"
+  },
+  {
+    "name": "limited user cannot remove HR_NOC approval override",
+    "pass": true,
+    "detail": "no error but write must be no-op"
+  },
+  {
+    "name": "public verification RPC still works for authenticated user",
+    "pass": true,
+    "detail": "metadata returned"
+  }
+]

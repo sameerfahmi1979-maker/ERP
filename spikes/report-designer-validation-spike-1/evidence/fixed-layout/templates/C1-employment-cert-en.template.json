@@ -1,0 +1,151 @@
+{
+  "basePdf": {
+    "width": 210,
+    "height": 297,
+    "padding": [
+      15,
+      15,
+      15,
+      15
+    ]
+  },
+  "schemas": [
+    [
+      {
+        "name": "logo",
+        "type": "image",
+        "position": {
+          "x": 15,
+          "y": 12
+        },
+        "width": 40,
+        "height": 14
+      },
+      {
+        "name": "companyName",
+        "type": "text",
+        "position": {
+          "x": 60,
+          "y": 14
+        },
+        "width": 135,
+        "height": 8,
+        "fontName": "NotoArabic",
+        "fontSize": 13,
+        "alignment": "right",
+        "fontColor": "#1e3a8a"
+      },
+      {
+        "name": "headerRule",
+        "type": "line",
+        "position": {
+          "x": 15,
+          "y": 28
+        },
+        "width": 180,
+        "height": 0.5,
+        "color": "#1e3a8a"
+      },
+      {
+        "name": "title",
+        "type": "text",
+        "position": {
+          "x": 15,
+          "y": 40
+        },
+        "width": 180,
+        "height": 10,
+        "fontName": "NotoArabic",
+        "fontSize": 18,
+        "alignment": "center"
+      },
+      {
+        "name": "ref",
+        "type": "text",
+        "position": {
+          "x": 15,
+          "y": 55
+        },
+        "width": 90,
+        "height": 6,
+        "fontName": "NotoArabic",
+        "fontSize": 9
+      },
+      {
+        "name": "date",
+        "type": "text",
+        "position": {
+          "x": 105,
+          "y": 55
+        },
+        "width": 90,
+        "height": 6,
+        "fontName": "NotoArabic",
+        "fontSize": 9,
+        "alignment": "right"
+      },
+      {
+        "name": "body",
+        "type": "text",
+        "position": {
+          "x": 15,
+          "y": 70
+        },
+        "width": 180,
+        "height": 60,
+        "fontName": "NotoArabic",
+        "fontSize": 10.5,
+        "lineHeight": 1.6
+      },
+      {
+        "name": "signatory",
+        "type": "text",
+        "position": {
+          "x": 15,
+          "y": 220
+        },
+        "width": 90,
+        "height": 16,
+        "fontName": "NotoArabic",
+        "fontSize": 10
+      },
+      {
+        "name": "qr",
+        "type": "qrcode",
+        "position": {
+          "x": 160,
+          "y": 215
+        },
+        "width": 30,
+        "height": 30
+      },
+      {
+        "name": "qrLabel",
+        "type": "text",
+        "position": {
+          "x": 155,
+          "y": 247
+        },
+        "width": 40,
+        "height": 5,
+        "fontName": "NotoArabic",
+        "fontSize": 7,
+        "alignment": "center"
+      },
+      {
+        "name": "footer",
+        "type": "text",
+        "position": {
+          "x": 15,
+          "y": 275
+        },
+        "width": 180,
+        "height": 8,
+        "fontName": "NotoArabic",
+        "fontSize": 7.5,
+        "alignment": "center",
+        "fontColor": "#666666"
+      }
+    ]
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "basePdf": {
+    "width": 210,
+    "height": 297,
+    "padding": [
+      15,
+      15,
+      15,
+      15
+    ]
+  },
+  "schemas": [
+    [
+      {
+        "name": "title",
+        "type": "text",
+        "position": {
+          "x": 15,
+          "y": 20
+        },
+        "width": 180,
+        "height": 8,
+        "fontName": "NotoArabic",
+        "fontSize": 14,
+        "alignment": "center"
+      },
+      {
+        "name": "body",
+        "type": "text",
+        "position": {
+          "x": 15,
+          "y": 35
+        },
+        "width": 180,
+        "height": 240,
+        "fontName": "NotoArabic",
+        "fontSize": 10,
+        "lineHeight": 1.5
+      }
+    ]
+  ]
+}

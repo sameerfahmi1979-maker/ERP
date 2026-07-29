@@ -1,0 +1,32 @@
+﻿
+> erp-foundation@0.1.0 lint
+> eslint
+
+node.exe : (node:11272) ESLintIgnoreWarning: The ".eslintignore" file is no longer supported. Switch to using the 
+"ignores" property in "eslint.config.js": https://eslint.org/docs/latest/use/configure/migration-guide#ignoring-files
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ((node:11272) ES...#ignoring-files:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+<--- Last few GCs --->
+
+[11272:000001DC499EC000]    37157 ms: Scavenge (during sweeping) 4031.4 (4092.0) -> 4029.5 (4095.8) MB, pooled: 0.0 
+MB, 14.19 / 0.00 ms (average mu = 0.187, current mu = 0.124) allocation failure; 
+[11272:000001DC499EC000]    39192 ms: Incremental Mark-Compact (reduce) 4030.3 (4096.5) -> 4014.6 (4072.8) MB, pooled: 
+0.0 MB, 1899.99 / 0.00 ms (+ 25.5 ms in 6 steps since start of marking, biggest step 5.0 ms, walltime since start of 
+marking 1943 ms) (a
+FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed - JavaScript heap out of memory
+----- Native stack trace -----
+
+ 1: 00007FF7BBAC7F8D node::OnFatalError+1325
+ 2: 00007FF7BC896101 v8::Function::NewInstance+577
+ 3: 00007FF7BC67A357 EVP_PKEY_asn1_set_public_check+504087
+ 4: 00007FF7BC677F1D EVP_PKEY_asn1_set_public_check+494813
+ 5: 00007FF7BC677667 EVP_PKEY_asn1_set_public_check+492583
+ 6: 00007FF7BC715442 v8::Unlocker::~Unlocker+10290
+ 7: 00007FF7BC22CE61 v8::String::Value::~Value+165489
+ 8: 000001DC720BF43A 

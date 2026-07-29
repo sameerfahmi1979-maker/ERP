@@ -1,0 +1,93 @@
+---
+description: Global Output Framework standard — mandatory for any PDF, letter, certificate, report, export, or public QR work
+alwaysApply: true
+---
+
+# ERP Global Output Framework Standard
+
+## Phase
+
+ERP OUTPUT.2 — Renderer, Template Foundation, and Issuance Coordinator (2026-07-26)
+Authority: `implementation_Review/HR/HR_LETTERS_AND_CERTIFICATES_ENHANCEMENT_PLAN.md` (v6.1)
+
+## Rule 1 — One official issuance path
+
+ALL Class A–D official documents (letters, certificates, forms with legal value)
+MUST be generated through the coordinator:
+
+```ts
+import { generateOfficialDocument } from "@/server/actions/output/generate-official-document";
+const outcome = await generateOfficialDocument(outputCode, recordId, options);
+```
+
+**Forbidden:**
+- Creating a new standalone PDF pipeline in any module.
+- Calling `gotenbergConvertHtml` / `gotenbergConvertUrl` / `renderPdf` directly
+  from feature code for official documents.
+- Inserting into `erp_generated_pdf_documents` or `erp_output_public_links`
+  outside the coordinator (Ops Console retry actions excepted).
+
+## Rule 2 — Canonical formats and renderer
+
+- Canonical template format: **HTML/CSS** built by the Executive Ledger builder
+  (`renderExecutiveLedgerHtml`). Letters map rows via
+  `buildLetterExecutiveLedgerDocument` (same builder as browser preview —
+  preview–final parity).
+- Single official renderer: **Gotenberg/Chromium raw-HTML** via
+  `renderOfficialHtmlToPdf` (`src/lib/output/html-adapter.ts`).
+- URL-mode (`/print/...` + `renderPdf`) is retained ONLY for record-context
+  templates explicitly permitted by plan v6.1 (legacy rollback paths).
+- jsPDF / ExcelJS / CSV remain for Class E/F analytical exports only.
+
+## Rule 3 — Lifecycle (never bypass)
+
+`pending → rendering → uploaded → issued`, with
+`failed_retryable / failed_terminal / cancelled / reconciliation_required`.
+Enforced by `src/lib/output/lifecycle.ts` + `issuance-engine.ts`.
+
+- Final hash = SHA-256 of the EXACT stored bytes, verified by re-download.
+- Serials are never recycled: failure paths void them.
+- `request_key` (idempotency) and `content_fingerprint` (equal-content warning)
+  are SEPARATE concepts; equal content may be reissued only with
+  `authorizeReissue`, creating a one-directional supersession.
+
+## Rule 4 — QR activation LAST
+
+- Public links are created `pending_activation` BEFORE render (so the QR image
+  is embedded in the PDF) but the token verifies as NOT FOUND publicly.
+- Activation (`status = 'valid'`) happens ONLY after lifecycle `issued`.
+- QR expiry comes from the class policy (`erp_output_class_policies` +
+  registry overrides) via `computeQrExpiry` — never hardcode validity.
+- Legacy metadata-only links (null `generated_pdf_document_id`) are retained
+  valid-until-revoked; never bulk-cancel
+  (see `implementation_Review/PDF/OUTPUT_1_QR_LINKS_INVENTORY_AND_DECISION_TABLE.md`).
+
+## Rule 5 — Security boundaries
+
+- Registry `required_permissions` + class approval policy (`reports.approve`
+  for approval-required classes) are enforced server-side by the coordinator.
+- Stamp/signature assets require `reports.sign` and are resolved ONLY
+  server-side (signed URLs) — never exposed in browser HTML.
+- Company isolation: record `owner_company_id` must match the caller's company
+  scope, and template branding must belong to the record's company (or be
+  group/neutral).
+- Variable allowlists (`src/lib/output/variable-allowlist.ts`): templates may
+  only reference approved `{{tokens}}`; final HTML must contain ZERO
+  unresolved tokens.
+
+## Rule 6 — Onboarding contract (mandatory for every new output)
+
+1. Registry row in `erp_report_registry` with `document_class` (A–G) assigned.
+2. Data fetcher registered in `REPORT_FETCHERS` returning `owner_company_id`.
+3. Variable allowlist entry for the output code.
+4. Class E/F exports registered/audited under the global contract; Class G is
+   draft-only (no QR, no official storage).
+5. No new module-level PDF mechanism — extend the coordinator instead.
+
+## Rule 7 — Feature flags (rollback discipline)
+
+`src/lib/output/feature-flags.ts`:
+- `OUTPUT_OFFICIAL_ISSUANCE_ENABLED` — official issuance gate (off until OUTPUT.5 UAT).
+- `OUTPUT_LEGACY_EMPLOYMENT_LETTER_ENABLED` — legacy Pipeline A rollback.
+- `OUTPUT_SCHEDULES_UI_ENABLED` — schedules UI hidden until OUTPUT.7 worker UAT.
+- Flags default to the SAFE state; never remove a flag before its UAT gate passes.

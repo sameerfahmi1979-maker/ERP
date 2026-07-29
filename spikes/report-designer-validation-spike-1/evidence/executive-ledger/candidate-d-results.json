@@ -1,0 +1,107 @@
+{
+  "candidate": "D — Executive Ledger / code-first",
+  "gotenberg": "http://localhost:3100",
+  "generatedAt": "2026-07-26T13:48:39.027Z",
+  "results": [
+    {
+      "id": "D1-employment-cert-en",
+      "description": "English Employment Certificate — Company A, long employee values",
+      "status": "PROVEN",
+      "htmlRenderMs": 0,
+      "pdfMs": 842,
+      "pdfBytes": 49317,
+      "pages": 1,
+      "sha256_16": "b6b43eccfce404fe"
+    },
+    {
+      "id": "D2-experience-cert-bilingual",
+      "description": "Bilingual Experience Certificate — mixed RTL/LTR",
+      "status": "PROVEN",
+      "htmlRenderMs": 0,
+      "pdfMs": 303,
+      "pdfBytes": 101138,
+      "pages": 1,
+      "sha256_16": "1c201e2c4bfb6111"
+    },
+    {
+      "id": "D3a-salary-cert-en",
+      "description": "Salary Certificate EN — sensitive fixture amount, confidential marking",
+      "status": "PROVEN",
+      "htmlRenderMs": 1,
+      "pdfMs": 242,
+      "pdfBytes": 51419,
+      "pages": 1,
+      "sha256_16": "26845ad561aedd9e"
+    },
+    {
+      "id": "D3b-salary-cert-ar",
+      "description": "Salary Certificate AR — full RTL document direction",
+      "status": "PROVEN",
+      "htmlRenderMs": 0,
+      "pdfMs": 269,
+      "pdfBytes": 98664,
+      "pages": 1,
+      "sha256_16": "c6587a1b4aa38028"
+    },
+    {
+      "id": "D4-long-letter",
+      "description": "2–4 page HR letter — widow/orphan, header/footer continuity, signature placement",
+      "status": "PROVEN",
+      "htmlRenderMs": 0,
+      "pdfMs": 278,
+      "pdfBytes": 57977,
+      "pages": 4,
+      "sha256_16": "864881e5fa200bb0"
+    },
+    {
+      "id": "D5-analytical-report-120rows",
+      "description": "Multi-page employee report — 120 mixed EN/AR rows, totals, repeating-header check",
+      "status": "PROVEN",
+      "htmlRenderMs": 1,
+      "pdfMs": 376,
+      "pdfBytes": 110228,
+      "pages": 10,
+      "sha256_16": "29bcb8d3b6431834"
+    },
+    {
+      "id": "D6-official-form",
+      "description": "Complex official form — sections, bordered fields, checkboxes, aligned labels",
+      "status": "PROVEN",
+      "htmlRenderMs": 0,
+      "pdfMs": 234,
+      "pdfBytes": 44865,
+      "pages": 1,
+      "sha256_16": "8741207174324023"
+    },
+    {
+      "id": "D7-id-card-cr80",
+      "description": "Fixed-size CR80 ID card front+back — exact mm positioning, AR+EN, QR, photo placeholder",
+      "status": "PROVEN",
+      "note": "Code-first HTML with @page CR80 size (85.6mm x 53.98mm), preferCssPageSize",
+      "pdfMs": 285,
+      "pdfBytes": 46238,
+      "pages": 2,
+      "totalMs": 740
+    },
+    {
+      "id": "D8-cross-company-companyA",
+      "description": "Cross-company branding — identical template/data shape rendered for FIX-COMPANY-A",
+      "status": "PROVEN",
+      "htmlRenderMs": 0,
+      "pdfMs": 411,
+      "pdfBytes": 48076,
+      "pages": 1,
+      "sha256_16": "3eb6520c872a1134"
+    },
+    {
+      "id": "D8-cross-company-companyB",
+      "description": "Cross-company branding — identical template/data shape rendered for FIX-COMPANY-B",
+      "status": "PROVEN",
+      "htmlRenderMs": 0,
+      "pdfMs": 262,
+      "pdfBytes": 48568,
+      "pages": 1,
+      "sha256_16": "424175548382af1a"
+    }
+  ]
+}

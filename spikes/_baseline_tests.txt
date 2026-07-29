@@ -1,0 +1,22 @@
+﻿
+> erp-foundation@0.1.0 test
+> vitest run
+
+
+ RUN  v4.1.9 C:/dev/agt-erp
+
+node.exe : (node:21808) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` 
+instead.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ((node:21808) [D...oks()` instead.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  21 passed (21)
+      Tests  408 passed (408)
+   Start at  11:43:48
+   Duration  747ms (transform 2.82s, setup 0ms, import 3.98s, tests 252ms, environment 3ms)
+

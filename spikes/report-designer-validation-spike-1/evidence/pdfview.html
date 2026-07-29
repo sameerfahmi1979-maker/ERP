@@ -1,0 +1,37 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>SPIKE PDF viewer</title>
+  <style>
+    body { margin: 0; background: #1e293b; font-family: Arial; }
+    #info { color: #fff; padding: 8px 12px; font-size: 12px; }
+    canvas { display: block; margin: 8px auto; box-shadow: 0 0 8px rgba(0,0,0,.6); background: #fff; }
+  </style>
+</head>
+<body>
+  <div id="info">loading…</div>
+  <div id="pages"></div>
+  <script type="module">
+    import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.8.69/build/pdf.min.mjs";
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.8.69/build/pdf.worker.min.mjs";
+    const params = new URLSearchParams(location.search);
+    const url = params.get("pdf");
+    const scale = Number(params.get("scale") || "0.85");
+    const only = params.get("page"); // optional single page
+    const doc = await pdfjsLib.getDocument(url).promise;
+    document.getElementById("info").textContent = `${url} — ${doc.numPages} pages — scale ${scale}`;
+    const pages = only ? [Number(only)] : Array.from({ length: doc.numPages }, (_, i) => i + 1);
+    for (const n of pages) {
+      const page = await doc.getPage(n);
+      const vp = page.getViewport({ scale });
+      const canvas = document.createElement("canvas");
+      canvas.width = vp.width; canvas.height = vp.height;
+      document.getElementById("pages").appendChild(canvas);
+      await page.render({ canvasContext: canvas.getContext("2d"), viewport: vp }).promise;
+    }
+    document.getElementById("info").textContent += " — RENDERED";
+    window.__rendered = true;
+  </script>
+</body>
+</html>

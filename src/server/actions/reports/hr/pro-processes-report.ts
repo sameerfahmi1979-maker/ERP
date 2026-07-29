@@ -34,7 +34,7 @@ export const proProcessesFetcher: ReportFetcher = {
          assigned_to_profile:profiles!assigned_to(display_name),
          employee:employees(
            employee_code, full_name_en, owner_company_id,
-           owner_company:owner_companies(legal_name_en)
+           owner_company:owner_companies!employees_owner_company_id_fkey(legal_name_en)
          )`
       )
       .is("deleted_at", null)

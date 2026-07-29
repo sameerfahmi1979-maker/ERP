@@ -1,0 +1,92 @@
+[
+  {
+    "fixture": "01-employment-certificate-en",
+    "documentCode": "HR_EMPLOYMENT_LETTER",
+    "language": "en",
+    "qr": true,
+    "pages": 1,
+    "bytes": 60428,
+    "sha256": "fe1ec650387c9f1e186c9c64bd795350cbf664e2310956f05920abf1c2107273",
+    "renderMs": 752
+  },
+  {
+    "fixture": "02-employment-confirmation-ar",
+    "documentCode": "HR_EMPLOYMENT_CONFIRMATION",
+    "language": "ar",
+    "qr": true,
+    "pages": 1,
+    "bytes": 192587,
+    "sha256": "61774a2d9261998eb629e1e5ede276540c37b7633fe8ed07389a67be516a986d",
+    "renderMs": 465
+  },
+  {
+    "fixture": "03-employment-confirmation-bilingual",
+    "documentCode": "HR_EMPLOYMENT_CONFIRMATION",
+    "language": "bilingual",
+    "qr": true,
+    "pages": 1,
+    "bytes": 187999,
+    "sha256": "00b2855ae4fd69de493dd4153baa8d1a827e9fcfecd9e70da3b45ad1b8c63929",
+    "renderMs": 454
+  },
+  {
+    "fixture": "04-clearance-form-bilingual",
+    "documentCode": "HR_CLEARANCE_FORM",
+    "language": "bilingual",
+    "qr": false,
+    "pages": 1,
+    "bytes": 159658,
+    "sha256": "5cd72e484a5c83c7ccc2e73dae93b3d9dd19524e21a835a9b357ab0d74a7ee04",
+    "renderMs": 448
+  },
+  {
+    "fixture": "05-joining-checklist-en-multipage",
+    "documentCode": "HR_JOINING_CHECKLIST",
+    "language": "en",
+    "qr": false,
+    "pages": 3,
+    "bytes": 60291,
+    "sha256": "7054616ad92c237f199fcd8c4514d29c8fdb690b2d97e66ee887f1d844ba1f10",
+    "renderMs": 416
+  },
+  {
+    "fixture": "06-ppe-issue-form-en",
+    "documentCode": "HR_PPE_ISSUE_FORM",
+    "language": "en",
+    "qr": false,
+    "pages": 1,
+    "bytes": 55596,
+    "sha256": "8684c2153234092d9f35ffb714fafc2fda046ddfc4a527e5df9163ff48635e3e",
+    "renderMs": 415
+  },
+  {
+    "fixture": "07-salary-certificate-with-amount-en",
+    "documentCode": "HR_SALARY_CERT_WITH_AMOUNT",
+    "language": "en",
+    "qr": true,
+    "pages": 1,
+    "bytes": 61394,
+    "sha256": "da1c38febd0eb592d9036f78c3e8631a2a6f54a2e1fb706dbcdf0104536cafec",
+    "renderMs": 430
+  },
+  {
+    "fixture": "08-noc-en",
+    "documentCode": "HR_NOC",
+    "language": "en",
+    "qr": true,
+    "pages": 1,
+    "bytes": 60832,
+    "sha256": "751398f288aa071b69f96dcc4769ec06f8d0539ec85bef77359604ceb066414a",
+    "renderMs": 411
+  },
+  {
+    "fixture": "09-warning-letter-en-no-qr",
+    "documentCode": "HR_WARNING_LETTER",
+    "language": "en",
+    "qr": false,
+    "pages": 1,
+    "bytes": 60024,
+    "sha256": "e43820ce9e3ca9d959efe2607cc3274bfd5f310f35ca6f47094ff212b605a182",
+    "renderMs": 408
+  }
+]

@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { RefreshCw, LayoutDashboard } from "lucide-react";
+import { RefreshCw, FolderKanban, TrendingUp, PieChart, Bot, CalendarClock, BellRing } from "lucide-react";
 import { DmsKpiCards } from "./dms-kpi-cards";
 import { DmsDocumentsOverTimeChart } from "./dms-documents-over-time-chart";
 import { DmsCategoryBarChart } from "./dms-category-bar-chart";
@@ -75,16 +75,33 @@ export function DmsDashboardPageClient({ initialStats }: Props) {
 
   const s = stats ?? initialStats;
 
+  // Derived, honest insights computed from data already on the page — no extra queries.
+  const topCategory = [...s.documents_by_category].sort((a, b) => b.count - a.count)[0];
+  const topCategoryPct =
+    topCategory && s.total_documents > 0
+      ? Math.round((topCategory.count / s.total_documents) * 100)
+      : null;
+
+  const aiComplete = s.ai_pipeline.find((p) => p.status === "ai_complete")?.count ?? 0;
+  const aiCompletePct =
+    s.total_documents > 0 ? Math.round((aiComplete / s.total_documents) * 100) : null;
+
+  const attentionCount = s.inbox_items.length + s.expiring_items.length + s.renewal_items.length;
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {/* Header row */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <LayoutDashboard className="h-5 w-5 text-muted-foreground" />
-          <h1 className="text-lg font-semibold">DMS Dashboard</h1>
-          <span className="text-sm text-muted-foreground hidden sm:inline">
-            · Overview of your document management system
+        <div className="flex items-center gap-3">
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <FolderKanban className="h-[18px] w-[18px]" />
           </span>
+          <div>
+            <h1 className="text-lg font-semibold leading-tight">DMS Dashboard</h1>
+            <p className="text-xs text-muted-foreground">
+              Live overview of intake, AI processing, and expiry compliance
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {/* Date range toggle */}
@@ -117,13 +134,27 @@ export function DmsDashboardPageClient({ initialStats }: Props) {
       </div>
 
       {/* Zone 1 — KPI Cards */}
-      <DmsKpiCards stats={s} />
+      <DmsKpiCards stats={s} sparklineData={s.documents_by_day} />
+
+      {/* Section label */}
+      <div className="flex items-center gap-2 pt-1">
+        <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Analytics
+        </h2>
+      </div>
 
       {/* Zone 2 — Charts row 1 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card className="shadow-sm">
           <CardHeader className="pb-2 pt-4 px-4">
-            <CardTitle className="text-sm font-semibold">Documents Added Over Time</CardTitle>
+            <div className="flex items-center gap-2">
+              <TrendingUp className="h-3.5 w-3.5 text-blue-500" />
+              <CardTitle className="text-sm font-semibold">Documents Added Over Time</CardTitle>
+            </div>
+            <p className="text-[11px] text-muted-foreground pl-[22px]">
+              {s.added_this_month.toLocaleString()} added in the current month
+            </p>
           </CardHeader>
           <CardContent className="px-4 pb-4">
             {isLoading ? (
@@ -139,7 +170,15 @@ export function DmsDashboardPageClient({ initialStats }: Props) {
 
         <Card className="shadow-sm">
           <CardHeader className="pb-2 pt-4 px-4">
-            <CardTitle className="text-sm font-semibold">Documents by Category</CardTitle>
+            <div className="flex items-center gap-2">
+              <PieChart className="h-3.5 w-3.5 text-violet-500" />
+              <CardTitle className="text-sm font-semibold">Documents by Category</CardTitle>
+            </div>
+            <p className="text-[11px] text-muted-foreground pl-[22px]">
+              {topCategory && topCategoryPct != null
+                ? `${topCategory.name} is your largest category (${topCategoryPct}%)`
+                : "No category data available"}
+            </p>
           </CardHeader>
           <CardContent className="px-4 pb-4">
             {isLoading ? (
@@ -159,7 +198,15 @@ export function DmsDashboardPageClient({ initialStats }: Props) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card className="shadow-sm">
           <CardHeader className="pb-2 pt-4 px-4">
-            <CardTitle className="text-sm font-semibold">AI Pipeline Status</CardTitle>
+            <div className="flex items-center gap-2">
+              <Bot className="h-3.5 w-3.5 text-emerald-500" />
+              <CardTitle className="text-sm font-semibold">AI Pipeline Status</CardTitle>
+            </div>
+            <p className="text-[11px] text-muted-foreground pl-[22px]">
+              {aiCompletePct != null
+                ? `${aiCompletePct}% of documents fully AI-processed`
+                : "No AI pipeline data"}
+            </p>
           </CardHeader>
           <CardContent className="px-4 pb-4">
             {isLoading ? (
@@ -179,7 +226,15 @@ export function DmsDashboardPageClient({ initialStats }: Props) {
 
         <Card className="shadow-sm">
           <CardHeader className="pb-2 pt-4 px-4">
-            <CardTitle className="text-sm font-semibold">Expiry Timeline</CardTitle>
+            <div className="flex items-center gap-2">
+              <CalendarClock className="h-3.5 w-3.5 text-amber-500" />
+              <CardTitle className="text-sm font-semibold">Expiry Timeline</CardTitle>
+            </div>
+            <p className="text-[11px] text-muted-foreground pl-[22px]">
+              {s.expiring_30_days > 0
+                ? `${s.expiring_30_days} document${s.expiring_30_days === 1 ? "" : "s"} expiring within 30 days`
+                : "Nothing expiring within 30 days"}
+            </p>
           </CardHeader>
           <CardContent className="px-4 pb-4">
             {isLoading ? (
@@ -189,6 +244,19 @@ export function DmsDashboardPageClient({ initialStats }: Props) {
             )}
           </CardContent>
         </Card>
+      </div>
+
+      {/* Section label */}
+      <div className="flex items-center gap-2 pt-1">
+        <BellRing className="h-3.5 w-3.5 text-muted-foreground" />
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Needs Your Attention
+        </h2>
+        {attentionCount > 0 && (
+          <span className="text-[11px] text-muted-foreground">
+            · {attentionCount} item{attentionCount === 1 ? "" : "s"} across inbox, expiry, and renewals
+          </span>
+        )}
       </div>
 
       {/* Zone 4 — Action panels */}

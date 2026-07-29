@@ -12,6 +12,10 @@
  * Must never perform I/O. Pure functions only.
  */
 
+import { parseStudioBodySchema } from "@/lib/template-studio/schema";
+import { validateStudioBody } from "@/lib/template-studio/validate";
+import { getRestrictedFieldsFromPaths } from "@/lib/report-designer/field-registry";
+
 export type SecurityFindingSeverity = "block" | "warning";
 
 export interface SecurityFinding {
@@ -82,6 +86,8 @@ interface TemplateContentFields {
   style_json?: unknown;
   // REPORT DESIGNER UX.3: template type for sensitive field governance
   template_type?: string | null;
+  // OUTPUT.3B: Template Studio structured body (visual_editor_engine === "studio")
+  body_schema_json?: unknown;
 }
 
 function extractSnippet(text: string, match: RegExpMatchArray): string {
@@ -173,6 +179,44 @@ export function runTemplateSecurityReview(
     });
 
     findings.push(...visualResult.findings);
+  }
+
+  // ── OUTPUT.3B: Template Studio structured body review ─────────────────────
+  if (fields.body_schema_json != null) {
+    const parsed = parseStudioBodySchema(fields.body_schema_json);
+    if (!parsed.ok) {
+      for (const err of parsed.errors.slice(0, 10)) {
+        findings.push({
+          field: "body_schema_json",
+          rule: "studio_schema_invalid",
+          severity: "block",
+          excerpt: err.slice(0, 120),
+        });
+      }
+    } else {
+      const validation = validateStudioBody(parsed.schema);
+      if (!validation.ok) {
+        for (const err of validation.errors.slice(0, 10)) {
+          findings.push({
+            field: "body_schema_json",
+            rule: "studio_validation_failed",
+            severity: "block",
+            excerpt: err.slice(0, 120),
+          });
+        }
+      }
+      // Restricted/confidential fields trigger the existing elevated-approval gate
+      // (governance matches on this rule name in security_review_notes).
+      const restricted = getRestrictedFieldsFromPaths(validation.variables);
+      for (const entry of restricted) {
+        findings.push({
+          field: "body_schema_json",
+          rule: "restricted_field_elevated_approval_required",
+          severity: "warning",
+          excerpt: entry.fieldPath,
+        });
+      }
+    }
   }
 
   const hasBlock = findings.some((f) => f.severity === "block");

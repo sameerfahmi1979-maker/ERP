@@ -76,7 +76,7 @@ async function logHrAiUsage(params: {
 
 async function loadEmployeeSafeProfile(employeeId: number) {
   const db = createAdminClient();
-  const { data } = await db
+  const { data, error } = await db
     .from("employees")
     .select(`
       id, employee_code, full_name_en, employee_status, joining_date,
@@ -85,13 +85,21 @@ async function loadEmployeeSafeProfile(employeeId: number) {
       department:departments(department_name_en),
       designation:designations(designation_name_en),
       branch:branches(branch_name_en),
-      owner_company:owner_companies(legal_name_en),
+      owner_company:owner_companies!employees_owner_company_id_fkey(legal_name_en),
       primary_work_site:work_sites(site_name),
       employment_type:employment_types(type_name)
     `)
     .eq("id", employeeId)
     .is("deleted_at", null)
     .maybeSingle();
+  if (error) {
+    // Distinguish query/relationship failures from a genuine missing employee.
+    console.error("[HR AI Review] employee profile query failed:", {
+      code: error.code,
+      message: error.message,
+      employeeId,
+    });
+  }
   return data;
 }
 

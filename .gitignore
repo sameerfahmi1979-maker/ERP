@@ -40,6 +40,11 @@ ChatGPT/
 # Design archive — excluded from VCS; contains node_modules with flagged packages
 UIUX_Design/
 
+# Community awesome vendor clones (reinstall via awesome-cursorrules-implementation.mdc).
+# Active curated subsets under .cursor/rules/community/ and .cursor/skills/community/ are committed.
+.cursor/awesome-cursorrules/
+.cursor/vendor/
+
 # Temporary scripts used for one-off migrations / fixes
 scripts/
 

@@ -1,0 +1,21 @@
+﻿== D1_short_cert_companyA.pdf
+Pages:           1
+Page size:       595.92 x 842.88 pts (A4)
+== D1_short_cert_companyA_PDFA-2b.pdf
+Pages:           1
+Page size:       595.899 x 842.854 pts (A4)
+== D2_short_cert_companyB.pdf
+Pages:           1
+Page size:       595.92 x 842.88 pts (A4)
+== D3_short_cert_companyC.pdf
+Pages:           1
+Page size:       595.92 x 842.88 pts (A4)
+== D4_arabic_rtl_cert.pdf
+Pages:           1
+Page size:       595.92 x 842.88 pts (A4)
+== D5_long_multipage_letter.pdf
+Pages:           4
+Page size:       595.92 x 842.88 pts (A4)
+== D6_fixed_card_cr80.pdf
+Pages:           1
+Page size:       242.88 x 153.12 pts

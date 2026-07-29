@@ -6,7 +6,6 @@
  */
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import {
   SendHorizonal,
   CheckCircle2,
@@ -316,7 +315,6 @@ export function GovernanceActionsDropdown({
   onTemplateUpdated,
   onNewVersionCreated,
 }: GovernanceActionsProps) {
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
@@ -401,15 +399,14 @@ export function GovernanceActionsDropdown({
           is_default: false,
         };
         onNewVersionCreated?.(draftTemplate);
-        toast.success(`Draft v${nextVersion} created — opening editor…`, {
-          action: {
-            label: "Open Editor",
-            onClick: () => router.push(`/admin/reports/editor/${newId}`),
-          },
+        // OFFICIAL DOCS.1 Package 9: visual editors (Puck, Template Studio) are
+        // retired. Official document wording is fixed in code; a new draft
+        // version only carries branding/metadata changes edited via this page.
+        toast.success(`Draft v${nextVersion} created.`, {
+          description:
+            "Official document wording is fixed in code. Edit branding/metadata here, then submit the draft for review.",
           duration: 8000,
         });
-        // Auto-navigate to the new draft editor
-        router.push(`/admin/reports/editor/${newId}`);
       } else {
         toast.error(res.error ?? "Failed to create new version.");
       }

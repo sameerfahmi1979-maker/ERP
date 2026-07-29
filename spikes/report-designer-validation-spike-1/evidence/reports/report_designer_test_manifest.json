@@ -1,0 +1,35 @@
+{
+  "spike": "REPORT.DESIGNER.VALIDATION.SPIKE.1",
+  "executedAt": "2026-07-26",
+  "worktree": { "commit": "31654f14e7e936e80bdb301a0a00727e0068bc1a", "branch": "main", "uncommittedUserChanges": 764, "preserved": true },
+  "environment": {
+    "os": "Windows 10.0.26200",
+    "node": "npx tsx runner",
+    "gotenberg": "http://localhost:3100 — health: chromium up, libreoffice up",
+    "database": "user-supabase (READ-ONLY queries only)",
+    "erpRuntime": "not required for isolated prototypes; integrated ERP admin-UI UX tasks reuse the prior audit evidence"
+  },
+  "mandatoryDocuments": [
+    { "no": 1, "doc": "English Employment Certificate", "A": "UNSUPPORTED (no PDF path in editor prototype)", "B": "PROVEN B1 (1p)", "C": "PROVEN C1 (1p, hairline-text defect)", "D": "PROVEN D1 (1p)" },
+    { "no": 2, "doc": "Arabic/English Bilingual Experience Certificate", "A": "PARTIAL (editor only; dir=rtl stripped)", "B": "PROVEN B2 (Arabic shaped correctly)", "C": "FAILED quality (Arabic broken/faint) C2", "D": "PROVEN D2 (shaped RTL Arabic)" },
+    { "no": 3, "doc": "Salary Certificate (EN + AR variants)", "A": "NOT TESTED", "B": "PROVEN B3 (EN)", "C": "PROVEN C3 (EN, table)", "D": "PROVEN D3a EN + D3b full-RTL AR" },
+    { "no": 4, "doc": "2–4 page HR letter", "A": "PARTIAL (5-page editor pagination after edit; no PDF)", "B": "PROVEN B4 (4p, manual PageBreak)", "C": "FAILED (no reflow — 1 unreadable page) C4", "D": "PROVEN D4 (4p)" },
+    { "no": 5, "doc": "Multi-page employee report 100+ rows", "A": "NOT TESTED (no table pagination)", "B": "PROVEN B5 (11p, {d.rows[i]} loop, repeating header)", "C": "PARTIAL C5 (4p auto-paginated, NO repeating header)", "D": "PROVEN D5 (10p landscape, repeating thead)" },
+    { "no": 6, "doc": "Complex official form", "A": "NOT TESTED", "B": "PROVEN B6", "C": "PROVEN C6 (EN only)", "D": "PROVEN D6" },
+    { "no": 7, "doc": "Fixed-size employee ID card (CR80)", "A": "UNSUPPORTED", "B": "PARTIAL B7 (page size only, no absolute positioning)", "C": "PROVEN C7 (2 faces; bidi punctuation defects)", "D": "PROVEN D7 (2 faces; fixture CSS overlap noted)" },
+    { "no": 8, "doc": "Cross-company branding test", "A": "NOT TESTED", "B": "PROVEN B8A/B8B (text branding; dynamic logo images = Carbone EE-only)", "C": "PROVEN C8A/C8B (dynamic logo images work)", "D": "PROVEN D8A/D8B (full branding isolation)" }
+  ],
+  "keyMeasurements": {
+    "candidateD_pdfMs": { "min": 234, "max": 842, "docs": 10 },
+    "candidateB_carboneInjectionMs": { "min": 8, "max": 23 }, "candidateB_libreOfficePdfMs": { "min": 208, "max": 736 },
+    "candidateC_generateMs": { "min": 34, "max": 270 },
+    "pageCounts": "evidence/page-counts.json"
+  },
+  "blocked": [
+    "Official TipTap Pages hands-on validation (paid subscription + private registry required)",
+    "Carbone authoring by a real business administrator in Microsoft Word (simulated programmatically)",
+    "pdfme drag-and-drop Designer UI hands-on session (generator tested; Designer UI not run)",
+    "Database-level RLS proof inside spike prototypes (adapter-level isolation proven; live RLS untouched read-only)",
+    "Human-user SUS/satisfaction measurements (expert heuristic evaluation only)"
+  ]
+}

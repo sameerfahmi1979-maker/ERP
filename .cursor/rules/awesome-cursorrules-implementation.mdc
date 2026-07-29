@@ -1,0 +1,114 @@
+---
+description: Always apply curated awesome Cursor rules/skills (PatrickJS, sanjeed5, spencerpauly, VoltAgent) during ALGT ERP implementation
+alwaysApply: true
+---
+
+# Awesome Community Pack - Always-On Implementation Skills
+
+During **every** implementation, refactor, bug fix, and code review, apply the curated community pack below. Do **not** load entire upstream catalogs into context.
+
+## Installed sources
+
+| Source | Vendor path (gitignored) | Active subset (committed) |
+|---|---|---|
+| [PatrickJS/awesome-cursorrules](https://github.com/PatrickJS/awesome-cursorrules) | `.cursor/awesome-cursorrules/` | `.cursor/rules/community/*.mdc` |
+| [sanjeed5/awesome-cursor-rules-mdc](https://github.com/sanjeed5/awesome-cursor-rules-mdc) | `.cursor/vendor/awesome-cursor-rules-mdc/` | `.cursor/rules/community/mdc/*.mdc` |
+| [spencerpauly/awesome-cursor-skills](https://github.com/spencerpauly/awesome-cursor-skills) | `.cursor/vendor/awesome-cursor-skills/` | `.cursor/skills/community/*/SKILL.md` |
+| [VoltAgent/awesome-agent-skills](https://github.com/VoltAgent/awesome-agent-skills) | `.cursor/vendor/awesome-agent-skills/` | `.cursor/rules/community/voltagent-erp-skill-index.md` (link index only) |
+
+### Reinstall vendors if missing
+
+```powershell
+git clone --depth 1 https://github.com/PatrickJS/awesome-cursorrules.git .cursor/awesome-cursorrules
+Remove-Item -Recurse -Force .cursor/awesome-cursorrules/.git
+
+New-Item -ItemType Directory -Force -Path .cursor/vendor | Out-Null
+git clone --depth 1 https://github.com/sanjeed5/awesome-cursor-rules-mdc.git .cursor/vendor/awesome-cursor-rules-mdc
+git clone --depth 1 https://github.com/spencerpauly/awesome-cursor-skills.git .cursor/vendor/awesome-cursor-skills
+git clone --depth 1 https://github.com/VoltAgent/awesome-agent-skills.git .cursor/vendor/awesome-agent-skills
+Remove-Item -Recurse -Force .cursor/vendor/awesome-cursor-rules-mdc/.git,
+  .cursor/vendor/awesome-cursor-skills/.git,
+  .cursor/vendor/awesome-agent-skills/.git -ErrorAction SilentlyContinue
+```
+
+## Precedence (non-negotiable)
+
+1. **ALGT ERP rules/skills** (`.cursor/rules/erp-*.mdc`, `algt-erp-source-of-truth.mdc`, `.cursor/skills/erp-*`, `docs/standards/`) win on any conflict.
+2. **Curated community active subsets** listed below.
+3. **Vendor catalogs** are reference-only - never apply Vue/Django/Flutter/React Native/etc. unless the task explicitly needs them.
+4. Never install or always-apply the full VoltAgent 1400+ catalog.
+
+## Mandatory community rules (PatrickJS + sanjeed5)
+
+### PatrickJS stack rules
+
+| Area | File |
+|---|---|
+| Next.js + Supabase auth/RLS | `.cursor/rules/community/community-nextjs-supabase.mdc` |
+| Next.js + React 19 + Tailwind | `.cursor/rules/community/community-nextjs-react-tailwind.mdc` |
+| TanStack Query v5 | `.cursor/rules/community/community-tanstack-query.mdc` |
+| React + TypeScript + shadcn | `.cursor/rules/community/community-react-typescript-shadcn.mdc` |
+| React components | `.cursor/rules/community/community-react-components.mdc` |
+| Tailwind + shadcn | `.cursor/rules/community/community-tailwind-shadcn.mdc` |
+| TypeScript + Zod + Next.js | `.cursor/rules/community/community-typescript-zod-nextjs.mdc` |
+| DevSecOps | `.cursor/rules/community/community-devsecops.mdc` |
+| Vitest | `.cursor/rules/community/community-vitest.mdc` |
+| Playwright E2E | `.cursor/rules/community/community-playwright-e2e.mdc` |
+
+### sanjeed5 `.mdc` best-practice rules
+
+| Area | File |
+|---|---|
+| Next.js | `.cursor/rules/community/mdc/mdc-next-js.mdc` |
+| React | `.cursor/rules/community/mdc/mdc-react.mdc` |
+| React Query | `.cursor/rules/community/mdc/mdc-react-query.mdc` |
+| TypeScript | `.cursor/rules/community/mdc/mdc-typescript.mdc` |
+| Supabase | `.cursor/rules/community/mdc/mdc-supabase.mdc` |
+| Tailwind | `.cursor/rules/community/mdc/mdc-tailwind.mdc` |
+| Zod | `.cursor/rules/community/mdc/mdc-zod.mdc` |
+| shadcn | `.cursor/rules/community/mdc/mdc-shadcn.mdc` |
+| PostgreSQL | `.cursor/rules/community/mdc/mdc-postgresql.mdc` |
+| Playwright | `.cursor/rules/community/mdc/mdc-playwright.mdc` |
+| Vitest | `.cursor/rules/community/mdc/mdc-vitest.mdc` |
+| ESLint | `.cursor/rules/community/mdc/mdc-eslint.mdc` |
+| Git / GitHub Actions | `.cursor/rules/community/mdc/mdc-git.mdc`, `mdc-github-actions.mdc` |
+
+## Mandatory community skills (spencerpauly)
+
+Use these from `.cursor/skills/community/` when the task matches:
+
+- `systematic-debugging`, `grinding-until-pass`, `auto-type-checking`
+- `writing-tests`, `adding-e2e-tests`, `api-smoke-testing`
+- `reviewing-code`, `parallel-code-review`, `auditing-security`
+- `verifying-in-browser`, `visual-qa-testing`, `form-testing`, `responsive-testing`, `accessibility-auditing`, `network-request-auditing`
+- `codebase-onboarding`, `database-design`, `using-ui-stack`, `converting-css-to-tailwind`
+- `suggesting-cursor-rules`
+
+ERP PDF/output skills still win for documents: `erp-pdf-router`, `erp-html-print`, `erp-pdf-visual-qa`, `erp-template-governance`.
+
+## VoltAgent (index only)
+
+For official team skills not already local, consult:
+
+`.cursor/rules/community/voltagent-erp-skill-index.md`
+
+Especially: Vercel Next best practices, Supabase Postgres, shadcn/ui, Anthropic webapp-testing.
+
+## Always enforce
+
+- Prefer App Router Server Components; Client Components only when needed.
+- Server auth: `getUser()`, never trust `getSession()` alone.
+- Await `params` / `searchParams`.
+- Use `@supabase/ssr` - never deprecated auth-helpers.
+- RLS on every new table; never expose service-role keys to the client.
+- Validate with Zod; TypeScript strict; avoid unjustified `any`.
+- Secrets only in env vars; never commit or log tokens.
+- Prefer ERP UI primitives (`ERPCombobox`, `ERPChildDialogForm`, workspace forms) over inventing parallel patterns.
+- Class A-D official documents go through the Output Framework coordinator only.
+
+## When implementing
+
+1. Identify the surface (UI, server action, Supabase, query, test, PDF/output).
+2. Apply matching community rule/skill **and** ERP domain rules.
+3. Prefer existing project patterns over generic community examples.
+4. If community guidance conflicts with ERP standards, follow ERP and ignore the community suggestion.

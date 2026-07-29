@@ -1,0 +1,84 @@
+{
+  "spike": "REPORT.DESIGNER.VALIDATION.SPIKE.1 — COMPLETION",
+  "executedAt": "2026-07-26T20:09:40.004Z",
+  "runtimeEnv": {
+    "appUrl": "http://localhost:3000",
+    "supabaseProject": "mmiefuieduzdiiwnqpie (PRODUCTION) — read-only; NO mutations performed",
+    "mutationPolicy": "All save/publish/issue/delete disabled because runtime targets production DB. Only unsaved editor behaviour tested live.",
+    "gotenberg": "http://localhost:3100 — chromium+libreoffice both up"
+  },
+  "gaps": [
+    {
+      "id": "GAP-1",
+      "title": "Live ERP Report Designer test",
+      "status": "PROVEN",
+      "evidence": "live-erp/live-0*.png",
+      "note": "Logged in as sameer@algt.net; Reports→Template Studio; 17 templates; block palette; governed field picker with sensitivity classes; live preview via canonical renderer; RTL mode emits dir=rtl; dirty-tracking. No save (production DB)."
+    },
+    {
+      "id": "GAP-2",
+      "title": "Official TipTap Pages",
+      "status": "BLOCKED",
+      "evidence": "security/ (n/a) — registry probe in report",
+      "note": "registry.tiptap.dev HTTP 403 invalid credentials; npmjs 404. No authorized token. Not scored as proven."
+    },
+    {
+      "id": "GAP-3a",
+      "title": "Carbone GUI admin authoring + SUS",
+      "status": "BLOCKED",
+      "evidence": "n/a",
+      "note": "Word installed (Office16) but no human participant; GUI usability/SUS cannot be fabricated. Programmatic DOCX (prior spike) not relabeled as admin authoring."
+    },
+    {
+      "id": "GAP-3b",
+      "title": "DOCX/Carbone intake security battery",
+      "status": "PROVEN",
+      "evidence": "security/docx-security-battery-results.json + docx-fixtures/",
+      "note": "8/8 threats detected by proposed guards (docm, VBA, external rels/SSRF, remote image, zip-bomb, path traversal, spoofing, unresolved token). Guards NOT yet implemented in production."
+    },
+    {
+      "id": "GAP-4",
+      "title": "pdfme visual Designer UI",
+      "status": "PROVEN (Arabic KNOCKOUT)",
+      "evidence": "pdfme-designer/",
+      "note": "Live drag/drop Designer: export 1754B JSON, reopen, Company A/B branding, generate 88ms. Arabic executed test shows disconnected boxes — KNOCKOUT for Arabic families."
+    },
+    {
+      "id": "GAP-5a",
+      "title": "Studio injection/security battery",
+      "status": "PROVEN",
+      "evidence": "security/studio-security-battery-results.json",
+      "note": "13/13 against production validate.ts: script node, js: link, style attr, font clamp, css-expression color, restricted token, forged path, empty chip, bad textAlign, unresolved-token gate + 2 controls + governance-drift finding."
+    },
+    {
+      "id": "GAP-5b",
+      "title": "Multi-company DB RLS proof",
+      "status": "BLOCKED",
+      "evidence": "code review (template-studio.ts)",
+      "note": "Single tenant membership; production DB no-write. Server actions gated by hasPermission(reports.manage); preview omits branding/protected assets. DB-level cross-company RLS not provable without 2nd membership."
+    },
+    {
+      "id": "GAP-6a",
+      "title": "Rendering concurrency/performance",
+      "status": "PROVEN",
+      "evidence": "performance/gotenberg-concurrency-results.json",
+      "note": "Cold 885ms, warm 512ms; 1/5/10 concurrent all succeeded; 10-concurrent 11.85 PDF/s."
+    },
+    {
+      "id": "GAP-6b",
+      "title": "pdfme bundle size",
+      "status": "PROVEN",
+      "evidence": "reports/ (vite build log in report)",
+      "note": "dist main 6.88MB (2.33MB gzip) + clawpdf worker 11.26MB — heavy."
+    }
+  ],
+  "baselineVerification": {
+    "status": "PROVEN",
+    "evidence": "baseline-verification/baseline-verification-summary.json",
+    "note": "All 28 prior-spike PDFs open; 129 files hashed; page counts match page-counts.json with 0 mismatches."
+  },
+  "humanUsability": {
+    "status": "EXPERT HEURISTIC ONLY",
+    "note": "No SUS score reported. No human participant. Real business-user acceptance remains a future UAT gate."
+  }
+}

@@ -9,6 +9,7 @@
 // ============================================================================
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { IEmailProvider, EmailProviderConfig, EmailMessageInput, EmailSendResult } from "./types";
 import { MicrosoftGraphEmailProvider } from "./microsoft-graph-provider";
 
@@ -112,6 +113,48 @@ export async function getDefaultEmailProvider(): Promise<IEmailProvider> {
 
   // Fallback to any enabled provider
   const { data: anyProvider } = await supabase
+    .from("erp_email_provider_configs")
+    .select("*")
+    .eq("is_enabled", true)
+    .eq("is_active", true)
+    .is("deleted_at", null)
+    .limit(1)
+    .single();
+
+  if (!anyProvider) {
+    throw new Error(
+      "No email provider is enabled. Configure one in Admin → Settings → Email Settings."
+    );
+  }
+
+  return buildProvider(rowToConfig(anyProvider as Record<string, unknown>));
+}
+
+/**
+ * OUTPUT.7 (WP11): system-context variant of getDefaultEmailProvider for
+ * machine-to-machine callers (e.g. the schedules worker) that run without a
+ * user session. Uses the service-role client, so provider config reads are
+ * not blocked by session-scoped RLS. Callers MUST have already performed
+ * their own authentication (WORKER_SECRET) and permission validation.
+ */
+export async function getDefaultEmailProviderSystem(): Promise<IEmailProvider> {
+  const db = createAdminClient();
+
+  const { data: defaultProvider } = await db
+    .from("erp_email_provider_configs")
+    .select("*")
+    .eq("is_default", true)
+    .eq("is_enabled", true)
+    .eq("is_active", true)
+    .is("deleted_at", null)
+    .limit(1)
+    .single();
+
+  if (defaultProvider) {
+    return buildProvider(rowToConfig(defaultProvider as Record<string, unknown>));
+  }
+
+  const { data: anyProvider } = await db
     .from("erp_email_provider_configs")
     .select("*")
     .eq("is_enabled", true)

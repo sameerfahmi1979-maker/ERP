@@ -26,7 +26,7 @@ export const onboardingTasksFetcher: ReportFetcher = {
          candidate:hr_candidates(full_name_en, candidate_code),
          employee:employees(
            full_name_en, employee_code, owner_company_id,
-           owner_company:owner_companies(legal_name_en)
+           owner_company:owner_companies!employees_owner_company_id_fkey(legal_name_en)
          )`
       )
       .is("deleted_at", null)

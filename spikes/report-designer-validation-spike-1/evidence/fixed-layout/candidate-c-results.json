@@ -1,0 +1,79 @@
+{
+  "candidate": "C — pdfme 6.1.12 (generator/schemas/common), MIT license",
+  "renderPath": "@pdfme/generator (pdf-lib based, server-side Node)",
+  "generatedAt": "2026-07-26T13:54:06.697Z",
+  "results": [
+    {
+      "id": "C1-employment-cert-en",
+      "description": "English Employment Certificate — fixed positions, dynamic logo image + QR",
+      "status": "PROVEN",
+      "generateMs": 151,
+      "pdfBytes": 15811,
+      "pages": -1
+    },
+    {
+      "id": "C2-experience-cert-bilingual",
+      "description": "Bilingual certificate — CRITICAL Arabic shaping/joining test in pdf-lib pipeline",
+      "status": "PROVEN",
+      "generateMs": 66,
+      "pdfBytes": 11716,
+      "pages": -1
+    },
+    {
+      "id": "C3-salary-cert-en",
+      "description": "Salary Certificate — pdfme table schema, sensitive fixture salary",
+      "status": "PROVEN",
+      "generateMs": 34,
+      "pdfBytes": 8028,
+      "pages": -1
+    },
+    {
+      "id": "C4-long-letter",
+      "description": "Long letter — fixed text box overflow behaviour (flowing-document limitation probe)",
+      "status": "PROVEN",
+      "generateMs": 109,
+      "pdfBytes": 11959,
+      "pages": -1
+    },
+    {
+      "id": "C5-analytical-report-120rows",
+      "description": "Analytical report — pdfme table schema auto page-break over 120 rows",
+      "status": "PROVEN",
+      "generateMs": 270,
+      "pdfBytes": 76285,
+      "pages": -1
+    },
+    {
+      "id": "C6-official-form",
+      "description": "Official form — rectangles, aligned label/value pairs, checkbox glyphs",
+      "status": "PROVEN",
+      "generateMs": 38,
+      "pdfBytes": 7831,
+      "pages": -1
+    },
+    {
+      "id": "C7-id-card-cr80",
+      "description": "CR80 ID card front+back — exact mm coordinates, photo, QR, Arabic name",
+      "status": "PROVEN",
+      "generateMs": 92,
+      "pdfBytes": 18210,
+      "pages": -1
+    },
+    {
+      "id": "C8-cross-company-companyA",
+      "description": "Cross-company — same pdfme template JSON, dynamic logo/branding for FIX-COMPANY-A",
+      "status": "PROVEN",
+      "generateMs": 45,
+      "pdfBytes": 9596,
+      "pages": -1
+    },
+    {
+      "id": "C8-cross-company-companyB",
+      "description": "Cross-company — same pdfme template JSON, dynamic logo/branding for FIX-COMPANY-B",
+      "status": "PROVEN",
+      "generateMs": 37,
+      "pdfBytes": 9842,
+      "pages": -1
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "generated_at": "2026-07-26T07:30:18.247Z",
+  "algorithm": "sha256",
+  "note": "sha256_pretty = hash of the pretty-printed .json file bytes as saved; sha256_compact_semantics = hash of JSON.stringify(body_layout_json) canonical compact text.",
+  "identical_14_15": true,
+  "files": [
+    {
+      "file": "template_14_body_layout.json",
+      "sha256_pretty": "4023266b1f667083b869697b6647bb2af73792f1faac9b656712bb258004e2ff",
+      "sha256_compact_semantics": "00ac2569dfe440d597c57fbac7af6ff7ab17105f42a5ffd4416ab700c27139ff"
+    },
+    {
+      "file": "template_15_body_layout.json",
+      "sha256_pretty": "4023266b1f667083b869697b6647bb2af73792f1faac9b656712bb258004e2ff",
+      "sha256_compact_semantics": "00ac2569dfe440d597c57fbac7af6ff7ab17105f42a5ffd4416ab700c27139ff"
+    }
+  ]
+}

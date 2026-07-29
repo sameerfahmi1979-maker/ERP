@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { getDmsDashboardStats } from "@/server/actions/dms/dashboard";
 import { DmsDashboardPageClient } from "@/features/dms/dashboard/dms-dashboard-page-client";
-import { ERPPageHeader } from "@/components/erp/page-header";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -39,11 +38,6 @@ export default async function DmsDashboardPage() {
 
   return (
     <div className="p-6 space-y-2">
-      <ERPPageHeader
-        title="Document Management System"
-        description="Live overview of documents, uploads, AI pipeline, and expiry status"
-        breadcrumbs={[{ label: "DMS" }]}
-      />
       <DmsDashboardPageClient initialStats={initialStats} />
     </div>
   );

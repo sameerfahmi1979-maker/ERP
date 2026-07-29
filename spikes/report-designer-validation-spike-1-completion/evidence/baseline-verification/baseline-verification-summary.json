@@ -1,0 +1,151 @@
+{
+  "verifiedAt": "2026-07-26T19:35:59.362Z",
+  "totalFiles": 129,
+  "totalBytes": 9996713,
+  "pdfCount": 28,
+  "pdfsOpenOk": 28,
+  "pdfsOpenFailed": 0,
+  "pageCountComparison": {
+    "executive-ledger/pdf/D1-employment-cert-en.pdf": {
+      "recorded": 1,
+      "nowVerified": 1,
+      "match": true
+    },
+    "executive-ledger/pdf/D2-experience-cert-bilingual.pdf": {
+      "recorded": 1,
+      "nowVerified": 1,
+      "match": true
+    },
+    "executive-ledger/pdf/D3a-salary-cert-en.pdf": {
+      "recorded": 1,
+      "nowVerified": 1,
+      "match": true
+    },
+    "executive-ledger/pdf/D3b-salary-cert-ar.pdf": {
+      "recorded": 1,
+      "nowVerified": 1,
+      "match": true
+    },
+    "executive-ledger/pdf/D4-long-letter.pdf": {
+      "recorded": 4,
+      "nowVerified": 4,
+      "match": true
+    },
+    "executive-ledger/pdf/D5-analytical-report-120rows.pdf": {
+      "recorded": 10,
+      "nowVerified": 10,
+      "match": true
+    },
+    "executive-ledger/pdf/D6-official-form.pdf": {
+      "recorded": 1,
+      "nowVerified": 1,
+      "match": true
+    },
+    "executive-ledger/pdf/D7-id-card-cr80.pdf": {
+      "recorded": 2,
+      "nowVerified": 2,
+      "match": true
+    },
+    "executive-ledger/pdf/D8-cross-company-companyA.pdf": {
+      "recorded": 1,
+      "nowVerified": 1,
+      "match": true
+    },
+    "executive-ledger/pdf/D8-cross-company-companyB.pdf": {
+      "recorded": 1,
+      "nowVerified": 1,
+      "match": true
+    },
+    "carbone-docx/pdf/B1-employment-cert-en.pdf": {
+      "recorded": 1,
+      "nowVerified": 1,
+      "match": true
+    },
+    "carbone-docx/pdf/B2-experience-cert-bilingual.pdf": {
+      "recorded": 1,
+      "nowVerified": 1,
+      "match": true
+    },
+    "carbone-docx/pdf/B3-salary-cert-en.pdf": {
+      "recorded": 1,
+      "nowVerified": 1,
+      "match": true
+    },
+    "carbone-docx/pdf/B4-long-letter.pdf": {
+      "recorded": 4,
+      "nowVerified": 4,
+      "match": true
+    },
+    "carbone-docx/pdf/B5-analytical-report-120rows.pdf": {
+      "recorded": 11,
+      "nowVerified": 11,
+      "match": true
+    },
+    "carbone-docx/pdf/B6-official-form.pdf": {
+      "recorded": 1,
+      "nowVerified": 1,
+      "match": true
+    },
+    "carbone-docx/pdf/B7-id-card-cr80.pdf": {
+      "recorded": 1,
+      "nowVerified": 1,
+      "match": true
+    },
+    "carbone-docx/pdf/B8-cross-company-companyA.pdf": {
+      "recorded": 1,
+      "nowVerified": 1,
+      "match": true
+    },
+    "carbone-docx/pdf/B8-cross-company-companyB.pdf": {
+      "recorded": 1,
+      "nowVerified": 1,
+      "match": true
+    },
+    "fixed-layout/pdf/C1-employment-cert-en.pdf": {
+      "recorded": 1,
+      "nowVerified": 1,
+      "match": true
+    },
+    "fixed-layout/pdf/C2-experience-cert-bilingual.pdf": {
+      "recorded": 1,
+      "nowVerified": 1,
+      "match": true
+    },
+    "fixed-layout/pdf/C3-salary-cert-en.pdf": {
+      "recorded": 1,
+      "nowVerified": 1,
+      "match": true
+    },
+    "fixed-layout/pdf/C4-long-letter.pdf": {
+      "recorded": 1,
+      "nowVerified": 1,
+      "match": true
+    },
+    "fixed-layout/pdf/C5-analytical-report-120rows.pdf": {
+      "recorded": 4,
+      "nowVerified": 4,
+      "match": true
+    },
+    "fixed-layout/pdf/C6-official-form.pdf": {
+      "recorded": 1,
+      "nowVerified": 1,
+      "match": true
+    },
+    "fixed-layout/pdf/C7-id-card-cr80.pdf": {
+      "recorded": 2,
+      "nowVerified": 2,
+      "match": true
+    },
+    "fixed-layout/pdf/C8-cross-company-companyA.pdf": {
+      "recorded": 1,
+      "nowVerified": 1,
+      "match": true
+    },
+    "fixed-layout/pdf/C8-cross-company-companyB.pdf": {
+      "recorded": 1,
+      "nowVerified": 1,
+      "match": true
+    }
+  },
+  "pageCountMismatches": []
+}

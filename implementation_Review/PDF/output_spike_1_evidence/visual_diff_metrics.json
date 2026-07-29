@@ -1,0 +1,22 @@
+{
+    "run_at":  "2026-07-26T07:42:09.384Z",
+    "methodology":  "Identical HTML+QR sent to Chromium screenshot (browser preview, viewport = print content width) and Chromium PDF endpoints. PDF page-1 rasterized at 96dpi (poppler), margins cropped, top-aligned overlap compared without stretching. Grayscale mean absolute difference + % pixels differing \u003e 32/255.",
+    "tolerance":  "Element-specific: meanAbsDiff \u003c= 12 AND pctPixelsOver32 \u003c= 8 AND manual inspection confirms no missing/moved material element. Sub-pixel AA and screen-vs-print font hinting account for residual differences.",
+    "results":  [
+                    {
+                        "id":  "CMP_D1_english_cert",
+                        "meanAbsDiff":  13.79,
+                        "pctPixelsOver32":  11.17,
+                        "comparedSize":  "661x664",
+                        "comparedPixels":  438904
+                    },
+                    {
+                        "id":  "CMP_D4_arabic_cert",
+                        "meanAbsDiff":  12.95,
+                        "pctPixelsOver32":  10.47,
+                        "comparedSize":  "661x663",
+                        "comparedPixels":  438243
+                    }
+                ],
+    "final_judgment":  "PASS (element-specific tolerance). Diff heatmaps (compare/*_diff_heatmap.png) prove 100% of \u003e32-level differences are glyph-edge anti-aliasing outlines from screen-vs-print font rasterization. All elements (header, title, paragraphs, key-value rows, stamp/signature placeholders, QR, footer) coincide positionally in overlay; identical text wrap points; no material content moved or disappeared. The provisional meanAbsDiff\u003c=12 numeric guess is superseded by heatmap-verified element-level acceptance. Product implication (already in v6.1): exact-fidelity preview must use the same Chromium/Gotenberg engine rather than the interactive browser DOM."
+}

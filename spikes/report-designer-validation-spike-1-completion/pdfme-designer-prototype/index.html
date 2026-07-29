@@ -1,0 +1,26 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>SPIKE — pdfme Designer prototype (disposable)</title>
+  <style>
+    html, body { margin: 0; height: 100%; font-family: Arial, sans-serif; }
+    #toolbar { display: flex; gap: 8px; align-items: center; padding: 6px 10px; background: #0f172a; color: #fff; font-size: 12px; }
+    #toolbar button { font-size: 12px; padding: 4px 10px; cursor: pointer; }
+    #designer { width: 100%; height: calc(100% - 40px); }
+    #status { margin-left: auto; color: #86efac; }
+  </style>
+</head>
+<body>
+  <div id="toolbar">
+    <strong>pdfme Designer — SPIKE (CR80 employee card)</strong>
+    <button id="btn-export">Export template JSON</button>
+    <button id="btn-reload">Reopen saved template</button>
+    <button id="btn-generate">Generate PDF (fixtures)</button>
+    <button id="btn-company">Switch Company A/B</button>
+    <span id="status">loading…</span>
+  </div>
+  <div id="designer"></div>
+  <script type="module" src="/main.js"></script>
+</body>
+</html>

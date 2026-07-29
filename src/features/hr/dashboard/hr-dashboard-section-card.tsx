@@ -42,6 +42,20 @@ export function HrDashboardStatItem({ label, value, href, variant = "default" }:
   return content;
 }
 
+export type SectionSeverity = "ok" | "warning" | "danger";
+
+const SEVERITY_BAR: Record<SectionSeverity, string> = {
+  ok: "bg-transparent",
+  warning: "bg-amber-500",
+  danger: "bg-red-500",
+};
+
+const SEVERITY_DOT: Record<SectionSeverity, string> = {
+  ok: "bg-emerald-500",
+  warning: "bg-amber-500",
+  danger: "bg-red-500",
+};
+
 interface SectionCardProps {
   title: string;
   icon: LucideIcon;
@@ -50,6 +64,8 @@ interface SectionCardProps {
   restricted?: boolean;
   children: ReactNode;
   className?: string;
+  /** Computed from the section's own data — encodes whether it needs attention right now. */
+  severity?: SectionSeverity;
 }
 
 export function HrDashboardSectionCard({
@@ -60,9 +76,13 @@ export function HrDashboardSectionCard({
   restricted = false,
   children,
   className,
+  severity,
 }: SectionCardProps) {
   return (
-    <Card className={cn("border border-border/50 shadow-sm", className)}>
+    <Card className={cn("relative overflow-hidden border border-border/50 shadow-sm", className)}>
+      {severity && (
+        <span className={cn("absolute inset-x-0 top-0 h-1", SEVERITY_BAR[severity])} />
+      )}
       <CardHeader className="pb-2 px-4 pt-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -70,6 +90,18 @@ export function HrDashboardSectionCard({
               <Icon className="h-4 w-4" />
             </div>
             <CardTitle className="text-sm font-semibold text-foreground">{title}</CardTitle>
+            {severity && !restricted && (
+              <span
+                className={cn("h-1.5 w-1.5 rounded-full", SEVERITY_DOT[severity])}
+                title={
+                  severity === "danger"
+                    ? "Needs urgent attention"
+                    : severity === "warning"
+                    ? "Needs attention"
+                    : "All clear"
+                }
+              />
+            )}
           </div>
           {href && !restricted && (
             <Link href={href} className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors">

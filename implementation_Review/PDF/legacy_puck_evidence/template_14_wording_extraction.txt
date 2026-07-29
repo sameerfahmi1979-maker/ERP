@@ -1,0 +1,85 @@
+Wording extracted from erp_report_templates.id=14 (DEFAULT_CERTIFICATE_TEMPLATE_V2_V3 / "To Whom It May Concern")
+Extraction date: 2026-07-26T07:30:18.243Z
+governance_status=archived version_no=3 is_active=false
+
+01. TO WHOM IT MAY CONCERN
+02. TO WHOM IT MAY CONCERN
+03. This is to certify that 
+{{employee.full_name_en}}, holding Employee Code {{employee.employee_code}}, is currently employed with {{company.legal_name_en}} as {{employee.designation}} in the {{employee.department}} Department.
+ 
+The employee’s details as per the company records are as follows:
+Employee Information
+·       Name: {{employee.full_name_en}}
+·       Employee Code / ID: {{employee.employee_code}}
+·       Designation / Position: {{employee.designation}}
+·       Department: {{employee.department}}
+·       Company / Employer: {{employee.owner_company}}
+·       Branch / Work Location: {{employee.branch}}
+·       Date of Joining: {{employee.joining_date}}
+·       Employment Type: {{employee.employment_type}}
+·       Employment Status: {{employee.employment_status}}
+·       Nationality: {{employee.nationality}}
+·       Passport Number: {{employee.passport_number}}
+·       Emirates ID Number: {{employee.emirates_id_number}}
+Salary Information
+Basic Salary: AED {{employee.basic_salary}}
+Total / Gross Salary: AED {{employee.total_salary}}
+Net Salary: AED {{employee.net_salary}}
+ 
+This certificate is issued upon the employee’s request for official use only. The salary and employment details mentioned above are based on the company’s HR and payroll records as of {{document.issue_date}}.
+
+This certificate does not constitute any financial guarantee, undertaking, or legal obligation on behalf of {{company.legal_name_en}}.
+For and on behalf of
+{{company.legal_name_en}}
+04. This is to certify that
+05. {{employee.full_name_en}},
+06. holding Employee Code {{employee.employee_code}}, is currently employed with {{company.legal_name_en}} as {{employee.designation}} in the {{employee.department}} Department.
+07. The employee’s details as per the company records are as follows:
+08. Employee Information
+09. ·
+10. Name:
+11. {{employee.full_name_en}}
+12. ·
+13. Employee Code / ID:
+14. {{employee.employee_code}}
+15. ·
+16. Designation / Position:
+17. {{employee.designation}}
+18. ·
+19. Department:
+20. {{employee.department}}
+21. ·
+22. Company / Employer:
+23. {{employee.owner_company}}
+24. ·
+25. Branch / Work Location:
+26. {{employee.branch}}
+27. ·
+28. Date of Joining:
+29. {{employee.joining_date}}
+30. ·
+31. Employment Type:
+32. {{employee.employment_type}}
+33. ·
+34. Employment Status:
+35. {{employee.employment_status}}
+36. ·
+37. Nationality:
+38. {{employee.nationality}}
+39. ·
+40. Passport Number:
+41. {{employee.passport_number}}
+42. ·
+43. Emirates ID Number:
+44. {{employee.emirates_id_number}}
+45. Salary Information
+46. Basic Salary: AED
+47. {{employee.basic_salary}}
+48. Total / Gross Salary:
+49. AED {{employee.total_salary}}
+50. Net Salary:
+51. AED {{employee.net_salary}}
+52. This certificate is issued upon the employee’s request for official use only. The salary and employment details mentioned above are based on the company’s HR and payroll records as of {{document.issue_date}}.
+53. This certificate does not constitute any financial guarantee, undertaking, or legal obligation on behalf of {{company.legal_name_en}}.
+54. For and on behalf of
+55. {{company.legal_name_en}}

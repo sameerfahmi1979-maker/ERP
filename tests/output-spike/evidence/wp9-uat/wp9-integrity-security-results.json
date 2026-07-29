@@ -1,0 +1,584 @@
+[
+  {
+    "slice": "pdf-integrity",
+    "name": "#4 HR_EXPERIENCE_LETTER %PDF header",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#4 HR_EXPERIENCE_LETTER exact-byte SHA-256 matches checksum",
+    "pass": true,
+    "detail": "d433d9d226e4…"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#4 HR_EXPERIENCE_LETTER size matches file_size_bytes",
+    "pass": true,
+    "detail": "29923 bytes"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#4 HR_EXPERIENCE_LETTER page objects present",
+    "pass": true,
+    "detail": "1 page(s)"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#4 HR_EXPERIENCE_LETTER embedded fonts present",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#4 HR_EXPERIENCE_LETTER snapshots captured",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#4 HR_EXPERIENCE_LETTER renderer metadata captured",
+    "pass": true,
+    "detail": "gotenberg_html gotenberg@dev"
+  },
+  {
+    "slice": "policy",
+    "name": "#4 HR_EXPERIENCE_LETTER class B has serial",
+    "pass": true,
+    "detail": "HR_EXPERIENCE_LETTER-C1-2026-000004"
+  },
+  {
+    "slice": "policy",
+    "name": "#4 HR_EXPERIENCE_LETTER class B has QR link",
+    "pass": true,
+    "detail": "valid"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#4 HR_EXPERIENCE_LETTER QR verification block rendered",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "policy",
+    "name": "#4 HR_EXPERIENCE_LETTER QR expiry per class (none)",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#4 HR_EXPERIENCE_LETTER serial embedded in PDF text",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#5 HR_EXPERIENCE_LETTER %PDF header",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#5 HR_EXPERIENCE_LETTER exact-byte SHA-256 matches checksum",
+    "pass": true,
+    "detail": "fe6fee11c89a…"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#5 HR_EXPERIENCE_LETTER size matches file_size_bytes",
+    "pass": true,
+    "detail": "28203 bytes"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#5 HR_EXPERIENCE_LETTER page objects present",
+    "pass": true,
+    "detail": "1 page(s)"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#5 HR_EXPERIENCE_LETTER embedded fonts present",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#5 HR_EXPERIENCE_LETTER snapshots captured",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#5 HR_EXPERIENCE_LETTER renderer metadata captured",
+    "pass": true,
+    "detail": "gotenberg_html gotenberg@dev"
+  },
+  {
+    "slice": "policy",
+    "name": "#5 HR_EXPERIENCE_LETTER class B has serial",
+    "pass": true,
+    "detail": "HR_EXPERIENCE_LETTER-C1-2026-000005"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#5 HR_EXPERIENCE_LETTER serial embedded in PDF text",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#6 HR_SALARY_CERT_WITH_AMOUNT %PDF header",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#6 HR_SALARY_CERT_WITH_AMOUNT exact-byte SHA-256 matches checksum",
+    "pass": true,
+    "detail": "2d9df77662bd…"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#6 HR_SALARY_CERT_WITH_AMOUNT size matches file_size_bytes",
+    "pass": true,
+    "detail": "31129 bytes"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#6 HR_SALARY_CERT_WITH_AMOUNT page objects present",
+    "pass": true,
+    "detail": "1 page(s)"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#6 HR_SALARY_CERT_WITH_AMOUNT embedded fonts present",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#6 HR_SALARY_CERT_WITH_AMOUNT snapshots captured",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#6 HR_SALARY_CERT_WITH_AMOUNT renderer metadata captured",
+    "pass": true,
+    "detail": "gotenberg_html gotenberg@dev"
+  },
+  {
+    "slice": "policy",
+    "name": "#6 HR_SALARY_CERT_WITH_AMOUNT class A has serial",
+    "pass": true,
+    "detail": "HR_SALARY_CERT_WITH_AMOUNT-C1-2026-000006"
+  },
+  {
+    "slice": "policy",
+    "name": "#6 HR_SALARY_CERT_WITH_AMOUNT class A has QR link",
+    "pass": true,
+    "detail": "valid"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#6 HR_SALARY_CERT_WITH_AMOUNT QR verification block rendered",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "policy",
+    "name": "#6 HR_SALARY_CERT_WITH_AMOUNT QR expiry per class (90d)",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#6 HR_SALARY_CERT_WITH_AMOUNT serial embedded in PDF text",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#7 HR_EMPLOYMENT_LETTER %PDF header",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#7 HR_EMPLOYMENT_LETTER exact-byte SHA-256 matches checksum",
+    "pass": true,
+    "detail": "063ba99e746d…"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#7 HR_EMPLOYMENT_LETTER size matches file_size_bytes",
+    "pass": true,
+    "detail": "29580 bytes"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#7 HR_EMPLOYMENT_LETTER page objects present",
+    "pass": true,
+    "detail": "1 page(s)"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#7 HR_EMPLOYMENT_LETTER embedded fonts present",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#7 HR_EMPLOYMENT_LETTER snapshots captured",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#7 HR_EMPLOYMENT_LETTER renderer metadata captured",
+    "pass": true,
+    "detail": "gotenberg_html gotenberg@dev"
+  },
+  {
+    "slice": "policy",
+    "name": "#7 HR_EMPLOYMENT_LETTER class B has serial",
+    "pass": true,
+    "detail": "HR_EMPLOYMENT_LETTER-C1-2026-000007"
+  },
+  {
+    "slice": "policy",
+    "name": "#7 HR_EMPLOYMENT_LETTER class B has QR link",
+    "pass": true,
+    "detail": "valid"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#7 HR_EMPLOYMENT_LETTER QR verification block rendered",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "policy",
+    "name": "#7 HR_EMPLOYMENT_LETTER QR expiry per class (none)",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#7 HR_EMPLOYMENT_LETTER serial embedded in PDF text",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#8 HR_NOC %PDF header",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#8 HR_NOC exact-byte SHA-256 matches checksum",
+    "pass": true,
+    "detail": "582cfda87133…"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#8 HR_NOC size matches file_size_bytes",
+    "pass": true,
+    "detail": "29765 bytes"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#8 HR_NOC page objects present",
+    "pass": true,
+    "detail": "1 page(s)"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#8 HR_NOC embedded fonts present",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#8 HR_NOC snapshots captured",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#8 HR_NOC renderer metadata captured",
+    "pass": true,
+    "detail": "gotenberg_html gotenberg@dev"
+  },
+  {
+    "slice": "policy",
+    "name": "#8 HR_NOC class B has serial",
+    "pass": true,
+    "detail": "HR_NOC-C1-2026-000008"
+  },
+  {
+    "slice": "policy",
+    "name": "#8 HR_NOC class B has QR link",
+    "pass": true,
+    "detail": "valid"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#8 HR_NOC QR verification block rendered",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "policy",
+    "name": "#8 HR_NOC QR expiry per class (none)",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#8 HR_NOC serial embedded in PDF text",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#9 HR_SALARY_CERT_GENERAL %PDF header",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#9 HR_SALARY_CERT_GENERAL exact-byte SHA-256 matches checksum",
+    "pass": true,
+    "detail": "4c9fda4587b9…"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#9 HR_SALARY_CERT_GENERAL size matches file_size_bytes",
+    "pass": true,
+    "detail": "30463 bytes"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#9 HR_SALARY_CERT_GENERAL page objects present",
+    "pass": true,
+    "detail": "1 page(s)"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#9 HR_SALARY_CERT_GENERAL embedded fonts present",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#9 HR_SALARY_CERT_GENERAL snapshots captured",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#9 HR_SALARY_CERT_GENERAL renderer metadata captured",
+    "pass": true,
+    "detail": "gotenberg_html gotenberg@dev"
+  },
+  {
+    "slice": "policy",
+    "name": "#9 HR_SALARY_CERT_GENERAL class B has serial",
+    "pass": true,
+    "detail": "HR_SALARY_CERT_GENERAL-C1-2026-000009"
+  },
+  {
+    "slice": "policy",
+    "name": "#9 HR_SALARY_CERT_GENERAL class B has QR link",
+    "pass": true,
+    "detail": "valid"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#9 HR_SALARY_CERT_GENERAL QR verification block rendered",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "policy",
+    "name": "#9 HR_SALARY_CERT_GENERAL QR expiry per class (none)",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#9 HR_SALARY_CERT_GENERAL serial embedded in PDF text",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#10 HR_CLEARANCE_FORM %PDF header",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#10 HR_CLEARANCE_FORM exact-byte SHA-256 matches checksum",
+    "pass": true,
+    "detail": "3f8ebd8cc1be…"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#10 HR_CLEARANCE_FORM size matches file_size_bytes",
+    "pass": true,
+    "detail": "26824 bytes"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#10 HR_CLEARANCE_FORM page objects present",
+    "pass": true,
+    "detail": "1 page(s)"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#10 HR_CLEARANCE_FORM embedded fonts present",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#10 HR_CLEARANCE_FORM snapshots captured",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#10 HR_CLEARANCE_FORM renderer metadata captured",
+    "pass": true,
+    "detail": "gotenberg_html gotenberg@dev"
+  },
+  {
+    "slice": "policy",
+    "name": "#10 HR_CLEARANCE_FORM class C has NO serial",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "policy",
+    "name": "#10 HR_CLEARANCE_FORM class C has NO QR link",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#11 HR_JOINING_CHECKLIST %PDF header",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#11 HR_JOINING_CHECKLIST exact-byte SHA-256 matches checksum",
+    "pass": true,
+    "detail": "b6ea09715598…"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#11 HR_JOINING_CHECKLIST size matches file_size_bytes",
+    "pass": true,
+    "detail": "27235 bytes"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#11 HR_JOINING_CHECKLIST page objects present",
+    "pass": true,
+    "detail": "1 page(s)"
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#11 HR_JOINING_CHECKLIST embedded fonts present",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#11 HR_JOINING_CHECKLIST snapshots captured",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "pdf-integrity",
+    "name": "#11 HR_JOINING_CHECKLIST renderer metadata captured",
+    "pass": true,
+    "detail": "gotenberg_html gotenberg@dev"
+  },
+  {
+    "slice": "policy",
+    "name": "#11 HR_JOINING_CHECKLIST class C has NO serial",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "policy",
+    "name": "#11 HR_JOINING_CHECKLIST class C has NO QR link",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "policy",
+    "name": "all serials unique (incl. voided)",
+    "pass": true,
+    "detail": "7 serials"
+  },
+  {
+    "slice": "security",
+    "name": "anon cannot read erp_generated_pdf_documents",
+    "pass": true,
+    "detail": "0 rows"
+  },
+  {
+    "slice": "security",
+    "name": "anon cannot read erp_output_public_links",
+    "pass": true,
+    "detail": "0 rows"
+  },
+  {
+    "slice": "security",
+    "name": "anon cannot modify class policies",
+    "pass": true,
+    "detail": "no error but write must be no-op"
+  },
+  {
+    "slice": "security",
+    "name": "anon cannot download stored official PDF",
+    "pass": true,
+    "detail": "Object not found"
+  },
+  {
+    "slice": "security",
+    "name": "public verification works for valid token",
+    "pass": true,
+    "detail": "{\"status\":\"valid\",\"issued_at\":\"2026-07-02T15:40:56.98107+00:00\",\"expires_at\":null,\"output_type\":\"let"
+  },
+  {
+    "slice": "security",
+    "name": "public verification exposes NO salary amounts",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "security",
+    "name": "public verification exposes NO storage path",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "security",
+    "name": "revoked document had no active link (issued with issueQr=false)",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "slice": "security",
+    "name": "random token does not verify",
+    "pass": true,
+    "detail": "null"
+  }
+]

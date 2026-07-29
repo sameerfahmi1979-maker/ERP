@@ -3,12 +3,15 @@
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import type { DmsAiPipelineSlice } from "@/server/actions/dms/dashboard";
 
+// Explicit semantic colors (not the theme's grayscale --chart-N tokens) so pipeline
+// stages stay visually distinguishable at a glance: green=done, blue=OCR done,
+// amber=needs review, orange=OCR pending, gray=not started.
 const STATUS_COLORS: Record<string, string> = {
-  ai_complete: "hsl(var(--chart-2))",
-  ocr_done: "hsl(var(--chart-1))",
-  pending_review: "hsl(var(--chart-4))",
-  ocr_pending: "hsl(var(--chart-3))",
-  not_processed: "hsl(var(--muted-foreground))",
+  ai_complete: "hsl(152 60% 42%)",
+  ocr_done: "hsl(217 91% 60%)",
+  pending_review: "hsl(38 92% 50%)",
+  ocr_pending: "hsl(25 95% 53%)",
+  not_processed: "hsl(215 16% 65%)",
 };
 
 type Props = {
@@ -34,7 +37,7 @@ export function DmsAiPipelineChart({ data, total }: Props) {
             {data.map((slice, i) => (
               <Cell
                 key={i}
-                fill={STATUS_COLORS[slice.status] ?? "hsl(var(--muted-foreground))"}
+                fill={STATUS_COLORS[slice.status] ?? "var(--muted-foreground)"}
                 stroke="transparent"
               />
             ))}
@@ -54,14 +57,14 @@ export function DmsAiPipelineChart({ data, total }: Props) {
             y="62%"
             textAnchor="middle"
             dominantBaseline="middle"
-            style={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+            style={{ fontSize: 10, fill: "var(--muted-foreground)" }}
           >
             total
           </text>
           <Tooltip
             contentStyle={{
-              background: "hsl(var(--card))",
-              border: "1px solid hsl(var(--border))",
+              background: "var(--card)",
+              border: "1px solid var(--border)",
               borderRadius: "8px",
               fontSize: 12,
             }}

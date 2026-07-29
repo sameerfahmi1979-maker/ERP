@@ -1,0 +1,262 @@
+﻿
+> erp-foundation@0.1.0 build
+> cross-env NODE_OPTIONS=--max-old-space-size=16384 next build
+
+Γû▓ Next.js 16.2.6 (Turbopack)
+- Environments: .env.local
+- Experiments (use with caution):
+  ┬╖ serverActions
+
+node.exe : ΓÜá The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: 
+https://nextjs.org/docs/messages/middleware-to-proxy
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (ΓÜá The "middle...leware-to-proxy:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  Creating an optimized production build ...
+(node:27084) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+Turbopack build encountered 1 warnings:
+./
+Failed to find font override values for font `Big Shoulders`
+Skipping generating a fallback font.
+
+
+Γ£ô Compiled successfully in 16.5s
+  Skipping validation of types
+  Finished TypeScript config validation in 13ms ...
+  Collecting page data using 21 workers ...
+  Generating static pages using 21 workers (0/6) ...
+  Generating static pages using 21 workers (1/6) 
+  Generating static pages using 21 workers (2/6) 
+  Generating static pages using 21 workers (4/6) 
+Γ£ô Generating static pages using 21 workers (6/6) in 384ms
+  Finalizing page optimization ...
+
+Route (app)
+Γöî ╞Æ /
+Γö£ ╞Æ /_not-found
+Γö£ ╞Æ /access-denied
+Γö£ ╞Æ /account-disabled
+Γö£ ╞Æ /admin/ai/audit-explainer
+Γö£ ╞Æ /admin/ai/compliance
+Γö£ ╞Æ /admin/ai/dashboard
+Γö£ ╞Æ /admin/ai/data-quality
+Γö£ ╞Æ /admin/ai/duplicates
+Γö£ ╞Æ /admin/ai/risk
+Γö£ ╞Æ /admin/audit
+Γö£ ╞Æ /admin/branches
+Γö£ ╞Æ /admin/branches/record/[id]
+Γö£ ╞Æ /admin/branches/record/new
+Γö£ ╞Æ /admin/common-master-data
+Γö£ ╞Æ /admin/common-master-data/approval-roles
+Γö£ ╞Æ /admin/common-master-data/approval-roles/record/[id]
+Γö£ ╞Æ /admin/common-master-data/approval-roles/record/new
+Γö£ ╞Æ /admin/common-master-data/departments
+Γö£ ╞Æ /admin/common-master-data/departments/record/[id]
+Γö£ ╞Æ /admin/common-master-data/departments/record/new
+Γö£ ╞Æ /admin/common-master-data/designations
+Γö£ ╞Æ /admin/common-master-data/designations/record/[id]
+Γö£ ╞Æ /admin/common-master-data/designations/record/new
+Γö£ ╞Æ /admin/common-master-data/dms-required-documents
+Γö£ ╞Æ /admin/common-master-data/dms-required-documents/record/[id]
+Γö£ ╞Æ /admin/common-master-data/dms-required-documents/record/new
+Γö£ ╞Æ /admin/common-master-data/work-calendars
+Γö£ ╞Æ /admin/common-master-data/work-calendars/record/[id]
+Γö£ ╞Æ /admin/common-master-data/work-calendars/record/new
+Γö£ ╞Æ /admin/common-master-data/work-sites
+Γö£ ╞Æ /admin/common-master-data/work-sites/record/[id]
+Γö£ ╞Æ /admin/common-master-data/work-sites/record/new
+Γö£ ╞Æ /admin/dms
+Γö£ ╞Æ /admin/dms/ai-observability
+Γö£ ╞Æ /admin/dms/approval-workflows
+Γö£ ╞Æ /admin/dms/categories
+Γö£ ╞Æ /admin/dms/document-types
+Γö£ ╞Æ /admin/dms/intelligence
+Γö£ ╞Æ /admin/dms/metadata-definitions
+Γö£ ╞Æ /admin/dms/notification-settings
+Γö£ ╞Æ /admin/dms/retention-policies
+Γö£ ╞Æ /admin/dms/tags
+Γö£ ╞Æ /admin/hr
+Γö£ ╞Æ /admin/hr/actions
+Γö£ ╞Æ /admin/hr/actions/approvals
+Γö£ ╞Æ /admin/hr/actions/disciplinary
+Γö£ ╞Æ /admin/hr/actions/eos
+Γö£ ╞Æ /admin/hr/actions/pro
+Γö£ ╞Æ /admin/hr/dashboard
+Γö£ ╞Æ /admin/hr/employees
+Γö£ ╞Æ /admin/hr/employees/record/[id]
+Γö£ ╞Æ /admin/hr/employees/record/new
+Γö£ ╞Æ /admin/hr/operations
+Γö£ ╞Æ /admin/hr/operations/assignments
+Γö£ ╞Æ /admin/hr/operations/blocks
+Γö£ ╞Æ /admin/hr/operations/readiness
+Γö£ ╞Æ /admin/hr/payroll
+Γö£ ╞Æ /admin/hr/payroll/salaries
+Γö£ ╞Æ /admin/hr/payroll/wps
+Γö£ ╞Æ /admin/hr/recruitment
+Γö£ ╞Æ /admin/hr/recruitment/candidates
+Γö£ ╞Æ /admin/hr/recruitment/candidates/record/[id]
+Γö£ ╞Æ /admin/hr/recruitment/candidates/record/new
+Γö£ ╞Æ /admin/hr/recruitment/interviews
+Γö£ ╞Æ /admin/hr/recruitment/offers
+Γö£ ╞Æ /admin/hr/recruitment/onboarding
+Γö£ ╞Æ /admin/hr/recruitment/requisitions
+Γö£ ╞Æ /admin/hr/search
+Γö£ ╞Æ /admin/hr/settings
+Γö£ ╞Æ /admin/hr/settings/access-card-types
+Γö£ ╞Æ /admin/hr/settings/approval-workflows
+Γö£ ╞Æ /admin/hr/settings/employee-categories
+Γö£ ╞Æ /admin/hr/settings/employment-types
+Γö£ ╞Æ /admin/hr/settings/grades
+Γö£ ╞Æ /admin/hr/settings/identity-document-types
+Γö£ ╞Æ /admin/hr/settings/leave-types
+Γö£ ╞Æ /admin/hr/settings/medical-record-types
+Γö£ ╞Æ /admin/hr/settings/mohre-establishments
+Γö£ ╞Æ /admin/hr/settings/payroll-groups
+Γö£ ╞Æ /admin/hr/settings/pro-process-types
+Γö£ ╞Æ /admin/hr/settings/readiness-rule-templates
+Γö£ ╞Æ /admin/hr/settings/relationship-types
+Γö£ ╞Æ /admin/hr/settings/role-requirement-matrix
+Γö£ ╞Æ /admin/hr/settings/salary-component-types
+Γö£ ╞Æ /admin/hr/settings/site-requirement-matrix
+Γö£ ╞Æ /admin/hr/settings/training-categories
+Γö£ ╞Æ /admin/hr/settings/training-types
+Γö£ ╞Æ /admin/hr/time
+Γö£ ╞Æ /admin/hr/time/attendance
+Γö£ ╞Æ /admin/hr/time/leave
+Γö£ ╞Æ /admin/hr/time/shifts
+Γö£ ╞Æ /admin/master-data
+Γö£ ╞Æ /admin/master-data/customers
+Γö£ ╞Æ /admin/master-data/customers/record/[id]
+Γö£ ╞Æ /admin/master-data/customers/record/new
+Γö£ ╞Æ /admin/master-data/finance-basics/banks
+Γö£ ╞Æ /admin/master-data/finance-basics/banks/record/[id]
+Γö£ ╞Æ /admin/master-data/finance-basics/banks/record/new
+Γö£ ╞Æ /admin/master-data/finance-basics/cost-centers
+Γö£ ╞Æ /admin/master-data/finance-basics/cost-centers/record/[id]
+Γö£ ╞Æ /admin/master-data/finance-basics/cost-centers/record/new
+Γö£ ╞Æ /admin/master-data/finance-basics/currencies
+Γö£ ╞Æ /admin/master-data/finance-basics/currencies/record/[id]
+Γö£ ╞Æ /admin/master-data/finance-basics/currencies/record/new
+Γö£ ╞Æ /admin/master-data/finance-basics/payment-terms
+Γö£ ╞Æ /admin/master-data/finance-basics/payment-terms/record/[id]
+Γö£ ╞Æ /admin/master-data/finance-basics/payment-terms/record/new
+Γö£ ╞Æ /admin/master-data/finance-basics/profit-centers
+Γö£ ╞Æ /admin/master-data/finance-basics/profit-centers/record/[id]
+Γö£ ╞Æ /admin/master-data/finance-basics/profit-centers/record/new
+Γö£ ╞Æ /admin/master-data/finance-basics/tax-types
+Γö£ ╞Æ /admin/master-data/finance-basics/tax-types/record/[id]
+Γö£ ╞Æ /admin/master-data/finance-basics/tax-types/record/new
+Γö£ ╞Æ /admin/master-data/geography/areas
+Γö£ ╞Æ /admin/master-data/geography/areas/record/[id]
+Γö£ ╞Æ /admin/master-data/geography/areas/record/new
+Γö£ ╞Æ /admin/master-data/geography/cities
+Γö£ ╞Æ /admin/master-data/geography/cities/record/[id]
+Γö£ ╞Æ /admin/master-data/geography/cities/record/new
+Γö£ ╞Æ /admin/master-data/geography/countries
+Γö£ ╞Æ /admin/master-data/geography/countries/record/[id]
+Γö£ ╞Æ /admin/master-data/geography/countries/record/new
+Γö£ ╞Æ /admin/master-data/geography/emirates
+Γö£ ╞Æ /admin/master-data/geography/emirates/record/[id]
+Γö£ ╞Æ /admin/master-data/geography/emirates/record/new
+Γö£ ╞Æ /admin/master-data/geography/ports
+Γö£ ╞Æ /admin/master-data/geography/ports/record/[id]
+Γö£ ╞Æ /admin/master-data/geography/ports/record/new
+Γö£ ╞Æ /admin/master-data/lookups/categories
+Γö£ ╞Æ /admin/master-data/lookups/categories/record/[id]
+Γö£ ╞Æ /admin/master-data/lookups/categories/record/new
+Γö£ ╞Æ /admin/master-data/lookups/system
+Γö£ ╞Æ /admin/master-data/lookups/values
+Γö£ ╞Æ /admin/master-data/lookups/values/record/[id]
+Γö£ ╞Æ /admin/master-data/lookups/values/record/new
+Γö£ ╞Æ /admin/master-data/parties
+Γö£ ╞Æ /admin/master-data/parties/[typeSlug]
+Γö£ ╞Æ /admin/master-data/parties/banks
+Γö£ ╞Æ /admin/master-data/parties/record/[id]
+Γö£ ╞Æ /admin/master-data/parties/record/new
+Γö£ ╞Æ /admin/master-data/parties/relationship-types
+Γö£ ╞Æ /admin/master-data/parties/service-categories
+Γö£ ╞Æ /admin/master-data/parties/types
+Γö£ ╞Æ /admin/master-data/uom/categories
+Γö£ ╞Æ /admin/master-data/uom/categories/record/[id]
+Γö£ ╞Æ /admin/master-data/uom/categories/record/new
+Γö£ ╞Æ /admin/master-data/uom/conversions
+Γö£ ╞Æ /admin/master-data/uom/conversions/record/[id]
+Γö£ ╞Æ /admin/master-data/uom/conversions/record/new
+Γö£ ╞Æ /admin/master-data/uom/units
+Γö£ ╞Æ /admin/master-data/uom/units/record/[id]
+Γö£ ╞Æ /admin/master-data/uom/units/record/new
+Γö£ ╞Æ /admin/notifications
+Γö£ ╞Æ /admin/notifications/email-queue
+Γö£ ╞Æ /admin/notifications/logs
+Γö£ ╞Æ /admin/notifications/templates
+Γö£ ╞Æ /admin/organizations
+Γö£ ╞Æ /admin/organizations/record/[id]
+Γö£ ╞Æ /admin/organizations/record/new
+Γö£ ╞Æ /admin/permissions
+Γö£ ╞Æ /admin/reports
+Γö£ ╞Æ /admin/reports/history
+Γö£ ╞Æ /admin/reports/output-ops
+Γö£ ╞Æ /admin/reports/public-links
+Γö£ ╞Æ /admin/reports/run/[reportCode]
+Γö£ ╞Æ /admin/reports/schedules
+Γö£ ╞Æ /admin/reports/template-studio
+Γö£ ╞Æ /admin/reports/templates
+Γö£ ╞Æ /admin/reports/templates/governance
+Γö£ ╞Æ /admin/roles
+Γö£ ╞Æ /admin/roles/record/[id]
+Γö£ ╞Æ /admin/roles/record/new
+Γö£ ╞Æ /admin/settings/ai
+Γö£ ╞Æ /admin/settings/branding
+Γö£ ╞Æ /admin/settings/email
+Γö£ ╞Æ /admin/settings/numbering
+Γö£ ╞Æ /admin/settings/numbering/record/[id]
+Γö£ ╞Æ /admin/settings/numbering/record/new
+Γö£ ╞Æ /admin/users
+Γö£ ╞Æ /admin/users/record/[id]
+Γö£ ╞Æ /admin/users/record/new
+Γö£ ╞Æ /api/admin/audit/user-history
+Γö£ ╞Æ /api/branding/public/[assetType]
+Γö£ ╞Æ /api/internal/dms-ai-jobs/process
+Γö£ ╞Æ /api/internal/process-email-queue
+Γö£ ╞Æ /api/internal/report-schedules/process
+Γö£ ╞Æ /assistant
+Γö£ ╞Æ /auth/confirm
+Γö£ ╞Æ /change-password-required
+Γö£ ╞Æ /dashboard
+Γö£ ╞Æ /dev/auth-debug
+Γö£ ╞Æ /dev/performance-qa
+Γö£ ╞Æ /dms
+Γö£ ╞Æ /dms/approvals
+Γö£ ╞Æ /dms/documents
+Γö£ ╞Æ /dms/documents/record/[id]
+Γö£ ╞Æ /dms/documents/record/new
+Γö£ ╞Æ /dms/expiring
+Γö£ ╞Æ /dms/inbox
+Γö£ ╞Æ /dms/inbox/batch/[batchCode]
+Γö£ ╞Æ /dms/inbox/batches
+Γö£ ╞Æ /dms/intake/[sessionCode]
+Γö£ ╞Æ /dms/notifications
+Γö£ ╞Æ /dms/renewals
+Γö£ ╞Æ /dms/review-queue
+Γö£ ╞Æ /forgot-password
+Γö£ ╞Æ /login
+Γö£ ╞Æ /no-access
+Γö£ ╞Æ /notifications
+Γö£ ╞Æ /print/[templateKey]/[recordType]/[recordId]
+Γö£ ╞Æ /profile
+Γö£ ╞Æ /reset-password
+Γö£ ╞Æ /search
+Γö£ ╞Æ /settings
+Γö£ ╞Æ /signup
+Γö£ ╞Æ /start
+Γöö ╞Æ /verify/[token]
+
+
+╞Æ Proxy (Middleware)
+
+╞Æ  (Dynamic)  server-rendered on demand
+

@@ -5,17 +5,16 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import {
   Users, ShieldCheck, Clock, Landmark, AlertOctagon, Briefcase,
-  ClipboardList, RefreshCw,
+  ClipboardList, RefreshCw, UsersRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ERPPageHeader } from "@/components/erp/page-header";
-import { ERPStatCard } from "@/components/erp/stat-card";
 import { ERPSectionCard } from "@/components/erp/section-card";
-import { HrDashboardSectionCard, HrDashboardStatItem } from "./hr-dashboard-section-card";
+import { HrDashboardSectionCard, HrDashboardStatItem, type SectionSeverity } from "./hr-dashboard-section-card";
 import { HrDashboardAlerts } from "./hr-dashboard-alerts";
 import { HrHeadcountByCategoryWidget } from "./hr-headcount-by-category-widget";
+import { HrKpiCards, type HrKpiCard } from "./hr-kpi-cards";
+import { HrWorkforceReadinessRing } from "./hr-workforce-readiness-ring";
 import { queryKeys } from "@/lib/query/query-keys";
 import {
   getHrDashboardEmployeeOverview,
@@ -174,82 +173,154 @@ export function HrDashboardPageClient({ permissions, initialFilters = {} }: HrDa
   const recruit = recruitmentQuery.data;
   const attention = attentionQuery.data ?? [];
 
-  // ── KPI top bar ───────────────────────────────────────────────────────────
+  // ── KPI top strip ─────────────────────────────────────────────────────────
 
-  const kpiCards = [
+  const kpiCards: HrKpiCard[] = [
     {
-      title: "Total Employees",
-      value: summaryQuery.isLoading ? "—" : String(summary?.employee_total ?? 0),
+      label: "Total Employees",
+      value: summaryQuery.isLoading ? "—" : (summary?.employee_total ?? 0).toLocaleString(),
+      sub: `${summary?.employee_active ?? 0} active`,
+      href: "/admin/hr/employees",
       icon: Users,
-      iconColor: "text-blue-600",
-      description: `${summary?.employee_active ?? 0} active`,
+      accent: "blue",
     },
     {
-      title: "Compliance Issues",
-      value: summaryQuery.isLoading ? "—" : String(summary?.compliance_issues ?? 0),
+      label: "Compliance Issues",
+      value: summaryQuery.isLoading ? "—" : (summary?.compliance_issues ?? 0).toLocaleString(),
+      sub: "expired / expiring docs",
+      href: "/admin/hr/employees",
       icon: ShieldCheck,
-      iconColor: summary && summary.compliance_issues > 0 ? "text-amber-600" : "text-emerald-600",
-      description: "Expired / expiring docs",
+      accent: summary && summary.compliance_issues > 0 ? "amber" : "slate",
     },
     {
-      title: "Attendance Pending",
-      value: summaryQuery.isLoading ? "—" : String(summary?.attendance_pending ?? 0),
+      label: "Attendance Pending",
+      value: summaryQuery.isLoading ? "—" : (summary?.attendance_pending ?? 0).toLocaleString(),
+      sub: "awaiting approval",
+      href: "/admin/hr/time/attendance",
       icon: Clock,
-      iconColor: summary && summary.attendance_pending > 0 ? "text-amber-600" : "text-emerald-600",
-      description: "Records awaiting approval",
+      accent: summary && summary.attendance_pending > 0 ? "amber" : "slate",
     },
     {
-      title: "WPS Ready",
+      label: "WPS Ready",
       value: summaryQuery.isLoading ? "—" : (summary?.wps_ready_pct != null ? `${summary.wps_ready_pct}%` : "—"),
+      sub: "of WPS-enrolled staff",
+      href: "/admin/hr/payroll/wps",
       icon: Landmark,
-      iconColor: "text-emerald-600",
-      description: "Of WPS-enrolled employees",
+      accent: "emerald",
     },
     {
-      title: "Active Blocks",
-      value: summaryQuery.isLoading ? "—" : String(summary?.active_blocks ?? 0),
+      label: "Active Blocks",
+      value: summaryQuery.isLoading ? "—" : (summary?.active_blocks ?? 0).toLocaleString(),
+      sub: "operational blocks",
+      href: "/admin/hr/operations/blocks",
       icon: AlertOctagon,
-      iconColor: summary && summary.active_blocks > 0 ? "text-red-600" : "text-emerald-600",
-      description: "Operational blocks",
+      accent: summary && summary.active_blocks > 0 ? "red" : "slate",
     },
     {
-      title: "Active Candidates",
+      label: "Active Candidates",
       value: summaryQuery.isLoading ? "—" : (summary?.recruitment_active != null ? String(summary.recruitment_active) : "—"),
+      sub: "in pipeline",
+      href: "/admin/hr/recruitment/candidates",
       icon: Briefcase,
-      iconColor: "text-teal-600",
-      description: "In pipeline",
+      accent: "teal",
     },
   ];
+
+  // ── Section severity — computed from real thresholds, drives the status dot ─
+
+  const employeeSeverity: SectionSeverity = (emp?.suspended ?? 0) > 0 ? "danger" : "ok";
+
+  const complianceSeverity: SectionSeverity =
+    (comp?.expired_documents ?? 0) > 0 || (comp?.expired_access_cards ?? 0) > 0
+      ? "danger"
+      : (comp?.expiring_soon ?? 0) > 0 || (comp?.missing_unverified ?? 0) > 0 || (comp?.training_expiring_soon ?? 0) > 0 || (comp?.medical_expired ?? 0) > 0
+      ? "warning"
+      : "ok";
+
+  const timeSeverity: SectionSeverity =
+    (time?.attendance_pending_approval ?? 0) > 0 ||
+    (time?.missing_punches ?? 0) > 0 ||
+    (time?.pending_leave_requests ?? 0) > 0 ||
+    (time?.overtime_pending_approval ?? 0) > 0
+      ? "warning"
+      : "ok";
+
+  const payrollSeverity: SectionSeverity =
+    (payroll?.on_payroll_hold ?? 0) > 0
+      ? "danger"
+      : (payroll?.missing_payroll_profile ?? 0) > 0 || (payroll?.wps_incomplete ?? 0) > 0 || (payroll?.missing_iban_bank ?? 0) > 0
+      ? "warning"
+      : "ok";
+
+  const operationsSeverity: SectionSeverity =
+    (ops?.blocked_employees ?? 0) > 0 || (ops?.active_blocks ?? 0) > 0
+      ? "danger"
+      : (ops?.not_ready_employees ?? 0) > 0 || (ops?.ppe_due_replacement ?? 0) > 0
+      ? "warning"
+      : "ok";
+
+  const actionsSeverity: SectionSeverity =
+    (acts?.pending_approvals ?? 0) > 0
+      ? "danger"
+      : (acts?.open_pro_processes ?? 0) > 0 ||
+        (acts?.open_hr_actions ?? 0) > 0 ||
+        (acts?.open_disciplinary ?? 0) > 0 ||
+        (acts?.open_eos_cases ?? 0) > 0 ||
+        (acts?.pending_clearance_items ?? 0) > 0
+      ? "warning"
+      : "ok";
+
+  const recruitmentSeverity: SectionSeverity = (recruit?.offers_pending ?? 0) > 0 ? "warning" : "ok";
 
   return (
     <div className="space-y-6 max-w-[1600px]">
       {/* Header */}
-      <ERPPageHeader
-        title="HR Dashboard"
-        description="Human Resources — Live Operations Overview"
-        breadcrumbs={[
-          { label: "HR", href: "/admin/hr/employees" },
-          { label: "Dashboard" },
-        ]}
-        actions={
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-9 text-xs gap-1.5"
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
-            {isRefreshing ? "Refreshing…" : "Refresh"}
-          </Button>
-        }
-      />
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <UsersRound className="h-[18px] w-[18px]" />
+          </span>
+          <div>
+            <h1 className="text-lg font-semibold leading-tight">HR Dashboard</h1>
+            <p className="text-xs text-muted-foreground">
+              Live workforce operations — headcount, compliance, payroll, and readiness
+            </p>
+          </div>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 text-xs gap-1.5"
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
+          {isRefreshing ? "Refreshing…" : "Refresh"}
+        </Button>
+      </div>
 
-      {/* KPI Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        {kpiCards.map((card) => (
-          <ERPStatCard key={card.title} {...card} />
-        ))}
+      {/* Hero row — readiness ring + KPI strip */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
+        <div className="lg:col-span-1">
+          <HrWorkforceReadinessRing
+            ready={ops?.ready_employees ?? 0}
+            notReady={ops?.not_ready_employees ?? 0}
+            blocked={ops?.blocked_employees ?? 0}
+            isLoading={operationsQuery.isLoading}
+            hasAccess={permissions.canViewAssignments}
+          />
+        </div>
+        <div className="lg:col-span-3">
+          <HrKpiCards cards={kpiCards} />
+        </div>
+      </div>
+
+      {/* Section label */}
+      <div className="flex items-center gap-2 pt-1">
+        <UsersRound className="h-3.5 w-3.5 text-muted-foreground" />
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Operations by Domain
+        </h2>
       </div>
 
       {/* Main Dashboard Grid */}
@@ -262,6 +333,7 @@ export function HrDashboardPageClient({ permissions, initialFilters = {} }: HrDa
           iconColor="text-blue-600"
           href="/admin/hr/employees"
           restricted={!permissions.canViewEmployees}
+          severity={permissions.canViewEmployees ? employeeSeverity : undefined}
         >
           {employeeQuery.isLoading ? (
             <SectionSkeleton />
@@ -285,6 +357,7 @@ export function HrDashboardPageClient({ permissions, initialFilters = {} }: HrDa
           iconColor="text-amber-600"
           href="/admin/hr/employees"
           restricted={!permissions.canViewCompliance}
+          severity={permissions.canViewCompliance ? complianceSeverity : undefined}
         >
           {complianceQuery.isLoading ? (
             <SectionSkeleton />
@@ -311,6 +384,7 @@ export function HrDashboardPageClient({ permissions, initialFilters = {} }: HrDa
           iconColor="text-purple-600"
           href="/admin/hr/time/attendance"
           restricted={!permissions.canViewAttendance && !permissions.canViewLeave}
+          severity={permissions.canViewAttendance || permissions.canViewLeave ? timeSeverity : undefined}
         >
           {timeQuery.isLoading ? (
             <SectionSkeleton />
@@ -332,6 +406,7 @@ export function HrDashboardPageClient({ permissions, initialFilters = {} }: HrDa
           iconColor="text-emerald-600"
           href="/admin/hr/payroll/wps"
           restricted={!permissions.canViewPayroll}
+          severity={permissions.canViewPayroll ? payrollSeverity : undefined}
         >
           {payrollQuery.isLoading ? (
             <SectionSkeleton />
@@ -356,6 +431,7 @@ export function HrDashboardPageClient({ permissions, initialFilters = {} }: HrDa
           iconColor="text-slate-600"
           href="/admin/hr/operations/readiness"
           restricted={!permissions.canViewAssignments}
+          severity={permissions.canViewAssignments ? operationsSeverity : undefined}
         >
           {operationsQuery.isLoading ? (
             <SectionSkeleton />
@@ -380,6 +456,7 @@ export function HrDashboardPageClient({ permissions, initialFilters = {} }: HrDa
           iconColor="text-red-600"
           href="/admin/hr/actions/approvals"
           restricted={!permissions.canViewActions}
+          severity={permissions.canViewActions ? actionsSeverity : undefined}
         >
           {actionsQuery.isLoading ? (
             <SectionSkeleton />
@@ -403,6 +480,7 @@ export function HrDashboardPageClient({ permissions, initialFilters = {} }: HrDa
           href="/admin/hr/recruitment/candidates"
           restricted={!permissions.canViewRecruitment}
           className="md:col-span-2 xl:col-span-1"
+          severity={permissions.canViewRecruitment ? recruitmentSeverity : undefined}
         >
           {recruitmentQuery.isLoading ? (
             <SectionSkeleton />

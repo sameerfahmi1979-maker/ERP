@@ -12,6 +12,7 @@
  */
 import type { ReportFetcher, ReportDataResult } from "@/lib/report-center/types";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { calculateGrossSalary, calculateBasicSalary } from "@/lib/hr/payroll/wps-readiness";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared helper: load employee base data
@@ -279,14 +280,32 @@ export const salaryCertWithAmountFetcher: ReportFetcher = {
     const company = emp.owner_company as unknown as { legal_name_en: string } | null;
     const db = createAdminClient();
 
-    const { data: payroll } = await db
-      .from("employee_payroll_profiles")
-      .select("gross_salary, basic_salary, currency")
-      .eq("employee_id", employeeId)
-      .is("deleted_at", null)
-      .limit(1);
+    // gross_salary and basic_salary are NOT stored on employee_payroll_profiles —
+    // they are computed from employee_salary_components. Query both tables.
+    const [{ data: payroll }, { data: components }] = await Promise.all([
+      db
+        .from("employee_payroll_profiles")
+        .select("currency, payroll_status")
+        .eq("employee_id", employeeId)
+        .is("deleted_at", null)
+        .maybeSingle(),
+      db
+        .from("employee_salary_components")
+        .select(
+          "amount, is_active, deleted_at, component_type:hr_salary_component_types!employee_salary_components_component_type_id_fkey(component_kind, is_basic)"
+        )
+        .eq("employee_id", employeeId),
+    ]);
 
-    const profile = payroll?.[0];
+    const mappedComponents = (components ?? []).map((c) => ({
+      amount: Number(c.amount ?? 0),
+      is_active: c.is_active,
+      deleted_at: c.deleted_at,
+      component_type: c.component_type as unknown as { component_kind: string; is_basic?: boolean } | null,
+    }));
+
+    const gross = calculateGrossSalary(mappedComponents);
+    const basic = calculateBasicSalary(mappedComponents);
 
     const row = {
       employee_name: emp.full_name_en,
@@ -294,9 +313,9 @@ export const salaryCertWithAmountFetcher: ReportFetcher = {
       designation: (emp.designation as unknown as { designation_name_en: string } | null)?.designation_name_en ?? "",
       company_name: company?.legal_name_en ?? "",
       joining_date: emp.joining_date,
-      basic_salary: profile?.basic_salary ?? 0,
-      gross_salary: profile?.gross_salary ?? 0,
-      currency: profile?.currency ?? "AED",
+      basic_salary: basic,
+      gross_salary: gross,
+      currency: payroll?.currency ?? "AED",
       generated_date: new Date().toISOString().split("T")[0],
       owner_company_id: emp.owner_company_id,
     };

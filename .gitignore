@@ -54,3 +54,7 @@ scripts/
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+spikes/**/node_modules/
+spikes/**/node_modules
+**/pdfme-designer-prototype/node_modules/

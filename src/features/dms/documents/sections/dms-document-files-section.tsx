@@ -136,17 +136,21 @@ function PreviewPanel({ file, onClose, onDownload }: PreviewPanelProps) {
               )}
             </>
           )}
-          {signedUrl && (
-            <Button
+          <Button
               size="icon"
               variant="ghost"
               className="h-7 w-7"
-              onClick={() => window.open(signedUrl, "_blank", "noopener,noreferrer")}
+              onClick={() =>
+                window.open(
+                  `/api/dms/file?fileId=${file.id}&disposition=inline`,
+                  "_blank",
+                  "noopener,noreferrer"
+                )
+              }
               title="Open in new tab"
             >
               <ExternalLink className="h-3.5 w-3.5" />
             </Button>
-          )}
           <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onDownload} title="Download">
             <Download className="h-3.5 w-3.5" />
           </Button>
@@ -266,13 +270,12 @@ export function DmsDocumentFilesSection({
     const key = `${file.id}-download`;
     setLoadingAction(key);
     try {
-      const result = await getDmsDocumentFileSignedUrl(file.id, "download");
-      if (!result.success || !result.data) {
-        toast.error(result.error ?? "Failed to generate download URL");
-        return;
-      }
+      // Use the server proxy route so Content-Type and Content-Disposition are
+      // always correct regardless of how the object was stored in Supabase.
+      // This is a same-origin URL so the <a download> attribute is honoured by
+      // the browser (cross-origin Supabase signed URLs ignore the attribute).
       const a = document.createElement("a");
-      a.href = result.data.signedUrl;
+      a.href = `/api/dms/file?fileId=${file.id}&disposition=attachment`;
       a.download = file.file_name;
       document.body.appendChild(a);
       a.click();

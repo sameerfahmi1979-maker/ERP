@@ -139,9 +139,40 @@ export function formatDocNoSegment(value: string, maxLen = 40): string {
   return cleaned.length > maxLen ? cleaned.slice(0, maxLen).replace(/_+$/, "") : cleaned;
 }
 
-export function getExtensionFromFilename(filename: string): string {
+/** Map a MIME type to a file extension. Returns null when unknown. */
+export function mimeTypeToExtension(mimeType: string | null | undefined): string | null {
+  if (!mimeType) return null;
+  const m = mimeType.toLowerCase().split(";")[0].trim();
+  const map: Record<string, string> = {
+    "application/pdf": "pdf",
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/png": "png",
+    "image/gif": "gif",
+    "image/webp": "webp",
+    "image/tiff": "tiff",
+    "image/heic": "heic",
+    "image/heif": "heif",
+    "image/bmp": "bmp",
+    "image/svg+xml": "svg",
+    "application/msword": "doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.ms-excel": "xls",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    "application/vnd.ms-powerpoint": "ppt",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+    "text/plain": "txt",
+    "text/csv": "csv",
+    "application/zip": "zip",
+    "application/x-zip-compressed": "zip",
+  };
+  return map[m] ?? null;
+}
+
+export function getExtensionFromFilename(filename: string, mimeTypeFallback?: string | null): string {
   const parts = filename.split(".");
-  return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : "bin";
+  if (parts.length > 1) return parts[parts.length - 1].toLowerCase();
+  return mimeTypeToExtension(mimeTypeFallback) ?? "pdf";
 }
 
 export function stripFilenameExtension(filename: string): string {

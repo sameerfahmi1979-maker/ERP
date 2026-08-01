@@ -29,9 +29,24 @@ export function buildFinalStoragePath(params: {
   return `${company}/${params.year}/${params.typeCode}/${params.documentId}/v${params.versionNumber}/original.${params.ext}`;
 }
 
-export function getFileExtension(filename: string): string {
+export function getFileExtension(filename: string, mimeType?: string | null): string {
   const parts = filename.split(".");
-  return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : "bin";
+  if (parts.length > 1) return parts[parts.length - 1].toLowerCase();
+  if (mimeType) {
+    const m = mimeType.toLowerCase().split(";")[0].trim();
+    const mimeMap: Record<string, string> = {
+      "application/pdf": "pdf", "image/jpeg": "jpg", "image/jpg": "jpg",
+      "image/png": "png", "image/gif": "gif", "image/webp": "webp",
+      "image/tiff": "tiff", "image/heic": "heic",
+      "application/msword": "doc",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+      "application/vnd.ms-excel": "xls",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+      "text/plain": "txt", "text/csv": "csv", "application/zip": "zip",
+    };
+    if (mimeMap[m]) return mimeMap[m];
+  }
+  return "pdf";
 }
 
 // ── Storage copy ──────────────────────────────────────────────────────────────

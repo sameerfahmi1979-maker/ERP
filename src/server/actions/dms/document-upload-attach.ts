@@ -32,9 +32,26 @@ function buildFinalStoragePath(
   return `${company}/${year}/${typeCode}/${documentId}/v${versionNumber}/original.${ext}`;
 }
 
-function getExtension(filename: string): string {
+function getExtension(filename: string, mimeType?: string | null): string {
   const parts = filename.split(".");
-  return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : "bin";
+  if (parts.length > 1) return parts[parts.length - 1].toLowerCase();
+  // Fallback: derive from MIME type to avoid generic ".bin" extension
+  if (mimeType) {
+    const m = mimeType.toLowerCase().split(";")[0].trim();
+    const mimeMap: Record<string, string> = {
+      "application/pdf": "pdf",
+      "image/jpeg": "jpg", "image/jpg": "jpg",
+      "image/png": "png", "image/gif": "gif", "image/webp": "webp",
+      "image/tiff": "tiff", "image/heic": "heic",
+      "application/msword": "doc",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+      "application/vnd.ms-excel": "xls",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+      "text/plain": "txt", "text/csv": "csv", "application/zip": "zip",
+    };
+    if (mimeMap[m]) return mimeMap[m];
+  }
+  return "pdf"; // safer default than "bin" — almost all DMS documents are PDFs
 }
 
 function canAttach(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
@@ -181,11 +198,13 @@ export async function attachUploadToExistingDocument(
       .maybeSingle();
 
     const nextVersionNumber = (maxVerRow?.version_number ?? 0) + 1;
-    const ext = getExtension(session.original_filename as string);
+    const sessionMimeType = session.mime_type as string | null;
+    const ext = getExtension(session.original_filename as string, sessionMimeType);
 
     const resolvedFileName = await resolveStandardFileNameForExistingDocument({
       documentId,
       originalFilename: session.original_filename as string,
+      mimeType: sessionMimeType,
     });
 
     const finalPath = buildFinalStoragePath(
@@ -496,7 +515,8 @@ export async function createDocumentFromUpload(
 
     const documentNo = String(docNoRows[0].generated_reference_number);
     const year = new Date().getFullYear();
-    const ext = getExtension(session.original_filename as string);
+    const sessionMimeType2 = session.mime_type as string | null;
+    const ext = getExtension(session.original_filename as string, sessionMimeType2);
     const userId = ctx.profile.id;
 
     const resolvedFileName = await resolveStandardFileNameForDocumentCreate({
@@ -504,6 +524,7 @@ export async function createDocumentFromUpload(
       expiryDate: expiry_date ?? null,
       documentNo,
       originalFilename: session.original_filename as string,
+      mimeType: sessionMimeType2,
     });
 
     const { data: document, error: docInsertError } = await supabase

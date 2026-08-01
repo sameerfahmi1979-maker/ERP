@@ -71,7 +71,7 @@ function canViewDms(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
 }
 
 /** DMS.3C — Check confidentiality access for a document. Returns true if access is allowed. */
-async function checkDocumentConfidentialityAccess(
+export async function checkDocumentConfidentialityAccess(
   supabase: Awaited<ReturnType<typeof createClient>>,
   documentId: number,
   ctx: Awaited<ReturnType<typeof getAuthContext>>

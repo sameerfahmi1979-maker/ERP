@@ -20,7 +20,6 @@ import { toast } from "sonner";
 import { queryKeys } from "@/lib/query/query-keys";
 import {
   getDmsDocumentVersions,
-  getDmsDocumentFileSignedUrl,
   setDmsDocumentCurrentVersion,
   unlinkDmsDocumentVersion,
   type DmsDocumentVersionRow,
@@ -89,16 +88,18 @@ export function DmsDocumentVersionsSection({
     const key = `${fileId}-${action}`;
     setLoadingAction(key);
     try {
-      const result = await getDmsDocumentFileSignedUrl(fileId, action);
-      if (!result.success || !result.data) {
-        toast.error(result.error ?? "Failed to generate URL");
-        return;
-      }
+      // Use the server proxy route so Content-Type and Content-Disposition are
+      // always correct (cross-origin Supabase signed URLs ignore <a download>
+      // and use the storage key basename "original.pdf" for Save As).
       if (action === "preview") {
-        window.open(result.data.signedUrl, "_blank", "noopener,noreferrer");
+        window.open(
+          `/api/dms/file?fileId=${fileId}&disposition=inline`,
+          "_blank",
+          "noopener,noreferrer"
+        );
       } else {
         const a = document.createElement("a");
-        a.href = result.data.signedUrl;
+        a.href = `/api/dms/file?fileId=${fileId}&disposition=attachment`;
         a.download = fileName;
         document.body.appendChild(a);
         a.click();

@@ -24,6 +24,8 @@ export type StandardFileNameResolveContext = {
   expiryDate?: string | null;
   documentNo?: string | null;
   originalFilename: string;
+  /** MIME type used as fallback for file extension when originalFilename has no extension */
+  mimeType?: string | null;
   extractedFields?: Record<string, unknown> | null;
   metadataValues?: Record<string, unknown>;
   ownerName?: string | null;
@@ -59,7 +61,7 @@ export function resolveStandardFileNameInput(
   ctx: StandardFileNameResolveContext
 ): BuildDmsStandardFileNameInput {
   const fields = mergeFieldMaps(ctx.extractedFields, ctx.metadataValues);
-  const extension = getExtensionFromFilename(ctx.originalFilename);
+  const extension = getExtensionFromFilename(ctx.originalFilename, ctx.mimeType);
 
   // Owner resolution — priority order:
   // 1. Explicit ownerName from DB entity lookup (party/employee/vehicle)

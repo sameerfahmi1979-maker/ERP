@@ -143,6 +143,8 @@ export type ResolveStandardFileNameParams = {
   expiryDate?: string | null;
   documentNo?: string | null;
   originalFilename: string;
+  /** MIME type used as fallback for file extension when originalFilename has no extension */
+  mimeType?: string | null;
   extractedFields?: Record<string, unknown> | null;
   metadataValues?: Array<{ definitionId: number; rawValue: string }>;
   metadataDefinitions?: Array<{ id: number; field_code: string }>;
@@ -199,6 +201,7 @@ export async function resolveDmsStandardFileNameForContext(
     expiryDate: params.expiryDate,
     documentNo: params.documentNo,
     originalFilename: params.originalFilename,
+    mimeType: params.mimeType,
     extractedFields: { ...(params.extractedFields ?? {}), ...metadataFieldMap },
     metadataValues: metadataFieldMap,
     ownerName,
@@ -571,6 +574,7 @@ export async function resolveStandardFileNameForDocumentCreate(input: {
   documentNo: string;
   partyId?: number | null;
   originalFilename: string;
+  mimeType?: string | null;
   standardFileName?: string | null;
 }): Promise<string> {
   const supabase = await createClient();
@@ -589,6 +593,7 @@ export async function resolveStandardFileNameForDocumentCreate(input: {
     expiryDate: input.expiryDate,
     documentNo: input.documentNo,
     originalFilename: input.originalFilename,
+    mimeType: input.mimeType,
     partyId: input.partyId,
     standardFileNameOverride: input.standardFileName,
   });
@@ -597,6 +602,7 @@ export async function resolveStandardFileNameForDocumentCreate(input: {
 export async function resolveStandardFileNameForExistingDocument(input: {
   documentId: number;
   originalFilename: string;
+  mimeType?: string | null;
   standardFileName?: string | null;
 }): Promise<string> {
   const supabase = await createClient();
@@ -649,6 +655,7 @@ export async function resolveStandardFileNameForExistingDocument(input: {
     expiryDate: (doc.expiry_date as string | null) ?? null,
     documentNo: doc.document_no as string,
     originalFilename: input.originalFilename,
+    mimeType: input.mimeType,
     extractedFields: metadataFieldMap,
     partyId: (doc.party_id as number | null) ?? null,
     links,

@@ -9,7 +9,7 @@ import { ShieldCheck, Eye, EyeOff } from "lucide-react";
 import type { AiProviderConfig } from "@/lib/ai/providers/types";
 import { saveAiProviderSecret } from "@/server/actions/settings/ai-settings";
 
-const ENV_VAR_SUGGESTIONS: Record<string, string> = {
+export const ENV_VAR_SUGGESTIONS: Record<string, string> = {
   openai: "OPENAI_API_KEY",
   azure_openai: "AZURE_OPENAI_API_KEY",
   azure_document_intelligence: "AZURE_DOCUMENT_INTELLIGENCE_KEY",
@@ -45,6 +45,9 @@ export function AiProviderSecretDialog({
     const errs: { secretRef?: string; secretValue?: string } = {};
     if (!secretRef.trim()) errs.secretRef = "Required";
     if (!secretValue.trim()) errs.secretValue = "Required";
+    else if (/^https?:\/\//i.test(secretValue.trim())) {
+      errs.secretValue = "This looks like a URL — paste the API key, not the endpoint.";
+    }
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -75,7 +78,7 @@ export function AiProviderSecretDialog({
       open={open}
       onOpenChange={(o) => !o && onClose()}
       title={`Update API Key — ${config.providerName}`}
-      subtitle="The API key is never stored in the database. Only the environment variable name and a masked preview are saved."
+      subtitle="The key is saved to the server environment file and applied immediately. It is never stored in the database."
       icon={<ShieldCheck className="h-5 w-5 text-violet-500" />}
       mode="edit"
       size="sm"
@@ -95,10 +98,11 @@ export function AiProviderSecretDialog({
           </div>
         )}
 
-        <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/20 p-3 text-xs text-amber-800 dark:text-amber-200">
-          <strong>Security:</strong> The key you enter here is used only to generate the masked
-          preview. The actual key must be set in your server environment as the specified environment
-          variable. The key input is cleared immediately after saving.
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 dark:border-emerald-900/30 dark:bg-emerald-950/20 p-3 text-xs text-emerald-800 dark:text-emerald-200">
+          <strong>How it works:</strong> The key is written to the server&apos;s{" "}
+          <code className="font-mono">.env.local</code> file under the environment variable name
+          below and takes effect immediately — no restart needed. Only a masked preview is stored in
+          the database. The key input is cleared after saving.
         </div>
 
         <div className="flex flex-col gap-1.5">

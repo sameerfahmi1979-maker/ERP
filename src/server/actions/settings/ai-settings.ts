@@ -7,6 +7,7 @@ import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
 import { getAiProvider } from "@/lib/ai/providers/factory";
 import type { AiProviderConfig, AiFeatureFlag } from "@/lib/ai/providers/types";
+import { writeEnvSecret } from "@/lib/settings/env-file-secrets";
 
 const REVALIDATE_PATH = "/admin/settings/ai";
 
@@ -53,6 +54,28 @@ const saveSecretSchema = z.object({
 export type ActionResult<T = undefined> = T extends undefined
   ? { success: boolean; error?: string }
   : { success: boolean; data?: T; error?: string };
+
+/**
+ * The DB enforces one default provider per purpose (partial unique index
+ * idx_erp_ai_configs_one_default_per_purpose). Before setting a config as
+ * default, demote any other default for the same purpose.
+ */
+async function demoteOtherDefaultsForPurpose(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  purpose: string,
+  excludeId: number | null,
+  updatedBy: number | string | null
+): Promise<string | null> {
+  let query = supabase
+    .from("erp_ai_provider_configs")
+    .update({ is_default: false, updated_by: updatedBy, updated_at: new Date().toISOString() })
+    .eq("purpose", purpose)
+    .eq("is_default", true)
+    .is("deleted_at", null);
+  if (excludeId != null) query = query.neq("id", excludeId);
+  const { error } = await query;
+  return error ? error.message : null;
+}
 
 // ── Queries ──────────────────────────────────────────────────────────────────
 
@@ -153,6 +176,14 @@ export async function createAiProviderConfig(
     }
 
     const supabase = await createClient();
+
+    if (parsed.data.is_default) {
+      const demoteError = await demoteOtherDefaultsForPurpose(
+        supabase, parsed.data.purpose, null, ctx.profile?.id ?? null
+      );
+      if (demoteError) return { success: false, error: demoteError };
+    }
+
     const { data, error } = await supabase
       .from("erp_ai_provider_configs")
       .insert({
@@ -200,6 +231,14 @@ export async function updateAiProviderConfig(
 
     const { id, ...fields } = parsed.data;
     const supabase = await createClient();
+
+    if (fields.is_default && fields.purpose) {
+      const demoteError = await demoteOtherDefaultsForPurpose(
+        supabase, fields.purpose, id, ctx.profile?.id ?? null
+      );
+      if (demoteError) return { success: false, error: demoteError };
+    }
+
     const { error } = await supabase
       .from("erp_ai_provider_configs")
       .update({ ...fields, updated_by: ctx.profile?.id ?? null, updated_at: new Date().toISOString() })
@@ -288,8 +327,17 @@ export async function saveAiProviderSecret(
     // Generate masked preview: show first 4 and last 4 characters only
     const masked = maskSecret(secret_value);
 
+    // Persist the key to the server's .env.local (NEVER the database) and
+    // apply it to the running process so it takes effect without a restart.
+    const envWrite = writeEnvSecret(secret_ref, secret_value);
+    if (!envWrite.success) {
+      return {
+        success: false,
+        error: envWrite.error ?? "Failed to save the API key to the server environment.",
+      };
+    }
+
     // We store only: the env var name (secret_ref) and the masked preview
-    // The actual key (secret_value) is used only for validation here, never persisted
     const supabase = await createClient();
     const { error } = await supabase
       .from("erp_ai_provider_configs")

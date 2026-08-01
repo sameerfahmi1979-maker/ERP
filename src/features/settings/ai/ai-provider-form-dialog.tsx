@@ -8,12 +8,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { ERPCombobox } from "@/components/erp/combobox/erp-combobox";
-import { Brain } from "lucide-react";
+import { Brain, Eye, EyeOff, KeyRound } from "lucide-react";
 import type { AiProviderConfig } from "@/lib/ai/providers/types";
 import {
   createAiProviderConfig,
   updateAiProviderConfig,
+  saveAiProviderSecret,
 } from "@/server/actions/settings/ai-settings";
+import { ENV_VAR_SUGGESTIONS } from "./ai-provider-secret-dialog";
 
 interface AiProviderFormDialogProps {
   open: boolean;
@@ -94,6 +96,14 @@ export function AiProviderFormDialog({
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // API key (optional) — persisted to the server env file, never to the DB
+  const [secretRef, setSecretRef] = useState(
+    config?.secretRef ?? ENV_VAR_SUGGESTIONS[config?.providerType ?? "openai"] ?? ""
+  );
+  const [secretValue, setSecretValue] = useState("");
+  const [showKey, setShowKey] = useState(false);
+  const [secretError, setSecretError] = useState<string | null>(null);
+
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
     if (errors[key]) setErrors((prev) => ({ ...prev, [key]: undefined }));
@@ -112,7 +122,16 @@ export function AiProviderFormDialog({
       errs.api_endpoint = "Must be a valid URL (https://...)";
     }
     setErrors(errs);
-    return Object.keys(errs).length === 0;
+
+    let secretOk = true;
+    if (secretValue.trim() && !secretRef.trim()) {
+      setSecretError("Environment variable name is required when entering an API key");
+      secretOk = false;
+    } else if (/^https?:\/\//i.test(secretValue.trim())) {
+      setSecretError("This looks like a URL — paste the API key (KEY 1), not the endpoint. The endpoint goes in the API Endpoint field above.");
+      secretOk = false;
+    }
+    return Object.keys(errs).length === 0 && secretOk;
   };
 
   const handleSubmit = async () => {
@@ -136,17 +155,38 @@ export function AiProviderFormDialog({
       };
 
       let result;
+      let configId: number | undefined = config?.id;
       if (isEdit && config) {
         result = await updateAiProviderConfig({ ...payload, id: config.id });
       } else {
-        result = await createAiProviderConfig(payload);
+        const createResult = await createAiProviderConfig(payload);
+        result = createResult;
+        if (createResult.success) configId = createResult.data?.id;
       }
 
-      if (result.success) {
-        onSaved();
-      } else {
+      if (!result.success) {
         toast.error(result.error ?? "Failed to save provider");
+        return;
       }
+
+      // If an API key was entered, persist it to the server env and apply it
+      if (secretValue.trim() && configId != null) {
+        const secretResult = await saveAiProviderSecret({
+          id: configId,
+          secret_value: secretValue,
+          secret_ref: secretRef.trim(),
+        });
+        if (!secretResult.success) {
+          toast.error(
+            `Provider saved, but the API key was not saved: ${secretResult.error ?? "unknown error"}`
+          );
+          return;
+        }
+        setSecretValue("");
+        toast.success("Provider and API key saved. Key is active immediately.");
+      }
+
+      onSaved();
     } finally {
       setIsSubmitting(false);
     }
@@ -157,7 +197,7 @@ export function AiProviderFormDialog({
       open={open}
       onOpenChange={(o) => !o && onClose()}
       title={isEdit ? "Edit AI Provider" : "Add AI Provider"}
-      subtitle="Configure a non-sensitive AI provider. API keys are managed separately."
+      subtitle="Configure the provider. The API key is saved to the server environment — never to the database."
       icon={<Brain className="h-5 w-5 text-violet-500" />}
       mode={isEdit ? "edit" : "add"}
       size="md"
@@ -190,7 +230,17 @@ export function AiProviderFormDialog({
             </Label>
             <ERPCombobox
               value={form.provider_type}
-              onValueChange={(v) => set("provider_type", (v ?? "openai") as ProviderType)}
+              onValueChange={(v) => {
+                const next = (v ?? "openai") as ProviderType;
+                set("provider_type", next);
+                // Refresh env var suggestion unless the user customized it
+                const isUntouched =
+                  !secretRef.trim() ||
+                  Object.values(ENV_VAR_SUGGESTIONS).includes(secretRef);
+                if (!config?.secretRef && isUntouched) {
+                  setSecretRef(ENV_VAR_SUGGESTIONS[next] ?? "");
+                }
+              }}
               options={PROVIDER_TYPES.map((pt) => ({ value: pt.value, label: pt.label }))}
               placeholder="Select provider type..."
             />
@@ -263,6 +313,66 @@ export function AiProviderFormDialog({
           <p className="text-xs text-muted-foreground">
             Required for Azure, Ollama, or custom providers. Leave blank for OpenAI default.
           </p>
+        </div>
+
+        <div className="rounded-md border p-3 flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <KeyRound className="h-4 w-4 text-violet-500" />
+            <span className="text-sm font-medium">API Key</span>
+            {config?.maskedSecretPreview && (
+              <span className="ml-auto text-xs text-muted-foreground">
+                Current: <code className="font-mono">{config.maskedSecretPreview}</code>
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Saved to the server&apos;s <code className="font-mono">.env.local</code> file and
+            applied immediately — never stored in the database.
+            {isEdit && " Leave blank to keep the current key."}
+          </p>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="secret_ref_inline">Environment Variable Name</Label>
+              <Input
+                id="secret_ref_inline"
+                value={secretRef}
+                onChange={(e) => {
+                  setSecretRef(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "_"));
+                  setSecretError(null);
+                }}
+                placeholder="AZURE_DOCUMENT_INTELLIGENCE_KEY"
+                className="font-mono"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="secret_value_inline">API Key Value</Label>
+              <div className="relative">
+                <Input
+                  id="secret_value_inline"
+                  type={showKey ? "text" : "password"}
+                  value={secretValue}
+                  onChange={(e) => {
+                    setSecretValue(e.target.value);
+                    setSecretError(null);
+                  }}
+                  placeholder={isEdit ? "Enter new key to replace..." : "Paste key here..."}
+                  autoComplete="off"
+                  className="font-mono pr-10"
+                />
+                <button
+                  type="button"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowKey((v) => !v)}
+                  tabIndex={-1}
+                >
+                  {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+          </div>
+          {secretError && <p className="text-xs text-destructive">{secretError}</p>}
         </div>
 
         <div className="flex flex-col gap-1.5">

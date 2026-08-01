@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { AiProviderInterface, AiProviderConfig } from "./types";
 import { OpenAiProvider } from "./openai-provider";
 import { LocalProvider } from "./local-provider";
+import { AzureDocumentIntelligenceProvider } from "./azure-document-intelligence-provider";
 
 /**
  * Fetches an AI provider by config_code from erp_ai_provider_configs.
@@ -64,6 +65,8 @@ function createProvider(config: AiProviderConfig): AiProviderInterface {
     case "openai":
     case "azure_openai":
       return new OpenAiProvider(config);
+    case "azure_document_intelligence":
+      return new AzureDocumentIntelligenceProvider(config);
     case "tesseract":
     case "local_ollama":
     case "local_custom":

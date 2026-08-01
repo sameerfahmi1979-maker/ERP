@@ -2,10 +2,13 @@
  * HR.12 — HR AI Feature Flag Helpers
  *
  * Server-side helpers for checking HR AI feature flag status.
- * Uses user-scoped Supabase client (respects RLS on erp_ai_feature_flags).
+ *
+ * Uses the admin (service-role) client: RLS on erp_ai_feature_flags requires
+ * settings.ai.view, which regular HR users don't have — but a flag's on/off
+ * state is not sensitive and must be readable for any user's feature gating.
  */
 
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { HrAiFeatureFlagCode } from "./types";
 
 /**
@@ -16,7 +19,7 @@ export async function isHrAiFeatureEnabled(
   featureCode: HrAiFeatureFlagCode
 ): Promise<boolean> {
   try {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const { data } = await supabase
       .from("erp_ai_feature_flags")
       .select("is_enabled")

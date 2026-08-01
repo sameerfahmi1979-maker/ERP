@@ -138,7 +138,18 @@ export async function routeOcr(input: OcrRouterInput): Promise<OcrRouterResult> 
 
   // ── Step 2: PDF — detect text layer ──────────────────────────────────────
   if (isPdfMime(mime)) {
-    const content = await extractFileContent(buffer, mime, fileName);
+    // SPEED.1 P2: when Azure will OCR the raw PDF buffer, skip the expensive
+    // page-to-image rendering (~5s). Images are rendered lazily only if the
+    // GPT vision fallback is actually needed.
+    const azureUsable = !!(
+      featureFlags.dmsOcrAzure &&
+      azureProvider?.isConfigured() &&
+      azureProvider.supports(mime)
+    );
+
+    const content = await extractFileContent(buffer, mime, fileName, {
+      skipPdfPageRendering: azureUsable,
+    });
 
     if (content.method === "pdf-text-layer") {
       // Digital PDF: has an embedded text layer — use it, no AI call needed.
@@ -156,8 +167,8 @@ export async function routeOcr(input: OcrRouterInput): Promise<OcrRouterResult> 
     }
 
     // Scanned PDF: no text layer — need Azure or GPT vision for OCR.
-    // Fall through to the scanned/image routing below with rendered page images.
-    if (content.images.length > 0) {
+    // Fall through to the scanned/image routing below.
+    if (content.images.length > 0 || content.method === "pdf-scanned-render-deferred") {
       return routeScannedOrImage(
         { buffer, mimeType: mime, fileName, featureFlags, azureProvider, gptProvider },
         content.images,
@@ -226,6 +237,14 @@ async function routeScannedOrImage(
 ): Promise<OcrRouterResult> {
   const { mimeType, fileName, featureFlags, azureProvider, gptProvider } = input;
 
+  // SPEED.1 P2: page images may have been skipped when Azure handles the raw
+  // buffer. Render them lazily only when the GPT vision path is actually used.
+  const ensureImages = async (): Promise<ExtractedImage[]> => {
+    if (images.length > 0) return images;
+    const content = await extractFileContent(input.buffer, mimeType, fileName);
+    return content.images;
+  };
+
   // ── Azure Document Intelligence ──────────────────────────────────────────
   if (featureFlags.dmsOcrAzure && azureProvider?.isConfigured() && azureProvider.supports(mimeType)) {
     try {
@@ -270,14 +289,14 @@ async function routeScannedOrImage(
       }
 
       // Fall through to GPT, mark fallbackUsed=true
-      const gptResult = await tryGptVision(images, fileName, gptProvider);
+      const gptResult = await tryGptVision(await ensureImages(), fileName, gptProvider);
       return { ...gptResult, sourceKind, fallbackUsed: true };
     }
   }
 
   // ── GPT-4.1 vision (primary when Azure disabled, fallback when Azure fails) ─
   if (featureFlags.dmsOcrGptVisionFallback) {
-    const gptResult = await tryGptVision(images, fileName, gptProvider);
+    const gptResult = await tryGptVision(await ensureImages(), fileName, gptProvider);
     return { ...gptResult, sourceKind, fallbackUsed: false };
   }
 

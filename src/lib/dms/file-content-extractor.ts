@@ -117,13 +117,24 @@ async function convertTiffToPng(buffer: Buffer, fileName: string): Promise<Extra
   }
 }
 
+export interface ExtractFileContentOptions {
+  /**
+   * Speed optimization (SPEED.1 P2): when the caller knows a raw-buffer OCR
+   * provider (e.g. Azure Document Intelligence) will handle scanned PDFs, page
+   * rendering (~5s) is skipped. The caller renders lazily only if it actually
+   * falls back to a vision model.
+   */
+  skipPdfPageRendering?: boolean;
+}
+
 /**
  * Main entry point — extract AI-readable content from any supported file.
  */
 export async function extractFileContent(
   buffer: Buffer,
   mimeType: string,
-  fileName: string
+  fileName: string,
+  options?: ExtractFileContentOptions
 ): Promise<ExtractedContent> {
   const mime = normalizeMime(mimeType);
 
@@ -144,7 +155,12 @@ export async function extractFileContent(
       return { text, images: [], hasContent: true, method: "pdf-text-layer" };
     }
 
-    // No text layer — render pages to images for vision
+    // No text layer — scanned PDF.
+    if (options?.skipPdfPageRendering) {
+      return { text: "", images: [], hasContent: true, method: "pdf-scanned-render-deferred" };
+    }
+
+    // Render pages to images for vision
     const pages = await convertPdfPagesToImages(buffer, 4);
     if (pages.length > 0) {
       return {

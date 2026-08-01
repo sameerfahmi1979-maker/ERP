@@ -469,8 +469,28 @@ export async function startAiIntakeFromUploadSession(
       name_en: s.name_en,
     }));
 
-    // Pass 1: classify + transcribe — no per-field extraction list
-    const metadataFields: DmsAiMetadataField[] = [];
+    // ── SPEED.1 P3: combined classify + extract in Pass 1 ─────────────────
+    // Include the top-ranked candidate's metadata fields in Pass 1. When the
+    // AI confirms that type (the common case), Pass 2 is skipped entirely,
+    // saving a full GPT round trip. Pass 2 still runs when the AI resolves a
+    // different type than the heuristic top candidate.
+    let pass1FieldsTypeId: number | null = null;
+    let metadataFields: DmsAiMetadataField[] = [];
+    const topCandidate = scoredTypes[0];
+    if (topCandidate && topCandidate.score > 0) {
+      try {
+        const topFields = await loadMetadataFieldsForDocumentType(supabase, topCandidate.id, "intake");
+        if (topFields.length > 0) {
+          metadataFields = topFields;
+          pass1FieldsTypeId = topCandidate.id;
+        }
+      } catch (err) {
+        logger.warn("[ai-intake] failed to preload top-candidate fields (non-fatal)", {
+          typeId: topCandidate.id,
+          err: String(err).slice(0, 200),
+        });
+      }
+    }
 
     // ── Mark job processing ────────────────────────────────────────────────
 
@@ -522,7 +542,8 @@ export async function startAiIntakeFromUploadSession(
       return { success: false, error: aiError ?? "AI analysis failed" };
     }
 
-    // ── Pass 2: type-specific metadata extraction (when type resolved) ─────
+    // ── Pass 2: type-specific metadata extraction (only when the resolved
+    //    type differs from the one whose fields Pass 1 already extracted) ────
 
     const pass1Transcription =
       aiOutput.extraction.fullTextTranscription ?? ocrText ?? "";
@@ -548,7 +569,12 @@ export async function startAiIntakeFromUploadSession(
       }
     }
 
-    if (suggestedTypeId) {
+    if (suggestedTypeId && suggestedTypeId === pass1FieldsTypeId) {
+      // SPEED.1 P3: Pass 1 already extracted this type's fields — skip Pass 2.
+      logger.info("[ai-intake] pass-2 skipped: pass-1 covered resolved type fields", {
+        typeCode: suggestedTypeCode,
+      });
+    } else if (suggestedTypeId) {
       const typeSpecificFields = await loadMetadataFieldsForDocumentType(supabase, suggestedTypeId, "intake");
       if (typeSpecificFields.length > 0) {
         try {

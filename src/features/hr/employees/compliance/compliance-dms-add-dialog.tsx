@@ -1,10 +1,27 @@
 "use client";
 
+/**
+ * ComplianceDmsAddDialog — 3-step wizard for adding compliance child records
+ * from DMS documents.
+ *
+ * Steps:
+ *   source   → choose "From DMS" or "Enter Manually"
+ *   pick-dms → multi-select documents (employee docs tab or DMS search)
+ *   review   → review/edit pre-filled form before saving (single doc only)
+ *   batch    → progress screen shown when >1 document selected
+ *
+ * Multi-document behaviour (HR.DOCLINK.1 enhancement):
+ *   - When 1 document is selected: continue to "review" step (existing flow).
+ *   - When multiple documents are selected: skip review, batch-create one
+ *     compliance record per document using AI prefill, show a results screen.
+ */
+
 import { useCallback, useState, useTransition, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   FolderOpen, PenLine, Loader2, ChevronRight, Search, FileText,
+  CheckCircle2, XCircle, AlertTriangle,
 } from "lucide-react";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { Button } from "@/components/ui/button";
@@ -28,13 +45,20 @@ import {
 } from "@/lib/hr/compliance/compliance-dms-prefill";
 import { cn } from "@/lib/utils";
 
-type Step = "source" | "pick-dms" | "review";
+type Step = "source" | "pick-dms" | "review" | "batch";
 type PickMode = "employee" | "dms";
 
 type SaveResult = {
   success: boolean;
   error?: string;
   data?: { dmsLinkCreated?: boolean };
+};
+
+type BatchResultItem = {
+  documentNo: string;
+  title: string;
+  status: "ok" | "error";
+  error?: string;
 };
 
 type Props<TForm extends { dms_document_id?: number | null }> = {
@@ -76,18 +100,33 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
   const [pickMode, setPickMode] = useState<PickMode>("employee");
   const [dmsSearch, setDmsSearch] = useState("");
   const [form, setForm] = useState<TForm>(() => createEmptyForm());
-  const [selectedDmsId, setSelectedDmsId] = useState<number | null>(null);
+  // Multi-select: Set of selected document IDs
+  const [selectedDmsIds, setSelectedDmsIds] = useState<Set<number>>(new Set());
   const [prefillMeta, setPrefillMeta] = useState<ComplianceDmsPrefillMeta | null>(null);
   const [isPrefilling, startPrefill] = useTransition();
   const [isSubmitting, startSubmit] = useTransition();
+
+  // Batch state
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
+  const [batchResults, setBatchResults] = useState<BatchResultItem[]>([]);
+  const [batchDone, setBatchDone] = useState(false);
+
+  // Snapshot of employee/library docs used during batch (for labels)
+  const [employeeDocsSnapshot, setEmployeeDocsSnapshot] = useState<DmsEntityDocumentRow[]>([]);
+  const [libraryDocsSnapshot, setLibraryDocsSnapshot] = useState<AvailableDmsDocumentOption[]>([]);
 
   const resetState = useCallback(() => {
     setStep("source");
     setPickMode("employee");
     setDmsSearch("");
     setForm(createEmptyForm());
-    setSelectedDmsId(null);
+    setSelectedDmsIds(new Set());
     setPrefillMeta(null);
+    setBatchProgress(null);
+    setBatchResults([]);
+    setBatchDone(false);
+    setEmployeeDocsSnapshot([]);
+    setLibraryDocsSnapshot([]);
   }, [createEmptyForm]);
 
   const handleOpenChange = useCallback((next: boolean) => {
@@ -113,18 +152,23 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
     enabled: open && step === "pick-dms" && pickMode === "dms",
   });
 
+  const toggleDoc = (id: number) => {
+    setSelectedDmsIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   const handleBack = () => {
     if (step === "pick-dms") {
       setStep("source");
-      setSelectedDmsId(null);
+      setSelectedDmsIds(new Set());
       setPickMode("employee");
       setDmsSearch("");
     } else if (step === "review") {
-      if (form.dms_document_id) {
-        setStep("pick-dms");
-      } else {
-        setStep("source");
-      }
+      setStep("pick-dms");
       setPrefillMeta(null);
     }
   };
@@ -140,21 +184,93 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
     setStep("pick-dms");
   };
 
+  // Single doc: prefill → review step
+  // Multiple docs: batch create flow
   const handleContinueFromDms = () => {
-    if (!selectedDmsId) {
-      toast.error("Select a DMS document");
+    if (selectedDmsIds.size === 0) {
+      toast.error("Select at least one document");
       return;
     }
-    startPrefill(async () => {
-      const result = await prefillComplianceRecordFromDms(employeeId, selectedDmsId, recordKind);
-      if (!result.success || !result.data) {
-        toast.error(result.error ?? "Failed to prefill from document");
-        return;
-      }
-      setForm(mergeComplianceDmsPrefill(createEmptyForm(), result.data));
-      setPrefillMeta(prefillMetaFromResult(result.data));
-      setStep("review");
-    });
+
+    const ids = [...selectedDmsIds];
+
+    if (ids.length === 1) {
+      // Original single-document flow: prefill → review
+      startPrefill(async () => {
+        const result = await prefillComplianceRecordFromDms(employeeId, ids[0], recordKind);
+        if (!result.success || !result.data) {
+          toast.error(result.error ?? "Failed to prefill from document");
+          return;
+        }
+        setForm(mergeComplianceDmsPrefill(createEmptyForm(), result.data));
+        setPrefillMeta(prefillMetaFromResult(result.data));
+        setStep("review");
+      });
+    } else {
+      // Multi-document batch flow
+      setEmployeeDocsSnapshot(employeeDocs ?? []);
+      setLibraryDocsSnapshot(libraryDocs ?? []);
+      setStep("batch");
+      setBatchProgress({ current: 0, total: ids.length });
+      setBatchResults([]);
+      setBatchDone(false);
+
+      startSubmit(async () => {
+        const results: BatchResultItem[] = [];
+          let savedCount = 0;
+          let dmsLinked = false;
+
+        for (let i = 0; i < ids.length; i++) {
+          const docId = ids[i];
+          setBatchProgress({ current: i + 1, total: ids.length });
+
+          // Resolve label from in-memory snapshots (two different shapes)
+          const empMatch = employeeDocsSnapshot.find((d) => d.document_id === docId);
+          const libMatch = libraryDocsSnapshot.find((d) => d.id === docId);
+          const docLabel = empMatch?.title ?? libMatch?.title ?? `Document ${docId}`;
+          const docNo = empMatch?.document_no ?? libMatch?.document_no ?? `#${docId}`;
+
+          try {
+            const prefillRes = await prefillComplianceRecordFromDms(employeeId, docId, recordKind);
+            if (!prefillRes.success || !prefillRes.data) {
+              results.push({ documentNo: docNo, title: docLabel, status: "error", error: prefillRes.error ?? "Prefill failed" });
+              continue;
+            }
+
+            const filledForm = mergeComplianceDmsPrefill(createEmptyForm(), prefillRes.data);
+            const validErr = validate(filledForm);
+            if (validErr) {
+              results.push({ documentNo: docNo, title: docLabel, status: "error", error: `Validation: ${validErr}` });
+              continue;
+            }
+
+            const saveRes = await save(filledForm);
+            if (!saveRes.success) {
+              results.push({ documentNo: docNo, title: docLabel, status: "error", error: saveRes.error ?? "Save failed" });
+              continue;
+            }
+
+            if (saveRes.data?.dmsLinkCreated) dmsLinked = true;
+            savedCount++;
+            results.push({ documentNo: docNo, title: docLabel, status: "ok" });
+          } catch (err) {
+            results.push({ documentNo: docNo, title: docLabel, status: "error", error: String(err) });
+          }
+        }
+
+        setBatchResults(results);
+        setBatchDone(true);
+
+        if (savedCount > 0) {
+          onSaved({ dmsLinkCreated: dmsLinked, hasDmsDocument: true });
+          toast.success(
+            savedCount === ids.length
+              ? `${savedCount} ${recordLabel} records created`
+              : `${savedCount} of ${ids.length} ${recordLabel} records created`
+          );
+        }
+      });
+    }
   };
 
   const handleSave = () => {
@@ -179,9 +295,12 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
     });
   };
 
+  const selectedCount = selectedDmsIds.size;
+
   const title =
     step === "source" ? `Add ${recordLabel}`
-    : step === "pick-dms" ? "Choose DMS Document"
+    : step === "pick-dms" ? "Choose DMS Documents"
+    : step === "batch" ? `Creating ${recordLabel} Records…`
     : `Review & Save ${recordLabel}`;
 
   const subtitle =
@@ -189,14 +308,18 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
       ? "Start from the employee Documents tab, search DMS, or enter manually"
     : step === "pick-dms"
       ? pickMode === "employee"
-        ? "Documents already linked to this employee (Documents tab)"
-        : "Search DMS for a document — it will be linked to this employee on save"
+        ? "Tick one or more documents — multiple selections create one record each"
+        : "Search DMS — tick one or more documents to link and process"
+    : step === "batch"
+      ? batchDone
+        ? `Processed ${selectedCount} document${selectedCount !== 1 ? "s" : ""}`
+        : "Running AI prefill and saving each record…"
     : "Confirm all fields before saving to the compliance record";
 
   const showSubmit = step === "review";
   const showContinue = step === "pick-dms";
+  const showClose = step === "batch" && batchDone;
   const docsLoading = pickMode === "employee" ? employeeDocsLoading : libraryDocsLoading;
-
   return (
     <ERPChildDialogForm
       open={open}
@@ -206,15 +329,29 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
       icon={icon}
       mode="add"
       size={size}
-      isSubmitting={isSubmitting || isPrefilling}
-      onSubmit={showSubmit ? handleSave : showContinue ? handleContinueFromDms : undefined}
-      submitLabel={
-        showSubmit ? submitLabel
-        : showContinue ? (isPrefilling ? (recordKind === "dependent" ? "Searching DMS & prefilling…" : "Prefilling…") : "Continue")
+      isSubmitting={(isSubmitting && step !== "batch") || isPrefilling}
+      onSubmit={
+        showSubmit ? handleSave
+        : showContinue ? handleContinueFromDms
+        : showClose ? () => handleOpenChange(false)
         : undefined
       }
+      submitLabel={
+        showSubmit ? submitLabel
+        : showContinue
+          ? isPrefilling
+            ? "Prefilling…"
+            : selectedCount > 1
+              ? `Create ${selectedCount} Records`
+              : selectedCount === 1
+                ? "Continue"
+                : "Continue"
+        : showClose ? "Done"
+        : undefined
+      }
+      cancelLabel={step === "batch" && !batchDone ? undefined : "Cancel"}
     >
-      {step !== "source" && (
+      {(step === "pick-dms" || step === "review") && (
         <div className="mb-4">
           <Button type="button" variant="ghost" size="sm" className="-ml-2 h-8" onClick={handleBack} disabled={isPrefilling || isSubmitting}>
             ← Back
@@ -222,6 +359,7 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
         </div>
       )}
 
+      {/* ── Step: Source ─────────────────────────────────────────── */}
       {step === "source" && (
         <div className="grid grid-cols-12 gap-4">
           <button
@@ -235,7 +373,7 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
             <FolderOpen className="h-8 w-8 text-primary" />
             <span className="font-semibold">From DMS Document</span>
             <span className="text-sm text-muted-foreground">
-              Check employee Documents first, then search DMS. Unlinked files are added to the employee on save.
+              Select one or multiple documents. Each creates one record, pre-filled by AI.
             </span>
             <span className="text-xs text-primary flex items-center gap-1 mt-1">
               Recommended <ChevronRight className="h-3 w-3" />
@@ -258,25 +396,35 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
         </div>
       )}
 
+      {/* ── Step: Pick DMS (multi-select) ────────────────────────── */}
       {step === "pick-dms" && (
         <div className="space-y-4">
-          <div className="flex gap-2 p-1 bg-muted rounded-lg w-fit">
-            <Button
-              type="button"
-              size="sm"
-              variant={pickMode === "employee" ? "default" : "ghost"}
-              onClick={() => { setPickMode("employee"); setSelectedDmsId(null); }}
-            >
-              Employee Documents
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={pickMode === "dms" ? "default" : "ghost"}
-              onClick={() => { setPickMode("dms"); setSelectedDmsId(null); }}
-            >
-              Search DMS
-            </Button>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex gap-2 p-1 bg-muted rounded-lg w-fit">
+              <Button
+                type="button"
+                size="sm"
+                variant={pickMode === "employee" ? "default" : "ghost"}
+                onClick={() => { setPickMode("employee"); setSelectedDmsIds(new Set()); }}
+              >
+                Employee Documents
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={pickMode === "dms" ? "default" : "ghost"}
+                onClick={() => { setPickMode("dms"); setSelectedDmsIds(new Set()); }}
+              >
+                Search DMS
+              </Button>
+            </div>
+            {selectedCount > 0 && (
+              <div className="flex items-center gap-1.5 rounded-md bg-primary/10 text-primary text-xs px-2.5 py-1.5 font-medium">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                {selectedCount} selected
+                {selectedCount > 1 && <span className="text-[11px] font-normal ml-0.5">→ {selectedCount} records will be created</span>}
+              </div>
+            )}
           </div>
 
           {pickMode === "dms" && (
@@ -311,8 +459,8 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
                 <EmployeeDocPickRow
                   key={doc.document_id}
                   doc={doc}
-                  selected={selectedDmsId === doc.document_id}
-                  onSelect={() => setSelectedDmsId(doc.document_id)}
+                  selected={selectedDmsIds.has(doc.document_id)}
+                  onToggle={() => toggleDoc(doc.document_id)}
                 />
               ))}
             </div>
@@ -330,8 +478,8 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
                 <LibraryDocPickRow
                   key={doc.id}
                   doc={doc}
-                  selected={selectedDmsId === doc.id}
-                  onSelect={() => setSelectedDmsId(doc.id)}
+                  selected={selectedDmsIds.has(doc.id)}
+                  onToggle={() => toggleDoc(doc.id)}
                 />
               ))}
             </div>
@@ -343,32 +491,103 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
               Running AI prefill…
             </div>
           )}
+
+          {selectedCount > 1 && (
+            <p className="text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-md px-3 py-2">
+              <strong>{selectedCount} documents selected.</strong> Each document will be AI-prefilled and saved as its own {recordLabel} record automatically — no per-document review step.
+              You can edit individual records afterwards.
+            </p>
+          )}
         </div>
       )}
 
+      {/* ── Step: Review (single doc) ────────────────────────────── */}
       {step === "review" && renderReview({ form, setForm, prefillMeta })}
+
+      {/* ── Step: Batch progress/results ─────────────────────────── */}
+      {step === "batch" && (
+        <div className="space-y-4">
+          {!batchDone && batchProgress && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                Processing {batchProgress.current} of {batchProgress.total}…
+              </div>
+              <div className="h-2 rounded-full bg-muted overflow-hidden">
+                <div
+                  className="h-full bg-primary transition-all duration-300 rounded-full"
+                  style={{ width: `${Math.round((batchProgress.current / batchProgress.total) * 100)}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {batchResults.length > 0 && (
+            <div className="space-y-2 max-h-[360px] overflow-y-auto">
+              {batchResults.map((r, i) => (
+                <div
+                  key={i}
+                  className={cn(
+                    "flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm",
+                    r.status === "ok"
+                      ? "border-green-200 bg-green-50/60 dark:bg-green-950/20"
+                      : "border-red-200 bg-red-50/60 dark:bg-red-950/20"
+                  )}
+                >
+                  {r.status === "ok"
+                    ? <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
+                    : <XCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />}
+                  <div className="min-w-0 flex-1">
+                    <span className="font-medium truncate block">{r.title}</span>
+                    <span className="text-xs text-muted-foreground">{r.documentNo}</span>
+                    {r.status === "error" && (
+                      <div className="flex items-start gap-1 mt-1 text-xs text-red-600">
+                        <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
+                        {r.error}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {batchDone && (
+            <p className="text-xs text-muted-foreground">
+              {batchResults.filter((r) => r.status === "ok").length} created · {batchResults.filter((r) => r.status === "error").length} failed.
+              {batchResults.some((r) => r.status === "error") && " Failed records may need missing required fields — try adding them manually."}
+            </p>
+          )}
+        </div>
+      )}
     </ERPChildDialogForm>
   );
 }
 
+// ── Row components ────────────────────────────────────────────────────────────
+
 function EmployeeDocPickRow({
   doc,
   selected,
-  onSelect,
+  onToggle,
 }: {
   doc: DmsEntityDocumentRow;
   selected: boolean;
-  onSelect: () => void;
+  onToggle: () => void;
 }) {
   return (
     <button
       type="button"
-      onClick={onSelect}
+      onClick={onToggle}
+      aria-pressed={selected}
       className={cn(
         "w-full flex items-start gap-3 p-3 rounded-lg border text-left transition-colors",
-        selected ? "border-primary bg-primary/5 ring-1 ring-primary/30" : "hover:bg-muted/40"
+        selected
+          ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+          : "hover:bg-muted/40 border-border"
       )}
     >
+      <TickBox selected={selected} />
       <FileText className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
@@ -393,21 +612,25 @@ function EmployeeDocPickRow({
 function LibraryDocPickRow({
   doc,
   selected,
-  onSelect,
+  onToggle,
 }: {
   doc: AvailableDmsDocumentOption;
   selected: boolean;
-  onSelect: () => void;
+  onToggle: () => void;
 }) {
   return (
     <button
       type="button"
-      onClick={onSelect}
+      onClick={onToggle}
+      aria-pressed={selected}
       className={cn(
         "w-full flex items-start gap-3 p-3 rounded-lg border text-left transition-colors",
-        selected ? "border-primary bg-primary/5 ring-1 ring-primary/30" : "hover:bg-muted/40"
+        selected
+          ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+          : "hover:bg-muted/40 border-border"
       )}
     >
+      <TickBox selected={selected} />
       <FileText className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
@@ -428,5 +651,22 @@ function LibraryDocPickRow({
         </div>
       </div>
     </button>
+  );
+}
+
+function TickBox({ selected }: { selected: boolean }) {
+  return (
+    <div
+      className={cn(
+        "mt-0.5 h-4 w-4 shrink-0 rounded border transition-colors flex items-center justify-center",
+        selected ? "border-primary bg-primary" : "border-border bg-background"
+      )}
+    >
+      {selected && (
+        <svg className="h-2.5 w-2.5 text-primary-foreground" fill="none" viewBox="0 0 12 12">
+          <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )}
+    </div>
   );
 }

@@ -1,10 +1,21 @@
 "use client";
 
+/**
+ * IdentityDocumentAddDialog — 3-step wizard for adding Legal Documents
+ * (employee_identity_documents) from DMS.
+ *
+ * Multi-select behaviour (HR.DOCLINK.1 enhancement):
+ *   - 1 document selected → existing prefill → review → save flow.
+ *   - Multiple documents selected → batch create: prefill + save each,
+ *     show a progress / results screen. No per-document review in batch mode.
+ */
+
 import { useCallback, useState, useTransition } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   FileText, FolderOpen, PenLine, Loader2, ChevronRight, Search,
+  CheckCircle2, XCircle, AlertTriangle,
 } from "lucide-react";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { Button } from "@/components/ui/button";
@@ -30,8 +41,15 @@ import { IdentityDocumentFormFields } from "./identity-document-form-fields";
 import type { HrIdentityDocTypeRow } from "@/server/actions/hr/settings";
 import { cn } from "@/lib/utils";
 
-type Step = "source" | "pick-dms" | "review";
+type Step = "source" | "pick-dms" | "review" | "batch";
 type PickMode = "employee" | "dms";
+
+type BatchResultItem = {
+  documentNo: string;
+  title: string;
+  status: "ok" | "error";
+  error?: string;
+};
 
 type Props = {
   open: boolean;
@@ -53,7 +71,8 @@ export function IdentityDocumentAddDialog({
   const [dmsSearch, setDmsSearch] = useState("");
   const [form, setForm] = useState<IdentityDocumentFormState>(() => createEmptyIdentityDocumentForm());
   const [fieldConfidence, setFieldConfidence] = useState<Record<string, number>>({});
-  const [selectedDmsId, setSelectedDmsId] = useState<number | null>(null);
+  // Multi-select: Set of selected document IDs
+  const [selectedDmsIds, setSelectedDmsIds] = useState<Set<number>>(new Set());
   const [prefillMeta, setPrefillMeta] = useState<{
     documentTitle: string;
     documentNo: string;
@@ -64,14 +83,22 @@ export function IdentityDocumentAddDialog({
   const [isPrefilling, startPrefill] = useTransition();
   const [isSubmitting, startSubmit] = useTransition();
 
+  // Batch state
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
+  const [batchResults, setBatchResults] = useState<BatchResultItem[]>([]);
+  const [batchDone, setBatchDone] = useState(false);
+
   const resetState = useCallback(() => {
     setStep("source");
     setPickMode("employee");
     setDmsSearch("");
     setForm(createEmptyIdentityDocumentForm());
     setFieldConfidence({});
-    setSelectedDmsId(null);
+    setSelectedDmsIds(new Set());
     setPrefillMeta(null);
+    setBatchProgress(null);
+    setBatchResults([]);
+    setBatchDone(false);
   }, []);
 
   const handleOpenChange = useCallback((next: boolean) => {
@@ -99,10 +126,19 @@ export function IdentityDocumentAddDialog({
 
   const docTypeOptions = docTypes.map((t) => ({ value: t.id, label: t.name_en }));
 
+  const toggleDoc = (id: number) => {
+    setSelectedDmsIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   const handleBack = () => {
     if (step === "pick-dms") {
       setStep("source");
-      setSelectedDmsId(null);
+      setSelectedDmsIds(new Set());
       setPickMode("employee");
       setDmsSearch("");
     } else if (step === "review") {
@@ -129,27 +165,104 @@ export function IdentityDocumentAddDialog({
   };
 
   const handleContinueFromDms = () => {
-    if (!selectedDmsId) {
-      toast.error("Select a DMS document");
+    if (selectedDmsIds.size === 0) {
+      toast.error("Select at least one document");
       return;
     }
-    startPrefill(async () => {
-      const result = await prefillIdentityDocumentFromDms(employeeId, selectedDmsId);
-      if (!result.success) {
-        toast.error(result.error ?? "Failed to prefill from document");
-        return;
-      }
-      setForm(result.data.form);
-      setFieldConfidence(result.data.fieldConfidence);
-      setPrefillMeta({
-        documentTitle: result.data.sourceDocument.title,
-        documentNo: result.data.sourceDocument.document_no,
-        prefillSource: result.data.prefillSource,
-        warning: result.data.warning,
-        linkedToEmployee: result.data.linkedToEmployee,
+
+    const ids = [...selectedDmsIds];
+
+    if (ids.length === 1) {
+      // Single document: existing prefill → review flow
+      startPrefill(async () => {
+        const result = await prefillIdentityDocumentFromDms(employeeId, ids[0]);
+        if (!result.success) {
+          toast.error(result.error ?? "Failed to prefill from document");
+          return;
+        }
+        setForm(result.data.form);
+        setFieldConfidence(result.data.fieldConfidence);
+        setPrefillMeta({
+          documentTitle: result.data.sourceDocument.title,
+          documentNo: result.data.sourceDocument.document_no,
+          prefillSource: result.data.prefillSource,
+          warning: result.data.warning,
+          linkedToEmployee: result.data.linkedToEmployee,
+        });
+        setStep("review");
       });
-      setStep("review");
-    });
+    } else {
+      // Multiple documents: batch create flow
+      setStep("batch");
+      setBatchProgress({ current: 0, total: ids.length });
+      setBatchResults([]);
+      setBatchDone(false);
+
+      const allDocs = [
+        ...(employeeDocs ?? []).map((d) => ({ id: d.document_id, title: d.title, no: d.document_no })),
+        ...(libraryDocs ?? []).map((d) => ({ id: d.id, title: d.title, no: d.document_no })),
+      ];
+
+      startSubmit(async () => {
+        const results: BatchResultItem[] = [];
+        let savedCount = 0;
+        let dmsLinked = false;
+
+        for (let i = 0; i < ids.length; i++) {
+          const docId = ids[i];
+          setBatchProgress({ current: i + 1, total: ids.length });
+
+          const docInfo = allDocs.find((d) => d.id === docId);
+          const docLabel = docInfo?.title ?? `Document ${docId}`;
+          const docNo = docInfo?.no ?? `#${docId}`;
+
+          try {
+            const prefillRes = await prefillIdentityDocumentFromDms(employeeId, docId);
+            if (!prefillRes.success) {
+              results.push({ documentNo: docNo, title: docLabel, status: "error", error: prefillRes.error ?? "Prefill failed" });
+              continue;
+            }
+
+            const filledForm = prefillRes.data.form;
+
+            // Validate
+            if (!filledForm.document_type_id) {
+              results.push({ documentNo: docNo, title: docLabel, status: "error", error: "Could not determine document type — add manually" });
+              continue;
+            }
+            if (!filledForm.document_number?.trim()) {
+              results.push({ documentNo: docNo, title: docLabel, status: "error", error: "Document number not found — add manually" });
+              continue;
+            }
+
+            const payload = identityDocumentFormToPayload(filledForm);
+            const saveRes = await createEmployeeIdentityDocument(employeeId, payload);
+            if (!saveRes.success) {
+              results.push({ documentNo: docNo, title: docLabel, status: "error", error: saveRes.error ?? "Save failed" });
+              continue;
+            }
+
+            if (saveRes.data?.dmsLinkCreated) dmsLinked = true;
+            savedCount++;
+            results.push({ documentNo: docNo, title: docLabel, status: "ok" });
+          } catch (err) {
+            results.push({ documentNo: docNo, title: docLabel, status: "error", error: String(err) });
+          }
+        }
+
+        setBatchResults(results);
+        setBatchDone(true);
+
+        if (savedCount > 0) {
+          onSaved({ dmsLinkCreated: dmsLinked, hasDmsDocument: true });
+          toast.success(
+            savedCount === ids.length
+              ? `${savedCount} Legal Document${savedCount !== 1 ? "s" : ""} created`
+              : `${savedCount} of ${ids.length} Legal Documents created`
+          );
+        }
+      });
+    }
   };
 
   const handleSave = () => {
@@ -178,9 +291,12 @@ export function IdentityDocumentAddDialog({
     });
   };
 
+  const selectedCount = selectedDmsIds.size;
+
   const title =
     step === "source" ? "Add Legal Document"
-    : step === "pick-dms" ? "Choose DMS Document"
+    : step === "pick-dms" ? "Choose DMS Documents"
+    : step === "batch" ? "Creating Legal Documents…"
     : "Review & Save Legal Document";
 
   const subtitle =
@@ -188,12 +304,17 @@ export function IdentityDocumentAddDialog({
       ? "Start from the employee Documents tab, search DMS, or enter manually"
     : step === "pick-dms"
       ? pickMode === "employee"
-        ? "Documents already linked to this employee (Documents tab)"
-        : "Search DMS for a document — it will be linked to this employee on save"
+        ? "Tick one or more documents — each creates its own Legal Document record"
+        : "Search DMS — tick one or more documents to link and process"
+    : step === "batch"
+      ? batchDone
+        ? `Processed ${selectedCount} document${selectedCount !== 1 ? "s" : ""}`
+        : "Running AI prefill and saving each record…"
     : "Confirm all fields before saving to the compliance record";
 
   const showSubmit = step === "review";
   const showContinue = step === "pick-dms";
+  const showClose = step === "batch" && batchDone;
   const docsLoading = pickMode === "employee" ? employeeDocsLoading : libraryDocsLoading;
 
   return (
@@ -205,15 +326,27 @@ export function IdentityDocumentAddDialog({
       icon={<FileText className="h-5 w-5" />}
       mode="add"
       size="xl"
-      isSubmitting={isSubmitting || isPrefilling}
-      onSubmit={showSubmit ? handleSave : showContinue ? handleContinueFromDms : undefined}
-      submitLabel={
-        showSubmit ? "Save Legal Document"
-        : showContinue ? (isPrefilling ? "Prefilling…" : "Continue")
+      isSubmitting={(isSubmitting && step !== "batch") || isPrefilling}
+      onSubmit={
+        showSubmit ? handleSave
+        : showContinue ? handleContinueFromDms
+        : showClose ? () => handleOpenChange(false)
         : undefined
       }
+      submitLabel={
+        showSubmit ? "Save Legal Document"
+        : showContinue
+          ? isPrefilling
+            ? "Prefilling…"
+            : selectedCount > 1
+              ? `Create ${selectedCount} Records`
+              : "Continue"
+        : showClose ? "Done"
+        : undefined
+      }
+      cancelLabel={step === "batch" && !batchDone ? undefined : "Cancel"}
     >
-      {step !== "source" && (
+      {(step === "pick-dms" || step === "review") && (
         <div className="mb-4">
           <Button type="button" variant="ghost" size="sm" className="-ml-2 h-8" onClick={handleBack} disabled={isPrefilling || isSubmitting}>
             ← Back
@@ -221,6 +354,7 @@ export function IdentityDocumentAddDialog({
         </div>
       )}
 
+      {/* ── Step: Source ─────────────────────────────────────────── */}
       {step === "source" && (
         <div className="grid grid-cols-12 gap-4">
           <button
@@ -234,7 +368,7 @@ export function IdentityDocumentAddDialog({
             <FolderOpen className="h-8 w-8 text-primary" />
             <span className="font-semibold">From DMS Document</span>
             <span className="text-sm text-muted-foreground">
-              Check employee Documents first, then search DMS. Unlinked files are added to the employee on save.
+              Select one or multiple documents. Each creates its own Legal Document record, pre-filled by AI.
             </span>
             <span className="text-xs text-primary flex items-center gap-1 mt-1">
               Recommended <ChevronRight className="h-3 w-3" />
@@ -257,25 +391,37 @@ export function IdentityDocumentAddDialog({
         </div>
       )}
 
+      {/* ── Step: Pick DMS (multi-select) ────────────────────────── */}
       {step === "pick-dms" && (
         <div className="space-y-4">
-          <div className="flex gap-2 p-1 bg-muted rounded-lg w-fit">
-            <Button
-              type="button"
-              size="sm"
-              variant={pickMode === "employee" ? "default" : "ghost"}
-              onClick={() => { setPickMode("employee"); setSelectedDmsId(null); }}
-            >
-              Employee Documents
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={pickMode === "dms" ? "default" : "ghost"}
-              onClick={() => { setPickMode("dms"); setSelectedDmsId(null); }}
-            >
-              Search DMS
-            </Button>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex gap-2 p-1 bg-muted rounded-lg w-fit">
+              <Button
+                type="button"
+                size="sm"
+                variant={pickMode === "employee" ? "default" : "ghost"}
+                onClick={() => { setPickMode("employee"); setSelectedDmsIds(new Set()); }}
+              >
+                Employee Documents
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={pickMode === "dms" ? "default" : "ghost"}
+                onClick={() => { setPickMode("dms"); setSelectedDmsIds(new Set()); }}
+              >
+                Search DMS
+              </Button>
+            </div>
+            {selectedCount > 0 && (
+              <div className="flex items-center gap-1.5 rounded-md bg-primary/10 text-primary text-xs px-2.5 py-1.5 font-medium">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                {selectedCount} selected
+                {selectedCount > 1 && (
+                  <span className="text-[11px] font-normal ml-0.5">→ {selectedCount} records will be created</span>
+                )}
+              </div>
+            )}
           </div>
 
           {pickMode === "dms" && (
@@ -310,8 +456,8 @@ export function IdentityDocumentAddDialog({
                 <EmployeeDocPickRow
                   key={doc.document_id}
                   doc={doc}
-                  selected={selectedDmsId === doc.document_id}
-                  onSelect={() => setSelectedDmsId(doc.document_id)}
+                  selected={selectedDmsIds.has(doc.document_id)}
+                  onToggle={() => toggleDoc(doc.document_id)}
                 />
               ))}
             </div>
@@ -329,8 +475,8 @@ export function IdentityDocumentAddDialog({
                 <LibraryDocPickRow
                   key={doc.id}
                   doc={doc}
-                  selected={selectedDmsId === doc.id}
-                  onSelect={() => setSelectedDmsId(doc.id)}
+                  selected={selectedDmsIds.has(doc.id)}
+                  onToggle={() => toggleDoc(doc.id)}
                 />
               ))}
             </div>
@@ -342,9 +488,17 @@ export function IdentityDocumentAddDialog({
               Running AI prefill…
             </div>
           )}
+
+          {selectedCount > 1 && (
+            <p className="text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-md px-3 py-2">
+              <strong>{selectedCount} documents selected.</strong> Each will be AI-prefilled and saved as its own Legal Document record automatically — no per-document review step.
+              You can edit individual records afterwards.
+            </p>
+          )}
         </div>
       )}
 
+      {/* ── Step: Review (single doc) ────────────────────────────── */}
       {step === "review" && (
         <IdentityDocumentFormFields
           form={form}
@@ -354,28 +508,108 @@ export function IdentityDocumentAddDialog({
           prefillBanner={prefillMeta}
         />
       )}
+
+      {/* ── Step: Batch progress/results ─────────────────────────── */}
+      {step === "batch" && (
+        <div className="space-y-4">
+          {!batchDone && batchProgress && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                Processing {batchProgress.current} of {batchProgress.total}…
+              </div>
+              <div className="h-2 rounded-full bg-muted overflow-hidden">
+                <div
+                  className="h-full bg-primary transition-all duration-300 rounded-full"
+                  style={{ width: `${Math.round((batchProgress.current / batchProgress.total) * 100)}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {batchResults.length > 0 && (
+            <div className="space-y-2 max-h-[360px] overflow-y-auto">
+              {batchResults.map((r, i) => (
+                <div
+                  key={i}
+                  className={cn(
+                    "flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm",
+                    r.status === "ok"
+                      ? "border-green-200 bg-green-50/60 dark:bg-green-950/20"
+                      : "border-red-200 bg-red-50/60 dark:bg-red-950/20"
+                  )}
+                >
+                  {r.status === "ok"
+                    ? <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
+                    : <XCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />}
+                  <div className="min-w-0 flex-1">
+                    <span className="font-medium truncate block">{r.title}</span>
+                    <span className="text-xs text-muted-foreground">{r.documentNo}</span>
+                    {r.status === "error" && (
+                      <div className="flex items-start gap-1 mt-1 text-xs text-red-600">
+                        <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
+                        {r.error}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {batchDone && (
+            <p className="text-xs text-muted-foreground">
+              {batchResults.filter((r) => r.status === "ok").length} created · {batchResults.filter((r) => r.status === "error").length} failed.
+              {batchResults.some((r) => r.status === "error") && " Failed records could not be auto-filled — add them manually using the single-document flow."}
+            </p>
+          )}
+        </div>
+      )}
     </ERPChildDialogForm>
+  );
+}
+
+// ── Row components ────────────────────────────────────────────────────────────
+
+function TickBox({ selected }: { selected: boolean }) {
+  return (
+    <div
+      className={cn(
+        "mt-0.5 h-4 w-4 shrink-0 rounded border transition-colors flex items-center justify-center",
+        selected ? "border-primary bg-primary" : "border-border bg-background"
+      )}
+    >
+      {selected && (
+        <svg className="h-2.5 w-2.5 text-primary-foreground" fill="none" viewBox="0 0 12 12">
+          <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )}
+    </div>
   );
 }
 
 function EmployeeDocPickRow({
   doc,
   selected,
-  onSelect,
+  onToggle,
 }: {
   doc: DmsEntityDocumentRow;
   selected: boolean;
-  onSelect: () => void;
+  onToggle: () => void;
 }) {
   return (
     <button
       type="button"
-      onClick={onSelect}
+      onClick={onToggle}
+      aria-pressed={selected}
       className={cn(
         "w-full flex items-start gap-3 p-3 rounded-lg border text-left transition-colors",
-        selected ? "border-primary bg-primary/5 ring-1 ring-primary/30" : "hover:bg-muted/40"
+        selected
+          ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+          : "hover:bg-muted/40 border-border"
       )}
     >
+      <TickBox selected={selected} />
       <FileText className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
@@ -400,21 +634,25 @@ function EmployeeDocPickRow({
 function LibraryDocPickRow({
   doc,
   selected,
-  onSelect,
+  onToggle,
 }: {
   doc: AvailableDmsDocumentOption;
   selected: boolean;
-  onSelect: () => void;
+  onToggle: () => void;
 }) {
   return (
     <button
       type="button"
-      onClick={onSelect}
+      onClick={onToggle}
+      aria-pressed={selected}
       className={cn(
         "w-full flex items-start gap-3 p-3 rounded-lg border text-left transition-colors",
-        selected ? "border-primary bg-primary/5 ring-1 ring-primary/30" : "hover:bg-muted/40"
+        selected
+          ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+          : "hover:bg-muted/40 border-border"
       )}
     >
+      <TickBox selected={selected} />
       <FileText className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">

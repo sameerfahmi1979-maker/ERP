@@ -721,12 +721,14 @@ export async function createDependentFromDms(
       return { success: false, error: insertError?.message ?? "Failed to save dependent record" };
     }
 
-    // Link each DMS document to the employee
+    // HR.DOCLINK.1C fix (D1): link each DMS document to the NEW DEPENDENT.
+    // Previously these were linked to the parent employee, so dependent
+    // documents never appeared under the dependent anywhere in the ERP.
     for (const docId of parsed.data.dms_document_ids) {
       await adminClient.from("dms_document_links").upsert({
         document_id: docId,
-        entity_type: "employee",
-        entity_id: parsed.data.employee_id,
+        entity_type: "employee_dependent",
+        entity_id: inserted.id,
         link_role: "hr14b_source",
       }, { onConflict: "document_id,entity_type,entity_id" });
     }

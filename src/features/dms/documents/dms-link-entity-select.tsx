@@ -14,6 +14,8 @@ type DmsLinkEntitySelectProps = {
   onValueChange: (value: number | null) => void;
   /** Keeps the current selection visible when it is not in the loaded search results (edit mode). */
   pinnedOption?: { id: number; label: string; code?: string | null };
+  /** Fires alongside onValueChange with the full option (HR.DOCLINK.1A: chips need the label). */
+  onOptionSelected?: (option: { id: number; label: string } | null) => void;
   disabled?: boolean;
   required?: boolean;
   className?: string;
@@ -24,6 +26,7 @@ export function DmsLinkEntitySelect({
   value,
   onValueChange,
   pinnedOption,
+  onOptionSelected,
   disabled = false,
   required = false,
   className,
@@ -36,10 +39,14 @@ export function DmsLinkEntitySelect({
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  useEffect(() => {
+  // Reset the search when the entity type changes (state-during-render pattern,
+  // avoids the setState-in-effect cascading render lint error)
+  const [prevEntityType, setPrevEntityType] = useState(entityType);
+  if (prevEntityType !== entityType) {
+    setPrevEntityType(entityType);
     setSearchQuery("");
     setDebouncedSearch("");
-  }, [entityType]);
+  }
 
   const { data: options = [], isLoading, isError, error } = useQuery({
     queryKey: ["dms", "link-entity-options", entityType, debouncedSearch],
@@ -84,7 +91,18 @@ export function DmsLinkEntitySelect({
   return (
     <ERPCombobox
       value={value}
-      onValueChange={(v) => onValueChange(v !== null ? Number(v) : null)}
+      onValueChange={(v) => {
+        const id = v !== null ? Number(v) : null;
+        onValueChange(id);
+        if (onOptionSelected) {
+          if (id === null) {
+            onOptionSelected(null);
+          } else {
+            const opt = comboboxOptions.find((o) => Number(o.value) === id);
+            onOptionSelected(opt ? { id, label: opt.label } : null);
+          }
+        }
+      }}
       options={comboboxOptions}
       placeholder={`Select ${typeLabel.toLowerCase()}...`}
       searchPlaceholder={getDmsLinkEntitySearchPlaceholder(entityType)}

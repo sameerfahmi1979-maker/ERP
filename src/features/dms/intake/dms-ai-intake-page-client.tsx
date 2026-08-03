@@ -15,7 +15,6 @@ import {
   AlertTriangle,
   FileIcon,
   ExternalLink,
-  Link as LinkIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -36,6 +35,7 @@ import { finalizeDraftIntake, discardDraftIntake } from "@/server/actions/dms/ba
 import { previewDmsStandardFileName } from "@/server/actions/dms/standard-file-name";
 import type { DmsDocumentTypeRow } from "@/server/actions/dms/document-types";
 import { DmsOrchestrationProgressCard } from "@/features/dms/orchestration";
+import { DmsIntakeLinkPanel, type IntakeLinkChip } from "@/features/dms/intake/dms-intake-link-panel";
 
 // ── Format file size ──────────────────────────────────────────────────────────
 
@@ -78,6 +78,8 @@ export function DmsAiIntakePageClient({
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
   const [discardReason, setDiscardReason] = useState("");
+  // HR.DOCLINK.1A — ticked ERP record links, applied on Approve
+  const [entityLinks, setEntityLinks] = useState<IntakeLinkChip[]>([]);
 
   const isFailed = session.intake_status === "failed";
   const isProcessing = ["ocr_pending", "ocr_processing", "ai_pending", "ai_processing"].includes(session.intake_status);
@@ -173,6 +175,8 @@ export function DmsAiIntakePageClient({
           fieldType: v.fieldType,
           rawValue: v.rawValue,
         })).filter((v) => v.rawValue !== ""),
+        // HR.DOCLINK.1A — ticked suggestions + manual links, written by the approve saga
+        links: entityLinks.map((l) => ({ entityType: l.entityType, entityId: l.entityId })),
         aiResultId: aiResult?.id ?? null,
       };
 
@@ -534,47 +538,16 @@ export function DmsAiIntakePageClient({
               </div>
             )}
 
-            {/* Detected related parties (DB matches) */}
-            {(() => {
-              const links = Array.isArray(aiResult?.suggested_links_json)
-                ? (aiResult!.suggested_links_json as Array<Record<string, unknown>>).filter(
-                    (l) => l && l.entityType === "party" && l.entityId
-                  )
-                : [];
-              if (links.length === 0) return null;
-              return (
-                <div className="rounded-lg border bg-card p-4 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <LinkIcon className="h-4 w-4 text-emerald-500 shrink-0" />
-                    <span className="text-sm font-medium">Matched Parties in Database</span>
-                  </div>
-                  <Separator />
-                  <p className="text-[11px] text-muted-foreground">
-                    The AI matched names in the document to existing party records. Verify before linking.
-                  </p>
-                  <ul className="space-y-1.5">
-                    {links.map((l, i) => (
-                      <li key={i} className="flex items-start gap-2 text-xs">
-                        <a
-                          href={`/master-data/parties/record/${l.entityId as number}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary hover:underline font-medium flex items-center gap-0.5 shrink-0"
-                        >
-                          {String(l.entityName ?? `Party #${l.entityId}`)}
-                          <ExternalLink className="h-2.5 w-2.5" />
-                        </a>
-                        {typeof l.confidenceScore === "number" && (
-                          <span className="text-[10px] text-muted-foreground">
-                            {Math.round((l.confidenceScore as number) * 100)}%
-                          </span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              );
-            })()}
+            {/* HR.DOCLINK.1A — Link to ERP Records (suggestions + manual picker).
+                Replaces the old display-only "Matched Parties" card: party matches
+                now appear here as actionable checkbox suggestions. */}
+            <DmsIntakeLinkPanel
+              sessionCode={session.session_code}
+              aiReady={isReady}
+              disabled={isPending}
+              value={entityLinks}
+              onChange={setEntityLinks}
+            />
 
             {/* AI warnings */}
             {(() => {

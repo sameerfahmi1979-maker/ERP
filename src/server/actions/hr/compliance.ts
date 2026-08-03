@@ -20,6 +20,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
@@ -940,6 +941,172 @@ export async function archiveEmployeeDependent(id: number): Promise<ActionResult
     return { success: true };
   } catch {
     return { success: false, error: "Failed to archive dependent" };
+  }
+}
+
+// ── DEPENDENT DOCUMENT LINKS (HR.DOCLINK.1B) ─────────────────────────────────
+//
+// Multi-document linking for dependents. Links live in dms_document_links with
+// entity_type='employee_dependent' (D1: dependent only — never the parent
+// employee). Additions/removals are staged in the dependent dialog and applied
+// in one call on Save.
+
+export type DependentDocumentLinkRow = {
+  link_id: number;
+  document_id: number;
+  document_no: string;
+  title: string;
+  document_type_name: string | null;
+  status: string | null;
+  expiry_date: string | null;
+};
+
+export async function listEmployeeDependentDocumentLinks(
+  dependentId: number
+): Promise<ActionResult<DependentDocumentLinkRow[]>> {
+  try {
+    const ctx = await getAuthContext();
+    if (!hasPermission(ctx, "hr.compliance.view") && !hasPermission(ctx, "hr.admin")) {
+      return { success: false, error: "Permission denied" };
+    }
+
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("dms_document_links")
+      .select(
+        `id, document_id,
+         document:dms_documents!document_id(id, document_no, title, status, expiry_date, deleted_at,
+           document_type:dms_document_types(name_en))`
+      )
+      .eq("entity_type", "employee_dependent")
+      .eq("entity_id", dependentId)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false });
+
+    if (error) return { success: false, error: error.message };
+
+    const rows: DependentDocumentLinkRow[] = [];
+    for (const raw of data ?? []) {
+      const r = raw as Record<string, unknown>;
+      const docRaw = r.document as Record<string, unknown> | Record<string, unknown>[] | null;
+      const doc = Array.isArray(docRaw) ? docRaw[0] : docRaw;
+      if (!doc || doc.deleted_at != null) continue;
+      const dtRaw = doc.document_type as { name_en?: string } | { name_en?: string }[] | null;
+      const dt = Array.isArray(dtRaw) ? dtRaw[0] : dtRaw;
+      rows.push({
+        link_id: r.id as number,
+        document_id: r.document_id as number,
+        document_no: (doc.document_no as string) ?? "",
+        title: (doc.title as string) ?? "Untitled",
+        document_type_name: dt?.name_en ?? null,
+        status: (doc.status as string | null) ?? null,
+        expiry_date: (doc.expiry_date as string | null) ?? null,
+      });
+    }
+
+    return { success: true, data: rows };
+  } catch (err) {
+    logger.error("listEmployeeDependentDocumentLinks error", err);
+    return { success: false, error: "Failed to load linked documents" };
+  }
+}
+
+export async function applyEmployeeDependentDocumentLinks(
+  dependentId: number,
+  changes: { addDocumentIds: number[]; removeDocumentIds: number[] }
+): Promise<ActionResult<{ added: number; removed: number }>> {
+  try {
+    const ctx = await getAuthContext();
+    if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
+      return { success: false, error: "Permission denied" };
+    }
+
+    const addIds = [...new Set(changes.addDocumentIds ?? [])].filter(
+      (n) => Number.isInteger(n) && n > 0
+    );
+    const removeIds = [...new Set(changes.removeDocumentIds ?? [])].filter(
+      (n) => Number.isInteger(n) && n > 0
+    );
+    if (addIds.length === 0 && removeIds.length === 0) {
+      return { success: true, data: { added: 0, removed: 0 } };
+    }
+
+    const admin = createAdminClient();
+    const { data: dependent } = await admin
+      .from("employee_dependents")
+      .select("id, employee_id, dependent_name_en")
+      .eq("id", dependentId)
+      .is("deleted_at", null)
+      .single();
+    if (!dependent) return { success: false, error: "Dependent not found" };
+
+    let added = 0;
+    let removed = 0;
+    const errors: string[] = [];
+
+    for (const docId of addIds) {
+      // Revive a soft-deleted link if one exists, otherwise insert (idempotent)
+      const { data: existing } = await admin
+        .from("dms_document_links")
+        .select("id, deleted_at")
+        .eq("document_id", docId)
+        .eq("entity_type", "employee_dependent")
+        .eq("entity_id", dependentId)
+        .maybeSingle();
+
+      if (existing && existing.deleted_at == null) continue;
+
+      if (existing) {
+        const { error } = await admin
+          .from("dms_document_links")
+          .update({ deleted_at: null, link_role: "dependent_form" })
+          .eq("id", existing.id);
+        if (error) errors.push(`Document ${docId}: ${error.message}`);
+        else added++;
+      } else {
+        const { error } = await admin.from("dms_document_links").insert({
+          document_id: docId,
+          entity_type: "employee_dependent",
+          entity_id: dependentId,
+          is_primary: false,
+          link_role: "dependent_form",
+          linked_by: ctx.profile?.id ?? null,
+        });
+        if (error) errors.push(`Document ${docId}: ${error.message}`);
+        else added++;
+      }
+    }
+
+    if (removeIds.length > 0) {
+      const { error, count } = await admin
+        .from("dms_document_links")
+        .update({ deleted_at: new Date().toISOString() }, { count: "exact" })
+        .eq("entity_type", "employee_dependent")
+        .eq("entity_id", dependentId)
+        .in("document_id", removeIds)
+        .is("deleted_at", null);
+      if (error) errors.push(`Unlink failed: ${error.message}`);
+      else removed = count ?? removeIds.length;
+    }
+
+    await logAudit({
+      module_code: "HR",
+      entity_name: "employee_dependents",
+      entity_id: dependentId,
+      entity_reference: dependent.dependent_name_en as string,
+      action: "dependent_document_links.apply",
+      new_values: { added_document_ids: addIds, removed_document_ids: removeIds, added, removed },
+    });
+
+    revalidateEmployeePath(dependent.employee_id as number);
+
+    if (errors.length > 0 && added === 0 && removed === 0) {
+      return { success: false, error: errors[0] };
+    }
+    return { success: true, data: { added, removed } };
+  } catch (err) {
+    logger.error("applyEmployeeDependentDocumentLinks error", err);
+    return { success: false, error: "Failed to update linked documents" };
   }
 }
 

@@ -1000,6 +1000,60 @@ export async function getAiIntakeSession(
   }
 }
 
+// ── suggestIntakeEntityLinks (HR.DOCLINK.1A) ─────────────────────────────────
+
+/**
+ * Builds employee / dependent / party link suggestions for the intake review
+ * Link panel. Exact identity-number matches are pre-ticked (decision D2);
+ * everything else is listed unticked. Read-only — links are only written when
+ * the reviewer approves with them ticked.
+ */
+export async function suggestIntakeEntityLinks(
+  sessionCode: string
+): Promise<ActionResult<import("@/lib/dms/entity-matching/intake-link-suggester").IntakeLinkSuggestion[]>> {
+  try {
+    const ctx = await getAuthContext();
+    if (!ctx.profile) return { success: false, error: "Not authenticated" };
+    if (!canViewIntake(ctx)) return { success: false, error: "Permission denied" };
+
+    const admin = createAdminClient();
+    const { data: session } = await admin
+      .from("dms_upload_sessions")
+      .select("id, ai_result_id")
+      .eq("session_code", sessionCode)
+      .is("deleted_at", null)
+      .single();
+
+    if (!session) return { success: false, error: "Intake session not found" };
+    const aiResultId = (session as Record<string, unknown>).ai_result_id as number | null;
+    if (!aiResultId) return { success: true, data: [] };
+
+    const { data: aiResult } = await admin
+      .from("dms_ai_extraction_results")
+      .select("extracted_fields_json, suggested_links_json")
+      .eq("id", aiResultId)
+      .single();
+
+    if (!aiResult) return { success: true, data: [] };
+
+    const { buildIntakeLinkSuggestions } = await import(
+      "@/lib/dms/entity-matching/intake-link-suggester"
+    );
+    const suggestions = await buildIntakeLinkSuggestions(admin, {
+      extractedFields:
+        ((aiResult as Record<string, unknown>).extracted_fields_json as Record<string, unknown>) ??
+        null,
+      suggestedLinksJson:
+        ((aiResult as Record<string, unknown>).suggested_links_json as unknown[]) ?? null,
+    });
+
+    return { success: true, data: suggestions };
+  } catch (e) {
+    logger.error("suggestIntakeEntityLinks error", e);
+    return { success: false, error: "Failed to build link suggestions" };
+  }
+}
+
 // ── isDmsAiAutoStartEnabled (SPEED.2A) ────────────────────────────────────────
 
 /**

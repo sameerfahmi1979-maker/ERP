@@ -1,7 +1,7 @@
 # HR.DOCLINK.1 — Automatic Employee & Dependent Document Linking — Plan
 
 **Date:** 2026-08-03
-**Status:** PLAN — awaiting Sameer's review. NO implementation yet.
+**Status:** PLAN APPROVED — decisions D1–D3 resolved by Sameer (2026-08-03). Implementation in progress.
 **Requested by:** Sameer
 **Related:** HR.14A wizard, HR.14B doc-to-record wizard, DMS AI Intake, HR.DOC_BROWSER.1
 
@@ -159,13 +159,13 @@ No DB migrations. No new tables. No schema changes.
 
 ---
 
-## 5. Open Decisions (please answer)
+## 5. Decisions — RESOLVED by Sameer (2026-08-03)
 
-| # | Question | Recommendation |
+| # | Question | Decision |
 |---|---|---|
-| **D1** | HR.14B dependent wizard + dependent dialog links: link documents to the **dependent only**, or to **both** dependent and parent employee? | **Dependent only** — cleaner; the Doc Browser already shows dependents under their employee, and double links clutter the employee's Documents tab |
-| **D2** | Intake suggestions: pre-tick threshold? | Pre-tick **exact identity-number matches and name matches ≥ 0.85**; list weaker matches unticked |
-| **D3** | Should the intake link panel also be added to the DMS Review Queue screen (Phase 12) in this phase? | **Defer** — intake review screen covers the main upload path; review queue can follow as DOCLINK.2 |
+| **D1** | Link dependent documents to dependent only, or both dependent + employee? | **Dependent only** ✅ |
+| **D2** | Intake suggestions: pre-tick threshold? | **Only exact identity-number matches pre-ticked** ✅ — name matches are listed but unticked |
+| **D3** | Add the link panel to the DMS Review Queue path in this phase? | **Include now** ✅ |
 
 ---
 

@@ -12,7 +12,7 @@
  *   6. Medical & Health Records (employee_medical_records — restricted: hr.medical.view)
  */
 
-import { useState, useTransition, useCallback, type Dispatch, type SetStateAction } from "react";
+import { useState, useTransition, useCallback, useRef, type Dispatch, type SetStateAction } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -55,6 +55,7 @@ import {
   createEmployeeDependent,
   updateEmployeeDependent,
   archiveEmployeeDependent,
+  applyEmployeeDependentDocumentLinks,
   listEmployeeAccessCards,
   createEmployeeAccessCard,
   updateEmployeeAccessCard,
@@ -92,6 +93,11 @@ import {
 import { invalidateDmsEntityDocuments } from "@/lib/query/invalidation";
 import { IdentityDocumentAddDialog } from "@/features/hr/employees/compliance/identity-document-add-dialog";
 import { ComplianceDmsAddDialog } from "@/features/hr/employees/compliance/compliance-dms-add-dialog";
+import {
+  DependentDocumentLinksSection,
+  EMPTY_DEP_LINK_CHANGES,
+  type DependentDocLinkChanges,
+} from "@/features/hr/employees/compliance/dependent-document-links-section";
 import { ComplianceDmsPrefillBanner } from "@/features/hr/employees/compliance/compliance-dms-prefill-banner";
 import { HrDocumentToRecordWizard } from "@/features/hr/employees/document-to-record/hr-doc-to-record-wizard";
 import { checkHrDocumentToRecordEnabled } from "@/server/actions/hr/document-to-record";
@@ -741,8 +747,29 @@ function DependentsSection({ employeeId, canManageDoc, onChildOpen, documentWiza
     </div>
   );
 
-  const openAdd = () => setAddDialogOpen(true);
+  // HR.DOCLINK.1B — staged document link changes, applied on Save
+  const depLinkChangesRef = useRef<DependentDocLinkChanges>(EMPTY_DEP_LINK_CHANGES);
+  const handleDepLinkChanges = useCallback((c: DependentDocLinkChanges) => {
+    depLinkChangesRef.current = c;
+  }, []);
+
+  const applyStagedDocumentLinks = async (dependentId: number) => {
+    const changes = depLinkChangesRef.current;
+    if (changes.addDocumentIds.length === 0 && changes.removeDocumentIds.length === 0) return;
+    const res = await applyEmployeeDependentDocumentLinks(dependentId, changes);
+    if (res.success) {
+      qc.invalidateQueries({ queryKey: ["hr", "dependent-doc-links"] });
+    } else {
+      toast.error(res.error ?? "Dependent saved, but document links could not be updated");
+    }
+  };
+
+  const openAdd = () => {
+    depLinkChangesRef.current = EMPTY_DEP_LINK_CHANGES;
+    setAddDialogOpen(true);
+  };
   const openEdit = (r: EmployeeDependentRow) => {
+    depLinkChangesRef.current = EMPTY_DEP_LINK_CHANGES;
     setEditing(r);
     setForm({
       dms_document_id: r.dms_document_id,
@@ -766,6 +793,7 @@ function DependentsSection({ employeeId, canManageDoc, onChildOpen, documentWiza
     startTransition(async () => {
       const result = await updateEmployeeDependent(editing.id, buildPayload(form));
       if (result.success) {
+        await applyStagedDocumentLinks(editing.id);
         toast.success("Dependent updated");
         qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.dependents(employeeId) });
         qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.summary(employeeId) });
@@ -831,13 +859,33 @@ function DependentsSection({ employeeId, canManageDoc, onChildOpen, documentWiza
         size="xl"
         createEmptyForm={initialForm}
         validate={validateDependent}
-        save={async (f) => createEmployeeDependent(employeeId, buildPayload(f))}
+        save={async (f) => {
+          const result = await createEmployeeDependent(employeeId, buildPayload(f));
+          // HR.DOCLINK.1B — link the staged documents to the new dependent
+          if (result.success && result.data?.id) {
+            await applyStagedDocumentLinks(result.data.id);
+          }
+          return result;
+        }}
         onSaved={handleAddSaved}
-        renderReview={({ form: addForm, setForm: setAddForm, prefillMeta }) => renderDependentFields(addForm, setAddForm, prefillMeta)}
+        renderReview={({ form: addForm, setForm: setAddForm, prefillMeta }) => (
+          <>
+            {renderDependentFields(addForm, setAddForm, prefillMeta)}
+            <DependentDocumentLinksSection
+              dependentId={null}
+              onChangesChange={handleDepLinkChanges}
+            />
+          </>
+        )}
       />
 
       <ERPChildDialogForm open={editDialogOpen} onOpenChange={setEditDialogOpen} title="Edit Dependent" icon={<Users className="h-5 w-5" />} mode="edit" size="xl" isSubmitting={isSubmitting} onSubmit={handleEditSubmit}>
         {renderDependentFields(form, setForm, null)}
+        <DependentDocumentLinksSection
+          key={editing?.id ?? "none"}
+          dependentId={editing?.id ?? null}
+          onChangesChange={handleDepLinkChanges}
+        />
       </ERPChildDialogForm>
 
       <HrDocumentToRecordWizard

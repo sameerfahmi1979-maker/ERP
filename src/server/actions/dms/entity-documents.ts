@@ -104,6 +104,7 @@ export async function getDmsDocumentsByEntity(
           title,
           description,
           status,
+          deleted_at,
           confidentiality_level,
           issue_date,
           expiry_date,
@@ -151,6 +152,8 @@ export async function getDmsDocumentsByEntity(
     for (const link of data ?? []) {
       const doc = link.document as unknown as Record<string, unknown> | null;
       if (!doc) continue;
+      // Skip documents that have been soft-deleted or hard-status-deleted
+      if (doc.deleted_at != null || doc.status === "deleted") continue;
 
       const docType = doc.document_type as { type_code?: string; name_en?: string } | null;
       const confidentiality = doc.confidentiality_level as string;

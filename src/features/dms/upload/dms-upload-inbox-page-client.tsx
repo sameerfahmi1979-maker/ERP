@@ -21,7 +21,7 @@ import {
   type DmsUploadSessionRow,
   type CreateUploadSessionInput,
 } from "@/server/actions/dms/upload-sessions";
-import { startAiIntakeFromUploadSession, getAiIntakeStatus } from "@/server/actions/dms/ai-intake";
+import { startAiIntakeFromUploadSession } from "@/server/actions/dms/ai-intake";
 import {
   createDmsUploadBatch,
   startAiIntakeAndCreateDraft,
@@ -90,6 +90,12 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
   const aiStartedAtRef = useRef<number | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const redirectedRef = useRef(false);
+  // Navigating while the server action is still in flight makes Next.js revert
+  // the router.push when the action resolves ("flash back to Upload Inbox").
+  // Redirects are therefore deferred until the action settles; the grace timer
+  // covers the lost-response case (dev recompile, dropped connection).
+  const actionSettledRef = useRef(true);
+  const pendingRedirectRef = useRef<string | null>(null);
 
   const stopAiPolling = useCallback(() => {
     if (pollTimerRef.current) {
@@ -117,6 +123,8 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
     aiStartedAtRef.current = Date.now();
     setAiElapsedSec(0);
     redirectedRef.current = false;
+    actionSettledRef.current = false;
+    pendingRedirectRef.current = null;
     stopAiPolling();
 
     const goToReview = (sessionCode: string, msg: string) => {
@@ -127,16 +135,39 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
       router.push(`/dms/intake/${sessionCode}`);
     };
 
-    // SPEED.2L: poll the session status as a second completion signal. If the
-    // server-action response is lost (dropped connection, dev recompile), the
-    // poll still detects review_pending and redirects — no more infinite spinner.
+    // Defer navigation while the server action is in flight — pushing earlier
+    // gets reverted by Next.js when the action resolves (inbox tab flash bug).
+    // If the action response never arrives (lost connection, dev recompile),
+    // the grace timer redirects anyway after 10s.
+    const requestRedirect = (sessionCode: string, msg: string) => {
+      if (redirectedRef.current) return;
+      if (actionSettledRef.current) {
+        goToReview(sessionCode, msg);
+        return;
+      }
+      if (pendingRedirectRef.current) return; // grace timer already armed
+      pendingRedirectRef.current = sessionCode;
+      setTimeout(() => {
+        if (!redirectedRef.current && !actionSettledRef.current) {
+          goToReview(sessionCode, msg);
+        }
+      }, 10_000);
+    };
+
+    // SPEED.2L: poll session status via a plain GET route (NOT a server action —
+    // server actions are serialized client-side and would queue behind the
+    // long-running intake action; a plain fetch also never touches the router).
     pollTimerRef.current = setInterval(async () => {
       try {
-        const res = await getAiIntakeStatus(session.id);
-        if (!res.success || !res.data) return;
-        if (res.data.intakeStatus === "review_pending" || res.data.intakeStatus === "review_in_progress") {
-          goToReview(res.data.sessionCode, "AI review is ready — opening review screen…");
-        } else if (res.data.intakeStatus === "failed") {
+        const res = await fetch(`/api/dms/intake-status?sessionId=${session.id}`, {
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as { intakeStatus?: string; sessionCode?: string };
+        if (!data.sessionCode) return;
+        if (data.intakeStatus === "review_pending" || data.intakeStatus === "review_in_progress") {
+          requestRedirect(data.sessionCode, "AI review is ready — opening review screen…");
+        } else if (data.intakeStatus === "failed") {
           stopAiPolling();
           setUploadState({
             phase: "ai_error",
@@ -149,8 +180,27 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
       }
     }, 4000);
 
-    const result = await startAiIntakeFromUploadSession({ uploadSessionId: session.id });
-    if (redirectedRef.current) return; // polling already redirected
+    let result: Awaited<ReturnType<typeof startAiIntakeFromUploadSession>>;
+    try {
+      result = await startAiIntakeFromUploadSession({ uploadSessionId: session.id });
+    } catch {
+      // Action fetch rejected (connection dropped). The poll owns recovery now;
+      // if it already found the session ready, redirect immediately.
+      actionSettledRef.current = true;
+      if (pendingRedirectRef.current && !redirectedRef.current) {
+        goToReview(pendingRedirectRef.current, "AI review is ready — opening review screen…");
+      }
+      return;
+    }
+    actionSettledRef.current = true;
+    if (redirectedRef.current) return;
+
+    // The poll detected completion while the action was still in flight —
+    // navigate now that it has settled (safe from the router revert).
+    if (pendingRedirectRef.current) {
+      goToReview(pendingRedirectRef.current, "AI review is ready — opening review screen…");
+      return;
+    }
 
     if (result.success && result.data) {
       if (result.data.status === "already_processing") {

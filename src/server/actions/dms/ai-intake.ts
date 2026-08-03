@@ -623,8 +623,8 @@ export async function startAiIntakeFromUploadSession(
       aiOutput.classification.confidenceScore
     );
 
-    let suggestedTypeId = typeResolution.typeId;
-    let suggestedTypeCode = typeResolution.typeCode;
+    const suggestedTypeId = typeResolution.typeId;
+    const suggestedTypeCode = typeResolution.typeCode;
 
     if (typeResolution.source !== "ai" && typeResolution.typeCode) {
       aiOutput.classification.suggestedTypeCode = typeResolution.typeCode;
@@ -1020,43 +1020,11 @@ export async function isDmsAiAutoStartEnabled(): Promise<boolean> {
   }
 }
 
-// ── getAiIntakeStatus (SPEED.2L) ──────────────────────────────────────────────
-
-/**
- * Lightweight status poll for the inbox UI. While a long AI run is in flight
- * the client polls this every few seconds; when intake_status reaches
- * review_pending it redirects — even if the original startAiIntake response
- * was lost (dropped connection, dev recompile).
- */
-export async function getAiIntakeStatus(
-  uploadSessionId: number
-): Promise<ActionResult<{ intakeStatus: string; sessionCode: string }>> {
-  try {
-    const supabase = await createClient();
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canViewIntake(ctx)) return { success: false, error: "Permission denied" };
-
-    const { data: session, error } = await supabase
-      .from("dms_upload_sessions")
-      .select("session_code, intake_status")
-      .eq("id", uploadSessionId)
-      .is("deleted_at", null)
-      .single();
-
-    if (error || !session) return { success: false, error: "Session not found" };
-
-    return {
-      success: true,
-      data: {
-        intakeStatus: (session.intake_status as string) ?? "uploaded",
-        sessionCode: session.session_code as string,
-      },
-    };
-  } catch (e) {
-    return { success: false, error: String(e) };
-  }
-}
+// NOTE (SPEED.2L): the intake status poll lives at GET /api/dms/intake-status
+// (route handler), NOT here. It must not be a server action: Next.js serializes
+// server actions client-side (a poll action would queue behind the long-running
+// startAiIntakeFromUploadSession call), and a server action resolving after a
+// router.push reverts the navigation (inbox tab flash bug).
 
 // ── getIntakeSessionSignedUrl ─────────────────────────────────────────────────
 

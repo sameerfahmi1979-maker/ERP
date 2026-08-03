@@ -2,10 +2,15 @@
 
 /**
  * ERP GLOBAL UI.4A — WorkspaceTab chip component
+ * ERP GLOBAL WORKSPACE.PERF.1 (WS.1/WS.2):
+ *   - data-tab-id attribute for active-tab scroll-into-view
+ *   - compact density mode when many tabs are open
+ *   - route prefetch on hover so activating the tab is near-instant
  *
  * A single tab in the workspace tab bar.
  */
 
+import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { WorkspaceTab } from "@/lib/workspace/workspace-types";
@@ -15,6 +20,8 @@ interface WorkspaceTabProps {
   isActive: boolean;
   onActivate: (tabId: string) => void;
   onClose: (tabId: string) => void;
+  /** WS.1: reduced min-width + hidden subtitle when many tabs are open */
+  compact?: boolean;
 }
 
 export function WorkspaceTabChip({
@@ -22,20 +29,29 @@ export function WorkspaceTabChip({
   isActive,
   onActivate,
   onClose,
+  compact = false,
 }: WorkspaceTabProps) {
+  const router = useRouter();
+
   return (
     <div
       role="tab"
       aria-selected={isActive}
+      data-tab-id={tab.id}
       className={cn(
-        "group relative flex items-center gap-1.5 h-9 px-3 shrink-0 select-none cursor-pointer",
+        "group relative flex items-center gap-1.5 h-9 shrink-0 select-none cursor-pointer",
         "border-r border-border/40 transition-colors",
-        "max-w-[180px] min-w-[80px]",
+        compact ? "max-w-[140px] min-w-[60px] px-2" : "max-w-[180px] min-w-[80px] px-3",
         isActive
           ? "bg-background text-foreground border-b-2 border-b-primary shadow-sm"
           : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground border-b-2 border-b-transparent"
       )}
       onClick={() => onActivate(tab.id)}
+      onMouseEnter={() => {
+        // WS.2: warm the router cache so switching to this tab is instant
+        // (combined with staleTimes.dynamic in next.config.ts).
+        if (!isActive) router.prefetch(tab.route);
+      }}
       title={tab.subtitle ? `${tab.title} — ${tab.subtitle}` : tab.title}
     >
       {/* Dirty indicator dot */}
@@ -56,8 +72,8 @@ export function WorkspaceTabChip({
         {tab.title}
       </span>
 
-      {/* Subtitle badge */}
-      {tab.subtitle && (
+      {/* Subtitle badge — hidden in compact density */}
+      {tab.subtitle && !compact && (
         <span className="text-[10px] text-muted-foreground/70 font-mono truncate hidden lg:block">
           {tab.subtitle}
         </span>

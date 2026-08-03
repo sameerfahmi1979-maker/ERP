@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { Button } from "@/components/ui/button";
@@ -424,6 +424,7 @@ export function AppSidebar({
   appBranding,
 }: AppSidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const { openTab, activeTab, isHydrated } = useWorkspace();
 
   const [expandedSections, setExpandedSections] = useState<string[]>([]);
@@ -504,6 +505,8 @@ export function AppSidebar({
         key={item.path}
         type="button"
         onClick={() => handleNavClick(item)}
+        // WS.2: warm the router cache on hover so the tab opens near-instantly
+        onMouseEnter={() => router.prefetch(item.path)}
         className={cn(
           "relative flex items-center gap-2 w-full rounded-md text-[13px] font-medium transition-colors text-left overflow-hidden",
           collapsed ? "justify-center p-2.5" : "px-2.5 py-[5px]",

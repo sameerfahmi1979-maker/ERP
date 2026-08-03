@@ -33,6 +33,7 @@ import { useFormDirty } from "@/hooks/use-form-dirty";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { useWorkspaceTabDirty } from "@/hooks/use-workspace-tab-dirty";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
+import { DraftRestoredNotice } from "@/components/workspace/draft-restored-notice";
 import { useWorkspaceSectionState } from "@/hooks/use-workspace-section-state";
 import { useWorkspaceScrollState } from "@/hooks/use-workspace-scroll-state";
 import { createDmsDocument, updateDmsDocument } from "@/server/actions/dms/documents";
@@ -142,7 +143,7 @@ function DmsDocumentRecordFormInner({
   useWorkspaceTabDirty({ isDirty, enabled: !isViewing });
 
   // ── Draft preservation (UI.4E.2) ──────────────────────────────────────────────
-  const { getDraftDefault, writeDraftField, clearDraft } = useWorkspaceFormDraft({
+  const { getDraftDefault, writeDraftField, clearDraft, syncDraft, restoredFromDraft } = useWorkspaceFormDraft({
     formId: "dms-doc-workspace-form",
     enabled: !isViewing,
   });
@@ -332,7 +333,17 @@ function DmsDocumentRecordFormInner({
   const selectedDocType = documentTypes.find((t) => t.id === documentTypeId);
 
   return (
-    <form id="dms-doc-workspace-form" className="h-full" onChange={() => markDirty(activeTab?.id ?? "", true)}>
+    <form
+      id="dms-doc-workspace-form"
+      className="h-full"
+      // WS.3: syncDraft captures all named inputs (title, description, dates,
+      // hidden combobox inputs) into the in-memory draft on every edit.
+      onInput={syncDraft}
+      onChange={() => {
+        markDirty(activeTab?.id ?? "", true);
+        syncDraft();
+      }}
+    >
       <ERPRecordWorkspaceForm
         isDirty={isDirty}
         mode={currentMode === "add" ? "add" : currentMode === "view" ? "view" : "edit"}
@@ -364,9 +375,12 @@ function DmsDocumentRecordFormInner({
       >
         {/* ── Overview ── */}
         <ERPRecordSectionPanel id="overview" activeId={activeSection}>
+          {/* WS.3: visible signal that unsaved values from a previous visit were restored */}
+          <DraftRestoredNotice visible={!isViewing && restoredFromDraft} className="mb-3" />
           <DmsDocumentOverviewSection
             doc={doc ?? null}
             isViewing={isViewing}
+            getDraftDefault={getDraftDefault}
             documentTypes={documentTypes}
             categories={categories}
             documentTypeId={documentTypeId}

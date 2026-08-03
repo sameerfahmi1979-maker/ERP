@@ -19,7 +19,7 @@
  *   Audit         — placeholder
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -43,6 +43,7 @@ import { useFormDirty } from "@/hooks/use-form-dirty";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
 import { useWorkspaceTabDirty } from "@/hooks/use-workspace-tab-dirty";
+import { DraftRestoredNotice } from "@/components/workspace/draft-restored-notice";
 import { Badge } from "@/components/ui/badge";
 import { EmployeeOverviewTab } from "./tabs/employee-overview-tab";
 import { EmployeeProfileTab, type EmployeeProfileFormState } from "./tabs/employee-profile-tab";
@@ -57,18 +58,6 @@ import { EmployeeLettersForms } from "@/features/hr/employees/employee-letters-f
 import { HrAiReviewTab } from "@/features/hr/ai/hr-ai-review-tab";
 
 const FORM_ID = "employee-workspace-form";
-
-// Draft denylist — defensive exclusions for future sensitive fields
-const DRAFT_DENYLIST = [
-  "passport_number",
-  "emirates_id_number",
-  "iban",
-  "account_number",
-  "salary",
-  "medical_result",
-  "restriction_details",
-  "disciplinary_details",
-];
 
 type Props = {
   employee?: EmployeeListRow | null;
@@ -110,6 +99,47 @@ const STATUS_LABEL: Record<string, string> = {
   archived: "Archived",
 };
 
+/** Combobox fields holding numeric ids — used to type draft values back (WS.3). */
+const COMBOBOX_NUMERIC_FIELDS = new Set<keyof EmployeeProfileFormState>([
+  "owner_company_id",
+  "branch_id",
+  "department_id",
+  "designation_id",
+  "employee_category_id",
+  "employment_type_id",
+  "nationality_id",
+  "reporting_manager_id",
+  "supervisor_id",
+  "primary_work_site_id",
+  "sponsor_company_id",
+  "mohre_establishment_id",
+  "emergency_contact_relationship_type_id",
+]);
+
+/** Sentinel distinguishing "no draft entry" from a legitimately empty draft value. */
+const NO_DRAFT = "\u0000__no_draft__";
+
+/**
+ * WS.3: overlay draft values (keys prefixed cb_ to avoid FormData collisions)
+ * over the server-derived initial combobox state.
+ */
+function applyComboboxDraft(
+  initial: EmployeeProfileFormState,
+  getDraftDefault: (fieldName: string, serverFallback?: string | number | null | undefined) => string
+): EmployeeProfileFormState {
+  const next = { ...initial };
+  for (const key of Object.keys(initial) as (keyof EmployeeProfileFormState)[]) {
+    const raw = getDraftDefault(`cb_${key}`, NO_DRAFT);
+    if (raw === NO_DRAFT) continue;
+    if (COMBOBOX_NUMERIC_FIELDS.has(key)) {
+      (next[key] as number | null) = raw === "" ? null : Number(raw);
+    } else {
+      (next[key] as string) = raw;
+    }
+  }
+  return next;
+}
+
 function buildInitialFormState(employee: EmployeeListRow | null | undefined): EmployeeProfileFormState {
   return {
     owner_company_id: employee?.owner_company_id ?? null,
@@ -139,9 +169,6 @@ export function EmployeeWorkspaceForm({ employee, mode, authContext }: Props) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSection, setActiveSection] = useState("overview");
   const [childDialogOpen, setChildDialogOpen] = useState(false);
-  const [comboboxForm, setComboboxForm] = useState<EmployeeProfileFormState>(
-    buildInitialFormState(employee)
-  );
 
   const isEditing = mode === "edit";
   const isViewing = mode === "view";
@@ -151,17 +178,47 @@ export function EmployeeWorkspaceForm({ employee, mode, authContext }: Props) {
   const { isDirty, resetDirty } = useFormDirty({ formId: FORM_ID, enabled: !isViewing });
   useWorkspaceTabDirty({ isDirty, enabled: !isViewing });
 
-  const { getDraftDefault, syncDraft, writeDraftField, clearDraft } = useWorkspaceFormDraft({
-    formId: FORM_ID,
-    enabled: !isViewing,
-    entityType: "employee",
-    entityId: employee?.id ?? null,
-  });
+  const { getDraftDefault, syncDraft, writeDraftField, clearDraft, restoredFromDraft } =
+    useWorkspaceFormDraft({
+      formId: FORM_ID,
+      enabled: !isViewing,
+      entityType: "employee",
+      entityId: employee?.id ?? null,
+    });
+
+  // WS.3: combobox selections restore from the in-memory draft on remount —
+  // before WORKSPACE.PERF.1 they silently reset to server values on tab switch.
+  const [comboboxForm, setComboboxForm] = useState<EmployeeProfileFormState>(() =>
+    isViewing
+      ? buildInitialFormState(employee)
+      : applyComboboxDraft(buildInitialFormState(employee), getDraftDefault)
+  );
+
+  // Skip draft writes for non-user state changes (initial mount, server re-init).
+  const skipComboboxDraftWriteRef = useRef(true);
 
   // When employee changes (e.g. after redirect on create), re-init combobox form
+  const prevEmployeeIdRef = useRef<number | null>(employee?.id ?? null);
   useEffect(() => {
+    const id = employee?.id ?? null;
+    if (prevEmployeeIdRef.current === id) return;
+    prevEmployeeIdRef.current = id;
+    skipComboboxDraftWriteRef.current = true;
     setComboboxForm(buildInitialFormState(employee));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employee?.id]);
+
+  // WS.3: persist combobox selections to the in-memory draft on every user change
+  useEffect(() => {
+    if (isViewing) return;
+    if (skipComboboxDraftWriteRef.current) {
+      skipComboboxDraftWriteRef.current = false;
+      return;
+    }
+    for (const [key, value] of Object.entries(comboboxForm)) {
+      writeDraftField(`cb_${key}`, value == null ? "" : String(value));
+    }
+  }, [comboboxForm, isViewing, writeDraftField]);
 
   const handleRequestClose = () => closeTab(activeTab?.id ?? "");
 
@@ -323,6 +380,9 @@ export function EmployeeWorkspaceForm({ employee, mode, authContext }: Props) {
         onInput={syncDraft}
         onChange={syncDraft}
       >
+        {/* WS.3: visible signal that unsaved values from a previous visit were restored */}
+        <DraftRestoredNotice visible={!isViewing && restoredFromDraft} className="mb-3" />
+
         {/* Overview — lazyMount: many useQuery hooks; mounts on first paint (default section) */}
         <ERPRecordSectionPanel id="overview" activeId={activeSection} title="Overview" lazyMount>
           {employee ? (

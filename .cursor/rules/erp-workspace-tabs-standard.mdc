@@ -102,8 +102,7 @@ Clicking "Edit" on a record that is already open switches to the existing record
 ## Rule 6 — Maximum open tabs
 
 ```ts
-const MAX_WORKSPACE_TABS = 8  // initial
-const HARD_MAX_WORKSPACE_TABS = 10
+const MAX_TABS = 10  // WORKSPACE.PERF.1 (D1) — single limit, in workspace-store.ts
 ```
 
 If max reached, show toast:
@@ -111,7 +110,20 @@ If max reached, show toast:
 "Maximum tabs open. Close a tab before opening a new one."
 ```
 
-Do not silently close an existing tab to make room.
+Do not silently close an existing tab to make room. Users restored from
+localStorage with more than the limit keep their tabs until closed — only
+opening NEW tabs is blocked.
+
+### Tab overflow UX (WORKSPACE.PERF.1 WS.1)
+
+The tab bar must keep every tab reachable regardless of viewport width:
+- The active tab auto-scrolls into view on activation.
+- Left/right chevron scroll buttons appear when the strip overflows.
+- Mouse wheel over the strip scrolls it horizontally.
+- An "All tabs" dropdown (chevron + count, right side) lists every open tab
+  with dirty indicator and close action.
+- Chips switch to compact density (60px min-width, subtitle hidden) when more
+  than 8 tabs are open.
 
 ---
 

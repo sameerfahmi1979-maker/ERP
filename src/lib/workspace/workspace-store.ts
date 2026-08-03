@@ -20,7 +20,10 @@ import {
   DASHBOARD_ROUTE,
 } from "./workspace-route-registry";
 
-export const MAX_TABS = 20;
+// WORKSPACE.PERF.1 (D1): restored to 10 per the workspace tabs standard.
+// Users with more persisted tabs keep them until closed — only opening NEW
+// tabs is blocked at the limit (never silently close existing tabs).
+export const MAX_TABS = 10;
 
 const STORAGE_TABS_KEY = "algt_erp_workspace_tabs";
 const STORAGE_ACTIVE_KEY = "algt_erp_workspace_active_tab";

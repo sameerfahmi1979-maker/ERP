@@ -24,7 +24,7 @@
  * Draft is never written to localStorage or sessionStorage.
  */
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWorkspaceContext } from "@/components/workspace/workspace-provider";
 import { useWorkspaceDraftStoreContext } from "@/components/workspace/workspace-draft-provider";
 import { buildWorkspaceDraftKey, isDraftFieldAllowed } from "@/lib/workspace/workspace-draft-types";
@@ -46,6 +46,12 @@ export type UseWorkspaceFormDraftReturn = {
   draftKey: string;
   /** True if a non-empty draft exists for this tab + form */
   hasDraft: boolean;
+  /**
+   * WS.3: True when the form mounted WITH a non-empty draft — i.e. unsaved
+   * values from a previous visit were restored. Frozen at mount; use it to
+   * show a "draft restored" notice (DraftRestoredNotice component).
+   */
+  restoredFromDraft: boolean;
   /**
    * Returns the draft value if it exists and the field is allowed,
    * otherwise returns serverFallback as a string.
@@ -182,9 +188,17 @@ export function useWorkspaceFormDraft({
 
   const hasDraft = draftStore?.hasDraft(draftKey) ?? false;
 
+  // Frozen at mount — "did this form restore a non-empty draft?" (WS.3).
+  // Lazy useState initializer: computed exactly once on first render, matching
+  // the frozen-snapshot semantics above without reading a ref during render.
+  const [restoredFromDraft] = useState<boolean>(() =>
+    enabled && !!draftStore && draftStore.hasDraft(draftKey)
+  );
+
   return {
     draftKey,
     hasDraft,
+    restoredFromDraft,
     getDraftDefault,
     getDraftBoolean,
     syncDraft,

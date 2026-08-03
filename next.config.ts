@@ -12,6 +12,15 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: "10mb",
     },
+    // WORKSPACE.PERF.1 (WS.2, decision D2): re-enable the client router cache
+    // for dynamic pages (Next 15 changed the default to 0s). Returning to a
+    // workspace tab visited < 30s ago reuses the cached RSC payload — instant,
+    // zero server work. Saves still see fresh data: server actions calling
+    // revalidatePath/router.refresh() bypass this cache.
+    staleTimes: {
+      dynamic: 30,
+      static: 300,
+    },
   },
   // Supabase Edge Functions (Deno runtime) live in supabase/functions/ and use
   // Deno-specific imports (https://esm.sh/..., Deno.serve, etc.) that are

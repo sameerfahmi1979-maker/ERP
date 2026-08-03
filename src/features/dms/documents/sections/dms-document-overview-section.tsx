@@ -47,6 +47,12 @@ interface DmsDocumentOverviewSectionProps {
   setOwningBranchId: (id: number | null) => void;
   partyId: number | null;
   setPartyId: (id: number | null) => void;
+  /**
+   * WS.3: draft-aware initial value resolver from useWorkspaceFormDraft.
+   * When provided, text/date fields initialize from the unsaved draft
+   * (restored after a tab switch) instead of only the saved document.
+   */
+  getDraftDefault?: (fieldName: string, serverFallback?: string | number | null | undefined) => string;
 }
 
 export function DmsDocumentOverviewSection({
@@ -68,14 +74,19 @@ export function DmsDocumentOverviewSection({
   setOwningBranchId,
   partyId,
   setPartyId,
+  getDraftDefault,
 }: DmsDocumentOverviewSectionProps) {
   const [requiresExpiry, setRequiresExpiry] = useState(false);
 
-  // Controlled state for text/date inputs to avoid Base UI "defaultValue after init" warning
-  const [title, setTitle]           = useState(doc?.title ?? "");
-  const [description, setDescription] = useState(doc?.description ?? "");
-  const [issueDate, setIssueDate]   = useState(doc?.issue_date ?? "");
-  const [expiryDate, setExpiryDate] = useState(doc?.expiry_date ?? "");
+  // Controlled state for text/date inputs to avoid Base UI "defaultValue after init" warning.
+  // WS.3: initialize from the workspace draft (unsaved edits restored after a
+  // tab switch) with the saved document as fallback.
+  const draft = (field: string, fallback: string) =>
+    getDraftDefault ? getDraftDefault(field, fallback) : fallback;
+  const [title, setTitle]             = useState(() => draft("title", doc?.title ?? ""));
+  const [description, setDescription] = useState(() => draft("description", doc?.description ?? ""));
+  const [issueDate, setIssueDate]     = useState(() => draft("issue_date", doc?.issue_date ?? ""));
+  const [expiryDate, setExpiryDate]   = useState(() => draft("expiry_date", doc?.expiry_date ?? ""));
 
   useEffect(() => {
     if (documentTypeId) {

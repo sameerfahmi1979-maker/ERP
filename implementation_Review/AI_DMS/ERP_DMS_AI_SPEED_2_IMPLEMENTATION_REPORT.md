@@ -123,6 +123,13 @@ No schema migrations were needed.
 
 ---
 
+## 5B. Runtime UAT Fixes (2026-08-03)
+
+| # | Bug found in UAT | Root cause | Fix |
+|---|---|---|---|
+| 1 | After upload + AI Fill, the AI Intake Review tab opens, then the screen **flashes back to Upload Inbox** and returns to the intake tab again. | `startAiIntakeFromUploadSession` called `revalidatePath("/dms/inbox")` near its end. With 2L, the client's status poll navigates to `/dms/intake/[code]` **while the action is still in flight** (audit logs + review-queue hook still running). When the action response finally arrives, Next.js processes the revalidation and refreshes the router — briefly restoring the inbox route the action was dispatched from, before the pushed intake route wins again. | Removed the `revalidatePath` from the action (the inbox page is `force-dynamic` / `revalidate=0`, so it is always fresh on next visit; the client manages session list state). Other `revalidatePath` calls in the file are safe — their callers `await` the action before navigating. |
+| 2 | Emirates ID uploads: the AI returns the **expiry date as issue date and vice versa** (both dates are printed on the card front). | Model cross-assigns the two printed dates; prompt had per-type extraction guidance but no explicit ordering constraint, and no deterministic post-extraction guard existed. | **Smart catching added** — new `src/lib/dms/ai/date-sanity.ts` (`applyDateSanityCorrections`), called from `validateAiOutput` so EVERY AI pass is covered (intake pass 1/2, rerun, document analysis): if issue date > expiry date, the pair is swapped at BOTH the document-suggestion level and the metadata-field level (values + source snippets), with a visible "Auto-corrected … please verify" warning. Handles ISO and DD/MM/YYYY values. Prompt also strengthened with a CRITICAL date-ordering rule (earlier date = issue, later = expiry; match Emirates ID printed labels) — `PROMPT_VERSION` v3.4 → **v3.5**. 7 unit tests added (`__tests__/date-sanity.test.ts`); suite 440/440 PASS. |
+
 ## 6. Security Compliance
 
 - No OCR text, prompts, or API keys logged anywhere (2M goes through `buildSafeMetadata` redaction).

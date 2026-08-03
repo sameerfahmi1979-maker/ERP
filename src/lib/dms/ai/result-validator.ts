@@ -17,6 +17,7 @@ import type {
   ConfidenceLabel,
 } from "./types";
 import { parseExtendedClassification } from "./classification-output";
+import { applyDateSanityCorrections } from "./date-sanity";
 
 export interface ValidateResult {
   ok: boolean;
@@ -278,6 +279,10 @@ export function validateAiOutput(rawText: string): ValidateResult {
     warnings,
     rawResponse: parsed,
   };
+
+  // Smart catching: deterministic guards for AI date mistakes (e.g. Emirates ID
+  // issue/expiry swap). Mutates output in place and appends warnings.
+  applyDateSanityCorrections(output);
 
   return { ok: true, output, rawText };
 }

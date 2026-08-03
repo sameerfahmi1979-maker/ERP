@@ -43,8 +43,12 @@ const OCR_TAIL_CHARS = 8_000;
  *     re-emitting ~5k output tokens cost 60-70s per pass on 5+ page documents).
  *   - Mixed inputs: transcribe ONLY additional image-visible text, not the provided text.
  *   - Input budget raised 12k → 48k chars with head+tail sampling beyond that.
+ * v3.5 — Date ordering rule (2026-08-03):
+ *   - Explicit rule: issue date is always the EARLIER date, expiry the LATER one
+ *     (recurring Emirates ID issue/expiry swap). Deterministic swap guard also
+ *     added post-extraction in date-sanity.ts.
  */
-const PROMPT_VERSION = "v3.4";
+const PROMPT_VERSION = "v3.5";
 
 export { PROMPT_VERSION };
 
@@ -212,6 +216,7 @@ Rules:
 - Only suggest document types from the provided candidates list. If no candidate matches, use the closest match and note it in warnings.
 - Only extract fields from the provided metadata fields list — do not invent field_codes.
 - If a field cannot be found in the document, omit it from the fields array.
+- DATE ORDERING RULE (CRITICAL — never violate): suggested_issue_date must ALWAYS be strictly EARLIER than suggested_expiry_date. When a document shows two dates, the EARLIER date is the issue date and the LATER date is the expiry date. This also applies to issue/expiry metadata fields. On Emirates ID cards both dates are printed on the front: "Issuing Date / تاريخ الإصدار" (earlier) and "Expiry Date / تاريخ الإنتهاء" (later) — match each value to its printed label AND verify the ordering before returning.
 - ALWAYS attempt to extract suggested_issue_date and suggested_expiry_date:
   - Emirates ID: issue date is printed on the card (or derive as expiry date minus 5 years if only one date is visible); expiry date is the card validity end date.
   - Passport: both issue date and expiry date are printed.

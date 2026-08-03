@@ -871,7 +871,13 @@ export async function startAiIntakeFromUploadSession(
       });
     }
 
-    revalidatePath("/dms/inbox");
+    // NOTE (SPEED.2L flash fix, 2026-08-03): do NOT call revalidatePath here.
+    // This action runs for 30s+; the client's status poll redirects to
+    // /dms/intake/[code] while it is still in flight. A revalidatePath in the
+    // action response then triggers a router refresh that briefly bounces the
+    // user back to the inbox ("flash") before the intake route wins again.
+    // The inbox page is force-dynamic (revalidate=0), so it is always fresh on
+    // the next visit anyway.
 
     // ── Phase 12: Non-fatal review queue generation hook ─────────────────────
     // Creates review queue items for low-confidence or missing-field classifications.

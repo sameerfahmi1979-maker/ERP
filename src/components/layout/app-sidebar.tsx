@@ -14,7 +14,7 @@ import {
   Users, UsersRound, UserSearch, UserRoundCheck, ClipboardList, FileText, ShieldAlert,
   CheckCircle2, CalendarDays, CalendarClock, BriefcaseBusiness, Handshake, ClipboardCheck,
   BadgeDollarSign, Landmark, MonitorCheck, Ban,
-  FolderOpen, UploadCloud, Inbox, RefreshCcw, Tags, Database, ShieldCheck, Brain, Archive,
+  FolderOpen, FolderSearch, UploadCloud, Inbox, RefreshCcw, Tags, Database, ShieldCheck, Brain, Archive,
   Truck, Wrench, DollarSign, Boxes, ShoppingCart,
   BarChart3, Palette, History,
   Building2, Building, MapPin, Globe2, Ship, Factory, Scale,
@@ -104,6 +104,7 @@ const navSections: NavSection[] = [
           { label: "Dashboard", icon: LayoutDashboard, path: "/admin/hr/dashboard", requiredAnyPermissions: ["hr.dashboard.view", "hr.employees.view", "hr.admin"] },
           { label: "Search",    icon: Search,          path: "/admin/hr/search",    requiredAnyPermissions: ["hr.search.use", "hr.admin"] },
           { label: "Employees", icon: UsersRound,      path: "/admin/hr/employees", requiredAnyPermissions: ["hr.employees.view", "hr.admin"] },
+          { label: "Document Browser", icon: FolderSearch, path: "/admin/hr/document-browser", requiredAnyPermissions: ["hr.employees.view", "hr.admin"] },
         ],
       },
       {

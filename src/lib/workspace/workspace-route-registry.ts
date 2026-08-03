@@ -698,6 +698,7 @@ const REGISTRY: WorkspaceRouteConfig[] = [
   { route: "/admin/hr/dashboard",            title: "HR Dashboard",      icon: "LayoutDashboard",  tabKind: "list",   closable: true, singleton: true,  moduleCode: "HR" },
   { route: "/admin/hr/search",               title: "HR Search",         icon: "Search",           tabKind: "list",   closable: true, singleton: true,  moduleCode: "HR" },
   { route: "/admin/hr/employees",            title: "Employees",         icon: "Users",            tabKind: "list",   closable: true, singleton: true,  moduleCode: "HR" },
+  { route: "/admin/hr/document-browser",     title: "Document Browser",  icon: "FolderSearch",     tabKind: "list",   closable: true, singleton: true,  moduleCode: "HR" },
   { route: "/admin/hr/actions/pro",          title: "PRO Processes",     icon: "FileText",         tabKind: "list",   closable: true, singleton: true,  moduleCode: "HR" },
   { route: "/admin/hr/actions/disciplinary", title: "Disciplinary",      icon: "ShieldAlert",      tabKind: "list",   closable: true, singleton: true,  moduleCode: "HR" },
   { route: "/admin/hr/actions/approvals",    title: "Approval Requests", icon: "CheckCircle",      tabKind: "list",   closable: true, singleton: true,  moduleCode: "HR" },

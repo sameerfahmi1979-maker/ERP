@@ -1,0 +1,151 @@
+---
+description: Entity Document Browser standard — the reusable 3-column (Navigator / Document List / Preview) design pattern. Apply when building a document browser for any entity (employees, equipment, customers, vendors, vehicles, projects).
+globs:
+  - "src/features/**/document-browser/**"
+  - "src/server/actions/**/doc-browser*"
+alwaysApply: false
+---
+
+# ERP Entity Document Browser Standard
+
+## Phase
+
+HR.DOC_BROWSER.1 — Employee Document Browser (2026-08-03).
+Reference implementation: `/admin/hr/document-browser` (employees + dependents).
+
+This design MUST be reused when building document browsers for other entities:
+equipment, customers, vendors, vehicles, projects, etc.
+
+---
+
+## The Pattern — 3 Resizable Columns
+
+```
+┌───────────────┬──────────────────────┬──────────────────────────────┐
+│ Column 1      │ Column 2             │ Column 3                     │
+│ NAVIGATOR     │ DOCUMENT LIST        │ PREVIEW                      │
+│ (entity tree) │ (docs for selection) │ (inline file + metadata)     │
+│ resizable     │ resizable            │ flex-1 (takes the rest)      │
+└───────────────┴──────────────────────┴──────────────────────────────┘
+```
+
+- Shell: `flex h-[calc(100vh-190px)] min-h-[480px] rounded-lg border overflow-hidden`
+- Columns 1 and 2 have fixed pixel widths held in React state; Column 3 is `flex-1 min-w-0`
+- Between columns: a draggable resize handle (`role="separator"`, `cursor-col-resize`)
+- Column widths persist to `localStorage` under a versioned key
+  (e.g. `hr-doc-browser-col-widths-v1`), clamped to min/max on restore
+
+### Canonical files (copy this structure per module)
+
+| File | Role |
+|---|---|
+| `src/server/actions/hr/doc-browser.ts` | `get{X}DocBrowserEmployees` (tree) + `get{X}DocBrowserDocuments` (docs per entity) |
+| `src/features/hr/document-browser/hr-doc-browser-page-client.tsx` | Shell: selection state, resize logic, document fetch via `useTransition` |
+| `src/features/hr/document-browser/hr-doc-browser-navigator.tsx` | Column 1: search + status filter + expandable tree |
+| `src/features/hr/document-browser/hr-doc-browser-doc-list.tsx` | Column 2: document rows with type/status/expiry badges |
+| `src/features/hr/document-browser/hr-doc-browser-preview.tsx` | Column 3: metadata strip + file tabs + inline preview |
+| `src/features/hr/document-browser/hr-doc-browser-resize-handle.tsx` | Draggable divider |
+| `src/features/hr/document-browser/hr-doc-browser-types.ts` | `BrowserEntitySelection` shared client type |
+| `src/app/(protected)/admin/hr/document-browser/page.tsx` | SSR shell: auth + initial navigator data |
+
+For a new module, replace `hr`/employee terminology with the target entity and keep
+the same file layout under `src/features/<module>/document-browser/`.
+
+---
+
+## Rule 1 — DMS is the single source of documents
+
+The document list MUST come from `dms_document_links` filtered by
+`entity_type` + `entity_id` (entity types from `src/lib/dms/dms-entity-types.ts`).
+Never create per-module document tables. Module-native records that reference a
+DMS document (like `employee_identity_documents.dms_document_id`) may be merged
+into the list as extra sources with a distinct `source` label, deduplicated by
+DMS document id.
+
+## Rule 2 — Unified document row shape
+
+Server actions return a flat, UI-ready row:
+
+```ts
+export type HrDocBrowserDocument = {
+  id: number | null;              // dms_documents.id — null for metadata-only rows
+  documentNo: string | null;
+  title: string;
+  typeNameEn: string | null;
+  status: string | null;
+  issueDate: string | null;
+  expiryDate: string | null;
+  source: "dms_link" | "hr_identity" | "dependent_link";  // extend per module
+  files: { id: number; fileName: string; mimeType: string | null; fileSizeBytes: number | null }[];
+};
+```
+
+Rows are sorted expiry-ascending (nulls last) so urgent documents surface first.
+
+## Rule 3 — Preview via the /api/dms/file proxy ONLY
+
+- Inline preview: `/api/dms/file?fileId={id}&disposition=inline`
+  - `application/pdf` → `<iframe>`
+  - `image/*` → `<img>`
+  - anything else → download card (no inline preview)
+- Download: `/api/dms/file?fileId={id}&disposition=attachment` via a plain `<a href>`
+- NEVER call Supabase storage or signed URLs directly from browser components.
+
+## Rule 4 — Navigator behavior
+
+- Search box filters the tree client-side (name/code, including child names).
+- Status filter chips: All / Active / Inactive. Inactive entities stay VISIBLE
+  but greyed out (`opacity-60`) with an "Inactive" badge — do not hide them.
+- Child entities (dependents, sub-assets…) expand inline via a chevron that is a
+  separate click target from row selection.
+- Selection state lives in the page client as
+  `{ type, id, name, subtitle }` (`BrowserEntitySelection`).
+
+## Rule 5 — Data loading contract
+
+- Column 1 data is loaded server-side in `page.tsx` and passed as a prop.
+- Column 2 loads on selection via a server action inside `useTransition`
+  (spinner while pending, toast on error).
+- Selecting an entity auto-selects the first document so the preview is never
+  pointlessly empty.
+- Document selection is index-based (rows with `id: null` exist).
+
+## Rule 6 — Open Full Record opens a workspace tab
+
+DMS-backed rows (`id != null`) get an "Open Full Record" button calling
+`openTab({ route: "/dms/documents/record/{id}", tabKind: "record", entityType: "dms_document", entityId: id, closable: true })`.
+Metadata-only rows must not render the button.
+
+## Rule 7 — Page + registration requirements
+
+Every new browser MUST:
+1. Guard the page server-side: module view permission AND `dms.documents.view`
+   (or `dms.admin` / `system_admin`), redirecting to `/access-denied`.
+2. Re-check the same permissions inside every server action.
+3. Register the route in `src/lib/workspace/workspace-route-registry.ts`
+   (`tabKind: "list"`, `singleton: true`).
+4. Add a sidebar entry under the owning module (NOT under DMS).
+
+## Rule 8 — Resize handle contract (D5)
+
+- `mousedown` on the handle starts a drag tracked with document-level
+  `mousemove`/`mouseup` listeners; set `body { user-select: none; cursor: col-resize }`
+  during the drag and remove on release.
+- Clamp: navigator 200–420px, list 260–560px (adjust per module if justified).
+- Persist widths to `localStorage` on mouseup only (not per pixel).
+
+## Forbidden patterns
+
+```tsx
+// ❌ NEVER — module-specific document tables
+supabase.from("equipment_documents")...
+
+// ❌ NEVER — direct storage access from the browser UI
+supabase.storage.from("dms-documents").createSignedUrl(...)
+
+// ❌ NEVER — hiding inactive entities instead of greying them out
+employees.filter((e) => e.status === "active")   // without a user-facing filter
+
+// ❌ NEVER — CSS-only resize (no persistence, breaks min/max)
+<div className="resize-x overflow-auto">
+```

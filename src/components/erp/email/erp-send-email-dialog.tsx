@@ -347,9 +347,9 @@ export function ERPSendEmailDialog({
           <div className="flex-1 min-w-0">
             <DialogTitle className="text-base font-semibold leading-none">Send by Email</DialogTitle>
             <DialogDescription className="mt-1 space-y-0.5">
-              <div className="font-medium text-foreground text-sm">{title}</div>
-              {subtitle && <div className="text-xs text-muted-foreground">{subtitle}</div>}
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="block font-medium text-foreground text-sm">{title}</span>
+              {subtitle && <span className="block text-xs text-muted-foreground">{subtitle}</span>}
+              <span className="flex items-center gap-2 text-xs text-muted-foreground">
                 {exportModeText && (
                   <>
                     <span>{exportModeText}</span>
@@ -357,7 +357,7 @@ export function ERPSendEmailDialog({
                   </>
                 )}
                 <span>{attachmentType.toUpperCase()} attachment</span>
-              </div>
+              </span>
             </DialogDescription>
           </div>
           <DialogPrimitive.Close

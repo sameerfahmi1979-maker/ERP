@@ -78,7 +78,7 @@ function mapMetadataFields(
     case "training_certificate":
       return { issue_date: issueDate, expiry_date: expiryDate, provider: title };
     case "medical_record":
-      return { examination_date: issueDate ?? expiryDate, expiry_date: expiryDate, medical_center: title };
+      return { examination_date: issueDate ?? expiryDate, next_examination_date: expiryDate, medical_center: title };
     default:
       return {};
   }
@@ -135,7 +135,7 @@ function mapExtractionFieldsForKind(
       set("report_number", pickStringField(extracted, ["report_number", "reference_number", "certificate_number"]));
       set("medical_center", pickStringField(extracted, ["medical_center", "hospital", "clinic", "facility"]));
       set("examination_date", normalizeDateValue(pickStringField(extracted, ["examination_date", "test_date", "issue_date", "date_of_exam"])));
-      set("expiry_date", normalizeDateValue(pickStringField(extracted, ["expiry_date", "valid_until"])));
+      set("next_examination_date", normalizeDateValue(pickStringField(extracted, ["next_examination_date", "expiry_date", "valid_until", "next_exam_date"])));
       set("result", pickStringField(extracted, ["result", "fitness_result", "medical_result"]));
       break;
   }
@@ -201,7 +201,7 @@ Return JSON:
 }`,
   access_card: `Extract access card / pass fields. Return JSON: { "fields": { "card_number", "application_reference", "client_authority", "issue_date", "expiry_date" }, "field_confidence": {}, "warning": null }`,
   training_certificate: `Extract training certificate fields. Return JSON: { "fields": { "certificate_number", "provider", "approval_body", "issue_date", "expiry_date" }, "field_confidence": {}, "warning": null }`,
-  medical_record: `Extract medical examination fields. result must be one of: fit, unfit, conditionally_fit, under_review. Return JSON: { "fields": { "report_number", "medical_center", "examination_date", "expiry_date", "result" }, "field_confidence": {}, "warning": null }`,
+  medical_record: `Extract medical examination fields. result must be one of: fit, unfit, conditionally_fit, under_review. Return JSON: { "fields": { "report_number", "medical_center", "examination_date", "next_examination_date", "result" }, "field_confidence": {}, "warning": null }`,
 };
 
 async function loadDmsMetadataFieldMap(
@@ -282,7 +282,7 @@ ${params.ocrSnippet}`;
       const normalized: Record<string, string | number | boolean | null> = {};
       for (const [key, value] of Object.entries(f)) {
         if (value == null || value === "") continue;
-        if (key === "issue_date" || key === "expiry_date") {
+        if (key === "issue_date" || key === "expiry_date" || key === "next_examination_date") {
           const d = normalizeDateValue(value);
           if (d) normalized[key] = d;
         } else if (key === "policy_number" || key === "insurance_card_number") {

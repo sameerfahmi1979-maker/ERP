@@ -1278,9 +1278,9 @@ function MedicalRecordsSection({ employeeId, canMedView, canMedManage, onChildOp
     dms_document_id: null as number | null,
     medical_record_type_id: null as number | null, medical_center: "", report_number: "",
     examination_date: "", result: "under_review" as string, fit_for_work: false,
-    work_restrictions: false, restriction_details: "", expiry_date: "",
-    required_for_visa: false, required_for_site: false, required_for_offshore: false,
-    confidentiality_level: "restricted" as string, notes: "",
+    work_restrictions: false, restriction_details: "", next_examination_date: "",
+    required_for_visa: false, required_for_site: false, required_for_noc: false,
+    notes: "",
   });
 
   type MedicalRecordForm = ReturnType<typeof initialForm>;
@@ -1322,9 +1322,9 @@ function MedicalRecordsSection({ employeeId, canMedView, canMedManage, onChildOp
       medical_record_type_id: r.medical_record_type_id, medical_center: r.medical_center ?? "",
       report_number: r.report_number ?? "", examination_date: r.examination_date, result: r.result,
       fit_for_work: r.fit_for_work, work_restrictions: r.work_restrictions,
-      restriction_details: r.restriction_details ?? "", expiry_date: r.expiry_date ?? "",
+      restriction_details: r.restriction_details ?? "", next_examination_date: r.next_examination_date ?? "",
       required_for_visa: r.required_for_visa, required_for_site: r.required_for_site,
-      required_for_offshore: r.required_for_offshore, confidentiality_level: r.confidentiality_level,
+      required_for_noc: r.required_for_noc,
       notes: r.notes ?? "",
     });
     setEditDialogOpen(true);
@@ -1337,7 +1337,7 @@ function MedicalRecordsSection({ employeeId, canMedView, canMedManage, onChildOp
     medical_center: f.medical_center || null,
     report_number: f.report_number || null,
     restriction_details: f.restriction_details || null,
-    expiry_date: f.expiry_date || null,
+    next_examination_date: f.next_examination_date || null,
     notes: f.notes || null,
   });
 
@@ -1375,7 +1375,6 @@ function MedicalRecordsSection({ employeeId, canMedView, canMedManage, onChildOp
 
   const recTypeOptions = (recTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }));
   const resultOptions = [{ value: "fit", label: "Fit" }, { value: "unfit", label: "Unfit" }, { value: "conditionally_fit", label: "Conditionally Fit" }, { value: "under_review", label: "Under Review" }];
-  const confidentialityOptions = [{ value: "internal", label: "Internal" }, { value: "restricted", label: "Restricted" }, { value: "medical_only", label: "Medical Only" }];
 
   const renderMedicalRecordFields = (
     f: MedicalRecordForm,
@@ -1389,14 +1388,13 @@ function MedicalRecordsSection({ employeeId, canMedView, canMedManage, onChildOp
       <div className="col-span-6"><Label>Report Number</Label><Input value={f.report_number} onChange={(e) => setF((p) => ({ ...p, report_number: e.target.value }))} /></div>
       <div className="col-span-6"><Label>Examination Date <span className="text-destructive">*</span></Label><Input type="date" value={f.examination_date} onChange={(e) => setF((p) => ({ ...p, examination_date: e.target.value }))} /></div>
       <div className="col-span-6"><Label>Result <span className="text-destructive">*</span></Label><ERPCombobox value={f.result} onValueChange={(v) => setF((p) => ({ ...p, result: String(v) }))} options={resultOptions} placeholder="Result..." required /></div>
-      <div className="col-span-6"><Label>Expiry Date</Label><Input type="date" value={f.expiry_date} onChange={(e) => setF((p) => ({ ...p, expiry_date: e.target.value }))} /></div>
-      <div className="col-span-6"><Label>Confidentiality Level</Label><ERPCombobox value={f.confidentiality_level} onValueChange={(v) => setF((p) => ({ ...p, confidentiality_level: String(v) }))} options={confidentialityOptions} placeholder="Level..." /></div>
+      <div className="col-span-6"><Label>Next Examination Date</Label><Input type="date" value={f.next_examination_date} onChange={(e) => setF((p) => ({ ...p, next_examination_date: e.target.value }))} /></div>
       <div className="col-span-6 flex items-center gap-2 pt-5"><Switch checked={f.fit_for_work} onCheckedChange={(v) => setF((p) => ({ ...p, fit_for_work: v }))} /><Label>Fit for Work</Label></div>
       <div className="col-span-6 flex items-center gap-2 pt-5"><Switch checked={f.work_restrictions} onCheckedChange={(v) => setF((p) => ({ ...p, work_restrictions: v }))} /><Label>Work Restrictions</Label></div>
       {f.work_restrictions && <div className="col-span-12"><Label>Restriction Details</Label><Textarea value={f.restriction_details} onChange={(e) => setF((p) => ({ ...p, restriction_details: e.target.value }))} rows={2} /></div>}
       <div className="col-span-4 flex items-center gap-2 pt-5"><Switch checked={f.required_for_visa} onCheckedChange={(v) => setF((p) => ({ ...p, required_for_visa: v }))} /><Label>Required for Visa</Label></div>
       <div className="col-span-4 flex items-center gap-2 pt-5"><Switch checked={f.required_for_site} onCheckedChange={(v) => setF((p) => ({ ...p, required_for_site: v }))} /><Label>Required for Site</Label></div>
-      <div className="col-span-4 flex items-center gap-2 pt-5"><Switch checked={f.required_for_offshore} onCheckedChange={(v) => setF((p) => ({ ...p, required_for_offshore: v }))} /><Label>Required for Offshore</Label></div>
+      <div className="col-span-4 flex items-center gap-2 pt-5"><Switch checked={f.required_for_noc} onCheckedChange={(v) => setF((p) => ({ ...p, required_for_noc: v }))} /><Label>Required for NOC</Label></div>
       <div className="col-span-12"><Label>Notes</Label><Textarea value={f.notes} onChange={(e) => setF((p) => ({ ...p, notes: e.target.value }))} rows={2} /></div>
     </div>
   );
@@ -1416,14 +1414,13 @@ function MedicalRecordsSection({ employeeId, canMedView, canMedManage, onChildOp
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium text-sm">{r.medical_record_type?.name_en ?? `Type ${r.medical_record_type_id}`}</span>
                     <Badge variant={resultCfg.variant as "default" | "secondary" | "destructive" | "outline"} className="text-xs">{resultCfg.label}</Badge>
-                    <Badge variant="outline" className="text-xs">{r.confidentiality_level}</Badge>
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5">
                     {r.medical_center && <span>{r.medical_center} · </span>}
                     Examined: {formatDate(r.examination_date)}
                     {r.report_number && <span> · {r.report_number}</span>}
                   </div>
-                  {r.expiry_date && <div className="mt-1"><ExpiryBadge expiryDate={r.expiry_date} /></div>}
+                  {r.next_examination_date && <div className="mt-1"><ExpiryBadge expiryDate={r.next_examination_date} /></div>}
                 </div>
                 {canMedManage && (
                   <div className="flex items-center gap-1 ml-2 flex-shrink-0">

@@ -179,12 +179,11 @@ export type EmployeeMedicalRecordRow = {
   fit_for_work: boolean;
   work_restrictions: boolean;
   restriction_details: string | null;
-  expiry_date: string | null;
+  next_examination_date: string | null;
   required_for_visa: boolean;
   required_for_site: boolean;
-  required_for_offshore: boolean;
+  required_for_noc: boolean;
   dms_document_id: number | null;
-  confidentiality_level: string;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -1530,12 +1529,11 @@ const medicalRecordSchema = z.object({
   fit_for_work: z.boolean().default(false),
   work_restrictions: z.boolean().default(false),
   restriction_details: z.string().nullish(),
-  expiry_date: z.string().nullish(),
+  next_examination_date: z.string().nullish(),
   required_for_visa: z.boolean().default(false),
   required_for_site: z.boolean().default(false),
-  required_for_offshore: z.boolean().default(false),
+  required_for_noc: z.boolean().default(false),
   dms_document_id: z.number().int().positive().nullish(),
-  confidentiality_level: z.enum(["internal", "restricted", "medical_only"]).default("restricted"),
   notes: z.string().nullish(),
 });
 
@@ -1605,7 +1603,6 @@ export async function createEmployeeMedicalRecord(
         medical_record_type_id: parsed.data.medical_record_type_id,
         result: parsed.data.result,
         examination_date: parsed.data.examination_date,
-        confidentiality_level: parsed.data.confidentiality_level,
       },
     });
     revalidateEmployeePath(employeeId);

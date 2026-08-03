@@ -121,7 +121,6 @@ function mapExtractionFieldsForKind(
       set("card_number", pickStringField(extracted, ["card_number", "pass_number", "badge_number", "license_number"]));
       set("application_reference", pickStringField(extracted, ["application_reference", "reference_number", "file_number"]));
       set("client_authority", pickStringField(extracted, ["client_authority", "authority", "issuer", "issuing_authority"]));
-      set("access_level", pickStringField(extracted, ["access_level", "level", "zone"]));
       set("issue_date", normalizeDateValue(pickStringField(extracted, ["issue_date", "date_of_issue"])));
       set("expiry_date", normalizeDateValue(pickStringField(extracted, ["expiry_date", "expiration_date"])));
       break;
@@ -200,7 +199,7 @@ Return JSON:
   "field_confidence": { "dependent_name_en": 0.0-1.0, ... },
   "warning": "string or null"
 }`,
-  access_card: `Extract access card / pass fields. Return JSON: { "fields": { "card_number", "application_reference", "client_authority", "access_level", "issue_date", "expiry_date" }, "field_confidence": {}, "warning": null }`,
+  access_card: `Extract access card / pass fields. Return JSON: { "fields": { "card_number", "application_reference", "client_authority", "issue_date", "expiry_date" }, "field_confidence": {}, "warning": null }`,
   training_certificate: `Extract training certificate fields. Return JSON: { "fields": { "certificate_number", "provider", "approval_body", "issue_date", "expiry_date" }, "field_confidence": {}, "warning": null }`,
   medical_record: `Extract medical examination fields. result must be one of: fit, unfit, conditionally_fit, under_review. Return JSON: { "fields": { "report_number", "medical_center", "examination_date", "expiry_date", "result" }, "field_confidence": {}, "warning": null }`,
 };

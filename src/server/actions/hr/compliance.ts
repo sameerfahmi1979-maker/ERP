@@ -135,7 +135,6 @@ export type EmployeeAccessCardRow = {
   issue_date: string | null;
   expiry_date: string | null;
   status: string;
-  access_level: string | null;
   renewal_status: string;
   dms_document_id: number | null;
   notes: string | null;
@@ -1121,7 +1120,6 @@ const accessCardSchema = z.object({
   issue_date: z.string().nullish(),
   expiry_date: z.string().nullish(),
   status: z.enum(["active", "expired", "cancelled", "suspended", "pending", "in_application"]).default("pending"),
-  access_level: z.string().nullish(),
   renewal_status: z.enum(["not_required", "pending", "in_progress", "complete"]).default("not_required"),
   dms_document_id: z.number().int().positive().nullish(),
   notes: z.string().nullish(),

@@ -916,7 +916,7 @@ function AccessCardsSection({ employeeId, canManageDoc, onChildOpen }: { employe
     dms_document_id: null as number | null,
     access_type_id: null as number | null, client_authority: "", work_site_id: null as number | null,
     card_number: "", application_reference: "", issue_date: "", expiry_date: "",
-    status: "pending" as string, access_level: "", renewal_status: "not_required" as string, notes: "",
+    status: "pending" as string, renewal_status: "not_required" as string, notes: "",
   });
 
   type AccessCardForm = ReturnType<typeof initialForm>;
@@ -951,7 +951,6 @@ function AccessCardsSection({ employeeId, canManageDoc, onChildOpen }: { employe
     application_reference: f.application_reference || null,
     issue_date: f.issue_date || null,
     expiry_date: f.expiry_date || null,
-    access_level: f.access_level || null,
     notes: f.notes || null,
   });
 
@@ -973,9 +972,8 @@ function AccessCardsSection({ employeeId, canManageDoc, onChildOpen }: { employe
       <div className="col-span-6"><Label>Application Reference</Label><Input value={f.application_reference} onChange={(e) => setF((p) => ({ ...p, application_reference: e.target.value }))} /></div>
       <div className="col-span-6"><Label>Issue Date</Label><Input type="date" value={f.issue_date} onChange={(e) => setF((p) => ({ ...p, issue_date: e.target.value }))} /></div>
       <div className="col-span-6"><Label>Expiry Date</Label><Input type="date" value={f.expiry_date} onChange={(e) => setF((p) => ({ ...p, expiry_date: e.target.value }))} /></div>
-      <div className="col-span-4"><Label>Status</Label><ERPCombobox value={f.status} onValueChange={(v) => setF((p) => ({ ...p, status: String(v) }))} options={accessStatusOptions} placeholder="Status..." /></div>
-      <div className="col-span-4"><Label>Access Level</Label><Input value={f.access_level} onChange={(e) => setF((p) => ({ ...p, access_level: e.target.value }))} placeholder="e.g. Level 1, Zone A" /></div>
-      <div className="col-span-4"><Label>Renewal</Label><ERPCombobox value={f.renewal_status} onValueChange={(v) => setF((p) => ({ ...p, renewal_status: String(v) }))} options={RENEWAL_STATUS_OPTIONS} placeholder="Renewal..." /></div>
+      <div className="col-span-6"><Label>Status</Label><ERPCombobox value={f.status} onValueChange={(v) => setF((p) => ({ ...p, status: String(v) }))} options={accessStatusOptions} placeholder="Status..." /></div>
+      <div className="col-span-6"><Label>Renewal</Label><ERPCombobox value={f.renewal_status} onValueChange={(v) => setF((p) => ({ ...p, renewal_status: String(v) }))} options={RENEWAL_STATUS_OPTIONS} placeholder="Renewal..." /></div>
       <div className="col-span-12"><Label>Notes</Label><Textarea value={f.notes} onChange={(e) => setF((p) => ({ ...p, notes: e.target.value }))} rows={2} /></div>
     </div>
   );
@@ -988,7 +986,7 @@ function AccessCardsSection({ employeeId, canManageDoc, onChildOpen }: { employe
       access_type_id: r.access_type_id, client_authority: r.client_authority ?? "", work_site_id: r.work_site_id,
       card_number: r.card_number ?? "", application_reference: r.application_reference ?? "",
       issue_date: r.issue_date ?? "", expiry_date: r.expiry_date ?? "", status: r.status,
-      access_level: r.access_level ?? "", renewal_status: r.renewal_status, notes: r.notes ?? "",
+      renewal_status: r.renewal_status, notes: r.notes ?? "",
     });
     setEditDialogOpen(true);
   };

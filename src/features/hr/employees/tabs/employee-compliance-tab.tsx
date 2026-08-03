@@ -1085,9 +1085,9 @@ function TrainingCertificatesSection({ employeeId, canManageDoc, onChildOpen }: 
   const initialForm = () => ({
     dms_document_id: null as number | null,
     training_category_id: null as number | null, training_type_id: null as number | null,
-    provider: "", approval_body: "", certificate_number: "", issue_date: "", expiry_date: "",
-    validity_months: null as number | null, required_for_designation: false, required_for_site: false,
-    status: "valid" as string, verification_status: "unverified" as string, renewal_status: "not_required" as string, notes: "",
+    provider: "", approval_body: "", certificate_number: "", completion_date: "", expiry_date: "",
+    required_for_designation: false, required_for_site: false,
+    status: "valid" as string, verification_status: "unverified" as string, notes: "",
   });
 
   type TrainingForm = ReturnType<typeof initialForm>;
@@ -1126,7 +1126,7 @@ function TrainingCertificatesSection({ employeeId, canManageDoc, onChildOpen }: 
     provider: f.provider || null,
     approval_body: f.approval_body || null,
     certificate_number: f.certificate_number || null,
-    issue_date: f.issue_date || null,
+    completion_date: f.completion_date || null,
     expiry_date: f.expiry_date || null,
     notes: f.notes || null,
   });
@@ -1148,12 +1148,10 @@ function TrainingCertificatesSection({ employeeId, canManageDoc, onChildOpen }: 
       <div className="col-span-6"><Label>Provider</Label><Input value={f.provider} onChange={(e) => setF((p) => ({ ...p, provider: e.target.value }))} /></div>
       <div className="col-span-6"><Label>Approval Body</Label><Input value={f.approval_body} onChange={(e) => setF((p) => ({ ...p, approval_body: e.target.value }))} /></div>
       <div className="col-span-6"><Label>Certificate Number</Label><Input value={f.certificate_number} onChange={(e) => setF((p) => ({ ...p, certificate_number: e.target.value }))} /></div>
-      <div className="col-span-6"><Label>Validity Months</Label><Input type="number" min={0} value={f.validity_months ?? ""} onChange={(e) => setF((p) => ({ ...p, validity_months: e.target.value ? parseInt(e.target.value) : null }))} /></div>
-      <div className="col-span-6"><Label>Issue Date</Label><Input type="date" value={f.issue_date} onChange={(e) => setF((p) => ({ ...p, issue_date: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Completion Date</Label><Input type="date" value={f.completion_date} onChange={(e) => setF((p) => ({ ...p, completion_date: e.target.value }))} /></div>
       <div className="col-span-6"><Label>Expiry Date</Label><Input type="date" value={f.expiry_date} onChange={(e) => setF((p) => ({ ...p, expiry_date: e.target.value }))} /></div>
-      <div className="col-span-4"><Label>Status</Label><ERPCombobox value={f.status} onValueChange={(v) => setF((p) => ({ ...p, status: String(v) }))} options={trainStatusOptions} placeholder="Status..." /></div>
-      <div className="col-span-4"><Label>Verification</Label><ERPCombobox value={f.verification_status} onValueChange={(v) => setF((p) => ({ ...p, verification_status: String(v) }))} options={VERIFICATION_OPTIONS} placeholder="Verification..." /></div>
-      <div className="col-span-4"><Label>Renewal</Label><ERPCombobox value={f.renewal_status} onValueChange={(v) => setF((p) => ({ ...p, renewal_status: String(v) }))} options={RENEWAL_STATUS_OPTIONS} placeholder="Renewal..." /></div>
+      <div className="col-span-6"><Label>Status</Label><ERPCombobox value={f.status} onValueChange={(v) => setF((p) => ({ ...p, status: String(v) }))} options={trainStatusOptions} placeholder="Status..." /></div>
+      <div className="col-span-6"><Label>Verification</Label><ERPCombobox value={f.verification_status} onValueChange={(v) => setF((p) => ({ ...p, verification_status: String(v) }))} options={VERIFICATION_OPTIONS} placeholder="Verification..." /></div>
       <div className="col-span-6 flex items-center gap-2 pt-5"><Switch checked={f.required_for_designation} onCheckedChange={(v) => setF((p) => ({ ...p, required_for_designation: v }))} /><Label>Required for Designation</Label></div>
       <div className="col-span-6 flex items-center gap-2 pt-5"><Switch checked={f.required_for_site} onCheckedChange={(v) => setF((p) => ({ ...p, required_for_site: v }))} /><Label>Required for Site</Label></div>
       <div className="col-span-12"><Label>Notes</Label><Textarea value={f.notes} onChange={(e) => setF((p) => ({ ...p, notes: e.target.value }))} rows={2} /></div>
@@ -1167,10 +1165,10 @@ function TrainingCertificatesSection({ employeeId, canManageDoc, onChildOpen }: 
       dms_document_id: r.dms_document_id,
       training_category_id: r.training_category_id, training_type_id: r.training_type_id,
       provider: r.provider ?? "", approval_body: r.approval_body ?? "",
-      certificate_number: r.certificate_number ?? "", issue_date: r.issue_date ?? "", expiry_date: r.expiry_date ?? "",
-      validity_months: r.validity_months, required_for_designation: r.required_for_designation,
+      certificate_number: r.certificate_number ?? "", completion_date: r.completion_date ?? "", expiry_date: r.expiry_date ?? "",
+      required_for_designation: r.required_for_designation,
       required_for_site: r.required_for_site, status: r.status, verification_status: r.verification_status,
-      renewal_status: r.renewal_status, notes: r.notes ?? "",
+      notes: r.notes ?? "",
     });
     setEditDialogOpen(true);
   };

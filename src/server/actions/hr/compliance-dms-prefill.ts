@@ -76,7 +76,7 @@ function mapMetadataFields(
     case "access_card":
       return { issue_date: issueDate, expiry_date: expiryDate, client_authority: title };
     case "training_certificate":
-      return { issue_date: issueDate, expiry_date: expiryDate, provider: title };
+      return { completion_date: issueDate, expiry_date: expiryDate, provider: title };
     case "medical_record":
       return { examination_date: issueDate ?? expiryDate, next_examination_date: expiryDate, medical_center: title };
     default:
@@ -128,7 +128,7 @@ function mapExtractionFieldsForKind(
       set("certificate_number", pickStringField(extracted, ["certificate_number", "cert_number", "license_number", "reference_number"]));
       set("provider", pickStringField(extracted, ["provider", "training_provider", "institution", "issuer"]));
       set("approval_body", pickStringField(extracted, ["approval_body", "accreditation_body", "authority"]));
-      set("issue_date", normalizeDateValue(pickStringField(extracted, ["issue_date", "date_of_issue"])));
+      set("completion_date", normalizeDateValue(pickStringField(extracted, ["completion_date", "issue_date", "date_of_issue", "date_of_completion"])));
       set("expiry_date", normalizeDateValue(pickStringField(extracted, ["expiry_date", "expiration_date", "valid_until"])));
       break;
     case "medical_record":
@@ -200,7 +200,7 @@ Return JSON:
   "warning": "string or null"
 }`,
   access_card: `Extract access card / pass fields. Return JSON: { "fields": { "card_number", "application_reference", "client_authority", "issue_date", "expiry_date" }, "field_confidence": {}, "warning": null }`,
-  training_certificate: `Extract training certificate fields. Return JSON: { "fields": { "certificate_number", "provider", "approval_body", "issue_date", "expiry_date" }, "field_confidence": {}, "warning": null }`,
+  training_certificate: `Extract training certificate fields. Return JSON: { "fields": { "certificate_number", "provider", "approval_body", "completion_date", "expiry_date" }, "field_confidence": {}, "warning": null }`,
   medical_record: `Extract medical examination fields. result must be one of: fit, unfit, conditionally_fit, under_review. Return JSON: { "fields": { "report_number", "medical_center", "examination_date", "next_examination_date", "result" }, "field_confidence": {}, "warning": null }`,
 };
 
@@ -282,7 +282,7 @@ ${params.ocrSnippet}`;
       const normalized: Record<string, string | number | boolean | null> = {};
       for (const [key, value] of Object.entries(f)) {
         if (value == null || value === "") continue;
-        if (key === "issue_date" || key === "expiry_date" || key === "next_examination_date") {
+        if (key === "issue_date" || key === "expiry_date" || key === "next_examination_date" || key === "completion_date") {
           const d = normalizeDateValue(value);
           if (d) normalized[key] = d;
         } else if (key === "policy_number" || key === "insurance_card_number") {

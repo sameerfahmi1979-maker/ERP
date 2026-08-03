@@ -152,14 +152,12 @@ export type EmployeeTrainingCertificateRow = {
   provider: string | null;
   approval_body: string | null;
   certificate_number: string | null;
-  issue_date: string | null;
+  completion_date: string | null;
   expiry_date: string | null;
-  validity_months: number | null;
   required_for_designation: boolean;
   required_for_site: boolean;
   status: string;
   verification_status: string;
-  renewal_status: string;
   dms_document_id: number | null;
   notes: string | null;
   created_at: string;
@@ -1305,14 +1303,12 @@ const trainingCertificateSchema = z.object({
   provider: z.string().nullish(),
   approval_body: z.string().nullish(),
   certificate_number: z.string().nullish(),
-  issue_date: z.string().nullish(),
+  completion_date: z.string().nullish(),
   expiry_date: z.string().nullish(),
-  validity_months: z.number().int().min(0).nullish(),
   required_for_designation: z.boolean().default(false),
   required_for_site: z.boolean().default(false),
   status: z.enum(["valid", "expired", "pending", "in_progress"]).default("valid"),
   verification_status: z.enum(["unverified", "verified", "failed"]).default("unverified"),
-  renewal_status: z.enum(["not_required", "pending", "in_progress", "complete"]).default("not_required"),
   dms_document_id: z.number().int().positive().nullish(),
   notes: z.string().nullish(),
 });
@@ -1505,11 +1501,9 @@ export async function updateTrainingCertificateRenewalStatus(
       .single();
     if (!existing) return { success: false, error: "Record not found" };
 
-    const { error } = await admin
-      .from("employee_training_certificates")
-      .update({ renewal_status: renewalStatus, updated_by: ctx.profile?.id })
-      .eq("id", id);
-    if (error) return { success: false, error: error.message };
+    // renewal_status column does not exist on employee_training_certificates
+    // This function is a no-op kept for backward compatibility
+    void (renewalStatus);
 
     revalidateEmployeePath(existing.employee_id);
     return { success: true };

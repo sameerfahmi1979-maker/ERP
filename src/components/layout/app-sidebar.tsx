@@ -14,7 +14,7 @@ import {
   Users, UsersRound, UserSearch, UserRoundCheck, ClipboardList, FileText, ShieldAlert,
   CheckCircle2, CalendarDays, CalendarClock, BriefcaseBusiness, Handshake, ClipboardCheck,
   BadgeDollarSign, Landmark, MonitorCheck, Ban,
-  FolderOpen, UploadCloud, Inbox, RefreshCcw, Tags, Database, ShieldCheck, Brain,
+  FolderOpen, UploadCloud, Inbox, RefreshCcw, Tags, Database, ShieldCheck, Brain, Archive,
   Truck, Wrench, DollarSign, Boxes, ShoppingCart,
   BarChart3, Palette, History,
   Building2, Building, MapPin, Globe2, Ship, Factory, Scale,
@@ -170,6 +170,7 @@ const navSections: NavSection[] = [
       { label: "Review Queue",      icon: ListChecks,      path: "/dms/review-queue",    requiredAnyPermissions: ["dms.review_queue.view", "dms.review_queue.manage", "dms.documents.review_ai", "dms.admin"] },
       { label: "Approval Queue",    icon: ClipboardCheck,  path: "/dms/approvals",       requiredAnyPermissions: ["dms.approvals.view", "dms.approvals.act", "dms.approvals.submit", "dms.approvals.withdraw", "dms.approvals.admin", "dms.documents.approve", "dms.admin"] },
       { label: "Expiry & Renewals", icon: RefreshCcw,      path: "/dms/expiring",        requiredAnyPermissions: ["dms.expiry.view", "dms.documents.view", "dms.admin"] },
+      { label: "Archive",           icon: Archive,         path: "/dms/archive",         requiredAnyPermissions: ["dms.documents.view", "dms.admin"] },
       { label: "Notifications",     icon: Bell,            path: "/dms/notifications",   requiredAnyPermissions: ["dms.documents.view", "dms.admin"] },
       {
         kind: "subsection", label: "DMS Admin", icon: Settings,

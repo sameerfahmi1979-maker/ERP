@@ -324,11 +324,14 @@ export async function completeDmsRenewalRequest(
       .eq("id", id);
 
     // Update the OLD document: mark superseded and link to the replacement.
+    // DMS ARCHIVE.1 — also set is_archived so the doc is hidden from All Documents.
     await supabase
       .from("dms_documents")
       .update({
         status: "superseded",
         superseded_by_document_id: replacementDocumentId,
+        is_archived: true,
+        archived_at: now,
         updated_by: ctx.profile.id,
         updated_at: now,
       })

@@ -526,6 +526,14 @@ const REGISTRY: WorkspaceRouteConfig[] = [
     moduleCode: "DMS",
   },
   {
+    route: "/dms/archive",
+    title: "Document Archive",
+    icon: "Archive",
+    tabKind: "list",
+    singleton: true,
+    moduleCode: "DMS",
+  },
+  {
     route: "/dms/inbox",
     title: "Upload Inbox",
     icon: "Inbox",

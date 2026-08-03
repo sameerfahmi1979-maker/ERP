@@ -86,6 +86,12 @@ export type DmsDocumentFilters = {
   status?: string;
   confidentiality?: string;
   is_archived?: boolean;
+  /**
+   * DMS ARCHIVE.1 — when true, archived and superseded documents are excluded
+   * from results. Defaults to false so callers opt-in explicitly.
+   * The "All Documents" page sets this to true; the Archive page never sets it.
+   */
+  excludeArchived?: boolean;
   has_files?: boolean;
   expiry_from?: string;
   expiry_to?: string;
@@ -332,6 +338,10 @@ export async function getDmsDocuments(
     }
     if (filters?.is_archived !== undefined) {
       query = query.eq("is_archived", filters.is_archived);
+    }
+    // DMS ARCHIVE.1 — hide archived + superseded docs from the main list
+    if (filters?.excludeArchived) {
+      query = query.not("status", "in", '("archived","superseded")');
     }
     if (filters?.expiry_from) {
       query = query.gte("expiry_date", filters.expiry_from);
@@ -885,6 +895,71 @@ export async function unarchiveDmsDocument(id: number): Promise<ActionResult> {
   } catch (err) {
     logger.error("unarchiveDmsDocument error", err);
     return { success: false, error: "Failed to unarchive document" };
+  }
+}
+
+// ── getArchivedDocuments ──────────────────────────────────────────────────────
+//
+// DMS ARCHIVE.1 — returns all documents with status "archived" OR "superseded"
+// (i.e. every document that has been removed from the main All Documents list).
+// Superseded documents include a join to their replacement.
+
+export type ArchivedDocumentRow = DmsDocumentRow & {
+  reason: "archived" | "renewed";
+  superseded_by?: { id: number; document_no: string; title: string } | null;
+};
+
+export async function getArchivedDocuments(): Promise<ActionResult<ArchivedDocumentRow[]>> {
+  try {
+    const ctx = await getAuthContext();
+    if (!hasPermission(ctx, "dms.documents.view") && !hasPermission(ctx, "dms.admin")) {
+      return { success: false, error: "Permission denied" };
+    }
+
+    const supabase = await createClient();
+    const isAdmin = hasPermission(ctx, "dms.admin") || ctx.roleCodes.includes("system_admin");
+    const profileId = ctx.profile?.id ?? null;
+    const allowedLevels = getAllowedConfidentialityLevels(ctx);
+
+    let query = supabase
+      .from("dms_documents")
+      .select(`
+        *,
+        document_type:dms_document_types(type_code, name_en, requires_expiry_tracking, default_confidentiality),
+        category:dms_document_categories(category_code, name_en),
+        tags:dms_document_tags(tag_id, tag:dms_tags(tag_name, color_hex)),
+        superseded_by:dms_documents!superseded_by_document_id(id, document_no, title)
+      `)
+      .is("deleted_at", null)
+      .in("status", ["archived", "superseded"])
+      .order("updated_at", { ascending: false });
+
+    if (!isAdmin) {
+      if (profileId) {
+        query = query.or(
+          `confidentiality_level.in.(${allowedLevels.join(",")}),owner_user_id.eq.${profileId},created_by.eq.${profileId}`
+        );
+      } else {
+        query = query.in("confidentiality_level", allowedLevels);
+      }
+    }
+
+    const { data, error } = await query;
+    if (error) return { success: false, error: error.message };
+
+    const rows = (data ?? []).map((doc) => {
+      const d = doc as Record<string, unknown>;
+      return {
+        ...(d as DmsDocumentRow),
+        reason: d.status === "superseded" ? ("renewed" as const) : ("archived" as const),
+        superseded_by: d.superseded_by as { id: number; document_no: string; title: string } | null,
+      };
+    });
+
+    return { success: true, data: rows };
+  } catch (err) {
+    logger.error("getArchivedDocuments error", err);
+    return { success: false, error: "Failed to load archived documents" };
   }
 }
 

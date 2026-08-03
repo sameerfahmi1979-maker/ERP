@@ -16,7 +16,8 @@ export default async function DmsDocumentsPage() {
   }
 
   const [docsResult, defaultsResult] = await Promise.all([
-    getDmsDocuments(),
+    // DMS ARCHIVE.1 — exclude archived/superseded; they live in /dms/archive
+    getDmsDocuments({ excludeArchived: true }),
     getDmsNewDocumentDefaults(),
   ]);
 

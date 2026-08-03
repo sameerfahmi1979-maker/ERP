@@ -6,12 +6,11 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Loader2, X, Tag, Sparkles, Check, AlertCircle } from "lucide-react";
-import { getDmsDocumentTags, saveDmsDocumentTags } from "@/server/actions/dms/document-tags";
+import { saveDmsDocumentTags, type DmsDocumentTagRow } from "@/server/actions/dms/document-tags";
 import { getDmsTags } from "@/server/actions/dms/tags";
 import { queryKeys } from "@/lib/query/query-keys";
 import {
   suggestDmsDocumentTags,
-  getDmsTagSuggestions,
   applyDmsTagSuggestions,
   rejectDmsTagSuggestions,
   createAndApplyDmsTagSuggestion,
@@ -31,12 +30,19 @@ export function DmsDocumentTagsSection({ documentId, isViewing }: DmsDocumentTag
   const [applyingIds, setApplyingIds] = useState<number[]>([]);
   const [rejectingIds, setRejectingIds] = useState<number[]>([]);
 
+  // WORKSPACE.PERF.1 UAT fix: interval-polled queries must use plain GET
+  // fetches, NOT server actions — an in-flight server action reverts any
+  // router.push made while it's pending (the "tab snaps back" bug family).
   const { data: docTags = [], isLoading: loadingDocTags } = useQuery({
     queryKey: queryKeys.dms.documentTags(documentId ?? 0),
     queryFn: async () => {
       if (!documentId) return [];
-      const r = await getDmsDocumentTags(documentId);
-      return r.data ?? [];
+      const res = await fetch(`/api/dms/poll?kind=documentTags&documentId=${documentId}`, {
+        cache: "no-store",
+      });
+      if (!res.ok) return [];
+      const json = (await res.json()) as { data?: DmsDocumentTagRow[] };
+      return json.data ?? [];
     },
     enabled: !!documentId,
     staleTime: 30 * 1000,
@@ -64,8 +70,12 @@ export function DmsDocumentTagsSection({ documentId, isViewing }: DmsDocumentTag
     queryKey: queryKeys.dms.documentTagSuggestions(documentId ?? 0),
     queryFn: async () => {
       if (!documentId) return [];
-      const r = await getDmsTagSuggestions(documentId);
-      return r.data ?? [];
+      const res = await fetch(`/api/dms/poll?kind=tagSuggestions&documentId=${documentId}`, {
+        cache: "no-store",
+      });
+      if (!res.ok) return [];
+      const json = (await res.json()) as { data?: DmsTagSuggestionRow[] };
+      return json.data ?? [];
     },
     enabled: !!documentId,
     staleTime: 30 * 1000,

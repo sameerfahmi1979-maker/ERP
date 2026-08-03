@@ -26,13 +26,13 @@ import { queryKeys } from "@/lib/query/query-keys";
 import { invalidateDmsOrchestrationStatus } from "@/lib/query/invalidation";
 import {
   runDmsAiOrchestrationPostDraft,
-  getDmsOrchestrationStatus,
   retryDmsOrchestrationStep,
 } from "@/server/actions/dms/orchestration";
 import type {
   DmsAiOrchestrationStepResult,
   DmsAiOrchestrationStatus,
   DmsAiOrchestrationStepCode,
+  DmsAiOrchestrationStatusRow,
 } from "@/lib/dms/orchestration/types";
 
 // ── Step display metadata ─────────────────────────────────────────────────────
@@ -75,13 +75,21 @@ export function DmsOrchestrationProgressCard({
   const [isExpanded, setIsExpanded] = useState(true);
   const [retryingStep, setRetryingStep] = useState<string | null>(null);
 
-  // Load current status
+  // Load current status.
+  // WORKSPACE.PERF.1 UAT fix: this poll runs every 3s while the pipeline is
+  // running — it must be a plain GET fetch, NOT a server action. A router.push
+  // performed while a server action is in flight gets reverted when the
+  // action resolves (the "tab snaps back" bug family).
   const { data: statusData, isLoading } = useQuery({
     queryKey: queryKeys.dms.orchestrationStatus(sessionCode),
     queryFn: async () => {
-      const result = await getDmsOrchestrationStatus({ sessionCode });
-      if (!result.success) return null;
-      return result.data;
+      const res = await fetch(
+        `/api/dms/poll?kind=orchestration&sessionCode=${encodeURIComponent(sessionCode)}`,
+        { cache: "no-store" }
+      );
+      if (!res.ok) return null;
+      const json = (await res.json()) as { data?: DmsAiOrchestrationStatusRow | null };
+      return json.data ?? null;
     },
     enabled: !!sessionCode,
     staleTime: 5_000,

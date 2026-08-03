@@ -11,10 +11,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Button } from "@/components/ui/button";
 import { NotificationSeverityBadge } from "@/features/notifications/notification-severity-badge";
 import {
-  getUnreadNotificationCount,
-  getMyNotifications,
   markAllMyNotificationsRead,
   dismissNotification,
+  type NotificationRow,
 } from "@/server/actions/notifications/notifications";
 import { invalidateMyNotifications } from "@/lib/query/invalidation";
 import { cn } from "@/lib/utils";
@@ -39,13 +38,18 @@ export function NotificationBell() {
   const [isPending, startTransition] = useTransition();
   const queryClient = useQueryClient();
 
-  // Fetch unread count — drives the badge
+  // Fetch unread count — drives the badge.
+  // WORKSPACE.PERF.1 UAT fix: this background poll runs on EVERY page every
+  // 60s. It must be a plain GET fetch, NOT a server action — a router.push
+  // performed while a server action is in flight gets reverted when the
+  // action resolves (the "AI Intake Review snaps back to Upload Inbox" bug).
   const { data: countData } = useQuery({
     queryKey: UNREAD_COUNT_KEY,
     queryFn: async () => {
-      const result = await getUnreadNotificationCount();
-      if (result.success && result.data) return result.data.count;
-      return 0;
+      const res = await fetch("/api/notifications/bell", { cache: "no-store" });
+      if (!res.ok) return 0;
+      const json = (await res.json()) as { count?: number };
+      return json.count ?? 0;
     },
     staleTime: 30_000,
     refetchInterval: 60_000,
@@ -53,13 +57,15 @@ export function NotificationBell() {
 
   const unreadCount = countData ?? 0;
 
-  // Fetch recent unread notifications for the dropdown — only when open
+  // Fetch recent unread notifications for the dropdown — only when open.
+  // Same GET-route rule: the dropdown can be open while the user navigates.
   const { data: notifsData, isLoading: notifsLoading } = useQuery({
     queryKey: MY_NOTIFS_KEY,
     queryFn: async () => {
-      const result = await getMyNotifications({ status: "unread", limit: 10 });
-      if (result.success && result.data) return result.data;
-      return [];
+      const res = await fetch("/api/notifications/bell?list=1", { cache: "no-store" });
+      if (!res.ok) return [] as NotificationRow[];
+      const json = (await res.json()) as { notifications?: NotificationRow[] };
+      return json.notifications ?? [];
     },
     enabled: open,
     staleTime: 10_000,

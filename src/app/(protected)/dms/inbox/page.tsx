@@ -3,6 +3,7 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { getDmsUploadSessions } from "@/server/actions/dms/upload-sessions";
 import { getDmsDocuments, getDmsNewDocumentDefaults } from "@/server/actions/dms/documents";
 import { isDmsBatchIntakeEnabled } from "@/server/actions/dms/batch-intake";
+import { isDmsAiAutoStartEnabled } from "@/server/actions/dms/ai-intake";
 import { DmsUploadInboxPageClient } from "@/features/dms/upload/dms-upload-inbox-page-client";
 import type { DmsDocumentTypeOption, DmsEntityContext } from "@/features/dms/upload/dms-create-document-from-upload-dialog";
 import { ERPPageHeader } from "@/components/erp/page-header";
@@ -35,11 +36,12 @@ export default async function DmsInboxPage({
       ? { entityType: rawEntityType, entityId: rawEntityId }
       : null;
 
-  const [sessionsResult, documentsResult, defaultsResult, batchEnabled] = await Promise.all([
+  const [sessionsResult, documentsResult, defaultsResult, batchEnabled, autoStartEnabled] = await Promise.all([
     getDmsUploadSessions({ include_completed: false }),
     getDmsDocuments(),
     getDmsNewDocumentDefaults(),
     isDmsBatchIntakeEnabled(),
+    isDmsAiAutoStartEnabled(),
   ]);
 
   const sessions = sessionsResult.data ?? [];
@@ -61,6 +63,7 @@ export default async function DmsInboxPage({
         entityContext={entityContext}
         isAdmin={hasPermission(authContext, "dms.admin")}
         batchEnabled={batchEnabled}
+        autoStartEnabled={autoStartEnabled}
       />
     </div>
   );

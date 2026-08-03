@@ -18,9 +18,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
 import { upsertDmsReviewQueueItem, isDmsAiReviewEnabled } from "@/lib/dms/review-queue/review-queue-upsert";
+import { logDmsAiUsage } from "@/lib/ai/observability/log-dms-ai-usage";
 import { getDmsAiProvider, getAzureDocumentIntelligenceProvider } from "@/lib/dms/ai/factory";
 import { hashOcrText, PROMPT_VERSION } from "@/lib/dms/ai/prompt-builders";
-import { buildClassificationCandidates } from "@/lib/dms/ai/classification-candidate-builder";
+import { buildClassificationCandidates, loadClassificationCandidateData } from "@/lib/dms/ai/classification-candidate-builder";
 import { buildSanitizedClassificationPayload } from "@/lib/dms/ai/classification-output";
 import { resolveSuggestedDocumentType } from "@/lib/dms/ai/classification-resolver";
 import { loadMetadataFieldsForDocumentType } from "@/lib/dms/ai/load-metadata-fields";
@@ -298,6 +299,46 @@ export async function startAiIntakeFromUploadSession(
     if ((typedSession.intake_status as string) === "review_pending" || (typedSession.intake_status as string) === "review_in_progress") {
       return { success: true, data: { sessionCode: typedSession.session_code as string, status: "review_pending" } };
     }
+
+    // ── SPEED.2K: concurrency guard + stale-run sweeper ─────────────────────
+    // A second "AI Fill" click while a run is in flight must NOT start a second
+    // full pipeline (double OCR + double GPT cost, racing status updates).
+    const intakeStatusNow = typedSession.intake_status as string;
+    if (intakeStatusNow === "ocr_processing" || intakeStatusNow === "ai_processing") {
+      const updatedAtMs = typedSession.updated_at
+        ? new Date(typedSession.updated_at as string).getTime()
+        : 0;
+      const ageMs = Date.now() - updatedAtMs;
+      const STALE_AFTER_MS = 5 * 60 * 1000;
+
+      if (Number.isFinite(ageMs) && ageMs < STALE_AFTER_MS) {
+        return {
+          success: true,
+          data: {
+            sessionCode: typedSession.session_code as string,
+            status: "already_processing",
+            message: "AI is already analyzing this file. The review screen will open when it finishes.",
+          },
+        };
+      }
+
+      // Stale (no status progress for 5+ min): the previous run was killed
+      // mid-flight (server restart, dropped connection). Mark orphaned jobs
+      // failed and proceed with a fresh run.
+      await supabase
+        .from("dms_ai_extraction_jobs")
+        .update({
+          status: "failed",
+          error_message: "Stale run — superseded by a new AI Fill request",
+          completed_at: new Date().toISOString(),
+        })
+        .eq("upload_session_id", uploadSessionId)
+        .in("status", ["pending", "processing"]);
+      logger.warn("[ai-intake] stale processing session swept — starting fresh run", {
+        uploadSessionId,
+        staleForMs: ageMs,
+      });
+    }
     // Duplicate detection is informational only — the UI shows a warning badge.
     // Admins may intentionally create a second document from the same file.
 
@@ -345,6 +386,11 @@ export async function startAiIntakeFromUploadSession(
       action: "update",
       new_values: { event: "ai_intake_started", uploaded_by: ctx.profile.id },
     });
+
+    // ── SPEED.2I: preload classification data concurrently with OCR ─────────
+    // These two DB queries (~0.5-1s) only need the OCR text at scoring time,
+    // so they run in parallel with the file download + OCR below.
+    const candidateDataPromise = loadClassificationCandidateData(supabase).catch(() => null);
 
     // ── Extract file content from dms-temp ─────────────────────────────────
 
@@ -461,7 +507,12 @@ export async function startAiIntakeFromUploadSession(
     // ── Load metadata-aware classification candidates (Phase 3 Pass 1) ─────
 
     const { packets: classificationPackets, typeCandidates, scoredTypes } =
-      await buildClassificationCandidates(supabase, ocrText, originalFilename);
+      await buildClassificationCandidates(
+        supabase,
+        ocrText,
+        originalFilename,
+        await candidateDataPromise
+      );
 
     const typeRows = scoredTypes.map((s) => ({
       id: s.id,
@@ -522,6 +573,23 @@ export async function startAiIntakeFromUploadSession(
     const durationMs = Date.now() - startMs;
     const completedAt = new Date().toISOString();
 
+    // SPEED.2M: log pass-1 token counts + duration (non-fatal, no text content)
+    await logDmsAiUsage({
+      providerConfigId: configId ?? null,
+      featureArea: "dms_intake",
+      operationType: "intake_classify_extract_pass1",
+      modelId: provider.modelId ?? null,
+      status: aiError || !aiOutput ? "failed" : "success",
+      inputTokenCount: aiOutput?.promptTokens ?? null,
+      outputTokenCount: aiOutput?.completionTokens ?? null,
+      durationMs,
+      errorMessage: aiError,
+      aiJobId: jobId,
+      uploadSessionId,
+      createdBy: ctx.profile.id,
+      metadata: { ocr_chars: ocrText.length, image_count: imageFiles.length, prompt_version: PROMPT_VERSION },
+    });
+
     if (aiError || !aiOutput) {
       await supabase
         .from("dms_ai_extraction_jobs")
@@ -578,6 +646,7 @@ export async function startAiIntakeFromUploadSession(
       const typeSpecificFields = await loadMetadataFieldsForDocumentType(supabase, suggestedTypeId, "intake");
       if (typeSpecificFields.length > 0) {
         try {
+          const pass2StartMs = Date.now();
           const extractOutput = await provider.analyze({
             ocrText: pass1Transcription || ocrText,
             imageFiles,
@@ -585,6 +654,21 @@ export async function startAiIntakeFromUploadSession(
             typeCandidates,
             metadataFields: typeSpecificFields,
             originalFilename,
+          });
+          // SPEED.2M: log pass-2 token counts + duration (non-fatal)
+          await logDmsAiUsage({
+            providerConfigId: configId ?? null,
+            featureArea: "dms_intake",
+            operationType: "intake_extract_pass2",
+            modelId: provider.modelId ?? null,
+            status: "success",
+            inputTokenCount: extractOutput.promptTokens ?? null,
+            outputTokenCount: extractOutput.completionTokens ?? null,
+            durationMs: Date.now() - pass2StartMs,
+            aiJobId: jobId,
+            uploadSessionId,
+            createdBy: ctx.profile.id,
+            metadata: { resolved_type_code: suggestedTypeCode, prompt_version: PROMPT_VERSION },
           });
           // Merge pass-2 extraction; keep pass-1 classification + transcription
           aiOutput.extraction.fields = extractOutput.extraction.fields;
@@ -910,6 +994,64 @@ export async function getAiIntakeSession(
   }
 }
 
+// ── isDmsAiAutoStartEnabled (SPEED.2A) ────────────────────────────────────────
+
+/**
+ * When the DMS_AI_AUTO_START flag is enabled, the inbox starts AI analysis
+ * automatically the moment an upload lands (no button click). Default: OFF.
+ */
+export async function isDmsAiAutoStartEnabled(): Promise<boolean> {
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("erp_ai_feature_flags")
+      .select("is_enabled")
+      .eq("feature_code", "DMS_AI_AUTO_START")
+      .maybeSingle();
+    return (data as { is_enabled?: boolean } | null)?.is_enabled === true;
+  } catch {
+    return false;
+  }
+}
+
+// ── getAiIntakeStatus (SPEED.2L) ──────────────────────────────────────────────
+
+/**
+ * Lightweight status poll for the inbox UI. While a long AI run is in flight
+ * the client polls this every few seconds; when intake_status reaches
+ * review_pending it redirects — even if the original startAiIntake response
+ * was lost (dropped connection, dev recompile).
+ */
+export async function getAiIntakeStatus(
+  uploadSessionId: number
+): Promise<ActionResult<{ intakeStatus: string; sessionCode: string }>> {
+  try {
+    const supabase = await createClient();
+    const ctx = await getAuthContext();
+    if (!ctx.profile) return { success: false, error: "Not authenticated" };
+    if (!canViewIntake(ctx)) return { success: false, error: "Permission denied" };
+
+    const { data: session, error } = await supabase
+      .from("dms_upload_sessions")
+      .select("session_code, intake_status")
+      .eq("id", uploadSessionId)
+      .is("deleted_at", null)
+      .single();
+
+    if (error || !session) return { success: false, error: "Session not found" };
+
+    return {
+      success: true,
+      data: {
+        intakeStatus: (session.intake_status as string) ?? "uploaded",
+        sessionCode: session.session_code as string,
+      },
+    };
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
+}
+
 // ── getIntakeSessionSignedUrl ─────────────────────────────────────────────────
 
 export async function getIntakeSessionSignedUrl(
@@ -1069,6 +1211,7 @@ export async function rerunMetadataExtractionForIntakeSession(input: {
     ];
 
     let extractOutput: DmsAiOutput;
+    const rerunStartMs = Date.now();
     try {
       extractOutput = await provider.analyze({
         ocrText,
@@ -1081,6 +1224,20 @@ export async function rerunMetadataExtractionForIntakeSession(input: {
     } catch (err) {
       return { success: false, error: String(err) };
     }
+
+    // SPEED.2M: log rerun token counts + duration (non-fatal)
+    await logDmsAiUsage({
+      featureArea: "dms_intake",
+      operationType: "intake_extract_rerun",
+      modelId: provider.modelId ?? null,
+      status: "success",
+      inputTokenCount: extractOutput.promptTokens ?? null,
+      outputTokenCount: extractOutput.completionTokens ?? null,
+      durationMs: Date.now() - rerunStartMs,
+      uploadSessionId: parsed.uploadSessionId,
+      createdBy: ctx.profile.id,
+      metadata: { type_code: typeRow.type_code, merge_mode: parsed.mergeMode, prompt_version: PROMPT_VERSION },
+    });
 
     const existingExtracted = (aiResult.extracted_fields_json as Record<string, unknown>) ?? {};
     const existingConfidence = (aiResult.field_confidence_json as Record<string, unknown>) ?? {};

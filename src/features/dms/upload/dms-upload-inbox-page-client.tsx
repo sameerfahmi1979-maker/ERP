@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Inbox, RefreshCw, Info, Bot, FileText, File as FileIcon, Files } from "lucide-react";
+import { Inbox, RefreshCw, Info, Bot, FileText, File as FileIcon, Files, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { DmsUploadDropzone, type SelectedDmsFile } from "./dms-upload-dropzone";
@@ -21,7 +21,7 @@ import {
   type DmsUploadSessionRow,
   type CreateUploadSessionInput,
 } from "@/server/actions/dms/upload-sessions";
-import { startAiIntakeFromUploadSession } from "@/server/actions/dms/ai-intake";
+import { startAiIntakeFromUploadSession, getAiIntakeStatus } from "@/server/actions/dms/ai-intake";
 import {
   createDmsUploadBatch,
   startAiIntakeAndCreateDraft,
@@ -37,6 +37,8 @@ interface Props {
   entityContext?: DmsEntityContext | null;
   isAdmin?: boolean;
   batchEnabled?: boolean;
+  /** SPEED.2A — when true, AI analysis starts automatically after upload. */
+  autoStartEnabled?: boolean;
 }
 
 type UploadState =
@@ -45,7 +47,24 @@ type UploadState =
   | { phase: "duplicate"; session: DmsUploadSessionRow; duplicateDocument?: { id: number; document_no: string; title: string } | null }
   | { phase: "ready"; session: DmsUploadSessionRow }
   | { phase: "ai_processing"; session: DmsUploadSessionRow }
+  | { phase: "ai_error"; session: DmsUploadSessionRow; message: string }
   | { phase: "error"; message: string };
+
+// ── SPEED.2L: honest upload/AI timing helpers ─────────────────────────────────
+
+/** Size-scaled upload timeout: 60s base + 30s per MB, capped at 10 minutes. */
+function computeUploadTimeoutMs(fileSizeBytes: number): number {
+  const sizeMb = fileSizeBytes / (1024 * 1024);
+  return Math.min(60_000 + Math.round(sizeMb * 30_000), 600_000);
+}
+
+/** Honest AI duration estimate based on file size (replaces the fixed "10–30s"). */
+function estimateAiDuration(fileSizeBytes: number): string {
+  const sizeMb = fileSizeBytes / (1024 * 1024);
+  if (sizeMb < 0.4) return "15–30 seconds";
+  if (sizeMb < 1.5) return "30–60 seconds";
+  return "1–3 minutes (large document)";
+}
 
 type BatchState =
   | { phase: "idle" }
@@ -53,7 +72,7 @@ type BatchState =
 
 type UploadMode = "single" | "batch";
 
-export function DmsUploadInboxPageClient({ initialSessions, documents, documentTypes, entityContext, isAdmin = false, batchEnabled = false }: Props) {
+export function DmsUploadInboxPageClient({ initialSessions, documents, documentTypes, entityContext, isAdmin = false, batchEnabled = false, autoStartEnabled = false }: Props) {
   const router = useRouter();
   const [sessions, setSessions] = useState<DmsUploadSessionRow[]>(initialSessions);
   const [uploadState, setUploadState] = useState<UploadState>({ phase: "idle" });
@@ -65,6 +84,99 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
   const [uploadMode, setUploadMode] = useState<UploadMode>("single");
   const [batchFiles, setBatchFiles] = useState<SelectedDmsFile[]>([]);
   const [batchState, setBatchState] = useState<BatchState>({ phase: "idle" });
+
+  // ── SPEED.2L: AI progress tracking + status polling ────────────────────────
+  const [aiElapsedSec, setAiElapsedSec] = useState(0);
+  const aiStartedAtRef = useRef<number | null>(null);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const redirectedRef = useRef(false);
+
+  const stopAiPolling = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }, []);
+
+  // Elapsed-seconds ticker while AI is running
+  useEffect(() => {
+    if (uploadState.phase !== "ai_processing") return;
+    const timer = setInterval(() => {
+      if (aiStartedAtRef.current) {
+        setAiElapsedSec(Math.floor((Date.now() - aiStartedAtRef.current) / 1000));
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [uploadState.phase]);
+
+  // Cleanup polling on unmount
+  useEffect(() => () => stopAiPolling(), [stopAiPolling]);
+
+  const handleAiFill = useCallback(async (session: DmsUploadSessionRow) => {
+    setUploadState({ phase: "ai_processing", session });
+    aiStartedAtRef.current = Date.now();
+    setAiElapsedSec(0);
+    redirectedRef.current = false;
+    stopAiPolling();
+
+    const goToReview = (sessionCode: string, msg: string) => {
+      if (redirectedRef.current) return;
+      redirectedRef.current = true;
+      stopAiPolling();
+      toast.success(msg);
+      router.push(`/dms/intake/${sessionCode}`);
+    };
+
+    // SPEED.2L: poll the session status as a second completion signal. If the
+    // server-action response is lost (dropped connection, dev recompile), the
+    // poll still detects review_pending and redirects — no more infinite spinner.
+    pollTimerRef.current = setInterval(async () => {
+      try {
+        const res = await getAiIntakeStatus(session.id);
+        if (!res.success || !res.data) return;
+        if (res.data.intakeStatus === "review_pending" || res.data.intakeStatus === "review_in_progress") {
+          goToReview(res.data.sessionCode, "AI review is ready — opening review screen…");
+        } else if (res.data.intakeStatus === "failed") {
+          stopAiPolling();
+          setUploadState({
+            phase: "ai_error",
+            session,
+            message: "AI analysis failed on the server. You can retry or create the document manually.",
+          });
+        }
+      } catch {
+        // transient poll failure — keep polling
+      }
+    }, 4000);
+
+    const result = await startAiIntakeFromUploadSession({ uploadSessionId: session.id });
+    if (redirectedRef.current) return; // polling already redirected
+
+    if (result.success && result.data) {
+      if (result.data.status === "already_processing") {
+        // SPEED.2K: another run is already in flight — keep banner + polling active.
+        toast.info(result.data.message ?? "AI is already analyzing this file — please wait…");
+        return;
+      }
+      goToReview(
+        result.data.sessionCode,
+        result.data.status === "review_pending"
+          ? "AI review is ready — opening review screen…"
+          : "AI analysis complete — opening review screen…"
+      );
+    } else if (!result.success && result.data?.status === "provider_not_configured") {
+      stopAiPolling();
+      toast.error("No AI provider configured. Create the document manually instead.", { duration: 6000 });
+      setUploadState({ phase: "ready", session });
+    } else {
+      stopAiPolling();
+      setUploadState({
+        phase: "ai_error",
+        session,
+        message: result.error ?? "AI analysis failed. You can retry or create the document manually.",
+      });
+    }
+  }, [router, stopAiPolling]);
 
   const handleFileSelected = useCallback(async (
     input: CreateUploadSessionInput & { file: File }
@@ -83,9 +195,19 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
 
     try {
       const supabase = createSupabaseClient();
-      const { error: uploadError } = await supabase.storage
+      // SPEED.2L (Issue #2): the storage upload has no built-in timeout — a
+      // stalled transfer used to leave the UI on "Uploading…" forever.
+      const timeoutMs = computeUploadTimeoutMs(file.size);
+      const uploadPromise = supabase.storage
         .from("dms-temp")
         .uploadToSignedUrl(path, token, file, { contentType: file.type });
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error(`Upload timed out after ${Math.round(timeoutMs / 1000)}s. Check your connection and try again.`)),
+          timeoutMs
+        )
+      );
+      const { error: uploadError } = await Promise.race([uploadPromise, timeoutPromise]);
 
       if (uploadError) {
         setUploadState({ phase: "error", message: `Upload failed: ${uploadError.message}` });
@@ -93,8 +215,9 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
         return;
       }
     } catch (e) {
-      setUploadState({ phase: "error", message: String(e) });
-      toast.error("Upload failed. Please try again.");
+      const msg = e instanceof Error ? e.message : String(e);
+      setUploadState({ phase: "error", message: msg });
+      toast.error(msg.startsWith("Upload timed out") ? msg : "Upload failed. Please try again.");
       return;
     }
 
@@ -102,11 +225,15 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
 
     if (isDuplicate) {
       setUploadState({ phase: "duplicate", session, duplicateDocument });
+    } else if (autoStartEnabled) {
+      // SPEED.2A: start AI analysis immediately — no button click needed.
+      toast.success("File uploaded — starting AI analysis…");
+      void handleAiFill(session);
     } else {
       setUploadState({ phase: "ready", session });
       toast.success("File uploaded successfully! Choose what to do with it.");
     }
-  }, []);
+  }, [autoStartEnabled, handleAiFill]);
 
   const handleCancelDuplicate = () => {
     if (uploadState.phase === "duplicate") {
@@ -120,24 +247,6 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
       setUploadState({ phase: "ready", session: uploadState.session });
     }
   };
-
-  const handleAiFill = useCallback(async (session: DmsUploadSessionRow) => {
-    setUploadState({ phase: "ai_processing", session });
-    const result = await startAiIntakeFromUploadSession({ uploadSessionId: session.id });
-    if (result.success && result.data) {
-      const msg = result.data.status === "review_pending"
-        ? "AI review is ready — opening review screen…"
-        : "AI analysis complete — opening review screen…";
-      toast.success(msg);
-      router.push(`/dms/intake/${result.data.sessionCode}`);
-    } else if (!result.success && result.data?.status === "provider_not_configured") {
-      toast.error("No AI provider configured. Create the document manually instead.", { duration: 6000 });
-      setUploadState({ phase: "ready", session });
-    } else {
-      toast.error(result.error ?? "AI analysis failed. You can retry or create manually.");
-      setUploadState({ phase: "ready", session });
-    }
-  }, [router]);
 
   // ── Batch: upload all + AI draft per file (sequential, one-by-one approval later) ──
   const handleStartBatch = useCallback(async () => {
@@ -377,7 +486,7 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
         />
       )}
 
-      {/* AI processing banner */}
+      {/* AI processing banner — honest elapsed time + size-based estimate (SPEED.2L) */}
       {uploadState.phase === "ai_processing" && (
         <div className="rounded-xl border-2 border-violet-400 bg-violet-50 dark:bg-violet-950/20 p-4 space-y-3">
           <div className="flex items-center gap-2">
@@ -385,10 +494,46 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
             <p className="text-sm font-semibold text-violet-700 dark:text-violet-400">
               AI is analyzing your document…
             </p>
+            <span className="ml-auto text-xs font-mono text-violet-600 dark:text-violet-500 tabular-nums">
+              {Math.floor(aiElapsedSec / 60) > 0 ? `${Math.floor(aiElapsedSec / 60)}m ${aiElapsedSec % 60}s` : `${aiElapsedSec}s`}
+            </span>
           </div>
           <p className="text-xs text-violet-600 dark:text-violet-500">
-            Reading file content and extracting document information. This may take 10–30 seconds.
+            Reading file content and extracting document information. Estimated time for this file:{" "}
+            <strong>{estimateAiDuration(uploadState.session.file_size_bytes)}</strong>.
+            You will be redirected to the review screen automatically when it finishes.
           </p>
+        </div>
+      )}
+
+      {/* AI error banner — explicit retry guidance instead of silent revert (SPEED.2L) */}
+      {uploadState.phase === "ai_error" && (
+        <div className="rounded-xl border-2 border-red-400 bg-red-50 dark:bg-red-950/20 p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-red-600" />
+            <p className="text-sm font-semibold text-red-700 dark:text-red-400">
+              AI analysis failed
+            </p>
+          </div>
+          <p className="text-xs text-red-600 dark:text-red-500">{uploadState.message}</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              size="sm"
+              onClick={() => handleAiFill(uploadState.session)}
+              className="bg-violet-600 hover:bg-violet-700 text-white"
+            >
+              <Bot className="h-3.5 w-3.5 mr-1.5" />
+              Retry AI Fill
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleCreateDocument(uploadState.session)}
+            >
+              <FileText className="h-3.5 w-3.5 mr-1.5" />
+              Create Manually
+            </Button>
+          </div>
         </div>
       )}
 

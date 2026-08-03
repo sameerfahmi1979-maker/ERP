@@ -37,9 +37,27 @@ import type {
 } from "./types";
 
 const AZURE_API_VERSION = "2024-11-30";
-const AZURE_TIMEOUT_MS = 60_000; // 60 seconds — Azure is slower than OpenAI for OCR
-const POLLING_INTERVAL_MS = 2_000;
-const MAX_POLLS = 25; // 25 × 2s = 50 seconds max
+const AZURE_TIMEOUT_MS = 60_000; // 60 seconds — initial submit request cap
+
+// ── Polling budget (SPEED.2D + 2O) ────────────────────────────────────────────
+// Small docs finish in 1-3s → poll every 1s so waste is minimal (2D).
+// Large docs (50+ pages) need 60-120s+ on Azure → the total budget scales with
+// file size instead of a fixed 50s cap that silently degraded big documents to
+// the 4-page GPT vision fallback (2O). Azure S0 handles up to 2,000 pages.
+const POLLING_INTERVAL_MS = 1_000;
+/** Minimum total polling budget — covers 1-5 page documents comfortably. */
+const MIN_POLL_BUDGET_MS = 60_000;
+/** Maximum total polling budget — hard safety cap for very large files. */
+const MAX_POLL_BUDGET_MS = 300_000; // 5 minutes
+/** Additional budget per MB of input — a scanned page is roughly 0.1-0.5 MB. */
+const BUDGET_MS_PER_MB = 30_000;
+
+/** Computes the total polling budget for a document of the given size (SPEED.2O). */
+export function computeAzurePollBudgetMs(fileSizeBytes: number): number {
+  const sizeMb = fileSizeBytes / (1024 * 1024);
+  const budget = MIN_POLL_BUDGET_MS + Math.round(sizeMb * BUDGET_MS_PER_MB);
+  return Math.min(Math.max(budget, MIN_POLL_BUDGET_MS), MAX_POLL_BUDGET_MS);
+}
 
 // ── Arabic-specific model recommendations ─────────────────────────────────────
 
@@ -158,16 +176,25 @@ export class AzureDocumentIntelligenceAdapter implements IDmsAiProvider {
       return { success: false, text: "", error: "Azure Document Intelligence: no operation location returned." };
     }
 
-    // Poll for result
-    let pollCount = 0;
-    while (pollCount < MAX_POLLS) {
-      await new Promise((r) => setTimeout(r, POLLING_INTERVAL_MS));
-      pollCount++;
+    // Poll for result — budget scales with file size (SPEED.2D + 2O).
+    // Honors Azure's Retry-After header when present.
+    const approxFileBytes = Math.floor(fileBase64.length * 0.75);
+    const pollBudgetMs = computeAzurePollBudgetMs(approxFileBytes);
+    const pollDeadline = Date.now() + pollBudgetMs;
+    let nextDelayMs = POLLING_INTERVAL_MS;
+
+    while (Date.now() < pollDeadline) {
+      await new Promise((r) => setTimeout(r, nextDelayMs));
 
       const pollResponse = await fetch(operationLocation, {
         headers: { "Ocp-Apim-Subscription-Key": apiKey },
         signal: AbortSignal.timeout(15_000),
       });
+
+      const retryAfter = Number(pollResponse.headers.get("Retry-After"));
+      nextDelayMs = Number.isFinite(retryAfter) && retryAfter > 0
+        ? Math.min(retryAfter * 1000, 10_000)
+        : POLLING_INTERVAL_MS;
 
       if (!pollResponse.ok) continue;
 
@@ -185,7 +212,11 @@ export class AzureDocumentIntelligenceAdapter implements IDmsAiProvider {
       // status === "running" or "notStarted" — keep polling
     }
 
-    return { success: false, text: "", error: "Azure Document Intelligence timed out after polling." };
+    return {
+      success: false,
+      text: "",
+      error: `Azure Document Intelligence timed out after ${Math.round(pollBudgetMs / 1000)}s of polling.`,
+    };
   }
 
   // ── IDmsAiProvider interface — must implement for factory compatibility ──────

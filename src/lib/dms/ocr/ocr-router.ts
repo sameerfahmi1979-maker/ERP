@@ -230,6 +230,20 @@ interface ExtractedImage {
   mimeType: string;
 }
 
+/** Cheap PDF page count (no rendering) — used for fallback coverage warnings (SPEED.2O). */
+async function getPdfPageCount(buffer: Buffer): Promise<number | null> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const pdfParse = require("pdf-parse/lib/pdf-parse.js") as (
+      b: Buffer
+    ) => Promise<{ numpages?: number }>;
+    const parsed = await pdfParse(buffer);
+    return typeof parsed.numpages === "number" ? parsed.numpages : null;
+  } catch {
+    return null;
+  }
+}
+
 async function routeScannedOrImage(
   input: OcrRouterInput,
   images: ExtractedImage[],
@@ -243,6 +257,20 @@ async function routeScannedOrImage(
     if (images.length > 0) return images;
     const content = await extractFileContent(input.buffer, mimeType, fileName);
     return content.images;
+  };
+
+  // SPEED.2O(b): GPT vision only sees the first ~4 rendered pages. When the
+  // document has more pages, record a visible warning so a 50-page scan never
+  // silently degrades to "AI saw 8% of the document".
+  const buildCoverageWarnings = async (usedImages: ExtractedImage[]): Promise<string[]> => {
+    if (mimeType !== "application/pdf" || usedImages.length === 0) return [];
+    const totalPages = await getPdfPageCount(input.buffer);
+    if (totalPages != null && totalPages > usedImages.length) {
+      return [
+        `AI vision fallback analyzed only the first ${usedImages.length} of ${totalPages} pages — results may be incomplete. Azure OCR is recommended for large scanned documents.`,
+      ];
+    }
+    return [];
   };
 
   // ── Azure Document Intelligence ──────────────────────────────────────────
@@ -289,15 +317,29 @@ async function routeScannedOrImage(
       }
 
       // Fall through to GPT, mark fallbackUsed=true
-      const gptResult = await tryGptVision(await ensureImages(), fileName, gptProvider);
-      return { ...gptResult, sourceKind, fallbackUsed: true };
+      const fallbackImages = await ensureImages();
+      const gptResult = await tryGptVision(fallbackImages, fileName, gptProvider);
+      const coverageWarnings = await buildCoverageWarnings(fallbackImages);
+      return {
+        ...gptResult,
+        sourceKind,
+        fallbackUsed: true,
+        warnings: [`Azure OCR failed — used GPT vision fallback (${safeErr})`, ...gptResult.warnings, ...coverageWarnings],
+      };
     }
   }
 
   // ── GPT-4.1 vision (primary when Azure disabled, fallback when Azure fails) ─
   if (featureFlags.dmsOcrGptVisionFallback) {
-    const gptResult = await tryGptVision(await ensureImages(), fileName, gptProvider);
-    return { ...gptResult, sourceKind, fallbackUsed: false };
+    const visionImages = await ensureImages();
+    const gptResult = await tryGptVision(visionImages, fileName, gptProvider);
+    const coverageWarnings = await buildCoverageWarnings(visionImages);
+    return {
+      ...gptResult,
+      sourceKind,
+      fallbackUsed: false,
+      warnings: [...gptResult.warnings, ...coverageWarnings],
+    };
   }
 
   // ── No provider available ────────────────────────────────────────────────

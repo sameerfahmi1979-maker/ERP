@@ -14,8 +14,15 @@ import {
   validationJsonToPromptHint,
 } from "@/lib/dms/metadata/metadata-definition-shared";
 
-/** Maximum OCR text characters to include in a single prompt (≈ 6000 tokens). */
-const MAX_OCR_CHARS = 12_000;
+/**
+ * Maximum OCR text characters to include in a single prompt (≈ 12k tokens).
+ * SPEED.2N: raised from 12k — the old limit dropped 42% of a 5-page document and
+ * caused misclassification. Input tokens are cheap/fast; gpt-4.1 context is 1M tokens.
+ */
+const MAX_OCR_CHARS = 48_000;
+/** Head/tail split when a document exceeds MAX_OCR_CHARS (SPEED.2N). */
+const OCR_HEAD_CHARS = 40_000;
+const OCR_TAIL_CHARS = 8_000;
 /**
  * v3.0 — Arabic language enhancement (DMS ARABIC FIX.1):
  *   - Added comprehensive Arabic OCR, extraction, and name-normalization rules.
@@ -31,8 +38,13 @@ const MAX_OCR_CHARS = 12_000;
  * v3.3 — Phase 3 metadata-aware classification (DMS AI Phase 3):
  *   - Pass 1 candidate packets include aggregated metadata hints per document type.
  *   - Classification output includes alternatives, evidence, needs_human_review.
+ * v3.4 — SPEED.2C + 2N (2026-08-03):
+ *   - Text-only inputs: full_text_transcription must be null (text is already stored;
+ *     re-emitting ~5k output tokens cost 60-70s per pass on 5+ page documents).
+ *   - Mixed inputs: transcribe ONLY additional image-visible text, not the provided text.
+ *   - Input budget raised 12k → 48k chars with head+tail sampling beyond that.
  */
-const PROMPT_VERSION = "v3.3";
+const PROMPT_VERSION = "v3.4";
 
 export { PROMPT_VERSION };
 
@@ -196,6 +208,7 @@ JSON output format:
 
 Rules:
 - full_text_transcription is MANDATORY for image-based documents. It is your OCR output and must contain every readable character from every image.
+- When the document is provided as PRE-EXTRACTED TEXT ONLY (no images), set full_text_transcription to null. Do NOT copy the provided text back — it is already stored. Follow the specific instruction in the user message.
 - Only suggest document types from the provided candidates list. If no candidate matches, use the closest match and note it in warnings.
 - Only extract fields from the provided metadata fields list — do not invent field_codes.
 - If a field cannot be found in the document, omit it from the fields array.
@@ -240,8 +253,12 @@ export function buildCombinedPrompt(
   originalFilename?: string,
   classificationPackets?: DmsClassificationCandidatePacket[]
 ): BuiltPrompt {
-  const truncatedOcr = ocrText.substring(0, MAX_OCR_CHARS);
+  // SPEED.2N: head+tail sampling — keep the start (headers, parties, IDs) AND the
+  // end (signatures, expiry tables) of very long documents instead of hard-cutting.
   const ocrTruncated = ocrText.length > MAX_OCR_CHARS;
+  const truncatedOcr = ocrTruncated
+    ? `${ocrText.substring(0, OCR_HEAD_CHARS)}\n\n[... middle of document omitted for length ...]\n\n${ocrText.substring(ocrText.length - OCR_TAIL_CHARS)}`
+    : ocrText;
   const hasImages = imageFiles.length > 0;
 
   const candidateList =
@@ -325,7 +342,7 @@ Pre-extracted text from document (from PDF text layer):
 ${truncatedOcr}
 ---${ocrTruncated ? "\n[Text was truncated — full document may have more content]" : ""}
 
-Document image(s) are also attached. Some content may only be visible in the images (stamps, signatures, handwriting, scanned sections). Transcribe any additional text visible in the images that is not already in the extracted text above, and combine everything into full_text_transcription.
+Document image(s) are also attached. Some content may only be visible in the images (stamps, signatures, handwriting, scanned sections). In full_text_transcription include ONLY the additional text visible in the images that is NOT already in the extracted text above — do NOT copy the pre-extracted text back (it is already stored). If the images contain no additional text, set full_text_transcription to null.
 Then classify and extract all metadata fields. Return the complete JSON response.`;
   } else {
     // Text-only (digital PDF / DOCX / XLSX with no images)
@@ -336,7 +353,7 @@ Document text (pre-extracted):
 ${truncatedOcr}
 ---${ocrTruncated ? "\n[Text was truncated for length]" : ""}
 
-Place the full pre-extracted text in full_text_transcription (you may copy it directly). Then classify and extract all metadata fields. Return the complete JSON response.`;
+Set full_text_transcription to null — the text above is already extracted and stored; do NOT copy it back. Classify and extract all metadata fields from the text above. Return the complete JSON response.`;
   }
 
   // Build multimodal content array

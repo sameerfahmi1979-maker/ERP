@@ -73,6 +73,11 @@ export function DmsUploadSessionTable({
             const statusInfo = STATUS_BADGE[s.status] ?? { label: s.status, className: "bg-gray-100 text-gray-600" };
             const isActionable = s.status === "uploaded" || s.status === "processing";
             const isAiReviewed = s.intake_status === "review_pending";
+            // SPEED.2K: an AI run is in flight for this session (status updated <5 min
+            // ago) — block a second AI Fill click that would spawn a duplicate pipeline.
+            const isAiRunning =
+              (s.intake_status === "ocr_processing" || s.intake_status === "ai_processing") &&
+              Date.now() - new Date(s.updated_at).getTime() < 5 * 60 * 1000;
             return (
               <tr key={s.id} className="hover:bg-muted/20 transition-colors">
                 <td className="px-4 py-2.5">
@@ -146,11 +151,20 @@ export function DmsUploadSessionTable({
                             variant="default"
                             className="h-7 text-xs gap-1 bg-violet-600 hover:bg-violet-700"
                             onClick={() => onAiFill(s)}
-                            disabled={isSubmitting}
-                            title="Upload & AI Fill"
+                            disabled={isSubmitting || isAiRunning}
+                            title={isAiRunning ? "AI is already analyzing this file — please wait" : "Upload & AI Fill"}
                           >
-                            <Bot className="h-3 w-3" />
-                            AI Fill
+                            {isAiRunning ? (
+                              <>
+                                <div className="h-3 w-3 rounded-full border border-white border-t-transparent animate-spin" />
+                                AI Running…
+                              </>
+                            ) : (
+                              <>
+                                <Bot className="h-3 w-3" />
+                                AI Fill
+                              </>
+                            )}
                           </Button>
                         )
                       )}

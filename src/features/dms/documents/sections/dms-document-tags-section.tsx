@@ -40,6 +40,15 @@ export function DmsDocumentTagsSection({ documentId, isViewing }: DmsDocumentTag
     },
     enabled: !!documentId,
     staleTime: 30 * 1000,
+    // The AI intake pipeline applies tags asynchronously (up to several minutes
+    // after document creation). Workspace tabs keep this section mounted, so a
+    // one-time fetch of 0 rows would otherwise display "0 tags" forever.
+    // Poll while empty (max ~10 min), stop as soon as tags arrive.
+    refetchInterval: (query) => {
+      if ((query.state.data?.length ?? 0) > 0) return false;
+      if (query.state.dataUpdateCount > 40) return false;
+      return 15 * 1000;
+    },
   });
 
   const { data: allTags = [], isLoading: loadingAllTags } = useQuery({
@@ -60,6 +69,13 @@ export function DmsDocumentTagsSection({ documentId, isViewing }: DmsDocumentTag
     },
     enabled: !!documentId,
     staleTime: 30 * 1000,
+    // Same async-pipeline race as docTags above: suggestions are written by the
+    // background AI worker after the section may already be mounted.
+    refetchInterval: (query) => {
+      if ((query.state.data?.length ?? 0) > 0) return false;
+      if (query.state.dataUpdateCount > 40) return false;
+      return 15 * 1000;
+    },
   });
 
   const pendingSuggestions = tagSuggestions.filter((s) => s.status === "pending");

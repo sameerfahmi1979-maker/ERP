@@ -116,14 +116,20 @@ export function formatClassificationPacketsForPrompt(
   return lines.join("\n");
 }
 
+/** Pre-loaded classification data — types + definitions (SPEED.2I). */
+export interface ClassificationCandidateData {
+  types: DocumentTypeScoreInput[];
+  definitionsByType: Map<number, DmsMetadataDefinitionBase[]>;
+}
+
 /**
- * Load active document types + metadata definitions and build ranked candidate packets.
+ * Load active document types + metadata definitions (DB stage only).
+ * SPEED.2I: exposed separately so callers can run these queries concurrently
+ * with OCR — scoring only needs the OCR text afterwards.
  */
-export async function buildClassificationCandidates(
-  supabase: SupabaseClient,
-  ocrText: string,
-  originalFilename?: string
-): Promise<ClassificationCandidateBuildResult> {
+export async function loadClassificationCandidateData(
+  supabase: SupabaseClient
+): Promise<ClassificationCandidateData> {
   const { data: typeRows } = await supabase
     .from("dms_document_types")
     .select(
@@ -167,6 +173,23 @@ export async function buildClassificationCandidates(
     }
   }
 
+  return { types, definitionsByType };
+}
+
+/**
+ * Load active document types + metadata definitions and build ranked candidate packets.
+ * Pass `preloaded` (SPEED.2I) to skip the DB queries when they already ran
+ * concurrently with OCR.
+ */
+export async function buildClassificationCandidates(
+  supabase: SupabaseClient,
+  ocrText: string,
+  originalFilename?: string,
+  preloaded?: ClassificationCandidateData | null
+): Promise<ClassificationCandidateBuildResult> {
+  const { types, definitionsByType } =
+    preloaded ?? (await loadClassificationCandidateData(supabase));
+
   const filename = originalFilename ?? "";
   const scored = types.map((type) => {
     const defs = definitionsByType.get(type.id) ?? [];
@@ -174,7 +197,9 @@ export async function buildClassificationCandidates(
     return scoreDocumentTypeCandidate(type, rollup, ocrText, filename);
   });
 
-  const selected = selectRankedCandidateTypes(scored, 12);
+  // SPEED.2F: 6 ranked candidates classify as accurately as 12 with a meaningfully
+  // smaller prompt (mandatory common types are still force-injected by the selector).
+  const selected = selectRankedCandidateTypes(scored, 6);
   const packets = selected.map((s) => toPacket(s, definitionsByType.get(s.id) ?? []));
 
   const typeCandidates: DmsAiDocumentTypeCandidate[] = packets.map((p) => ({

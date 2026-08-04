@@ -27,8 +27,9 @@ import {
 } from "@/server/actions/dms/browser";
 import { askDmsDocumentsQuestion } from "@/server/actions/dms/ai-search";
 import { semanticSearchDmsDocuments } from "@/server/actions/dms/semantic-search";
-import type { DmsAiSearchResult } from "@/lib/dms/ai/types";
+import type { DmsAiSearchResult, DmsSearchIntent } from "@/lib/dms/ai/types";
 import type { DmsSemanticSearchResult } from "@/lib/dms/ai/types";
+import { DmsBrowserIntentBanner } from "./dms-browser-intent-banner";
 
 // ── Layout constants ────────────────────────────────────────────────────────────
 const COL_WIDTH_KEY = "dms-browser-col-widths-v1";
@@ -136,6 +137,7 @@ export function DmsBrowserPageClient({ docTypes }: DmsBrowserPageClientProps) {
   const [isPending, startTransition] = useTransition();
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isAiSearching, setIsAiSearching] = useState(false);
+  const [aiIntent, setAiIntent] = useState<DmsSearchIntent | null>(null);
 
   // ── Merged rows: base (L1/L2) + AI additions + semantic additions ──────────
   // We keep a stable ID set to deduplicate across layers
@@ -192,9 +194,13 @@ export function DmsBrowserPageClient({ docTypes }: DmsBrowserPageClientProps) {
   const runAiSearch = useCallback(
     async (query: string) => {
       setIsAiSearching(true);
+      setAiIntent(null);
       try {
         const result = await askDmsDocumentsQuestion(query);
         if (result.success && result.data) {
+          // Store the extracted intent for the banner
+          setAiIntent(result.data.intent);
+
           const aiRows = result.data.results.map(aiResultToBrowserDoc);
           setRows((prev) => {
             const merged = [...prev];
@@ -247,6 +253,7 @@ export function DmsBrowserPageClient({ docTypes }: DmsBrowserPageClientProps) {
       setCurrentQuery(query);
       setSelectedDoc(null);
       setOffset(0);
+      setAiIntent(null); // clear previous intent banner on new search
 
       if (!query.trim() && Object.values(filters).every((v) => !v || (Array.isArray(v) && v.length === 0))) {
         setRows([]);
@@ -365,6 +372,17 @@ export function DmsBrowserPageClient({ docTypes }: DmsBrowserPageClientProps) {
           filters={filters}
           onChange={handleFiltersChange}
         />
+
+        {/* AI intent banner — only visible after AI search fired */}
+        {(aiIntent ?? isAiSearching) && (
+          <div className="border-b border-border/40 bg-slate-50/60 px-3">
+            <DmsBrowserIntentBanner
+              intent={aiIntent}
+              resultCount={aiIntent ? rows.length : null}
+              isLoading={isAiSearching}
+            />
+          </div>
+        )}
 
         <div className="flex-1 min-h-0 overflow-hidden">
           <DmsBrowserResultsList

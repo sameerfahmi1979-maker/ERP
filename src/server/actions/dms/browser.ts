@@ -69,6 +69,73 @@ export type DmsBrowserFilters = {
 
 const PAGE_SIZE = 25;
 
+// Month name normalisation table
+const MONTH_NAMES: Record<string, string> = {
+  jan: "01", january: "01",
+  feb: "02", february: "02",
+  mar: "03", march: "03",
+  apr: "04", april: "04",
+  may: "05",
+  jun: "06", june: "06",
+  jul: "07", july: "07",
+  aug: "08", august: "08",
+  sep: "09", sept: "09", september: "09",
+  oct: "10", october: "10",
+  nov: "11", november: "11",
+  dec: "12", december: "12",
+};
+
+/**
+ * Expand natural-language date patterns in the query string so Postgres FTS
+ * can still find them even when OCR stored dates in a different format.
+ *
+ * E.g. "09 august" → adds "09/08", "09-08", "AUG", "AUGUST" variants
+ * so the full-text search covers all OCR renderings of the date.
+ *
+ * Returns the original query plus additional space-separated terms.
+ */
+function normalizeDateTermsForFts(query: string): string {
+  const terms = new Set<string>([query]);
+  const lower = query.toLowerCase();
+
+  // Detect pattern: DD MonthName (e.g. "09 august", "9 aug")
+  const ddMonthMatch = lower.match(/\b(\d{1,2})\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*/);
+  if (ddMonthMatch) {
+    const dd = ddMonthMatch[1].padStart(2, "0");
+    const monthKey = Object.keys(MONTH_NAMES).find((k) => ddMonthMatch[2].startsWith(k.slice(0, 3)));
+    if (monthKey) {
+      const mm = MONTH_NAMES[monthKey];
+      terms.add(`${dd}/${mm}`);
+      terms.add(`${mm}/${dd}`);
+      terms.add(`${dd}-${mm}`);
+      terms.add(`${mm}-${dd}`);
+      terms.add(`${dd}.${mm}`);
+      terms.add(ddMonthMatch[2].toUpperCase().slice(0, 3)); // three-letter month abbreviation
+    }
+  }
+
+  // Detect pattern: MonthName DD (e.g. "august 09")
+  const monthDdMatch = lower.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+(\d{1,2})\b/);
+  if (monthDdMatch) {
+    const dd = monthDdMatch[2].padStart(2, "0");
+    const monthKey = Object.keys(MONTH_NAMES).find((k) => monthDdMatch[1].startsWith(k.slice(0, 3)));
+    if (monthKey) {
+      const mm = MONTH_NAMES[monthKey];
+      terms.add(`${dd}/${mm}`);
+      terms.add(`${mm}/${dd}`);
+      terms.add(`${dd}-${mm}`);
+    }
+  }
+
+  // Detect YYYY pattern — add as standalone keyword too
+  const yearMatch = lower.match(/\b(19|20)\d{2}\b/);
+  if (yearMatch) {
+    terms.add(yearMatch[0]);
+  }
+
+  return [...terms].join(" ");
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
@@ -117,11 +184,13 @@ export async function searchDmsBrowser(
     const contentExcerptMap = new Map<number, string>(); // docId → excerpt
 
     if (rawQuery.length >= 2) {
+      // Normalise date terms so OCR variations ("09/08", "09 AUG", etc.) are all matched
+      const normalizedQuery = normalizeDateTermsForFts(rawQuery);
       // Query content table — Supabase textSearch uses PostgreSQL FTS
       const { data: contentRows } = await supabase
         .from("dms_document_content")
         .select("document_id, content_text")
-        .textSearch("content_text", rawQuery, { type: "plain", config: "simple" })
+        .textSearch("content_text", normalizedQuery, { type: "plain", config: "simple" })
         .limit(200);
 
       if (contentRows) {

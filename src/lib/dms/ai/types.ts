@@ -251,11 +251,27 @@ export interface DmsSearchIntent {
   category_hint: string | null;
   person_name_hint: string | null;
   party_name_hint: string | null;
+  /**
+   * Date of birth hint extracted from natural language.
+   * Format:
+   *   - Full date:        "YYYY-MM-DD"  (e.g. "1990-08-09")
+   *   - Day + month only: "--MM-DD"     (e.g. "--08-09" when year is unknown)
+   *   - Month only:       "--MM"        (e.g. "--08" for "born in August")
+   *   - null if not mentioned
+   */
+  person_dob_hint: string | null;
   date_from: string | null;
   date_to: string | null;
   expiry_state: "expired" | "expiring_soon" | "valid" | null;
   outcome_hint: string | null;
   risk_hint: "high" | "medium" | "low" | null;
+  /**
+   * Structured document metadata field filters.
+   * Field codes used in this system: nationality, gender, blood_group,
+   * emirates_id_number, passport_number, visa_number, document_number,
+   * labour_card_number, uid_number, license_number, result, medical_center.
+   * Use person_dob_hint instead of a date_of_birth metadata_filter.
+   */
   metadata_filters: Array<{ field_code: string; value: string }>;
   confidentiality_max:
     | "internal"

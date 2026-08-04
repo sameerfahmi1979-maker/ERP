@@ -34,7 +34,7 @@ export type ActionResult<T = unknown> = {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const CONFIDENTIAL_TYPES = ["hr", "legal", "executive"] as const;
-const AI_SEARCH_PROMPT_VERSION = "v1.0";
+const AI_SEARCH_PROMPT_VERSION = "v2.0";
 const MAX_RESULTS = 25;
 
 // ── Feature flag ──────────────────────────────────────────────────────────────
@@ -69,6 +69,7 @@ const SearchIntentSchema = z.object({
   category_hint: z.string().nullable().default(null),
   person_name_hint: z.string().nullable().default(null),
   party_name_hint: z.string().nullable().default(null),
+  person_dob_hint: z.string().nullable().default(null),
   date_from: z.string().nullable().default(null),
   date_to: z.string().nullable().default(null),
   expiry_state: z.enum(["expired", "expiring_soon", "valid"]).nullable().default(null),
@@ -86,32 +87,69 @@ const SearchIntentSchema = z.object({
 // ── Intent extraction prompt ──────────────────────────────────────────────────
 
 function buildIntentSystemPrompt(): string {
-  return `You are a search intent extractor for an ERP Document Management System operating in the UAE.
+  return `You are a search intent extractor for an ERP Document Management System (DMS) operating in the UAE.
 
 Your task: analyse the user's question and return ONLY a JSON object that represents the search intent.
 
-Do NOT answer the question. Do NOT invent filters. Do NOT include data you are not sure about.
+RULES:
+- Do NOT answer the question. Do NOT invent filters. Do NOT include data you are not sure about.
+- Return ONLY valid JSON. No markdown. No explanation.
+- Leave a field null if you are not confident about its value.
 
-Return a JSON object with these fields (all nullable unless specified):
-- keywords: string[] — short keywords useful for full-text search of document titles, descriptions, and content
-- document_type_hint: string or null — document type name/code (e.g. "passport", "medical certificate", "insurance policy")
-- category_hint: string or null — document category name (e.g. "HR", "Health & Safety", "Insurance")
-- person_name_hint: string or null — if the question mentions a person's name
-- party_name_hint: string or null — if the question mentions a company or party name
-- date_from: string or null — ISO date YYYY-MM-DD (earliest date relevant)
-- date_to: string or null — ISO date YYYY-MM-DD (latest date relevant)
-- expiry_state: "expired" | "expiring_soon" | "valid" | null — if the question is about expiry
-- outcome_hint: string or null — business outcome keyword (e.g. "fit", "approved", "rejected", "passed", "failed", "issued")
-- risk_hint: "high" | "medium" | "low" | null — if the question mentions risk level
-- metadata_filters: array of { field_code: string, value: string } — specific structured metadata filters
+FIELDS (all nullable unless stated):
+- keywords: string[] — short keywords for full-text search of document content (always provide if any meaningful words found)
+- document_type_hint: string or null — document type (e.g. "passport", "medical certificate", "insurance policy", "emirates id", "visa")
+- category_hint: string or null — broad category (e.g. "HR", "Health & Safety", "Insurance", "Finance")
+- person_name_hint: string or null — full or partial name of a person mentioned
+- party_name_hint: string or null — company or party name mentioned
+- person_dob_hint: string or null — date of birth extracted from the question. Use ISO format:
+    * Full date:         "YYYY-MM-DD"  (when year is known — e.g. "born 09 august 1990" → "1990-08-09")
+    * Day + month only: "--MM-DD"     (when year is unknown — e.g. "born 09 august" → "--08-09")
+    * Month only:       "--MM"        (e.g. "born in August" → "--08")
+    * null if date of birth is NOT mentioned
+- date_from: string or null — ISO YYYY-MM-DD — earliest issue/creation date relevant to the query
+- date_to: string or null — ISO YYYY-MM-DD — latest issue/creation date relevant to the query
+- expiry_state: "expired" | "expiring_soon" | "valid" | null — only if query is about document expiry
+- outcome_hint: string or null — outcome keyword (e.g. "fit", "unfit", "approved", "rejected", "passed", "failed", "issued")
+- risk_hint: "high" | "medium" | "low" | null — only if risk level is explicitly mentioned
+- metadata_filters: array of { field_code: string, value: string } — structured field-level filters.
+    Use ONLY these field_code values when confident the user mentioned them:
+    * "nationality"           → e.g. "Indian", "Pakistani", "Filipino"
+    * "gender"                → "male" or "female"
+    * "blood_group"           → e.g. "A+", "O-", "AB+"
+    * "emirates_id_number"    → UAE national ID number
+    * "passport_number"       → passport number value
+    * "visa_number"           → visa or UID number
+    * "labour_card_number"    → labour/work permit card number
+    * "uid_number"            → UID/file number
+    * "document_number"       → generic document number
+    * "license_number"        → driving or professional license number
+    * "result"                → test/medical result value (e.g. "negative", "positive")
+    * "medical_center"        → name of medical center/clinic
+    Do NOT use "date_of_birth" as a field_code — use person_dob_hint instead.
 - confidentiality_max: one of "internal"|"company"|"finance"|"hr"|"legal"|"executive" or null
 
-Examples:
-- "people who passed offshore medical" → keywords: ["offshore", "medical", "passed"], outcome_hint: "passed", document_type_hint: "offshore medical certificate"
-- "expired passports" → expiry_state: "expired", document_type_hint: "passport"
-- "Petrofac insurance deductible" → keywords: ["Petrofac", "insurance", "deductible"], party_name_hint: "Petrofac"
-
-Return ONLY valid JSON. No markdown. No explanation.`;
+EXAMPLES:
+- "date of birth 09 august"
+  → { person_dob_hint: "--08-09", keywords: [] }
+- "born 09 august 1990"
+  → { person_dob_hint: "1990-08-09", keywords: ["1990"] }
+- "employees born in august"
+  → { person_dob_hint: "--08", keywords: ["born", "august"] }
+- "Indian passport holders"
+  → { document_type_hint: "passport", metadata_filters: [{ field_code: "nationality", value: "Indian" }] }
+- "employees with blood group A+"
+  → { metadata_filters: [{ field_code: "blood_group", value: "A+" }] }
+- "people who passed offshore medical"
+  → { keywords: ["offshore", "medical"], outcome_hint: "passed", document_type_hint: "offshore medical certificate" }
+- "expired passports"
+  → { expiry_state: "expired", document_type_hint: "passport" }
+- "Petrofac insurance deductible"
+  → { keywords: ["Petrofac", "insurance", "deductible"], party_name_hint: "Petrofac" }
+- "passport number A1234567"
+  → { document_type_hint: "passport", metadata_filters: [{ field_code: "passport_number", value: "A1234567" }] }
+- "Filipino workers"
+  → { keywords: ["Filipino"], metadata_filters: [{ field_code: "nationality", value: "Filipino" }] }`;
 }
 
 // ── extractDmsSearchIntent ─────────────────────────────────────────────────────
@@ -179,6 +217,105 @@ export async function extractDmsSearchIntent(
   }
 }
 
+// ── Metadata filter helpers ────────────────────────────────────────────────────
+
+/**
+ * Resolve metadata_filters + person_dob_hint against dms_document_metadata_values.
+ * Returns a set of document IDs that match ANY of the filters.
+ * Empty set = no metadata filters were active, not "zero matches".
+ */
+async function resolveMetadataFilterDocIds(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  intent: DmsSearchIntent
+): Promise<{ ids: Set<number>; reasons: string[] } | null> {
+  const filters: Array<{ field_code: string; value: string; isDate?: boolean; isDobPartial?: boolean }> = [];
+
+  // Generic metadata_filters from intent
+  for (const mf of intent.metadata_filters ?? []) {
+    if (mf.field_code && mf.value) {
+      filters.push({ field_code: mf.field_code, value: mf.value });
+    }
+  }
+
+  // person_dob_hint → date_of_birth field
+  if (intent.person_dob_hint) {
+    const dob = intent.person_dob_hint;
+    filters.push({
+      field_code: "date_of_birth",
+      value: dob,
+      isDate: true,
+      isDobPartial: dob.startsWith("--"),
+    });
+  }
+
+  if (filters.length === 0) return null;
+
+  // Resolve field_codes → definition_ids in one query
+  const fieldCodes = [...new Set(filters.map((f) => f.field_code))];
+  const { data: defs } = await supabase
+    .from("dms_metadata_definitions")
+    .select("id, field_code, field_type")
+    .in("field_code", fieldCodes)
+    .limit(fieldCodes.length + 5);
+
+  if (!defs || defs.length === 0) return null;
+
+  const defMap = new Map<string, { id: number; field_type: string }>();
+  for (const d of defs as { id: number; field_code: string; field_type: string }[]) {
+    defMap.set(d.field_code, { id: d.id, field_type: d.field_type });
+  }
+
+  const matchedDocIds = new Set<number>();
+  const reasons: string[] = [];
+
+  for (const f of filters) {
+    const def = defMap.get(f.field_code);
+    if (!def) continue;
+
+    let valueQuery = supabase
+      .from("dms_document_metadata_values")
+      .select("document_id")
+      .eq("definition_id", def.id)
+      .limit(500);
+
+    if (f.isDate) {
+      if (f.isDobPartial) {
+        // Partial DOB ("--MM-DD" or "--MM") — match month and optionally day from value_date
+        const parts = f.value.replace(/^--/, "").split("-");
+        const month = parts[0]?.padStart(2, "0");
+        const day = parts[1]?.padStart(2, "0");
+
+        if (month && day) {
+          // --MM-DD: match YYYY-MM-DD via text cast; PostgREST supports column::text casting
+          valueQuery = valueQuery.filter("value_date::text", "like", `%-${month}-${day}`);
+          reasons.push(`Born on day ${day} of month ${month}`);
+        } else if (month) {
+          // --MM: month-only — match YYYY-MM-*
+          valueQuery = valueQuery.filter("value_date::text", "like", `%-${month}-%`);
+          reasons.push(`Born in month ${month}`);
+        } else {
+          continue;
+        }
+      } else {
+        // Full DOB: exact date match
+        valueQuery = valueQuery.eq("value_date", f.value);
+        reasons.push(`Date of birth: ${f.value}`);
+      }
+    } else {
+      // Text field — case-insensitive contains
+      valueQuery = valueQuery.ilike("value_text", `%${f.value}%`);
+      reasons.push(`${f.field_code}: ${f.value}`);
+    }
+
+    const { data: vals } = await valueQuery;
+    for (const v of (vals ?? []) as { document_id: number }[]) {
+      matchedDocIds.add(v.document_id);
+    }
+  }
+
+  return { ids: matchedDocIds, reasons };
+}
+
 // ── searchDmsDocumentsByIntent ─────────────────────────────────────────────────
 
 export async function searchDmsDocumentsByIntent(
@@ -193,6 +330,17 @@ export async function searchDmsDocumentsByIntent(
 
   try {
     const supabase = await createClient();
+
+    // Resolve metadata filters (DOB + custom fields) → document IDs
+    const metaResult = await resolveMetadataFilterDocIds(supabase, intent);
+    const metaDocIds = metaResult?.ids ?? new Set<number>();
+    const metaReasons = metaResult?.reasons ?? [];
+
+    // If metadata filters were specified but matched nothing, return empty
+    const hasMetaFilters = metaResult !== null;
+    if (hasMetaFilters && metaDocIds.size === 0) {
+      return { success: true, data: [] };
+    }
 
     // Resolve type hint to ID
     let typeId: number | null = null;
@@ -248,6 +396,11 @@ export async function searchDmsDocumentsByIntent(
       query = query.not("confidentiality_level", "in", `(${CONFIDENTIAL_TYPES.join(",")})`);
     }
 
+    // Narrow to metadata-matched document IDs (when filters were active)
+    if (hasMetaFilters && metaDocIds.size > 0) {
+      query = query.in("id", [...metaDocIds]);
+    }
+
     // Type filter
     if (typeId) {
       query = query.eq("document_type_id", typeId);
@@ -296,7 +449,13 @@ export async function searchDmsDocumentsByIntent(
     if (allKeywords.length > 0) {
       const tsQuery = allKeywords.map((k) => k.trim().replace(/\s+/g, " & ")).join(" | ");
       query = query.textSearch("content_tsv", tsQuery, { type: "plain", config: "simple" });
-    } else if (!typeId && !categoryId && !intent.expiry_state && !intent.risk_hint) {
+    } else if (
+      !hasMetaFilters &&
+      !typeId &&
+      !categoryId &&
+      !intent.expiry_state &&
+      !intent.risk_hint
+    ) {
       // No usable filters — return empty to avoid full-table scan
       return { success: true, data: [] };
     }
@@ -312,16 +471,18 @@ export async function searchDmsDocumentsByIntent(
     const results: DmsAiSearchResult[] = rows.map((row) => {
       const reasons: string[] = [];
 
-      if (allKeywords.length > 0) reasons.push(`Matched keywords: ${allKeywords.slice(0, 4).join(", ")}`);
+      if (metaReasons.length > 0) reasons.push(...metaReasons);
+      if (allKeywords.length > 0) reasons.push(`Keywords: ${allKeywords.slice(0, 3).join(", ")}`);
       if (typeId && intent.document_type_hint) reasons.push(`Type: ${intent.document_type_hint}`);
       if (categoryId && intent.category_hint) reasons.push(`Category: ${intent.category_hint}`);
       if (intent.expiry_state) reasons.push(`Expiry: ${intent.expiry_state.replace("_", " ")}`);
       if (intent.risk_hint) reasons.push(`Risk: ${intent.risk_hint}`);
       if (intent.date_from || intent.date_to) reasons.push("Date range match");
 
-      const summary = typeof row.ai_summary === "string" && row.ai_summary
-        ? row.ai_summary.substring(0, 160) + (row.ai_summary.length > 160 ? "…" : "")
-        : null;
+      const summary =
+        typeof row.ai_summary === "string" && row.ai_summary
+          ? row.ai_summary.substring(0, 160) + (row.ai_summary.length > 160 ? "…" : "")
+          : null;
 
       return {
         documentId: row.id as number,
@@ -331,7 +492,8 @@ export async function searchDmsDocumentsByIntent(
         contentSnippet: null, // content_text never returned in list
         matchReason: reasons.join(" · ") || "General match",
         riskLevel: (row.ai_risk_level as string | null) ?? null,
-        completenessScore: typeof row.completeness_score === "number" ? row.completeness_score : null,
+        completenessScore:
+          typeof row.completeness_score === "number" ? row.completeness_score : null,
         expiryDate: (row.expiry_date as string | null) ?? null,
       };
     });

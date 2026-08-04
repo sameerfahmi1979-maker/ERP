@@ -162,7 +162,7 @@ type ConfidentialityLevel = "internal" | "company" | "hr" | "finance" | "legal" 
  * Otherwise, `internal` and `company` are always included (base view permission already checked).
  * Per-sensitive level: included only when the user holds the matching per-level permission.
  */
-function getAllowedConfidentialityLevels(
+export function getAllowedConfidentialityLevels(
   ctx: Awaited<ReturnType<typeof getAuthContext>>
 ): ConfidentialityLevel[] {
   const isAdmin =

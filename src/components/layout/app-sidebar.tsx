@@ -171,6 +171,7 @@ const navSections: NavSection[] = [
       { label: "Review Queue",      icon: ListChecks,      path: "/dms/review-queue",    requiredAnyPermissions: ["dms.review_queue.view", "dms.review_queue.manage", "dms.documents.review_ai", "dms.admin"] },
       { label: "Approval Queue",    icon: ClipboardCheck,  path: "/dms/approvals",       requiredAnyPermissions: ["dms.approvals.view", "dms.approvals.act", "dms.approvals.submit", "dms.approvals.withdraw", "dms.approvals.admin", "dms.documents.approve", "dms.admin"] },
       { label: "Expiry & Renewals", icon: RefreshCcw,      path: "/dms/expiring",        requiredAnyPermissions: ["dms.expiry.view", "dms.documents.view", "dms.admin"] },
+      { label: "Document Browser",  icon: FolderSearch,    path: "/admin/dms/browser",   requiredAnyPermissions: ["dms.documents.view", "dms.admin"] },
       { label: "Archive",           icon: Archive,         path: "/dms/archive",         requiredAnyPermissions: ["dms.documents.view", "dms.admin"] },
       { label: "Notifications",     icon: Bell,            path: "/dms/notifications",   requiredAnyPermissions: ["dms.documents.view", "dms.admin"] },
       {

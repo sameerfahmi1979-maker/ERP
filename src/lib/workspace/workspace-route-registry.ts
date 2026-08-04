@@ -450,6 +450,16 @@ const REGISTRY: WorkspaceRouteConfig[] = [
     singleton: true,
   },
 
+  // ── DMS Browser (DMS.BROWSER.1) ───────────────────────────────────────────
+  {
+    route: "/admin/dms/browser",
+    title: "Document Browser",
+    icon: "FolderSearch",
+    tabKind: "list",
+    singleton: true,
+    moduleCode: "DMS",
+  },
+
   // ── DMS Admin (DMS.3) ─────────────────────────────────────────────────────
   {
     route: "/admin/dms",

@@ -16,7 +16,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { getAllowedConfidentialityLevels } from "@/server/actions/dms/documents";
+import { getAllowedConfidentialityLevels } from "@/lib/dms/confidentiality";
 
 export type ActionResult<T = unknown> = {
   success: boolean;

@@ -1,0 +1,228 @@
+﻿Route,Page file,Sidebar label,Sidebar disabled,Registry perms,Registry globalAdmin,Registry publicToAllActive,Cross-ref status
+/,src/app/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/access-denied,src/app/(protected)/access-denied/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/account-disabled,src/app/(auth)/account-disabled/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/ai/audit-explainer,src/app/(protected)/admin/ai/audit-explainer/page.tsx,AI Audit Explainer,False,ai.audit_explainer.use|ai.common.admin,False,False,has-page; in-registry; in-sidebar
+/admin/ai/compliance,src/app/(protected)/admin/ai/compliance/page.tsx,AI Compliance,False,ai.compliance.view|ai.common.view|ai.common.admin,False,False,has-page; in-registry; in-sidebar
+/admin/ai/dashboard,src/app/(protected)/admin/ai/dashboard/page.tsx,AI Daily Dashboard,False,ai.dashboard.view|ai.dashboard.admin|ai.common.view|ai.common.admin,False,False,has-page; in-registry; in-sidebar
+/admin/ai/data-quality,src/app/(protected)/admin/ai/data-quality/page.tsx,AI Data Quality,False,ai.data_quality.view|ai.common.view|ai.common.admin,False,False,has-page; in-registry; in-sidebar
+/admin/ai/duplicates,src/app/(protected)/admin/ai/duplicates/page.tsx,AI Duplicates,False,ai.duplicates.view|ai.common.view|ai.common.admin,False,False,has-page; in-registry; in-sidebar
+/admin/ai/risk,src/app/(protected)/admin/ai/risk/page.tsx,AI Risk,False,ai.risk.view|ai.common.view|ai.common.admin,False,False,has-page; in-registry; in-sidebar
+/admin/audit,src/app/(protected)/admin/audit/page.tsx,Activity Log,False,audit.view,False,False,has-page; in-registry; in-sidebar
+/admin/branches,src/app/(protected)/admin/branches/page.tsx,Branches,False,branches.view,False,False,has-page; in-registry; in-sidebar
+/admin/branches/record/[id],src/app/(protected)/admin/branches/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/branches/record/new,src/app/(protected)/admin/branches/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/common-master-data,src/app/(protected)/admin/common-master-data/page.tsx,Master Data,False,common_md.view|common_md.manage,False,False,has-page; in-registry; in-sidebar
+/admin/common-master-data/approval-roles,src/app/(protected)/admin/common-master-data/approval-roles/page.tsx,Approval Roles,False,common_md.view|common_md.approval_roles.view,False,False,has-page; in-registry; in-sidebar
+/admin/common-master-data/approval-roles/record/[id],src/app/(protected)/admin/common-master-data/approval-roles/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/common-master-data/approval-roles/record/new,src/app/(protected)/admin/common-master-data/approval-roles/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/common-master-data/departments,src/app/(protected)/admin/common-master-data/departments/page.tsx,Departments,False,common_md.view|common_md.departments.view,False,False,has-page; in-registry; in-sidebar
+/admin/common-master-data/departments/record/[id],src/app/(protected)/admin/common-master-data/departments/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/common-master-data/departments/record/new,src/app/(protected)/admin/common-master-data/departments/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/common-master-data/designations,src/app/(protected)/admin/common-master-data/designations/page.tsx,Designations,False,common_md.view|common_md.designations.view,False,False,has-page; in-registry; in-sidebar
+/admin/common-master-data/designations/record/[id],src/app/(protected)/admin/common-master-data/designations/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/common-master-data/designations/record/new,src/app/(protected)/admin/common-master-data/designations/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/common-master-data/dms-required-documents,src/app/(protected)/admin/common-master-data/dms-required-documents/page.tsx,Required Doc. Rules,False,common_md.view|common_md.dms_required_documents.view,False,False,has-page; in-registry; in-sidebar
+/admin/common-master-data/dms-required-documents/record/[id],src/app/(protected)/admin/common-master-data/dms-required-documents/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/common-master-data/dms-required-documents/record/new,src/app/(protected)/admin/common-master-data/dms-required-documents/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/common-master-data/work-calendars,src/app/(protected)/admin/common-master-data/work-calendars/page.tsx,Work Calendars,False,common_md.view|common_md.work_calendars.view,False,False,has-page; in-registry; in-sidebar
+/admin/common-master-data/work-calendars/record/[id],src/app/(protected)/admin/common-master-data/work-calendars/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/common-master-data/work-calendars/record/new,src/app/(protected)/admin/common-master-data/work-calendars/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/common-master-data/work-sites,src/app/(protected)/admin/common-master-data/work-sites/page.tsx,Work Sites,False,common_md.view|common_md.work_sites.view,False,False,has-page; in-registry; in-sidebar
+/admin/common-master-data/work-sites/record/[id],src/app/(protected)/admin/common-master-data/work-sites/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/common-master-data/work-sites/record/new,src/app/(protected)/admin/common-master-data/work-sites/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/dms,src/app/(protected)/admin/dms/page.tsx,DMS Admin,False,dms.documents.view|dms.admin,False,False,has-page; in-registry; in-sidebar
+/admin/dms/ai-observability,src/app/(protected)/admin/dms/ai-observability/page.tsx,AI Observability,False,dms.admin,False,False,has-page; in-registry; in-sidebar
+/admin/dms/approval-workflows,src/app/(protected)/admin/dms/approval-workflows/page.tsx,Approval Workflows,False,,,,has-page; not-in-registry; in-sidebar
+/admin/dms/browser,src/app/(protected)/admin/dms/browser/page.tsx,Document Browser,False,,,,has-page; not-in-registry; in-sidebar
+/admin/dms/categories,src/app/(protected)/admin/dms/categories/page.tsx,Document Categories,False,dms.documents.view|dms.admin,False,False,has-page; in-registry; in-sidebar
+/admin/dms/document-types,src/app/(protected)/admin/dms/document-types/page.tsx,Document Types,False,dms.documents.view|dms.admin,False,False,has-page; in-registry; in-sidebar
+/admin/dms/intelligence,src/app/(protected)/admin/dms/intelligence/page.tsx,AI Intelligence,False,dms.admin,False,False,has-page; in-registry; in-sidebar
+/admin/dms/metadata-definitions,src/app/(protected)/admin/dms/metadata-definitions/page.tsx,Metadata Definitions,False,dms.admin,False,False,has-page; in-registry; in-sidebar
+/admin/dms/notification-settings,src/app/(protected)/admin/dms/notification-settings/page.tsx,Notification Settings,False,,,,has-page; not-in-registry; in-sidebar
+/admin/dms/retention-policies,src/app/(protected)/admin/dms/retention-policies/page.tsx,Retention Policies,False,dms.admin,False,False,has-page; in-registry; in-sidebar
+/admin/dms/tags,src/app/(protected)/admin/dms/tags/page.tsx,Tags,False,dms.documents.view|dms.admin,False,False,has-page; in-registry; in-sidebar
+/admin/hr,src/app/(protected)/admin/hr/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/hr/actions,src/app/(protected)/admin/hr/actions/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/hr/actions/approvals,src/app/(protected)/admin/hr/actions/approvals/page.tsx,Approval Requests,False,hr.actions.view|hr.actions.manage|hr.admin,False,False,has-page; in-registry; in-sidebar
+/admin/hr/actions/disciplinary,src/app/(protected)/admin/hr/actions/disciplinary/page.tsx,Disciplinary & Warnings,False,hr.actions.view|hr.actions.manage|hr.admin,False,False,has-page; in-registry; in-sidebar
+/admin/hr/actions/eos,src/app/(protected)/admin/hr/actions/eos/page.tsx,EOS & Clearance,False,hr.eos.view|hr.eos.manage|hr.admin,False,False,has-page; in-registry; in-sidebar
+/admin/hr/actions/pro,src/app/(protected)/admin/hr/actions/pro/page.tsx,HR Actions,False,hr.actions.view|hr.actions.manage|hr.admin,False,False,has-page; in-registry; in-sidebar
+/admin/hr/dashboard,src/app/(protected)/admin/hr/dashboard/page.tsx,Human Resource,False,hr.dashboard.view|hr.employees.view|hr.admin,False,False,has-page; in-registry; in-sidebar
+/admin/hr/document-browser,src/app/(protected)/admin/hr/document-browser/page.tsx,Document Browser,False,,,,has-page; not-in-registry; in-sidebar
+/admin/hr/employees,src/app/(protected)/admin/hr/employees/page.tsx,Employees,False,hr.employees.view|hr.admin,False,False,has-page; in-registry; in-sidebar
+/admin/hr/employees/record/[id],src/app/(protected)/admin/hr/employees/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/hr/employees/record/new,src/app/(protected)/admin/hr/employees/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/hr/operations,src/app/(protected)/admin/hr/operations/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/hr/operations/assignments,src/app/(protected)/admin/hr/operations/assignments/page.tsx,HR Operations,False,hr.assignments.view|hr.assignments.manage|hr.admin,False,False,has-page; in-registry; in-sidebar
+/admin/hr/operations/blocks,src/app/(protected)/admin/hr/operations/blocks/page.tsx,Operational Blocks,False,hr.assignments.view|hr.admin,False,False,has-page; in-registry; in-sidebar
+/admin/hr/operations/readiness,src/app/(protected)/admin/hr/operations/readiness/page.tsx,Readiness Monitor,False,hr.assignments.view|hr.admin,False,False,has-page; in-registry; in-sidebar
+/admin/hr/payroll,src/app/(protected)/admin/hr/payroll/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/hr/payroll/salaries,src/app/(protected)/admin/hr/payroll/salaries/page.tsx,Payroll & WPS,False,hr.payroll.view|hr.payroll.manage|hr.admin,False,False,has-page; in-registry; in-sidebar
+/admin/hr/payroll/wps,src/app/(protected)/admin/hr/payroll/wps/page.tsx,WPS Readiness,False,hr.payroll.view|hr.payroll.manage|hr.admin,False,False,has-page; in-registry; in-sidebar
+/admin/hr/recruitment,src/app/(protected)/admin/hr/recruitment/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/hr/recruitment/candidates,src/app/(protected)/admin/hr/recruitment/candidates/page.tsx,Candidates,False,hr.recruitment.view|hr.recruitment.manage|hr.admin,False,False,has-page; in-registry; in-sidebar
+/admin/hr/recruitment/candidates/record/[id],src/app/(protected)/admin/hr/recruitment/candidates/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/hr/recruitment/candidates/record/new,src/app/(protected)/admin/hr/recruitment/candidates/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/hr/recruitment/interviews,src/app/(protected)/admin/hr/recruitment/interviews/page.tsx,Interviews,False,hr.recruitment.view|hr.recruitment.manage|hr.admin,False,False,has-page; in-registry; in-sidebar
+/admin/hr/recruitment/offers,src/app/(protected)/admin/hr/recruitment/offers/page.tsx,Offers,False,hr.recruitment.view|hr.recruitment.manage|hr.admin,False,False,has-page; in-registry; in-sidebar
+/admin/hr/recruitment/onboarding,src/app/(protected)/admin/hr/recruitment/onboarding/page.tsx,Onboarding,False,hr.recruitment.view|hr.recruitment.manage|hr.admin,False,False,has-page; in-registry; in-sidebar
+/admin/hr/recruitment/requisitions,src/app/(protected)/admin/hr/recruitment/requisitions/page.tsx,Recruitment,False,hr.recruitment.view|hr.recruitment.manage|hr.admin,False,False,has-page; in-registry; in-sidebar
+/admin/hr/search,src/app/(protected)/admin/hr/search/page.tsx,Search,False,hr.search.use|hr.admin,False,False,has-page; in-registry; in-sidebar
+/admin/hr/settings,src/app/(protected)/admin/hr/settings/page.tsx,HR Admin,False,hr.settings.view|hr.settings.manage|hr.admin,False,False,has-page; in-registry; in-sidebar
+/admin/hr/settings/access-card-types,src/app/(protected)/admin/hr/settings/access-card-types/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/hr/settings/approval-workflows,src/app/(protected)/admin/hr/settings/approval-workflows/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/hr/settings/employee-categories,src/app/(protected)/admin/hr/settings/employee-categories/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/hr/settings/employment-types,src/app/(protected)/admin/hr/settings/employment-types/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/hr/settings/grades,src/app/(protected)/admin/hr/settings/grades/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/hr/settings/identity-document-types,src/app/(protected)/admin/hr/settings/identity-document-types/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/hr/settings/leave-types,src/app/(protected)/admin/hr/settings/leave-types/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/hr/settings/medical-record-types,src/app/(protected)/admin/hr/settings/medical-record-types/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/hr/settings/mohre-establishments,src/app/(protected)/admin/hr/settings/mohre-establishments/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/hr/settings/payroll-groups,src/app/(protected)/admin/hr/settings/payroll-groups/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/hr/settings/pro-process-types,src/app/(protected)/admin/hr/settings/pro-process-types/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/hr/settings/readiness-rule-templates,src/app/(protected)/admin/hr/settings/readiness-rule-templates/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/hr/settings/relationship-types,src/app/(protected)/admin/hr/settings/relationship-types/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/hr/settings/role-requirement-matrix,src/app/(protected)/admin/hr/settings/role-requirement-matrix/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/hr/settings/salary-component-types,src/app/(protected)/admin/hr/settings/salary-component-types/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/hr/settings/site-requirement-matrix,src/app/(protected)/admin/hr/settings/site-requirement-matrix/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/hr/settings/training-categories,src/app/(protected)/admin/hr/settings/training-categories/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/hr/settings/training-types,src/app/(protected)/admin/hr/settings/training-types/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/hr/time,src/app/(protected)/admin/hr/time/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/hr/time/attendance,src/app/(protected)/admin/hr/time/attendance/page.tsx,Attendance & Leave,False,hr.attendance.view|hr.attendance.manage|hr.admin,False,False,has-page; in-registry; in-sidebar
+/admin/hr/time/leave,src/app/(protected)/admin/hr/time/leave/page.tsx,Leave Requests,False,hr.leave.view|hr.leave.manage|hr.admin,False,False,has-page; in-registry; in-sidebar
+/admin/hr/time/shifts,src/app/(protected)/admin/hr/time/shifts/page.tsx,Shift Calendar,False,hr.attendance.view|hr.admin,False,False,has-page; in-registry; in-sidebar
+/admin/master-data,src/app/(protected)/admin/master-data/page.tsx,Master Data,False,master_data.lookups.view|master_data.geography.view|master_data.parties.view,False,False,has-page; in-registry; in-sidebar
+/admin/master-data/customers,src/app/(protected)/admin/master-data/customers/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/customers/record/[id],src/app/(protected)/admin/master-data/customers/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/customers/record/new,src/app/(protected)/admin/master-data/customers/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/finance-basics/banks,src/app/(protected)/admin/master-data/finance-basics/banks/page.tsx,Banks,False,master_data.finance_basics.view|master_data.finance_basics.manage,False,False,has-page; in-registry; in-sidebar
+/admin/master-data/finance-basics/banks/record/[id],src/app/(protected)/admin/master-data/finance-basics/banks/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/finance-basics/banks/record/new,src/app/(protected)/admin/master-data/finance-basics/banks/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/finance-basics/cost-centers,src/app/(protected)/admin/master-data/finance-basics/cost-centers/page.tsx,Cost Centers,False,master_data.finance_basics.view|master_data.finance_basics.manage,False,False,has-page; in-registry; in-sidebar
+/admin/master-data/finance-basics/cost-centers/record/[id],src/app/(protected)/admin/master-data/finance-basics/cost-centers/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/finance-basics/cost-centers/record/new,src/app/(protected)/admin/master-data/finance-basics/cost-centers/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/finance-basics/currencies,src/app/(protected)/admin/master-data/finance-basics/currencies/page.tsx,Finance Basics,False,master_data.finance_basics.view|master_data.finance_basics.manage,False,False,has-page; in-registry; in-sidebar
+/admin/master-data/finance-basics/currencies/record/[id],src/app/(protected)/admin/master-data/finance-basics/currencies/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/finance-basics/currencies/record/new,src/app/(protected)/admin/master-data/finance-basics/currencies/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/finance-basics/payment-terms,src/app/(protected)/admin/master-data/finance-basics/payment-terms/page.tsx,Payment Terms,False,master_data.finance_basics.view|master_data.finance_basics.manage,False,False,has-page; in-registry; in-sidebar
+/admin/master-data/finance-basics/payment-terms/record/[id],src/app/(protected)/admin/master-data/finance-basics/payment-terms/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/finance-basics/payment-terms/record/new,src/app/(protected)/admin/master-data/finance-basics/payment-terms/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/finance-basics/profit-centers,src/app/(protected)/admin/master-data/finance-basics/profit-centers/page.tsx,Profit Centers,False,master_data.finance_basics.view|master_data.finance_basics.manage,False,False,has-page; in-registry; in-sidebar
+/admin/master-data/finance-basics/profit-centers/record/[id],src/app/(protected)/admin/master-data/finance-basics/profit-centers/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/finance-basics/profit-centers/record/new,src/app/(protected)/admin/master-data/finance-basics/profit-centers/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/finance-basics/tax-types,src/app/(protected)/admin/master-data/finance-basics/tax-types/page.tsx,Tax Types,False,master_data.finance_basics.view|master_data.finance_basics.manage,False,False,has-page; in-registry; in-sidebar
+/admin/master-data/finance-basics/tax-types/record/[id],src/app/(protected)/admin/master-data/finance-basics/tax-types/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/finance-basics/tax-types/record/new,src/app/(protected)/admin/master-data/finance-basics/tax-types/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/geography/areas,src/app/(protected)/admin/master-data/geography/areas/page.tsx,Areas & Zones,False,master_data.geography.view|master_data.geography.manage,False,False,has-page; in-registry; in-sidebar
+/admin/master-data/geography/areas/record/[id],src/app/(protected)/admin/master-data/geography/areas/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/geography/areas/record/new,src/app/(protected)/admin/master-data/geography/areas/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/geography/cities,src/app/(protected)/admin/master-data/geography/cities/page.tsx,Cities,False,master_data.geography.view|master_data.geography.manage,False,False,has-page; in-registry; in-sidebar
+/admin/master-data/geography/cities/record/[id],src/app/(protected)/admin/master-data/geography/cities/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/geography/cities/record/new,src/app/(protected)/admin/master-data/geography/cities/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/geography/countries,src/app/(protected)/admin/master-data/geography/countries/page.tsx,Geography & Locations,False,master_data.geography.view|master_data.geography.manage,False,False,has-page; in-registry; in-sidebar
+/admin/master-data/geography/countries/record/[id],src/app/(protected)/admin/master-data/geography/countries/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/geography/countries/record/new,src/app/(protected)/admin/master-data/geography/countries/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/geography/emirates,src/app/(protected)/admin/master-data/geography/emirates/page.tsx,Regions / Emirates,False,master_data.geography.view|master_data.geography.manage,False,False,has-page; in-registry; in-sidebar
+/admin/master-data/geography/emirates/record/[id],src/app/(protected)/admin/master-data/geography/emirates/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/geography/emirates/record/new,src/app/(protected)/admin/master-data/geography/emirates/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/geography/ports,src/app/(protected)/admin/master-data/geography/ports/page.tsx,Ports,False,master_data.geography.view|master_data.geography.manage,False,False,has-page; in-registry; in-sidebar
+/admin/master-data/geography/ports/record/[id],src/app/(protected)/admin/master-data/geography/ports/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/geography/ports/record/new,src/app/(protected)/admin/master-data/geography/ports/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/lookups/categories,src/app/(protected)/admin/master-data/lookups/categories/page.tsx,Lookup Categories,False,master_data.lookups.view|master_data.lookups.manage,False,False,has-page; in-registry; in-sidebar
+/admin/master-data/lookups/categories/record/[id],src/app/(protected)/admin/master-data/lookups/categories/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/lookups/categories/record/new,src/app/(protected)/admin/master-data/lookups/categories/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/lookups/system,src/app/(protected)/admin/master-data/lookups/system/page.tsx,Locked System Values,False,master_data.lookups.view|master_data.lookups.manage,False,False,has-page; in-registry; in-sidebar
+/admin/master-data/lookups/values,src/app/(protected)/admin/master-data/lookups/values/page.tsx,Lookup Values,False,master_data.lookups.view|master_data.lookups.manage,False,False,has-page; in-registry; in-sidebar
+/admin/master-data/lookups/values/record/[id],src/app/(protected)/admin/master-data/lookups/values/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/lookups/values/record/new,src/app/(protected)/admin/master-data/lookups/values/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/parties,src/app/(protected)/admin/master-data/parties/page.tsx,Party Master,False,master_data.parties.view|master_data.party_master.view,False,False,has-page; in-registry; in-sidebar
+/admin/master-data/parties/[typeSlug],src/app/(protected)/admin/master-data/parties/[typeSlug]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/parties/banks,src/app/(protected)/admin/master-data/parties/banks/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/parties/consultants,,Consultants,False,master_data.parties.view|master_data.party_master.view,False,False,NO-PAGE; in-registry; in-sidebar
+/admin/master-data/parties/customers,,Customers,False,master_data.parties.view|master_data.party_master.view,False,False,NO-PAGE; in-registry; in-sidebar
+/admin/master-data/parties/government-authorities,,Government Authorities,False,master_data.parties.view|master_data.party_master.view,False,False,NO-PAGE; in-registry; in-sidebar
+/admin/master-data/parties/insurance-companies,,Insurance Companies,False,master_data.parties.view|master_data.party_master.view,False,False,NO-PAGE; in-registry; in-sidebar
+/admin/master-data/parties/license-issuers,,License Issuers,False,master_data.parties.view|master_data.party_master.view,False,False,NO-PAGE; in-registry; in-sidebar
+/admin/master-data/parties/record/[id],src/app/(protected)/admin/master-data/parties/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/parties/record/new,src/app/(protected)/admin/master-data/parties/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/parties/recruitment-agencies,,Recruitment Agencies,False,master_data.parties.view|master_data.party_master.view,False,False,NO-PAGE; in-registry; in-sidebar
+/admin/master-data/parties/relationship-types,src/app/(protected)/admin/master-data/parties/relationship-types/page.tsx,Relationship Types,False,master_data.parties.view|master_data.party_master.view,False,False,has-page; in-registry; in-sidebar
+/admin/master-data/parties/service-categories,src/app/(protected)/admin/master-data/parties/service-categories/page.tsx,Service Categories,False,master_data.parties.view|master_data.party_master.view,False,False,has-page; in-registry; in-sidebar
+/admin/master-data/parties/subcontractors,,Subcontractors,False,master_data.parties.view|master_data.party_master.view,False,False,NO-PAGE; in-registry; in-sidebar
+/admin/master-data/parties/types,src/app/(protected)/admin/master-data/parties/types/page.tsx,Party Types,False,master_data.parties.view|master_data.party_master.view,False,False,has-page; in-registry; in-sidebar
+/admin/master-data/parties/vendors,,Vendors,False,master_data.parties.view|master_data.party_master.view,False,False,NO-PAGE; in-registry; in-sidebar
+/admin/master-data/uom/categories,src/app/(protected)/admin/master-data/uom/categories/page.tsx,Units & Measurements,False,master_data.uom.view|master_data.uom.manage,False,False,has-page; in-registry; in-sidebar
+/admin/master-data/uom/categories/record/[id],src/app/(protected)/admin/master-data/uom/categories/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/uom/categories/record/new,src/app/(protected)/admin/master-data/uom/categories/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/uom/conversions,src/app/(protected)/admin/master-data/uom/conversions/page.tsx,UOM Conversions,False,master_data.uom.view|master_data.uom.manage,False,False,has-page; in-registry; in-sidebar
+/admin/master-data/uom/conversions/record/[id],src/app/(protected)/admin/master-data/uom/conversions/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/uom/conversions/record/new,src/app/(protected)/admin/master-data/uom/conversions/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/uom/units,src/app/(protected)/admin/master-data/uom/units/page.tsx,Units of Measure,False,master_data.uom.view|master_data.uom.manage,False,False,has-page; in-registry; in-sidebar
+/admin/master-data/uom/units/record/[id],src/app/(protected)/admin/master-data/uom/units/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/master-data/uom/units/record/new,src/app/(protected)/admin/master-data/uom/units/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/notifications,src/app/(protected)/admin/notifications/page.tsx,Notifications,False,notifications.manage|notifications.admin,False,False,has-page; in-registry; in-sidebar
+/admin/notifications/email-queue,src/app/(protected)/admin/notifications/email-queue/page.tsx,Email Queue,False,notifications.email_queue.view|notifications.email_queue.manage,False,False,has-page; in-registry; in-sidebar
+/admin/notifications/logs,src/app/(protected)/admin/notifications/logs/page.tsx,Delivery Logs,False,notifications.logs.view|notifications.manage,False,False,has-page; in-registry; in-sidebar
+/admin/notifications/templates,src/app/(protected)/admin/notifications/templates/page.tsx,Notif. Templates,False,notifications.templates.view|notifications.templates.manage,False,False,has-page; in-registry; in-sidebar
+/admin/organizations,src/app/(protected)/admin/organizations/page.tsx,Organizations,False,organizations.view,False,False,has-page; in-registry; in-sidebar
+/admin/organizations/record/[id],src/app/(protected)/admin/organizations/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/organizations/record/new,src/app/(protected)/admin/organizations/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/permissions,src/app/(protected)/admin/permissions/page.tsx,Permissions,False,permissions.view,False,False,has-page; in-registry; in-sidebar
+/admin/reports,src/app/(protected)/admin/reports/page.tsx,Reports,False,reports.view|reports.manage,False,False,has-page; in-registry; in-sidebar
+/admin/reports/history,src/app/(protected)/admin/reports/history/page.tsx,Report History,False,reports.view|reports.history.view,False,False,has-page; in-registry; in-sidebar
+/admin/reports/output-ops,src/app/(protected)/admin/reports/output-ops/page.tsx,Output Operations,False,outputs.ops.view,False,False,has-page; in-registry; in-sidebar
+/admin/reports/public-links,src/app/(protected)/admin/reports/public-links/page.tsx,,,reports.view|reports.publish|reports.verify.admin|reports.manage,False,False,has-page; in-registry; not-in-sidebar
+/admin/reports/run/[reportCode],src/app/(protected)/admin/reports/run/[reportCode]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/reports/schedules,src/app/(protected)/admin/reports/schedules/page.tsx,Report Schedules,False,reports.schedule.view|reports.schedule.manage,False,False,has-page; in-registry; in-sidebar
+/admin/reports/template-studio,src/app/(protected)/admin/reports/template-studio/page.tsx,,,reports.manage,False,False,has-page; in-registry; not-in-sidebar
+/admin/reports/templates,src/app/(protected)/admin/reports/templates/page.tsx,Templates & Branding,False,reports.manage,False,False,has-page; in-registry; in-sidebar
+/admin/reports/templates/governance,src/app/(protected)/admin/reports/templates/governance/page.tsx,,,reports.view|reports.manage|reports.template.approve,False,False,has-page; in-registry; not-in-sidebar
+/admin/roles,src/app/(protected)/admin/roles/page.tsx,Roles,False,roles.view|roles.manage,False,False,has-page; in-registry; in-sidebar
+/admin/roles/record/[id],src/app/(protected)/admin/roles/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/roles/record/new,src/app/(protected)/admin/roles/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/settings/ai,src/app/(protected)/admin/settings/ai/page.tsx,AI,False,settings.ai.view|settings.ai.manage,False,False,has-page; in-registry; in-sidebar
+/admin/settings/branding,src/app/(protected)/admin/settings/branding/page.tsx,App Branding,False,branding.app.view|branding.app.manage|reports.manage,False,False,has-page; in-registry; in-sidebar
+/admin/settings/email,src/app/(protected)/admin/settings/email/page.tsx,Email Settings,False,settings.email.view|settings.email.manage,False,False,has-page; in-registry; in-sidebar
+/admin/settings/numbering,src/app/(protected)/admin/settings/numbering/page.tsx,Numbering Rules,False,numbering.rules.view|numbering.rules.manage,False,False,has-page; in-registry; in-sidebar
+/admin/settings/numbering/record/[id],src/app/(protected)/admin/settings/numbering/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/settings/numbering/record/new,src/app/(protected)/admin/settings/numbering/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/users,src/app/(protected)/admin/users/page.tsx,Administration,False,users.view,False,False,has-page; in-registry; in-sidebar
+/admin/users/record/[id],src/app/(protected)/admin/users/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/admin/users/record/new,src/app/(protected)/admin/users/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/assistant,src/app/(protected)/assistant/page.tsx,AI Assistant,False,ai.assistant.use|ai.assistant.view|ai.common.admin,False,False,has-page; in-registry; in-sidebar
+/change-password-required,src/app/(auth)/change-password-required/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/dashboard,src/app/(protected)/dashboard/page.tsx,Overview,False,dashboard.view,False,False,has-page; in-registry; in-sidebar
+/dev/auth-debug,src/app/(protected)/dev/auth-debug/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/dev/performance-qa,src/app/dev/performance-qa/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/dms,src/app/(protected)/dms/page.tsx,Documents,False,dms.documents.view|dms.admin,False,False,has-page; in-registry; in-sidebar
+/dms/approvals,src/app/(protected)/dms/approvals/page.tsx,Approval Queue,False,,,,has-page; not-in-registry; in-sidebar
+/dms/archive,src/app/(protected)/dms/archive/page.tsx,Archive,False,,,,has-page; not-in-registry; in-sidebar
+/dms/documents,src/app/(protected)/dms/documents/page.tsx,All Documents,False,dms.documents.view|dms.admin,False,False,has-page; in-registry; in-sidebar
+/dms/documents/record/[id],src/app/(protected)/dms/documents/record/[id]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/dms/documents/record/new,src/app/(protected)/dms/documents/record/new/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/dms/expiring,src/app/(protected)/dms/expiring/page.tsx,Expiry & Renewals,False,dms.expiry.view|dms.documents.view|dms.admin,False,False,has-page; in-registry; in-sidebar
+/dms/inbox,src/app/(protected)/dms/inbox/page.tsx,Upload Inbox,False,dms.documents.upload|dms.documents.view|dms.admin,False,False,has-page; in-registry; in-sidebar
+/dms/inbox/batch/[batchCode],src/app/(protected)/dms/inbox/batch/[batchCode]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/dms/inbox/batches,src/app/(protected)/dms/inbox/batches/page.tsx,Batch Intake,False,dms.documents.upload|dms.documents.view|dms.admin,False,False,has-page; in-registry; in-sidebar
+/dms/intake/[sessionCode],src/app/(protected)/dms/intake/[sessionCode]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/dms/notifications,src/app/(protected)/dms/notifications/page.tsx,Notifications,False,dms.documents.view|dms.admin,False,False,has-page; in-registry; in-sidebar
+/dms/renewals,src/app/(protected)/dms/renewals/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/dms/review-queue,src/app/(protected)/dms/review-queue/page.tsx,Review Queue,False,dms.review_queue.view|dms.review_queue.manage|dms.documents.review_ai|dms.admin,False,False,has-page; in-registry; in-sidebar
+/forgot-password,src/app/(auth)/forgot-password/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/login,src/app/(auth)/login/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/modules/finance,,Finance & Supply,True,,,,NO-PAGE; not-in-registry; in-sidebar(disabled)
+/modules/fleet,,Operations,True,,,,NO-PAGE; not-in-registry; in-sidebar(disabled)
+/modules/hse,,HSE,True,,,,NO-PAGE; not-in-registry; in-sidebar(disabled)
+/modules/inventory,,Inventory,True,,,,NO-PAGE; not-in-registry; in-sidebar(disabled)
+/modules/procurement,,Procurement,True,,,,NO-PAGE; not-in-registry; in-sidebar(disabled)
+/modules/workshop,,Workshop,True,,,,NO-PAGE; not-in-registry; in-sidebar(disabled)
+/no-access,src/app/(protected)/no-access/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/notifications,src/app/(protected)/notifications/page.tsx,Notifications,False,,False,True,has-page; in-registry; in-sidebar
+/profile,src/app/(protected)/profile/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/reset-password,src/app/(auth)/reset-password/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/search,src/app/(protected)/search/page.tsx,AI Search,False,ai.search.use|ai.search.view|ai.common.admin,False,False,has-page; in-registry; in-sidebar
+/settings,src/app/(protected)/settings/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/signup,src/app/(auth)/signup/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/start,src/app/(protected)/start/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar
+/verify/[token],src/app/verify/[token]/page.tsx,,,,,,has-page; not-in-registry; not-in-sidebar

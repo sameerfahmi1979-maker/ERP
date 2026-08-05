@@ -1,0 +1,120 @@
+{
+  "total_files": 4453,
+  "by_repo": {
+    "AGT_ERP": 3299,
+    "LI_HRMS": 1154
+  },
+  "by_category": {
+    "AGT_ERP|documentation/plan": 1092,
+    "AGT_ERP|product source": 604,
+    "AGT_ERP|library/domain service": 349,
+    "LI_HRMS|product source": 288,
+    "AGT_ERP|component": 263,
+    "AGT_ERP|route/page": 260,
+    "LI_HRMS|script": 257,
+    "AGT_ERP|asset/template": 215,
+    "LI_HRMS|library/domain service": 205,
+    "AGT_ERP|database migration/schema": 171,
+    "AGT_ERP|server action/API/controller": 165,
+    "LI_HRMS|component": 112,
+    "LI_HRMS|route/page": 94,
+    "AGT_ERP|unknown requiring inspection": 89,
+    "LI_HRMS|documentation/plan": 75,
+    "LI_HRMS|test/fixture": 62,
+    "AGT_ERP|configuration": 39,
+    "AGT_ERP|test/fixture": 30,
+    "LI_HRMS|asset/template": 22,
+    "LI_HRMS|configuration": 21,
+    "AGT_ERP|script": 18,
+    "LI_HRMS|unknown requiring inspection": 16,
+    "AGT_ERP|sample/export": 4,
+    "LI_HRMS|database migration/schema": 2
+  },
+  "excluded_dirs": [
+    {
+      "repo": "AGT_ERP",
+      "dir": ".agents",
+      "size_bytes": 594283,
+      "count": 0
+    },
+    {
+      "repo": "AGT_ERP",
+      "dir": ".antigravity",
+      "size_bytes": 168069,
+      "count": 0
+    },
+    {
+      "repo": "AGT_ERP",
+      "dir": ".claude",
+      "size_bytes": 518035,
+      "count": 0
+    },
+    {
+      "repo": "AGT_ERP",
+      "dir": ".cursor",
+      "size_bytes": 7546017,
+      "count": 0
+    },
+    {
+      "repo": "AGT_ERP",
+      "dir": ".git",
+      "size_bytes": 172104049,
+      "count": 0
+    },
+    {
+      "repo": "AGT_ERP",
+      "dir": ".idea",
+      "size_bytes": 11591,
+      "count": 0
+    },
+    {
+      "repo": "AGT_ERP",
+      "dir": ".next",
+      "size_bytes": 9126453954,
+      "count": 0
+    },
+    {
+      "repo": "AGT_ERP",
+      "dir": "node_modules",
+      "size_bytes": 1399983565,
+      "count": 0
+    },
+    {
+      "repo": "AGT_ERP",
+      "dir": "test-results",
+      "size_bytes": 45,
+      "count": 0
+    },
+    {
+      "repo": "AGT_ERP",
+      "dir": "tmp",
+      "size_bytes": 132724,
+      "count": 0
+    },
+    {
+      "repo": "AGT_ERP",
+      "dir": "spikes/report-designer-validation-spike-1-completion/pdfme-designer-prototype/dist",
+      "size_bytes": 22275695,
+      "count": 0
+    },
+    {
+      "repo": "LI_HRMS",
+      "dir": "tmp",
+      "size_bytes": 679233,
+      "count": 0
+    },
+    {
+      "repo": "LI_HRMS",
+      "dir": "frontend/playwright-report",
+      "size_bytes": 522043,
+      "count": 0
+    },
+    {
+      "repo": "LI_HRMS",
+      "dir": "frontend/test-results",
+      "size_bytes": 782,
+      "count": 0
+    }
+  ],
+  "total_code_lines": 1512053
+}

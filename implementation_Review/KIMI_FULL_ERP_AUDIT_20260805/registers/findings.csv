@@ -1,0 +1,46 @@
+id,severity,confidence,domain,title,effort,acceptance_criteria_ref
+SEC-001,High,Confirmed,Security,"Middleware gate covers only /dashboard /admin /settings /profile; layout backstop prevents current exposure",S,doc12
+SEC-002,Critical,Confirmed,Security,"erp_vault_create_secret executable by anonymous key (live probe created secret)",XS,doc12
+SEC-003,High,Confirmed,Security,"generate_next_reference_number reachable anonymously; numbering sequences can be burned",XS,doc12
+SEC-004,Medium,Confirmed,Security,"detect_possible_party_duplicates anon-executable",XS,doc12
+SEC-005,High,Confirmed,Security,"Service-role admin client used in 152 files; admin.ts lacks server-only import guard",S,doc12
+SEC-006,Low,Confirmed,Security,"Five dev/QA pages ship in production build (login-gated only)",XS,doc12
+SEC-007,Medium,Confirmed,Security/PII,"Email send dialog logs full payloads to browser console",XS,doc12
+SEC-008,Medium,Confirmed,AI Safety,"DMS AI system prompt lacks prompt-injection/untrusted-content framing",S,doc12
+PRIV-001,Medium,Confirmed,Privacy,"Full document PII (MRZ, IDs, salary) sent to OpenAI without pre-redaction; DPA/region unverified",M,doc12
+DB-001,Medium,Confirmed,Database,"18 live tables/views with no migration (8 look like a foreign EV-charging schema); all empty",S,doc12
+DB-002,Low,Confirmed,Database,"audit_log duplicates audit_logs; shifts/notifications/system_settings shadow concepts",XS,doc12
+DB-003,High,Confirmed,Database,"8 migration tables absent live; migration chain not replayable",M,doc12
+DB-004,High,Confirmed,Database/Tooling,"src/types/database.ts stale (2026-07-23) and UTF-16; codegen pipeline broken",S,doc12
+RBAC-005,Low,Confirmed,RBAC,"7 sidebar routes absent from route-access-registry (fallback allow)",XS,doc12
+TEST-001,Blocker,Confirmed,Quality,"npm run typecheck fails: 72 errors (58 app + 14 spikes; was 1,257 before owner removed source HRMS/ folder on 2026-08-05)",S,doc12
+TEST-002,High,Confirmed,Quality,"next.config typescript.ignoreBuildErrors masks real errors; build prints 'Skipping validation of types'",XS,doc12
+TEST-003,High,Confirmed,Quality,"npm run lint still crashes OOM on spikes/** (completes with spikes ignored: 179 errors; was OOM on LI HRMS before folder removal)",S,doc12
+TEST-004,Low,Confirmed,Quality,"Encoding hygiene: UTF-16 types file, mojibake ??? comments, mixed CR/LF endings",S,doc12
+TEST-005,High,Confirmed,Quality,"Zero tests for server actions, RBAC guards, RLS isolation, API routes, UI; 459 tests are pure helpers only",L,doc12
+HR-001,Medium,Confirmed,HR/Reports,"4 active registry reports have no fetcher (bank transfer, embassy letter, handover, leave confirmation)",M,doc12
+HR-002,High,Confirmed,HR/Time,"Leave approval updates balances non-transactionally; read-modify-write; silent skip when balance row missing; status guard not in UPDATE",M,doc12
+HR-003,Informational,Confirmed,HR/Payroll,"No payroll run engine, payslips, or WPS SIF output (by current design)",XL,doc12
+HR-004,Medium,Confirmed,HR/Time,"No biometric/device attendance capture; 0 punches live; manual entry only",L,doc12
+ERP-GAP-001,Informational,Confirmed,ERP Scope,"Sales/Purchasing/Inventory/Finance/Fleet/Workshop/HSE absent; 6 disabled menu stubs",XL,doc12
+UI-001,Medium,Confirmed,UI,"Duplicate customers routes: /admin/master-data/customers vs parties/[typeSlug]",S,doc12
+UI-002,Low,Confirmed,UI,"Retired template-studio route still built",XS,doc12
+UI-003,Low,Needs verification,UI,"/dms/renewals vs /dms/expiring overlap",XS,doc12
+UI-004,Low,Confirmed,UI,"Mojibake ??? comment separators in sidebar and siblings",XS,doc12
+UI-005,Medium,Confirmed,UI/A11y,"UI standards not enforced by tooling; no a11y/visual tests",M,doc12
+UI-006,Informational,Confirmed,UI/i18n,"English-only UI (no i18n framework) despite Arabic PDF support",L,doc12
+PERF-002,Medium,Confirmed,Performance,"getAuthContext runs 4 sequential admin queries per call, called multiple times per page view; no request cache",XS,doc12
+OPS-001,High,Confirmed,Operations,"No CI/CD at all; no automated typecheck/lint/test gate",M,doc12
+OPS-002,Low,Confirmed,Operations,"env.local.example drift vs live env (MICROSOFT_*, SIGNUP flags, DB password)",XS,doc12
+OBS-001,Medium,Confirmed,Observability,"No APM/tracing/error monitoring (no Sentry/OTel); production would be blind",S,doc12
+OBS-002,Low,Confirmed,Observability,"No health-check endpoint",XS,doc12
+LI-GAP-001,High,Confirmed,LI Comparison,"Payroll batch engine missing (freeze/approve/complete/recalculate/rollback)",XL,doc13
+LI-GAP-002,High,Confirmed,LI Comparison,"Payslip snapshots + employee payslip view missing",L,doc13
+LI-GAP-003,High,Confirmed,LI Comparison,"Biometric ADMS integration missing (devices, commands, raw logs, replay)",L,doc13
+LI-GAP-004,High,Confirmed,LI Comparison,"Attendance sync/import/replay pipeline missing",L,doc13
+LI-GAP-005,Medium,Confirmed,LI Comparison,"Leave accrual engine + scheduled crons missing",M,doc13
+LI-GAP-006,Medium,Confirmed,LI Comparison,"Leave register with snapshots/reconciliation missing",M,doc13
+LI-GAP-007,Medium,Confirmed,LI Comparison,"Loans & salary advances with EMI missing",L,doc13
+LI-GAP-008,Medium,Confirmed,LI Comparison,"Pay register / paysheet export missing",M,doc13
+LI-GAP-009,Medium,Confirmed,LI Comparison,"Multi-shift/confused-shift detection + roster planner missing",L,doc13
+LI-GAP-010,Medium,Confirmed,LI Comparison,"Promotions/transfers + employee update-request workflows missing",M,doc13

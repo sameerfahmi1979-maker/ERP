@@ -1,0 +1,407 @@
+[
+ {
+  "id": "SEC-001",
+  "severity": "High",
+  "confidence": "Confirmed",
+  "domain": "Security",
+  "title": "Middleware gate covers only /dashboard /admin /settings /profile; layout backstop prevents current exposure",
+  "effort": "S",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "SEC-002",
+  "severity": "Critical",
+  "confidence": "Confirmed",
+  "domain": "Security",
+  "title": "erp_vault_create_secret executable by anonymous key (live probe created secret)",
+  "effort": "XS",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "SEC-003",
+  "severity": "High",
+  "confidence": "Confirmed",
+  "domain": "Security",
+  "title": "generate_next_reference_number reachable anonymously; numbering sequences can be burned",
+  "effort": "XS",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "SEC-004",
+  "severity": "Medium",
+  "confidence": "Confirmed",
+  "domain": "Security",
+  "title": "detect_possible_party_duplicates anon-executable",
+  "effort": "XS",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "SEC-005",
+  "severity": "High",
+  "confidence": "Confirmed",
+  "domain": "Security",
+  "title": "Service-role admin client used in 152 files; admin.ts lacks server-only import guard",
+  "effort": "S",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "SEC-006",
+  "severity": "Low",
+  "confidence": "Confirmed",
+  "domain": "Security",
+  "title": "Five dev/QA pages ship in production build (login-gated only)",
+  "effort": "XS",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "SEC-007",
+  "severity": "Medium",
+  "confidence": "Confirmed",
+  "domain": "Security/PII",
+  "title": "Email send dialog logs full payloads to browser console",
+  "effort": "XS",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "SEC-008",
+  "severity": "Medium",
+  "confidence": "Confirmed",
+  "domain": "AI Safety",
+  "title": "DMS AI system prompt lacks prompt-injection/untrusted-content framing",
+  "effort": "S",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "PRIV-001",
+  "severity": "Medium",
+  "confidence": "Confirmed",
+  "domain": "Privacy",
+  "title": "Full document PII (MRZ, IDs, salary) sent to OpenAI without pre-redaction; DPA/region unverified",
+  "effort": "M",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "DB-001",
+  "severity": "Medium",
+  "confidence": "Confirmed",
+  "domain": "Database",
+  "title": "18 live tables/views with no migration (8 look like a foreign EV-charging schema); all empty",
+  "effort": "S",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "DB-002",
+  "severity": "Low",
+  "confidence": "Confirmed",
+  "domain": "Database",
+  "title": "audit_log duplicates audit_logs; shifts/notifications/system_settings shadow concepts",
+  "effort": "XS",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "DB-003",
+  "severity": "High",
+  "confidence": "Confirmed",
+  "domain": "Database",
+  "title": "8 migration tables absent live; migration chain not replayable",
+  "effort": "M",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "DB-004",
+  "severity": "High",
+  "confidence": "Confirmed",
+  "domain": "Database/Tooling",
+  "title": "src/types/database.ts stale (2026-07-23) and UTF-16; codegen pipeline broken",
+  "effort": "S",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "RBAC-005",
+  "severity": "Low",
+  "confidence": "Confirmed",
+  "domain": "RBAC",
+  "title": "7 sidebar routes absent from route-access-registry (fallback allow)",
+  "effort": "XS",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "TEST-001",
+  "severity": "Blocker",
+  "confidence": "Confirmed",
+  "domain": "Quality",
+  "title": "npm run typecheck fails: 1,257 errors (72 AGT + 1,185 LI HRMS + spikes)",
+  "effort": "S",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "TEST-002",
+  "severity": "High",
+  "confidence": "Confirmed",
+  "domain": "Quality",
+  "title": "next.config typescript.ignoreBuildErrors masks real errors; build prints 'Skipping validation of types'",
+  "effort": "XS",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "TEST-003",
+  "severity": "High",
+  "confidence": "Confirmed",
+  "domain": "Quality",
+  "title": "npm run lint crashes OOM; eslint flat config lints source HRMS and spikes; 149 src errors",
+  "effort": "S",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "TEST-004",
+  "severity": "Low",
+  "confidence": "Confirmed",
+  "domain": "Quality",
+  "title": "Encoding hygiene: UTF-16 types file, mojibake ??? comments, mixed CR/LF endings",
+  "effort": "S",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "TEST-005",
+  "severity": "High",
+  "confidence": "Confirmed",
+  "domain": "Quality",
+  "title": "Zero tests for server actions, RBAC guards, RLS isolation, API routes, UI; 459 tests are pure helpers only",
+  "effort": "L",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "HR-001",
+  "severity": "Medium",
+  "confidence": "Confirmed",
+  "domain": "HR/Reports",
+  "title": "4 active registry reports have no fetcher (bank transfer, embassy letter, handover, leave confirmation)",
+  "effort": "M",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "HR-002",
+  "severity": "High",
+  "confidence": "Confirmed",
+  "domain": "HR/Time",
+  "title": "Leave approval updates balances non-transactionally; read-modify-write; silent skip when balance row missing; status guard not in UPDATE",
+  "effort": "M",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "HR-003",
+  "severity": "Informational",
+  "confidence": "Confirmed",
+  "domain": "HR/Payroll",
+  "title": "No payroll run engine, payslips, or WPS SIF output (by current design)",
+  "effort": "XL",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "HR-004",
+  "severity": "Medium",
+  "confidence": "Confirmed",
+  "domain": "HR/Time",
+  "title": "No biometric/device attendance capture; 0 punches live; manual entry only",
+  "effort": "L",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "ERP-GAP-001",
+  "severity": "Informational",
+  "confidence": "Confirmed",
+  "domain": "ERP Scope",
+  "title": "Sales/Purchasing/Inventory/Finance/Fleet/Workshop/HSE absent; 6 disabled menu stubs",
+  "effort": "XL",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "UI-001",
+  "severity": "Medium",
+  "confidence": "Confirmed",
+  "domain": "UI",
+  "title": "Duplicate customers routes: /admin/master-data/customers vs parties/[typeSlug]",
+  "effort": "S",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "UI-002",
+  "severity": "Low",
+  "confidence": "Confirmed",
+  "domain": "UI",
+  "title": "Retired template-studio route still built",
+  "effort": "XS",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "UI-003",
+  "severity": "Low",
+  "confidence": "Needs verification",
+  "domain": "UI",
+  "title": "/dms/renewals vs /dms/expiring overlap",
+  "effort": "XS",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "UI-004",
+  "severity": "Low",
+  "confidence": "Confirmed",
+  "domain": "UI",
+  "title": "Mojibake ??? comment separators in sidebar and siblings",
+  "effort": "XS",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "UI-005",
+  "severity": "Medium",
+  "confidence": "Confirmed",
+  "domain": "UI/A11y",
+  "title": "UI standards not enforced by tooling; no a11y/visual tests",
+  "effort": "M",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "UI-006",
+  "severity": "Informational",
+  "confidence": "Confirmed",
+  "domain": "UI/i18n",
+  "title": "English-only UI (no i18n framework) despite Arabic PDF support",
+  "effort": "L",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "PERF-002",
+  "severity": "Medium",
+  "confidence": "Confirmed",
+  "domain": "Performance",
+  "title": "getAuthContext runs 4 sequential admin queries per call, called multiple times per page view; no request cache",
+  "effort": "XS",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "OPS-001",
+  "severity": "High",
+  "confidence": "Confirmed",
+  "domain": "Operations",
+  "title": "No CI/CD at all; no automated typecheck/lint/test gate",
+  "effort": "M",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "OPS-002",
+  "severity": "Low",
+  "confidence": "Confirmed",
+  "domain": "Operations",
+  "title": "env.local.example drift vs live env (MICROSOFT_*, SIGNUP flags, DB password)",
+  "effort": "XS",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "OBS-001",
+  "severity": "Medium",
+  "confidence": "Confirmed",
+  "domain": "Observability",
+  "title": "No APM/tracing/error monitoring (no Sentry/OTel); production would be blind",
+  "effort": "S",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "OBS-002",
+  "severity": "Low",
+  "confidence": "Confirmed",
+  "domain": "Observability",
+  "title": "No health-check endpoint",
+  "effort": "XS",
+  "acceptance_criteria_ref": "doc12"
+ },
+ {
+  "id": "LI-GAP-001",
+  "severity": "High",
+  "confidence": "Confirmed",
+  "domain": "LI Comparison",
+  "title": "Payroll batch engine missing (freeze/approve/complete/recalculate/rollback)",
+  "effort": "XL",
+  "acceptance_criteria_ref": "doc13"
+ },
+ {
+  "id": "LI-GAP-002",
+  "severity": "High",
+  "confidence": "Confirmed",
+  "domain": "LI Comparison",
+  "title": "Payslip snapshots + employee payslip view missing",
+  "effort": "L",
+  "acceptance_criteria_ref": "doc13"
+ },
+ {
+  "id": "LI-GAP-003",
+  "severity": "High",
+  "confidence": "Confirmed",
+  "domain": "LI Comparison",
+  "title": "Biometric ADMS integration missing (devices, commands, raw logs, replay)",
+  "effort": "L",
+  "acceptance_criteria_ref": "doc13"
+ },
+ {
+  "id": "LI-GAP-004",
+  "severity": "High",
+  "confidence": "Confirmed",
+  "domain": "LI Comparison",
+  "title": "Attendance sync/import/replay pipeline missing",
+  "effort": "L",
+  "acceptance_criteria_ref": "doc13"
+ },
+ {
+  "id": "LI-GAP-005",
+  "severity": "Medium",
+  "confidence": "Confirmed",
+  "domain": "LI Comparison",
+  "title": "Leave accrual engine + scheduled crons missing",
+  "effort": "M",
+  "acceptance_criteria_ref": "doc13"
+ },
+ {
+  "id": "LI-GAP-006",
+  "severity": "Medium",
+  "confidence": "Confirmed",
+  "domain": "LI Comparison",
+  "title": "Leave register with snapshots/reconciliation missing",
+  "effort": "M",
+  "acceptance_criteria_ref": "doc13"
+ },
+ {
+  "id": "LI-GAP-007",
+  "severity": "Medium",
+  "confidence": "Confirmed",
+  "domain": "LI Comparison",
+  "title": "Loans & salary advances with EMI missing",
+  "effort": "L",
+  "acceptance_criteria_ref": "doc13"
+ },
+ {
+  "id": "LI-GAP-008",
+  "severity": "Medium",
+  "confidence": "Confirmed",
+  "domain": "LI Comparison",
+  "title": "Pay register / paysheet export missing",
+  "effort": "M",
+  "acceptance_criteria_ref": "doc13"
+ },
+ {
+  "id": "LI-GAP-009",
+  "severity": "Medium",
+  "confidence": "Confirmed",
+  "domain": "LI Comparison",
+  "title": "Multi-shift/confused-shift detection + roster planner missing",
+  "effort": "L",
+  "acceptance_criteria_ref": "doc13"
+ },
+ {
+  "id": "LI-GAP-010",
+  "severity": "Medium",
+  "confidence": "Confirmed",
+  "domain": "LI Comparison",
+  "title": "Promotions/transfers + employee update-request workflows missing",
+  "effort": "M",
+  "acceptance_criteria_ref": "doc13"
+ }
+]

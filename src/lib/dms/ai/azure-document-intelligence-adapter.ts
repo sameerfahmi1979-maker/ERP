@@ -1,3 +1,4 @@
+import { resolveAiProviderSecret } from "@/lib/settings/resolve-ai-secret";
 /**
  * DMS ARABIC FIX.1 — Azure Document Intelligence Adapter
  *
@@ -20,7 +21,7 @@
  *   api_version: "2024-11-30" (or latest)
  *
  * Security rules:
- * - API key stays in env var (process.env[secretRef]) — never exposed to client.
+ * - API key stays in env var (resolveAiProviderSecret(this.config)) — never exposed to client.
  * - Raw OCR text never logged.
  * - Extracted field values never logged.
  */
@@ -108,7 +109,7 @@ export class AzureDocumentIntelligenceAdapter implements IDmsAiProvider {
     if (!this.config.isEnabled || !this.config.isActive) return false;
     const secretRef = this.config.secretRef;
     if (!secretRef) return false;
-    const apiKey = process.env[secretRef];
+    const apiKey = resolveAiProviderSecret(this.config);
     if (!apiKey) return false;
     const endpoint = this.config.apiEndpoint;
     return !!(endpoint && endpoint.includes("cognitiveservices.azure.com"));
@@ -131,8 +132,7 @@ export class AzureDocumentIntelligenceAdapter implements IDmsAiProvider {
       return { success: false, text: "", error: "Azure Document Intelligence is not configured." };
     }
 
-    const secretRef = this.config.secretRef!;
-    const apiKey = process.env[secretRef];
+    const apiKey = resolveAiProviderSecret(this.config);
     if (!apiKey) {
       return { success: false, text: "", error: "Azure Document Intelligence API key not set." };
     }

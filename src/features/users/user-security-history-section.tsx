@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Lock, ShieldAlert, RefreshCw, ChevronDown } from "lucide-react";
-import type { AuditLog } from "@/types/database";
+import type { AuditLog } from "@/types/domain";
 import type { AuthContext } from "@/lib/rbac/check";
 
 // Humanized action labels
@@ -107,7 +107,11 @@ function SafePayloadDisplay({ payload }: { payload: unknown }) {
   );
 }
 
-export function UserSecurityHistorySection({ userProfileId, authContext }: Props) {
+export function UserSecurityHistorySection(props: Props) {
+  return <UserSecurityHistoryContent key={`${props.userProfileId}:${canViewSecurityHistory(props.authContext)}`} {...props} />;
+}
+
+function UserSecurityHistoryContent({ userProfileId, authContext }: Props) {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -131,7 +135,17 @@ export function UserSecurityHistorySection({ userProfileId, authContext }: Props
       .finally(() => setLoading(false));
   }, [userProfileId, authContext]);
 
-  useEffect(() => { load(); }, [load]);
+  const permitted = canViewSecurityHistory(authContext);
+  useEffect(() => {
+    if (!permitted) return;
+    const controller = new AbortController();
+    fetch(`/api/admin/audit/user-history?user_profile_id=${userProfileId}`, { signal: controller.signal })
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then((data: { logs?: AuditLog[] }) => { if (!controller.signal.aborted) setLogs(data.logs ?? []); })
+      .catch(() => { if (!controller.signal.aborted) setError("Could not load security history. Please try again."); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [userProfileId, permitted]);
 
   const togglePayload = (id: string) => {
     setExpandedPayloads((prev) => {

@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal, Pencil, Ban, CheckCircle, Trash2, Building2, Eye } from "lucide-react";
-import type { OwnerCompany } from "@/types/database";
+import type { OwnerCompanyWithGeography } from "@/types/domain";
 import { updateOrganizationStatus, deleteOrganization } from "@/server/actions/organizations";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -21,7 +21,7 @@ import { useRouter } from "next/navigation";
 const BASE = "/admin/organizations";
 
 type OrganizationsTableProps = {
-  data: OwnerCompany[];
+  data: OwnerCompanyWithGeography[];
   userProfileId?: number | string;
   exportConfig?: {
     title: string;
@@ -38,10 +38,10 @@ export function OrganizationsTable({
 }: OrganizationsTableProps) {
   const router = useRouter();
 
-  const handleView = (org: OwnerCompany) => router.push(`${BASE}/record/${org.id}`);
-  const handleEdit = (org: OwnerCompany) => router.push(`${BASE}/record/${org.id}?mode=edit`);
+  const handleView = (org: OwnerCompanyWithGeography) => router.push(`${BASE}/record/${org.id}`);
+  const handleEdit = (org: OwnerCompanyWithGeography) => router.push(`${BASE}/record/${org.id}?mode=edit`);
 
-  const columns: ColumnDef<OwnerCompany>[] = [
+  const columns: ColumnDef<OwnerCompanyWithGeography>[] = [
     {
       id: "company",
       accessorKey: "legal_name_en",

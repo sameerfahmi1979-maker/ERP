@@ -31,7 +31,7 @@ import {
   RefreshCw,
   XCircle,
 } from "lucide-react";
-import type { UserWithRoles } from "@/types/database";
+import type { UserWithRoles } from "@/types/domain";
 import type { AuthContext } from "@/lib/rbac/check";
 import {
   adminSendPasswordResetEmail,
@@ -76,15 +76,19 @@ type ForceChangeDialogState = {
 };
 
 export function SecuritySection({ user, authContext }: Props) {
-  const router = useRouter();
   const canManageSecurity = authContext
     ? authContext.roleCodes.includes("system_admin") ||
       authContext.roleCodes.includes("group_admin") ||
       authContext.permissionCodes.includes("users.security.manage")
     : false;
+  return <SecuritySectionContent key={`${user.id}:${canManageSecurity}`} user={user} canManageSecurity={canManageSecurity} />;
+}
+
+function SecuritySectionContent({ user, canManageSecurity }: { user: UserWithRoles; canManageSecurity: boolean }) {
+  const router = useRouter();
 
   const [securityStatus, setSecurityStatus] = useState<UserSecurityStatus | null>(null);
-  const [loadingStatus, setLoadingStatus] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState(canManageSecurity);
 
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
@@ -120,7 +124,15 @@ export function SecuritySection({ user, authContext }: Props) {
     }
   }, [user.id, canManageSecurity]);
 
-  useEffect(() => { loadStatus(); }, [loadStatus]);
+  useEffect(() => {
+    if (!canManageSecurity) return;
+    let cancelled = false;
+    void getUserSecurityStatus(user.id).then((result) => {
+      if (!cancelled && result.success && result.data) setSecurityStatus(result.data);
+    }).catch(() => { if (!cancelled) toast.error("Could not load security status."); })
+      .finally(() => { if (!cancelled) setLoadingStatus(false); });
+    return () => { cancelled = true; };
+  }, [user.id, canManageSecurity]);
 
   const runAction = async (label: string, fn: () => Promise<{ success: boolean; error?: string }>) => {
     const result = await fn();

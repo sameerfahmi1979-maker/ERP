@@ -18,7 +18,7 @@ export type ActionResult<T = unknown> = {
   error?: string;
 };
 
-export async function getBranchById(id: number): Promise<ActionResult<import("@/types/database").BranchWithCompany>> {
+export async function getBranchById(id: number): Promise<ActionResult<import("@/types/domain").BranchWithCompany>> {
   try {
     const ctx = await getAuthContext();
     if (!hasPermission(ctx, "branches.view")) {
@@ -32,7 +32,7 @@ export async function getBranchById(id: number): Promise<ActionResult<import("@/
       .single();
     if (error) { logger.error("getBranchById error", error); return { success: false, error: error.message }; }
     if (!data) return { success: false, error: "Branch not found" };
-    return { success: true, data: data as import("@/types/database").BranchWithCompany };
+    return { success: true, data: data as import("@/types/domain").BranchWithCompany };
   } catch (error) {
     logger.error("getBranchById exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };

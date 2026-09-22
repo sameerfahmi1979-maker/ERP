@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import type { UserWithRoles, OwnerCompany, Branch, Role, UserRoleAssignment } from "@/types/database";
+import type { UserWithRoles, OwnerCompany, Branch, Role, UserRoleAssignment } from "@/types/domain";
 import { createUser, adminUpdateUserProfile, removeRoleFromUser } from "@/server/actions/users";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { useFormDirty } from "@/hooks/use-form-dirty";

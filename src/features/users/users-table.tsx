@@ -26,7 +26,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import type { UserWithRoles, Role, OwnerCompany, Branch } from "@/types/database";
+import type { UserWithRoles, Role, OwnerCompany, Branch } from "@/types/domain";
 import { cn } from "@/lib/utils";
 import { formatRoleScopeLabel } from "@/lib/users/role-scope";
 import { AssignRoleDialog } from "./assign-role-dialog";

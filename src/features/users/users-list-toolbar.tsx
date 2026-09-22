@@ -5,7 +5,7 @@ import { useCallback, useTransition } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import type { Role, OwnerCompany, Branch } from "@/types/database";
+import type { Role, OwnerCompany, Branch } from "@/types/domain";
 import { Search, ChevronLeft, ChevronRight, X, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 

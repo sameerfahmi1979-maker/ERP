@@ -20,7 +20,7 @@ import {
 import { AlertTriangle, Check, Lock, Search, Shield, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import type { Permission, Role } from "@/types/database";
+import type { Permission, Role } from "@/types/domain";
 import { saveRolePermissionDraftChanges, type PermissionDraftChangeInput } from "@/server/actions/permissions";
 import { PermissionExplorer } from "./permission-explorer";
 import { PermissionReviewSaveDialog } from "./permission-review-save-dialog";
@@ -539,7 +539,7 @@ export function PermissionCommandCenter({
             action,
             originalAssigned,
             roleIsSystem: role.is_system_role,
-            permissionIsSystem: permission.is_system_permission,
+            permissionIsSystem: permission.is_system_permission ?? false,
           });
         }
         // Clear failed status if user re-toggles

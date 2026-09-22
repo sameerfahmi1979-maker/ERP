@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import type { Role } from "@/types/database";
+import type { Role } from "@/types/domain";
 import { createRole, updateRole } from "@/server/actions/roles";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { useFormDirty } from "@/hooks/use-form-dirty";
@@ -386,4 +386,3 @@ export function RoleWorkspaceForm({ role, mode, authContext }: RoleWorkspaceForm
     </ERPRecordWorkspaceForm>
   );
 }
-

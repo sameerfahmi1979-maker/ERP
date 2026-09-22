@@ -8,3 +8,8 @@ enabled = true
 
 [db]
 major_version = 17
+
+# Machine-only function: auth.ts enforces a mandatory fail-closed secret header.
+# Never deploy verify_jwt=false without that gate and its negative/health tests.
+[functions.dms-expiry-scheduler]
+verify_jwt = false

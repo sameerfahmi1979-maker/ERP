@@ -3,7 +3,7 @@ param(
     [string]$Prompt = "Hello, who are you?",
     
     [Parameter(Mandatory=$false)]
-    [string]$ApiKey = "47bf259d2e8741808eb6133977d9192a.iDUvd2iUCMVTaBAg"
+    [string]$ApiKey = $env:ZHIPU_API_KEY
 )
 
 if ([string]::IsNullOrWhiteSpace($ApiKey)) {

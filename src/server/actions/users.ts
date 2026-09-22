@@ -482,6 +482,14 @@ export async function assignRoleToUser(
       return { success: false, error: `Role "${role.role_name}" is not assignable` };
     }
 
+    const { data: mayAssign, error: scopeError } = await supabase.rpc("current_user_can_manage_user_role_assignment", {
+      target_user_profile_id: validated.user_profile_id,
+      target_role_id: validated.role_id,
+      target_owner_company_id: validated.owner_company_id ?? null,
+      target_branch_id: validated.branch_id ?? null,
+    });
+    if (scopeError || mayAssign !== true) return { success: false, error: "You cannot grant this role in the requested scope." };
+
     // 4. Assign role
     const dataToInsert = {
       user_profile_id: validated.user_profile_id,

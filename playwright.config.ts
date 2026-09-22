@@ -23,8 +23,8 @@ export default defineConfig({
     baseURL: process.env.APP_BASE_URL ?? "http://localhost:3000",
     trace: "on-first-retry",
     screenshot: "only-on-failure",
-    // Required: ignore TLS errors for corporate cert environment
-    ignoreHTTPSErrors: true,
+    // Trust the operating-system/corporate CA store; never bypass bad certificates.
+    ignoreHTTPSErrors: false,
   },
   projects: [
     {

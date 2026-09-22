@@ -6,7 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import type { OwnerCompany } from "@/types/database";
+import type { OwnerCompany } from "@/types/domain";
 import { createOrganization, updateOrganization } from "@/server/actions/organizations";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { useFormDirty } from "@/hooks/use-form-dirty";

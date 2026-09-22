@@ -1,7 +1,7 @@
 "use server";
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 
 export type UserEmailOption = {
   id: number;
@@ -21,10 +21,13 @@ export async function getUsersForEmailSelect(
 ): Promise<UserEmailOption[]> {
   try {
     const ctx = await getAuthContext();
-    if (!ctx.profile) return [];
+    if (!ctx.profile || !ctx.isAccountActive || ![
+      "users.view", "dms.expiry.view", "dms.documents.view", "dms.expiry.manage", "dms.admin", "dms.notifications.admin",
+      "notifications.email_queue.manage", "notifications.admin", "reports.email",
+    ].some(code => hasPermission(ctx, code))) return [];
 
     const supabase = createAdminClient();
-    const term = search.trim();
+    const term = search.trim().slice(0, 100);
 
     const { data, error } = await supabase.rpc("search_users_for_email", {
       p_search: term,

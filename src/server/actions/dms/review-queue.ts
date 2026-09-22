@@ -20,7 +20,6 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
-import { logger } from "@/lib/logger";
 import {
   upsertDmsReviewQueueItem,
   createDmsReviewQueueNotification,
@@ -986,31 +985,3 @@ export async function rebuildDmsReviewQueue(
     return { success: false, error: String(err).slice(0, 200) };
   }
 }
-
-// ── supersedeDmsReviewQueueItemsForSource (internal helper) ──────────────────
-
-/**
- * Marks active queue items with a given idempotency key prefix as superseded.
- * Used by generation hooks when a source issue resolves (e.g. intake approved).
- * NON-FATAL.
- */
-export async function supersedeDmsReviewQueueItems(
-  keyPrefix: string
-): Promise<void> {
-  try {
-    const db  = createAdminClient();
-    const now = new Date().toISOString();
-    await db
-      .from("dms_review_queue")
-      .update({ status: "superseded", updated_at: now, resolved_at: now })
-      .like("idempotency_key", `${keyPrefix}%`)
-      .in("status", ["open", "assigned", "in_review"])
-      .is("deleted_at", null);
-  } catch (err) {
-    logger.warn("[review-queue] supersede failed (non-fatal)", {
-      keyPrefix,
-      error: String(err).slice(0, 200),
-    });
-  }
-}
-

@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useSyncExternalStore, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Permission } from "@/types/database";
+import type { Permission } from "@/types/domain";
 
 // ── Module label map ──────────────────────────────────────────────────────────
 
@@ -34,10 +34,19 @@ function humanizeModule(code: string): string {
 
 const LS_KEY = "erp_role_permission_center_expanded_modules:v1";
 
-function loadExpandedModules(): Set<string> {
+const EXPANSION_EVENT = "erp-permission-expansion-changed";
+function readExpansionSnapshot(): string {
+  try { return localStorage.getItem(LS_KEY) ?? "[]"; } catch { return "[]"; }
+}
+function subscribeToExpansion(onChange: () => void): () => void {
+  window.addEventListener("storage", onChange);
+  window.addEventListener(EXPANSION_EVENT, onChange);
+  return () => { window.removeEventListener("storage", onChange); window.removeEventListener(EXPANSION_EVENT, onChange); };
+}
+function loadExpandedModules(raw: string): Set<string> {
   try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (raw) return new Set(JSON.parse(raw) as string[]);
+    const value: unknown = JSON.parse(raw);
+    if (Array.isArray(value) && value.every((entry) => typeof entry === "string")) return new Set(value);
   } catch {}
   return new Set();
 }
@@ -45,6 +54,7 @@ function loadExpandedModules(): Set<string> {
 function saveExpandedModules(modules: Set<string>): void {
   try {
     localStorage.setItem(LS_KEY, JSON.stringify([...modules]));
+    window.dispatchEvent(new Event(EXPANSION_EVENT));
   } catch {}
 }
 
@@ -64,30 +74,33 @@ export function PermissionExplorer({
   onSelect,
 }: PermissionExplorerProps) {
   const [search, setSearch] = useState("");
-  const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set());
-
-  // Hydrate from localStorage
-  useEffect(() => {
-    setExpandedModules(loadExpandedModules());
-  }, []);
+  const snapshot = useSyncExternalStore(subscribeToExpansion, readExpansionSnapshot, () => "[]");
+  const persistedModules = useMemo(() => loadExpandedModules(snapshot), [snapshot]);
+  const [expansionChoice, setExpansionChoice] = useState<{ search: string; modules: Set<string> } | null>(null);
+  const searchLower = search.toLowerCase().trim();
+  // Search expansion is derived, so typing does not cause a second effect render.
+  // A manual collapse/expand remains possible for the current query.
+  const expandedModules = useMemo(() => expansionChoice?.search === searchLower
+    ? expansionChoice.modules
+    : searchLower ? new Set(permissions.filter((p) => (
+      [p.permission_name, p.permission_code, p.display_name ?? "", p.module_code, p.action_code, p.description ?? ""]
+        .some((value) => value.toLowerCase().includes(searchLower))
+    )).map((p) => p.module_code)) : persistedModules,
+  [expansionChoice, searchLower, permissions, persistedModules]);
 
   const toggleModule = useCallback(
     (moduleCode: string) => {
-      setExpandedModules((prev) => {
-        const next = new Set(prev);
+        const next = new Set(expandedModules);
         if (next.has(moduleCode)) {
           next.delete(moduleCode);
         } else {
           next.add(moduleCode);
         }
+        setExpansionChoice({ search: searchLower, modules: next });
         saveExpandedModules(next);
-        return next;
-      });
     },
-    [],
+    [expandedModules, searchLower],
   );
-
-  const searchLower = search.toLowerCase().trim();
 
   const filtered = useMemo(() => {
     if (!searchLower) return permissions;
@@ -112,27 +125,17 @@ export function PermissionExplorer({
     return Object.entries(map).sort(([a], [b]) => a.localeCompare(b));
   }, [filtered]);
 
-  // Auto-expand modules that match search
-  useEffect(() => {
-    if (!searchLower) return;
-    setExpandedModules((prev) => {
-      const next = new Set(prev);
-      for (const [mod] of grouped) next.add(mod);
-      return next;
-    });
-  }, [searchLower, grouped]);
-
   const expandAll = useCallback(() => {
     const allModules = new Set(grouped.map(([mod]) => mod));
-    setExpandedModules(allModules);
+    setExpansionChoice({ search: searchLower, modules: allModules });
     saveExpandedModules(allModules);
-  }, [grouped]);
+  }, [grouped, searchLower]);
 
   const collapseAll = useCallback(() => {
     const empty = new Set<string>();
-    setExpandedModules(empty);
+    setExpansionChoice({ search: searchLower, modules: empty });
     saveExpandedModules(empty);
-  }, []);
+  }, [searchLower]);
 
   const allExpanded = grouped.length > 0 && grouped.every(([mod]) => expandedModules.has(mod));
 

@@ -12,7 +12,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { runReport } from "@/lib/report-center/report-runner";
 import { getDefaultEmailProviderSystem } from "@/lib/email/providers/factory";
 import { generateAttachmentByType } from "@/lib/export/generate-attachment";
-import { resolveTemplateForExport } from "@/server/actions/reports/templates";
+import { resolveTemplateForExport } from "@/lib/report-center/template-export";
 import type { ERPExportOptions } from "@/lib/export/export-types";
 import type { EmailAttachment } from "@/lib/email/email-types";
 
@@ -89,7 +89,7 @@ export async function executeScheduleRun(
       const ctx = await resolveTemplateForExport({
         templateId: resolvedTemplateId,
         reportCode: sched.report.report_code,
-        permissionCodes,
+        principalId: sched.created_by,
       });
       brandingContext = ctx ?? undefined;
     } catch (err) {

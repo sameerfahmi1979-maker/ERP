@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
-import type { BranchWithCompany, OwnerCompany } from "@/types/database";
+import type { BranchWithCompany, OwnerCompany } from "@/types/domain";
 import { createBranch, updateBranch } from "@/server/actions/branches";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { useFormDirty } from "@/hooks/use-form-dirty";
@@ -34,7 +34,11 @@ type BranchWorkspaceFormProps = {
 
 const FORM_ID = "branch-workspace-form";
 
-export function BranchWorkspaceForm({ branch, companies = [], mode }: BranchWorkspaceFormProps) {
+export function BranchWorkspaceForm(props: BranchWorkspaceFormProps) {
+  return <BranchWorkspaceFormFields key={props.branch?.id ?? "new"} {...props} />;
+}
+
+function BranchWorkspaceFormFields({ branch, companies = [], mode }: BranchWorkspaceFormProps) {
   const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -61,10 +65,8 @@ export function BranchWorkspaceForm({ branch, companies = [], mode }: BranchWork
 
   // Initialize geography selects from legacy text fields when editing
   useEffect(() => {
-    if (!branch) {
-      setCountryId(null); setEmirateId(null); setCityId(null); setAreaZoneId(null);
-      return;
-    }
+    if (!branch) return;
+    let cancelled = false;
     async function initGeography() {
       const supabase = createClient();
       let resolvedCountryId: number | null = null;
@@ -92,9 +94,14 @@ export function BranchWorkspaceForm({ branch, companies = [], mode }: BranchWork
         if (match) { resolvedAreaZoneId = match.id; if (!resolvedCityId) resolvedCityId = match.city_id; }
       }
 
-      setCountryId(resolvedCountryId); setEmirateId(resolvedEmirateId); setCityId(resolvedCityId); setAreaZoneId(resolvedAreaZoneId);
+      return { resolvedCountryId, resolvedEmirateId, resolvedCityId, resolvedAreaZoneId };
     }
-    initGeography();
+    void initGeography().then((ids) => {
+      if (cancelled) return;
+      setCountryId(ids.resolvedCountryId); setEmirateId(ids.resolvedEmirateId);
+      setCityId(ids.resolvedCityId); setAreaZoneId(ids.resolvedAreaZoneId);
+    }).catch(() => { if (!cancelled) toast.error("Could not load branch geography."); });
+    return () => { cancelled = true; };
   }, [branch]);
 
   const handleCountryChange = (id: number | null) => { setCountryId(id); setEmirateId(null); setCityId(null); setAreaZoneId(null); writeDraftField("country_id", id ?? ""); writeDraftField("emirate_id", ""); writeDraftField("city_id", ""); writeDraftField("area_zone_id", ""); };

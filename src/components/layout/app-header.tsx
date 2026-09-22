@@ -12,8 +12,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Search, Moon, Sun, User, Settings, LogOut } from "lucide-react";
-import { useTheme } from "next-themes";
+import { Search, User, Settings, LogOut } from "lucide-react";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { signOut } from "@/features/auth/actions";
 import { NotificationBell } from "@/components/erp/notification-bell";
 
@@ -23,7 +23,6 @@ type AppHeaderProps = {
 };
 
 export function AppHeader({ displayName, email }: AppHeaderProps) {
-  const { theme, setTheme } = useTheme();
   const pathname = usePathname();
 
   const getPageTitle = () => {
@@ -69,18 +68,7 @@ export function AppHeader({ displayName, email }: AppHeaderProps) {
       {/* Right: Actions */}
       <div className="flex items-center gap-1">
         {/* Theme toggle */}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-9 w-9 p-0"
-          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-        >
-          {theme === "dark" ? (
-            <Sun className="h-4 w-4 text-muted-foreground" />
-          ) : (
-            <Moon className="h-4 w-4 text-muted-foreground" />
-          )}
-        </Button>
+        <ThemeToggle className="h-9 w-9 p-0 [&_svg]:h-4 [&_svg]:w-4" />
 
         {/* Notifications */}
         <NotificationBell />

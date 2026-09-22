@@ -1,3 +1,4 @@
+import { resolveAiProviderSecret } from "@/lib/settings/resolve-ai-secret";
 // ============================================================================
 // OpenAI / Azure OpenAI Provider
 // Phase: ERP SETTINGS.1
@@ -35,7 +36,7 @@ export class OpenAiProvider implements AiProviderInterface {
       };
     }
 
-    const apiKey = process.env[secretRef];
+    const apiKey = resolveAiProviderSecret(this.config);
     if (!apiKey) {
       return {
         ok: false,

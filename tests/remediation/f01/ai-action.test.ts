@@ -1,0 +1,18 @@
+import { beforeEach, expect, it, vi } from 'vitest';
+const m=vi.hoisted(()=>({ctx:vi.fn(),write:vi.fn(),admin:vi.fn(),audit:vi.fn(),provider:null as unknown,save:[] as object[],saveError:null as unknown}));
+vi.mock('@/lib/rbac/check',()=>({getAuthContext:m.ctx,hasPermission:(ctx:any,code:string)=>ctx.isAccountActive&&ctx.permissionCodes.includes(code)}));
+vi.mock('@/lib/supabase/server',()=>({createClient:vi.fn()}));
+vi.mock('@/lib/supabase/admin',()=>({createAdminClient:m.admin}));
+vi.mock('@/lib/settings/env-file-secrets',()=>({writeAiProviderSecret:m.write}));
+vi.mock('@/server/actions/audit',()=>({logAudit:m.audit}));
+vi.mock('@/lib/ai/providers/factory',()=>({getAiProvider:vi.fn()}));
+vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
+import { saveAiProviderSecret } from '@/server/actions/settings/ai-settings';
+beforeEach(()=>{vi.clearAllMocks();m.provider={id:1,provider_type:'openai',updated_at:'synthetic-version'};m.save=[{id:1}];m.saveError=null;m.ctx.mockResolvedValue({profile:{id:1},isAccountActive:true,permissionCodes:['settings.ai.secrets.manage']});m.audit.mockResolvedValue(undefined);const q:any={select:()=>q,eq:()=>q,is:()=>q,update:()=>q,maybeSingle:async()=>({data:m.provider}),then:(fn:any)=>Promise.resolve({data:m.save,error:m.saveError}).then(fn)};m.admin.mockReturnValue({from:()=>q});m.write.mockImplementation(async(_input,persist)=>({success:await persist()}));});
+const input={id:1,secret_ref:'OPENAI_API_KEY',secret_value:'F01-synthetic-key'};
+it('unauthorized direct action has no privileged effect',async()=>{m.ctx.mockResolvedValue({isAccountActive:true,permissionCodes:[]});expect((await saveAiProviderSecret(input)).success).toBe(false);expect(m.admin).not.toHaveBeenCalled();expect(m.write).not.toHaveBeenCalled();});
+it('inactive direct action has no privileged effect',async()=>{m.ctx.mockResolvedValue({isAccountActive:false,permissionCodes:['settings.ai.secrets.manage']});expect((await saveAiProviderSecret(input)).success).toBe(false);expect(m.write).not.toHaveBeenCalled();});
+it('missing provider is rejected before writing a secret',async()=>{m.provider=null;expect((await saveAiProviderSecret(input)).success).toBe(false);expect(m.write).not.toHaveBeenCalled();});
+it('arbitrary env name rejected before writing a secret',async()=>{expect((await saveAiProviderSecret({...input,secret_ref:'INTERNAL_API_SECRET'})).success).toBe(false);expect(m.write).not.toHaveBeenCalled();});
+it('existing approved provider update succeeds and logs no raw secret',async()=>{expect((await saveAiProviderSecret(input)).success).toBe(true);expect(m.write).toHaveBeenCalledOnce();expect(JSON.stringify(m.audit.mock.calls)).not.toContain(input.secret_value);});
+it.each(['zero rows','database error'])('metadata %s is not success',async kind=>{m.save=[];if(kind==='database error')m.saveError={code:'F01'};expect((await saveAiProviderSecret(input)).success).toBe(false);expect(m.audit).not.toHaveBeenCalled();});

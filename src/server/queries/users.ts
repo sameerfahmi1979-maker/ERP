@@ -11,9 +11,9 @@ import type {
   UserWithRoles,
   UserRoleAssignment,
   UserAuthMetadata,
-  OwnerCompany,
-  Branch,
-} from "@/types/database";
+  CompanySummary,
+  BranchSummary,
+} from "@/types/domain";
 
 const PROFILE_SELECT = `
   *,
@@ -67,8 +67,8 @@ function mergeProfileRow(
   return {
     ...(rest as UserWithRoles),
     roles,
-    owner_company: (owner_companies as OwnerCompany | null) ?? null,
-    branch: (branches as Branch | null) ?? null,
+    owner_company: (owner_companies as CompanySummary | null) ?? null,
+    branch: (branches as BranchSummary | null) ?? null,
     email: email ?? null,
     auth_metadata: authMetadata ?? null,
   };

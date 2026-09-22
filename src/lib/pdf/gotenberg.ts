@@ -40,34 +40,14 @@
  *   PDF_PRINT_TOKEN_SECRET=<random-secret-min-32-chars>
  */
 
+import { assertConfiguredPrintUrl, getPdfTransportConfig } from "@/lib/config/server-features";
 import { createHash } from "crypto";
-
-const GOTENBERG_URL = process.env.GOTENBERG_URL ?? "http://localhost:3100";
-const GOTENBERG_TIMEOUT_MS = Number(process.env.GOTENBERG_TIMEOUT_MS ?? "30000");
-
-// The INTERNAL_SITE_URL is what Gotenberg fetches — must be reachable from the Gotenberg container.
-// Allow: localhost, host.docker.internal, internal hostnames, and the configured INTERNAL_SITE_URL.
-// Block: public internet URLs that don't start with the expected print path,
-//        file:// URLs, ftp:// URLs, metadata endpoints.
-const INTERNAL_SITE_URL =
-  process.env.INTERNAL_SITE_URL ??
-  process.env.NEXT_PUBLIC_SITE_URL ??
-  "http://localhost:3000";
-
-function buildAllowedPrintUrlPattern(): RegExp {
-  const base = INTERNAL_SITE_URL.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
-  // Also allow host.docker.internal and localhost variants
-  return new RegExp(
-    `^(${base}|http://host\\.docker\\.internal:\\d+|http://localhost:\\d+|http://127\\.0\\.0\\.1:\\d+)/print/`,
-  );
-}
-
-const ALLOWED_PRINT_URL_PATTERN = buildAllowedPrintUrlPattern();
 
 /**
  * Health-check: returns true if Gotenberg is reachable.
  */
 export async function isGotenbergHealthy(): Promise<boolean> {
+  const { rendererUrl: GOTENBERG_URL } = getPdfTransportConfig();
   try {
     const res = await fetch(`${GOTENBERG_URL}/health`, {
       method: "GET",
@@ -84,12 +64,13 @@ export async function isGotenbergHealthy(): Promise<boolean> {
  * Falls back to "unknown" if not reachable.
  */
 export async function getGotenbergVersion(): Promise<string> {
+  const { rendererUrl: GOTENBERG_URL } = getPdfTransportConfig();
   try {
     const res = await fetch(`${GOTENBERG_URL}/health`, {
       signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) return "unknown";
-    const json = (await res.json()) as { details?: { chromium?: { status?: string } } };
+    await res.body?.cancel();
     return `gotenberg@${GOTENBERG_URL.includes("localhost") ? "dev" : "prod"}`;
   } catch {
     return "unknown";
@@ -124,7 +105,7 @@ export interface GotenbergUrlOptions {
 /**
  * Converts a private ERP print URL to a PDF buffer using Gotenberg Chromium.
  *
- * SECURITY: Only URLs matching ALLOWED_PRINT_URL_PATTERN are accepted.
+ * SECURITY: Only the explicitly configured internal origin and print route are accepted.
  * Never pass user-provided URLs to this function.
  */
 export async function gotenbergConvertUrl(options: GotenbergUrlOptions): Promise<{
@@ -132,14 +113,9 @@ export async function gotenbergConvertUrl(options: GotenbergUrlOptions): Promise
   checksum: string;
   fileSizeBytes: number;
 }> {
-  const { url, timeout = GOTENBERG_TIMEOUT_MS } = options;
-
-  // SSRF guard — only allow our own internal print routes
-  if (!ALLOWED_PRINT_URL_PATTERN.test(url)) {
-    throw new Error(
-      `[Gotenberg] Rejected URL that does not match ALLOWED_PRINT_URL_PATTERN: ${url.substring(0, 80)}`,
-    );
-  }
+  const { rendererUrl: GOTENBERG_URL, internalSiteUrl, timeoutMs } = getPdfTransportConfig();
+  const { url, timeout = timeoutMs } = options;
+  assertConfiguredPrintUrl(url, internalSiteUrl);
 
   const form = new FormData();
   form.append("url", url);
@@ -212,7 +188,8 @@ export async function gotenbergConvertHtml(options: GotenbergHtmlOptions): Promi
   checksum: string;
   fileSizeBytes: number;
 }> {
-  const { html, css, timeout = GOTENBERG_TIMEOUT_MS } = options;
+  const { rendererUrl: GOTENBERG_URL, timeoutMs } = getPdfTransportConfig();
+  const { html, css, timeout = timeoutMs } = options;
 
   const form = new FormData();
   form.append(
@@ -245,7 +222,7 @@ export async function gotenbergConvertHtml(options: GotenbergHtmlOptions): Promi
   const res = await fetch(`${GOTENBERG_URL}/forms/chromium/convert/html`, {
     method: "POST",
     body: form,
-    signal: AbortSignal.timeout(timeout ?? GOTENBERG_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeout),
   });
 
   if (!res.ok) {

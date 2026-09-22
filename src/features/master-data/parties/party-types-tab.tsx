@@ -1,20 +1,20 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { toast } from "sonner";
-import { Star } from "lucide-react";
 import type { AuthContext } from "@/lib/rbac/check";
 import {
-  getPartyTypes,
   getPartyTypeAssignments,
+  getPartyTypes,
   savePartyTypeAssignments,
 } from "@/server/actions/master-data/parties";
+import { useQuery } from "@tanstack/react-query";
+import { Star } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 type PartyTypesTabProps = {
   partyId: number | null | undefined;
@@ -46,45 +46,24 @@ export function PartyTypesTab({ partyId, disabled, authContext, defaultTypeCode 
     staleTime: 0,
   });
 
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [primaryId, setPrimaryId] = useState<number | null>(null);
+  const [draft, setDraft] = useState<{ partyId: typeof partyId; selectedIds: Set<number>; primaryId: number | null } | null>(null);
+  const defaultType = !partyId ? allTypes?.find(t => t.type_code === defaultTypeCode) : undefined;
+  const initialIds = assignments?.length ? new Set(assignments.map(a => a.party_type_id)) : new Set(defaultType ? [defaultType.id] : []);
+  const initialPrimary = assignments?.find(a => a.is_primary)?.party_type_id ?? defaultType?.id ?? null;
+  const selectedIds = draft && draft.partyId === partyId ? draft.selectedIds : initialIds;
+  const primaryId = draft && draft.partyId === partyId ? draft.primaryId : initialPrimary;
   const [isSaving, setIsSaving] = useState(false);
 
-  // Sync state from loaded assignments, or preselect defaultTypeCode for new parties
-  useEffect(() => {
-    if (assignments && assignments.length > 0) {
-      setSelectedIds(new Set(assignments.map((a) => a.party_type_id)));
-      const primary = assignments.find((a) => a.is_primary);
-      setPrimaryId(primary?.party_type_id ?? null);
-    } else if (!partyId && defaultTypeCode && allTypes) {
-      const matchingType = allTypes.find((t) => t.type_code === defaultTypeCode);
-      if (matchingType) {
-        setSelectedIds(new Set([matchingType.id]));
-        setPrimaryId(matchingType.id);
-      }
-    }
-  }, [assignments, partyId, defaultTypeCode, allTypes]);
-
   const toggleType = (typeId: number) => {
-    if (disabled || !canManageTypes) return;
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(typeId)) {
-        next.delete(typeId);
-        if (primaryId === typeId) setPrimaryId(null);
-      } else {
-        next.add(typeId);
-      }
-      return next;
-    });
+    if (disabled || !canManageTypes || isSaving) return;
+    const next = new Set(selectedIds);
+    if (next.has(typeId)) next.delete(typeId); else next.add(typeId);
+    setDraft({ partyId, selectedIds: next, primaryId: primaryId === typeId && !next.has(typeId) ? null : primaryId });
   };
 
   const setPrimary = (typeId: number) => {
-    if (disabled || !canManageTypes) return;
-    if (!selectedIds.has(typeId)) {
-      setSelectedIds((prev) => new Set([...prev, typeId]));
-    }
-    setPrimaryId(typeId);
+    if (disabled || !canManageTypes || isSaving) return;
+    setDraft({ partyId, selectedIds: new Set([...selectedIds, typeId]), primaryId: typeId });
   };
 
   const handleSave = async () => {
@@ -101,7 +80,8 @@ export function PartyTypesTab({ partyId, disabled, authContext, defaultTypeCode 
       );
       if (result.success) {
         toast.success("Party types saved");
-        refetch();
+        await refetch();
+        setDraft(null);
       } else {
         toast.error(result.error ?? "Failed to save party types");
       }
@@ -120,7 +100,7 @@ export function PartyTypesTab({ partyId, disabled, authContext, defaultTypeCode 
     );
   }
 
-  const isReadOnly = disabled || !canManageTypes;
+  const isReadOnly = disabled || !canManageTypes || isSaving;
 
   return (
     <div className="space-y-4">

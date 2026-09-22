@@ -19,13 +19,42 @@
  *   Audit         — placeholder
  */
 
-import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
-import {
-  User, LayoutDashboard, Shield, Clock, Wallet, Briefcase, Zap, FileText, Brain, History,
-} from "lucide-react";
+import { DraftRestoredNotice } from "@/components/workspace/draft-restored-notice";
+import type { ERPRecordStatusVariant } from "@/components/workspace/erp-record-header";
+import type { ERPRecordSection } from "@/components/workspace/erp-record-section-nav";
+import { ERPRecordSectionPanel, ERPRecordWorkspaceForm } from "@/components/workspace/erp-record-workspace-form";
+import { DmsEntityDocumentsTab } from "@/features/dms/entity-documents";
+import { HrAiReviewTab } from "@/features/hr/ai/hr-ai-review-tab";
+import { EmployeeLettersForms } from "@/features/hr/employees/employee-letters-forms";
+import { useFormDirty } from "@/hooks/use-form-dirty";
+import { useWorkspace } from "@/hooks/use-workspace";
+import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
+import { useWorkspaceTabDirty } from "@/hooks/use-workspace-tab-dirty";
 import type { AuthContext } from "@/lib/rbac/check";
+import type { EmployeeCreateInput, EmployeeListRow, EmployeeUpdateInput } from "@/server/actions/hr/employees";
+import { createEmployee, updateEmployee } from "@/server/actions/hr/employees";
+import {
+  Brain,
+  Briefcase,
+  Clock,
+  FileText,
+  History,
+  LayoutDashboard, Shield,
+  User,
+  Wallet,
+  Zap,
+} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { EmployeeComplianceTab } from "./tabs/employee-compliance-tab";
+import { EmployeeHrActionsTab } from "./tabs/employee-hr-actions-tab";
+import { EmployeeOperationsTab } from "./tabs/employee-operations-tab";
+import { EmployeeOverviewTab } from "./tabs/employee-overview-tab";
+import { EmployeePayrollTab } from "./tabs/employee-payroll-tab";
+import { EmployeePlaceholderTab } from "./tabs/employee-placeholder-tab";
+import { EmployeeProfileTab, type EmployeeProfileFormState } from "./tabs/employee-profile-tab";
+import { EmployeeTimeTab } from "./tabs/employee-time-tab";
 
 function checkPermission(ctx: AuthContext, code: string): boolean {
   return (
@@ -34,28 +63,6 @@ function checkPermission(ctx: AuthContext, code: string): boolean {
     ctx.roleCodes.includes("group_admin")
   );
 }
-import type { EmployeeListRow, EmployeeCreateInput, EmployeeUpdateInput } from "@/server/actions/hr/employees";
-import { createEmployee, updateEmployee } from "@/server/actions/hr/employees";
-import { ERPRecordWorkspaceForm, ERPRecordSectionPanel } from "@/components/workspace/erp-record-workspace-form";
-import type { ERPRecordSection } from "@/components/workspace/erp-record-section-nav";
-import type { ERPRecordStatusVariant } from "@/components/workspace/erp-record-header";
-import { useFormDirty } from "@/hooks/use-form-dirty";
-import { useWorkspace } from "@/hooks/use-workspace";
-import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
-import { useWorkspaceTabDirty } from "@/hooks/use-workspace-tab-dirty";
-import { DraftRestoredNotice } from "@/components/workspace/draft-restored-notice";
-import { Badge } from "@/components/ui/badge";
-import { EmployeeOverviewTab } from "./tabs/employee-overview-tab";
-import { EmployeeProfileTab, type EmployeeProfileFormState } from "./tabs/employee-profile-tab";
-import { EmployeePlaceholderTab } from "./tabs/employee-placeholder-tab";
-import { EmployeeComplianceTab } from "./tabs/employee-compliance-tab";
-import { EmployeeTimeTab } from "./tabs/employee-time-tab";
-import { EmployeePayrollTab } from "./tabs/employee-payroll-tab";
-import { EmployeeOperationsTab } from "./tabs/employee-operations-tab";
-import { EmployeeHrActionsTab } from "./tabs/employee-hr-actions-tab";
-import { DmsEntityDocumentsTab } from "@/features/dms/entity-documents";
-import { EmployeeLettersForms } from "@/features/hr/employees/employee-letters-forms";
-import { HrAiReviewTab } from "@/features/hr/ai/hr-ai-review-tab";
 
 const FORM_ID = "employee-workspace-form";
 

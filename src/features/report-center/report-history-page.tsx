@@ -1,29 +1,30 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { format, formatDistanceToNow } from "date-fns";
-import type { ColumnDef } from "@tanstack/react-table";
-import {
-  CheckCircle2,
-  XCircle,
-  AlertCircle,
-  Clock,
-  RefreshCw,
-  Eye,
-} from "lucide-react";
+import { ERPPageHeader } from "@/components/erp/page-header";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { ERPDataTable } from "@/components/erp/table/erp-data-table";
-import { ERPPageHeader } from "@/components/erp/page-header";
-import { createClient } from "@/lib/supabase/client";
-import { ReportDeliveryLogPanel } from "./report-delivery-log-page";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { createClient } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
+import type { ColumnDef } from "@tanstack/react-table";
+import { format, formatDistanceToNow } from "date-fns";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Clock,
+  Eye,
+  RefreshCw,
+  XCircle,
+} from "lucide-react";
+import { useState } from "react";
+import { ReportDeliveryLogPanel } from "./report-delivery-log-page";
 
 interface ReportRun {
   id: number;
@@ -56,28 +57,24 @@ const STATUS_CONFIG = {
 };
 
 export function ReportHistoryPage() {
-  const [runs, setRuns] = useState<ReportRun[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [detailRun, setDetailRun] = useState<ReportRun | null>(null);
 
-  const loadRuns = useCallback(async () => {
-    setIsLoading(true);
-    try {
+  const { data: runs = [], isFetching: isLoading, refetch, error } = useQuery({
+    queryKey: ["report-history"],
+    queryFn: async () => {
       const db = createClient();
-      const { data } = await db
+      const { data, error } = await db
         .from("erp_report_runs")
         .select(`*, report:erp_report_registry(report_name_en, module_code), runner:user_profiles!run_by(display_name)`)
         .order("started_at", { ascending: false })
         .limit(500);
-      setRuns((data ?? []) as ReportRun[]);
-    } catch (err) {
-      console.error("[ReportHistoryPage] Load failed:", err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { loadRuns(); }, [loadRuns]);
+      if (error) throw new Error(error.message);
+      return (data ?? []) as ReportRun[];
+    },
+    retry: false, gcTime: 0, refetchOnWindowFocus: false,
+  });
+  const loadRuns = () => refetch();
+  if (error) return <div role="alert">Could not load report history. <Button onClick={loadRuns}>Retry</Button></div>;
 
   const columns: ColumnDef<ReportRun>[] = [
     {

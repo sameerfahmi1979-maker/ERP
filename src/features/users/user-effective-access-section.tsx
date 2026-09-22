@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -28,48 +29,29 @@ type Props = {
   userProfileId: number;
   authContext: AuthContext;
 };
+const EMPTY_PERMISSIONS: EffectivePermissionRow[] = [];
 
 export function UserEffectiveAccessSection({ userProfileId, authContext }: Props) {
-  const [permissions, setPermissions] = useState<EffectivePermissionRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const allowed = canViewEffectiveAccess(authContext);
+  const { data, isPending: loading, error: queryError } = useQuery({
+    queryKey: ["user-effective-access", authContext.profile?.id, userProfileId],
+    enabled: allowed,
+    queryFn: async () => {
+      const result = await getUserEffectiveAccess(userProfileId);
+      if (!result.success || !result.data) throw new Error(result.error ?? "Failed to load effective access");
+      return result.data;
+    },
+    gcTime: 0,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const permissions = allowed ? data ?? EMPTY_PERMISSIONS : EMPTY_PERMISSIONS;
+  const error = queryError?.message;
 
   const isGlobalAdmin =
     authContext.roleCodes.includes("system_admin") ||
     authContext.roleCodes.includes("group_admin");
-
-  useEffect(() => {
-    if (!canViewEffectiveAccess(authContext)) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    getUserEffectiveAccess(userProfileId)
-      .then((result) => {
-        if (result.success && result.data) {
-          setPermissions(result.data);
-        } else {
-          setError(result.error ?? "Failed to load effective access");
-        }
-      })
-      .catch(() => setError("Failed to load effective access"))
-      .finally(() => setLoading(false));
-  }, [userProfileId, authContext]);
-
-  if (!canViewEffectiveAccess(authContext)) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-        <Lock className="h-4 w-4 shrink-0" />
-        <span>
-          Viewing effective access requires <code className="font-mono text-xs">users.view</code>,{" "}
-          <code className="font-mono text-xs">permissions.view</code>, or{" "}
-          <code className="font-mono text-xs">audit.view</code>.
-        </span>
-      </div>
-    );
-  }
 
   // Group by module
   const filtered = useMemo(() => {
@@ -101,6 +83,15 @@ export function UserEffectiveAccessSection({ userProfileId, authContext }: Props
 
   const moduleCount = grouped.length;
   const totalCount = permissions.length;
+
+  if (!allowed) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+        <Lock className="h-4 w-4 shrink-0" />
+        <span>Viewing effective access requires users.view, permissions.view, or audit.view.</span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">

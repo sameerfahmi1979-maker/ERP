@@ -1,20 +1,20 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { RequiredLabel } from "@/components/erp/required-label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { toast } from "sonner";
-import { Building2, ScrollText } from "lucide-react";
-import type { AuthContext } from "@/lib/rbac/check";
-import { useWorkspace } from "@/hooks/use-workspace";
+import { ERPRecordSectionPanel, ERPRecordWorkspaceForm } from "@/components/workspace/erp-record-workspace-form";
 import { useFormDirty } from "@/hooks/use-form-dirty";
+import { useWorkspace } from "@/hooks/use-workspace";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
-import { ERPRecordWorkspaceForm, ERPRecordSectionPanel } from "@/components/workspace/erp-record-workspace-form";
-import { RequiredLabel } from "@/components/erp/required-label";
+import type { AuthContext } from "@/lib/rbac/check";
 import type { DepartmentRow } from "@/server/actions/common-master-data/departments";
 import { createDepartment, updateDepartment } from "@/server/actions/common-master-data/departments";
+import { Building2, ScrollText } from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 type Props = {
   department?: DepartmentRow | null;

@@ -1,14 +1,15 @@
 ﻿"use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
-import { toast } from "sonner";
-import { Lock, ExternalLink, ShieldAlert } from "lucide-react";
-import { getRolePermissionsAction, type PermissionGroupRow } from "@/server/actions/roles";
+import { Skeleton } from "@/components/ui/skeleton";
 import { assignPermissionToRole, removePermissionFromRole } from "@/server/actions/permissions";
+import { getRolePermissionsAction } from "@/server/actions/roles";
+import { useQuery } from "@tanstack/react-query";
+import { ExternalLink, Lock, ShieldAlert } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 type Props = {
   roleId: number;
@@ -19,22 +20,20 @@ type Props = {
 
 export function RolePermissionsSection({ roleId, isSystemRole, canManage, isGlobalAdmin }: Props) {
   const router = useRouter();
-  const [isLoading, setIsLoading] = useState(true);
-  const [groups, setGroups] = useState<PermissionGroupRow[]>([]);
   const [toggling, setToggling] = useState<number | null>(null);
 
   const canEdit = canManage && (!isSystemRole || isGlobalAdmin);
 
-  const load = useCallback(async () => {
-    setIsLoading(true);
-    const result = await getRolePermissionsAction(roleId);
-    if (result.success && result.data) {
-      setGroups(result.data.groups);
-    }
-    setIsLoading(false);
-  }, [roleId]);
-
-  useEffect(() => { load(); }, [load]);
+  const { data: groups = [], isFetching: isLoading, refetch, error } = useQuery({
+    queryKey: ["role-permissions", roleId],
+    queryFn: async () => {
+      const result = await getRolePermissionsAction(roleId);
+      if (!result.success || !result.data) throw new Error(result.error ?? "Failed to load role permissions");
+      return result.data.groups;
+    },
+    retry: false, gcTime: 0, refetchOnWindowFocus: false,
+  });
+  useEffect(() => { if (error) toast.error(error.message); }, [error]);
 
   const handleToggle = async (permId: number, currentlyAssigned: boolean) => {
     if (!canEdit) return;
@@ -47,15 +46,7 @@ export function RolePermissionsSection({ roleId, isSystemRole, canManage, isGlob
       if (result.success) {
         toast.success(currentlyAssigned ? "Permission removed" : "Permission assigned");
         router.refresh();
-        // Update local state immediately
-        setGroups((prev) =>
-          prev.map((g) => ({
-            ...g,
-            permissions: g.permissions.map((p) =>
-              p.id === permId ? { ...p, assigned: !currentlyAssigned } : p
-            ),
-          }))
-        );
+        await refetch();
       } else {
         toast.error(result.error ?? "Failed to update permission");
       }

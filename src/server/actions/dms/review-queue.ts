@@ -16,17 +16,16 @@
  *   - No ERP record writes. No auto-approval. No auto-save. No AI auto-resolve.
  */
 
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { logAudit } from "@/server/actions/audit";
 import {
-  upsertDmsReviewQueueItem,
   createDmsReviewQueueNotification,
   isDmsAiReviewEnabled,
-  type DmsReviewType,
-  type DmsReviewPriority,
+  upsertDmsReviewQueueItem,
+  type DmsReviewPriority
 } from "@/lib/dms/review-queue/review-queue-upsert";
+import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -870,7 +869,7 @@ export async function rebuildDmsReviewQueue(
             payloadJson:    { upload_session_id: s.id, session_code: s.session_code },
             createdBy:      ctx.profile!.id,
           });
-          result.inserted ? created++ : skipped++;
+          if (result.inserted) created++; else skipped++;
         } catch { errors++; }
       }
 
@@ -922,7 +921,7 @@ export async function rebuildDmsReviewQueue(
             payloadJson:    { ai_result_id: r.id, document_id: r.document_id },
             createdBy:      ctx.profile!.id,
           });
-          res.inserted ? created++ : skipped++;
+          if (res.inserted) created++; else skipped++;
         } catch { errors++; }
       }
     }
@@ -963,7 +962,7 @@ export async function rebuildDmsReviewQueue(
             payloadJson:    { job_id: j.id, job_type: j.job_type },
             createdBy:      ctx.profile!.id,
           });
-          res.inserted ? created++ : skipped++;
+          if (res.inserted) created++; else skipped++;
         } catch { errors++; }
       }
     }

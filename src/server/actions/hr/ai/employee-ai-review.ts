@@ -14,27 +14,27 @@
  * - Feature flags + permissions checked before any AI call.
  */
 
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { callCommonAiStructuredCompletion } from "@/lib/ai/common/provider-bridge";
-import { isHrAiMasterEnabled, isHrAiFeatureEnabled } from "@/lib/hr/ai/feature-flags";
+import { isHrAiFeatureEnabled, isHrAiMasterEnabled } from "@/lib/hr/ai/feature-flags";
 import {
-  HR_AI_FEATURE_FLAGS,
-  HrAiCorrectionOutputSchema,
-  HrAiComplianceExplanationSchema,
-  HrAiReadinessExplanationSchema,
-} from "@/lib/hr/ai/types";
+  buildSafeComplianceContext,
+  buildSafeEmployeeContext,
+  buildSafeReadinessContext,
+} from "@/lib/hr/ai/hr-ai-redaction";
 import type {
   HrAiActionResult,
-  HrAiCorrectionOutput,
   HrAiComplianceExplanation,
+  HrAiCorrectionOutput,
   HrAiReadinessExplanation,
 } from "@/lib/hr/ai/types";
 import {
-  buildSafeEmployeeContext,
-  buildSafeComplianceContext,
-  buildSafeReadinessContext,
-} from "@/lib/hr/ai/hr-ai-redaction";
+  HR_AI_FEATURE_FLAGS,
+  HrAiComplianceExplanationSchema,
+  HrAiCorrectionOutputSchema,
+  HrAiReadinessExplanationSchema,
+} from "@/lib/hr/ai/types";
+import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 // ── Usage logger (shared pattern) ─────────────────────────────────────────────
 

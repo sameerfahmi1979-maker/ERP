@@ -10,12 +10,12 @@
  * Bridge is IDEMPOTENT: re-running will not create duplicate rows.
  */
 
-import { createClient } from "@/lib/supabase/server";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { revalidatePath } from "next/cache";
+import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/server/actions/audit";
+import { processEmailQueue } from "@/server/actions/notifications/email-queue";
 import { renderNotificationTemplate } from "@/server/actions/notifications/templates";
-import { processEmailQueueItem, processEmailQueue } from "@/server/actions/notifications/email-queue";
+import { revalidatePath } from "next/cache";
 
 const REVALIDATE_PATHS = ["/dms/notifications", "/admin/notifications/email-queue"];
 

@@ -176,7 +176,7 @@ export async function runApproveAiIntakeSaga(
 
   let finalPath: string | null = null;
   let finalBucket: string | null = null;
-  let fileId: number | null = existingFileId ?? null;
+  const fileId: number | null = existingFileId ?? null;
 
   if (createFileVersion) {
     finalPath = buildFinalStoragePath({

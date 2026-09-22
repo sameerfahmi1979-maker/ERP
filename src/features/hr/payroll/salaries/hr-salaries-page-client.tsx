@@ -1,15 +1,15 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { queryKeys } from "@/lib/query/query-keys";
-import { listGlobalSalaryProfiles } from "@/server/actions/hr/payroll";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DollarSign, Search, ChevronLeft, ChevronRight, Link as LinkIcon } from "lucide-react";
+import { queryKeys } from "@/lib/query/query-keys";
+import { listGlobalSalaryProfiles } from "@/server/actions/hr/payroll";
+import { useQuery } from "@tanstack/react-query";
+import { ChevronLeft, ChevronRight, DollarSign, Link as LinkIcon, Search } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 
 type Props = {
   initialData: {

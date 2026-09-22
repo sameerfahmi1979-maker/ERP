@@ -1,43 +1,42 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { format, parseISO } from "date-fns";
-import {
-  FileX,
-  Download,
-  Eye,
-  EyeOff,
-  ExternalLink,
-  ScanText,
-  Trash2,
-  AlertTriangle,
-  X,
-  Check,
-  ChevronRight,
-  FileImage,
-  FileText,
-  ZoomIn,
-  ZoomOut,
-  Loader2,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { toast } from "sonner";
-import { useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { DmsOcrStatusBadge } from "@/features/dms/ocr/dms-ocr-status-badge";
+import { DmsFileIntegrityBadge } from "@/features/dms/upload/dms-file-integrity-badge";
+import { FileSize } from "@/features/dms/upload/dms-file-size";
+import { FileTypeIcon, getMimeTypeLabel } from "@/features/dms/upload/dms-file-type-icon";
+import { invalidateDmsDocumentFiles, invalidateDmsOcr } from "@/lib/query/invalidation";
 import { queryKeys } from "@/lib/query/query-keys";
-import { invalidateDmsOcr, invalidateDmsDocumentFiles } from "@/lib/query/invalidation";
 import {
+  adminDeleteDmsDocumentFile,
   getDmsDocumentFiles,
   getDmsDocumentFileSignedUrl,
-  adminDeleteDmsDocumentFile,
   type DmsDocumentFileRow,
 } from "@/server/actions/dms/document-files";
 import { triggerDmsOcrForFile } from "@/server/actions/dms/ocr";
-import { FileTypeIcon, getMimeTypeLabel } from "@/features/dms/upload/dms-file-type-icon";
-import { FileSize } from "@/features/dms/upload/dms-file-size";
-import { DmsFileIntegrityBadge } from "@/features/dms/upload/dms-file-integrity-badge";
-import { DmsOcrStatusBadge } from "@/features/dms/ocr/dms-ocr-status-badge";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { format, parseISO } from "date-fns";
+import {
+  AlertTriangle,
+  Check,
+  ChevronRight,
+  Download,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  FileImage,
+  FileText,
+  FileX,
+  Loader2,
+  ScanText,
+  Trash2,
+  X,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
+import { useCallback, useState } from "react";
+import { toast } from "sonner";
 
 // ── MIME type helpers ──────────────────────────────────────────────────────────
 
@@ -67,30 +66,17 @@ interface PreviewPanelProps {
 }
 
 function PreviewPanel({ file, onClose, onDownload }: PreviewPanelProps) {
-  const [signedUrl, setSignedUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [imageScale, setImageScale] = useState(1);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    setSignedUrl(null);
-    setImageScale(1);
-
-    getDmsDocumentFileSignedUrl(file.id, "preview").then((res) => {
-      if (cancelled) return;
-      if (res.success && res.data?.signedUrl) {
-        setSignedUrl(res.data.signedUrl);
-      } else {
-        setError(res.error ?? "Failed to load preview.");
-      }
-      setLoading(false);
-    });
-
-    return () => { cancelled = true; };
-  }, [file.id]);
+  const { data: signedUrl, isPending: loading, error: queryError } = useQuery({
+    queryKey: ["dms-file-preview", file.id],
+    queryFn: async () => {
+      const result = await getDmsDocumentFileSignedUrl(file.id, "preview");
+      if (!result.success || !result.data?.signedUrl) throw new Error(result.error ?? "Failed to load preview.");
+      return result.data.signedUrl;
+    },
+    retry: false, gcTime: 0, refetchOnWindowFocus: false,
+  });
+  const error = queryError?.message;
 
   const mime = file.mime_type.toLowerCase().split(";")[0].trim();
 
@@ -256,15 +242,8 @@ export function DmsDocumentFilesSection({
     staleTime: 30_000,
   });
 
-  // Auto-select first previewable file when files load
-  useEffect(() => {
-    if (files.length > 0 && selectedFileId === null) {
-      const first = files.find((f) => isPreviewable(f.mime_type)) ?? files[0];
-      setSelectedFileId(first?.id ?? null);
-    }
-  }, [files, selectedFileId]);
-
-  const selectedFile = files.find((f) => f.id === selectedFileId) ?? null;
+  const selectedFile = files.find((f) => f.id === selectedFileId)
+    ?? files.find((f) => isPreviewable(f.mime_type)) ?? files[0] ?? null;
 
   const handleDownload = useCallback(async (file: DmsDocumentFileRow) => {
     const key = `${file.id}-download`;
@@ -381,7 +360,7 @@ export function DmsDocumentFilesSection({
           <tbody className="divide-y divide-border/50">
             {files.map((f) => {
               const canPrev = isPreviewable(f.mime_type);
-              const isSelected = selectedFileId === f.id;
+              const isSelected = selectedFile?.id === f.id;
               const downloadKey = `${f.id}-download`;
               const deleteKey = `${f.id}-delete`;
               const isConfirmingDelete = confirmDeleteId === f.id;

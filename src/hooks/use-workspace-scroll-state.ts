@@ -74,8 +74,6 @@ export function useWorkspaceScrollState(
   );
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const storageKeyRef = useRef(storageKey);
-  storageKeyRef.current = storageKey;
 
   useEffect(() => {
     if (!enabled || typeof window === "undefined") return;
@@ -83,7 +81,7 @@ export function useWorkspaceScrollState(
     if (!el) return;
 
     // Restore scroll position
-    const saved = readPageState<ScrollPosition>(storageKeyRef.current, {
+    const saved = readPageState<ScrollPosition>(storageKey, {
       scrollTop: 0,
       scrollLeft: 0,
     });
@@ -93,7 +91,7 @@ export function useWorkspaceScrollState(
     const handleScroll = () => {
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => {
-        writePageState<ScrollPosition>(storageKeyRef.current, {
+        writePageState<ScrollPosition>(storageKey, {
           scrollTop: el.scrollTop,
           scrollLeft: el.scrollLeft,
         });
@@ -106,7 +104,7 @@ export function useWorkspaceScrollState(
       el.removeEventListener("scroll", handleScroll);
       // Save final scroll on unmount
       if (timerRef.current) clearTimeout(timerRef.current);
-      writePageState<ScrollPosition>(storageKeyRef.current, {
+      writePageState<ScrollPosition>(storageKey, {
         scrollTop: el.scrollTop,
         scrollLeft: el.scrollLeft,
       });

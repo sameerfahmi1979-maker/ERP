@@ -20,13 +20,13 @@
  *   - No payroll/WPS/AI implementation
  */
 
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
-import { revalidatePath } from "next/cache";
-import { logAudit } from "@/server/actions/audit";
-import { z } from "zod";
 import { calculateLeaveDays } from "@/lib/hr/time/date-utils";
+import { getAuthContext, hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { logAudit } from "@/server/actions/audit";
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -264,7 +264,7 @@ const overtimeDecisionSchema = z.object({
 
 // ── Internal Helpers ───────────────────────────────────────────────────────────
 
-import { getEmployeeCtx as getEmployeeCtxRls, getEmployeeCtxAdmin as getEmployeeCtx } from "./_shared/employee-context";
+import { getEmployeeCtxAdmin as getEmployeeCtx, getEmployeeCtx as getEmployeeCtxRls } from "./_shared/employee-context";
 
 const LEAVE_REQUEST_LIST_SELECT =
   "*, leave_type:hr_leave_types!employee_leave_requests_leave_type_id_fkey(name_en,code), approver:user_profiles!employee_leave_requests_approved_by_fkey(display_name), employee:employees!employee_leave_requests_employee_id_fkey(full_name_en,employee_code)";

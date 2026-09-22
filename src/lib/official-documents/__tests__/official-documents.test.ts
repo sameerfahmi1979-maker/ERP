@@ -392,7 +392,7 @@ describe("official document HTML rendering", () => {
     expect(withHttp).not.toContain('class="od-header-logo"');
     const withScript = renderOfficialDocumentHtml(
       def,
-      // eslint-disable-next-line no-script-url
+
       ctx({ branding: { ...ctx().branding, showLogo: true, logoUrl: "javascript:alert(1)" } })
     );
     expect(withScript).not.toContain('class="od-header-logo"');

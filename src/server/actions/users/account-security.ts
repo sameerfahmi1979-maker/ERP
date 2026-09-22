@@ -2,18 +2,18 @@
 
 import "server-only";
 
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { sanitizeSecurityAuditPayload, sanitizeServerActionError } from "@/lib/audit/sanitizers";
 import { logger } from "@/lib/logger";
-import { getAuthContext, hasPermission, assertAccountActive } from "@/lib/rbac/check";
+import { renderTemplate } from "@/lib/notifications/template-renderer";
+import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { checkRateLimit, getRequestIp } from "@/lib/security/rate-limit";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { passwordPolicySchema } from "@/lib/validation/auth";
 import { logAudit } from "@/server/actions/audit";
 import { queueEmail } from "@/server/actions/notifications/email-queue";
-import { renderTemplate } from "@/lib/notifications/template-renderer";
-import { passwordPolicySchema } from "@/lib/validation/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { sanitizeSecurityAuditPayload, sanitizeServerActionError } from "@/lib/audit/sanitizers";
-import { checkRateLimit, getRequestIp } from "@/lib/security/rate-limit";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 

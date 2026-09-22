@@ -1,22 +1,22 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { logger } from "@/lib/logger";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { revalidatePath } from "next/cache";
-import { logAudit, createAuditDiff } from "@/server/actions/audit";
 import {
   createNumberingRuleSchema,
   updateNumberingRuleSchema,
   type CreateNumberingRuleInput,
-  type UpdateNumberingRuleInput,
+  type GenerateReferenceInput,
+  type GenerateReferenceResult,
   type NumberingRule,
   type PreviewReferenceInput,
   type PreviewReferenceResult,
-  type GenerateReferenceInput,
-  type GenerateReferenceResult,
+  type UpdateNumberingRuleInput,
 } from "@/features/numbering/numbering-types";
+import { logger } from "@/lib/logger";
+import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { createAuditDiff, logAudit } from "@/server/actions/audit";
+import { revalidatePath } from "next/cache";
 
 export type ActionResult<T = unknown> = {
   success: boolean;

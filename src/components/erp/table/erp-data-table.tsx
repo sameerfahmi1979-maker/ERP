@@ -171,8 +171,8 @@ export function ERPDataTable<TData>({
   }, []); // run once on mount only
 
   // Enhanced columns with selection column
-  const enhancedColumns = useMemo<ColumnDef<TData, any>[]>(() => {
-    const cols: ColumnDef<TData, any>[] = [];
+  const enhancedColumns = useMemo<ColumnDef<TData, unknown>[]>(() => {
+    const cols: ColumnDef<TData, unknown>[] = [];
 
     // Add selection column if enabled
     if (enableRowSelection) {
@@ -236,12 +236,12 @@ export function ERPDataTable<TData>({
     },
   });
 
+  const { pageSize, pageIndex } = table.getState().pagination;
   // Save preferences when state changes (client-side only).
   // UI.4E: also saves globalFilter and pageIndex for workspace session restore.
   useEffect(() => {
     if (!enablePreferences || typeof window === "undefined") return;
 
-    const { pageSize, pageIndex } = table.getState().pagination;
     const timer = setTimeout(() => {
       saveTablePreferences(userProfileId, tableId, {
         sorting,
@@ -254,10 +254,8 @@ export function ERPDataTable<TData>({
     }, 500); // Debounce saves
 
     return () => clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sorting, columnSizing, columnVisibility, globalFilter,
-      table.getState().pagination.pageSize,
-      table.getState().pagination.pageIndex,
+      pageSize, pageIndex, pathname,
       enablePreferences, userProfileId, tableId]);
 
   const selectedRowCount = table.getFilteredSelectedRowModel().rows.length;
@@ -265,14 +263,8 @@ export function ERPDataTable<TData>({
   // Prepare export data and columns from table state
   // CRITICAL: Must depend on rowSelection, columnVisibility, globalFilter, sorting
   // so that export updates when user selects rows or changes table state
-  const exportData = useMemo(() => 
-    exportConfig ? getExportData(table) : null, 
-    [table, exportConfig, rowSelection, columnVisibility, globalFilter, sorting]
-  );
-  const exportColumns = useMemo(() => 
-    exportConfig ? getExportColumns(table) : [], 
-    [table, exportConfig, columnVisibility]
-  );
+  const exportData = exportConfig ? getExportData(table) : null;
+  const exportColumns = exportConfig ? getExportColumns(table) : [];
 
   // Build dynamic subtitle for export
   const exportSubtitle = useMemo(() => {

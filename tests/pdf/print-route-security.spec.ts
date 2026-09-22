@@ -1,262 +1,79 @@
-/**
- * ERP PDF.1 — Security Tests for Secure Print Route
- * Phase: ERP PDF.1 — Production PDF Generation Framework
- *
- * These tests verify the security of the /print/... route.
- * They do NOT require Gotenberg — they test the route directly.
- *
- * Run:
- *   npx playwright test tests/pdf/print-route-security.spec.ts
- *
- * Prerequisites:
- *   - ERP application must be running (npm run dev)
- *   - PDF_PRINT_TOKEN_SECRET must be set in .env.local (min 32 chars)
- *
- * NOTE (2026-07-23 UAT Status):
- *   These tests are WRITTEN but not yet EXECUTED because:
- *   - Docker Desktop daemon not running → Gotenberg cannot be started
- *   - Poppler (pdftoppm/pdfinfo) not installed → rasterization blocked
- *   Status: BLOCKED — awaiting environment setup (see closure report)
- */
+/** Local-only print route integration. Actual signer, explicit synthetic ownership. */
+import { test, expect } from '@playwright/test';
+import { signPrintToken } from '../../src/lib/pdf/print-token';
+import { readPrintFixture } from './fixture';
 
-import { test, expect } from "@playwright/test";
-import { createHmac } from "crypto";
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
-
-/**
- * Sign a minimal print token matching the server-side signPrintToken() contract.
- * Uses the same PDF_PRINT_TOKEN_SECRET from environment.
- */
-function signTestToken(params: {
-  templateKey: string;
-  recordType: string;
-  recordId: number;
-  userId: number;
-  ownerCompanyId: number;
-  ttlSeconds?: number;
-}): string {
-  // Use the same secret as the running server.
-  // The server reads PDF_PRINT_TOKEN_SECRET from .env.local.
-  // When not set (server started before the env var was added), the secret defaults to "".
-  // Pass PDF_PRINT_TOKEN_SECRET=<secret> to this test runner to match the server's secret.
-  const secret = process.env.PDF_PRINT_TOKEN_SECRET ?? "";
-  const exp = Math.floor(Date.now() / 1000) + (params.ttlSeconds ?? 120);
-  const payload = {
-    templateKey: params.templateKey,
-    recordType: params.recordType,
-    recordId: params.recordId,
-    userId: params.userId,
-    ownerCompanyId: params.ownerCompanyId,
-    exp,
-  };
-  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const sig = createHmac("sha256", secret).update(body).digest("base64url");
-  return `${body}.${sig}`;
+const templateKey = 'hr-employment-letter-en';
+function signed(overrides: Partial<Parameters<typeof signPrintToken>[0]> = {}) {
+  const f = readPrintFixture();
+  return signPrintToken({ templateKey, recordType: 'employee', recordId: f.employeeId, userId: f.userId, ownerCompanyId: f.companyId, ...overrides });
 }
-
-function printRouteUrl(templateKey: string, recordType: string, recordId: number, token: string): string {
-  return `${BASE_URL}/print/${encodeURIComponent(templateKey)}/${encodeURIComponent(recordType)}/${recordId}?token=${token}`;
+function route(token?: string, template = templateKey) {
+  const f = readPrintFixture();
+  return `${f.origin}/print/${template}/employee/${f.employeeId}${token ? '?token=' + token : ''}`;
 }
-
-// ─── Security Tests ──────────────────────────────────────────────────────────
-
-test.describe("Print Route Security", () => {
-  test("missing token returns 401", async ({ request }) => {
-    const res = await request.get(
-      `${BASE_URL}/print/hr-employment-letter-en/employee/1`,
-    );
-    expect(res.status()).toBe(401);
-    const body = await res.text();
-    expect(body).toContain("Missing print token");
-  });
-
-  test("tampered token returns 401", async ({ request }) => {
-    // Generate a valid token then corrupt it
-    const token = signTestToken({
-      templateKey: "hr-employment-letter-en",
-      recordType: "employee",
-      recordId: 1,
-      userId: 1,
-      ownerCompanyId: 1,
-    });
-    const tampered = token.slice(0, -4) + "XXXX";
-    const res = await request.get(
-      printRouteUrl("hr-employment-letter-en", "employee", 1, tampered),
-    );
-    expect(res.status()).toBe(401);
-    const body = await res.text();
-    expect(body.toLowerCase()).toContain("invalid");
-  });
-
-  test("expired token returns 401", async ({ request }) => {
-    const expiredToken = signTestToken({
-      templateKey: "hr-employment-letter-en",
-      recordType: "employee",
-      recordId: 1,
-      userId: 1,
-      ownerCompanyId: 1,
-      ttlSeconds: -10, // already expired
-    });
-    const res = await request.get(
-      printRouteUrl("hr-employment-letter-en", "employee", 1, expiredToken),
-    );
-    expect(res.status()).toBe(401);
-    const body = await res.text();
-    expect(body.toLowerCase()).toContain("expired");
-  });
-
-  test("token-route mismatch (wrong templateKey) returns 403", async ({ request }) => {
-    // Token says 'sample-quotation-en' but route says 'hr-employment-letter-en'
-    const token = signTestToken({
-      templateKey: "sample-quotation-en",
-      recordType: "employee",
-      recordId: 1,
-      userId: 1,
-      ownerCompanyId: 1,
-    });
-    const res = await request.get(
-      printRouteUrl("hr-employment-letter-en", "employee", 1, token),
-    );
-    expect(res.status()).toBe(403);
-    const body = await res.text();
-    expect(body).toContain("mismatch");
-  });
-
-  test("token-route mismatch (wrong recordId) returns 403", async ({ request }) => {
-    const token = signTestToken({
-      templateKey: "hr-employment-letter-en",
-      recordType: "employee",
-      recordId: 999,
-      userId: 1,
-      ownerCompanyId: 1,
-    });
-    const res = await request.get(
-      printRouteUrl("hr-employment-letter-en", "employee", 1, token),
-    );
-    expect(res.status()).toBe(403);
-  });
-
-  test("unknown template key returns 404", async ({ request }) => {
-    const token = signTestToken({
-      templateKey: "non-existent-template",
-      recordType: "employee",
-      recordId: 1,
-      userId: 1,
-      ownerCompanyId: 1,
-    });
-    const res = await request.get(
-      printRouteUrl("non-existent-template", "employee", 1, token),
-    );
-    expect(res.status()).toBe(404);
-  });
-
-  test("draft-only template returns 404 (not in governance DB)", async ({ request }) => {
-    // A template code that is not in erp_report_templates at all
-    const token = signTestToken({
-      templateKey: "totally-unknown-draft",
-      recordType: "employee",
-      recordId: 1,
-      userId: 1,
-      ownerCompanyId: 1,
-    });
-    const res = await request.get(
-      printRouteUrl("totally-unknown-draft", "employee", 1, token),
-    );
-    // 404 from component registry check (not in TEMPLATE_COMPONENT_REGISTRY)
-    expect(res.status()).toBe(404);
-  });
+test('missing token is rejected, not redirected to login', async ({ request }) => {
+  const response = await request.get(route(), { maxRedirects: 0 });
+  expect(response.status()).toBe(401);
+  expect(await response.text()).toBe('Missing print token');
 });
-
-// ─── Functionality Tests (require real employee data) ────────────────────────
-
-test.describe("Print Route Functionality", () => {
-  // NOTE: Employee ID 1 is 'Sameer Fahmi Abu Elayyan', owner_company_id=1
-  const EMPLOYEE_ID = 1;
-  const OWNER_COMPANY_ID = 1;
-
-  test("valid published template returns 200 with HTML", async ({ request }) => {
-    const token = signTestToken({
-      templateKey: "hr-employment-letter-en",
-      recordType: "employee",
-      recordId: EMPLOYEE_ID,
-      userId: 1,
-      ownerCompanyId: OWNER_COMPANY_ID,
-    });
-    const res = await request.get(
-      printRouteUrl("hr-employment-letter-en", "employee", EMPLOYEE_ID, token),
-    );
-    expect(res.status()).toBe(200);
-    expect(res.headers()["content-type"]).toContain("text/html");
-    const body = await res.text();
-    // Should contain employee name
-    expect(body).toContain("Sameer");
-    // Should NOT contain the DRAFT watermark (published template)
-    expect(body).not.toContain("DRAFT — NOT OFFICIAL");
-    // Should have font-face for Arabic
-    expect(body).toContain("noto-sans-arabic");
-    // Should have X-Template-Governance header
-    expect(res.headers()["x-template-governance"]).toBe("published");
-  });
-
-  test("draft template returns 200 with DRAFT watermark", async ({ request }) => {
-    const token = signTestToken({
-      templateKey: "bilingual-sample-en-ar",
-      recordType: "employee",
-      recordId: EMPLOYEE_ID,
-      userId: 1,
-      ownerCompanyId: OWNER_COMPANY_ID,
-    });
-    const res = await request.get(
-      printRouteUrl("bilingual-sample-en-ar", "employee", EMPLOYEE_ID, token),
-    );
-    expect(res.status()).toBe(200);
-    const body = await res.text();
-    // Draft templates MUST show watermark
-    expect(body).toContain("DRAFT — NOT OFFICIAL");
-    expect(res.headers()["x-template-governance"]).toBe("draft");
-  });
-
-  test("no-cache and no-index headers are set", async ({ request }) => {
-    const token = signTestToken({
-      templateKey: "hr-employment-letter-en",
-      recordType: "employee",
-      recordId: EMPLOYEE_ID,
-      userId: 1,
-      ownerCompanyId: OWNER_COMPANY_ID,
-    });
-    const res = await request.get(
-      printRouteUrl("hr-employment-letter-en", "employee", EMPLOYEE_ID, token),
-    );
-    expect(res.headers()["cache-control"]).toContain("no-store");
-    expect(res.headers()["x-robots-tag"]).toBe("noindex");
-  });
-
-  test("Arabic font @font-face served from self-hosted /fonts/ path", async ({ request }) => {
-    const token = signTestToken({
-      templateKey: "hr-employment-letter-en",
-      recordType: "employee",
-      recordId: EMPLOYEE_ID,
-      userId: 1,
-      ownerCompanyId: OWNER_COMPANY_ID,
-    });
-    const res = await request.get(
-      printRouteUrl("hr-employment-letter-en", "employee", EMPLOYEE_ID, token),
-    );
-    const body = await res.text();
-    // Font MUST come from self-hosted path, NOT Google Fonts CDN
-    expect(body).toContain("/fonts/noto-sans-arabic-arabic-400-normal.woff2");
-    expect(body).not.toContain("fonts.googleapis.com");
-    expect(body).not.toContain("fonts.gstatic.com");
-  });
-
-  test("self-hosted Arabic font file is actually accessible", async ({ request }) => {
-    const res = await request.get(
-      `${BASE_URL}/fonts/noto-sans-arabic-arabic-400-normal.woff2`,
-    );
-    expect(res.status()).toBe(200);
-    expect(res.headers()["content-type"]).toContain("woff2");
-  });
+test('tampered real signature is rejected', async ({ request }) => {
+  const token = signed();
+  const parts = token.split('.');
+  parts[1] = (parts[1].startsWith('A') ? 'B' : 'A') + parts[1].slice(1);
+  const response = await request.get(route(parts.join('.')), { maxRedirects: 0 });
+  expect(response.status()).toBe(401);
+  expect(await response.text()).toContain('signature is invalid');
+});
+test('expired real token is rejected for expiry', async ({ request }) => {
+  const original = Date.now;
+  let token: string;
+  try { Date.now = () => original() - 180_000; token = signed(); } finally { Date.now = original; }
+  const response = await request.get(route(token), { maxRedirects: 0 });
+  expect(response.status()).toBe(401);
+  expect(await response.text()).toContain('has expired');
+});
+test('signed template mismatch is rejected', async ({ request }) => {
+  const response = await request.get(route(signed({ templateKey: 'bilingual-sample-en-ar' })), { maxRedirects: 0 });
+  expect(response.status()).toBe(403);
+  expect(await response.text()).toBe('Print token mismatch');
+});
+test('signed record mismatch is rejected', async ({ request }) => {
+  const f = readPrintFixture();
+  const response = await request.get(route(signed({ recordId: f.employeeId + 1 })), { maxRedirects: 0 });
+  expect(response.status()).toBe(403);
+  expect(await response.text()).toBe('Print token mismatch');
+});
+test('signed unknown template reaches registry rejection, not token rejection', async ({ request }) => {
+  const response = await request.get(route(signed({ templateKey: 'f02-unknown-template' }), 'f02-unknown-template'), { maxRedirects: 0 });
+  expect(response.status()).toBe(404);
+  expect(await response.text()).toContain('Unknown template key');
+});
+test('published synthetic employee output has exact identity and private headers', async ({ request }) => {
+  const f = readPrintFixture(), response = await request.get(route(signed()), { maxRedirects: 0 });
+  expect(response.status()).toBe(200);
+  expect(response.headers()['content-type']).toContain('text/html');
+  expect(response.headers()['x-template-governance']).toBe('published');
+  expect(response.headers()['cache-control']).toContain('no-store');
+  expect(response.headers()['x-robots-tag']).toBe('noindex');
+  const html = await response.text();
+  expect(html).toContain(f.employeeName);
+  expect(html).toContain(f.companyName);
+  expect(html).not.toContain('DRAFT — NOT OFFICIAL');
+});
+test('draft governance is positively asserted with watermark', async ({ request }) => {
+  const template = 'bilingual-sample-en-ar';
+  const response = await request.get(route(signed({ templateKey: template }), template), { maxRedirects: 0 });
+  expect(response.status()).toBe(200);
+  expect(response.headers()['x-template-governance']).toBe('draft');
+  expect(await response.text()).toContain('DRAFT — NOT OFFICIAL');
+});
+test('all configured Arabic font weights return actual WOFF2 bytes', async ({ request }) => {
+  const f = readPrintFixture();
+  for (const weight of [400, 600, 700]) {
+    const response = await request.get(`${f.origin}/fonts/noto-sans-arabic-arabic-${weight}-normal.woff2`, { maxRedirects: 0 });
+    expect(response.status()).toBe(200);
+    expect(response.headers()['content-type']).toContain('woff2');
+    expect((await response.body()).subarray(0, 4).toString('ascii')).toBe('wOF2');
+  }
 });

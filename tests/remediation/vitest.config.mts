@@ -5,6 +5,7 @@ export default defineConfig({
     '@': path.resolve('src'),
     'https://esm.sh/@supabase/supabase-js@2.106.2': path.resolve('tests/remediation/f02-repair/no-db.ts'),
   } },
+  oxc: { jsx: { runtime: 'automatic' } },
   test: {
     environment: 'node', fileParallelism: false,
     include: [
@@ -12,6 +13,7 @@ export default defineConfig({
       'tests/remediation/f02/*.test.ts',
       'tests/remediation/f02-repair/*.test.ts',
       'tests/remediation/f02-completion/*.test.{ts,tsx}',
+      'tests/remediation/f02-final/*.test.{ts,tsx}',
     ],
     setupFiles: ['tests/remediation/f01/offline-setup.ts'],
   },

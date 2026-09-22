@@ -3,17 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": ">=22.19.0"
+    "node": "^22.23.2 || ^24.15.0 || >=26.0.0"
   },
   "packageManager": "npm@10.9.8",
   "scripts": {
     "dev": "cross-env NODE_OPTIONS=\"--use-system-ca --max-old-space-size=16384\" next dev",
     "build": "cross-env NODE_OPTIONS=--max-old-space-size=16384 next build --webpack",
     "start": "cross-env NODE_OPTIONS=--max-old-space-size=16384 next start",
-    "lint": "eslint src next.config.ts",
+    "lint": "node tooling/quality/lint.cjs",
     "typecheck": "cross-env NODE_OPTIONS=--max-old-space-size=16384 tsc --project tsconfig.shipping.json --noEmit",
-    "memory:check": "cross-env NODE_OPTIONS=--max-old-space-size=16384 node scripts/check-node-memory.mjs",
-    "bootstrap:admin": "cross-env NODE_OPTIONS=--max-old-space-size=16384 node --env-file=.env.local scripts/bootstrap-admin.mjs",
+    "memory:check": "cross-env NODE_OPTIONS=--max-old-space-size=16384 node tooling/check-node-memory.mjs",
+    "bootstrap:admin": "node tooling/admin-bootstrap-disabled.mjs",
     "test": "vitest run",
     "test:f01": "vitest run --config tests/remediation/f01/vitest.config.mts",
     "security:secrets": "node tooling/security/scan-secrets.cjs",
@@ -21,6 +21,9 @@
     "schema:types": "node tooling/schema/generate-types.cjs",
     "test:watch": "vitest",
     "test:e2e": "cross-env NODE_OPTIONS=--use-system-ca playwright test",
+    "test:routes": "node tooling/testing/dms-smoke.cjs",
+    "test:pdf": "cross-env NODE_OPTIONS=--use-system-ca playwright test tests/pdf",
+    "typecheck:e2e": "tsc --project tests/e2e/tsconfig.json --noEmit",
     "test:e2e:headed": "cross-env NODE_OPTIONS=--use-system-ca playwright test --headed"
   },
   "dependencies": {
@@ -75,12 +78,14 @@
   "devDependencies": {
     "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
+    "@testing-library/react": "16.3.3",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitest/coverage-v8": "4.1.11",
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
+    "jsdom": "30.1.1",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "4.1.11"

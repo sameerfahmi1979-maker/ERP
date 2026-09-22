@@ -1,21 +1,21 @@
 "use client";
+import { toast } from "sonner";
 
-import { useState, useRef, useEffect, useCallback } from "react";
-import { ShieldAlert } from "lucide-react";
+import type { AssistantDraftRow, AssistantMessageRow, AssistantSessionRow } from "@/lib/ai/common/assistant/types";
 import {
-  startAssistantSession,
-  sendAssistantMessage,
   getAssistantSession,
   getAssistantSessions,
-  archiveAssistantSession,
+  sendAssistantMessage,
+  startAssistantSession
 } from "@/server/actions/ai/common/assistant";
-import type { AssistantSessionRow, AssistantMessageRow, AssistantDraftRow } from "@/lib/ai/common/assistant/types";
-import { AssistantSessionList } from "./assistant-session-list";
-import { AssistantMessageBubble } from "./assistant-message-bubble";
-import { AssistantChatInput } from "./assistant-chat-input";
+import { ShieldAlert } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AssistantActionChips } from "./assistant-action-chips";
+import { AssistantChatInput } from "./assistant-chat-input";
 import { AssistantEmptyState } from "./assistant-empty-state";
 import { AssistantLoading } from "./assistant-loading";
+import { AssistantMessageBubble } from "./assistant-message-bubble";
+import { AssistantSessionList } from "./assistant-session-list";
 
 interface PendingMessageExtra {
   navigationLinks?: Array<{ label: string; route: string }>;
@@ -62,10 +62,16 @@ export function AssistantPageClient({
   }, []);
 
   useEffect(() => {
-    if (activeSessionId) {
-      loadSession(activeSessionId);
-    }
-  }, [activeSessionId, loadSession]);
+    if (!activeSessionId) return;
+    let cancelled = false;
+    getAssistantSession(activeSessionId).then(result => {
+      if (!cancelled && result.success && result.data) {
+        setMessages(result.data.messages as MessageWithExtras[]);
+        setDrafts(result.data.drafts);
+      }
+    }).catch(() => { if (!cancelled) toast.error("Failed to load session"); });
+    return () => { cancelled = true; };
+  }, [activeSessionId]);
 
   useEffect(() => {
     scrollToBottom();

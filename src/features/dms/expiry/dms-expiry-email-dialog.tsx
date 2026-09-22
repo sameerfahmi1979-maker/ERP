@@ -29,7 +29,11 @@ function validateEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-export function DmsExpiryEmailDialog({
+export function DmsExpiryEmailDialog(props: DmsExpiryEmailDialogProps) {
+  return props.open ? <ExpiryEmailSession key={`${props.tabTitle}:${props.docs.map(doc => doc.id).join(",")}`} {...props} /> : null;
+}
+
+function ExpiryEmailSession({
   open,
   onOpenChange,
   docs,
@@ -37,8 +41,8 @@ export function DmsExpiryEmailDialog({
 }: DmsExpiryEmailDialogProps) {
   const [recipients, setRecipients] = useState<RecipientChip[]>([]);
   const [rawEmailInput, setRawEmailInput] = useState("");
-  const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
+  const [subject, setSubject] = useState(() => `${tabTitle} — ${format(new Date(), "dd MMM yyyy")}`);
+  const [body, setBody] = useState(() => `Please find attached the ${tabTitle} document list.\n\nTotal records: ${docs.length}\nGenerated: ${format(new Date(), "dd MMM yyyy HH:mm")}`);
   const [attachmentFormat, setAttachmentFormat] = useState<AttachmentFormat>("pdf");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -47,36 +51,19 @@ export function DmsExpiryEmailDialog({
   const [userOptions, setUserOptions] = useState<{ value: string | number; label: string; email?: string }[]>([]);
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Reset on open; then trigger an initial user load for the empty query
-  useEffect(() => {
-    if (open) {
-      setRecipients([]);
-      setRawEmailInput("");
-      setSubject(`${tabTitle} — ${format(new Date(), "dd MMM yyyy")}`);
-      setBody(`Please find attached the ${tabTitle} document list.\n\nTotal records: ${docs.length}\nGenerated: ${format(new Date(), "dd MMM yyyy HH:mm")}`);
-      setAttachmentFormat("pdf");
-      setSearchQuery("");
-      // Pre-load users list immediately (without waiting for the user to type)
-      getUsersForEmailSelect("").then((results) => {
-        setUserOptions(
-          results.map((u) => ({ value: u.email, label: `${u.label} (${u.email})`, email: u.email }))
-        );
-      });
-    }
-  }, [open, tabTitle, docs.length]);
-
   // Re-search when user types in the combobox
   useEffect(() => {
     if (!open) return;
-    if (searchQuery === "") return; // handled by the open effect above
+    let cancelled = false;
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
     searchTimeout.current = setTimeout(async () => {
-      const results = await getUsersForEmailSelect(searchQuery);
-      setUserOptions(
+      const results = await getUsersForEmailSelect(searchQuery).catch(() => []);
+      if (!cancelled) setUserOptions(
         results.map((u) => ({ value: u.email, label: `${u.label} (${u.email})`, email: u.email }))
       );
-    }, 250);
+    }, searchQuery ? 250 : 0);
     return () => {
+      cancelled = true;
       if (searchTimeout.current) clearTimeout(searchTimeout.current);
     };
   }, [searchQuery, open]);

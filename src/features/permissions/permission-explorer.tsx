@@ -262,7 +262,7 @@ export function PermissionExplorer({
                             : "border-transparent hover:bg-muted/60 hover:border-muted-foreground/30",
                         )}
                         onClick={() => onSelect(perm)}
-                        aria-selected={isSelected}
+                        aria-pressed={isSelected}
                         aria-label={`Select permission: ${perm.permission_name}`}
                       >
                         <span className={cn("text-sm leading-tight", isSelected ? "font-semibold" : "font-normal")}>

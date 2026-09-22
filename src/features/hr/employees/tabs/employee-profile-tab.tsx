@@ -1,26 +1,26 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { ERPCombobox } from "@/components/erp/combobox";
+import { CountrySelect } from "@/components/erp/geography/country-select";
+import { BranchSelect } from "@/components/erp/organizations/branch-select";
+import { OwnerCompanySelect } from "@/components/erp/organizations/owner-company-select";
+import { RequiredLabel } from "@/components/erp/required-label";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { RequiredLabel } from "@/components/erp/required-label";
-import { ERPCombobox } from "@/components/erp/combobox";
-import { OwnerCompanySelect } from "@/components/erp/organizations/owner-company-select";
-import { BranchSelect } from "@/components/erp/organizations/branch-select";
-import { CountrySelect } from "@/components/erp/geography/country-select";
+import type { UseWorkspaceFormDraftReturn } from "@/hooks/use-workspace-form-draft";
 import { listDepartments } from "@/server/actions/common-master-data/departments";
 import { listDesignations } from "@/server/actions/common-master-data/designations";
 import { listWorkSites } from "@/server/actions/common-master-data/work-sites";
+import type { EmployeeListRow } from "@/server/actions/hr/employees";
 import {
   listHrEmployeeCategories,
   listHrEmploymentTypes,
   listHrMohreEstablishments,
   listHrRelationshipTypes,
 } from "@/server/actions/hr/settings";
-import type { EmployeeListRow } from "@/server/actions/hr/employees";
-import type { UseWorkspaceFormDraftReturn } from "@/hooks/use-workspace-form-draft";
+import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 
 type Props = {
   employee: EmployeeListRow | null;
@@ -106,9 +106,7 @@ export function EmployeeProfileTab({
   // Freeze all defaultValue computations on first render so Base UI's FieldControl
   // never sees a changing defaultValue prop (which triggers an uncontrolled→controlled
   // warning). Re-initialised naturally on full unmount/remount (tab switch, new record).
-  const initialDefaultsRef = useRef<Record<string, string> | null>(null);
-  if (initialDefaultsRef.current === null) {
-    initialDefaultsRef.current = {
+  const [d] = useState<Record<string, string>>(() => ({
       full_name_en:             getDraftDefault("full_name_en",             employee?.full_name_en              ?? ""),
       full_name_ar:             getDraftDefault("full_name_ar",             employee?.full_name_ar              ?? ""),
       known_name:               getDraftDefault("known_name",               employee?.known_name                ?? ""),
@@ -126,9 +124,7 @@ export function EmployeeProfileTab({
       notice_period_days:       getDraftDefault("notice_period_days",       employee?.notice_period_days?.toString() ?? ""),
       emergency_contact_name:   getDraftDefault("emergency_contact_name",   employee?.emergency_contact_name   ?? ""),
       emergency_contact_mobile: getDraftDefault("emergency_contact_mobile", employee?.emergency_contact_mobile ?? ""),
-    };
-  }
-  const d = initialDefaultsRef.current;
+  }));
 
   // ── Lookup Queries ──────────────────────────────────────────────────────────
 

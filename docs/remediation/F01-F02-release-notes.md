@@ -1,5 +1,7 @@
 # F01 containment and F02 foundation checkpoint
 
+This is the historical first-publication checkpoint. For subsequent lint, schema-baseline and configuration work, see [the F02 follow-up](F02-foundation-follow-up.md); the original evidence below is retained.
+
 This change publishes the reviewed source for the completed containment release, plus a separately verified UI/engineering follow-up. It is **not closure of the entire ERP remediation programme or full F02**.
 
 ## Included

@@ -1,13 +1,12 @@
 "use client";
 
-import { useState, useTransition, useCallback } from "react";
-import { Bell, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { MyNotificationsTable } from "@/features/notifications/my-notifications-table";
-import type { NotificationRow } from "@/server/actions/notifications/notifications";
-import { getAllNotifications } from "@/server/actions/notifications/notifications";
 import { NotificationSeverityBadge } from "@/features/notifications/notification-severity-badge";
 import { NotificationStatusBadge } from "@/features/notifications/notification-status-badge";
+import type { NotificationRow } from "@/server/actions/notifications/notifications";
+import { getAllNotifications } from "@/server/actions/notifications/notifications";
+import { Bell, RefreshCw } from "lucide-react";
+import { useCallback, useState, useTransition } from "react";
 
 interface AdminNotificationsPageClientProps {
   initialNotifications: NotificationRow[];

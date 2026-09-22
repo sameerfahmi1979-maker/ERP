@@ -56,7 +56,7 @@ export function CityWorkspaceForm({ city, mode }: CityWorkspaceFormProps) {
     writeDraftField("country_id", newCountryId ?? "");
     setEmirateId(null);
     writeDraftField("emirate_id", "");
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [writeDraftField]);
 
   const sections = [

@@ -1,31 +1,32 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { format, formatDistanceToNow } from "date-fns";
-import type { ColumnDef } from "@tanstack/react-table";
-import {
-  Plus,
-  RefreshCw,
-  Trash2,
-  Play,
-  Pencil,
-  CheckCircle2,
-  XCircle,
-  AlertCircle,
-  Clock,
-} from "lucide-react";
-import { toast } from "sonner";
+import { ERPPageHeader } from "@/components/erp/page-header";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { ERPDataTable } from "@/components/erp/table/erp-data-table";
-import { ERPPageHeader } from "@/components/erp/page-header";
 import {
-  listReportSchedules,
   deleteReportSchedule,
+  listReportSchedules,
   runReportScheduleNow,
   type ReportSchedule,
 } from "@/server/actions/reports/schedules";
+import { useQuery } from "@tanstack/react-query";
+import type { ColumnDef } from "@tanstack/react-table";
+import { format, formatDistanceToNow } from "date-fns";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Clock,
+  Pencil,
+  Play,
+  Plus,
+  RefreshCw,
+  Trash2,
+  XCircle,
+} from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { ReportScheduleForm } from "./report-schedule-form";
 
 const STATUS_CONFIG = {
@@ -36,25 +37,22 @@ const STATUS_CONFIG = {
 };
 
 export function ReportSchedulesPage() {
-  const [schedules, setSchedules] = useState<ReportSchedule[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<ReportSchedule | null>(null);
   const [runningId, setRunningId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
-  const load = useCallback(async () => {
-    setIsLoading(true);
-    const result = await listReportSchedules();
-    if (result.success && result.data) {
-      setSchedules(result.data);
-    } else {
-      toast.error(result.error ?? "Failed to load schedules.");
-    }
-    setIsLoading(false);
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
+  const { data: schedules = [], isFetching: isLoading, refetch, error } = useQuery({
+    queryKey: ["report-schedules"],
+    queryFn: async () => {
+      const result = await listReportSchedules();
+      if (!result.success || !result.data) throw new Error(result.error ?? "Failed to load schedules.");
+      return result.data;
+    },
+    retry: false, gcTime: 0, refetchOnWindowFocus: false,
+  });
+  const load = () => refetch();
+  useEffect(() => { if (error) toast.error(error.message); }, [error]);
 
   const handleRunNow = async (id: number) => {
     setRunningId(id);

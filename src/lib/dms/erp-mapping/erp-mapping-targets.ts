@@ -159,14 +159,14 @@ export function validateErpMappingTarget(
   if (!(targetModule in ERP_MAPPING_TARGET_REGISTRY)) {
     return { valid: false, reason: `target_module "${targetModule}" is not in the ERP mapping allowlist` };
   }
-  const module = ERP_MAPPING_TARGET_REGISTRY[targetModule as ErpMappingTargetModule];
-  if (!(targetTable in module)) {
+  const targetTables = ERP_MAPPING_TARGET_REGISTRY[targetModule as ErpMappingTargetModule];
+  if (!(targetTable in targetTables)) {
     return {
       valid: false,
       reason: `target_table "${targetTable}" is not allowed for module "${targetModule}"`,
     };
   }
-  const config = module[targetTable as keyof typeof module] as ErpMappingTargetConfig;
+  const config = targetTables[targetTable as keyof typeof targetTables] as ErpMappingTargetConfig;
   const fieldMeta = config.fields.find((f) => f.column === targetField);
   if (!fieldMeta) {
     return {
@@ -183,9 +183,9 @@ export function getErpMappingTargetConfig(
   targetTable: string
 ): ErpMappingTargetConfig | null {
   if (!(targetModule in ERP_MAPPING_TARGET_REGISTRY)) return null;
-  const module = ERP_MAPPING_TARGET_REGISTRY[targetModule as ErpMappingTargetModule];
-  if (!(targetTable in module)) return null;
-  return module[targetTable as keyof typeof module] as ErpMappingTargetConfig;
+  const targetTables = ERP_MAPPING_TARGET_REGISTRY[targetModule as ErpMappingTargetModule];
+  if (!(targetTable in targetTables)) return null;
+  return targetTables[targetTable as keyof typeof targetTables] as ErpMappingTargetConfig;
 }
 
 /** List all allowed targets as a flat array — used by admin UI dropdowns. */

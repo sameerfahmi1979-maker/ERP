@@ -16,13 +16,12 @@
  * - No auto-save, no auto-apply.
  */
 
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { callCommonAiStructuredCompletion } from "@/lib/ai/common/provider-bridge";
-import { isHrAiMasterEnabled, isHrAiFeatureEnabled } from "@/lib/hr/ai/feature-flags";
-import { HR_AI_FEATURE_FLAGS, HrAiDocumentFillOutputSchema } from "@/lib/hr/ai/types";
+import { isHrAiFeatureEnabled, isHrAiMasterEnabled } from "@/lib/hr/ai/feature-flags";
 import type { HrAiActionResult, HrAiDocumentFillOutput } from "@/lib/hr/ai/types";
-import { maskDocumentNumber } from "@/lib/hr/ai/hr-ai-redaction";
+import { HR_AI_FEATURE_FLAGS, HrAiDocumentFillOutputSchema } from "@/lib/hr/ai/types";
+import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 // ── Usage log helper ──────────────────────────────────────────────────────────
 

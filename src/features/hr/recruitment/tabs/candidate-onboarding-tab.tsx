@@ -1,20 +1,20 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { queryKeys } from "@/lib/query/query-keys";
-import { listCandidateOnboardingTasks, createOnboardingTask, updateOnboardingTask, completeOnboardingTask, blockOnboardingTask, markOnboardingTaskNotApplicable, archiveOnboardingTask } from "@/server/actions/hr/recruitment";
-import type { OnboardingTaskRow } from "@/server/actions/hr/recruitment";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { ERPCombobox } from "@/components/erp/combobox";
+import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
+import { RequiredLabel } from "@/components/erp/required-label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, CheckSquare, CheckCircle, XCircle, AlertTriangle, Pencil, Trash2 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { queryKeys } from "@/lib/query/query-keys";
+import type { OnboardingTaskRow } from "@/server/actions/hr/recruitment";
+import { archiveOnboardingTask, completeOnboardingTask, createOnboardingTask, listCandidateOnboardingTasks, updateOnboardingTask } from "@/server/actions/hr/recruitment";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { CheckCircle, CheckSquare, Pencil, Plus, Trash2 } from "lucide-react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { RequiredLabel } from "@/components/erp/required-label";
 
 type Props = {
   candidateId: number;

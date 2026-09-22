@@ -14,6 +14,21 @@
  *  - Browser beforeunload warning when any tab is dirty (4B)
  */
 
+import { UnsavedChangesDialog } from "@/components/erp/unsaved-changes-dialog";
+import { useWorkspaceDraftStoreContext } from "@/components/workspace/workspace-draft-provider";
+import {
+  createTabFromRoute,
+  isWorkspaceRoute,
+} from "@/lib/workspace/workspace-route-registry";
+import {
+  getInitialState,
+  MAX_TABS,
+  persistToStorage,
+  restoreFromStorage,
+  workspaceReducer,
+} from "@/lib/workspace/workspace-store";
+import type { WorkspaceAction, WorkspaceState, WorkspaceTab } from "@/lib/workspace/workspace-types";
+import { usePathname, useRouter } from "next/navigation";
 import {
   createContext,
   useCallback,
@@ -24,22 +39,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
-import type { WorkspaceTab, WorkspaceState, WorkspaceAction } from "@/lib/workspace/workspace-types";
-import {
-  workspaceReducer,
-  getInitialState,
-  persistToStorage,
-  restoreFromStorage,
-  MAX_TABS,
-} from "@/lib/workspace/workspace-store";
-import {
-  createTabFromRoute,
-  isWorkspaceRoute,
-} from "@/lib/workspace/workspace-route-registry";
-import { UnsavedChangesDialog } from "@/components/erp/unsaved-changes-dialog";
-import { useWorkspaceDraftStoreContext } from "@/components/workspace/workspace-draft-provider";
 
 // ── Context ───────────────────────────────────────────────────────────────────
 
@@ -157,7 +157,7 @@ export function WorkspaceProvider({ children, defaultRoute }: { children: ReactN
         }
       }
     },
-    [state.tabs, state.activeTabId, router]
+    [state.tabs, state.activeTabId, router, draftStore]
   );
 
   // ── openTab ────────────────────────────────────────────────────────────────

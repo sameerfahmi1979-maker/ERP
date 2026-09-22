@@ -1,16 +1,15 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { toast } from "sonner";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Plus, RefreshCw, Mail, ShieldCheck, ToggleLeft, ScrollText, BookOpen } from "lucide-react";
-import type { EmailProviderConfig, EmailFeatureFlag, EmailSendLogRow } from "@/lib/email/providers/types";
-import { EmailProviderConfigList } from "./email-provider-config-list";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { EmailFeatureFlag, EmailProviderConfig, EmailSendLogRow } from "@/lib/email/providers/types";
+import { BookOpen, Mail, Plus, RefreshCw, ScrollText, ToggleLeft } from "lucide-react";
+import { useState, useTransition } from "react";
 import { EmailFeatureFlagsPanel } from "./email-feature-flags-panel";
-import { EmailSendLogTable } from "./email-send-log-table";
-import { EmailSecurityNotice, EmailProviderNotReadyNotice } from "./email-security-notice";
+import { EmailProviderConfigList } from "./email-provider-config-list";
 import { EmailProviderFormDialog } from "./email-provider-form-dialog";
+import { EmailProviderNotReadyNotice, EmailSecurityNotice } from "./email-security-notice";
+import { EmailSendLogTable } from "./email-send-log-table";
 
 interface EmailSettingsPageClientProps {
   configs: EmailProviderConfig[];
@@ -115,7 +114,7 @@ export function EmailSettingsPageClient({
             <p className="text-sm font-medium mb-1">Email Feature Flags</p>
             <p className="text-xs text-muted-foreground mb-4">
               Control which ERP modules can send emails. All flags are disabled by default.
-              Flags marked "Requires approval" prompt confirmation before enabling.
+              Flags marked &quot;Requires approval&quot; prompt confirmation before enabling.
             </p>
             <EmailFeatureFlagsPanel flags={featureFlags} onRefresh={handleRefresh} />
           </div>
@@ -154,7 +153,7 @@ function Microsoft365SetupGuide() {
         <li>
           <span className="font-medium text-foreground">Register an App in Microsoft Entra ID (Azure AD)</span>
           <p className="ml-5 mt-1 text-xs">Go to portal.azure.com → Microsoft Entra ID → App registrations → New registration.</p>
-          <p className="ml-5 mt-0.5 text-xs">Set the name (e.g. "ALGT ERP Mail Sender") and choose "Accounts in this organizational directory only".</p>
+          <p className="ml-5 mt-0.5 text-xs">Set the name (e.g. &quot;ALGT ERP Mail Sender&quot;) and choose &quot;Accounts in this organizational directory only&quot;.</p>
         </li>
         <li>
           <span className="font-medium text-foreground">Grant Mail.Send application permission</span>
@@ -170,11 +169,11 @@ function Microsoft365SetupGuide() {
         </li>
         <li>
           <span className="font-medium text-foreground">Configure the provider in ERP</span>
-          <p className="ml-5 mt-1 text-xs">In the Providers tab: edit M365_DEFAULT → enter Tenant ID and Client ID (App ID) → click "Update Secret" → enter the env var name (e.g. MICROSOFT_GRAPH_CLIENT_SECRET).</p>
+          <p className="ml-5 mt-1 text-xs">In the Providers tab: edit M365_DEFAULT → enter Tenant ID and Client ID (App ID) → click &quot;Update Secret&quot; → enter the env var name (e.g. MICROSOFT_GRAPH_CLIENT_SECRET).</p>
         </li>
         <li>
           <span className="font-medium text-foreground">Test the connection</span>
-          <p className="ml-5 mt-1 text-xs">Click "Test Connection" to verify credentials. Then use "Send Test Email" to confirm email delivery.</p>
+          <p className="ml-5 mt-1 text-xs">Click &quot;Test Connection&quot; to verify credentials. Then use &quot;Send Test Email&quot; to confirm email delivery.</p>
         </li>
         <li>
           <span className="font-medium text-foreground">Enable the provider and feature flags</span>

@@ -17,6 +17,7 @@ import Link from "next/link";
 import type { DmsUploadSessionRow } from "@/server/actions/dms/upload-sessions";
 import { FileTypeIcon } from "./dms-file-type-icon";
 import { FileSize } from "./dms-file-size";
+import { useClock } from "@/hooks/use-clock";
 
 interface DmsUploadSessionTableProps {
   sessions: DmsUploadSessionRow[];
@@ -44,6 +45,7 @@ export function DmsUploadSessionTable({
   onAiFill,
   isSubmitting,
 }: DmsUploadSessionTableProps) {
+  const now = useClock();
   if (sessions.length === 0) {
     return (
       <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
@@ -77,7 +79,7 @@ export function DmsUploadSessionTable({
             // ago) — block a second AI Fill click that would spawn a duplicate pipeline.
             const isAiRunning =
               (s.intake_status === "ocr_processing" || s.intake_status === "ai_processing") &&
-              Date.now() - new Date(s.updated_at).getTime() < 5 * 60 * 1000;
+              (now === 0 || now - new Date(s.updated_at).getTime() < 5 * 60 * 1000);
             return (
               <tr key={s.id} className="hover:bg-muted/20 transition-colors">
                 <td className="px-4 py-2.5">

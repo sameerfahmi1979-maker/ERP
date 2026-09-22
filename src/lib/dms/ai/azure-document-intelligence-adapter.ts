@@ -28,13 +28,12 @@ import { resolveAiProviderSecret } from "@/lib/settings/resolve-ai-secret";
 
 import type { AiProviderConfig } from "@/lib/ai/providers/types";
 import type {
-  IDmsAiProvider,
   DmsAiInput,
   DmsAiOutput,
-  DmsSummaryOutput,
-  DmsStructuredCompletionOutput,
   DmsEmbeddingOutput,
-  DmsAiImageFile,
+  DmsStructuredCompletionOutput,
+  DmsSummaryOutput,
+  IDmsAiProvider
 } from "./types";
 
 const AZURE_API_VERSION = "2024-11-30";

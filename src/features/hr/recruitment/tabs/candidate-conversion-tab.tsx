@@ -1,24 +1,22 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { queryKeys } from "@/lib/query/query-keys";
-import { prepareCandidateEmployeeConversion, convertCandidateToEmployee, getEmployeeRecruitmentLink } from "@/server/actions/hr/recruitment";
-import type { CandidateRow } from "@/server/actions/hr/recruitment";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { ERPCombobox } from "@/components/erp/combobox";
+import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
+import { RequiredLabel } from "@/components/erp/required-label";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { UserCheck, ArrowRight, CheckCircle, AlertTriangle, ExternalLink } from "lucide-react";
-import { toast } from "sonner";
+import { Textarea } from "@/components/ui/textarea";
+import { queryKeys } from "@/lib/query/query-keys";
+import type { CandidateRow } from "@/server/actions/hr/recruitment";
+import { convertCandidateToEmployee, prepareCandidateEmployeeConversion } from "@/server/actions/hr/recruitment";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertTriangle, CheckCircle, ExternalLink, UserCheck } from "lucide-react";
 import Link from "next/link";
-import { RequiredLabel } from "@/components/erp/required-label";
-import { useQuery as useOwnerQuery } from "@tanstack/react-query";
+import { useState, useTransition } from "react";
+import { toast } from "sonner";
 
 type Props = {
   candidate: CandidateRow;
@@ -161,7 +159,7 @@ export function CandidateConversionTab({ candidate, canManage, canCreateEmployee
               <CheckCircle className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
               <div>
                 <p className="text-sm font-medium text-green-800">Candidate has been converted to an employee.</p>
-                <p className="text-xs text-green-700 mt-0.5">This candidate has already been converted. To view the employee profile, search for this candidate's name in the Employees module.</p>
+                <p className="text-xs text-green-700 mt-0.5">This candidate has already been converted. To view the employee profile, search for this candidate&apos;s name in the Employees module.</p>
               </div>
             </CardContent>
           </Card>
@@ -174,7 +172,7 @@ export function CandidateConversionTab({ candidate, canManage, canCreateEmployee
                   <div className="flex-1">
                     <p className="text-sm font-medium">Convert Candidate to Employee</p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      This action will create a new employee record from this candidate's data. It requires review and explicit confirmation. This action cannot be undone.
+                      This action will create a new employee record from this candidate&apos;s data. It requires review and explicit confirmation. This action cannot be undone.
                     </p>
                     <div className="mt-2 text-xs text-muted-foreground space-y-1">
                       <p>• Candidate: <strong>{candidate.full_name_en}</strong> ({candidate.candidate_code})</p>

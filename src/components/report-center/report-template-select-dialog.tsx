@@ -9,22 +9,23 @@
  * Generic — no hardcoded company names or logos.
  */
 
-import { useState, useEffect } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
-  DialogDescription,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, CheckCircle2, FileText, Layers, Palette } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { listReportTemplatesForSelection } from "@/server/actions/reports/templates";
 import type { ReportTemplateForSelection } from "@/server/actions/reports/templates";
+import { listReportTemplatesForSelection } from "@/server/actions/reports/templates";
+import { useQuery } from "@tanstack/react-query";
+import { CheckCircle2, FileText, Layers, Loader2, Palette } from "lucide-react";
+import { useState } from "react";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -58,7 +59,11 @@ const profileTypeBadge: Record<string, { label: string; variant: "default" | "se
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function ReportTemplateSelectDialog({
+export function ReportTemplateSelectDialog(props: ReportTemplateSelectDialogProps) {
+  return props.open ? <ReportTemplateSelection key={props.ownerCompanyIds?.join(",") ?? "all"} {...props} /> : null;
+}
+
+function ReportTemplateSelection({
   open,
   onOpenChange,
   onSelect,
@@ -66,23 +71,16 @@ export function ReportTemplateSelectDialog({
   dialogTitle = "Select Report Template",
   dialogDescription = "Choose the branding template to use for this export.",
 }: ReportTemplateSelectDialogProps) {
-  const [templates, setTemplates] = useState<ReportTemplateForSelection[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
-
-  // Load templates when dialog opens
-  useEffect(() => {
-    if (!open) return;
-    setIsLoading(true);
-    setSelectedId(null);
-    listReportTemplatesForSelection({ ownerCompanyIds })
-      .then((res) => {
-        if (res.success && res.data) setTemplates(res.data);
-        else setTemplates([]);
-      })
-      .catch(() => setTemplates([]))
-      .finally(() => setIsLoading(false));
-  }, [open, ownerCompanyIds]);
+  const { data: templates = [], isPending: isLoading, error } = useQuery({
+    queryKey: ["report-templates-for-selection", ownerCompanyIds],
+    queryFn: async () => {
+      const result = await listReportTemplatesForSelection({ ownerCompanyIds });
+      if (!result.success) throw new Error(result.error ?? "Failed to load templates");
+      return result.data ?? [];
+    },
+    retry: false, gcTime: 0, refetchOnWindowFocus: false,
+  });
 
   const handleConfirm = () => {
     if (!selectedId) return;
@@ -104,7 +102,7 @@ export function ReportTemplateSelectDialog({
         </DialogHeader>
 
         <div className="py-2">
-          {isLoading ? (
+          {error ? <p role="alert">Could not load report templates. Close this dialog and try again.</p> : isLoading ? (
             <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
               <Loader2 className="h-5 w-5 animate-spin" />
               <span>Loading templates…</span>

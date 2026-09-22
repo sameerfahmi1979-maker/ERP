@@ -195,7 +195,7 @@ export async function uploadBrandingAsset(
     const admin = createAdminClient();
 
     let appSettingsId = meta.appSettingsId ?? null;
-    let brandingProfileId = meta.brandingProfileId ?? null;
+    const brandingProfileId = meta.brandingProfileId ?? null;
     let ownerCompanyId = meta.ownerCompanyId ?? null;
 
     if (meta.assetScope === "app") {

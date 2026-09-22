@@ -18,12 +18,12 @@
  *   - Medical records require hr.medical.view/manage separately from hr.compliance.view/manage
  */
 
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { revalidatePath } from "next/cache";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/server/actions/audit";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 // ── Shared ────────────────────────────────────────────────────────────────────
@@ -200,8 +200,8 @@ export type EmployeeComplianceSummary = {
 
 // ── Helper: load employee for audit context ───────────────────────────────────
 
-import { getEmployeeCtxAdmin as loadEmployeeForAudit } from "./_shared/employee-context";
 import { ensureDmsDocumentLinkedToEntity } from "@/server/actions/dms/entity-documents";
+import { getEmployeeCtxAdmin as loadEmployeeForAudit } from "./_shared/employee-context";
 
 function revalidateEmployeePath(employeeId: number) {
   revalidatePath(`/admin/hr/employees/record/${employeeId}`);

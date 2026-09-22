@@ -237,9 +237,7 @@ export function ERPRecordSectionPanel({
   const isActive = id === activeId;
   const [hasMounted, setHasMounted] = React.useState<boolean>(!lazyMount || isActive);
 
-  React.useEffect(() => {
-    if (isActive && !hasMounted) setHasMounted(true);
-  }, [isActive, hasMounted]);
+  if ((!lazyMount || isActive) && !hasMounted) setHasMounted(true);
 
   if (!hasMounted) return null;
 

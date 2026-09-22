@@ -8,60 +8,57 @@
  * following the same patterns as PartyWorkspaceForm (ERP UI.4D).
  */
 
-import { useState, useCallback, useMemo, useRef } from "react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
-import {
-  LayoutList,
-  Database,
-  Link2,
-  Tag,
-  GitBranch,
-  Paperclip,
-  CalendarClock,
-  ShieldCheck,
-  MessageSquare,
-  Activity,
-  ScanText,
-  Brain,
-  Compass,
-  FileText,
-  Sparkles,
-} from "lucide-react";
-import { ERPRecordWorkspaceForm, ERPRecordSectionPanel } from "@/components/workspace/erp-record-workspace-form";
+import { DraftRestoredNotice } from "@/components/workspace/draft-restored-notice";
+import type { ERPRecordSection } from "@/components/workspace/erp-record-section-nav";
+import { ERPRecordSectionPanel, ERPRecordWorkspaceForm } from "@/components/workspace/erp-record-workspace-form";
 import { useFormDirty } from "@/hooks/use-form-dirty";
 import { useWorkspace } from "@/hooks/use-workspace";
-import { useWorkspaceTabDirty } from "@/hooks/use-workspace-tab-dirty";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
-import { DraftRestoredNotice } from "@/components/workspace/draft-restored-notice";
-import { useWorkspaceSectionState } from "@/hooks/use-workspace-section-state";
 import { useWorkspaceScrollState } from "@/hooks/use-workspace-scroll-state";
+import { useWorkspaceSectionState } from "@/hooks/use-workspace-section-state";
+import { useWorkspaceTabDirty } from "@/hooks/use-workspace-tab-dirty";
+import type { AuthContext } from "@/lib/rbac/check";
+import type { DmsDocumentRecordData } from "@/server/actions/dms/documents";
 import { createDmsDocument, updateDmsDocument } from "@/server/actions/dms/documents";
 import { linkDmsDocumentToEntity } from "@/server/actions/dms/entity-documents";
-import type { DmsDocumentRecordData } from "@/server/actions/dms/documents";
-import type { ERPRecordSection } from "@/components/workspace/erp-record-section-nav";
-import type { AuthContext } from "@/lib/rbac/check";
-import { DmsDocumentStatusBadge } from "./dms-document-status-badge";
-import { DmsConfidentialityBadge } from "./dms-confidentiality-badge";
-import { DmsExpiryBadge } from "./dms-expiry-badge";
-import { DmsDocumentOverviewSection } from "./sections/dms-document-overview-section";
-import { DmsDocumentMetadataSection } from "./sections/dms-document-metadata-section";
-import { DmsDocumentLinksSection } from "./sections/dms-document-links-section";
-import { DmsDocumentTagsSection } from "./sections/dms-document-tags-section";
-import { DmsDocumentVersionsSection } from "./sections/dms-document-versions-section";
-import { DmsDocumentFilesSection } from "./sections/dms-document-files-section";
-import { DmsDocumentExpirySection } from "./sections/dms-document-expiry-section";
-import { DmsDocumentApprovalsSection } from "./sections/dms-document-approvals-section";
-import { DmsDocumentCommentsSection } from "./sections/dms-document-comments-section";
-import { DmsDocumentAuditSection } from "./sections/dms-document-audit-section";
-import { DmsDocumentOcrSection } from "./sections/dms-document-ocr-section";
+import {
+  Activity,
+  Brain,
+  CalendarClock,
+  Compass,
+  Database,
+  FileText,
+  GitBranch,
+  LayoutList,
+  Link2,
+  MessageSquare,
+  Paperclip,
+  ScanText,
+  ShieldCheck,
+  Sparkles,
+  Tag,
+} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { DmsDocumentAiSection } from "./sections/dms-document-ai-section";
-import { DmsDocumentUnderstandingSection } from "./sections/dms-document-understanding-section";
-import { DmsDocumentContentSection } from "./sections/dms-document-content-section";
 import { DmsDocumentAiSummarySection } from "./sections/dms-document-ai-summary-section";
-import { DmsDocumentIntelligenceSection } from "./sections/dms-document-intelligence-section";
-import { DmsDocumentSemanticSection } from "./sections/dms-document-semantic-section";
+import { DmsDocumentApprovalsSection } from "./sections/dms-document-approvals-section";
 import { DmsDocumentAskAiSection } from "./sections/dms-document-ask-ai-section";
+import { DmsDocumentAuditSection } from "./sections/dms-document-audit-section";
+import { DmsDocumentCommentsSection } from "./sections/dms-document-comments-section";
+import { DmsDocumentContentSection } from "./sections/dms-document-content-section";
+import { DmsDocumentExpirySection } from "./sections/dms-document-expiry-section";
+import { DmsDocumentFilesSection } from "./sections/dms-document-files-section";
+import { DmsDocumentIntelligenceSection } from "./sections/dms-document-intelligence-section";
+import { DmsDocumentLinksSection } from "./sections/dms-document-links-section";
+import { DmsDocumentMetadataSection } from "./sections/dms-document-metadata-section";
+import { DmsDocumentOcrSection } from "./sections/dms-document-ocr-section";
+import { DmsDocumentOverviewSection } from "./sections/dms-document-overview-section";
+import { DmsDocumentSemanticSection } from "./sections/dms-document-semantic-section";
+import { DmsDocumentTagsSection } from "./sections/dms-document-tags-section";
+import { DmsDocumentUnderstandingSection } from "./sections/dms-document-understanding-section";
+import { DmsDocumentVersionsSection } from "./sections/dms-document-versions-section";
 
 interface DocumentType {
   id: number;

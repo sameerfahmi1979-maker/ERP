@@ -12,8 +12,8 @@
  * (deferred to DMS.2 or HR.15 when full HR manager relationships are modeled).
  */
 
-import { createClient } from "@/lib/supabase/server";
 import { getAuthContext, hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
+import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
 

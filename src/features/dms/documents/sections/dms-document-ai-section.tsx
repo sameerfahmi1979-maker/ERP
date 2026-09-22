@@ -13,68 +13,67 @@
  *  - Human must select fields and confirm before any write occurs.
  */
 
-import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { getApplyCorrectionAccess } from "@/server/actions/dms/apply-correction";
-import { toast } from "sonner";
-import {
-  Brain,
-  RefreshCw,
-  AlertCircle,
-  Info,
-  ChevronDown,
-  ChevronUp,
-  RotateCcw,
-  Wand2,
-  Check,
-  AlertTriangle,
-  MinusCircle,
-  Loader2,
-  History,
-  CheckCircle2,
-  XCircle,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
   AlertDialogDescription,
   AlertDialogFooter,
-  AlertDialogCancel,
-  AlertDialogAction,
+  AlertDialogHeader,
+  AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { queryKeys } from "@/lib/query/query-keys";
+import { Button } from "@/components/ui/button";
+import { ErpMappingPreviewPanel } from "@/features/dms/documents/sections/dms-erp-mapping-preview-panel";
 import { invalidateDmsAiAnalysis } from "@/lib/query/invalidation";
+import { queryKeys } from "@/lib/query/query-keys";
 import {
+  applyAiAnalysisToMetadata,
   getDmsAiAnalysisStatus,
   getDmsAiExtractionResults,
-  runDmsAiAnalysisForDocument,
-  retryDmsAiAnalysisJob,
-  markDmsAiResultSuperseded,
-  applyAiAnalysisToMetadata,
   getDmsAiMetadataApplyHistory,
-  type DmsAiResultRow,
+  markDmsAiResultSuperseded,
+  retryDmsAiAnalysisJob,
+  runDmsAiAnalysisForDocument,
   type ApplyAiMetadataSelection,
   type DmsAiMetadataApplyHistoryRun,
+  type DmsAiResultRow,
 } from "@/server/actions/dms/ai-analysis";
-import { ErpMappingPreviewPanel } from "@/features/dms/documents/sections/dms-erp-mapping-preview-panel";
-// Phase 16 — Apply-to-ERP history (DMS document field runs)
-import { DmsApplyToErpRunHistory } from "@/features/dms/apply-to-erp";
+import { getApplyCorrectionAccess } from "@/server/actions/dms/apply-correction";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  getMetadataDefinitionsForType,
-  getDmsDocumentMetadataValues,
-} from "@/server/actions/dms/document-metadata-values";
+  AlertCircle,
+  AlertTriangle,
+  Brain,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  History,
+  Info,
+  Loader2,
+  MinusCircle,
+  RefreshCw,
+  RotateCcw,
+  Wand2,
+  XCircle,
+} from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+// Phase 16 — Apply-to-ERP history (DMS document field runs)
 import { DmsAiConfidenceBadge } from "@/features/dms/ai/dms-ai-confidence-badge";
+import { DmsApplyToErpRunHistory } from "@/features/dms/apply-to-erp";
+import type { DmsMetadataDefinitionBase } from "@/lib/dms/metadata/metadata-definition-shared";
 import {
   buildMetadataDiff,
-  type MetadataDiffRow,
-  type MetadataDiffState,
-  type CurrentMetadataValueRow,
   type ConfidenceEntry,
+  type CurrentMetadataValueRow,
+  type MetadataDiffState
 } from "@/lib/dms/metadata/metadata-diff";
-import type { DmsMetadataDefinitionBase } from "@/lib/dms/metadata/metadata-definition-shared";
+import {
+  getDmsDocumentMetadataValues,
+  getMetadataDefinitionsForType,
+} from "@/server/actions/dms/document-metadata-values";
 import { format, parseISO } from "date-fns";
 
 // ── Props ────────────────────────────────────────────────────────────────────

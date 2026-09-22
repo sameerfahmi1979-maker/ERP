@@ -28,6 +28,8 @@ jobs:
       - run: npm run security:secrets
       - run: npm test
       - run: npm run test:remediation
+      - run: npm run typecheck:e2e
+      - run: npm run test:e2e -- --list
       - run: npm run build
       - run: npm run typecheck
       - run: npm audit --audit-level=high

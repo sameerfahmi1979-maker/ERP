@@ -13,16 +13,15 @@
 import type { DmsSearchIntent } from "@/lib/dms/ai/types";
 import { cn } from "@/lib/utils";
 import {
-  CalendarDays,
-  FileText,
-  User,
-  Building2,
-  Tag,
   AlertTriangle,
-  ShieldAlert,
+  Building2,
+  CalendarDays,
   Clock,
-  Hash,
+  FileText,
   Filter,
+  Hash,
+  ShieldAlert,
+  User
 } from "lucide-react";
 
 // ── Individual chip ───────────────────────────────────────────────────────────

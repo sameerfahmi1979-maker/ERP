@@ -1,23 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import { queryKeys } from "@/lib/query/query-keys";
-import {
-  listGlobalDisciplinaryRecords,
-  updateEmployeeDisciplinaryRecord,
-  archiveEmployeeDisciplinaryRecord,
-  acknowledgeEmployeeDisciplinaryRecord,
-  closeEmployeeDisciplinaryRecord,
-  type DisciplinaryRow,
-} from "@/server/actions/hr/actions";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
+import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,11 +11,30 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
-import {
-  AlertTriangle, Search, Eye, Pencil, Trash2, RefreshCw, CheckCircle, XCircle,
-} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
+import { queryKeys } from "@/lib/query/query-keys";
 import type { AuthContext } from "@/lib/rbac/check";
+import {
+  archiveEmployeeDisciplinaryRecord,
+  listGlobalDisciplinaryRecords,
+  updateEmployeeDisciplinaryRecord,
+  type DisciplinaryRow
+} from "@/server/actions/hr/actions";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  AlertTriangle,
+  Eye, Pencil,
+  RefreshCw,
+  Search,
+  Trash2
+} from "lucide-react";
+import { useState, useTransition } from "react";
+import { toast } from "sonner";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -121,14 +123,12 @@ function toForm(r: DisciplinaryRow | null): EditForm {
   };
 }
 
-function DetailDialog({ record, open, mode, canManage, onClose, onEdit, onSaved }: DetailDialogProps) {
+function DetailDialog(props: DetailDialogProps) {
+  return props.open ? <DetailDialogSession key={props.record?.id ?? "new"} {...props} /> : null;
+}
+function DetailDialogSession({ record, open, mode, canManage, onClose, onEdit, onSaved }: DetailDialogProps) {
   const [form, setForm] = useState<EditForm>(() => toForm(record));
   const [isPending, startTransition] = useTransition();
-
-  // Re-initialise form whenever the selected record changes
-  useEffect(() => {
-    setForm(toForm(record));
-  }, [record?.id]);
 
   const handleSave = () => {
     if (!record) return;
@@ -575,7 +575,7 @@ export function HrDisciplinaryPageClient({ authContext }: Props) {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Disciplinary Record?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently remove the record <strong>"{deleteTarget?.subject}"</strong> for{" "}
+              This will permanently remove the record <strong>&quot;{deleteTarget?.subject}&quot;</strong> for{" "}
               <strong>{deleteTarget?.employee?.full_name_en ?? `Employee #${deleteTarget?.employee_id}`}</strong>.
               This action cannot be undone.
             </AlertDialogDescription>

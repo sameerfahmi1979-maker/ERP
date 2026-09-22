@@ -8,32 +8,30 @@
 
 "use client";
 
-import * as React from "react";
-import { format } from "date-fns";
-import { Send, X as XIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogHeader,
-  DialogTitle,
+  DialogTitle
 } from "@/components/ui/dialog";
-import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
-import { validateEmail, parseEmailList } from "@/lib/email/email-validation";
 import { formatBytes } from "@/lib/email/attachment-utils";
-import { EmailRecipientInput } from "./email-recipient-input";
+import { parseEmailList, validateEmail } from "@/lib/email/email-validation";
+import { cn } from "@/lib/utils";
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
+import { useQuery } from "@tanstack/react-query";
+import { format } from "date-fns";
+import { Send, X as XIcon } from "lucide-react";
+import * as React from "react";
 import { EmailAttachmentPreview } from "./email-attachment-preview";
+import { EmailRecipientInput } from "./email-recipient-input";
 import type {
-  ERPSendEmailDialogProps,
   AttachmentFormat,
+  ERPSendEmailDialogProps,
   PreparedEmailInput,
 } from "./email-types-ui";
-import type { EmailAttachment } from "@/lib/email/email-types";
 
 // Constants (lightweight UI validation, full validation in Phase 002E.3D server action)
 const MAX_RECIPIENTS = 20;
@@ -83,7 +81,11 @@ ERP System`;
  * />
  * ```
  */
-export function ERPSendEmailDialog({
+export function ERPSendEmailDialog(props: ERPSendEmailDialogProps) {
+  return props.open ? <SendEmailSession key={`${props.moduleCode}:${props.title}:${props.recordCount}:${props.exportMode}`} {...props} /> : null;
+}
+
+function SendEmailSession({
   open,
   onOpenChange,
   title,
@@ -102,79 +104,33 @@ export function ERPSendEmailDialog({
   const [to, setTo] = React.useState("");
   const [cc, setCc] = React.useState("");
   const [bcc, setBcc] = React.useState("");
-  const [subject, setSubject] = React.useState(
-    defaultSubject || `${title} - ${format(new Date(), "yyyy-MM-dd")}`
-  );
+  const [subject, setSubject] = React.useState(() => defaultSubject || `${title} - ${format(new Date(), "yyyy-MM-dd")}`);
   const [body, setBody] = React.useState(defaultBody || DEFAULT_EMAIL_BODY);
   const [attachmentType, setAttachmentType] = React.useState<AttachmentFormat>(
     defaultAttachmentType
   );
 
   // Attachment state
-  const [attachment, setAttachment] = React.useState<EmailAttachment | null>(null);
-  const [isGeneratingAttachment, setIsGeneratingAttachment] = React.useState(false);
-  const [attachmentError, setAttachmentError] = React.useState<string | null>(null);
+  const attachmentSession = React.useId();
+  const { data: attachment, isPending: isGeneratingAttachment, error: generationError } = useQuery({
+    queryKey: ["prepared-email-attachment", attachmentSession, attachmentType],
+    queryFn: async () => {
+      const option = attachmentOptions.find(opt => opt.type === attachmentType);
+      if (!option) throw new Error(`Invalid attachment type: ${attachmentType}`);
+      return await option.generateAttachment();
+    },
+    retry: false, gcTime: 0, refetchOnWindowFocus: false,
+  });
+  const attachmentError = generationError?.message;
 
   // Validation state
-  const [validationErrors, setValidationErrors] = React.useState<Record<string, string>>({});
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = React.useState(false);
   
   // Sending state (Phase 002E.3D)
   const [isSending, setIsSending] = React.useState(false);
 
-  // Reset form when dialog opens/closes
-  React.useEffect(() => {
-    if (open) {
-      // Reset form
-      setTo("");
-      setCc("");
-      setBcc("");
-      setSubject(defaultSubject || `${title} - ${format(new Date(), "yyyy-MM-dd")}`);
-      setBody(defaultBody || DEFAULT_EMAIL_BODY);
-      setAttachmentType(defaultAttachmentType);
-      setValidationErrors({});
-      setHasAttemptedSubmit(false);
-      setAttachment(null);
-      setIsGeneratingAttachment(false);
-      setAttachmentError(null);
-    } else {
-      // Clear all state when closed (free memory)
-      setAttachment(null);
-    }
-  }, [open, title, defaultSubject, defaultBody, defaultAttachmentType]);
-
-  // Generate attachment when format changes or dialog opens
-  React.useEffect(() => {
-    if (!open) return;
-
-    async function generateAttachment() {
-      setIsGeneratingAttachment(true);
-      setAttachmentError(null);
-      setAttachment(null);
-
-      try {
-        const option = attachmentOptions.find((opt) => opt.type === attachmentType);
-        if (!option) {
-          throw new Error(`Invalid attachment type: ${attachmentType}`);
-        }
-
-        const result = await Promise.resolve(option.generateAttachment());
-        setAttachment(result);
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Failed to generate attachment";
-        setAttachmentError(errorMessage);
-        console.error("[ERPSendEmailDialog] Attachment generation error:", error);
-      } finally {
-        setIsGeneratingAttachment(false);
-      }
-    }
-
-    generateAttachment();
-  }, [open, attachmentType, attachmentOptions]);
-
   // Validate form
-  const validateForm = React.useCallback((): boolean => {
+  const currentValidationErrors = React.useMemo(() => {
     const errors: Record<string, string> = {};
 
     // Parse all recipients
@@ -232,23 +188,15 @@ export function ERPSendEmailDialog({
       errors.attachment = `Attachment too large (${sizeMB} MB). Maximum: ${MAX_ATTACHMENT_MB} MB`;
     }
 
-    setValidationErrors(errors);
-    return Object.keys(errors).length === 0;
+    return errors;
   }, [to, cc, bcc, subject, body, attachment, isGeneratingAttachment]);
-
-  // Validate on changes after first submit attempt
-  React.useEffect(() => {
-    if (hasAttemptedSubmit) {
-      validateForm();
-    }
-  }, [hasAttemptedSubmit, validateForm]);
+  const validationErrors = hasAttemptedSubmit ? currentValidationErrors : {};
 
   // Handle send email (Phase 002E.3D - now async)
   const handlePreparedSend = React.useCallback(async () => {
     setHasAttemptedSubmit(true);
 
-    if (!validateForm()) {
-      console.log("[ERPSendEmailDialog] Validation failed:", validationErrors);
+    if (Object.keys(currentValidationErrors).length > 0) {
       return;
     }
 
@@ -309,8 +257,7 @@ export function ERPSendEmailDialog({
       setIsSending(false);
     }
   }, [
-    validateForm,
-    validationErrors,
+    currentValidationErrors,
     attachment,
     to,
     cc,

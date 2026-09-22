@@ -58,6 +58,7 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
   // Phase 16 Tier 2 — Party write-back state
   const [partyTargetKind, setPartyTargetKind] = useState<PartyApplyTargetKind>("party_licenses");
   const [partySelectedRowId, setPartySelectedRowId] = useState<number | null>(null);
+  const [suggestedTaxExpiry] = useState(() => new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]);
 
   const isActive = ["open", "assigned", "in_review"].includes(item.status);
 
@@ -553,7 +554,7 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
                   currentValueSummary: null,
                   proposedValueSummary: partyTargetKind === "party_licenses"
                                           ? `Verified – entity match: ${item.entityMatchCandidate.targetDisplayName ?? ""}`
-                                          : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+                                          : suggestedTaxExpiry,
                   valueType:           partyTargetKind === "party_licenses" ? "text" : "date",
                   confidence:          item.entityMatchCandidate.matchScore ?? null,
                   requiresConfirmation: true,

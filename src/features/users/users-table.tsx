@@ -1,21 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import type { ColumnDef } from "@tanstack/react-table";
-import { format } from "date-fns";
-import { useRouter } from "next/navigation";
 import { ERPDataTable } from "@/components/erp/table/erp-data-table";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { MoreHorizontal, Pencil, UserPlus, Ban, Eye, Trash2, ShieldAlert, CheckCircle } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,13 +11,27 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import type { UserWithRoles, Role, OwnerCompany, Branch } from "@/types/domain";
-import { cn } from "@/lib/utils";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { formatRoleScopeLabel } from "@/lib/users/role-scope";
+import { cn } from "@/lib/utils";
+import { adminUpdateUserProfile, deleteUser } from "@/server/actions/users";
+import type { Branch, OwnerCompany, Role, UserWithRoles } from "@/types/domain";
+import type { ColumnDef } from "@tanstack/react-table";
+import { format } from "date-fns";
+import { Ban, CheckCircle, Eye, MoreHorizontal, Pencil, ShieldAlert, Trash2, UserPlus } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { toast } from "sonner";
 import { AssignRoleDialog } from "./assign-role-dialog";
 import { UsersListToolbar } from "./users-list-toolbar";
-import { adminUpdateUserProfile, deleteUser } from "@/server/actions/users";
-import { toast } from "sonner";
 
 function StatusBadge({ status }: { status: string | null | undefined }) {
   return (

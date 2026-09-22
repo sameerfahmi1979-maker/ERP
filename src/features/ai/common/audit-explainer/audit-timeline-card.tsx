@@ -1,10 +1,10 @@
 "use client";
 
-import type { AuditTimelineItem, AuditExplanationSummary } from "@/lib/ai/common/audit-explainer/types";
+import type { AuditExplanationSummary, AuditTimelineItem } from "@/lib/ai/common/audit-explainer/types";
+import { explainAiEventGroup, explainAuditLogEntry } from "@/server/actions/ai/common/audit-explainer";
+import { useState } from "react";
 import { AuditEventCard } from "./audit-event-card";
 import { AuditExplanationPanel } from "./audit-explanation-panel";
-import { explainAuditLogEntry, explainAiEventGroup } from "@/server/actions/ai/common/audit-explainer";
-import { useState } from "react";
 
 interface Props {
   items: AuditTimelineItem[];

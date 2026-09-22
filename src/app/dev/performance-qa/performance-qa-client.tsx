@@ -33,7 +33,7 @@ import { toast } from "sonner";
 
 function CacheInspector() {
   const queryClient = useQueryClient();
-  const [entries, setEntries] = React.useState<{ key: string; status: string; dataUpdatedAt: number }[]>([]);
+  const [entries, setEntries] = React.useState(() => queryClient.getQueryCache().findAll({ type: "active" }).map(q => ({ key: JSON.stringify(q.queryKey), status: q.state.status, dataUpdatedAt: q.state.dataUpdatedAt })));
 
   const refresh = React.useCallback(() => {
     const all = queryClient.getQueryCache().findAll({ type: "active" });
@@ -47,7 +47,6 @@ function CacheInspector() {
   }, [queryClient]);
 
   React.useEffect(() => {
-    refresh();
     // Subscribe to cache changes
     const unsub = queryClient.getQueryCache().subscribe(refresh);
     return unsub;

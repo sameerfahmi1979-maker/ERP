@@ -257,7 +257,7 @@ const _LEGACY_REGISTRY_PLACEHOLDER: Record<string, BindingDescriptor> = {
     valueType: "date",
   },
 };
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+
 void _LEGACY_REGISTRY_PLACEHOLDER;
 
 /** All safe binding paths as a string array — for Zod enum validation */

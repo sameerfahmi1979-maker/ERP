@@ -74,3 +74,9 @@ CODEX_AUDIT_13_09_2026/IMPLEMENTATION/F02_BLOCKER_REPAIRS/local-build/
 # F02 continuation: isolated candidate and restricted evidence, not shipping source
 /CODEX_AUDIT_13_09_2026/IMPLEMENTATION/F02_COMPLETION/private/
 /CODEX_AUDIT_13_09_2026/IMPLEMENTATION/F02_COMPLETION/local-build/
+# F02 final verification: private snapshots and isolated build artifacts stay local.
+CODEX_AUDIT_13_09_2026/IMPLEMENTATION/F02_FINAL/private/
+CODEX_AUDIT_13_09_2026/IMPLEMENTATION/F02_FINAL/local-build/
+CODEX_AUDIT_13_09_2026/IMPLEMENTATION/F02_FINAL/linux-build/
+# Restricted F02 closeout evidence; public summaries are reviewed separately.
+CODEX_AUDIT_13_09_2026/IMPLEMENTATION/F02_CLOSEOUT/

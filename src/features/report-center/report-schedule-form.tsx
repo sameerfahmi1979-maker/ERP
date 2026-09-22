@@ -1,20 +1,19 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { toast } from "sonner";
-import { CalendarClock, Mail, Settings2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ERPCombobox } from "@/components/erp/combobox";
+import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
-import { ERPCombobox } from "@/components/erp/combobox";
+import type { ReportRegistryEntry } from "@/lib/report-center/types";
 import { listReportRegistry } from "@/server/actions/reports/registry";
 import {
   createReportSchedule,
   updateReportSchedule,
   type ReportSchedule,
 } from "@/server/actions/reports/schedules";
-import type { ReportRegistryEntry } from "@/lib/report-center/types";
+import { CalendarClock, Mail, Settings2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 interface ReportScheduleFormProps {
   open: boolean;
@@ -45,7 +44,11 @@ const DAY_OF_WEEK_OPTIONS = [
   { value: 6, label: "Saturday" },
 ];
 
-export function ReportScheduleForm({
+export function ReportScheduleForm(props: ReportScheduleFormProps) {
+  return props.open ? <ReportScheduleSession key={props.editing?.id ?? "new"} {...props} /> : null;
+}
+
+function ReportScheduleSession({
   open,
   onOpenChange,
   editing,
@@ -54,7 +57,21 @@ export function ReportScheduleForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [reports, setReports] = useState<ReportRegistryEntry[]>([]);
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState(() => editing ? {
+    reportCode: (editing.report as { report_code?: string } | undefined)?.report_code ?? "",
+    scheduleName: editing.schedule_name,
+    outputFormat: editing.output_format,
+    frequency: editing.frequency,
+    dayOfWeek: editing.day_of_week ?? 1,
+    dayOfMonth: editing.day_of_month ?? 1,
+    timeOfDay: editing.time_of_day ?? "07:00",
+    timezone: editing.timezone,
+    recipientTo: (editing.recipient_to ?? []).join(", "),
+    recipientCc: (editing.recipient_cc ?? []).join(", "),
+    emailSubjectTemplate: editing.email_subject_template ?? "",
+    emailBodyTemplate: editing.email_body_template ?? "",
+    isActive: editing.is_active,
+  } : {
     reportCode: "",
     scheduleName: "",
     outputFormat: "pdf" as "pdf" | "excel" | "csv",
@@ -76,42 +93,8 @@ export function ReportScheduleForm({
         if (r.success && r.data) setReports(r.data);
       });
 
-      if (editing) {
-        const report = editing.report as { report_code?: string } | undefined;
-        setForm({
-          reportCode: report?.report_code ?? "",
-          scheduleName: editing.schedule_name,
-          outputFormat: editing.output_format,
-          frequency: editing.frequency,
-          dayOfWeek: editing.day_of_week ?? 1,
-          dayOfMonth: editing.day_of_month ?? 1,
-          timeOfDay: editing.time_of_day ?? "07:00",
-          timezone: editing.timezone,
-          recipientTo: (editing.recipient_to ?? []).join(", "),
-          recipientCc: (editing.recipient_cc ?? []).join(", "),
-          emailSubjectTemplate: editing.email_subject_template ?? "",
-          emailBodyTemplate: editing.email_body_template ?? "",
-          isActive: editing.is_active,
-        });
-      } else {
-        setForm({
-          reportCode: "",
-          scheduleName: "",
-          outputFormat: "pdf",
-          frequency: "weekly",
-          dayOfWeek: 1,
-          dayOfMonth: 1,
-          timeOfDay: "07:00",
-          timezone: "Asia/Dubai",
-          recipientTo: "",
-          recipientCc: "",
-          emailSubjectTemplate: "",
-          emailBodyTemplate: "",
-          isActive: true,
-        });
-      }
     }
-  }, [open, editing]);
+  }, [open]);
 
   const handleSubmit = async () => {
     if (!form.reportCode) { toast.error("Please select a report."); return; }

@@ -1,20 +1,21 @@
 "use client";
+import { useQuery } from "@tanstack/react-query";
 
-import { useEffect, useState, useCallback } from "react";
+import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
-  getAiModelCostRates,
-  createAiModelCostRate,
   archiveAiModelCostRate,
+  createAiModelCostRate,
+  getAiModelCostRates,
   updateAiModelCostRate,
   type CostRateRow,
   type CreateCostRateInput,
 } from "@/server/actions/dms/ai-observability";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
-import { PlusCircle, Archive, CheckCircle2 } from "lucide-react";
+import { Archive, CheckCircle2, PlusCircle } from "lucide-react";
+import { useState } from "react";
 
 interface Props {
   refreshKey: number;
@@ -35,26 +36,22 @@ const EMPTY_FORM: CreateCostRateInput = {
 };
 
 export function AiCostRateAdmin({ refreshKey }: Props) {
-  const [rates, setRates] = useState<CostRateRow[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<CreateCostRateInput>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const loadRates = useCallback(() => {
-    setLoading(true);
-    getAiModelCostRates()
-      .then((res) => {
-        if (res.success && res.data) setRates(res.data);
-        else setError(res.error ?? "Failed to load.");
-      })
-      .catch(() => setError("Failed to load cost rates."))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(loadRates, [loadRates, refreshKey]);
+  const { data: rates, isFetching: loading, error: queryError, refetch } = useQuery({
+    queryKey: ["ai-model-cost-rates", refreshKey],
+    queryFn: async () => {
+      const result = await getAiModelCostRates();
+      if (!result.success || !result.data) throw new Error(result.error ?? "Failed to load cost rates.");
+      return result.data;
+    },
+    retry: false, gcTime: 0, refetchOnWindowFocus: false,
+  });
+  const error = queryError?.message;
+  const loadRates = () => refetch();
 
   const handleCreate = async () => {
     setSubmitting(true);

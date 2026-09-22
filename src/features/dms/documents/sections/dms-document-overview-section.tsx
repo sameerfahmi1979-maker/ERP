@@ -1,17 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ERPCombobox } from "@/components/erp/combobox";
-import { RequiredLabel } from "@/components/erp/required-label";
-import { OwnerCompanySelect } from "@/components/erp/organizations/owner-company-select";
 import { BranchSelect } from "@/components/erp/organizations/branch-select";
+import { OwnerCompanySelect } from "@/components/erp/organizations/owner-company-select";
 import { PartySelect } from "@/components/erp/party-select";
+import { RequiredLabel } from "@/components/erp/required-label";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import type { DmsDocumentRow } from "@/server/actions/dms/documents";
-import { DMS_DOCUMENT_STATUSES, DMS_CONFIDENTIALITY_LEVELS } from "../dms-document-constants";
+import { useState } from "react";
+import { DMS_CONFIDENTIALITY_LEVELS, DMS_DOCUMENT_STATUSES } from "../dms-document-constants";
 
 interface DocumentType {
   id: number;
@@ -76,7 +76,7 @@ export function DmsDocumentOverviewSection({
   setPartyId,
   getDraftDefault,
 }: DmsDocumentOverviewSectionProps) {
-  const [requiresExpiry, setRequiresExpiry] = useState(false);
+  const requiresExpiry = documentTypes.find(t => t.id === documentTypeId)?.requires_expiry_tracking ?? false;
 
   // Controlled state for text/date inputs to avoid Base UI "defaultValue after init" warning.
   // WS.3: initialize from the workspace draft (unsaved edits restored after a
@@ -88,21 +88,18 @@ export function DmsDocumentOverviewSection({
   const [issueDate, setIssueDate]     = useState(() => draft("issue_date", doc?.issue_date ?? ""));
   const [expiryDate, setExpiryDate]   = useState(() => draft("expiry_date", doc?.expiry_date ?? ""));
 
-  useEffect(() => {
-    if (documentTypeId) {
-      const dt = documentTypes.find((t) => t.id === documentTypeId);
-      if (dt) {
-        setRequiresExpiry(dt.requires_expiry_tracking);
+  const handleDocumentTypeChange = (typeId: number | null) => {
+    setDocumentTypeId(typeId);
+    const dt = documentTypes.find((t) => t.id === typeId);
+    if (dt) {
         if (!categoryId && dt.category_id) {
           setCategoryId(dt.category_id);
         }
         if (confidentialityLevel === "internal" || !confidentialityLevel) {
           setConfidentialityLevel(dt.default_confidentiality);
         }
-      }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [documentTypeId]);
+  };
 
   const dtOptions = documentTypes.map((t) => ({ value: t.id, label: t.name_en }));
   const catOptions = categories.map((c) => ({ value: c.id, label: c.name_en }));
@@ -148,7 +145,7 @@ export function DmsDocumentOverviewSection({
           <ERPCombobox
             options={dtOptions}
             value={documentTypeId}
-            onValueChange={(v) => setDocumentTypeId(v as number | null)}
+            onValueChange={(v) => handleDocumentTypeChange(v as number | null)}
             placeholder="Select document type"
             disabled={isViewing}
             searchPlaceholder="Search types..."

@@ -40,7 +40,11 @@ type LookupValueWorkspaceFormProps = {
 
 const FORM_ID = "lookup-value-workspace-form";
 
-export function LookupValueWorkspaceForm({ value, categories, mode }: LookupValueWorkspaceFormProps) {
+export function LookupValueWorkspaceForm(props: LookupValueWorkspaceFormProps) {
+  return <LookupValueFormSession key={props.value?.id ?? "new"} {...props} />;
+}
+
+function LookupValueFormSession({ value, categories, mode }: LookupValueWorkspaceFormProps) {
   const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const queryClient = useQueryClient();
 
@@ -62,13 +66,6 @@ export function LookupValueWorkspaceForm({ value, categories, mode }: LookupValu
   useEffect(() => {
     if (activeTab?.id) markDirty(activeTab.id, isDirty);
   }, [isDirty, activeTab?.id, markDirty]);
-
-  useEffect(() => {
-    if (value) {
-      setSelectedCategoryId(value.category_id);
-      setColorPreview(value.color_hex ?? "");
-    }
-  }, [value]);
 
   const selectedCategory = categories.find((cat) => cat.id === selectedCategoryId);
 

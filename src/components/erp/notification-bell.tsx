@@ -1,22 +1,21 @@
 "use client";
 
-import { useState, useTransition } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, CheckCheck, X, ExternalLink } from "lucide-react";
-import Link from "next/link";
-import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import { Bell, CheckCheck, ExternalLink, X } from "lucide-react";
+import Link from "next/link";
+import { useState, useTransition } from "react";
+import { toast } from "sonner";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Button } from "@/components/ui/button";
 import { NotificationSeverityBadge } from "@/features/notifications/notification-severity-badge";
-import {
-  markAllMyNotificationsRead,
-  dismissNotification,
-  type NotificationRow,
-} from "@/server/actions/notifications/notifications";
 import { invalidateMyNotifications } from "@/lib/query/invalidation";
 import { cn } from "@/lib/utils";
+import {
+  dismissNotification,
+  markAllMyNotificationsRead,
+  type NotificationRow,
+} from "@/server/actions/notifications/notifications";
 
 // ── Query keys ──────────────────────────────────────────────────────────────
 

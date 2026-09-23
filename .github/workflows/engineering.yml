@@ -46,3 +46,33 @@ jobs:
       - run: npm ci
       # Existing application diagnostics remain blocking, not suppressed.
       - run: npm run lint
+  production-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Build pinned production image with synthetic public configuration
+        run: >-
+          docker build --tag algt-f02-ci
+          --build-arg NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:16421
+          --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=synthetic-ci-public-key
+          --build-arg NEXT_PUBLIC_SITE_URL=http://127.0.0.1:16401 .
+      - name: Verify pinned runtime and no root execution
+        run: |
+          test "$(docker run --rm algt-f02-ci node --version)" = "v22.23.2"
+          test "$(docker run --rm algt-f02-ci npm --version)" = "10.9.8"
+          test "$(docker run --rm algt-f02-ci id -u)" = "1000"
+      - name: Verify boot and anonymous HTTP boundaries
+        run: |
+          docker run --detach --name algt-f02-ci --publish 127.0.0.1:16401:3000 \
+            --env NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:16421 \
+            --env NEXT_PUBLIC_SUPABASE_ANON_KEY=synthetic-ci-public-key \
+            --env NEXT_PUBLIC_SITE_URL=http://127.0.0.1:16401 algt-f02-ci
+          curl --retry 12 --retry-connrefused --retry-delay 2 --fail --silent \
+            --output /tmp/algt-f02-login.html http://127.0.0.1:16401/login
+          grep -qi 'sign in' /tmp/algt-f02-login.html
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:16401/dashboard)" = "307"
+          curl --silent --head http://127.0.0.1:16401/dashboard | grep -qi 'location:.*login'
+      - name: Remove only the CI test container
+        if: always()
+        run: docker rm --force algt-f02-ci || true

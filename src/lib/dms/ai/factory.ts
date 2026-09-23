@@ -9,18 +9,18 @@
  * Never throws — always returns a provider (may be unconfigured).
  */
 
-import { createAdminClient } from "@/lib/supabase/admin";
 import type { AiProviderConfig } from "@/lib/ai/providers/types";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { AzureDocumentIntelligenceAdapter } from "./azure-document-intelligence-adapter";
+import { OpenAiDmsAdapter } from "./openai-dms-adapter";
 import type {
-  IDmsAiProvider,
   DmsAiInput,
   DmsAiOutput,
-  DmsSummaryOutput,
-  DmsStructuredCompletionOutput,
   DmsEmbeddingOutput,
+  DmsStructuredCompletionOutput,
+  DmsSummaryOutput,
+  IDmsAiProvider,
 } from "./types";
-import { OpenAiDmsAdapter } from "./openai-dms-adapter";
-import { AzureDocumentIntelligenceAdapter } from "./azure-document-intelligence-adapter";
 
 const CONFIG_PRIORITY = [
   "DEFAULT_DMS_CLASSIFIER",

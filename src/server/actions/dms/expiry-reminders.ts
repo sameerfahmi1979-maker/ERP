@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { sendExportEmail } from "@/server/actions/email";
+import type { EmailAttachment } from "@/lib/email/email-types";
 import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -787,7 +788,7 @@ export async function sendExpiryDocumentsEmail(
     if (!ctx.profile) return { success: false, error: "Authentication required" };
     if (!canViewExpiry(ctx)) return { success: false, error: "Permission denied" };
 
-    let attachment: { base64Content: string; filename: string; mimeType: string } | undefined;
+    let attachment: EmailAttachment | undefined;
     const filename = input.tabTitle.toLowerCase().replace(/\s+/g, "-");
 
     if (input.attachmentFormat === "csv") {
@@ -807,7 +808,10 @@ export async function sendExpiryDocumentsEmail(
         ),
       ].join("\r\n");
       const { stringToBase64Utf8 } = await import("@/lib/email/attachment-utils");
-      attachment = { base64Content: stringToBase64Utf8(csvRows), filename: `${filename}.csv`, mimeType: "text/csv" };
+      attachment = {
+        base64Content: stringToBase64Utf8(csvRows), filename: `${filename}.csv`,
+        contentType: "text/csv", sizeBytes: Buffer.byteLength(csvRows, "utf8"),
+      };
 
     } else if (input.attachmentFormat === "excel") {
       const ExcelJS = (await import("exceljs")).default;
@@ -833,7 +837,8 @@ export async function sendExpiryDocumentsEmail(
       attachment = {
         base64Content: arrayBufferToBase64(buffer as ArrayBuffer),
         filename: `${filename}.xlsx`,
-        mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        sizeBytes: buffer.byteLength,
       };
 
     } else if (input.attachmentFormat === "pdf") {
@@ -897,7 +902,10 @@ export async function sendExpiryDocumentsEmail(
       });
       const pdfBuffer = (doc as { output: (t: string) => ArrayBuffer }).output("arraybuffer");
       const { arrayBufferToBase64 } = await import("@/lib/email/attachment-utils");
-      attachment = { base64Content: arrayBufferToBase64(pdfBuffer), filename: `${filename}.pdf`, mimeType: "application/pdf" };
+      attachment = {
+        base64Content: arrayBufferToBase64(pdfBuffer), filename: `${filename}.pdf`,
+        contentType: "application/pdf", sizeBytes: pdfBuffer.byteLength,
+      };
     }
 
     const result = await sendExportEmail({
@@ -905,8 +913,8 @@ export async function sendExpiryDocumentsEmail(
       subject: input.subject,
       body: input.body,
       ...(attachment ? { attachment } : {}),
-      context: { moduleCode: "DMS", recordCount: input.docs.length, exportMode: "filtered" },
-    } as Parameters<typeof sendExportEmail>[0]);
+      context: { moduleCode: "dms.expiry", recordCount: input.docs.length, exportMode: "filtered" },
+    });
 
     return result.success ? { success: true } : { success: false, error: result.error ?? "Failed to send email" };
   } catch (e) {

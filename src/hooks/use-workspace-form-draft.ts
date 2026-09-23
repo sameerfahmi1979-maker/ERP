@@ -142,7 +142,7 @@ export function useWorkspaceFormDraft({
       if (fieldName in frozen) return frozen[fieldName];
       return serverFallback != null ? String(serverFallback) : "";
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
     [enabled] // Intentionally omit frozenDefaultsRef — it's a ref, stable by design
   );
 
@@ -157,7 +157,7 @@ export function useWorkspaceFormDraft({
       }
       return serverFallback;
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
     [enabled]
   );
 

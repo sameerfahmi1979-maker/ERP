@@ -1,11 +1,11 @@
+import { getRuleByCode } from './rule-registry';
+import { buildSafeEvidence } from './safe-evidence';
 import type {
   DataQualityEntityType,
   DataQualityFinding,
   DataQualityRuleCategory,
   DataQualitySeverity,
 } from './types';
-import { buildSafeEvidence } from './safe-evidence';
-import { getRuleByCode } from './rule-registry';
 
 export interface FindingInput {
   rule_code: string;

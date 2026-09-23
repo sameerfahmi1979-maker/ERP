@@ -19,7 +19,7 @@ export type ActionResult<T = unknown> = {
   error?: string;
 };
 
-export async function getOrganizationById(id: number): Promise<ActionResult<import("@/types/database").OwnerCompany>> {
+export async function getOrganizationById(id: number): Promise<ActionResult<import("@/types/domain").OwnerCompany>> {
   try {
     const ctx = await getAuthContext();
     if (!hasPermission(ctx, "organizations.view")) {
@@ -33,7 +33,7 @@ export async function getOrganizationById(id: number): Promise<ActionResult<impo
       .single();
     if (error) { logger.error("getOrganizationById error", error); return { success: false, error: error.message }; }
     if (!data) return { success: false, error: "Organization not found" };
-    return { success: true, data: data as import("@/types/database").OwnerCompany };
+    return { success: true, data: data as import("@/types/domain").OwnerCompany };
   } catch (error) {
     logger.error("getOrganizationById exception", error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };

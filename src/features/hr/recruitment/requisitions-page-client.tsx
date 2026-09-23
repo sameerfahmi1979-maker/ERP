@@ -1,22 +1,21 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { queryKeys } from "@/lib/query/query-keys";
-import { listJobRequisitions, createJobRequisition, updateJobRequisition, archiveJobRequisition, changeJobRequisitionStatus } from "@/server/actions/hr/recruitment";
-import type { JobRequisitionRow } from "@/server/actions/hr/recruitment";
-import type { AuthContext } from "@/lib/rbac/check";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { ERPCombobox } from "@/components/erp/combobox";
+import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
+import { RequiredLabel } from "@/components/erp/required-label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Briefcase, Pencil, Trash2, ArrowUpDown } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { queryKeys } from "@/lib/query/query-keys";
+import type { AuthContext } from "@/lib/rbac/check";
+import type { JobRequisitionRow } from "@/server/actions/hr/recruitment";
+import { archiveJobRequisition, createJobRequisition, listJobRequisitions, updateJobRequisition } from "@/server/actions/hr/recruitment";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Briefcase, Pencil, Plus, Trash2 } from "lucide-react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { RequiredLabel } from "@/components/erp/required-label";
 
 type Props = { authContext: AuthContext };
 

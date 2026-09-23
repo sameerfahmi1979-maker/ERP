@@ -422,7 +422,7 @@ export function DmsApprovalWorkflowFormDialog({
                 {steps.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="px-4 py-4 text-center text-muted-foreground text-xs">
-                      No steps yet. Click "Add Step" to begin.
+                      No steps yet. Click &quot;Add Step&quot; to begin.
                     </td>
                   </tr>
                 ) : (

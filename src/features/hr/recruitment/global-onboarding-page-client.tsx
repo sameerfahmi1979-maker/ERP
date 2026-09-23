@@ -1,15 +1,15 @@
 "use client";
 
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { queryKeys } from "@/lib/query/query-keys";
-import { listGlobalOnboardingTasks } from "@/server/actions/hr/recruitment";
-import type { AuthContext } from "@/lib/rbac/check";
-import { Skeleton } from "@/components/ui/skeleton";
 import { ERPCombobox } from "@/components/erp/combobox";
-import { CheckSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { queryKeys } from "@/lib/query/query-keys";
+import type { AuthContext } from "@/lib/rbac/check";
+import { listGlobalOnboardingTasks } from "@/server/actions/hr/recruitment";
+import { useQuery } from "@tanstack/react-query";
+import { CheckSquare } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 
 type Props = { authContext: AuthContext };
 

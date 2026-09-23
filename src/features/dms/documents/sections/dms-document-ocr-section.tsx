@@ -8,24 +8,24 @@
  * No AI classification or field extraction — text only.
  */
 
-import { useState, useCallback } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import { ScanText, RefreshCw, Copy, Check, RotateCcw, AlertCircle, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { DmsOcrStatusBadge } from "@/features/dms/ocr/dms-ocr-status-badge";
+import { invalidateDmsDocumentFiles, invalidateDmsOcr } from "@/lib/query/invalidation";
 import { queryKeys } from "@/lib/query/query-keys";
-import { invalidateDmsOcr, invalidateDmsDocumentFiles } from "@/lib/query/invalidation";
 import {
-  getDmsOcrStatus,
   getDmsFileOcrText,
-  triggerDmsOcrForDocument,
+  getDmsOcrJobs,
+  getDmsOcrStatus,
   retryDmsOcrJob,
+  triggerDmsOcrForDocument,
   type DmsOcrFileStatus,
 } from "@/server/actions/dms/ocr";
-import { getDmsOcrJobs } from "@/server/actions/dms/ocr";
-import { DmsOcrStatusBadge } from "@/features/dms/ocr/dms-ocr-status-badge";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
+import { AlertCircle, Check, Copy, Info, RefreshCw, RotateCcw, ScanText } from "lucide-react";
+import { useCallback, useState } from "react";
+import { toast } from "sonner";
 
 interface DmsDocumentOcrSectionProps {
   documentId: number;

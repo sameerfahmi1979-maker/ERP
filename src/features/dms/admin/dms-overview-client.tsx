@@ -1,20 +1,19 @@
 "use client";
 
-import Link from "next/link";
+import { DmsStandardFileNameBulkRenamePanel } from "@/features/dms/admin/dms-standard-file-name-bulk-rename-panel";
+import type { DmsAdminOverviewStats } from "@/server/actions/dms/overview";
 import {
-  FolderOpen,
-  FileType2,
-  ListTree,
-  Tag,
+  ArrowRight,
+  Brain,
+  CheckCircle2,
   Clock,
   Database,
-  AlertCircle,
-  ArrowRight,
-  CheckCircle2,
-  Brain,
+  FileType2,
+  FolderOpen,
+  ListTree,
+  Tag
 } from "lucide-react";
-import type { DmsAdminOverviewStats } from "@/server/actions/dms/overview";
-import { DmsStandardFileNameBulkRenamePanel } from "@/features/dms/admin/dms-standard-file-name-bulk-rename-panel";
+import Link from "next/link";
 
 type Props = {
   stats: DmsAdminOverviewStats;

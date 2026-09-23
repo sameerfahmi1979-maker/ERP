@@ -10,72 +10,78 @@
  *   4. Overtime
  */
 
-import { useState, useTransition, useCallback } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import {
-  Clock, Calendar, Plane, Timer,
-  Plus, Edit2, Archive, CheckCircle, XCircle, Ban, AlertTriangle,
-  RefreshCw, ChevronDown, ChevronUp,
-} from "lucide-react";
-import { format } from "date-fns";
-import { Button } from "@/components/ui/button";
+import { ERPCombobox } from "@/components/erp/combobox";
+import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
-import { ERPCombobox } from "@/components/erp/combobox";
-import { queryKeys } from "@/lib/query/query-keys";
+import { calculateLeaveDays, formatHours, getCurrentLeaveYear } from "@/lib/hr/time/date-utils";
 import {
   getAttendanceStatusBadge,
+  getAttendanceTypeLabel,
   getLeaveApprovalStatusBadge,
   getOvertimeApprovalStatusBadge,
-  getAttendanceTypeLabel,
-  getPunchTypeLabel,
   getPunchSourceLabel,
+  getPunchTypeLabel,
 } from "@/lib/hr/time/status";
-import { formatHours, formatMinutes, calculateLeaveDays, getCurrentLeaveYear } from "@/lib/hr/time/date-utils";
+import { queryKeys } from "@/lib/query/query-keys";
+import type { AuthContext } from "@/lib/rbac/check";
+import { getWorkCalendarComboboxOptions } from "@/server/actions/common-master-data/work-calendars";
 import {
+  approveAttendanceDailySummary,
+  approveLeaveRequest,
+  approveOvertimeRecord,
+  archiveEmployeeShiftAssignment,
+  archiveOvertimeRecord,
+  cancelLeaveRequest,
+  correctAttendanceDailySummary,
+  createEmployeeAttendancePunch,
+  createEmployeeShiftAssignment,
+  createLeaveRequest,
+  createOrUpdateAttendanceDailySummary,
+  createOrUpdateLeaveBalance,
+  createOvertimeRecord,
+  listActiveLeaveTypesForForm,
+  listAttendanceCorrections,
   listEmployeeAttendanceDailySummary,
   listEmployeeAttendancePunches,
-  listAttendanceCorrections,
-  createEmployeeAttendancePunch,
-  createOrUpdateAttendanceDailySummary,
-  approveAttendanceDailySummary,
-  queryAttendanceDailySummary,
-  correctAttendanceDailySummary,
-  listEmployeeShiftAssignments,
-  createEmployeeShiftAssignment,
-  updateEmployeeShiftAssignment,
-  archiveEmployeeShiftAssignment,
-  listEmployeeLeaveRequests,
-  createLeaveRequest,
-  approveLeaveRequest,
-  rejectLeaveRequest,
-  cancelLeaveRequest,
   listEmployeeLeaveBalances,
-  createOrUpdateLeaveBalance,
+  listEmployeeLeaveRequests,
   listEmployeeOvertimeRecords,
-  createOvertimeRecord,
-  updateOvertimeRecord,
-  approveOvertimeRecord,
-  rejectOvertimeRecord,
-  archiveOvertimeRecord,
+  listEmployeeShiftAssignments,
   listWorkShiftsForTimeTab,
+  queryAttendanceDailySummary,
+  rejectLeaveRequest,
+  rejectOvertimeRecord,
+  updateEmployeeShiftAssignment,
+  updateOvertimeRecord,
   type AttendanceDailySummaryRow,
-  listActiveLeaveTypesForForm,
-  type AttendancePunchRow,
-  type AttendanceCorrectionRow,
-  type ShiftAssignmentRow,
-  type LeaveRequestRow,
-  type LeaveBalanceRow,
   type OvertimeRecordRow,
+  type ShiftAssignmentRow
 } from "@/server/actions/hr/time";
-import { getWorkCalendarComboboxOptions } from "@/server/actions/common-master-data/work-calendars";
-import type { AuthContext } from "@/lib/rbac/check";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { format } from "date-fns";
+import {
+  AlertTriangle,
+  Archive,
+  Ban,
+  Calendar,
+  CheckCircle,
+  ChevronDown, ChevronUp,
+  Clock,
+  Edit2,
+  Plane,
+  Plus,
+  RefreshCw,
+  Timer,
+  XCircle,
+} from "lucide-react";
+import { useCallback, useState, useTransition } from "react";
+import { toast } from "sonner";
 
 // ── Props ──────────────────────────────────────────────────────────────────────
 

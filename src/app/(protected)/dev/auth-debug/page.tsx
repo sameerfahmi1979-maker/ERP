@@ -5,10 +5,10 @@
  */
 import "server-only";
 
-import { getAuthContext, isGlobalAdmin, requireAdmin } from "@/lib/rbac/check";
-import { notFound } from "next/navigation";
-import { logAudit } from "@/server/actions/audit";
 import { sanitizeAuditDisplayPayload } from "@/lib/audit/sanitizers";
+import { getAuthContext, isGlobalAdmin } from "@/lib/rbac/check";
+import { logAudit } from "@/server/actions/audit";
+import { notFound } from "next/navigation";
 
 export default async function AuthDebugPage() {
   const ctx = await getAuthContext();

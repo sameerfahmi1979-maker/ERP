@@ -1,22 +1,21 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
-import { logger } from "@/lib/logger";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { revalidatePath } from "next/cache";
-import { logAudit } from "@/server/actions/audit";
-import { z } from "zod";
-import {
-  DMS_ENTITY_TYPE_CODES,
-  isValidDmsEntityType,
-  getDmsEntityTypeLabel,
-} from "@/lib/dms/dms-entity-types";
 import {
   countMissingRequiredDocuments,
   loadLinkedDocuments,
   loadRulesForEntityType,
 } from "@/lib/ai/common/compliance-checker";
+import {
+  DMS_ENTITY_TYPE_CODES,
+  isValidDmsEntityType
+} from "@/lib/dms/dms-entity-types";
+import { logger } from "@/lib/logger";
+import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { logAudit } from "@/server/actions/audit";
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 export type ActionResult<T = unknown> = {
   success: boolean;

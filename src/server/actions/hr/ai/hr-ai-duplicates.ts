@@ -13,13 +13,11 @@
  * - No record deletion, merging, or modification.
  */
 
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { callCommonAiStructuredCompletion } from "@/lib/ai/common/provider-bridge";
-import { isHrAiMasterEnabled, isHrAiFeatureEnabled } from "@/lib/hr/ai/feature-flags";
-import { HR_AI_FEATURE_FLAGS, HrAiDuplicateOutputSchema } from "@/lib/hr/ai/types";
+import { isHrAiFeatureEnabled, isHrAiMasterEnabled } from "@/lib/hr/ai/feature-flags";
 import type { HrAiActionResult, HrAiDuplicateOutput, HrAiDuplicateSuggestion } from "@/lib/hr/ai/types";
-import { maskDocumentNumber } from "@/lib/hr/ai/hr-ai-redaction";
+import { HR_AI_FEATURE_FLAGS } from "@/lib/hr/ai/types";
+import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 async function logHrAiUsage(params: { featureCode: string; entityId: number; outputType: string; status: "success" | "failure"; durationMs: number; model: string | null; promptTokens: number | null; completionTokens: number | null; profileId: number | null; providerCode: string | null; configCode: string | null; configId: number | null }) {
   try {

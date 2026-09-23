@@ -1,21 +1,22 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
-import { logger } from "@/lib/logger";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { revalidatePath } from "next/cache";
-import { logAudit, createAuditDiff } from "@/server/actions/audit";
 import {
   createNumberingRuleSchema,
   updateNumberingRuleSchema,
   type CreateNumberingRuleInput,
-  type UpdateNumberingRuleInput,
+  type GenerateReferenceInput,
+  type GenerateReferenceResult,
   type NumberingRule,
   type PreviewReferenceInput,
   type PreviewReferenceResult,
-  type GenerateReferenceInput,
-  type GenerateReferenceResult,
+  type UpdateNumberingRuleInput,
 } from "@/features/numbering/numbering-types";
+import { logger } from "@/lib/logger";
+import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { createAuditDiff, logAudit } from "@/server/actions/audit";
+import { revalidatePath } from "next/cache";
 
 export type ActionResult<T = unknown> = {
   success: boolean;
@@ -289,8 +290,8 @@ export async function toggleNumberingRuleLock(
       return { success: false, error: "Permission denied - lock permission required" };
     }
 
-    const supabase = await createClient();
-    const { data, error } = await supabase
+    // A lock-only role must not receive arbitrary numbering rule UPDATE authority.
+    const { data, error } = await createAdminClient()
       .from("global_numbering_rules")
       .update({ is_locked: isLocked, updated_by: ctx.profile?.id ?? null })
       .eq("id", id)

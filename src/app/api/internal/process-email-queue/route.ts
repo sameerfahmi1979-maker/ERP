@@ -170,7 +170,7 @@ export async function POST(req: NextRequest) {
   // ── Parse body ───────────────────────────────────────────────────────────
   let body: { module?: string; limit?: number } = {};
   try { body = await req.json(); } catch { /* empty body is fine */ }
-  const module = body.module ?? "DMS";
+  const sourceModule = body.module ?? "DMS";
   const limit = Math.min(body.limit ?? 200, 500);
 
   // ── Fetch pending items ───────────────────────────────────────────────────
@@ -179,7 +179,7 @@ export async function POST(req: NextRequest) {
     .from("erp_email_queue")
     .select("id")
     .in("status", ["pending", "failed"])
-    .eq("source_module", module)
+    .eq("source_module", sourceModule)
     .lte("scheduled_for", new Date().toISOString())
     .order("id", { ascending: true })
     .limit(limit);

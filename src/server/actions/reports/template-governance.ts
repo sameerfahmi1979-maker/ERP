@@ -15,24 +15,23 @@
  *   reports.view              — read governance history
  */
 
-import { z } from "zod";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { logAudit } from "@/server/actions/audit";
-import { revalidatePath } from "next/cache";
 import type {
   ReportTemplate,
   ReportTemplateEvent,
+  TemplateEventType,
   TemplateGovernanceStatus,
   TemplateSecurityReviewStatus,
-  TemplateEventType,
 } from "@/lib/report-center/types";
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
   runTemplateSecurityReview,
   type SecurityReviewResult,
 } from "@/lib/template-governance/security-review";
-import { getRestrictedFieldsFromPaths } from "@/lib/report-designer/field-registry";
+import { logAudit } from "@/server/actions/audit";
 import { createNotification } from "@/server/actions/notifications/notifications";
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 type ActionResult<T = unknown> = { success: boolean; data?: T; error?: string };
 

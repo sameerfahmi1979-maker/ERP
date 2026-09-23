@@ -4,7 +4,7 @@ import { useState } from "react";
 import { type ColumnDef } from "@tanstack/react-table";
 import { ERPDataTable } from "@/components/erp/table/erp-data-table";
 import { Badge } from "@/components/ui/badge";
-import type { AuditLog } from "@/types/database";
+import type { AuditLog } from "@/types/domain";
 import { format } from "date-fns";
 import { ChevronDown, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";

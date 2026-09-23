@@ -24,13 +24,12 @@
  *   });
  */
 
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
 import {
   buildPageStateKey,
-  readPageState,
-  writePageState,
-  type WorkspacePageStateScope,
+  type WorkspacePageStateScope
 } from "@/lib/workspace/workspace-page-state";
+import { useMemo } from "react";
 
 interface UseWorkspaceSectionStateOptions {
   key: string;
@@ -71,27 +70,7 @@ export function useWorkspaceSectionState(
     [scope, resolvedIdentifier, key]
   );
 
-  // Start with initialSection so SSR and client first-render match exactly.
-  // Reading localStorage synchronously in useState() causes a hydration mismatch
-  // because the server returns initialSection while the client may return a
-  // stored value. We defer the localStorage read to useEffect (post-hydration).
-  const [activeSection, setActiveSectionInternal] = useState<string>(initialSection);
-
-  useEffect(() => {
-    const stored = readPageState<string>(storageKey, initialSection);
-    setActiveSectionInternal(stored);
-    // Re-run when storageKey changes (e.g., navigating to a different record).
-    // initialSection is intentionally omitted — it is a stable constant string.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storageKey]);
-
-  const setActiveSection = useCallback(
-    (sectionId: string) => {
-      writePageState(storageKey, sectionId);
-      setActiveSectionInternal(sectionId);
-    },
-    [storageKey]
-  );
-
-  return [activeSection, setActiveSection];
+  // useSyncExternalStore supplies the same SSR/hydration snapshot and switches
+  // to the persisted preference without an effect copying it into React state.
+  return usePersistentUiState(storageKey, initialSection);
 }

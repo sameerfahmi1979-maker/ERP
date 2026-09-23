@@ -1,34 +1,34 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
-import { Inbox, RefreshCw, Info, Bot, FileText, File as FileIcon, Files, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { DmsUploadDropzone, type SelectedDmsFile } from "./dms-upload-dropzone";
-import { DMS_MAX_BATCH_FILES } from "./dms-upload-constants";
-import { DmsUploadSessionTable } from "./dms-upload-session-table";
-import { DmsDuplicateWarningPanel } from "./dms-duplicate-warning-panel";
-import { DmsUploadAttachDialog } from "./dms-upload-attach-dialog";
-import { DmsCreateDocumentFromUploadDialog } from "./dms-create-document-from-upload-dialog";
-import { DmsUploadCleanupPanel } from "./dms-upload-cleanup-panel";
 import { DmsAdminFileStoragePanel } from "@/features/dms/admin/dms-admin-file-storage-panel";
-import { DmsBatchUploadProgress, type BatchFileProgress } from "./dms-batch-upload-progress";
-import {
-  createDmsUploadSession,
-  cancelDmsUploadSession,
-  type DmsUploadSessionRow,
-  type CreateUploadSessionInput,
-} from "@/server/actions/dms/upload-sessions";
+import { createClient as createSupabaseClient } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
 import { startAiIntakeFromUploadSession } from "@/server/actions/dms/ai-intake";
 import {
   createDmsUploadBatch,
   startAiIntakeAndCreateDraft,
 } from "@/server/actions/dms/batch-intake";
 import type { DmsDocumentRow } from "@/server/actions/dms/documents";
+import {
+  cancelDmsUploadSession,
+  createDmsUploadSession,
+  type CreateUploadSessionInput,
+  type DmsUploadSessionRow,
+} from "@/server/actions/dms/upload-sessions";
+import { AlertTriangle, Bot, File as FileIcon, Files, FileText, Inbox, Info, RefreshCw } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { DmsBatchUploadProgress, type BatchFileProgress } from "./dms-batch-upload-progress";
 import type { DmsDocumentTypeOption, DmsEntityContext } from "./dms-create-document-from-upload-dialog";
-import { createClient as createSupabaseClient } from "@/lib/supabase/client";
+import { DmsCreateDocumentFromUploadDialog } from "./dms-create-document-from-upload-dialog";
+import { DmsDuplicateWarningPanel } from "./dms-duplicate-warning-panel";
+import { DmsUploadAttachDialog } from "./dms-upload-attach-dialog";
+import { DmsUploadCleanupPanel } from "./dms-upload-cleanup-panel";
+import { DMS_MAX_BATCH_FILES } from "./dms-upload-constants";
+import { DmsUploadDropzone, type SelectedDmsFile } from "./dms-upload-dropzone";
+import { DmsUploadSessionTable } from "./dms-upload-session-table";
 
 interface Props {
   initialSessions: DmsUploadSessionRow[];

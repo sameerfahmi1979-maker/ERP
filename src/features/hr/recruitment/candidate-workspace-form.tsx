@@ -1,22 +1,22 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
-import { User, LayoutDashboard, FileText, Calendar, Gift, CheckSquare, UserCheck } from "lucide-react";
+import type { ERPRecordStatusVariant } from "@/components/workspace/erp-record-header";
+import type { ERPRecordSection } from "@/components/workspace/erp-record-section-nav";
+import { ERPRecordSectionPanel, ERPRecordWorkspaceForm } from "@/components/workspace/erp-record-workspace-form";
 import type { AuthContext } from "@/lib/rbac/check";
 import type { CandidateRow } from "@/server/actions/hr/recruitment";
 import { createCandidate, updateCandidate } from "@/server/actions/hr/recruitment";
-import { ERPRecordWorkspaceForm, ERPRecordSectionPanel } from "@/components/workspace/erp-record-workspace-form";
-import type { ERPRecordSection } from "@/components/workspace/erp-record-section-nav";
-import type { ERPRecordStatusVariant } from "@/components/workspace/erp-record-header";
-import { CandidateOverviewTab } from "./tabs/candidate-overview-tab";
-import { CandidateProfileTab } from "./tabs/candidate-profile-tab";
+import { Calendar, CheckSquare, FileText, Gift, LayoutDashboard, User, UserCheck } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
+import { toast } from "sonner";
+import { CandidateConversionTab } from "./tabs/candidate-conversion-tab";
 import { CandidateDocumentsTab } from "./tabs/candidate-documents-tab";
 import { CandidateInterviewsTab } from "./tabs/candidate-interviews-tab";
 import { CandidateOffersTab } from "./tabs/candidate-offers-tab";
 import { CandidateOnboardingTab } from "./tabs/candidate-onboarding-tab";
-import { CandidateConversionTab } from "./tabs/candidate-conversion-tab";
+import { CandidateOverviewTab } from "./tabs/candidate-overview-tab";
+import { CandidateProfileTab } from "./tabs/candidate-profile-tab";
 
 function checkPermission(ctx: AuthContext, code: string): boolean {
   return ctx.permissionCodes.includes(code) || ctx.roleCodes.includes("system_admin") || ctx.roleCodes.includes("group_admin");

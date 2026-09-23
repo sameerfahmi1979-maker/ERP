@@ -1,19 +1,18 @@
 "use client";
 
-import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { queryKeys } from "@/lib/query/query-keys";
-import { listCandidates } from "@/server/actions/hr/recruitment";
-import type { AuthContext } from "@/lib/rbac/check";
+import { ERPCombobox } from "@/components/erp/combobox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ERPCombobox } from "@/components/erp/combobox";
-import { Plus, Users, ArrowRight, Mail, Phone } from "lucide-react";
-import Link from "next/link";
 import { useRealtimeSync } from "@/hooks/realtime/use-realtime-sync";
 import { invalidateHrCandidates } from "@/lib/query/invalidation";
+import { queryKeys } from "@/lib/query/query-keys";
+import type { AuthContext } from "@/lib/rbac/check";
+import { listCandidates } from "@/server/actions/hr/recruitment";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowRight, Mail, Phone, Plus, Users } from "lucide-react";
+import Link from "next/link";
+import { useState } from "react";
 
 type Props = { authContext: AuthContext };
 

@@ -10,8 +10,8 @@
 
 "use client";
 
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import type { PreparedEmailInput } from "@/components/erp/email/email-types-ui";
+import { ERPSendEmailDialog } from "@/components/erp/email/erp-send-email-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,8 +21,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Download, FileDown, FileSpreadsheet, FileText, Printer, Loader2, MailPlus } from "lucide-react";
-import { toast } from "sonner";
 import {
   exportToCSV,
   exportToExcel,
@@ -35,12 +33,13 @@ import {
   type ERPExportOptions,
   type ExportBrandingContext,
 } from "@/lib/export";
-import { ERPSendEmailDialog } from "@/components/erp/email/erp-send-email-dialog";
-import type { AttachmentOption, PreparedEmailInput } from "@/components/erp/email/email-types-ui";
 import { sendExportEmail } from "@/server/actions/email";
 import { format } from "date-fns";
+import { Download, FileDown, FileSpreadsheet, FileText, Loader2, MailPlus, Printer } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
-export interface ERPExportMenuProps<T = any> {
+export interface ERPExportMenuProps<T = unknown> {
   /** Report title */
   title: string;
   /** Filename base (without extension) */
@@ -87,7 +86,7 @@ export interface ERPExportMenuProps<T = any> {
   selectedTemplateId?: number;
 }
 
-export function ERPExportMenu<T = any>({
+export function ERPExportMenu<T = unknown>({
   title,
   filename,
   data,
@@ -147,7 +146,7 @@ export function ERPExportMenu<T = any>({
         data,
         generatedBy,
         generatedAt: new Date(),
-        filters: filters as any,
+        filters,
         orientation,
         exportMode,
         rowCount: data.length,
@@ -368,7 +367,7 @@ Best Regards`}
                 data,
                 generatedBy,
                 generatedAt: new Date(),
-                filters: filters as any,
+                filters,
                 orientation,
                 exportMode,
                 rowCount: data.length,
@@ -388,7 +387,7 @@ Best Regards`}
                 data,
                 generatedBy,
                 generatedAt: new Date(),
-                filters: filters as any,
+                filters,
                 orientation,
                 exportMode,
                 rowCount: data.length,
@@ -408,7 +407,7 @@ Best Regards`}
                 data,
                 generatedBy,
                 generatedAt: new Date(),
-                filters: filters as any,
+                filters,
                 orientation,
                 exportMode,
                 rowCount: data.length,

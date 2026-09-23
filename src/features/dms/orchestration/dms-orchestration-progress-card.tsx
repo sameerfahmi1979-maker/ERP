@@ -12,8 +12,8 @@
  * - Evidence excerpts and AI responses are never shown here.
  */
 
-import { useState, useEffect } from "react";
-import { useQueryClient, useQuery } from "@tanstack/react-query";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import {
   CheckCircle2, XCircle, Clock, SkipForward, Loader2,
   ChevronDown, ChevronUp, AlertTriangle, Sparkles, RefreshCw,
@@ -71,7 +71,11 @@ export function DmsOrchestrationProgressCard({
   autoTrigger = false,
 }: DmsOrchestrationProgressCardProps) {
   const queryClient = useQueryClient();
-  const [isRunning, setIsRunning] = useState(false);
+  const { mutateAsync: runPipeline, isPending: isRunning } = useMutation({
+    mutationFn: () => runDmsAiOrchestrationPostDraft({ sessionCode }),
+    retry: false,
+  });
+  const autoStarted = useRef<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(true);
   const [retryingStep, setRetryingStep] = useState<string | null>(null);
 
@@ -80,18 +84,19 @@ export function DmsOrchestrationProgressCard({
   // running — it must be a plain GET fetch, NOT a server action. A router.push
   // performed while a server action is in flight gets reverted when the
   // action resolves (the "tab snaps back" bug family).
-  const { data: statusData, isLoading } = useQuery({
+  const { data: statusData, isLoading, isError: statusFailed } = useQuery({
     queryKey: queryKeys.dms.orchestrationStatus(sessionCode),
     queryFn: async () => {
       const res = await fetch(
         `/api/dms/poll?kind=orchestration&sessionCode=${encodeURIComponent(sessionCode)}`,
         { cache: "no-store" }
       );
-      if (!res.ok) return null;
+      if (!res.ok) throw new Error("Cannot load pipeline status");
       const json = (await res.json()) as { data?: DmsAiOrchestrationStatusRow | null };
       return json.data ?? null;
     },
     enabled: !!sessionCode,
+    retry: false,
     staleTime: 5_000,
     refetchInterval: isRunning ? 3_000 : false,
   });
@@ -99,21 +104,11 @@ export function DmsOrchestrationProgressCard({
   const orchestrationStatus = statusData?.orchestrationStatus ?? "pending";
   const steps = statusData?.steps ?? [];
 
-  // Auto-trigger on mount if requested and not already done
-  useEffect(() => {
-    if (!autoTrigger || !documentId || !sessionCode) return;
-    if (["complete", "complete_with_warnings", "running"].includes(orchestrationStatus)) return;
-
-    void triggerPipeline();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoTrigger, documentId, sessionCode]);
-
-  const triggerPipeline = async () => {
+  const triggerPipeline = useCallback(async () => {
     if (isRunning || !documentId) return;
-    setIsRunning(true);
 
     try {
-      const result = await runDmsAiOrchestrationPostDraft({ sessionCode });
+      const result = await runPipeline();
       invalidateDmsOrchestrationStatus(queryClient, sessionCode);
 
       if (!result.success) {
@@ -131,10 +126,16 @@ export function DmsOrchestrationProgressCard({
     } catch {
       toast.error("AI pipeline encountered an error.");
     } finally {
-      setIsRunning(false);
       invalidateDmsOrchestrationStatus(queryClient, sessionCode);
     }
-  };
+  }, [isRunning, documentId, runPipeline, queryClient, sessionCode]);
+
+  useEffect(() => {
+    if (isLoading || statusFailed || !autoTrigger || !documentId || !sessionCode || autoStarted.current === sessionCode) return;
+    if (["complete", "complete_with_warnings", "running", "queued"].includes(orchestrationStatus)) return;
+    autoStarted.current = sessionCode;
+    void triggerPipeline();
+  }, [isLoading, statusFailed, autoTrigger, documentId, sessionCode, orchestrationStatus, triggerPipeline]);
 
   const handleRetryStep = async (stepCode: DmsAiOrchestrationStepCode) => {
     setRetryingStep(stepCode);
@@ -180,6 +181,7 @@ export function DmsOrchestrationProgressCard({
   }
 
   if (isLoading) return null;
+  if (statusFailed) return <p role="alert" className="text-xs text-destructive">Pipeline status is unavailable. Refresh before starting or retrying work.</p>;
 
   // Don't show card if pipeline never ran and not auto-triggering
   if (orchestrationStatus === "pending" && !isRunning && !autoTrigger) return null;

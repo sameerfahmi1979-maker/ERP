@@ -22,7 +22,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
 import { logAudit } from "@/server/actions/audit";
 import { runReport } from "@/lib/report-center/report-runner";
-import { resolveTemplateForExport } from "@/server/actions/reports/templates";
+import { resolveTemplateForExport } from "@/lib/report-center/template-export";
 import { renderExecutiveLedgerHtml } from "@/lib/executive-ledger/html-renderer";
 import type { ExportBrandingContext } from "@/lib/export/export-types";
 import { buildPdfStoragePath, uploadGeneratedPdf, createPdfSignedUrl } from "@/lib/pdf/storage";
@@ -319,7 +319,7 @@ export async function generateOfficialDocument(
         (await resolveTemplateForExport({
           templateId: resolvedTemplateId,
           reportCode: outputCode,
-          permissionCodes: ctx.permissionCodes,
+          principalId: ctx.profile.id,
         })) ?? undefined;
     }
 

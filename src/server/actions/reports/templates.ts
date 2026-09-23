@@ -44,6 +44,25 @@ export interface ReportTemplateForSelection {
 // Validation schemas
 // ─────────────────────────────────────────────────────────────────────────────
 
+// The shared legacy admin client is not schema-parameterized. Validate this joined
+// projection at its boundary instead of asserting `any` or treating a FK as an array.
+const selectionRowsSchema = z.array(z.object({
+  id: z.number(),
+  template_code: z.string(),
+  template_name: z.string(),
+  template_type: z.string(),
+  is_default: z.boolean().nullable(),
+  governance_status: z.string().nullable(),
+  visual_editor_engine: z.string().nullable(),
+  branding_profile_id: z.number().nullable(),
+  branding_profile: z.object({
+    profile_name: z.string(),
+    profile_type: z.string(),
+    logo_url: z.string().nullable(),
+    owner_company: z.object({ legal_name_en: z.string() }).nullable(),
+  }).nullable(),
+}));
+
 const updateTemplateSchema = z.object({
   id: z.number().int().positive(),
   template_name: z.string().min(2).max(200),
@@ -212,12 +231,14 @@ export async function listReportTemplatesForSelection(input?: {
 
     if (error) return { success: false, error: error.message };
 
-    const rows: ReportTemplateForSelection[] = (data ?? []).map((row: any) => ({
+    const projection = selectionRowsSchema.safeParse(data ?? []);
+    if (!projection.success) return { success: false, error: "Invalid report template response. Please contact your administrator." };
+    const rows: ReportTemplateForSelection[] = projection.data.map((row) => ({
       id: row.id,
       template_code: row.template_code,
       template_name: row.template_name,
       template_type: row.template_type,
-      is_default: row.is_default,
+      is_default: row.is_default ?? false,
       governance_status: row.governance_status ?? "draft",
       branding_profile_id: row.branding_profile_id ?? null,
       branding_profile_name: row.branding_profile?.profile_name ?? null,
@@ -573,90 +594,6 @@ export async function resolveTemplatePreview(input: {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Server-to-server resolver (for scheduled reports and background jobs)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Resolve ExportBrandingContext for a template, given a caller's permission codes.
- * Used by the schedule runner and other server-side paths that don't have a full
- * AuthContext (request cookie session) available.
- *
- * Accepts permissionCodes directly so scheduled jobs can pass the creator's
- * effective permissions.
- */
-export async function resolveTemplateForExport(input: {
-  templateId: number;
-  reportCode?: string;
-  permissionCodes: string[];
-}): Promise<ExportBrandingContext | null> {
-  try {
-    const db = createAdminClient();
-    const { data, error } = await db
-      .from("erp_report_templates")
-      .select(`*, branding_profile:erp_report_branding_profiles (*)`)
-      .eq("id", input.templateId)
-      .is("deleted_at", null)
-      .single();
-
-    if (error || !data) return null;
-
-    const tpl = data as ReportTemplate & { branding_profile: ReportBrandingProfile | null };
-    const bp = tpl.branding_profile;
-
-    const canSign = input.permissionCodes.includes("reports.sign");
-
-    const assetUrls =
-      bp?.id != null
-        ? await resolveReportBrandingProfileAssetUrls(bp.id, {
-            profile: null,
-            email: null,
-            roleCodes: [],
-            permissionCodes: input.permissionCodes,
-            accountStatus: "active",
-            isAccountActive: true,
-          } as import("@/lib/rbac/check").AuthContext)
-        : {};
-
-    return {
-      companyNameEn: bp?.legal_name_en ?? bp?.trade_name_en ?? null,
-      companyNameAr: bp?.legal_name_ar ?? bp?.trade_name_ar ?? null,
-      logoUrl: tpl.show_logo ? (assetUrls.report_logo ?? bp?.logo_url ?? null) : null,
-      smallLogoUrl: tpl.show_small_logo ? (assetUrls.report_logo_small ?? bp?.small_logo_url ?? null) : null,
-      stampUrl: tpl.show_stamp && canSign ? (assetUrls.stamp ?? bp?.stamp_url ?? null) : null,
-      signatureUrl: tpl.show_signatory && canSign ? (assetUrls.signature ?? bp?.signature_url ?? null) : null,
-      watermarkUrl: tpl.show_watermark ? (assetUrls.watermark ?? bp?.watermark_url ?? null) : null,
-      letterheadBackgroundUrl: assetUrls.letterhead_background ?? null,
-      addressBlockEn: bp?.address_block_en ?? null,
-      phone: bp?.phone ?? null,
-      email: bp?.email ?? null,
-      website: bp?.website ?? null,
-      trn: bp?.trn ?? null,
-      tradeLicenseNo: bp?.trade_license_no ?? null,
-      footerTextEn: bp?.footer_text_en ?? null,
-      signatoryName: bp?.signatory_name ?? null,
-      signatoryTitleEn: bp?.signatory_title_en ?? null,
-      themePrimaryColor: bp?.theme_primary_color ?? null,
-      themeHeaderBgColor: bp?.theme_header_bg_color ?? null,
-      themeHeaderTextColor: bp?.theme_header_text_color ?? null,
-      showLogo: tpl.show_logo,
-      showAddress: tpl.show_address,
-      showTrn: tpl.show_trn,
-      showLicense: tpl.show_license,
-      showSignatory: tpl.show_signatory,
-      showStamp: tpl.show_stamp,
-      showWatermark: tpl.show_watermark,
-      watermarkText: tpl.watermark_text ?? bp?.watermark_text ?? null,
-      reportCode: input.reportCode ?? null,
-      templateName: tpl.template_name,
-      isGroupProfile: bp?.is_group_profile ?? false,
-      isNeutralProfile: bp?.is_neutral_profile ?? false,
-      templateOrientation: tpl.default_orientation,
-    };
-  } catch {
-    return null;
-  }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // renderVisualTemplateForLetterPreview  (REPORT DESIGNER.6)

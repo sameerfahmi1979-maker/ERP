@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
@@ -349,7 +350,9 @@ export async function saveEmailProviderSecret(
     const newSecretRef = await storeEmailProviderSecretInVault(id, currentSecretRef, secret_value);
 
     const now = new Date().toISOString();
-    const { error } = await supabase
+    // Narrow service write after canManageSecrets; a secrets-only administrator
+    // must not receive general configuration UPDATE authority through RLS.
+    const { data: saved, error } = await createAdminClient()
       .from("erp_email_provider_configs")
       .update({
         secret_ref: newSecretRef,
@@ -357,9 +360,9 @@ export async function saveEmailProviderSecret(
         updated_by: ctx.profile.id,
         updated_at: now,
       })
-      .eq("id", id);
+      .eq("id", id).is("deleted_at", null).select("id");
 
-    if (error) return { success: false, error: error.message };
+    if (error || saved?.length !== 1) return { success: false, error: "Secret storage completed but provider reference was not confirmed. Administrator reconciliation is required before retrying." };
 
     await logAudit({
       module_code: "SETTINGS",
@@ -411,7 +414,7 @@ export async function testEmailProviderConnection(
 
     const now = new Date().toISOString();
     // Update last test result
-    await supabase
+    await createAdminClient()
       .from("erp_email_provider_configs")
       .update({
         last_test_status: testResult.status,

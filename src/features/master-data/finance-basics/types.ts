@@ -490,9 +490,9 @@ export interface FinanceBasicsSelectProps {
   error?: string;
 }
 
-export interface CurrencySelectProps extends FinanceBasicsSelectProps {}
+export type CurrencySelectProps = FinanceBasicsSelectProps;
 
-export interface PaymentTermSelectProps extends FinanceBasicsSelectProps {}
+export type PaymentTermSelectProps = FinanceBasicsSelectProps;
 
 export interface TaxTypeSelectProps extends FinanceBasicsSelectProps {
   appliesToSales?: boolean;

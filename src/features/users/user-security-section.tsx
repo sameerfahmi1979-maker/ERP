@@ -1,14 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
-import { toast } from "sonner";
-import { format } from "date-fns";
+import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,33 +11,40 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
-import { RequiredLabel } from "@/components/erp/required-label";
-import {
-  Mail,
-  KeyRound,
-  AlertTriangle,
-  CheckCircle2,
-  ShieldCheck,
-  Send,
-  RefreshCw,
-  XCircle,
-} from "lucide-react";
-import type { UserWithRoles } from "@/types/database";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import type { AuthContext } from "@/lib/rbac/check";
+import { passwordPolicySchema } from "@/lib/validation/auth";
 import {
-  adminSendPasswordResetEmail,
-  adminSetTemporaryPassword,
-  adminForcePasswordChange,
   adminClearForcePasswordChange,
   adminConfirmUserEmail,
-  adminSendWelcomeEmail,
+  adminForcePasswordChange,
   adminGenerateAndSendInviteEmail,
+  adminSendPasswordResetEmail,
+  adminSendWelcomeEmail,
+  adminSetTemporaryPassword,
   getUserSecurityStatus,
   type UserSecurityStatus,
 } from "@/server/actions/users/account-security";
-import { passwordPolicySchema } from "@/lib/validation/auth";
+import type { UserWithRoles } from "@/types/domain";
+import { format } from "date-fns";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  KeyRound,
+  Mail,
+  RefreshCw,
+  Send,
+  ShieldCheck,
+  XCircle,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 
 const EMPTY = "—";
 
@@ -76,15 +75,19 @@ type ForceChangeDialogState = {
 };
 
 export function SecuritySection({ user, authContext }: Props) {
-  const router = useRouter();
   const canManageSecurity = authContext
     ? authContext.roleCodes.includes("system_admin") ||
       authContext.roleCodes.includes("group_admin") ||
       authContext.permissionCodes.includes("users.security.manage")
     : false;
+  return <SecuritySectionContent key={`${user.id}:${canManageSecurity}`} user={user} canManageSecurity={canManageSecurity} />;
+}
+
+function SecuritySectionContent({ user, canManageSecurity }: { user: UserWithRoles; canManageSecurity: boolean }) {
+  const router = useRouter();
 
   const [securityStatus, setSecurityStatus] = useState<UserSecurityStatus | null>(null);
-  const [loadingStatus, setLoadingStatus] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState(canManageSecurity);
 
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
@@ -120,7 +123,15 @@ export function SecuritySection({ user, authContext }: Props) {
     }
   }, [user.id, canManageSecurity]);
 
-  useEffect(() => { loadStatus(); }, [loadStatus]);
+  useEffect(() => {
+    if (!canManageSecurity) return;
+    let cancelled = false;
+    void getUserSecurityStatus(user.id).then((result) => {
+      if (!cancelled && result.success && result.data) setSecurityStatus(result.data);
+    }).catch(() => { if (!cancelled) toast.error("Could not load security status."); })
+      .finally(() => { if (!cancelled) setLoadingStatus(false); });
+    return () => { cancelled = true; };
+  }, [user.id, canManageSecurity]);
 
   const runAction = async (label: string, fn: () => Promise<{ success: boolean; error?: string }>) => {
     const result = await fn();

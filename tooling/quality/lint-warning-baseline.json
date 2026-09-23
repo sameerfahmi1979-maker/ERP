@@ -1,0 +1,828 @@
+{
+  "format": 1,
+  "policy": "No errors and no new or increased warnings. These named legacy warnings stay visible; do not add baseline entries merely to make CI pass.",
+  "warnings": [
+    {
+      "key": "[\"src/app/(protected)/admin/audit/page.tsx\",\"@typescript-eslint/no-unused-vars\",\"'hasFilters' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/app/(protected)/admin/reports/templates/governance/governance-dashboard-client.tsx\",\"@typescript-eslint/no-unused-vars\",\"'canManage' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F08",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/app/(protected)/admin/reports/templates/governance/governance-dashboard-client.tsx\",\"@typescript-eslint/no-unused-vars\",\"'extra' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F08",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/app/(protected)/dashboard/page.tsx\",\"@typescript-eslint/no-unused-vars\",\"'e' is defined but never used.\"]",
+      "count": 3,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/components/erp/erp-drawer-form.tsx\",\"@typescript-eslint/no-unused-vars\",\"'onPrint' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/components/erp/erp-drawer-form.tsx\",\"@typescript-eslint/no-unused-vars\",\"'onExportPDF' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/components/erp/erp-drawer-form.tsx\",\"@typescript-eslint/no-unused-vars\",\"'onExportExcel' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/components/erp/erp-drawer-form.tsx\",\"@typescript-eslint/no-unused-vars\",\"'onExportCSV' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/components/erp/erp-drawer-form.tsx\",\"@typescript-eslint/no-unused-vars\",\"'onSendEmail' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/components/erp/export/erp-export-menu.tsx\",\"@typescript-eslint/no-unused-vars\",\"'selectedTemplateId' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F08",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/components/erp/print/qr-verification-block.tsx\",\"@next/next/no-img-element\",\"Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element\"]",
+      "count": 1,
+      "phase": "F08",
+      "reason": "Retained print/branding image path pending output-engine and asset-layout acceptance; do not silently change the renderer to clear a performance advisory."
+    },
+    {
+      "key": "[\"src/components/erp/print/watermark.tsx\",\"@next/next/no-img-element\",\"Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element\"]",
+      "count": 1,
+      "phase": "F08",
+      "reason": "Retained print/branding image path pending output-engine and asset-layout acceptance; do not silently change the renderer to clear a performance advisory."
+    },
+    {
+      "key": "[\"src/components/erp/table/erp-data-table.tsx\",\"react-hooks/incompatible-library\",\"Compilation Skipped: Use of incompatible library\\n\\nThis API returns functions which cannot be memoized without leading to stale UI. To prevent this, by default React Compiler will skip memoizing this component/hook. However, you may see issues if values from this API are passed to other components/hooks that are memoized.\\n\\n<file>:207:17\\n  205 |\\n  206 |   // Initialize table\\n> 207 |   const table = useReactTable({\\n      |                 ^^^^^^^^^^^^^ TanStack Table's `useReactTable()` API returns functions that cannot be memoized safely\\n  208 |     data,\\n  209 |     columns: enhancedColumns,\\n  210 |     state: {\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "TanStack Table compiler incompatibility is explicit; React Compiler is not enabled in this build. Retain table behavior and test the upgrade before enabling it."
+    },
+    {
+      "key": "[\"src/components/erp/table/erp-table-types.ts\",\"@typescript-eslint/no-unused-vars\",\"'TValue' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/components/layout/app-sidebar.tsx\",\"@typescript-eslint/no-unused-vars\",\"'sectionHasVisibleChildren' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/components/report-center/report-preview-header.tsx\",\"@next/next/no-img-element\",\"Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element\"]",
+      "count": 1,
+      "phase": "F08",
+      "reason": "Retained print/branding image path pending output-engine and asset-layout acceptance; do not silently change the renderer to clear a performance advisory."
+    },
+    {
+      "key": "[\"src/components/report-center/report-template-select-dialog.tsx\",\"@next/next/no-img-element\",\"Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element\"]",
+      "count": 1,
+      "phase": "F08",
+      "reason": "Retained print/branding image path pending output-engine and asset-layout acceptance; do not silently change the renderer to clear a performance advisory."
+    },
+    {
+      "key": "[\"src/components/tables/data-table.tsx\",\"react-hooks/incompatible-library\",\"Compilation Skipped: Use of incompatible library\\n\\nThis API returns functions which cannot be memoized without leading to stale UI. To prevent this, by default React Compiler will skip memoizing this component/hook. However, you may see issues if values from this API are passed to other components/hooks that are memoized.\\n\\n<file>:41:17\\n  39 |   const [globalFilter, setGlobalFilter] = useState(\\\"\\\");\\n  40 |\\n> 41 |   const table = useReactTable({\\n     |                 ^^^^^^^^^^^^^ TanStack Table's `useReactTable()` API returns functions that cannot be memoized safely\\n  42 |     data,\\n  43 |     columns,\\n  44 |     state: { globalFilter },\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "TanStack Table compiler incompatibility is explicit; React Compiler is not enabled in this build. Retain table behavior and test the upgrade before enabling it."
+    },
+    {
+      "key": "[\"src/components/workspace/workspace-provider.tsx\",\"@typescript-eslint/no-unused-vars\",\"'defaultRoute' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/ai/common/assistant/assistant-page-client.tsx\",\"@typescript-eslint/no-unused-vars\",\"'prompt' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/ai/common/audit-explainer/audit-timeline-card.tsx\",\"@typescript-eslint/no-unused-vars\",\"'onExplainGroup' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/ai/common/data-quality/data-quality-page-client.tsx\",\"@typescript-eslint/no-unused-vars\",\"'_isPending' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/audit/audit-filters-bar.tsx\",\"@typescript-eslint/no-unused-vars\",\"'hasFilters' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/branding/branding-asset-upload-card.tsx\",\"@next/next/no-img-element\",\"Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element\"]",
+      "count": 1,
+      "phase": "F08",
+      "reason": "Retained print/branding image path pending output-engine and asset-layout acceptance; do not silently change the renderer to clear a performance advisory."
+    },
+    {
+      "key": "[\"src/features/common-master-data/departments/department-workspace-form.tsx\",\"@typescript-eslint/no-unused-vars\",\"'writeDraftField' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/dms/admin/dms-intelligence-admin-page-client.tsx\",\"@typescript-eslint/no-unused-vars\",\"'AdminBulkCard' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/dms/approvals/dms-approvals-queue-page-client.tsx\",\"@typescript-eslint/no-unused-vars\",\"'isAdmin' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/dms/documents/dms-document-record-form.tsx\",\"@typescript-eslint/no-unused-vars\",\"'setChildDialogOpen' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/dms/documents/sections/dms-document-ocr-section.tsx\",\"@typescript-eslint/no-unused-vars\",\"'refetchText' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/dms/documents/sections/dms-document-ocr-section.tsx\",\"@typescript-eslint/no-unused-vars\",\"'hasAnyFailed' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/dms/documents/sections/dms-document-understanding-section.tsx\",\"@typescript-eslint/no-unused-vars\",\"'variant' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/dms/documents/sections/dms-document-understanding-section.tsx\",\"@typescript-eslint/no-unused-vars\",\"'barColors' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/dms/documents/sections/dms-document-versions-section.tsx\",\"@typescript-eslint/no-unused-vars\",\"'primaryFile' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/dms/notifications/dms-notification-settings-page-client.tsx\",\"@typescript-eslint/no-unused-vars\",\"'getRoleLabel' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/dms/notifications/dms-notification-settings-page-client.tsx\",\"@typescript-eslint/no-unused-vars\",\"'getUserLabel' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/dms/upload/dms-upload-inbox-page-client.tsx\",\"@typescript-eslint/no-unused-vars\",\"'signedUrl' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/hr/actions/hr-eos-page-client.tsx\",\"@typescript-eslint/no-unused-vars\",\"'authContext' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/hr/actions/hr-pro-processes-page-client.tsx\",\"@typescript-eslint/no-unused-vars\",\"'authContext' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/hr/dashboard/hr-dashboard-page-client.tsx\",\"@typescript-eslint/no-unused-vars\",\"'filtersKey' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/hr/employees/document-to-record/hr-doc-to-record-wizard.tsx\",\"@typescript-eslint/no-unused-vars\",\"'selectedDoc' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/hr/employees/employee-workspace-form.tsx\",\"@typescript-eslint/no-unused-vars\",\"'markDirty' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/hr/employees/employee-workspace-form.tsx\",\"@typescript-eslint/no-unused-vars\",\"'disabled' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/hr/employees/tabs/employee-hr-actions-tab.tsx\",\"@typescript-eslint/no-unused-vars\",\"'type' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/hr/employees/tabs/employee-profile-tab.tsx\",\"@typescript-eslint/no-unused-vars\",\"'formId' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/hr/employees/tabs/employee-profile-tab.tsx\",\"@typescript-eslint/no-unused-vars\",\"'syncDraft' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/hr/employees/tabs/employee-profile-tab.tsx\",\"@typescript-eslint/no-unused-vars\",\"'f' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/hr/operations/blocks/hr-blocks-page-client.tsx\",\"@typescript-eslint/no-unused-vars\",\"'canManage' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/hr/recruitment/candidate-workspace-form.tsx\",\"@typescript-eslint/no-unused-vars\",\"'canView' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/hr/recruitment/global-onboarding-page-client.tsx\",\"@typescript-eslint/no-unused-vars\",\"'CATEGORY_OPTIONS' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/hr/recruitment/global-onboarding-page-client.tsx\",\"@typescript-eslint/no-unused-vars\",\"'authContext' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/hr/recruitment/interviews-page-client.tsx\",\"@typescript-eslint/no-unused-vars\",\"'authContext' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/hr/recruitment/tabs/candidate-conversion-tab.tsx\",\"@typescript-eslint/no-unused-vars\",\"'linkRes' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/hr/recruitment/tabs/candidate-conversion-tab.tsx\",\"@typescript-eslint/no-unused-vars\",\"'linkLoading' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/hr/recruitment/tabs/candidate-onboarding-tab.tsx\",\"@typescript-eslint/no-unused-vars\",\"'pendingCount' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/hr/recruitment/tabs/candidate-overview-tab.tsx\",\"@typescript-eslint/no-unused-vars\",\"'canManage' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/hr/search/hr-search-filters.tsx\",\"@typescript-eslint/no-unused-vars\",\"'isActive' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/hr/time/leave/hr-leave-page-client.tsx\",\"@typescript-eslint/no-unused-vars\",\"'initialRows' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/hr/time/leave/hr-leave-page-client.tsx\",\"@typescript-eslint/no-unused-vars\",\"'initialCount' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/hr/time/shifts/hr-shifts-page-client.tsx\",\"@typescript-eslint/no-unused-vars\",\"'_authContext' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/master-data/parties/parties-table.tsx\",\"@typescript-eslint/no-unused-vars\",\"'pageTitle' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/master-data/parties/party-form-drawer.tsx\",\"@typescript-eslint/no-unused-vars\",\"'mountedSections' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/master-data/parties/party-form-drawer.tsx\",\"@typescript-eslint/no-unused-vars\",\"'lockedMessage' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/master-data/uom/components/uom-category-workspace-form.tsx\",\"@typescript-eslint/no-unused-vars\",\"'queryClient' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/notifications/admin/email-queue-page-client.tsx\",\"@typescript-eslint/no-unused-vars\",\"'canManage' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/organizations/organization-workspace-form.tsx\",\"@typescript-eslint/no-unused-vars\",\"'refetchSignatories' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/permissions/permission-command-center.tsx\",\"@typescript-eslint/no-unused-vars\",\"'rolePermissions' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F03",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/permissions/permission-command-center.tsx\",\"@typescript-eslint/no-unused-vars\",\"'roleMap' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F03",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/users/users-list-toolbar.tsx\",\"@typescript-eslint/no-unused-vars\",\"'hasActiveFilters' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F03",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/features/users/users-table.tsx\",\"@typescript-eslint/no-unused-vars\",\"'userName' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F03",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/ai/common/dashboard/dashboard-collectors.ts\",\"@typescript-eslint/no-unused-vars\",\"'scope' is defined but never used.\"]",
+      "count": 2,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/ai/common/data-quality/finding-builder.ts\",\"@typescript-eslint/no-unused-vars\",\"'now' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/ai/common/data-quality/safe-evidence.ts\",\"@typescript-eslint/no-unused-vars\",\"'value' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/ai/observability/__tests__/log-dms-ai-usage.test.ts\",\"@typescript-eslint/no-unused-vars\",\"'mockInsert' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/ai/observability/__tests__/log-dms-ai-usage.test.ts\",\"@typescript-eslint/no-unused-vars\",\"'mockSelect' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/ai/observability/__tests__/log-dms-ai-usage.test.ts\",\"@typescript-eslint/no-unused-vars\",\"'mockSingle' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/ai/observability/__tests__/log-dms-ai-usage.test.ts\",\"@typescript-eslint/no-unused-vars\",\"'mockMaybeSingle' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/ai/observability/__tests__/log-dms-ai-usage.test.ts\",\"@typescript-eslint/no-unused-vars\",\"'mockEq' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/ai/observability/__tests__/log-dms-ai-usage.test.ts\",\"@typescript-eslint/no-unused-vars\",\"'mockLte' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/ai/observability/__tests__/log-dms-ai-usage.test.ts\",\"@typescript-eslint/no-unused-vars\",\"'mockOr' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/ai/observability/__tests__/log-dms-ai-usage.test.ts\",\"@typescript-eslint/no-unused-vars\",\"'mockOrder' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/ai/observability/__tests__/log-dms-ai-usage.test.ts\",\"@typescript-eslint/no-unused-vars\",\"'mockLimit' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/dms/ai/azure-document-intelligence-adapter.ts\",\"@typescript-eslint/no-unused-vars\",\"'mimeType' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/dms/ai/azure-document-intelligence-adapter.ts\",\"@typescript-eslint/no-unused-vars\",\"'errText' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/dms/ai/azure-document-intelligence-adapter.ts\",\"@typescript-eslint/no-unused-vars\",\"'_input' is defined but never used.\"]",
+      "count": 2,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/dms/ai/azure-document-intelligence-adapter.ts\",\"@typescript-eslint/no-unused-vars\",\"'_systemPrompt' is defined but never used.\"]",
+      "count": 2,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/dms/ai/azure-document-intelligence-adapter.ts\",\"@typescript-eslint/no-unused-vars\",\"'_userMessage' is defined but never used.\"]",
+      "count": 2,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/dms/ai/classification-score.ts\",\"@typescript-eslint/no-unused-vars\",\"'tokenize' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/dms/ai/classification-score.ts\",\"@typescript-eslint/no-unused-vars\",\"'codeNorm' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/dms/ai/factory.ts\",\"@typescript-eslint/no-unused-vars\",\"'_input' is defined but never used.\"]",
+      "count": 2,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/dms/ai/factory.ts\",\"@typescript-eslint/no-unused-vars\",\"'_systemPrompt' is defined but never used.\"]",
+      "count": 2,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/dms/ai/factory.ts\",\"@typescript-eslint/no-unused-vars\",\"'_userMessage' is defined but never used.\"]",
+      "count": 2,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/dms/ai/factory.ts\",\"@typescript-eslint/no-unused-vars\",\"'_opts' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/dms/ai/factory.ts\",\"@typescript-eslint/no-unused-vars\",\"'_options' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/dms/ocr/noop-provider.ts\",\"@typescript-eslint/no-unused-vars\",\"'_mimeType' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/dms/ocr/noop-provider.ts\",\"@typescript-eslint/no-unused-vars\",\"'_input' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/dms/pdf-to-images.ts\",\"@typescript-eslint/no-unused-vars\",\"'context' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F08",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/dms/search-link-entity-options.ts\",\"@typescript-eslint/no-unused-vars\",\"'_supabase' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/dms/search-link-entity-options.ts\",\"@typescript-eslint/no-unused-vars\",\"'_search' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/dms/search-link-entity-options.ts\",\"@typescript-eslint/no-unused-vars\",\"'_limit' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/email/providers/microsoft-graph-provider.ts\",\"@typescript-eslint/no-unused-vars\",\"'errText' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/export/print.ts\",\"@typescript-eslint/no-unused-vars\",\"'primaryColor' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F08",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/hr/document-to-record/dms-employee-draft-mapper.ts\",\"@typescript-eslint/no-unused-vars\",\"'nationalityCandidate' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/report-designer/layout-to-executive-ledger.ts\",\"@typescript-eslint/no-unused-vars\",\"'_block' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F08",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/report-designer/layout-to-executive-ledger.ts\",\"@typescript-eslint/no-unused-vars\",\"'style' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F08",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/report-designer/visual-template-security-review.ts\",\"@typescript-eslint/no-unused-vars\",\"'SENSITIVE_BINDING_FRAGMENTS' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F08",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/lib/report-designer/visual-template-security-review.ts\",\"@typescript-eslint/no-unused-vars\",\"'_rc' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F08",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/ai/common/audit-explainer.ts\",\"@typescript-eslint/no-unused-vars\",\"'ExplainInputSchema' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/ai/common/data-quality.ts\",\"@typescript-eslint/no-unused-vars\",\"'_input' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/ai/common/risk-scoring.ts\",\"@typescript-eslint/no-unused-vars\",\"'isRecalc' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/dms/ai-intake.ts\",\"@typescript-eslint/no-unused-vars\",\"'allowDuplicate' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/dms/ai-observability.ts\",\"@typescript-eslint/no-unused-vars\",\"'T' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/dms/ai-observability.ts\",\"@typescript-eslint/no-unused-vars\",\"'_filters' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/dms/document-upload-attach.ts\",\"@typescript-eslint/no-unused-vars\",\"'allowDuplicate' is assigned a value but never used.\"]",
+      "count": 2,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/dms/documents.ts\",\"@typescript-eslint/no-unused-vars\",\"'documentUpdateSchema' is assigned a value but only used as a type.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/dms/erp-mappings.ts\",\"@typescript-eslint/no-unused-vars\",\"'updateMappingSchema' is assigned a value but only used as a type.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/dms/orchestration.ts\",\"@typescript-eslint/no-unused-vars\",\"'uploadSessionId' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F07",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/hr/ai/employee-ai-review.ts\",\"@typescript-eslint/no-unused-vars\",\"'profile' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/hr/ai/hr-ai-duplicates.ts\",\"@typescript-eslint/no-unused-vars\",\"'candidateLink' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/hr/compliance-dms-prefill.ts\",\"@typescript-eslint/no-unused-vars\",\"'safeDocNo' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/hr/compliance-dms-prefill.ts\",\"@typescript-eslint/no-unused-vars\",\"'confKey' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/hr/compliance.ts\",\"@typescript-eslint/no-unused-vars\",\"'dmsLinkCreated' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/hr/compliance.ts\",\"@typescript-eslint/no-unused-vars\",\"'emp' is assigned a value but never used.\"]",
+      "count": 2,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/hr/dashboard.ts\",\"@typescript-eslint/no-unused-vars\",\"'filters' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/hr/dashboard.ts\",\"@typescript-eslint/no-unused-vars\",\"'today' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/hr/document-to-record.ts\",\"@typescript-eslint/no-unused-vars\",\"'supabase' is assigned a value but never used.\"]",
+      "count": 2,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/hr/hr-compliance-notifications.ts\",\"@typescript-eslint/no-unused-vars\",\"'todayStr' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/hr/hr-compliance-notifications.ts\",\"@typescript-eslint/no-unused-vars\",\"'reminderDay' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/hr/recruitment.ts\",\"@typescript-eslint/no-unused-vars\",\"'offerStatusSchema' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/hr/search.ts\",\"@typescript-eslint/no-unused-vars\",\"'maskDocNumber' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/hr/search.ts\",\"@typescript-eslint/no-unused-vars\",\"'safeStr' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/hr/time.ts\",\"@typescript-eslint/no-unused-vars\",\"'leaveRequestUpdateSchema' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/hr/time.ts\",\"@typescript-eslint/no-unused-vars\",\"'leaveDecisionSchema' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/hr/time.ts\",\"@typescript-eslint/no-unused-vars\",\"'overtimeDecisionSchema' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F11-F16",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/master-data/parties.ts\",\"@typescript-eslint/no-unused-vars\",\"'entityNames' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/numbering.ts\",\"@typescript-eslint/no-unused-vars\",\"'changes' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F04-F06",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/users/account-security.ts\",\"@typescript-eslint/no-unused-vars\",\"'changePasswordInput' is assigned a value but never used.\"]",
+      "count": 1,
+      "phase": "F03",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    },
+    {
+      "key": "[\"src/server/actions/users/account-security.ts\",\"@typescript-eslint/no-unused-vars\",\"'_input' is defined but never used.\"]",
+      "count": 1,
+      "phase": "F03",
+      "reason": "Retained unused legacy binding/schema/contract: removing or wiring behavior without its module acceptance would exceed the F02 lint repair. No runtime diagnostic suppressed."
+    }
+  ]
+}

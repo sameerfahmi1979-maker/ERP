@@ -1,13 +1,13 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { revalidatePath } from "next/cache";
-import { logAudit } from "@/server/actions/audit";
-import { z } from "zod";
 import { calculateEmployeeReadiness } from "@/lib/hr/operations/readiness";
-import { isActiveBlock, isCurrentAssignment } from "@/lib/hr/operations/status";
+import { isActiveBlock } from "@/lib/hr/operations/status";
+import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { logAudit } from "@/server/actions/audit";
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 

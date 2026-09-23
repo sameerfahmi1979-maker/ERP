@@ -1,13 +1,20 @@
 "use client";
 
-import Link from "next/link";
-import {
-  Users, UserPlus, ShieldCheck, Clock, Wallet, Briefcase,
-  ClipboardList, CheckSquare, ExternalLink, CalendarDays,
-} from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import type { HrSearchResult, HrSearchCategory } from "@/lib/hr/search/types";
+import type { HrSearchCategory, HrSearchResult } from "@/lib/hr/search/types";
 import { cn } from "@/lib/utils";
+import {
+  Briefcase,
+  CalendarDays,
+  CheckSquare,
+  ClipboardList,
+  Clock,
+  ExternalLink,
+  ShieldCheck,
+  UserPlus,
+  Users,
+  Wallet,
+} from "lucide-react";
+import Link from "next/link";
 
 const CATEGORY_ICONS: Record<HrSearchCategory, React.ComponentType<{ className?: string }>> = {
   employees: Users,

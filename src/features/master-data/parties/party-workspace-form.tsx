@@ -23,46 +23,12 @@
  * - ERPRecordSectionPanel instead of ERPDrawerSection
  */
 
-import { useState, useCallback, useMemo, useRef } from "react";
-import { useRouter } from "next/navigation";
-import { cn } from "@/lib/utils";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
-import { toast } from "sonner";
-import { AlertTriangle, Lock, Building2, Tag, Shield, DollarSign, Users, MapPin, Landmark, FileText, Brain } from "lucide-react";
-import type { Party, DuplicateMatch } from "@/features/master-data/parties/party-types";
-import type { AuthContext } from "@/lib/rbac/check";
-import { createParty, updateParty, detectPartyDuplicates } from "@/server/actions/master-data/parties";
-import { CountrySelect, EmirateSelect, CitySelect, AreaZoneSelect } from "@/components/erp/geography";
-import { RequiredLabel } from "@/components/erp/required-label";
-import { ERPFieldGrid } from "@/components/erp/erp-drawer-form";
-import { ERPRecordWorkspaceForm, ERPRecordSectionPanel } from "@/components/workspace/erp-record-workspace-form";
-import { useFormDirty } from "@/hooks/use-form-dirty";
-import { useWorkspace } from "@/hooks/use-workspace";
-import { useWorkspaceTabDirty } from "@/hooks/use-workspace-tab-dirty";
-import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
-import { useWorkspaceSectionState } from "@/hooks/use-workspace-section-state";
-import { useWorkspaceScrollState } from "@/hooks/use-workspace-scroll-state";
-import { PartyTypesTab } from "./party-types-tab";
-import { PartyLicensesTab } from "./party-licenses-tab";
-import { PartyTaxFinanceTab } from "./party-tax-finance-tab";
-import { PartyContactsTab } from "./party-contacts-tab";
-import { PartyAddressesTab } from "./party-addresses-tab";
-import { PartyBankDetailsTab } from "./party-bank-details-tab";
-import { PartyDmsDocumentsTab } from "./party-dms-documents-tab";
-import { PartyServicesTab } from "./party-services-tab";
-import { PartyNotesTab } from "./party-notes-tab";
-import { PartyAuditTab } from "./party-audit-tab";
-import { AiFieldSuggestionsPanel } from "@/features/ai/common/field-suggestions";
-import { DuplicateCandidateAlert } from "@/features/ai/common/duplicate-detection";
-import { ComplianceFindingAlert } from "@/features/ai/common/compliance-checker";
-import { RiskScoreAlert } from "@/features/ai/common/risk-scoring";
-import { useQuery } from "@tanstack/react-query";
-import { getPartyNatures, getPartyStatuses } from "@/server/actions/master-data/parties";
-import { PartySelect } from "@/components/erp/party-select";
 import { ERPCombobox } from "@/components/erp/combobox";
+import { ERPFieldGrid } from "@/components/erp/erp-drawer-form";
+import { AreaZoneSelect, CitySelect, CountrySelect, EmirateSelect } from "@/components/erp/geography";
+import { PartySelect } from "@/components/erp/party-select";
+import { RequiredLabel } from "@/components/erp/required-label";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -71,8 +37,40 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import type { ERPRecordSection } from "@/components/workspace/erp-record-section-nav";
+import { ERPRecordSectionPanel, ERPRecordWorkspaceForm } from "@/components/workspace/erp-record-workspace-form";
+import { ComplianceFindingAlert } from "@/features/ai/common/compliance-checker";
+import { DuplicateCandidateAlert } from "@/features/ai/common/duplicate-detection";
+import { AiFieldSuggestionsPanel } from "@/features/ai/common/field-suggestions";
+import { RiskScoreAlert } from "@/features/ai/common/risk-scoring";
+import type { DuplicateMatch, Party } from "@/features/master-data/parties/party-types";
+import { useFormDirty } from "@/hooks/use-form-dirty";
+import { useWorkspace } from "@/hooks/use-workspace";
+import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
+import { useWorkspaceScrollState } from "@/hooks/use-workspace-scroll-state";
+import { useWorkspaceSectionState } from "@/hooks/use-workspace-section-state";
+import { useWorkspaceTabDirty } from "@/hooks/use-workspace-tab-dirty";
+import type { AuthContext } from "@/lib/rbac/check";
+import { createParty, detectPartyDuplicates, getPartyNatures, getPartyStatuses, updateParty } from "@/server/actions/master-data/parties";
+import { useQuery } from "@tanstack/react-query";
+import { AlertTriangle, Brain, Building2, DollarSign, FileText, Landmark, Lock, MapPin, Shield, Tag, Users } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { PartyAddressesTab } from "./party-addresses-tab";
+import { PartyAuditTab } from "./party-audit-tab";
+import { PartyBankDetailsTab } from "./party-bank-details-tab";
+import { PartyContactsTab } from "./party-contacts-tab";
+import { PartyDmsDocumentsTab } from "./party-dms-documents-tab";
+import { PartyLicensesTab } from "./party-licenses-tab";
+import { PartyNotesTab } from "./party-notes-tab";
+import { PartyServicesTab } from "./party-services-tab";
+import { PartyTaxFinanceTab } from "./party-tax-finance-tab";
+import { PartyTypesTab } from "./party-types-tab";
 
 function hasPerm(ctx: AuthContext, code: string) {
   return (

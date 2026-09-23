@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getDmsAiProviderModelBreakdown, type ObservabilityFilters, type ProviderModelBreakdownRow } from "@/server/actions/dms/ai-observability";
 import { Badge } from "@/components/ui/badge";
+import { getDmsAiProviderModelBreakdown, type ObservabilityFilters } from "@/server/actions/dms/ai-observability";
+import { useQuery } from "@tanstack/react-query";
 
 interface Props {
   filters: ObservabilityFilters;
@@ -16,20 +16,18 @@ function fmt(n: number) {
 }
 
 export function AiProviderModelBreakdown({ filters, refreshKey }: Props) {
-  const [data, setData] = useState<ProviderModelBreakdownRow[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setLoading(true);
-    getDmsAiProviderModelBreakdown(filters)
-      .then((res) => {
-        if (res.success && res.data) setData(res.data);
-        else setError(res.error ?? "Failed to load.");
-      })
-      .catch(() => setError("Failed to load provider breakdown."))
-      .finally(() => setLoading(false));
-  }, [filters, refreshKey]);
+  const { data, isPending: loading, error: queryError } = useQuery({
+    queryKey: ["dms-observability", "getDmsAiProviderModelBreakdown", filters, refreshKey],
+    queryFn: async () => {
+      const result = await getDmsAiProviderModelBreakdown(filters);
+      if (!result.success || !result.data) throw new Error(result.error ?? "Failed to load.");
+      return result.data;
+    },
+    retry: false,
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+  });
+  const error = queryError?.message;
 
   if (loading) return <div className="text-sm text-muted-foreground">Loading...</div>;
   if (error) return <div className="text-sm text-destructive">{error}</div>;

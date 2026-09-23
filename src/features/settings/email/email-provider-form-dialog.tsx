@@ -163,7 +163,7 @@ export function EmailProviderFormDialog({
                 <Input id="authority" value={form.authority_url} onChange={(e) => set("authority_url", e.target.value)} placeholder="Auto-derived from Tenant ID" />
               </div>
             </div>
-            <p className="text-xs text-muted-foreground">Client secret is set separately via "Update Secret". Do not enter it here.</p>
+            <p className="text-xs text-muted-foreground">Client secret is set separately via &quot;Update Secret&quot;. Do not enter it here.</p>
           </fieldset>
         )}
 

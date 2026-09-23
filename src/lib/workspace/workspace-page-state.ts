@@ -19,6 +19,13 @@
  */
 
 const PREFIX = "algt_erp_workspace_page_state";
+export const UI_STORAGE_CHANGE_EVENT = "algt-ui-storage-change";
+
+export function notifyUiStorageChange(key: string): void {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(UI_STORAGE_CHANGE_EVENT, { detail: key }));
+  }
+}
 
 export type WorkspacePageStateScope = "route" | "record" | "tab" | "global";
 
@@ -56,6 +63,7 @@ export function writePageState<T>(storageKey: string, value: T): void {
     } else {
       localStorage.setItem(storageKey, JSON.stringify(value));
     }
+    notifyUiStorageChange(storageKey);
   } catch {
     // localStorage quota exceeded or unavailable — fail silently
   }
@@ -67,6 +75,7 @@ export function clearPageState(storageKey: string): void {
   if (typeof window === "undefined") return;
   try {
     localStorage.removeItem(storageKey);
+    notifyUiStorageChange(storageKey);
   } catch {
     // fail silently
   }
@@ -86,7 +95,7 @@ export function clearScopePageState(
       const k = localStorage.key(i);
       if (k && k.startsWith(prefix)) keysToRemove.push(k);
     }
-    keysToRemove.forEach((k) => localStorage.removeItem(k));
+    keysToRemove.forEach(clearPageState);
   } catch {
     // fail silently
   }

@@ -1,33 +1,37 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
-import Link from "next/link";
-import {
-  Users, ShieldCheck, Clock, Landmark, AlertOctagon, Briefcase,
-  ClipboardList, RefreshCw, UsersRound,
-} from "lucide-react";
+import { ERPSectionCard } from "@/components/erp/section-card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ERPSectionCard } from "@/components/erp/section-card";
-import { HrDashboardSectionCard, HrDashboardStatItem, type SectionSeverity } from "./hr-dashboard-section-card";
+import { queryKeys } from "@/lib/query/query-keys";
+import {
+  getHrDashboardActionsOverview,
+  getHrDashboardAttentionItems,
+  getHrDashboardComplianceOverview,
+  getHrDashboardEmployeeOverview,
+  getHrDashboardOperationsOverview,
+  getHrDashboardPayrollOverview,
+  getHrDashboardRecruitmentOverview,
+  getHrDashboardSummary,
+  getHrDashboardTimeOverview,
+  type DashboardFilters,
+} from "@/server/actions/hr/dashboard";
+import { useQuery } from "@tanstack/react-query";
+import {
+  AlertOctagon, Briefcase,
+  ClipboardList,
+  Clock, Landmark,
+  RefreshCw,
+  ShieldCheck,
+  Users,
+  UsersRound,
+} from "lucide-react";
+import { useCallback, useState } from "react";
 import { HrDashboardAlerts } from "./hr-dashboard-alerts";
+import { HrDashboardSectionCard, HrDashboardStatItem, type SectionSeverity } from "./hr-dashboard-section-card";
 import { HrHeadcountByCategoryWidget } from "./hr-headcount-by-category-widget";
 import { HrKpiCards, type HrKpiCard } from "./hr-kpi-cards";
 import { HrWorkforceReadinessRing } from "./hr-workforce-readiness-ring";
-import { queryKeys } from "@/lib/query/query-keys";
-import {
-  getHrDashboardEmployeeOverview,
-  getHrDashboardComplianceOverview,
-  getHrDashboardTimeOverview,
-  getHrDashboardPayrollOverview,
-  getHrDashboardOperationsOverview,
-  getHrDashboardActionsOverview,
-  getHrDashboardRecruitmentOverview,
-  getHrDashboardAttentionItems,
-  getHrDashboardSummary,
-  type DashboardFilters,
-} from "@/server/actions/hr/dashboard";
 
 // ============================================================================
 // Permissions shape passed from server

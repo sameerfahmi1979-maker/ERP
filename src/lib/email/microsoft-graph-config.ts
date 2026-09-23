@@ -9,7 +9,6 @@
  */
 
 import type { MicrosoftGraphConfig } from "./email-types";
-import { logger } from "@/lib/logger";
 
 /**
  * Configuration check result

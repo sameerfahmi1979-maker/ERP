@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { Badge } from "@/components/ui/badge";
-import type { Role } from "@/types/database";
+import type { Role } from "@/types/domain";
 import { cloneRole } from "@/server/actions/roles";
 import { ROLE_CATEGORIES, ROLE_LEVELS } from "@/features/roles/role-constants";
 

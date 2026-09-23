@@ -1,39 +1,39 @@
 ﻿"use client";
 
-import { useState, useEffect } from "react";
-import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { toast } from "sonner";
-import type { OwnerCompany } from "@/types/database";
-import { createOrganization, updateOrganization } from "@/server/actions/organizations";
-import { RequiredLabel } from "@/components/erp/required-label";
-import { useFormDirty } from "@/hooks/use-form-dirty";
+import { CurrencySelect } from "@/components/erp/finance-basics/currency-select";
+import { AreaZoneSelect } from "@/components/erp/geography/area-zone-select";
+import { CitySelect } from "@/components/erp/geography/city-select";
 import { CountrySelect } from "@/components/erp/geography/country-select";
 import { EmirateSelect } from "@/components/erp/geography/emirate-select";
-import { CitySelect } from "@/components/erp/geography/city-select";
-import { AreaZoneSelect } from "@/components/erp/geography/area-zone-select";
-import { CurrencySelect } from "@/components/erp/finance-basics/currency-select";
-import { createClient } from "@/lib/supabase/client";
-import { Building2, MapPin, ShieldCheck, FileCode2, ScrollText, Briefcase, Files, PlusCircle, Pencil, Trash2, Brain, Palette } from "lucide-react";
-import type { AuthContext } from "@/lib/rbac/check";
+import { RequiredLabel } from "@/components/erp/required-label";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  ERPRecordSectionPanel,
+  ERPRecordWorkspaceForm,
+} from "@/components/workspace/erp-record-workspace-form";
+import { ComplianceFindingAlert } from "@/features/ai/common/compliance-checker";
+import { DuplicateCandidateAlert } from "@/features/ai/common/duplicate-detection";
+import { AiFieldSuggestionsPanel } from "@/features/ai/common/field-suggestions";
+import { RiskScoreAlert } from "@/features/ai/common/risk-scoring";
+import { DmsEntityDocumentsTab } from "@/features/dms/entity-documents";
+import { useFormDirty } from "@/hooks/use-form-dirty";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
-import {
-  ERPRecordWorkspaceForm,
-  ERPRecordSectionPanel,
-} from "@/components/workspace/erp-record-workspace-form";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { queryKeys } from "@/lib/query/query-keys";
-import { listCompanySignatories, createCompanySignatory, updateCompanySignatory, softDeleteCompanySignatory } from "@/server/actions/common-master-data/owner-company-signatories";
-import { DmsEntityDocumentsTab } from "@/features/dms/entity-documents";
-import { AiFieldSuggestionsPanel } from "@/features/ai/common/field-suggestions";
-import { DuplicateCandidateAlert } from "@/features/ai/common/duplicate-detection";
-import { ComplianceFindingAlert } from "@/features/ai/common/compliance-checker";
-import { RiskScoreAlert } from "@/features/ai/common/risk-scoring";
+import type { AuthContext } from "@/lib/rbac/check";
+import { createClient } from "@/lib/supabase/client";
+import { createCompanySignatory, listCompanySignatories, softDeleteCompanySignatory, updateCompanySignatory } from "@/server/actions/common-master-data/owner-company-signatories";
+import { createOrganization, updateOrganization } from "@/server/actions/organizations";
+import type { OwnerCompany } from "@/types/domain";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Brain, Briefcase, Building2, FileCode2, Files, MapPin, Palette, Pencil, PlusCircle, ScrollText, ShieldCheck, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { OrganizationBrandingSection } from "./organization-branding-section";
 
 type OrganizationWorkspaceFormProps = {

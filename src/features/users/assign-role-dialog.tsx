@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { ERPCombobox } from "@/components/erp/combobox";
 import { ShieldCheck, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import type { UserWithRoles, Role, OwnerCompany, Branch } from "@/types/database";
+import type { UserWithRoles, Role, OwnerCompany, Branch } from "@/types/domain";
 import { assignRoleToUser } from "@/server/actions/users";
 import { RequiredLabel } from "@/components/erp/required-label";
 
@@ -30,7 +30,11 @@ function filterAssignableRoles(roles: Role[]): Role[] {
   return roles.filter((r) => r.is_active && r.is_assignable !== false);
 }
 
-export function AssignRoleDialog({
+export function AssignRoleDialog(props: AssignRoleDialogProps) {
+  return props.open ? <AssignRoleDialogFields key={props.user.id} {...props} /> : null;
+}
+
+function AssignRoleDialogFields({
   user,
   open,
   onOpenChange,
@@ -44,16 +48,6 @@ export function AssignRoleDialog({
   const [roleId, setRoleId] = useState<string>("");
   const [ownerCompanyId, setOwnerCompanyId] = useState<string>("");
   const [branchId, setBranchId] = useState<string>("");
-
-  // Reset form whenever dialog opens
-  useEffect(() => {
-    if (open) {
-      setSelectedScope("global");
-      setRoleId("");
-      setOwnerCompanyId("");
-      setBranchId("");
-    }
-  }, [open]);
 
   const assignableRoles = useMemo(() => filterAssignableRoles(roles), [roles]);
 

@@ -12,101 +12,108 @@
  *   6. Medical & Health Records (employee_medical_records — restricted: hr.medical.view)
  */
 
-import { useState, useTransition, useCallback, useRef, type Dispatch, type SetStateAction } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import {
-  Shield, FileText, Heart, Users, CreditCard, GraduationCap, Activity,
-  Plus, Edit2, Archive, CheckCircle, RefreshCw, ExternalLink, Lock, FileStack,
-} from "lucide-react";
-import { format } from "date-fns";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { ERPCombobox } from "@/components/erp/combobox";
+import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
+import { CountrySelect } from "@/components/erp/geography/country-select";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { CountrySelect } from "@/components/erp/geography/country-select";
-import { EmirateSelect } from "@/components/erp/geography/emirate-select";
-import { OwnerCompanySelect } from "@/components/erp/organizations/owner-company-select";
-import { queryKeys } from "@/lib/query/query-keys";
-import {
-  getExpiryStatus,
-  getExpiryStatusBadge,
-  getComplianceStatusBadge,
-  getVerificationStatusBadge,
-  getRenewalStatusBadge,
-  getMedicalResultBadge,
-} from "@/lib/hr/compliance/expiry";
-import {
-  listEmployeeIdentityDocuments,
-  updateEmployeeIdentityDocument,
-  archiveEmployeeIdentityDocument,
-  verifyEmployeeIdentityDocument,
-  listEmployeeMedicalInsurances,
-  createEmployeeMedicalInsurance,
-  updateEmployeeMedicalInsurance,
-  archiveEmployeeMedicalInsurance,
-  verifyEmployeeMedicalInsurance,
-  listEmployeeDependents,
-  createEmployeeDependent,
-  updateEmployeeDependent,
-  archiveEmployeeDependent,
-  applyEmployeeDependentDocumentLinks,
-  listEmployeeAccessCards,
-  createEmployeeAccessCard,
-  updateEmployeeAccessCard,
-  archiveEmployeeAccessCard,
-  listEmployeeTrainingCertificates,
-  createEmployeeTrainingCertificate,
-  updateEmployeeTrainingCertificate,
-  archiveEmployeeTrainingCertificate,
-  verifyEmployeeTrainingCertificate,
-  listEmployeeMedicalRecords,
-  createEmployeeMedicalRecord,
-  updateEmployeeMedicalRecord,
-  archiveEmployeeMedicalRecord,
-  type EmployeeIdentityDocumentRow,
-  type EmployeeMedicalInsuranceRow,
-  type EmployeeDependentRow,
-  type EmployeeAccessCardRow,
-  type EmployeeTrainingCertificateRow,
-  type EmployeeMedicalRecordRow,
-} from "@/server/actions/hr/compliance";
-import type { AuthContext } from "@/lib/rbac/check";
-import {
-  listHrIdentityDocumentTypes,
-  listHrAccessCardTypes,
-  listHrTrainingCategories,
-  listHrTrainingTypes,
-  listHrMedicalRecordTypes,
-  listHrRelationshipTypes,
-  type HrIdentityDocTypeRow,
-  type HrAccessCardTypeRow,
-  type HrSettingsRow,
-  type HrTrainingTypeRow,
-  type HrMedicalRecordTypeRow,
-} from "@/server/actions/hr/settings";
-import { invalidateDmsEntityDocuments } from "@/lib/query/invalidation";
-import { IdentityDocumentAddDialog } from "@/features/hr/employees/compliance/identity-document-add-dialog";
 import { ComplianceDmsAddDialog } from "@/features/hr/employees/compliance/compliance-dms-add-dialog";
+import { ComplianceDmsPrefillBanner } from "@/features/hr/employees/compliance/compliance-dms-prefill-banner";
 import {
   DependentDocumentLinksSection,
   EMPTY_DEP_LINK_CHANGES,
   type DependentDocLinkChanges,
 } from "@/features/hr/employees/compliance/dependent-document-links-section";
-import { ComplianceDmsPrefillBanner } from "@/features/hr/employees/compliance/compliance-dms-prefill-banner";
-import { HrDocumentToRecordWizard } from "@/features/hr/employees/document-to-record/hr-doc-to-record-wizard";
-import { checkHrDocumentToRecordEnabled } from "@/server/actions/hr/document-to-record";
+import { IdentityDocumentAddDialog } from "@/features/hr/employees/compliance/identity-document-add-dialog";
 import { IdentityDocumentFormFields } from "@/features/hr/employees/compliance/identity-document-form-fields";
+import { HrDocumentToRecordWizard } from "@/features/hr/employees/document-to-record/hr-doc-to-record-wizard";
+import {
+  getComplianceStatusBadge,
+  getExpiryStatus,
+  getExpiryStatusBadge,
+  getMedicalResultBadge,
+  getVerificationStatusBadge
+} from "@/lib/hr/compliance/expiry";
 import {
   createEmptyIdentityDocumentForm,
   identityDocumentFormToPayload,
   type IdentityDocumentFormState,
 } from "@/lib/hr/compliance/identity-document-form";
+import { invalidateDmsEntityDocuments } from "@/lib/query/invalidation";
+import { queryKeys } from "@/lib/query/query-keys";
+import type { AuthContext } from "@/lib/rbac/check";
+import {
+  applyEmployeeDependentDocumentLinks,
+  archiveEmployeeAccessCard,
+  archiveEmployeeDependent,
+  archiveEmployeeIdentityDocument,
+  archiveEmployeeMedicalInsurance,
+  archiveEmployeeMedicalRecord,
+  archiveEmployeeTrainingCertificate,
+  createEmployeeAccessCard,
+  createEmployeeDependent,
+  createEmployeeMedicalInsurance,
+  createEmployeeMedicalRecord,
+  createEmployeeTrainingCertificate,
+  listEmployeeAccessCards,
+  listEmployeeDependents,
+  listEmployeeIdentityDocuments,
+  listEmployeeMedicalInsurances,
+  listEmployeeMedicalRecords,
+  listEmployeeTrainingCertificates,
+  updateEmployeeAccessCard,
+  updateEmployeeDependent,
+  updateEmployeeIdentityDocument,
+  updateEmployeeMedicalInsurance,
+  updateEmployeeMedicalRecord,
+  updateEmployeeTrainingCertificate,
+  verifyEmployeeIdentityDocument,
+  verifyEmployeeMedicalInsurance,
+  verifyEmployeeTrainingCertificate,
+  type EmployeeAccessCardRow,
+  type EmployeeDependentRow,
+  type EmployeeIdentityDocumentRow,
+  type EmployeeMedicalInsuranceRow,
+  type EmployeeMedicalRecordRow,
+  type EmployeeTrainingCertificateRow,
+} from "@/server/actions/hr/compliance";
+import { checkHrDocumentToRecordEnabled } from "@/server/actions/hr/document-to-record";
+import {
+  listHrAccessCardTypes,
+  listHrIdentityDocumentTypes,
+  listHrMedicalRecordTypes,
+  listHrRelationshipTypes,
+  listHrTrainingCategories,
+  listHrTrainingTypes,
+  type HrAccessCardTypeRow,
+  type HrIdentityDocTypeRow,
+  type HrMedicalRecordTypeRow,
+  type HrSettingsRow,
+  type HrTrainingTypeRow,
+} from "@/server/actions/hr/settings";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { format } from "date-fns";
+import {
+  Activity,
+  Archive, CheckCircle,
+  CreditCard,
+  Edit2,
+  FileStack,
+  FileText,
+  GraduationCap,
+  Heart,
+  Lock,
+  Plus,
+  Shield,
+  Users
+} from "lucide-react";
+import { useCallback, useRef, useState, useTransition, type Dispatch, type SetStateAction } from "react";
+import { toast } from "sonner";
 
 // ── Prop Types ────────────────────────────────────────────────────────────────
 

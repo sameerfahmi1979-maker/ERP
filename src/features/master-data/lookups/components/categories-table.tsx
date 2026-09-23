@@ -1,12 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import type { LookupCategoryWithStats } from "@/features/master-data/lookups/types";
 import { ERPDataTable } from "@/components/erp/table/erp-data-table";
-import type { ColumnDef } from "@tanstack/react-table";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,18 +11,21 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import type { LookupCategoryWithStats } from "@/features/master-data/lookups/types";
+import { toggleLookupCategoryLock, toggleLookupCategoryStatus } from "@/server/actions/master-data/lookups";
+import type { ColumnDef } from "@tanstack/react-table";
+import { format } from "date-fns";
 import {
   Eye,
-  Pencil,
-  Power,
   Lock,
-  Unlock,
   MoreHorizontal,
+  Pencil,
   Plus,
+  Power,
+  Unlock,
 } from "lucide-react";
-import { toggleLookupCategoryStatus, toggleLookupCategoryLock } from "@/server/actions/master-data/lookups";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { format } from "date-fns";
 
 type CategoriesTableProps = {
   categories: LookupCategoryWithStats[];

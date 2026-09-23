@@ -32,8 +32,8 @@ export type SendExportEmailInput = {
   subject: string;
   /** Email body (plain text) */
   body: string;
-  /** Attachment */
-  attachment: EmailAttachment;
+  /** Optional for body-only expiry messages. Report messages still require an attachment. */
+  attachment?: EmailAttachment;
   /** Context metadata for audit logging */
   context?: {
     moduleCode?: string;
@@ -101,7 +101,11 @@ export async function sendExportEmail(input: SendExportEmailInput): Promise<Send
       ? `${input.context.moduleCode}.view`
       : "erp.admin";
     
-    if (!hasPermission(ctx, requiredPermission)) {
+    // Match the expiry screen's existing capabilities, using canonical permission codes.
+    const permitted = input.context?.moduleCode === "dms.expiry"
+      ? ["dms.expiry.view", "dms.documents.view", "dms.admin"].some((code) => hasPermission(ctx, code))
+      : hasPermission(ctx, requiredPermission);
+    if (!permitted) {
       logger.warn(`[sendExportEmail] Permission denied for user ${ctx.profile.id}: ${requiredPermission}`);
       
       // Log denied attempt
@@ -168,14 +172,14 @@ export async function sendExportEmail(input: SendExportEmailInput): Promise<Send
       bcc: bccList,
       subject: input.subject,
       textBody: input.body,
-      attachments: [
+      attachments: input.attachment ? [
         {
           filename: input.attachment.filename,
           contentType: input.attachment.contentType,
           base64Content: input.attachment.base64Content,
           sizeBytes: input.attachment.sizeBytes,
         },
-      ],
+      ] : [],
     });
 
     const success = providerResult.ok;
@@ -192,10 +196,10 @@ export async function sendExportEmail(input: SendExportEmailInput): Promise<Send
         to_count: toList.length,
         cc_count: ccList?.length || 0,
         subject: input.subject,
-        attachment_filename: input.attachment.filename,
-        attachment_content_type: input.attachment.contentType,
-        attachment_size_bytes: input.attachment.sizeBytes,
-        attachment_size_mb: (input.attachment.sizeBytes / (1024 * 1024)).toFixed(2),
+        attachment_filename: input.attachment?.filename ?? null,
+        attachment_content_type: input.attachment?.contentType ?? null,
+        attachment_size_bytes: input.attachment?.sizeBytes ?? 0,
+        attachment_size_mb: ((input.attachment?.sizeBytes ?? 0) / (1024 * 1024)).toFixed(2),
         record_count: input.context?.recordCount,
         export_mode: input.context?.exportMode,
         success,
@@ -240,6 +244,7 @@ export async function sendExportEmail(input: SendExportEmailInput): Promise<Send
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type SendReportEmailInput = SendExportEmailInput & {
+  attachment: EmailAttachment;
   runId?: number;
   attachmentFormat?: string;
   attachmentFilename?: string;

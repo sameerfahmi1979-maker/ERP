@@ -1,4 +1,5 @@
 "use client";
+import { useQuery } from "@tanstack/react-query";
 
 import { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
@@ -112,8 +113,6 @@ export function DmsAiIntakeMetadataSection({
   onBulkSeed,
   onDefinitionsCreated,
 }: DmsAiIntakeMetadataSectionProps) {
-  const [definitions, setDefinitions] = useState<DmsMetadataDefinitionRow[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   // Track which documentTypeId we've already seeded AI values for,
   // so we seed exactly once per type load and never create an update loop.
   const seededForTypeRef = useRef<number | null>(null);
@@ -121,32 +120,19 @@ export function DmsAiIntakeMetadataSection({
   // force the definitions list below to reload for this document type.
   const [reloadToken, setReloadToken] = useState(0);
 
-  useEffect(() => {
-    if (!documentTypeId) {
-      setDefinitions([]);
-      setIsLoading(false);
-      seededForTypeRef.current = null;
-      return;
-    }
-
-    let cancelled = false;
-    (async () => {
-      setIsLoading(true);
+  const definitionsQuery = useQuery({
+    queryKey: ["dms-intake-metadata-definitions", documentTypeId, reloadToken],
+    enabled: !!documentTypeId,
+    queryFn: async () => {
+      if (!documentTypeId) return [];
       const result = await getMetadataDefinitionsForType(documentTypeId, "intake");
-      if (!cancelled) {
-        if (result.success && result.data) {
-          setDefinitions(result.data);
-        } else {
-          setDefinitions([]);
-        }
-        setIsLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [documentTypeId, reloadToken]);
+      if (!result.success) throw new Error(result.error ?? "Failed to load metadata definitions");
+      return result.data ?? [];
+    },
+    retry: false, gcTime: 0, refetchOnWindowFocus: false,
+  });
+  const definitions = documentTypeId ? definitionsQuery.data ?? [] : [];
+  const isLoading = !!documentTypeId && definitionsQuery.isPending;
 
   // Seed the parent formValues with AI-extracted values immediately after
   // definitions load. All fields are collected first and emitted in ONE bulk
@@ -155,6 +141,7 @@ export function DmsAiIntakeMetadataSection({
   // captures the same snapshot of values.metadataValues and the last call
   // overwrites all previous ones (React 18 batching does not help here).
   useEffect(() => {
+    if (!documentTypeId) { seededForTypeRef.current = null; return; }
     if (!definitions.length || !documentTypeId) return;
     if (seededForTypeRef.current === documentTypeId) return;
     seededForTypeRef.current = documentTypeId;
@@ -180,6 +167,7 @@ export function DmsAiIntakeMetadataSection({
   }, [definitions]);
 
   if (!documentTypeId) return null;
+  if (definitionsQuery.error) return <p role="alert">Could not load metadata fields. Retry before entering metadata.</p>;
 
   if (isLoading) {
     return (

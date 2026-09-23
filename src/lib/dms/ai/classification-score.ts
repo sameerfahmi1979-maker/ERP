@@ -3,11 +3,11 @@
  * No AI calls, no DB writes.
  */
 
+import type { DmsMetadataDefinitionBase } from "@/lib/dms/metadata/metadata-definition-shared";
 import {
   inferTypeCodeFromText,
   TYPE_CLASSIFICATION_FINGERPRINTS,
 } from "./classification-resolver";
-import type { DmsMetadataDefinitionBase } from "@/lib/dms/metadata/metadata-definition-shared";
 
 /** Mandatory UAE common types always considered for candidate selection. */
 export const MANDATORY_COMMON_TYPE_CODES = [

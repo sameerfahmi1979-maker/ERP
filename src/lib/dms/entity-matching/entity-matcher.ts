@@ -13,17 +13,16 @@
  *   - No auto-linking. Human-review-only.
  */
 
-import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
-import { bestScore, truncateSafeSummary } from "./match-signals";
-import { upsertDmsEntityMatchCandidate, createReviewQueueItemForEntityMatchCandidate } from "./entity-match-upsert";
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
   MATCH_SCORE_THRESHOLDS,
   type DmsEntityMatchCandidateInput,
-  type DmsEntityMatchRunResult,
   type DmsEntityMatchOptions,
-  type DmsEntityMatchTargetType,
+  type DmsEntityMatchRunResult
 } from "./entity-match-types";
+import { createReviewQueueItemForEntityMatchCandidate, upsertDmsEntityMatchCandidate } from "./entity-match-upsert";
+import { bestScore, truncateSafeSummary } from "./match-signals";
 
 // ── Data loaders ──────────────────────────────────────────────────────────────
 

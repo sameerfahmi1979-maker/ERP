@@ -105,15 +105,15 @@ export async function listLookupCategories(
     }
 
     // Compute stats
-    const categoriesWithStats = (data as any[]).map((cat: any) => {
-      const values = cat.values || [];
+    const categoriesWithStats = (data ?? []).map((cat) => {
+      const values: Pick<LookupValue, "id" | "is_active" | "is_locked">[] = cat.values || [];
       return {
         ...cat,
         values: undefined, // remove the nested values
         total_values: values.length,
-        active_values: values.filter((v: any) => v.is_active).length,
-        inactive_values: values.filter((v: any) => !v.is_active).length,
-        locked_values: values.filter((v: any) => v.is_locked).length,
+        active_values: values.filter((v) => v.is_active).length,
+        inactive_values: values.filter((v) => !v.is_active).length,
+        locked_values: values.filter((v) => v.is_locked).length,
       } as LookupCategoryWithStats;
     });
 
@@ -662,7 +662,7 @@ export async function updateLookupValue(
     }
 
     // Check lock permission if value or category is locked
-    if ((existing.is_locked || (existing.category as any).is_locked) && !hasPermission(ctx, "master_data.lookups.lock")) {
+    if ((existing.is_locked || existing.category.is_locked) && !hasPermission(ctx, "master_data.lookups.lock")) {
       return { success: false, error: "Cannot modify locked value without lock permission" };
     }
 
@@ -687,7 +687,7 @@ export async function updateLookupValue(
       module_code: "master_data",
       entity_name: "global_lookup_values",
       entity_id: id,
-      entity_reference: `${(existing.category as any).category_code}:${existing.value_code}`,
+      entity_reference: `${existing.category.category_code}:${existing.value_code}`,
       action: "update_value",
       old_values: auditDiff.old_values,
       new_values: auditDiff.new_values,
@@ -740,7 +740,7 @@ export async function toggleLookupValueStatus(
       return { success: false, error: "Value not found" };
     }
 
-    if ((existing.is_locked || (existing.category as any).is_locked) && !hasPermission(ctx, "master_data.lookups.lock")) {
+    if ((existing.is_locked || existing.category.is_locked) && !hasPermission(ctx, "master_data.lookups.lock")) {
       return { success: false, error: "Cannot modify locked value" };
     }
 
@@ -763,7 +763,7 @@ export async function toggleLookupValueStatus(
       module_code: "master_data",
       entity_name: "global_lookup_values",
       entity_id: id,
-      entity_reference: `${(existing.category as any).category_code}:${existing.value_code}`,
+      entity_reference: `${existing.category.category_code}:${existing.value_code}`,
       action: is_active ? "activate_value" : "deactivate_value",
       old_values: { is_active: existing.is_active },
       new_values: { is_active, deactivation_reason },
@@ -830,7 +830,7 @@ export async function toggleLookupValueLock(
       module_code: "master_data",
       entity_name: "global_lookup_values",
       entity_id: id,
-      entity_reference: `${(existing.category as any).category_code}:${existing.value_code}`,
+      entity_reference: `${existing.category.category_code}:${existing.value_code}`,
       action: is_locked ? "lock_value" : "unlock_value",
       old_values: { is_locked: existing.is_locked },
       new_values: { is_locked },
@@ -901,7 +901,7 @@ export async function setDefaultLookupValue(
         module_code: "master_data",
         entity_name: "global_lookup_values",
         entity_id: id,
-        entity_reference: `${(valueData.category as any).category_code}:${valueData.value_code}`,
+        entity_reference: `${(Array.isArray(valueData.category) ? valueData.category[0] : valueData.category)?.category_code ?? "unknown"}:${valueData.value_code}`,
         action: "set_default_value",
         new_values: { is_default: true },
         owner_company_id: ctx.profile.owner_company_id,
@@ -1183,8 +1183,8 @@ export async function getLookupDashboardStats(): Promise<ActionResult<LookupDash
       .order("updated_at", { ascending: false })
       .limit(10);
 
-    const recently_updated = (recent || []).map((r: any) => ({
-      category_name: r.category?.category_name_en || "Unknown",
+    const recently_updated = (recent || []).map((r) => ({
+      category_name: (Array.isArray(r.category) ? r.category[0] : r.category)?.category_name_en || "Unknown",
       value_label: r.value_label_en,
       updated_at: r.updated_at,
       updated_by_name: null, // user_profiles join deferred — not displayed in current UI

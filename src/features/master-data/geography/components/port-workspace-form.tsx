@@ -60,7 +60,7 @@ export function PortWorkspaceForm({ port, mode }: PortWorkspaceFormProps) {
     writeDraftField("country_id", newCountryId ?? "");
     setEmirateId(null);
     writeDraftField("emirate_id", "");
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [writeDraftField]);
 
   const sections = [

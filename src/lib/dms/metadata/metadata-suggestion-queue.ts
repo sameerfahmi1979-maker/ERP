@@ -1,4 +1,4 @@
-"use server";
+import "server-only";
 
 /**
  * DMS AI META.2 — Background Suggestion Queue (Flow B)

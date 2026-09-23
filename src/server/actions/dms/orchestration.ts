@@ -21,32 +21,32 @@
  * - No auto-approval — human review remains mandatory.
  */
 
-import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/server/actions/audit";
+import { z } from "zod";
 
-import type {
-  DmsAiOrchestrationStepCode,
-  DmsAiOrchestrationStepResult,
-  DmsAiOrchestrationRunResult,
-  DmsAiOrchestrationStatusRow,
-} from "@/lib/dms/orchestration/types";
 import {
   buildInitialSteps,
-  runPipelineStepSafe,
-  mergeStepResult,
-  calculateOverallStatus,
   buildRunResult,
+  calculateOverallStatus,
+  mergeStepResult,
+  runPipelineStepSafe,
 } from "@/lib/dms/orchestration/pipeline-runner";
+import type {
+  DmsAiOrchestrationRunResult,
+  DmsAiOrchestrationStatusRow,
+  DmsAiOrchestrationStepCode,
+  DmsAiOrchestrationStepResult,
+} from "@/lib/dms/orchestration/types";
 
 // Existing DMS AI server actions — called as regular async functions
-import { generateAndSaveDmsAiSummary } from "@/server/actions/dms/ai-summary";
 import { evaluateDmsDocumentIntelligence } from "@/server/actions/dms/ai-intelligence";
-import { generateDmsDocumentEmbedding } from "@/server/actions/dms/semantic-search";
-import { suggestDmsDocumentTags } from "@/server/actions/dms/ai-tags";
 import { suggestDmsDocumentLinks } from "@/server/actions/dms/ai-links";
+import { generateAndSaveDmsAiSummary } from "@/server/actions/dms/ai-summary";
+import { suggestDmsDocumentTags } from "@/server/actions/dms/ai-tags";
 import { writeDocumentContentTextSystem } from "@/server/actions/dms/document-content";
+import { generateDmsDocumentEmbedding } from "@/server/actions/dms/semantic-search";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

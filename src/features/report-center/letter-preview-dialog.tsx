@@ -1,29 +1,29 @@
 "use client";
 
-import { useState, useEffect, useTransition, useCallback } from "react";
-import {
-  X,
-  ExternalLink,
-  Printer,
-  FileDown,
-  Loader2,
-  FileText,
-  AlertCircle,
-  LayoutTemplate,
-  Table2,
-} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { runReportAction } from "@/server/actions/reports/runner";
-import { exportToPDF } from "@/lib/export/pdf";
-import { exportToPrint } from "@/lib/export/print";
-import type { ReportDataResult } from "@/lib/report-center/types";
-import type { ERPExportColumn, ExportBrandingContext } from "@/lib/export/export-types";
 import { ExecutiveLedgerPreview } from "@/features/executive-ledger/executive-ledger-preview";
 import { renderExecutiveLedgerHtml } from "@/lib/executive-ledger/html-renderer";
-import { buildLetterExecutiveLedgerDocument } from "@/lib/output/letter-document-builder";
-import { injectDraftWatermark } from "@/lib/output/draft-watermark";
 import type { ExecutiveLedgerDocument } from "@/lib/executive-ledger/types";
-import { listReportTemplatesForSelection, resolveTemplatePreview, renderVisualTemplateForLetterPreview, type ReportTemplateForSelection } from "@/server/actions/reports/templates";
+import type { ERPExportColumn, ExportBrandingContext } from "@/lib/export/export-types";
+import { exportToPDF } from "@/lib/export/pdf";
+import { exportToPrint } from "@/lib/export/print";
+import { injectDraftWatermark } from "@/lib/output/draft-watermark";
+import { buildLetterExecutiveLedgerDocument } from "@/lib/output/letter-document-builder";
+import { runReportAction } from "@/server/actions/reports/runner";
+import { listReportTemplatesForSelection, renderVisualTemplateForLetterPreview, resolveTemplatePreview } from "@/server/actions/reports/templates";
+import { useQuery } from "@tanstack/react-query";
+import {
+  AlertCircle,
+  ExternalLink,
+  FileDown,
+  FileText,
+  LayoutTemplate,
+  Loader2,
+  Printer,
+  Table2,
+  X,
+} from "lucide-react";
+import { useCallback, useId, useState } from "react";
 
 interface LetterPreviewDialogProps {
   open: boolean;
@@ -90,7 +90,11 @@ function buildExecutiveLedgerDoc(
   });
 }
 
-export function LetterPreviewDialog({
+export function LetterPreviewDialog(props: LetterPreviewDialogProps) {
+  return props.open ? <LetterPreviewSession key={`${props.reportCode}:${props.employeeId}:${props.templateId ?? "auto"}`} {...props} /> : null;
+}
+
+function LetterPreviewSession({
   open,
   onOpenChange,
   reportCode,
@@ -101,110 +105,64 @@ export function LetterPreviewDialog({
   templateId: propTemplateId,
   allowQuickPrint = true,
 }: LetterPreviewDialogProps) {
-  const [isPending, startTransition] = useTransition();
-  const [data, setData] = useState<ReportDataResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const previewSession = useId();
   const [formalView, setFormalView] = useState(false);
-
-  // BRANDING.8: Template selection for branded preview
-  const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(propTemplateId ?? null);
-  const [selectedBranding, setSelectedBranding] = useState<ExportBrandingContext | null>(null);
-  const [availableTemplates, setAvailableTemplates] = useState<ReportTemplateForSelection[]>([]);
-  const [loadingTemplates, setLoadingTemplates] = useState(false);
-  const [templateLoadError, setTemplateLoadError] = useState<string | null>(null);
-
-  // DESIGNER.6: Visual layout rendering for templates with Puck engine
-  const [visualHtml, setVisualHtml] = useState<string | null>(null);
-  const [isLoadingVisual, setIsLoadingVisual] = useState(false);
-
-  useEffect(() => {
-    if (!open) {
-      setData(null);
-      setError(null);
-      setFormalView(false);
-      setSelectedTemplateId(propTemplateId ?? null);
-      setSelectedBranding(null);
-      setAvailableTemplates([]);
-      setTemplateLoadError(null);
-      setVisualHtml(null);
-      setIsLoadingVisual(false);
-      return;
-    }
-
-    setData(null);
-    setError(null);
-
-    startTransition(async () => {
+  const [templateChoice, setSelectedTemplateId] = useState<number | null>(propTemplateId ?? null);
+  const reportQuery = useQuery({
+    queryKey: ["letter-preview", previewSession, reportCode, employeeId],
+    queryFn: async () => {
       const result = await runReportAction({
         reportCode,
         outputFormat: "screen",
         filters: { employee_id: String(employeeId) },
       });
 
-      if (!result.success || !result.data?.data) {
-        setError(result.error ?? "Failed to generate letter.");
-      } else {
-        setData(result.data.data);
-
-        // Auto-resolve branding from the template the engine selected.
-        // Without this, colours/logo stay at hardcoded defaults because the
-        // dialog receives no `branding` prop from the Letters & Forms area.
-        const resolvedTplId =
-          result.data.resolvedTemplateId ?? null;
-        if (resolvedTplId && !selectedBranding) {
-          resolveTemplatePreview({ templateId: resolvedTplId, reportCode })
-            .then((brandRes) => {
-              if (brandRes.success && brandRes.data) {
-                setSelectedBranding(brandRes.data);
-                setSelectedTemplateId(resolvedTplId);
-              }
-            })
-            .catch(() => {/* non-fatal — letter still shows without branding */});
-        }
-      }
-    });
-  }, [open, reportCode, employeeId]);
-
-  // Eagerly load approved/published templates as soon as Formal View is activated.
-  // This avoids the fragile "fire-and-forget async" pattern and ensures templates
-  // are ready before the user clicks the QR issuance button.
-  useEffect(() => {
-    if (!open || !formalView) return;
-    if (availableTemplates.length > 0 || loadingTemplates) return;
-    setLoadingTemplates(true);
-    setTemplateLoadError(null);
-    listReportTemplatesForSelection({ issuableOnly: true })
-      .then((res) => {
-        if (res.success) {
-          setAvailableTemplates(res.data ?? []);
-        } else {
-          setTemplateLoadError(res.error ?? "Failed to load templates.");
-        }
-      })
-      .catch((e: unknown) => {
-        setTemplateLoadError(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => setLoadingTemplates(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, formalView]);
-
-  // DESIGNER.6: When formal view is activated with a template that has a visual layout,
-  // render the visual layout HTML for the Formal View.
-  useEffect(() => {
-    if (!open || !formalView || !selectedTemplateId) { setVisualHtml(null); return; }
-    setIsLoadingVisual(true);
-    renderVisualTemplateForLetterPreview({ templateId: selectedTemplateId, employeeId })
-      .then((res) => {
-        if (res.ok && res.hasVisualLayout && res.html) {
-          setVisualHtml(res.html);
-        } else {
-          setVisualHtml(null);
-        }
-      })
-      .catch(() => setVisualHtml(null))
-      .finally(() => setIsLoadingVisual(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, formalView, selectedTemplateId]);
+      if (!result.success || !result.data?.data) throw new Error(result.error ?? "Failed to generate letter.");
+      return result.data;
+    },
+    retry: false, gcTime: 0, refetchOnWindowFocus: false,
+  });
+  const data = reportQuery.data?.data;
+  const error = reportQuery.error?.message;
+  const selectedTemplateId = templateChoice ?? reportQuery.data?.resolvedTemplateId ?? null;
+  const brandingQuery = useQuery({
+    queryKey: ["letter-preview-branding", previewSession, reportCode, selectedTemplateId],
+    enabled: !!selectedTemplateId,
+    queryFn: async () => {
+      const result = await resolveTemplatePreview({ templateId: selectedTemplateId!, reportCode });
+      if (!result.success) throw new Error(result.error ?? "Could not load branding");
+      return result.data ?? null;
+    },
+    retry: false, gcTime: 0, refetchOnWindowFocus: false,
+  });
+  const selectedBranding = brandingQuery.data;
+  const isPending = reportQuery.isPending || brandingQuery.isFetching;
+  const templatesQuery = useQuery({
+    queryKey: ["letter-issuable-templates", previewSession],
+    enabled: formalView,
+    queryFn: async () => {
+      const result = await listReportTemplatesForSelection({ issuableOnly: true });
+      if (!result.success) throw new Error(result.error ?? "Failed to load templates.");
+      return result.data ?? [];
+    },
+    retry: false, gcTime: 0, refetchOnWindowFocus: false,
+  });
+  const availableTemplates = templatesQuery.data ?? [];
+  const loadingTemplates = formalView && templatesQuery.isFetching;
+  const visualQuery = useQuery({
+    queryKey: ["letter-visual-preview", previewSession, selectedTemplateId, employeeId],
+    enabled: formalView && !!selectedTemplateId,
+    queryFn: async () => {
+      const result = await renderVisualTemplateForLetterPreview({ templateId: selectedTemplateId!, employeeId });
+      if (!result.ok) throw new Error("Could not render the selected template.");
+      return result.hasVisualLayout ? result.html ?? null : null;
+    },
+    retry: false, gcTime: 0, refetchOnWindowFocus: false,
+  });
+  const visualHtml = formalView ? visualQuery.data : null;
+  const isLoadingVisual = formalView && visualQuery.isFetching;
+  const templateLoadError = templatesQuery.error?.message ?? brandingQuery.error?.message ?? visualQuery.error?.message;
+  const outputNotReady = !data || isPending || (formalView && (isLoadingVisual || !!templateLoadError || !!visualQuery.error));
 
   // Computed values — derived from state; safe when open=false because data=null
   const row = data?.rows?.[0] ?? null;
@@ -221,21 +179,9 @@ export function LetterPreviewDialog({
   /** Open the template picker; if templates failed to load, retry the fetch */
   /** Retry template load if it previously failed */
   const retryTemplateLoad = () => {
-    if (availableTemplates.length > 0 || loadingTemplates) return;
-    setLoadingTemplates(true);
-    setTemplateLoadError(null);
-    listReportTemplatesForSelection({ issuableOnly: true })
-      .then((res) => {
-        if (res.success) {
-          setAvailableTemplates(res.data ?? []);
-        } else {
-          setTemplateLoadError(res.error ?? "Failed to load templates.");
-        }
-      })
-      .catch((e: unknown) => {
-        setTemplateLoadError(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => setLoadingTemplates(false));
+    void templatesQuery.refetch();
+    if (selectedTemplateId) void brandingQuery.refetch();
+    if (formalView && selectedTemplateId) void visualQuery.refetch();
   };
 
   /** Print the given HTML in a hidden iframe — avoids opening a new browser tab */
@@ -293,7 +239,7 @@ export function LetterPreviewDialog({
     });
   };
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   const handlePrint = useCallback(() => {
     if (formalView && visualHtml) {
       printInHiddenIframe(injectDraftWatermark(visualHtml));
@@ -403,14 +349,10 @@ export function LetterPreviewDialog({
                   <select
                     className="h-8 text-xs rounded-md border border-input bg-background px-2 pr-6 focus:outline-none focus:ring-1 focus:ring-ring text-foreground"
                     value={selectedTemplateId ?? ""}
-                    onChange={async (e) => {
+                    onChange={(e) => {
                       const id = Number(e.target.value);
                       if (!id) return;
                       setSelectedTemplateId(id);
-                      const brandRes = await resolveTemplatePreview({ templateId: id, reportCode });
-                      if (brandRes.success && brandRes.data) {
-                        setSelectedBranding(brandRes.data);
-                      }
                     }}
                   >
                     {!selectedTemplateId && <option value="">Select template…</option>}
@@ -525,7 +467,7 @@ export function LetterPreviewDialog({
                   variant="outline"
                   size="sm"
                   onClick={handlePrint}
-                  disabled={!data || isPending}
+                  disabled={outputNotReady}
                   className="gap-1.5"
                 >
                   <Printer className="h-3.5 w-3.5" />
@@ -534,7 +476,7 @@ export function LetterPreviewDialog({
                 <Button
                   size="sm"
                   onClick={handlePDF}
-                  disabled={!data || isPending}
+                  disabled={outputNotReady}
                   className="gap-1.5"
                 >
                   <FileDown className="h-3.5 w-3.5" />

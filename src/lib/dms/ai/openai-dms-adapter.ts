@@ -1,9 +1,10 @@
+import { resolveAiProviderSecret } from "@/lib/settings/resolve-ai-secret";
 /**
  * DMS.10 — OpenAI DMS Adapter
  *
  * Extends the SETTINGS.1 OpenAI provider with chat completion for DMS.
  * Uses fetch-native calls (no OpenAI SDK) — same pattern as email provider.
- * API key is resolved from process.env[secretRef] — never exposed to frontend.
+ * API key is resolved from resolveAiProviderSecret(this.config) — never exposed to frontend.
  */
 
 import type { AiProviderConfig } from "@/lib/ai/providers/types";
@@ -45,14 +46,14 @@ export class OpenAiDmsAdapter implements IDmsAiProvider {
     if (!this.config.isEnabled || !this.config.isActive) return false;
     const secretRef = this.config.secretRef;
     if (!secretRef) return false;
-    return !!process.env[secretRef];
+    return !!resolveAiProviderSecret(this.config);
   }
 
   async analyze(input: DmsAiInput): Promise<DmsAiOutput> {
     const secretRef = this.config.secretRef;
     if (!secretRef) throw new Error("No API key reference configured in AI Settings.");
 
-    const apiKey = process.env[secretRef];
+    const apiKey = resolveAiProviderSecret(this.config);
     if (!apiKey) {
       throw new Error(
         `API key environment variable '${secretRef}' is not set. Configure it in your deployment environment.`
@@ -139,7 +140,7 @@ export class OpenAiDmsAdapter implements IDmsAiProvider {
     const secretRef = this.config.secretRef;
     if (!secretRef) throw new Error("No API key reference configured in AI Settings.");
 
-    const apiKey = process.env[secretRef];
+    const apiKey = resolveAiProviderSecret(this.config);
     if (!apiKey) {
       throw new Error(
         `API key environment variable '${secretRef}' is not set. Configure it in your deployment environment.`
@@ -202,7 +203,7 @@ export class OpenAiDmsAdapter implements IDmsAiProvider {
     const secretRef = this.config.secretRef;
     if (!secretRef) throw new Error("No API key reference configured in AI Settings.");
 
-    const apiKey = process.env[secretRef];
+    const apiKey = resolveAiProviderSecret(this.config);
     if (!apiKey) {
       throw new Error(
         `API key environment variable '${secretRef}' is not set. Configure it in your deployment environment.`
@@ -265,7 +266,7 @@ export class OpenAiDmsAdapter implements IDmsAiProvider {
     const secretRef = this.config.secretRef;
     if (!secretRef) throw new Error("No API key reference configured in AI Settings.");
 
-    const apiKey = process.env[secretRef];
+    const apiKey = resolveAiProviderSecret(this.config);
     if (!apiKey) {
       throw new Error(
         `API key environment variable '${secretRef}' is not set. Configure it in your deployment environment.`

@@ -8,17 +8,9 @@ import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { ShieldCheck, Eye, EyeOff } from "lucide-react";
 import type { AiProviderConfig } from "@/lib/ai/providers/types";
 import { saveAiProviderSecret } from "@/server/actions/settings/ai-settings";
+import { AI_SECRET_KEYS } from "@/lib/settings/ai-secret-policy";
 
-export const ENV_VAR_SUGGESTIONS: Record<string, string> = {
-  openai: "OPENAI_API_KEY",
-  azure_openai: "AZURE_OPENAI_API_KEY",
-  azure_document_intelligence: "AZURE_DOCUMENT_INTELLIGENCE_KEY",
-  google_document_ai: "GOOGLE_DOCUMENT_AI_KEY",
-  aws_textract: "AWS_ACCESS_KEY_ID",
-  tesseract: "",
-  local_ollama: "LOCAL_LLM_ENDPOINT",
-  local_custom: "CUSTOM_AI_API_KEY",
-};
+export const ENV_VAR_SUGGESTIONS = AI_SECRET_KEYS;
 
 interface AiProviderSecretDialogProps {
   open: boolean;
@@ -78,7 +70,7 @@ export function AiProviderSecretDialog({
       open={open}
       onOpenChange={(o) => !o && onClose()}
       title={`Update API Key — ${config.providerName}`}
-      subtitle="The key is saved to the server environment file and applied immediately. It is never stored in the database."
+      subtitle="Use an approved provider key name. Managed deployments require administrator-controlled secret rotation."
       icon={<ShieldCheck className="h-5 w-5 text-violet-500" />}
       mode="edit"
       size="sm"
@@ -99,10 +91,10 @@ export function AiProviderSecretDialog({
         )}
 
         <div className="rounded-md border border-emerald-200 bg-emerald-50 dark:border-emerald-900/30 dark:bg-emerald-950/20 p-3 text-xs text-emerald-800 dark:text-emerald-200">
-          <strong>How it works:</strong> The key is written to the server&apos;s{" "}
-          <code className="font-mono">.env.local</code> file under the environment variable name
-          below and takes effect immediately — no restart needed. Only a masked preview is stored in
-          the database. The key input is cleared after saving.
+          <strong>How it works:</strong> Server-file updates must be explicitly enabled by the deployment administrator.
+          Managed or multi-server deployments should rotate keys in their deployment secret store.
+          Only this provider&apos;s approved key name or <code>{`ERP_AI_PROVIDER_${config.id}_KEY`}</code> is accepted.
+          The key is never saved as plaintext in application records.
         </div>
 
         <div className="flex flex-col gap-1.5">

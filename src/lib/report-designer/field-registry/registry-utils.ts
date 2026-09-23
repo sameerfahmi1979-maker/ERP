@@ -3,12 +3,11 @@
  * Phase: REPORT DESIGNER UX.2
  */
 
-import type {
-  ReportFieldRegistryEntry,
-  ReportFieldModuleGroup,
-  ReportFieldEntityGroup,
-} from "./types";
 import { REPORT_FIELD_REGISTRY } from "./registry";
+import type {
+  ReportFieldModuleGroup,
+  ReportFieldRegistryEntry
+} from "./types";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Core accessors

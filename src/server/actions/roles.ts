@@ -28,7 +28,7 @@ export type ActionResult<T = unknown> = {
 // READ
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function getRoleById(id: number): Promise<ActionResult<import("@/types/database").Role>> {
+export async function getRoleById(id: number): Promise<ActionResult<import("@/types/domain").Role>> {
   try {
     const ctx = await getAuthContext();
     if (!hasPermission(ctx, "roles.view")) {
@@ -42,7 +42,7 @@ export async function getRoleById(id: number): Promise<ActionResult<import("@/ty
       .single();
     if (error) { logger.error("getRoleById error", error); return { success: false, error: error.message }; }
     if (!data) return { success: false, error: "Role not found" };
-    return { success: true, data: data as import("@/types/database").Role };
+    return { success: true, data: data as import("@/types/domain").Role };
   } catch (error) {
     logger.error("getRoleById exception", error);
     return { success: false, error: sanitizeServerActionError(error) };
@@ -477,7 +477,7 @@ export type AssignedUserRow = {
 export async function getRoleWithUsersAction(
   roleId: number,
 ): Promise<ActionResult<{
-  role: import("@/types/database").Role;
+  role: import("@/types/domain").Role;
   assigned_users: AssignedUserRow[];
 }>> {
   try {

@@ -25,15 +25,13 @@
  *   });
  */
 
-import { useCallback, useMemo } from "react";
-import type { SortingState, VisibilityState } from "@tanstack/react-table";
+import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
 import {
   buildPageStateKey,
-  readPageState,
-  writePageState,
-  type WorkspacePageStateScope,
+  type WorkspacePageStateScope
 } from "@/lib/workspace/workspace-page-state";
-import { useState, useEffect } from "react";
+import type { SortingState, VisibilityState } from "@tanstack/react-table";
+import { useCallback, useMemo } from "react";
 
 interface PaginationState {
   pageIndex: number;
@@ -105,83 +103,61 @@ export function useWorkspaceTableState(
     []
   );
 
-  // Initialize with defaults so the first client render matches the server-rendered HTML.
-  // Read the persisted localStorage state in useEffect (after hydration) to avoid the
-  // SSR/client mismatch that occurs when localStorage is read synchronously during render.
-  const [tableState, setTableState] = useState<StoredTableState>(defaults);
-
-  useEffect(() => {
-    const persisted = readPageState<StoredTableState>(storageKey, defaults);
-    setTableState(persisted);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // run once on mount — storageKey and defaults are stable after first render
-
-  const persist = useCallback(
-    (next: StoredTableState) => {
-      writePageState(storageKey, next);
-    },
-    [storageKey]
-  );
+  const [tableState, setTableState] = usePersistentUiState(storageKey, defaults);
 
   const setSearch = useCallback(
     (v: string) => {
       setTableState((prev) => {
         const next = { ...prev, search: v };
-        persist(next);
         return next;
       });
     },
-    [persist]
+    [setTableState]
   );
 
   const setFilters = useCallback(
     (v: Record<string, unknown> | ((prev: Record<string, unknown>) => Record<string, unknown>)) => {
       setTableState((prev) => {
         const next = { ...prev, filters: typeof v === "function" ? v(prev.filters) : v };
-        persist(next);
         return next;
       });
     },
-    [persist]
+    [setTableState]
   );
 
   const setSorting = useCallback(
     (v: SortingState) => {
       setTableState((prev) => {
         const next = { ...prev, sorting: v };
-        persist(next);
         return next;
       });
     },
-    [persist]
+    [setTableState]
   );
 
   const setPagination = useCallback(
     (v: PaginationState | ((prev: PaginationState) => PaginationState)) => {
       setTableState((prev) => {
         const next = { ...prev, pagination: typeof v === "function" ? v(prev.pagination) : v };
-        persist(next);
         return next;
       });
     },
-    [persist]
+    [setTableState]
   );
 
   const setColumnVisibility = useCallback(
     (v: VisibilityState) => {
       setTableState((prev) => {
         const next = { ...prev, columnVisibility: v };
-        persist(next);
         return next;
       });
     },
-    [persist]
+    [setTableState]
   );
 
   const resetTableState = useCallback(() => {
     setTableState(defaults);
-    writePageState(storageKey, defaults);
-  }, [defaults, storageKey]);
+  }, [defaults, setTableState]);
 
   return {
     search: tableState.search,

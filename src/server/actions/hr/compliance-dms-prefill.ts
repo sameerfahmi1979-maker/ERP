@@ -4,32 +4,19 @@
  * HR Compliance — AI-enriched prefill for non-identity compliance records from DMS.
  */
 
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { callCommonAiStructuredCompletion } from "@/lib/ai/common/provider-bridge";
-import { isHrAiMasterEnabled, isHrAiFeatureEnabled } from "@/lib/hr/ai/feature-flags";
-import { HR_AI_FEATURE_FLAGS, HrMedicalInsurancePrefillOutputSchema, HrDependentPrefillOutputSchema } from "@/lib/hr/ai/types";
-import type {
-  ComplianceDmsPrefillResult,
-  ComplianceDmsRecordKind,
-} from "@/lib/hr/compliance/compliance-dms-prefill";
-import {
-  pickStringField,
-  normalizeDateValue,
-} from "@/lib/hr/compliance/dms-to-identity-map";
+import { isHrAiFeatureEnabled, isHrAiMasterEnabled } from "@/lib/hr/ai/feature-flags";
+import { HR_AI_FEATURE_FLAGS, HrDependentPrefillOutputSchema, HrMedicalInsurancePrefillOutputSchema } from "@/lib/hr/ai/types";
 import {
   isInternalDmsDocumentNumber,
   loadDmsOcrSnippet,
   loadLatestDmsExtraction,
 } from "@/lib/hr/compliance/compliance-dms-ocr";
-import {
-  extractMedicalInsuranceHintsFromOcr,
-  mapExtractionToMedicalInsuranceFields,
-  mapMetadataToMedicalInsuranceFields,
-  mergeMedicalInsuranceFields,
-  normalizeMedicalInsuranceAiFields,
-  type MedicalInsurancePrefillFields,
-} from "@/lib/hr/compliance/medical-insurance-dms-map";
+import type {
+  ComplianceDmsPrefillResult,
+  ComplianceDmsRecordKind,
+} from "@/lib/hr/compliance/compliance-dms-prefill";
+import { resolveNationalityIdFromName } from "@/lib/hr/compliance/compliance-geography-resolve";
 import {
   DEPENDENT_DMS_TYPE_CODES,
   EMPTY_DEPENDENT_PREFILL,
@@ -39,7 +26,20 @@ import {
   mergeDependentFields,
   type DependentPrefillFields,
 } from "@/lib/hr/compliance/dependent-dms-map";
-import { resolveNationalityIdFromName } from "@/lib/hr/compliance/compliance-geography-resolve";
+import {
+  normalizeDateValue,
+  pickStringField,
+} from "@/lib/hr/compliance/dms-to-identity-map";
+import {
+  extractMedicalInsuranceHintsFromOcr,
+  mapExtractionToMedicalInsuranceFields,
+  mapMetadataToMedicalInsuranceFields,
+  mergeMedicalInsuranceFields,
+  normalizeMedicalInsuranceAiFields,
+  type MedicalInsurancePrefillFields,
+} from "@/lib/hr/compliance/medical-insurance-dms-map";
+import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 type ActionResult<T = unknown> = {
   success: boolean;
@@ -768,7 +768,7 @@ async function prefillDependentFromDms(
   });
 
   let merged = seed.fields;
-  let prefillSource: ComplianceDmsPrefillResult["prefillSource"] = seed.usedAi ? "extraction_and_ai" : "extraction";
+  const prefillSource: ComplianceDmsPrefillResult["prefillSource"] = seed.usedAi ? "extraction_and_ai" : "extraction";
   let fieldConfidence = seed.fieldConfidence;
   const mergedFrom: NonNullable<ComplianceDmsPrefillResult["mergedFrom"]> = [];
   let warning: string | null = null;

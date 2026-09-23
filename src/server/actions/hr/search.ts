@@ -1,15 +1,15 @@
 "use server";
 
-import { z } from "zod";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import type {
   HrSearchCategory,
-  HrSearchResult,
   HrSearchInput,
   HrSearchOutput,
+  HrSearchResult,
   HrSearchSuggestion,
 } from "@/lib/hr/search/types";
+import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { z } from "zod";
 
 // ============================================================================
 // Zod Schema

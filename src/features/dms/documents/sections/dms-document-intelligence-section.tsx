@@ -167,7 +167,7 @@ export function DmsDocumentIntelligenceSection({
 
   // ── Completeness card ─────────────────────────────────────────────────────────
 
-  function CompletenessCard() {
+  function renderCompletenessCard() {
     const cRow = completenessRow;
     const cLabel = cRow?.completenessLabel;
     const cConfig = cLabel ? COMPLETENESS_CONFIG[cLabel] : null;
@@ -242,7 +242,7 @@ export function DmsDocumentIntelligenceSection({
 
   // ── Risk card ─────────────────────────────────────────────────────────────────
 
-  function RiskCard() {
+  function renderRiskCard() {
     const rRow = riskRow;
     const rLevel = rRow?.riskLevel as RiskLevel | null;
     const rConfig = rLevel ? RISK_CONFIG[rLevel] : null;
@@ -357,8 +357,8 @@ export function DmsDocumentIntelligenceSection({
       )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <CompletenessCard />
-        <RiskCard />
+        {renderCompletenessCard()}
+        {renderRiskCard()}
       </div>
 
       {/* Disclaimer */}
@@ -366,7 +366,7 @@ export function DmsDocumentIntelligenceSection({
         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <span>
           Completeness and risk scores are deterministic — no AI is used. Scores reflect the current
-          state of the document's metadata, dates, content text, and AI summary.
+          state of the document&apos;s metadata, dates, content text, and AI summary.
           Re-evaluate after making changes.
         </span>
       </div>

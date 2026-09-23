@@ -1,11 +1,10 @@
-﻿import { redirect } from "next/navigation";
+﻿import { HrReportsMenu } from "@/components/erp/hr-reports-menu";
+import { Card, CardContent } from "@/components/ui/card";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { getRecruitmentSummary } from "@/server/actions/hr/recruitment";
+import { ArrowRight, Briefcase, Calendar, CheckSquare, Gift, Users } from "lucide-react";
 import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Users, Briefcase, Calendar, Gift, CheckSquare, ArrowRight } from "lucide-react";
-import { HrReportsMenu } from "@/components/erp/hr-reports-menu";
+import { redirect } from "next/navigation";
 
 export default async function RecruitmentHubPage() {
   const ctx = await getAuthContext();

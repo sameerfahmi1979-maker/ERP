@@ -259,7 +259,9 @@ export class MicrosoftGraphProvider implements EmailProvider {
         typeof b === "object" &&
         b !== null &&
         "error" in b &&
-        typeof (b as any).error === "object"
+        typeof b.error === "object" && b.error !== null &&
+        (!("code" in b.error) || typeof b.error.code === "string") &&
+        (!("message" in b.error) || typeof b.error.message === "string")
       );
     };
 

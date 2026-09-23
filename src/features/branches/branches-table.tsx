@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal, Pencil, Ban, CheckCircle, Trash2, GitBranch, Eye } from "lucide-react";
-import type { BranchWithCompany } from "@/types/database";
+import type { BranchWithCompany } from "@/types/domain";
 import { updateBranchStatus, deleteBranch } from "@/server/actions/branches";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";

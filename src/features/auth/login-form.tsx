@@ -118,7 +118,8 @@ export function LoginForm({ branding }: LoginFormProps) {
 
     await new Promise((resolve) => setTimeout(resolve, 100));
 
-    window.location.href = "/start";
+    // A full same-origin navigation clears pre-login router state after cookies change.
+    window.location.assign(new URL("/start", window.location.origin).href);
   });
 
   return (

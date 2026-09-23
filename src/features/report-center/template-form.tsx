@@ -7,16 +7,16 @@
  * Uses ERPChildDialogForm — ERP standard for Add/Edit child config records.
  */
 
-import { useState, useEffect } from "react";
-import { FileText } from "lucide-react";
+import { ERPCombobox } from "@/components/erp/combobox";
+import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { toast } from "sonner";
-import { ERPCombobox } from "@/components/erp/combobox";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
-import { createReportTemplate, updateReportTemplate } from "@/server/actions/reports/templates";
 import type { ReportBrandingProfile, ReportTemplate, ReportTemplateType } from "@/lib/report-center/types";
+import { createReportTemplate, updateReportTemplate } from "@/server/actions/reports/templates";
+import { FileText } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 interface Props {
   open: boolean;
@@ -80,15 +80,12 @@ const displayOptions: [keyof typeof defaultForm, string][] = [
   ["show_watermark", "Show Watermark"],
 ];
 
-export function TemplateForm({ open, onOpenChange, template, profiles, onSaved }: Props) {
-  const [form, setForm] = useState(defaultForm);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const isEditing = !!template;
+export function TemplateForm(props: Props) {
+  return props.open ? <TemplateFormSession key={props.template?.id ?? "new"} {...props} /> : null;
+}
 
-  useEffect(() => {
-    if (!open) return;
-    if (template) {
-      setForm({
+function TemplateFormSession({ open, onOpenChange, template, profiles, onSaved }: Props) {
+  const [form, setForm] = useState(() => template ? {
         template_code: template.template_code,
         template_name: template.template_name,
         template_type: template.template_type,
@@ -108,11 +105,9 @@ export function TemplateForm({ open, onOpenChange, template, profiles, onSaved }
         watermark_text: template.watermark_text ?? null,
         is_default: template.is_default,
         is_active: template.is_active,
-      });
-    } else {
-      setForm(defaultForm);
-    }
-  }, [open, template]);
+      } : defaultForm);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isEditing = !!template;
 
   const handleSubmit = async () => {
     if (!form.template_name.trim()) { toast.error("Template name is required"); return; }

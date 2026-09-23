@@ -1,12 +1,5 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import { Separator } from "@/components/ui/separator";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,11 +10,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { AlertTriangle, Check, Lock, Search, Shield, Trash2, X } from "lucide-react";
-import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
-import type { Permission, Role } from "@/types/database";
 import { saveRolePermissionDraftChanges, type PermissionDraftChangeInput } from "@/server/actions/permissions";
+import type { Permission, Role } from "@/types/domain";
+import { AlertTriangle, Check, Lock, Search, Shield, Trash2, X } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { PermissionExplorer } from "./permission-explorer";
 import { PermissionReviewSaveDialog } from "./permission-review-save-dialog";
 
@@ -539,7 +538,7 @@ export function PermissionCommandCenter({
             action,
             originalAssigned,
             roleIsSystem: role.is_system_role,
-            permissionIsSystem: permission.is_system_permission,
+            permissionIsSystem: permission.is_system_permission ?? false,
           });
         }
         // Clear failed status if user re-toggles

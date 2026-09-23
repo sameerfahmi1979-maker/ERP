@@ -9,8 +9,8 @@
  */
 
 import { createHmac, timingSafeEqual } from "crypto";
+import { getPrintTokenSecret } from "@/lib/config/server-features";
 
-const TOKEN_SECRET = process.env.PDF_PRINT_TOKEN_SECRET ?? "";
 const TOKEN_TTL_SECONDS = 120;
 
 export interface PrintTokenPayload {
@@ -34,11 +34,7 @@ function fromBase64url(s: string): string {
  * Signs a print token that Gotenberg can use to fetch the print route.
  */
 export function signPrintToken(payload: Omit<PrintTokenPayload, "exp">): string {
-  if (!TOKEN_SECRET || TOKEN_SECRET.length < 32) {
-    throw new Error(
-      "[PDF] PDF_PRINT_TOKEN_SECRET is not set or too short (min 32 chars). Cannot sign print tokens.",
-    );
-  }
+  const TOKEN_SECRET = getPrintTokenSecret();
 
   const full: PrintTokenPayload = {
     ...payload,
@@ -55,9 +51,7 @@ export function signPrintToken(payload: Omit<PrintTokenPayload, "exp">): string 
  * Throws if the token is invalid, expired, or tampered.
  */
 export function verifyPrintToken(token: string): PrintTokenPayload {
-  if (!TOKEN_SECRET || TOKEN_SECRET.length < 32) {
-    throw new Error("[PDF] PDF_PRINT_TOKEN_SECRET is not configured.");
-  }
+  const TOKEN_SECRET = getPrintTokenSecret();
 
   const parts = token.split(".");
   if (parts.length !== 2) {

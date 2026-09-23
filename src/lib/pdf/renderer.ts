@@ -15,29 +15,25 @@
  *                        NOT used for Gotenberg fetches.
  */
 
+import { getPdfTransportConfig, getPrintTokenSecret } from "@/lib/config/server-features";
+import {
+  getGotenbergVersion,
+  gotenbergConvertUrl,
+  isGotenbergHealthy,
+} from "./gotenberg";
+import { signPrintToken } from "./print-token";
 import {
   PdfRenderRequest,
   PdfRenderRequestSchema,
   PdfRenderResult,
 } from "./types";
-import {
-  gotenbergConvertUrl,
-  getGotenbergVersion,
-  isGotenbergHealthy,
-} from "./gotenberg";
-import { signPrintToken } from "./print-token";
-import { createHash } from "crypto";
 
 /**
  * The URL that Gotenberg (inside Docker) uses to reach the ERP print route.
  * MUST NOT be the public internet URL when Gotenberg cannot reach it.
  *
- * Priority: INTERNAL_SITE_URL > NEXT_PUBLIC_SITE_URL > localhost:3000
+ * Explicit runtime configuration; no production fallback to public site URLs.
  */
-const INTERNAL_SITE_URL =
-  process.env.INTERNAL_SITE_URL ??
-  process.env.NEXT_PUBLIC_SITE_URL ??
-  "http://localhost:3000";
 
 /**
  * Main PDF render dispatcher.
@@ -78,25 +74,19 @@ export async function renderPdf(
     );
   }
 
-  // Guard: PDF_PRINT_TOKEN_SECRET must be set
-  if (!process.env.PDF_PRINT_TOKEN_SECRET || process.env.PDF_PRINT_TOKEN_SECRET.length < 32) {
-    throw new Error(
-      "[PDF] PDF_PRINT_TOKEN_SECRET is not set or too short (min 32 chars). " +
-        "Add it to .env.local or your production secrets.",
-    );
-  }
+  getPrintTokenSecret();
+  const { internalSiteUrl: INTERNAL_SITE_URL, rendererUrl: gotenbergUrl } = getPdfTransportConfig();
 
   // Gotenberg health check
   const healthy = await isGotenbergHealthy();
   if (!healthy) {
-    const gotenbergUrl = process.env.GOTENBERG_URL ?? "http://localhost:3100";
     const isLocal = gotenbergUrl.includes("localhost") || gotenbergUrl.includes("127.0.0.1");
     const hint = isLocal
       ? "Local dev: docker run --rm -p 3100:3100 gotenberg/gotenberg:8\n" +
         "Set GOTENBERG_URL=http://localhost:3100 and INTERNAL_SITE_URL=http://host.docker.internal:3000 (Windows/Mac) or http://172.17.0.1:3000 (Linux) in .env.local."
       : "Production: ensure the Gotenberg service is running and reachable at the configured GOTENBERG_URL.\n" +
         "On Railway: add a Gotenberg Docker service and set GOTENBERG_URL=http://<service>.railway.internal:3100\n" +
-        "Also set INTERNAL_SITE_URL to your app's public URL so Gotenberg can fetch print routes.";
+        "Set INTERNAL_SITE_URL to the explicitly approved app origin reachable by Gotenberg.";
     throw new Error(
       `[PDF] Gotenberg service is unavailable at ${gotenbergUrl}.\n${hint}`,
     );

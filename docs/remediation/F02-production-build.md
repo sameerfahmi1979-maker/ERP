@@ -28,3 +28,9 @@ loopback port, and verifies runtime versions, the unprivileged user, the login
 page and an anonymous protected-route redirect. It cannot establish production
 authentication, database access or renderer connectivity; perform those bounded
 live checks after an authorized rollout.
+
+The startup probe retries connection resets as well as refusals within a bounded
+window, because the container port can be bound before Next is ready to respond.
+Failure still blocks release and prints synthetic-container diagnostics. A font
+provider/build-loader failure is not waived: a complete successful build remains
+required for the exact release commit.

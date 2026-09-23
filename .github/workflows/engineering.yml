@@ -68,11 +68,14 @@ jobs:
             --env NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:16421 \
             --env NEXT_PUBLIC_SUPABASE_ANON_KEY=synthetic-ci-public-key \
             --env NEXT_PUBLIC_SITE_URL=http://127.0.0.1:16401 algt-f02-ci
-          curl --retry 12 --retry-connrefused --retry-delay 2 --fail --silent \
+          curl --retry 12 --retry-all-errors --retry-delay 2 --max-time 10 --fail --silent --show-error \
             --output /tmp/algt-f02-login.html http://127.0.0.1:16401/login
           grep -qi 'sign in' /tmp/algt-f02-login.html
           test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:16401/dashboard)" = "307"
           curl --silent --head http://127.0.0.1:16401/dashboard | grep -qi 'location:.*login'
+      - name: Show synthetic container diagnostics on failure
+        if: failure()
+        run: docker logs --tail 100 algt-f02-ci || true
       - name: Remove only the CI test container
         if: always()
         run: docker rm --force algt-f02-ci || true

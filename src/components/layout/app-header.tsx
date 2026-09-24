@@ -16,6 +16,8 @@ import { Search, User, Settings, LogOut } from "lucide-react";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { signOut } from "@/features/auth/actions";
 import { NotificationBell } from "@/components/erp/notification-bell";
+import { toast } from "sonner";
+import { navigateAfterIdentityChange } from "@/lib/auth/client-session";
 
 type AppHeaderProps = {
   displayName?: string | null;
@@ -41,7 +43,11 @@ export function AppHeader({ displayName, email }: AppHeaderProps) {
   const initials = (displayName ?? email ?? "U").slice(0, 2).toUpperCase();
 
   const handleSignOut = async () => {
-    await signOut();
+    try {
+      const result = await signOut();
+      if (!result.success) toast.error(result.error);
+      else navigateAfterIdentityChange();
+    } catch { toast.error("Sign out could not be confirmed. Please retry."); }
   };
 
   return (
@@ -84,7 +90,7 @@ export function AppHeader({ displayName, email }: AppHeaderProps) {
               </Avatar>
               <div className="hidden lg:flex flex-col items-start">
                 <span className="text-xs font-medium text-foreground">{displayName ?? email?.split('@')[0]}</span>
-                <span className="text-[10px] text-muted-foreground">Administrator</span>
+                <span className="text-[10px] text-muted-foreground">Signed in</span>
               </div>
             </Button>
           } />

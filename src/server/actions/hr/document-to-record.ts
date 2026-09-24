@@ -56,7 +56,6 @@ import {
 } from "@/lib/hr/document-to-record/types";
 import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
@@ -129,7 +128,7 @@ export async function getDmsDocumentsForEmployeeRecord(
     const { ctx, error } = await checkHr14bAccess();
     if (error) return { success: false, error };
 
-    const adminClient = createAdminClient();
+    const adminClient = await createClient();
     const limit = params.limit ?? 60;
 
     // Load docs linked to this employee
@@ -218,7 +217,7 @@ export async function aggregateIdentityDocumentFromDms(
     const { ctx, error } = await checkHr14bAccess();
     if (error) return { success: false, error };
 
-    const adminClient = createAdminClient();
+    const adminClient = await createClient();
     const supabase = await createClient();
 
     // Verify employee exists
@@ -319,7 +318,7 @@ export async function createIdentityDocumentFromDms(
     const parsed = createIdentityDocFromDmsInputSchema.safeParse(input);
     if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
-    const adminClient = createAdminClient();
+    const adminClient = await createClient();
     const supabase = await createClient();
 
     // Verify employee exists
@@ -435,7 +434,7 @@ export async function aggregateMedicalInsuranceFromDms(
     const { ctx, error } = await checkHr14bAccess();
     if (error) return { success: false, error };
 
-    const adminClient = createAdminClient();
+    const adminClient = await createClient();
     const supabase = await createClient();
 
     // Verify employee
@@ -505,7 +504,7 @@ export async function createMedicalInsuranceFromDms(
     const parsed = createInsuranceFromDmsInputSchema.safeParse(input);
     if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
-    const adminClient = createAdminClient();
+    const adminClient = await createClient();
     const supabase = await createClient();
 
     const { data: emp } = await adminClient
@@ -590,7 +589,7 @@ export async function aggregateDependentFromDms(
     if (error) return { success: false, error };
     if (!documentIds.length) return { success: false, error: "At least one document is required" };
 
-    const adminClient = createAdminClient();
+    const adminClient = await createClient();
     const supabase = await createClient();
 
     const { data: emp } = await supabase
@@ -679,7 +678,7 @@ export async function createDependentFromDms(
     const parsed = createDependentFromDmsInputSchema.safeParse(input);
     if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
-    const adminClient = createAdminClient();
+    const adminClient = await createClient();
     const supabase = await createClient();
 
     const { data: emp } = await adminClient

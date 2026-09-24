@@ -19,13 +19,13 @@
  *
  * Security model:
  *   - All reads: createClient() (RLS enforced, hr.payroll.view required)
- *   - All writes: createAdminClient() + hasPermission(hr.payroll.manage)
+ *   - All writes: createClient() + subject-scoped payroll/banking RLS
  *   - Sensitive data: IBAN/account never in audit, salary masked for unauthorized
  *   - No payroll run, no payslips, no accounting
  */
 
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
@@ -266,7 +266,7 @@ type EmployeeCtxRow = NonNullable<Awaited<ReturnType<typeof getEmployeeCtx>>>;
 
 /** End-date active basic component(s) and insert a new basic row from revision effective date. */
 async function applyRevisionToBasicSalaryComponent(
-  admin: ReturnType<typeof createAdminClient>,
+  admin: Awaited<ReturnType<typeof createClient>>,
   employeeId: number,
   effectiveDate: string,
   newAmount: number,
@@ -414,7 +414,7 @@ export async function createOrUpdateEmployeePayrollProfile(
   const parsed = payrollProfileSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const emp = await getEmployeeCtx(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 
@@ -472,7 +472,7 @@ export async function archiveEmployeePayrollProfile(
   if (!hasPermission(ctx, "hr.payroll.manage"))
     return { success: false, error: "Permission denied: hr.payroll.manage required" };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { data: row } = await admin
     .from("employee_payroll_profiles")
     .select("employee_id")
@@ -538,7 +538,7 @@ export async function createEmployeeSalaryComponent(
   const parsed = salaryComponentCreateSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const emp = await getEmployeeCtx(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 
@@ -572,7 +572,7 @@ export async function updateEmployeeSalaryComponent(
   const parsed = salaryComponentUpdateSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { data: row } = await admin
     .from("employee_salary_components")
     .select("employee_id")
@@ -604,7 +604,7 @@ export async function archiveEmployeeSalaryComponent(id: number): Promise<Action
   if (!hasPermission(ctx, "hr.payroll.manage"))
     return { success: false, error: "Permission denied: hr.payroll.manage required" };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { data: row } = await admin
     .from("employee_salary_components")
     .select("employee_id")
@@ -721,7 +721,7 @@ export async function createEmployeeSalaryRevision(
   const parsed = salaryRevisionCreateSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const emp = await getEmployeeCtx(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 
@@ -845,7 +845,7 @@ export async function placeEmployeePayrollHold(
   const parsed = payrollHoldCreateSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const emp = await getEmployeeCtx(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 
@@ -880,7 +880,7 @@ export async function releaseEmployeePayrollHold(id: number): Promise<ActionResu
   if (!hasPermission(ctx, "hr.payroll.manage"))
     return { success: false, error: "Permission denied: hr.payroll.manage required" };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { data: row } = await admin
     .from("employee_payroll_holds")
     .select("employee_id")
@@ -934,7 +934,7 @@ export async function archiveEmployeePayrollHold(id: number): Promise<ActionResu
   if (!hasPermission(ctx, "hr.payroll.manage"))
     return { success: false, error: "Permission denied: hr.payroll.manage required" };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { data: row } = await admin
     .from("employee_payroll_holds")
     .select("employee_id")
@@ -998,7 +998,7 @@ export async function createOrUpdateEmployeeWpsProfile(
   const parsed = wpsProfileSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const emp = await getEmployeeCtx(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 

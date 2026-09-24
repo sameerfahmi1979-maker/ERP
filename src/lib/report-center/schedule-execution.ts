@@ -9,6 +9,7 @@
 
 import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getAuthContextForProfileId } from "@/lib/rbac/check";
 import { runReport } from "@/lib/report-center/report-runner";
 import { getDefaultEmailProviderSystem } from "@/lib/email/providers/factory";
 import { generateAttachmentByType } from "@/lib/export/generate-attachment";
@@ -51,9 +52,12 @@ export interface ExecutableSchedule {
 
 export async function executeScheduleRun(
   sched: ExecutableSchedule,
-  permissionCodes: string[]
+  _permissionCodes: string[]
 ): Promise<ScheduleExecutionResult> {
+  // Retained call signature for existing workers; caller-provided grants never authorize a run.
+  void _permissionCodes;
   const db = createAdminClient();
+  const actor = await getAuthContextForProfileId(sched.created_by);
 
   const runResult = await runReport(
     {
@@ -64,7 +68,7 @@ export async function executeScheduleRun(
       ownerCompanyIds: sched.owner_company_id ? [sched.owner_company_id] : [],
       requestedByUserId: sched.created_by,
     },
-    permissionCodes
+    actor
   );
 
   if (!runResult.success || !runResult.data) {

@@ -95,7 +95,6 @@ export async function loadLinkedDmsDocumentEvidence(
         confidentiality_level,
         issue_date,
         expiry_date,
-        ai_summary,
         ai_risk_level,
         ai_risk_score,
         completeness_score,

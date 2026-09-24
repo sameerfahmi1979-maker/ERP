@@ -4,6 +4,8 @@ import type { UserProfile } from "@/types/domain";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
+import { hasPermission } from "./scope";
+export { canUseApplication, hasRole, hasPermission, isGlobalAdmin, hasGlobalPermission, hasPermissionInScope } from "./scope";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -43,19 +45,26 @@ export async function getAuthContext(): Promise<AuthContext> {
   const supabase = await createClient();
   const {
     data: { user },
+    error: authError,
   } = await supabase.auth.getUser();
 
-  if (!user) {
+  if (authError || !user) {
     return { profile: null, email: null, roleCodes: [], permissionCodes: [], accountStatus: "none", isAccountActive: false };
   }
 
-  const { data: profile } = await supabase
+  // An unexpired JWT alone is not proof that the underlying session remains live.
+  const { data: sessionValid, error: sessionError } = await supabase.rpc("f03_current_session_valid");
+  if (sessionError || sessionValid !== true) {
+    return { profile: null, email: null, roleCodes: [], permissionCodes: [], accountStatus: "none", isAccountActive: false };
+  }
+  // Narrow bootstrap lookup also supports the forced-change page while business RLS denies access.
+  const { data: profile, error: profileError } = await createAdminClient()
     .from("user_profiles")
     .select("*")
     .eq("auth_user_id", user.id)
     .maybeSingle();
 
-  if (!profile) {
+  if (profileError || !profile) {
     return { profile: null, email: user.email ?? null, roleCodes: [], permissionCodes: [], accountStatus: "none", isAccountActive: false };
   }
 
@@ -80,7 +89,7 @@ async function buildAuthContext(profile: UserProfile, email: string | null): Pro
       ? rawStatus
       : "none";
   const isAccountActive = accountStatus === "active";
-  if (!isAccountActive) return { profile, email, roleCodes: [], permissionCodes: [], roleAssignments: [], globalPermissionCodes: [], accountStatus, isAccountActive: false };
+  if (!isAccountActive || profile.must_change_password === true) return { profile, email, roleCodes: [], permissionCodes: [], roleAssignments: [], globalPermissionCodes: [], accountStatus, isAccountActive };
 
   // ── USERS.4: flat separate queries to avoid !inner join ambiguity ──────────
   // IMPORTANT: use the admin client (service role) for roles/permissions lookups.
@@ -187,35 +196,6 @@ async function buildAuthContext(profile: UserProfile, email: string | null): Pro
 
 // ── Boolean helpers ───────────────────────────────────────────────────────────
 
-export function hasRole(ctx: AuthContext, roleCode: string): boolean {
-  if (["system_admin", "group_admin"].includes(roleCode)) return isGlobalAdmin(ctx) && ctx.roleCodes.includes(roleCode);
-  return ctx.isAccountActive && !!ctx.profile && ctx.roleCodes.includes(roleCode);
-}
-
-export function hasPermission(ctx: AuthContext, permissionCode: string): boolean {
-  return ctx.isAccountActive && !!ctx.profile && (
-    ctx.permissionCodes.includes(permissionCode) ||
-    isGlobalAdmin(ctx)
-  );
-}
-
-export function isGlobalAdmin(ctx: AuthContext): boolean {
-  return ctx.isAccountActive && !!ctx.profile && !!ctx.roleAssignments?.some(a => a.ownerCompanyId === null && a.branchId === null && ["system_admin", "group_admin"].includes(a.roleCode));
-}
-
-/** Global configuration must not use the flattened capability list. */
-export function hasGlobalPermission(ctx: AuthContext, code: string): boolean {
-  return ctx.isAccountActive && !!ctx.profile && (isGlobalAdmin(ctx) || !!ctx.globalPermissionCodes?.includes(code));
-}
-
-/** Row-scoped authority; a branch grant cannot authorize a company-wide action. */
-export function hasPermissionInScope(ctx: AuthContext, code: string, companyId: number, branchId: number | null = null): boolean {
-  if (!ctx.isAccountActive || !ctx.profile || !Number.isSafeInteger(companyId) || companyId <= 0) return false;
-  return isGlobalAdmin(ctx) || !!ctx.roleAssignments?.some(a => a.permissionCodes.includes(code) &&
-    ((a.ownerCompanyId === null && a.branchId === null) ||
-      (a.ownerCompanyId === companyId && (a.branchId === null || (branchId !== null && a.branchId === branchId)))));
-}
-
 /**
  * ERP USERS.1 — Composite helper for user management operations.
  *
@@ -250,6 +230,7 @@ export function assertAccountActive(ctx: AuthContext): void {
     if (ctx.accountStatus === "inactive" || ctx.accountStatus === "suspended") throw new AccountDisabledError(ctx.accountStatus);
     throw new Error("Account status could not be verified");
   }
+  if (ctx.profile.must_change_password === true) throw new Error("Password change required before using the application");
 }
 
 /**

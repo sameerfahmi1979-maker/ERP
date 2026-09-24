@@ -12,9 +12,11 @@
 
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission, type AuthContext } from "@/lib/rbac/check";
+import { createClient } from "@/lib/supabase/server";
+import { getAuthContext, hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
-import { createPdfSignedUrl } from "@/lib/pdf/storage";
+import { canAccessIssuedFile, issuedFileUrl } from "@/lib/output/issued-file-access";
+import { getEmployeeAccess } from "@/lib/rbac/employee-access";
 import { generateOfficialDocument } from "@/server/actions/output/generate-official-document";
 import type { GenerateOfficialDocumentOutcome } from "@/lib/output/types";
 
@@ -46,21 +48,6 @@ export interface IssuanceHistoryItem {
   failure_reason: string | null;
 }
 
-async function assertCompanyAccess(
-  ctx: AuthContext,
-  ownerCompanyId: number
-): Promise<boolean> {
-  if (ctx.roleCodes.includes("system_admin") || ctx.roleCodes.includes("group_admin")) return true;
-  const db = createAdminClient();
-  const { data } = await db
-    .from("user_roles")
-    .select("owner_company_id")
-    .eq("user_profile_id", ctx.profile?.id ?? 0)
-    .eq("is_active", true)
-    .not("owner_company_id", "is", null);
-  return (data ?? []).some((r: { owner_company_id: number | null }) => r.owner_company_id === ownerCompanyId);
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // History
 // ─────────────────────────────────────────────────────────────────────────────
@@ -80,11 +67,11 @@ export async function listRecordIssuances(input: {
   recordId: number;
 }): Promise<ActionResult<RecordIssuanceHistory>> {
   const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "reports.view") && !hasPermission(ctx, "hr.employees.view")) {
-    return { success: false, error: "You do not have permission to view document history." };
-  }
-
-  const db = createAdminClient();
+  if (input.sourceRecordType !== "employee" || !Number.isSafeInteger(input.recordId) || input.recordId <= 0) return { success: false, error: "Invalid employee record." };
+  let access;
+  try { access = await getEmployeeAccess(ctx, input.recordId); }
+  catch { return { success: false, error: "Document history is unavailable or access is denied." }; }
+  const db = await createClient();
   const { data, error } = await db
     .from("erp_generated_pdf_documents")
     .select(
@@ -98,25 +85,8 @@ export async function listRecordIssuances(input: {
 
   if (error) return { success: false, error: error.message };
 
-  // Company scope: filter out rows the user's companies don't cover.
-  const isGlobal = ctx.roleCodes.includes("system_admin") || ctx.roleCodes.includes("group_admin");
-  let allowedCompanyIds: Set<number> | null = null;
-  if (!isGlobal) {
-    const { data: roles } = await db
-      .from("user_roles")
-      .select("owner_company_id")
-      .eq("user_profile_id", ctx.profile?.id ?? 0)
-      .eq("is_active", true)
-      .not("owner_company_id", "is", null);
-    allowedCompanyIds = new Set(
-      (roles ?? [])
-        .map((r: { owner_company_id: number | null }) => r.owner_company_id)
-        .filter((id): id is number => id !== null)
-    );
-  }
-
+  // RLS applies the employee relationship, branch and each output's sensitive permissions.
   const items = (data ?? [])
-    .filter((r) => allowedCompanyIds === null || allowedCompanyIds.has(r.owner_company_id as number))
     .map((r) => ({
       id: r.id as number,
       output_code: r.output_code,
@@ -141,10 +111,10 @@ export async function listRecordIssuances(input: {
     success: true,
     data: {
       items,
-      canRevoke: hasPermission(ctx, "outputs.ops.revoke") || hasPermission(ctx, "reports.pdf.approve"),
-      canReissue: hasPermission(ctx, "reports.pdf.approve") || hasPermission(ctx, "outputs.ops.retry"),
+      canRevoke: access.allows("outputs.ops.revoke") || access.allows("reports.pdf.approve"),
+      canReissue: access.allows("reports.pdf.approve") || access.allows("outputs.ops.retry"),
       /** canDelete = may remove FAILED generation artifacts only — never issued documents. */
-      canDelete: ctx.roleCodes.includes("system_admin") || ctx.roleCodes.includes("group_admin"),
+      canDelete: isGlobalAdmin(ctx),
     },
   };
 }
@@ -156,12 +126,11 @@ export async function listRecordIssuances(input: {
 export async function getIssuanceDownloadUrl(
   issuanceId: number
 ): Promise<ActionResult<{ url: string; fileName: string }>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "reports.view") && !hasPermission(ctx, "hr.employees.view")) {
+  if (!(await canAccessIssuedFile(issuanceId, "download"))) {
     return { success: false, error: "You do not have permission to download documents." };
   }
 
-  const db = createAdminClient();
+  const db = await createClient();
   const { data: doc, error } = await db
     .from("erp_generated_pdf_documents")
     .select("id, storage_path, file_name, owner_company_id, lifecycle_state, revoked_at, output_code")
@@ -169,9 +138,6 @@ export async function getIssuanceDownloadUrl(
     .single();
   if (error || !doc) return { success: false, error: "Document not found." };
 
-  if (!(await assertCompanyAccess(ctx, doc.owner_company_id as number))) {
-    return { success: false, error: "You do not have access to this document's company." };
-  }
   if (doc.lifecycle_state !== "issued") {
     return { success: false, error: "Only issued documents can be downloaded." };
   }
@@ -179,18 +145,8 @@ export async function getIssuanceDownloadUrl(
     return { success: false, error: "This document has been revoked and can no longer be downloaded." };
   }
 
-  const url = await createPdfSignedUrl(doc.storage_path as string, 600);
-
-  await logAudit({
-    module_code: "reports",
-    entity_name: "erp_generated_pdf_documents",
-    entity_id: issuanceId,
-    entity_reference: doc.output_code ?? String(issuanceId),
-    action: "view",
-    new_values: { event: "output_downloaded", file_name: doc.file_name },
-  }).catch(() => {});
-
-  return { success: true, data: { url, fileName: doc.file_name as string } };
+  // Actual bytes, lifecycle and audit are checked by the endpoint on every request.
+  return { success: true, data: { url: issuedFileUrl(issuanceId), fileName: doc.file_name as string } };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -211,6 +167,7 @@ export async function revokeIssuance(
   }
   const parsed = revokeSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: "A revoke reason (min 5 characters) is required." };
+  if (!(await canAccessIssuedFile(parsed.data.issuanceId, "outputs.ops.revoke")) && !(await canAccessIssuedFile(parsed.data.issuanceId, "reports.pdf.approve"))) return { success: false, error: "Document unavailable or access denied." };
 
   const db = createAdminClient();
   const { data: doc, error } = await db
@@ -219,16 +176,13 @@ export async function revokeIssuance(
     .eq("id", parsed.data.issuanceId)
     .single();
   if (error || !doc) return { success: false, error: "Document not found." };
-  if (!(await assertCompanyAccess(ctx, doc.owner_company_id as number))) {
-    return { success: false, error: "You do not have access to this document's company." };
-  }
   if (doc.lifecycle_state !== "issued") {
     return { success: false, error: "Only issued documents can be revoked." };
   }
   if (doc.revoked_at) return { success: false, error: "Document is already revoked." };
 
   const now = new Date().toISOString();
-  const { error: updateError } = await db
+  const { data: updated, error: updateError } = await db
     .from("erp_generated_pdf_documents")
     .update({
       revoked_at: now,
@@ -236,8 +190,9 @@ export async function revokeIssuance(
       revoke_reason: parsed.data.reason,
     })
     .eq("id", doc.id)
-    .is("revoked_at", null);
+    .is("revoked_at", null).eq("lifecycle_state", "issued").select("id");
   if (updateError) return { success: false, error: updateError.message };
+  if (!updated?.length) return { success: false, error: "Document changed concurrently. Refresh its history." };
 
   // Cancel the linked public verification link(s) — a revoked document must not verify.
   await db
@@ -283,6 +238,7 @@ export async function reissueOfficialDocument(
   if (!parsed.success) {
     return { success: false, blocked: "validation_failed", error: "A reissue reason (min 5 characters) is required." };
   }
+  if (!(await canAccessIssuedFile(parsed.data.issuanceId, "reports.pdf.approve")) && !(await canAccessIssuedFile(parsed.data.issuanceId, "outputs.ops.retry"))) return { success: false, blocked: "permission_denied", error: "Document unavailable or access denied." };
 
   const db = createAdminClient();
   const { data: doc, error } = await db
@@ -364,8 +320,7 @@ const DELETABLE_LIFECYCLE_STATES = new Set([
 
 export async function deleteIssuance(input: { issuanceId: number }): Promise<ActionResult<void>> {
   const ctx = await getAuthContext();
-  const isGlobalAdmin = ctx.roleCodes.includes("system_admin") || ctx.roleCodes.includes("group_admin");
-  if (!isGlobalAdmin) {
+  if (!isGlobalAdmin(ctx)) {
     return { success: false, error: "Only System Administrators can remove failed document artifacts." };
   }
 

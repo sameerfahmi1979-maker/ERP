@@ -18,6 +18,8 @@
 
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { canAccessIssuedFile } from "@/lib/output/issued-file-access";
 import { getAuthContext, hasPermission, type AuthContext } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
 import { generateOfficialDocument } from "@/server/actions/output/generate-official-document";
@@ -52,7 +54,7 @@ async function requireOps(
 /** Company scope for non-global operators. Returns null when unrestricted. */
 async function allowedCompanies(ctx: AuthContext): Promise<Set<number> | null> {
   if (ctx.roleCodes.includes("system_admin") || ctx.roleCodes.includes("group_admin")) return null;
-  const db = createAdminClient();
+  const db = await createClient();
   const { data } = await db
     .from("user_roles")
     .select("owner_company_id")
@@ -126,7 +128,7 @@ export async function listOpsIssuances(input: OpsListFilters): Promise<ActionRes
   const { ctx } = gate;
 
   const f = listFiltersSchema.parse(input ?? {});
-  const db = createAdminClient();
+  const db = await createClient();
 
   let q = db
     .from("erp_generated_pdf_documents")
@@ -243,7 +245,7 @@ export async function getOpsIssuanceDetail(issuanceId: number): Promise<ActionRe
   if ("error" in gate) return { success: false, error: gate.error };
   const { ctx } = gate;
 
-  const db = createAdminClient();
+  const db = await createClient();
   const { data: r, error } = await db
     .from("erp_generated_pdf_documents")
     .select("*")
@@ -302,6 +304,7 @@ async function opsTransition(input: {
   if (!canTransition(from, input.to)) {
     return { success: false, error: `Illegal lifecycle transition ${from} → ${input.to}.` };
   }
+  if (!(await canAccessIssuedFile(input.row.id, "outputs.ops.retry"))) return { success: false, error: "Issuance unavailable or access denied." };
   const db = createAdminClient();
   const patch: Record<string, unknown> = {
     lifecycle_state: input.to,
@@ -364,7 +367,7 @@ export async function retryOpsIssuance(
   const parsed = retrySchema.safeParse(input);
   if (!parsed.success) return { success: false, error: "A retry reason (min 5 characters) is required." };
 
-  const db = createAdminClient();
+  const db = await createClient();
   const { data: row, error } = await db
     .from("erp_generated_pdf_documents")
     .select("id, output_code, source_record_type, source_record_id, template_id, owner_company_id, lifecycle_state, serial_no")
@@ -432,7 +435,7 @@ export async function cancelOpsIssuance(input: z.infer<typeof cancelSchema>): Pr
   const parsed = cancelSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: "A cancel reason (min 5 characters) is required." };
 
-  const db = createAdminClient();
+  const db = await createClient();
   const { data: row, error } = await db
     .from("erp_generated_pdf_documents")
     .select("id, output_code, owner_company_id, lifecycle_state, serial_no")
@@ -485,7 +488,7 @@ export async function getOpsMetrics(): Promise<ActionResult<OpsMetrics>> {
   if ("error" in gate) return { success: false, error: gate.error };
   const { ctx } = gate;
 
-  const db = createAdminClient();
+  const db = await createClient();
   const companies = await allowedCompanies(ctx);
 
   let base = db.from("erp_generated_pdf_documents").select("lifecycle_state, generated_at, issued_at, rendering_started_at, uploaded_at, serial_status, id, output_code, failure_reason");

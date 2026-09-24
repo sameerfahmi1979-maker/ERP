@@ -5,11 +5,13 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission, canManageUsers, assertAccountActive } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, hasGlobalPermission, hasPermissionInScope, isGlobalAdmin, assertAccountActive } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit, createAuditDiff } from "@/server/actions/audit";
 import { sanitizeServerActionError } from "@/lib/audit/sanitizers";
-import { getDefaultEmailProvider } from "@/lib/email/providers/factory";
+import { randomBytes, randomUUID, createHash } from "node:crypto";
+import { buildPasswordEmailLink } from "@/lib/auth/password-flow";
+import { sendSecurityTemplate } from "@/lib/auth/security-email";
 import {
   adminUpdateUserProfileSchema,
   userRoleAssignmentSchema,
@@ -34,33 +36,36 @@ export type ActionResult<T = unknown> = {
  * Throws a typed ActionResult-compatible error string if the guard triggers.
  */
 async function assertNotLastSystemAdmin(userProfileId: number, actorCtx?: import("@/lib/rbac/check").AuthContext, attemptedAction?: string): Promise<string | null> {
-  const supabase = await createClient();
+  // Internal preflight after actor authorization. The database trigger is the concurrent guard.
+  const supabase = createAdminClient();
 
-  // Check if target user has an active system_admin assignment
-  const { data: targetRoles } = await supabase
+  // Only active, global assignments confer administrator authority.
+  const { data: targetRoles, error: targetError } = await supabase
     .from("user_roles")
-    .select("role_id, roles!inner(role_code)")
+    .select("role_id, roles!inner(role_code, is_active)")
     .eq("user_profile_id", userProfileId)
-    .eq("is_active", true);
+    .eq("is_active", true).is("owner_company_id", null).is("branch_id", null);
 
+  if (targetError) return "Cannot verify administrator safety. No change was made.";
   const isSystemAdmin = (targetRoles ?? []).some((row) => {
-    const r = row.roles as { role_code?: string } | null;
-    return r?.role_code === "system_admin";
+    const r = row.roles as { role_code?: string; is_active?: boolean } | null;
+    return r?.role_code === "system_admin" && r.is_active === true;
   });
 
   if (!isSystemAdmin) return null; // Not a system admin — no restriction
 
   // Count total active system_admin users (active role + active profile)
-  const { data: adminAssignments } = await supabase
+  const { data: adminAssignments, error: adminError } = await supabase
     .from("user_roles")
-    .select("user_profile_id, roles!inner(role_code), user_profiles!inner(status)")
-    .eq("is_active", true);
+    .select("user_profile_id, roles!inner(role_code, is_active), user_profiles!inner(status)")
+    .eq("is_active", true).is("owner_company_id", null).is("branch_id", null);
 
-  const activeAdminCount = (adminAssignments ?? []).filter((row) => {
-    const role = row.roles as { role_code?: string } | null;
+  if (adminError) return "Cannot verify administrator safety. No change was made.";
+  const activeAdminCount = new Set((adminAssignments ?? []).filter((row) => {
+    const role = row.roles as { role_code?: string; is_active?: boolean } | null;
     const profile = row.user_profiles as { status?: string } | null;
-    return role?.role_code === "system_admin" && profile?.status === "active";
-  }).length;
+    return role?.role_code === "system_admin" && role.is_active === true && profile?.status === "active";
+  }).map(row => row.user_profile_id)).size;
 
   if (activeAdminCount <= 1) {
     // Log LAST_ADMIN_GUARD_TRIGGERED
@@ -91,261 +96,111 @@ async function assertNotLastSystemAdmin(userProfileId: number, actorCtx?: import
  * Uses service-role Supabase Admin API (server-only)
  * Phase 002D
  */
-export async function createUser(
-  input: CreateUserInput,
-): Promise<ActionResult<{ user_profile_id: number }>> {
+export async function createUser(input: CreateUserInput): Promise<ActionResult<{ user_profile_id: number; stages: Record<string, string> }>> {
+  let createdProfileId: number | null = null;
+  let createdAuthId: string | null = null;
+  let operationId: string | null = null;
+  let journalStarted = false;
+  const stages: Record<string, string> = { identity: "not_started", profile: "not_started", role: "not_requested", email: "not_requested", audit: "not_started" };
+  const receipt = async (state: string): Promise<boolean> => {
+    if (!journalStarted || !operationId) return false;
+    try {
+      const r = await createAdminClient().from("erp_account_provisioning_operations").update({ state, auth_user_id: createdAuthId, profile_id: createdProfileId, stages, updated_at: new Date().toISOString() }).eq("id",operationId).select("id");
+      return !r.error && r.data?.length === 1;
+    } catch { return false; }
+  };
   try {
-    // 1. Validate input
     const validated = createUserSchema.parse(input);
-
-    // 2. Check permissions
     const ctx = await getAuthContext();
     assertAccountActive(ctx);
-    if (!hasPermission(ctx, "users.create")) {
-      await logAudit({
-        module_code: "users", entity_name: "user_profiles", entity_id: 0,
-        entity_reference: "new_user", action: "UNAUTHORIZED_ACCESS_ATTEMPT",
-        new_values: { attempted_action: "createUser", required_permission: "users.create" },
-      }).catch(() => {});
-      return { success: false, error: "You do not have permission to perform this action." };
+    const scopeAllows = (permission: string, company: number | null | undefined, branch: number | null | undefined) =>
+      company == null ? hasGlobalPermission(ctx, permission) : hasPermissionInScope(ctx, permission, company, branch ?? null);
+    if (!scopeAllows("users.create", validated.owner_company_id, validated.branch_id)) return { success: false, error: "You cannot create an account in this scope." };
+    if (validated.branch_id && !validated.owner_company_id) return { success: false, error: "A branch requires its company." };
+    if (validated.initial_role_id && !scopeAllows("users.roles.assign", validated.initial_role_scope_company_id, validated.initial_role_scope_branch_id)) {
+      return { success: false, error: "Initial role assignment requires users.roles.assign in that scope." };
     }
-
-    // 3. Create Auth user using Admin API (service-role)
-    const adminClient = createAdminClient();
-    
-    let authUser;
-    let inviteLink: string | null = null;
-
-    if (validated.send_invite_email) {
-      // Generate invite link WITHOUT Supabase sending the email (avoids SMTP rate limits).
-      // We send the invite ourselves via the ERP email provider (Microsoft Graph).
-      // redirectTo must match one of the allowed redirect URLs in Supabase Auth settings.
-      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://erp.algt.net";
-      const { data, error: linkError } = await adminClient.auth.admin.generateLink({
-        type: "invite",
-        email: validated.email,
-        options: {
-          data: { full_name: validated.full_name },
-          redirectTo: `${siteUrl}/auth/confirm`,
-        },
-      });
-      if (linkError || !data) {
-        logger.error("generateLink invite error", linkError);
-        return { success: false, error: `Failed to generate invite link: ${linkError?.message}` };
-      }
-      authUser = data.user;
-      inviteLink = data.properties?.action_link ?? null;
-    } else {
-      // Use createUser with temporary password
-      if (!validated.temporary_password) {
-        return { success: false, error: "Temporary password is required when not sending invite email" };
-      }
-      
-      const { data, error: createError } = await adminClient.auth.admin.createUser({
-        email: validated.email,
-        password: validated.temporary_password,
-        email_confirm: true,
-        user_metadata: {
-          full_name: validated.full_name,
-        },
-      });
-      
-      if (createError) {
-        logger.error("createUser error", createError);
-        return { success: false, error: `Failed to create user: ${createError.message}` };
-      }
-      authUser = data.user;
+    const admin = createAdminClient();
+    if (validated.branch_id) {
+      const { data: branch, error } = await admin.from("branches").select("owner_company_id").eq("id",validated.branch_id).single();
+      if (error || branch.owner_company_id !== validated.owner_company_id) return { success: false, error: "The selected branch does not belong to the selected company." };
     }
-
-    if (!authUser) {
-      return { success: false, error: "Failed to create Auth user" };
+    operationId = validated.creation_operation_id ?? randomUUID();
+    const emailHash = createHash("sha256").update(validated.email).digest("hex");
+    const journal = await admin.from("erp_account_provisioning_operations").insert({ id: operationId, actor_profile_id: ctx.profile!.id, target_email_hash: emailHash, stages });
+    if (journal.error) {
+      // A repeated request may acknowledge its completed account, never create it twice.
+      const prior = await admin.from("erp_account_provisioning_operations").select("state,profile_id,stages").eq("id",operationId).eq("actor_profile_id",ctx.profile!.id).eq("target_email_hash",emailHash).maybeSingle();
+      if (!prior.error && prior.data?.profile_id && ["completed","partial"].includes(prior.data.state)) return { success: true, data: {user_profile_id:prior.data.profile_id,stages:prior.data.stages}, error: "This account already exists from this request. Review its setup status; no duplicate was created." };
+      return { success: false, error: `Creation is pending or could not be journaled. Review operation ${operationId}; do not repeat account creation.` };
     }
-
-    const now = new Date().toISOString();
-
-    // 4. Create user profile (upsert — the auth trigger may have already inserted a minimal row)
-    // USERS.2A — Set must_change_password + email/password admin confirmation fields
-    const supabase = await createClient();
-    const profileFields: Record<string, unknown> = {
-      auth_user_id: authUser.id,
-      full_name: validated.full_name,
-      display_name: validated.display_name,
-      phone: validated.phone,
-      job_title: validated.job_title,
-      department: validated.department,
-      owner_company_id: validated.owner_company_id,
-      branch_id: validated.branch_id,
-      status: validated.status,
-      must_change_password: true,
-    };
-
-    if (!validated.send_invite_email) {
-      // Temp password mode — admin confirmed email and set password
-      profileFields.password_set_by_admin_at = now;
-      profileFields.email_confirmed_by_admin_at = now;
-      profileFields.email_confirmed_by_admin_id = ctx.profile?.id ?? null;
-    }
-
-    const { data: profile, error: profileError } = await adminClient
-      .from("user_profiles")
-      .upsert(profileFields, { onConflict: "auth_user_id" })
-      .select("id")
-      .single();
-
-    if (profileError || !profile) {
-      logger.error("user_profiles upsert error", profileError);
-      // Cleanup: delete Auth user if profile creation fails
-      await adminClient.auth.admin.deleteUser(authUser.id);
-      return { success: false, error: `Failed to create user profile: ${profileError?.message}` };
-    }
-
-    // 5. Assign initial role if specified
-    if (validated.initial_role_id) {
-      const { error: roleError } = await supabase
-        .from("user_roles")
-        .insert({
-          user_profile_id: profile.id,
-          role_id: validated.initial_role_id,
-          owner_company_id: validated.initial_role_scope_company_id,
-          branch_id: validated.initial_role_scope_branch_id,
-          is_active: true,
-        });
-
-      if (roleError) {
-        logger.error("user_roles insert error", roleError);
-        logger.warn(`User created but role assignment failed: ${roleError.message}`);
-      }
-    }
-
-    // 6. Send email via ERP notification templates (USERS.2A)
-    let emailWarning: string | undefined;
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://erp.algt.net";
-    const companyName = process.env.NEXT_PUBLIC_ERP_COMPANY_NAME ?? "ALGT ERP";
-    const supportEmail = process.env.NEXT_PUBLIC_ERP_SUPPORT_EMAIL ?? "support@algt.net";
-    const displayName = validated.full_name || validated.email;
-
-    if (validated.send_invite_email && inviteLink) {
-      // Invite flow: use USER_INVITE_LINK ERP template, fallback to inline HTML
-      try {
-        const emailProvider = await getDefaultEmailProvider();
-        let subject = `You have been invited to ${companyName}`;
-        let htmlBody: string | undefined;
-        let textBody: string;
-
-        try {
-          const { renderNotificationTemplate } = await import("@/server/actions/notifications/templates");
-          const rendered = await renderNotificationTemplate("USER_INVITE_LINK", {
-            display_name: displayName,
-            action_link: inviteLink,
-            company_name: companyName,
-            support_email: supportEmail,
-            expiry_note: "This link expires in 24 hours.",
-          });
-          if (rendered.success && rendered.data) {
-            subject = rendered.data.subject;
-            htmlBody = rendered.data.htmlBody ?? undefined;
-            textBody = rendered.data.textBody;
-          } else {
-            // Fallback to inline template
-            htmlBody = buildInviteEmailHtml({ displayName, inviteLink });
-            textBody = buildInviteEmailText({ displayName, inviteLink });
-          }
-        } catch {
-          htmlBody = buildInviteEmailHtml({ displayName, inviteLink });
-          textBody = buildInviteEmailText({ displayName, inviteLink });
-        }
-
-        await emailProvider.sendEmail({
-          to: [validated.email],
-          subject,
-          htmlBody,
-          textBody,
-          metadata: { feature: "USER_INVITE_LINK", user_profile_id: profile.id },
-        });
-
-        await logAudit({
-          module_code: "users",
-          entity_name: "user_profiles",
-          entity_id: profile.id,
-          entity_reference: validated.email,
-          action: "USER_INVITE_EMAIL_SENT",
-          new_values: { template_code: "USER_INVITE_LINK", success: true },
-        });
-      } catch (emailErr) {
-        const msg = emailErr instanceof Error ? emailErr.message : String(emailErr);
-        logger.warn("Invite email send failed:", msg);
-        emailWarning = `User created but invite email could not be sent: ${msg}`;
-      }
-    } else if (!validated.send_invite_email) {
-      // Temp password mode — queue welcome email via ERP email queue
-      try {
-        const { queueEmail } = await import("@/server/actions/notifications/email-queue");
-        const { renderNotificationTemplate } = await import("@/server/actions/notifications/templates");
-        const rendered = await renderNotificationTemplate("USER_WELCOME_INTERNAL", {
-          display_name: displayName,
-          login_url: `${siteUrl}/login`,
-          company_name: companyName,
-          support_email: supportEmail,
-        });
-        if (rendered.success && rendered.data) {
-          await queueEmail({
-            source_module: "users",
-            source_entity_type: "user_profile",
-            source_entity_id: profile.id,
-            priority: "normal",
-            to_emails: [validated.email],
-            subject: rendered.data.subject,
-            html_body: rendered.data.htmlBody,
-            text_body: rendered.data.textBody,
-            template_code: "USER_WELCOME_INTERNAL",
-            max_attempts: 3,
-          }, { autoProcess: true });
-          await logAudit({
-            module_code: "users",
-            entity_name: "user_profiles",
-            entity_id: profile.id,
-            entity_reference: validated.email,
-            action: "USER_WELCOME_EMAIL_SENT",
-            new_values: { template_code: "USER_WELCOME_INTERNAL", success: true },
-          });
-        }
-      } catch (emailErr) {
-        const msg = emailErr instanceof Error ? emailErr.message : String(emailErr);
-        logger.warn("Welcome email queue failed (non-fatal):", msg);
-        emailWarning = `User created but welcome email could not be queued: ${msg}`;
-      }
-    }
-
-    // 7. Log audit
-    await logAudit({
-      module_code: "users",
-      entity_name: "user_profiles",
-      entity_id: profile.id,
-      entity_reference: validated.email,
-      action: "USER_CREATED",
-      old_values: null,
-      new_values: {
-        email: validated.email,
-        full_name: validated.full_name,
-        status: validated.status,
-        auth_method: validated.send_invite_email ? "invite_email" : "temporary_password",
-        must_change_password: true,
-      },
-      owner_company_id: validated.owner_company_id ?? undefined,
-      branch_id: validated.branch_id ?? undefined,
+    journalStarted = true;
+    // Create first, rather than generateLink(invite) which can address an existing identity.
+    // This guarantees compensation never deletes someone else's pre-existing account.
+    const temporaryPassword = validated.send_invite_email ? randomBytes(24).toString("base64url") + "aA9!" : validated.temporary_password;
+    if (!temporaryPassword) { await receipt("failed"); return { success: false, error: "A temporary password is required." }; }
+    const { data: created, error: createError } = await admin.auth.admin.createUser({
+      email: validated.email, password: temporaryPassword, email_confirm: !validated.send_invite_email,
+      user_metadata: { full_name: validated.full_name },
     });
-
-    // 8. Revalidate
+    if (createError || !created.user) { await receipt("needs_reconciliation"); return { success: false, error: `Identity creation was not confirmed. Review operation ${operationId} and any existing account before retrying.` }; }
+    const authUser = created.user;
+    createdAuthId = authUser.id;
+    stages.identity = "created";
+    if (!await receipt("identity_created")) throw new Error("Identity receipt not persisted");
+    const now = new Date().toISOString();
+    const { data: profile, error: profileError } = await admin.from("user_profiles").upsert({
+      auth_user_id: authUser.id, full_name: validated.full_name, display_name: validated.display_name,
+      phone: validated.phone, job_title: validated.job_title, department: validated.department,
+      owner_company_id: validated.owner_company_id, branch_id: validated.branch_id, status: validated.status,
+      must_change_password: true, last_password_security_action: "account_created", last_password_security_action_at: now,
+      ...(!validated.send_invite_email ? { password_set_by_admin_at: now, email_confirmed_by_admin_at: now, email_confirmed_by_admin_id: ctx.profile!.id } : {}),
+    }, { onConflict: "auth_user_id" }).select("id").single();
+    if (profileError || !profile) {
+      const { error: cleanupError } = await admin.auth.admin.deleteUser(authUser.id);
+      await receipt(cleanupError ? "needs_reconciliation" : "compensated");
+      return { success: false, error: cleanupError
+        ? `Profile setup and identity cleanup failed. Administrator reconciliation is required for Auth identity ${authUser.id}; do not retry creation.`
+        : "Profile setup failed. The newly created identity was removed; no invitation was sent." };
+    }
+    createdProfileId = profile.id;
+    stages.profile = "created";
+    if (!await receipt("profile_created")) throw new Error("Profile receipt not persisted");
+    const warnings: string[] = [];
+    if (validated.initial_role_id) {
+      const assigned = await assignRoleToUser({ user_profile_id: profile.id, role_id: validated.initial_role_id,
+        owner_company_id: validated.initial_role_scope_company_id, branch_id: validated.initial_role_scope_branch_id, is_active: true });
+      stages.role = assigned.success ? "assigned" : "failed";
+      if (!assigned.success) warnings.push("Initial role was not assigned. Review the account and assign only the permitted scope.");
+    }
+    if (validated.send_invite_email) {
+      const link = await admin.auth.admin.generateLink({ type: "invite", email: validated.email });
+      if (link.error || !link.data.properties?.hashed_token || link.data.user?.id !== authUser.id) {
+        stages.email = "link_failed"; warnings.push("Account created, but setup-link generation failed. Use resend from this account.");
+      } else {
+        const site = process.env.NEXT_PUBLIC_SITE_URL ?? "https://erp.algt.net";
+        const delivery = await sendSecurityTemplate({ to: validated.email, profileId: profile.id, kind: "invite", variables: {
+          display_name: validated.full_name, action_link: buildPasswordEmailLink(site, link.data.properties.hashed_token, "invite"),
+          login_url: new URL("/login",site).href, company_name: process.env.NEXT_PUBLIC_ERP_COMPANY_NAME ?? "ALGT ERP",
+          support_email: process.env.NEXT_PUBLIC_ERP_SUPPORT_EMAIL ?? "support@algt.net",
+          expiry_note: "This is a one-time link. Request a new invitation if it expires.",
+        } });
+        stages.email = delivery.accepted ? "provider_accepted" : "not_confirmed";
+        if (!delivery.accepted || !delivery.recorded) warnings.push("Setup-email delivery or its receipt needs review. Do not recreate the account.");
+      }
+    }
+    const audit = await logAudit({ module_code: "users", entity_name: "user_profiles", entity_id: profile.id, entity_reference: String(profile.id),
+      action: "USER_CREATED", new_values: { stages, must_change_password: true }, owner_company_id: validated.owner_company_id, branch_id: validated.branch_id });
+    stages.audit = audit.success ? "recorded" : "failed";
+    if (!audit.success) warnings.push("Account exists, but the audit receipt needs review.");
+    if (!await receipt(warnings.length ? "partial" : "completed")) warnings.push(`Provisioning receipt needs reconciliation: ${operationId}.`);
     revalidatePath("/admin/users");
-
-    return {
-      success: true,
-      data: { user_profile_id: profile.id },
-      ...(emailWarning ? { error: emailWarning } : {}),
-    };
-  } catch (error) {
-    logger.error("createUser exception", error);
-    return { success: false, error: sanitizeServerActionError(error) };
+    return { success: true, data: { user_profile_id: profile.id, stages }, ...(warnings.length ? { error: warnings.join(" ") } : {}) };
+  } catch {
+    if (journalStarted) await receipt(createdProfileId ? "partial" : "needs_reconciliation");
+    if (createdProfileId) return { success: true, data: { user_profile_id: createdProfileId, stages }, error: "The account was created, but a follow-up step failed. Review this account; do not create it again." };
+    if (journalStarted) return { success: false, error: `Creation was interrupted and needs reconciliation (operation ${operationId}${createdAuthId ? `, identity ${createdAuthId}` : ""}). Do not recreate this account until its state is verified.` };
+    return { success: false, error: "User creation failed validation or could not start." };
   }
 }
 
@@ -447,11 +302,11 @@ export async function assignRoleToUser(
     // 2. Check permissions
     const ctx = await getAuthContext();
     assertAccountActive(ctx);
-    if (!canManageUsers(ctx)) {
+    if (!hasPermission(ctx, "users.roles.assign")) {
       await logAudit({
         module_code: "users", entity_name: "user_roles", entity_id: 0,
         entity_reference: `role-assign`, action: "UNAUTHORIZED_ACCESS_ATTEMPT",
-        new_values: { attempted_action: "assignRoleToUser", required_permission: "users.update" },
+        new_values: { attempted_action: "assignRoleToUser", required_permission: "users.roles.assign" },
       }).catch(() => {});
       return { success: false, error: "You do not have permission to perform this action." };
     }
@@ -555,7 +410,7 @@ export async function removeRoleFromUser(
     // 2. Check permissions
     const ctx = await getAuthContext();
     assertAccountActive(ctx);
-    if (!canManageUsers(ctx)) {
+    if (!hasPermission(ctx, "users.roles.assign")) {
       await logAudit({
         module_code: "users", entity_name: "user_roles", entity_id: 0,
         entity_reference: "role-remove", action: "UNAUTHORIZED_ACCESS_ATTEMPT",
@@ -660,6 +515,17 @@ export async function deleteUser(
       return { success: false, error: `User not found (id: ${userProfileId}${fetchError ? ` — ${fetchError.message}` : ""})` };
     }
 
+    if (!(profile.owner_company_id == null ? hasGlobalPermission(ctx, "users.delete") : hasPermissionInScope(ctx, "users.delete", profile.owner_company_id, profile.branch_id))) return { success: false, error: "You cannot delete this account in its company/branch scope." };
+    if (!isGlobalAdmin(ctx)) {
+      const targetRoles = await adminClient.from("user_roles").select("roles!inner(role_code, is_active)")
+        .eq("user_profile_id", userProfileId).eq("is_active", true).is("owner_company_id", null).is("branch_id", null);
+      if (targetRoles.error) return { success: false, error: "Cannot verify target account privileges. No change was made." };
+      if (targetRoles.data.some(row => {
+        const role = (Array.isArray(row.roles) ? row.roles[0] : row.roles) as { role_code: string; is_active: boolean } | null;
+        return role?.is_active && ["system_admin", "group_admin"].includes(role.role_code);
+      })) return { success: false, error: "Only a global administrator can delete a privileged account." };
+    }
+
     // 3. Prevent self-deletion
     if (ctx.profile?.id === userProfileId) {
       return { success: false, error: "You cannot delete your own account" };
@@ -716,70 +582,4 @@ export async function deleteUser(
     logger.error("deleteUser exception", error);
     return { success: false, error: sanitizeServerActionError(error) };
   }
-}
-
-// ---------------------------------------------------------------------------
-// Email template helpers (invite only — plain, no external assets)
-// ---------------------------------------------------------------------------
-
-function buildInviteEmailHtml({
-  displayName,
-  inviteLink,
-}: {
-  displayName: string;
-  inviteLink: string;
-}): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 0;">
-    <tr><td align="center">
-      <table width="520" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);">
-        <tr><td style="background:#0f172a;padding:24px 32px;">
-          <span style="color:#f8fafc;font-size:20px;font-weight:700;letter-spacing:.5px;">ALGT ERP</span>
-        </td></tr>
-        <tr><td style="padding:32px;">
-          <p style="margin:0 0 12px;font-size:16px;color:#1e293b;font-weight:600;">Hello, ${displayName}</p>
-          <p style="margin:0 0 20px;font-size:14px;color:#475569;line-height:1.6;">
-            You have been invited to access the <strong>ALGT ERP</strong> system. Click the button below to accept your invitation and set your password.
-          </p>
-          <p style="margin:0 0 28px;text-align:center;">
-            <a href="${inviteLink}" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:6px;font-size:14px;font-weight:600;">
-              Accept Invitation
-            </a>
-          </p>
-          <p style="margin:0 0 8px;font-size:12px;color:#94a3b8;">
-            If the button doesn't work, copy and paste this link into your browser:
-          </p>
-          <p style="margin:0 0 24px;font-size:11px;color:#94a3b8;word-break:break-all;">${inviteLink}</p>
-          <hr style="border:none;border-top:1px solid #e2e8f0;margin:0 0 16px;">
-          <p style="margin:0;font-size:12px;color:#94a3b8;">
-            This link expires in 24 hours. If you did not expect this invitation, you can safely ignore this email.
-          </p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`;
-}
-
-function buildInviteEmailText({
-  displayName,
-  inviteLink,
-}: {
-  displayName: string;
-  inviteLink: string;
-}): string {
-  return `Hello, ${displayName}
-
-You have been invited to access the ALGT ERP system.
-
-Accept your invitation here:
-${inviteLink}
-
-This link expires in 24 hours.
-
-If you did not expect this invitation, you can safely ignore this email.`;
 }

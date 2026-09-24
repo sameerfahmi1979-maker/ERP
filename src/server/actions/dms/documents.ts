@@ -795,7 +795,7 @@ export async function updateDmsDocument(
 
     const supabase = await createClient();
 
-    const { error } = await supabase
+    const { data: updated, error } = await supabase
       .from("dms_documents")
       .update({
         ...data,
@@ -803,9 +803,12 @@ export async function updateDmsDocument(
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
-      .is("deleted_at", null);
+      .is("deleted_at", null)
+      .select("id")
+      .maybeSingle();
 
     if (error) return { success: false, error: error.message };
+    if (!updated) return { success: false, error: "Document unavailable or access denied" };
 
     await insertDmsEvent(supabase, id, "document_updated", ctx.profile?.id ?? null, "Document metadata updated");
 
@@ -1040,4 +1043,3 @@ export async function deleteDmsDocument(id: number): Promise<ActionResult> {
     return { success: false, error: "Failed to delete document" };
   }
 }
-

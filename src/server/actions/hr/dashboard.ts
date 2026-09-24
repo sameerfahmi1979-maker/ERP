@@ -1,7 +1,7 @@
 "use server";
 
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 
 type ActionResult<T = unknown> = {
   success: boolean;
@@ -158,7 +158,7 @@ function futureDateStr(days: number) {
 
 // Helper to get filtered employee IDs
 async function getFilteredEmpIds(
-  admin: ReturnType<typeof createAdminClient>,
+  admin: Awaited<ReturnType<typeof createClient>>,
   filters: DashboardFilters,
   statusFilter?: string[]
 ): Promise<number[]> {
@@ -184,7 +184,7 @@ export async function getHrDashboardEmployeeOverview(
     return { total: 0, active: 0, probation: 0, on_leave: 0, suspended: 0, terminated_archived: 0, new_joiners_this_month: 0 };
   }
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const today = todayStr();
   const startOfMonth = startOfMonthStr();
 
@@ -230,7 +230,7 @@ export async function getHrDashboardComplianceOverview(
     return { expired_documents: 0, expiring_soon: 0, missing_unverified: 0, active_access_cards: 0, expired_access_cards: 0, training_expiring_soon: 0, medical_expired: null, linked_dms_documents: 0 };
   }
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const canViewMedical = hasPermission(ctx, "hr.medical.view");
   const today = todayStr();
   const threshold = futureDateStr(filters.expiryThresholdDays ?? 60);
@@ -283,7 +283,7 @@ export async function getHrDashboardTimeOverview(
     return { attendance_pending_approval: 0, missing_punches: 0, absent_today: 0, approved_leave_today: 0, pending_leave_requests: 0, overtime_pending_approval: 0 };
   }
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const today = todayStr();
 
   const empIds = await getFilteredEmpIds(admin, filters, ["active", "probation"]);
@@ -321,7 +321,7 @@ export async function getHrDashboardPayrollOverview(
   const ctx = await getAuthContext();
   if (!hasPermission(ctx, "hr.payroll.view")) return null;
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const empIds = await getFilteredEmpIds(admin, filters, ["active", "probation"]);
   const totalActive = empIds.length;
   if (totalActive === 0) return { payroll_profiles_configured: 0, missing_payroll_profile: 0, wps_ready: 0, wps_incomplete: 0, on_payroll_hold: 0, missing_iban_bank: 0 };
@@ -360,7 +360,7 @@ export async function getHrDashboardOperationsOverview(
     return { current_assignments: 0, ready_employees: 0, not_ready_employees: 0, blocked_employees: 0, active_blocks: 0, assets_issued: 0, ppe_due_replacement: 0, accommodation_active: 0 };
   }
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const today = todayStr();
   const empIds = await getFilteredEmpIds(admin, filters, ["active", "probation"]);
   if (empIds.length === 0) {
@@ -404,7 +404,7 @@ export async function getHrDashboardActionsOverview(
     return { open_pro_processes: 0, open_hr_actions: 0, pending_approvals: 0, open_disciplinary: 0, open_eos_cases: 0, pending_clearance_items: 0 };
   }
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const empIds = await getFilteredEmpIds(admin, filters);
   if (empIds.length === 0) {
     return { open_pro_processes: 0, open_hr_actions: 0, pending_approvals: 0, open_disciplinary: 0, open_eos_cases: 0, pending_clearance_items: 0 };
@@ -439,7 +439,7 @@ export async function getHrDashboardRecruitmentOverview(
   const ctx = await getAuthContext();
   if (!hasPermission(ctx, "hr.recruitment.view")) return null;
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const today = todayStr();
   const weekEnd = endOfWeekStr();
   const weekStart = startOfWeekStr();
@@ -478,7 +478,7 @@ export async function getHrDashboardAttentionItems(
   const threshold = filters.expiryThresholdDays ?? 60;
   const today = todayStr();
   const soonDate = futureDateStr(threshold);
-  const admin = createAdminClient();
+  const admin = await createClient();
 
   const empRes = await (async () => {
     let q = admin.from("employees").select("id, employee_code, full_name_en").is("deleted_at", null).in("employee_status", ["active", "probation"]);
@@ -698,7 +698,7 @@ export async function getHrDashboardSummary(
   filters: DashboardFilters = {}
 ): Promise<DashboardSummary> {
   const ctx = await getAuthContext();
-  const admin = createAdminClient();
+  const admin = await createClient();
 
   const canCompliance = hasPermission(ctx, "hr.compliance.view");
   const canAttendance = hasPermission(ctx, "hr.attendance.view");
@@ -765,7 +765,7 @@ export async function getHeadcountByCategory(): Promise<ActionResult<HeadcountBy
     return { success: false, error: "Permission denied" };
   }
 
-  const admin = createAdminClient();
+  const admin = await createClient();
 
   const [empRes, catRes] = await Promise.all([
     admin

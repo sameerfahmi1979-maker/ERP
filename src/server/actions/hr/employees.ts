@@ -1,4 +1,6 @@
 "use server";
+import { canBrowseEmployees, getEmployeeAccess } from "@/lib/rbac/employee-access";
+import { EMPLOYEE_PUBLIC_FIELDS } from "@/lib/hr/employee-public-fields";
 
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
@@ -184,7 +186,7 @@ export async function listEmployees(params?: Partial<EmployeeListParams>): Promi
 > {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.employees.view") && !ctx.roleCodes?.includes("system_admin")) {
+    if (!canBrowseEmployees(ctx)) {
       return { success: false, error: "Permission denied" };
     }
 
@@ -224,7 +226,7 @@ export async function listEmployees(params?: Partial<EmployeeListParams>): Promi
 
     let query = supabase
       .from("employees")
-      .select(`*,${JOINS}`, { count: "exact" })
+      .select(`${EMPLOYEE_PUBLIC_FIELDS},${JOINS}`, { count: "exact" })
       .is("deleted_at", null);
 
     if (search) {
@@ -257,7 +259,7 @@ export async function listEmployees(params?: Partial<EmployeeListParams>): Promi
     return {
       success: true,
       data: {
-        rows: (data ?? []) as unknown as EmployeeListRow[],
+        rows: (data ?? []).map(row=>({...row as unknown as Omit<EmployeeListRow,"blood_group">,blood_group:null})),
         totalCount: count ?? 0,
         page,
         pageSize,
@@ -276,7 +278,7 @@ export async function listEmployees(params?: Partial<EmployeeListParams>): Promi
 export async function getEmployee(employeeId: number): Promise<ActionResult<EmployeeListRow>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.employees.view") && !ctx.roleCodes?.includes("system_admin")) {
+    if (!canBrowseEmployees(ctx)) {
       return { success: false, error: "Permission denied" };
     }
 
@@ -296,7 +298,7 @@ export async function getEmployee(employeeId: number): Promise<ActionResult<Empl
 
     const { data, error } = await supabase
       .from("employees")
-      .select(`*,${JOINS}`)
+      .select(`${EMPLOYEE_PUBLIC_FIELDS},${JOINS}`)
       .eq("id", employeeId)
       .is("deleted_at", null)
       .single();
@@ -306,7 +308,9 @@ export async function getEmployee(employeeId: number): Promise<ActionResult<Empl
       return { success: false, error: error.message };
     }
 
-    return { success: true, data: data as unknown as EmployeeListRow };
+    const medical = await supabase.rpc("f03_employee_blood_group", { employee_id: employeeId });
+    if(medical.error) return { success:false, error:"Employee medical-field access could not be verified." };
+    return { success: true, data: { ...data as unknown as Omit<EmployeeListRow,"blood_group">, blood_group: medical.data } };
   } catch (err) {
     logger.error("getEmployee exception", err);
     return { success: false, error: "Failed to get employee" };
@@ -327,7 +331,7 @@ export async function getEmployeeOverview(
 ): Promise<ActionResult<EmployeeOverview>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.employees.view") && !ctx.roleCodes?.includes("system_admin")) {
+    if (!canBrowseEmployees(ctx)) {
       return { success: false, error: "Permission denied" };
     }
 
@@ -461,6 +465,10 @@ export async function updateEmployee(
     if (!parsed.success) {
       return { success: false, error: parsed.error.issues.map((i) => i.message).join("; ") };
     }
+
+    const access = await getEmployeeAccess(ctx,employeeId);
+    // A redacted field in an ordinary profile form must not overwrite real medical data.
+    if (!access.allows("hr.medical.manage")) delete parsed.data.blood_group;
 
     const supabase = await createClient();
 
@@ -705,7 +713,7 @@ export async function getEmployeeStatusHistory(
 ): Promise<ActionResult<EmployeeStatusEvent[]>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.employees.view") && !ctx.roleCodes?.includes("system_admin")) {
+    if (!canBrowseEmployees(ctx)) {
       return { success: false, error: "Permission denied" };
     }
 

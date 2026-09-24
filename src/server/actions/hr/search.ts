@@ -8,7 +8,7 @@ import type {
   HrSearchSuggestion,
 } from "@/lib/hr/search/types";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 import { z } from "zod";
 
 // ============================================================================
@@ -61,7 +61,7 @@ function safeStr(val: string | null | undefined, fallback = "—"): string {
 
 // Build employee WHERE clauses for filter scope
 async function getScopedEmpIds(
-  admin: ReturnType<typeof createAdminClient>,
+  admin: Awaited<ReturnType<typeof createClient>>,
   input: HrSearchInput,
   statuses?: string[]
 ): Promise<number[]> {
@@ -80,7 +80,7 @@ async function getScopedEmpIds(
 // ============================================================================
 
 async function searchEmployees(
-  admin: ReturnType<typeof createAdminClient>,
+  admin: Awaited<ReturnType<typeof createClient>>,
   input: HrSearchInput,
   query: string
 ): Promise<HrSearchResult[]> {
@@ -147,7 +147,7 @@ async function searchEmployees(
 }
 
 async function searchCandidates(
-  admin: ReturnType<typeof createAdminClient>,
+  admin: Awaited<ReturnType<typeof createClient>>,
   input: HrSearchInput,
   query: string
 ): Promise<HrSearchResult[]> {
@@ -206,7 +206,7 @@ async function searchCandidates(
 }
 
 async function searchCompliance(
-  admin: ReturnType<typeof createAdminClient>,
+  admin: Awaited<ReturnType<typeof createClient>>,
   input: HrSearchInput,
   query: string,
   canMedical: boolean
@@ -350,7 +350,7 @@ async function searchCompliance(
 }
 
 async function searchTime(
-  admin: ReturnType<typeof createAdminClient>,
+  admin: Awaited<ReturnType<typeof createClient>>,
   input: HrSearchInput,
   query: string
 ): Promise<HrSearchResult[]> {
@@ -400,7 +400,7 @@ async function searchTime(
 }
 
 async function searchPayroll(
-  admin: ReturnType<typeof createAdminClient>,
+  admin: Awaited<ReturnType<typeof createClient>>,
   input: HrSearchInput,
   query: string
 ): Promise<HrSearchResult[]> {
@@ -476,7 +476,7 @@ async function searchPayroll(
 }
 
 async function searchOperations(
-  admin: ReturnType<typeof createAdminClient>,
+  admin: Awaited<ReturnType<typeof createClient>>,
   input: HrSearchInput,
   query: string
 ): Promise<HrSearchResult[]> {
@@ -553,7 +553,7 @@ async function searchOperations(
 }
 
 async function searchActions(
-  admin: ReturnType<typeof createAdminClient>,
+  admin: Awaited<ReturnType<typeof createClient>>,
   input: HrSearchInput,
   query: string,
   canEos: boolean
@@ -695,7 +695,7 @@ async function searchActions(
 }
 
 async function searchOnboarding(
-  admin: ReturnType<typeof createAdminClient>,
+  admin: Awaited<ReturnType<typeof createClient>>,
   input: HrSearchInput,
   query: string
 ): Promise<HrSearchResult[]> {
@@ -750,7 +750,7 @@ export async function searchHr(input: HrSearchInput): Promise<HrSearchOutput> {
     return { results: [], totalCount: 0, groupCounts: {}, query, hasMore: false };
   }
 
-  const admin = createAdminClient();
+  const admin = await createClient();
 
   const canEmployees = hasPermission(ctx, "hr.employees.view");
   const canRecruitment = hasPermission(ctx, "hr.recruitment.view");
@@ -825,7 +825,7 @@ export async function getHrSearchSuggestions(
   const q = prefix.trim().toLowerCase();
   if (!q || q.length < 2) return [];
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const suggestions: HrSearchSuggestion[] = [];
 
   if (hasPermission(ctx, "hr.employees.view")) {

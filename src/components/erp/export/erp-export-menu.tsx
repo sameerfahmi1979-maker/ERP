@@ -34,6 +34,7 @@ import {
   type ExportBrandingContext,
 } from "@/lib/export";
 import { sendExportEmail } from "@/server/actions/email";
+import { useLegacyEmailAccess } from "@/hooks/use-legacy-email-access";
 import { format } from "date-fns";
 import { Download, FileDown, FileSpreadsheet, FileText, Loader2, MailPlus, Printer } from "lucide-react";
 import { useState } from "react";
@@ -113,6 +114,7 @@ export function ERPExportMenu<T = unknown>({
   // Email dialog state (Phase 002E.3D)
   const [isEmailDialogOpen, setIsEmailDialogOpen] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const canEmail = useLegacyEmailAccess();
 
   // Check if data is available
   const hasData = data && data.length > 0;
@@ -319,17 +321,19 @@ export function ERPExportMenu<T = unknown>({
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => {
+                if (!canEmail) return;
                 if (requiresTemplateSelection) {
                   onRequireTemplateSelection?.();
                   return;
                 }
                 setIsEmailDialogOpen(true);
               }}
-              disabled={isExporting || isSendingEmail}
+              disabled={isExporting || isSendingEmail || !canEmail}
+              title={!canEmail ? "Legacy Email Export temporarily requires global sending authority" : undefined}
               className="cursor-pointer"
             >
               <MailPlus className="mr-2 h-4 w-4" />
-              <span>Send by Email</span>
+              <span>{canEmail ? "Send by Email" : "Email — global senders only"}</span>
             </DropdownMenuItem>
           </DropdownMenuGroup>
         </DropdownMenuContent>

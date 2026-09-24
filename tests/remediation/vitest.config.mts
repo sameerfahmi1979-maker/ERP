@@ -8,12 +8,14 @@ export default defineConfig({
   oxc: { jsx: { runtime: 'automatic' } },
   test: {
     environment: 'node', fileParallelism: false,
+    exclude: ['**/*.local.test.ts', '**/node_modules/**'],
     include: [
       'tests/remediation/f01/*.test.ts',
       'tests/remediation/f02/*.test.ts',
       'tests/remediation/f02-repair/*.test.ts',
       'tests/remediation/f02-completion/*.test.{ts,tsx}',
       'tests/remediation/f02-final/*.test.{ts,tsx}',
+      'tests/remediation/f03/*.test.{ts,tsx}',
     ],
     setupFiles: ['tests/remediation/f01/offline-setup.ts'],
   },

@@ -94,7 +94,7 @@ export function GlobalOnboardingPageClient({ authContext }: Props) {
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {row.candidate && `Candidate: ${row.candidate.full_name_en}`}
                   {row.due_date && ` · Due: ${row.due_date}`}
-                  {row.assigned_user && ` · Assigned to: ${row.assigned_user.full_name_en ?? row.assigned_user.email}`}
+                  {row.assigned_user && ` · Assigned to: ${row.assigned_user.full_name_en ?? `User #${row.assigned_user.id}`}`}
                 </p>
               </div>
               {row.candidate_id && (

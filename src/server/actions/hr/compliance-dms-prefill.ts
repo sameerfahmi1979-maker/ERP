@@ -40,6 +40,9 @@ import {
 } from "@/lib/hr/compliance/medical-insurance-dms-map";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { getEmployeeAccess } from "@/lib/rbac/employee-access";
+import { checkDocumentConfidentialityAccess } from "@/lib/dms/document-access";
 
 type ActionResult<T = unknown> = {
   success: boolean;
@@ -846,8 +849,7 @@ async function prefillDependentFromDms(
 }
 
 function canPrefillKind(ctx: Awaited<ReturnType<typeof getAuthContext>>, kind: ComplianceDmsRecordKind): boolean {
-  if (hasPermission(ctx, "hr.admin")) return true;
-  if (kind === "medical_record") return hasPermission(ctx, "hr.medical.manage");
+  if (kind === "medical_record" || kind === "medical_insurance") return hasPermission(ctx, "hr.medical.manage");
   return hasPermission(ctx, "hr.compliance.manage");
 }
 
@@ -857,12 +859,16 @@ export async function prefillComplianceRecordFromDms(
   recordKind: ComplianceDmsRecordKind
 ): Promise<ActionResult<ComplianceDmsPrefillResult>> {
   try {
-    const ctx = await getAuthContext();
+    const access = await getEmployeeAccess(await getAuthContext(), employeeId);
+    const ctx = access.scopedContext;
     if (!canPrefillKind(ctx, recordKind)) {
       return { success: false, error: "Permission denied" };
     }
 
-    const admin = createAdminClient();
+    const admin = await createClient();
+    if (!(await checkDocumentConfidentialityAccess(admin, dmsDocumentId, ctx, "dms.documents.preview")).allowed) {
+      return { success: false, error: "Document content access is restricted." };
+    }
 
     const { data: doc, error: docError } = await admin
       .from("dms_documents")

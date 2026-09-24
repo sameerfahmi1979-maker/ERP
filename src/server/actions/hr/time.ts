@@ -14,15 +14,15 @@
  *
  * Security model:
  *   - Most reads use createClient() (RLS enforced: hr.attendance.view / hr.leave.view)
- *   - Leave request/balance lists use createAdminClient() after app permission + employee access checks
+ *   - Leave request/balance lists use createClient() with subject-scoped RLS
  *     (avoids RLS read/write asymmetry where manage can create but RLS blocks list)
- *   - All writes use createAdminClient() + explicit hasPermission + employee-access check
+ *   - All writes use createClient() with subject-scoped RLS and application capability checks
  *   - No payroll/WPS/AI implementation
  */
 
 import { calculateLeaveDays } from "@/lib/hr/time/date-utils";
 import { getAuthContext, hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
-import { createAdminClient } from "@/lib/supabase/admin";
+
 import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
@@ -333,7 +333,7 @@ export async function createEmployeeAttendancePunch(
   const parsed = attendancePunchCreateSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const emp = await getEmployeeCtx(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 
@@ -434,7 +434,7 @@ export async function createOrUpdateAttendanceDailySummary(
   const parsed = attendanceDailySummaryUpsertSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const emp = await getEmployeeCtx(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 
@@ -473,7 +473,7 @@ export async function approveAttendanceDailySummary(
   if (!hasPermission(ctx, "hr.attendance.manage"))
     return { success: false, error: "Permission denied: hr.attendance.manage required" };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
 
   const { data: summary, error: fetchErr } = await admin
     .from("employee_attendance_daily_summary")
@@ -520,7 +520,7 @@ export async function queryAttendanceDailySummary(
   if (!hasPermission(ctx, "hr.attendance.manage"))
     return { success: false, error: "Permission denied: hr.attendance.manage required" };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
 
   const { data: summary, error: fetchErr } = await admin
     .from("employee_attendance_daily_summary")
@@ -585,7 +585,7 @@ export async function correctAttendanceDailySummary(
   const parsed = attendanceCorrectionSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
 
   const { data: oldSummary, error: fetchErr } = await admin
     .from("employee_attendance_daily_summary")
@@ -716,7 +716,7 @@ export async function createEmployeeShiftAssignment(
   const parsed = shiftAssignmentCreateSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const emp = await getEmployeeCtx(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 
@@ -753,7 +753,7 @@ export async function updateEmployeeShiftAssignment(
   const parsed = shiftAssignmentUpdateSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
 
   const { data: existing, error: fetchErr } = await admin
     .from("employee_shift_assignments")
@@ -793,7 +793,7 @@ export async function archiveEmployeeShiftAssignment(id: number): Promise<Action
   if (!hasPermission(ctx, "hr.attendance.manage"))
     return { success: false, error: "Permission denied: hr.attendance.manage required" };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
 
   const { data: existing, error: fetchErr } = await admin
     .from("employee_shift_assignments")
@@ -840,7 +840,7 @@ export async function listEmployeeLeaveRequests(
   const emp = await getEmployeeCtxRls(employeeId);
   if (!emp) return { success: false, error: "Employee not found or access denied" };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { page = 1, page_size = 50, approval_status, date_from, date_to } = params ?? {};
   const from = (page - 1) * page_size;
   const to = from + page_size - 1;
@@ -873,7 +873,7 @@ export async function listLeaveRequests(params?: {
   const ctx = await getAuthContext();
   if (!canViewLeave(ctx)) return { success: false, error: "Permission denied: hr.leave.view required" };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { page = 1, page_size = 50, approval_status, date_from, date_to, employee_id } = params ?? {};
   const from = (page - 1) * page_size;
   const to = from + page_size - 1;
@@ -919,7 +919,7 @@ export async function createLeaveRequest(
   const parsed = leaveRequestCreateSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const emp = await getEmployeeCtx(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 
@@ -960,7 +960,7 @@ export async function approveLeaveRequest(id: number): Promise<ActionResult> {
   if (!hasPermission(ctx, "hr.leave.manage"))
     return { success: false, error: "Permission denied: hr.leave.manage required" };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
 
   const { data: req, error: fetchErr } = await admin
     .from("employee_leave_requests")
@@ -1029,7 +1029,7 @@ export async function rejectLeaveRequest(id: number, reason?: string): Promise<A
   if (!hasPermission(ctx, "hr.leave.manage"))
     return { success: false, error: "Permission denied: hr.leave.manage required" };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
 
   const { data: req, error: fetchErr } = await admin
     .from("employee_leave_requests")
@@ -1078,7 +1078,7 @@ export async function cancelLeaveRequest(id: number, reason?: string): Promise<A
   if (!hasPermission(ctx, "hr.leave.manage"))
     return { success: false, error: "Permission denied: hr.leave.manage required" };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
 
   const { data: req, error: fetchErr } = await admin
     .from("employee_leave_requests")
@@ -1133,7 +1133,7 @@ export async function archiveLeaveRequest(id: number): Promise<ActionResult> {
   if (!hasPermission(ctx, "hr.leave.manage"))
     return { success: false, error: "Permission denied: hr.leave.manage required" };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
 
   const { data: req, error: fetchErr } = await admin
     .from("employee_leave_requests")
@@ -1196,7 +1196,7 @@ export async function listEmployeeLeaveBalances(
   const emp = await getEmployeeCtxRls(employeeId);
   if (!emp) return { success: false, error: "Employee not found or access denied" };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   let q = admin
     .from("employee_leave_balances")
     .select("*, leave_type:hr_leave_types!employee_leave_balances_leave_type_id_fkey(name_en,code)")
@@ -1222,7 +1222,7 @@ export async function createOrUpdateLeaveBalance(
   const parsed = leaveBalanceUpsertSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const emp = await getEmployeeCtx(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 
@@ -1268,7 +1268,7 @@ export async function recalculateEmployeeLeaveBalance(
   if (!hasPermission(ctx, "hr.leave.manage"))
     return { success: false, error: "Permission denied: hr.leave.manage required" };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
 
   const { data: approvedLeaves, error: fetchErr } = await admin
     .from("employee_leave_requests")
@@ -1339,7 +1339,7 @@ export async function createOvertimeRecord(
   const parsed = overtimeCreateSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const emp = await getEmployeeCtx(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 
@@ -1373,7 +1373,7 @@ export async function updateOvertimeRecord(id: number, input: unknown): Promise<
   const parsed = overtimeUpdateSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
 
   const { data: existing, error: fetchErr } = await admin
     .from("employee_overtime_records")
@@ -1415,7 +1415,7 @@ export async function approveOvertimeRecord(id: number): Promise<ActionResult> {
   if (!hasPermission(ctx, "hr.attendance.manage"))
     return { success: false, error: "Permission denied: hr.attendance.manage required" };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
 
   const { data: existing, error: fetchErr } = await admin
     .from("employee_overtime_records")
@@ -1462,7 +1462,7 @@ export async function rejectOvertimeRecord(id: number, reason?: string): Promise
   if (!hasPermission(ctx, "hr.attendance.manage"))
     return { success: false, error: "Permission denied: hr.attendance.manage required" };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
 
   const { data: existing, error: fetchErr } = await admin
     .from("employee_overtime_records")
@@ -1508,7 +1508,7 @@ export async function archiveOvertimeRecord(id: number): Promise<ActionResult> {
   if (!hasPermission(ctx, "hr.attendance.manage"))
     return { success: false, error: "Permission denied: hr.attendance.manage required" };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
 
   const { data: existing, error: fetchErr } = await admin
     .from("employee_overtime_records")

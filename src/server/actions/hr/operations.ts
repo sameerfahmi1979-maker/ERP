@@ -3,7 +3,6 @@
 import { calculateEmployeeReadiness } from "@/lib/hr/operations/readiness";
 import { isActiveBlock } from "@/lib/hr/operations/status";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
@@ -222,7 +221,7 @@ export async function createEmployeeAssignment(
   const emp = await getEmployeeContext(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { data: inserted, error } = await admin
     .from("employee_assignments")
     .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id })
@@ -258,7 +257,7 @@ export async function updateEmployeeAssignment(
   const parsed = assignmentSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.message };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { data: existing, error: fetchError } = await admin
     .from("employee_assignments")
     .select("id, employee_id, employees(employee_code, full_name_en)")
@@ -296,7 +295,7 @@ export async function archiveEmployeeAssignment(id: number): Promise<ActionResul
   if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
     return { success: false, error: "Unauthorized" };
   }
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { data: existing, error: fetchError } = await admin
     .from("employee_assignments")
     .select("id, employee_id, employees(employee_code, full_name_en)")
@@ -375,7 +374,7 @@ export async function createEmployeeRoleRequirement(
   const emp = await getEmployeeContext(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { data: inserted, error } = await admin
     .from("employee_role_requirements")
     .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id })
@@ -411,7 +410,7 @@ export async function updateEmployeeRoleRequirement(
   const parsed = roleRequirementSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.message };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { data: existing, error: fetchError } = await admin
     .from("employee_role_requirements")
     .select("id, employee_id, employees(employee_code, full_name_en)")
@@ -449,7 +448,7 @@ export async function archiveEmployeeRoleRequirement(id: number): Promise<Action
   if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
     return { success: false, error: "Unauthorized" };
   }
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { data: existing, error: fetchError } = await admin
     .from("employee_role_requirements")
     .select("id, employee_id, employees(employee_code, full_name_en)")
@@ -492,7 +491,7 @@ export async function waiveEmployeeRoleRequirement(
   }
   if (!reason?.trim()) return { success: false, error: "Waiver reason is required" };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { data: existing, error: fetchError } = await admin
     .from("employee_role_requirements")
     .select("id, employee_id, requirement_name, employees(employee_code, full_name_en)")
@@ -551,7 +550,7 @@ export async function recalculateEmployeeRoleRequirements(
 
   if (!reqs) return { success: true, data: undefined };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   for (const req of reqs) {
     let newStatus = req.status;
     if (req.status === "waived") continue;
@@ -724,7 +723,7 @@ export async function recalculateEmployeeSiteReadiness(
 
   const result = calculateEmployeeReadiness(readinessInput);
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   await admin.from("employee_site_readiness").upsert(
     {
       employee_id: employeeId,
@@ -784,7 +783,7 @@ export async function updateEmployeeSiteReadinessNotes(
   if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
     return { success: false, error: "Unauthorized" };
   }
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { error } = await admin
     .from("employee_site_readiness")
     .update({ notes, updated_by: ctx.profile?.id })
@@ -887,7 +886,7 @@ export async function createEmployeeOperationalBlock(
   const emp = await getEmployeeContext(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { data: inserted, error } = await admin
     .from("employee_operational_blocks")
     .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id })
@@ -922,7 +921,7 @@ export async function releaseEmployeeOperationalBlock(
   }
   if (!releaseReason?.trim()) return { success: false, error: "Release reason is required" };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { data: existing, error: fetchError } = await admin
     .from("employee_operational_blocks")
     .select("id, employee_id, employees(employee_code, full_name_en)")
@@ -967,7 +966,7 @@ export async function archiveEmployeeOperationalBlock(id: number): Promise<Actio
   if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
     return { success: false, error: "Unauthorized" };
   }
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { data: existing, error: fetchError } = await admin
     .from("employee_operational_blocks")
     .select("id, employee_id, employees(employee_code, full_name_en)")
@@ -1043,7 +1042,7 @@ export async function createEmployeeAsset(
   const emp = await getEmployeeContext(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { data: inserted, error } = await admin
     .from("employee_assets")
     .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id })
@@ -1079,7 +1078,7 @@ export async function updateEmployeeAsset(
   const parsed = assetSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.message };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { data: existing, error: fetchError } = await admin
     .from("employee_assets")
     .select("id, employee_id, employees(employee_code, full_name_en)")
@@ -1120,7 +1119,7 @@ export async function returnEmployeeAsset(
   if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
     return { success: false, error: "Unauthorized" };
   }
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { data: existing, error: fetchError } = await admin
     .from("employee_assets")
     .select("id, employee_id, employees(employee_code, full_name_en)")
@@ -1163,7 +1162,7 @@ export async function archiveEmployeeAsset(id: number): Promise<ActionResult<und
   if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
     return { success: false, error: "Unauthorized" };
   }
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { data: existing, error: fetchError } = await admin
     .from("employee_assets")
     .select("id, employee_id, employees(employee_code, full_name_en)")
@@ -1239,7 +1238,7 @@ export async function createEmployeePpeIssue(
   const emp = await getEmployeeContext(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { data: inserted, error } = await admin
     .from("employee_ppe_issues")
     .insert({ employee_id: employeeId, ...parsed.data, issued_by: ctx.profile?.id, created_by: ctx.profile?.id })
@@ -1275,7 +1274,7 @@ export async function updateEmployeePpeIssue(
   const parsed = ppeIssueSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.message };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { data: existing, error: fetchError } = await admin
     .from("employee_ppe_issues")
     .select("id, employee_id, employees(employee_code, full_name_en)")
@@ -1316,7 +1315,7 @@ export async function returnEmployeePpeIssue(
   if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
     return { success: false, error: "Unauthorized" };
   }
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { data: existing, error: fetchError } = await admin
     .from("employee_ppe_issues")
     .select("id, employee_id, employees(employee_code, full_name_en)")
@@ -1354,7 +1353,7 @@ export async function archiveEmployeePpeIssue(id: number): Promise<ActionResult<
   if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
     return { success: false, error: "Unauthorized" };
   }
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { data: existing, error: fetchError } = await admin
     .from("employee_ppe_issues")
     .select("id, employee_id, employees(employee_code, full_name_en)")
@@ -1430,7 +1429,7 @@ export async function createEmployeeAccommodationRecord(
   const emp = await getEmployeeContext(employeeId);
   if (!emp) return { success: false, error: "Employee not found" };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { data: inserted, error } = await admin
     .from("employee_accommodation_records")
     .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id })
@@ -1466,7 +1465,7 @@ export async function updateEmployeeAccommodationRecord(
   const parsed = accommodationSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.message };
 
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { data: existing, error: fetchError } = await admin
     .from("employee_accommodation_records")
     .select("id, employee_id, employees(employee_code, full_name_en)")
@@ -1507,7 +1506,7 @@ export async function endEmployeeAccommodationRecord(
   if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
     return { success: false, error: "Unauthorized" };
   }
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { data: existing, error: fetchError } = await admin
     .from("employee_accommodation_records")
     .select("id, employee_id, employees(employee_code, full_name_en)")
@@ -1545,7 +1544,7 @@ export async function archiveEmployeeAccommodationRecord(id: number): Promise<Ac
   if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
     return { success: false, error: "Unauthorized" };
   }
-  const admin = createAdminClient();
+  const admin = await createClient();
   const { data: existing, error: fetchError } = await admin
     .from("employee_accommodation_records")
     .select("id, employee_id, employees(employee_code, full_name_en)")

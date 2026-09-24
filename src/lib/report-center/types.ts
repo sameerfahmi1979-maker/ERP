@@ -336,6 +336,7 @@ export interface ReportFetcher {
   /** Called by the runner to fetch and return structured data */
   fetch(
     filters: Record<string, unknown>,
-    permissionCodes: string[]
+    permissionCodes: string[],
+    db: import("./scoped-read-client").ReportReadClient
   ): Promise<ReportDataResult>;
 }

@@ -132,10 +132,12 @@ function canView(ctx: AuthContext) {
   return ctx.permissionCodes?.includes("hr.compliance.view") || canManage(ctx);
 }
 function canMedicalView(ctx: AuthContext) {
-  return ctx.permissionCodes?.includes("hr.medical.view") || ctx.permissionCodes?.includes("hr.admin") || ctx.roleCodes?.includes("system_admin") || ctx.roleCodes?.includes("group_admin");
+  return ctx.isAccountActive && !ctx.profile?.must_change_password && (ctx.permissionCodes.includes("hr.medical.view") ||
+    !!ctx.roleAssignments?.some(a => a.ownerCompanyId === null && a.branchId === null && ["system_admin", "group_admin"].includes(a.roleCode)));
 }
 function canMedicalManage(ctx: AuthContext) {
-  return ctx.permissionCodes?.includes("hr.medical.manage") || ctx.permissionCodes?.includes("hr.admin") || ctx.roleCodes?.includes("system_admin") || ctx.roleCodes?.includes("group_admin");
+  return ctx.isAccountActive && !ctx.profile?.must_change_password && (ctx.permissionCodes.includes("hr.medical.manage") ||
+    !!ctx.roleAssignments?.some(a => a.ownerCompanyId === null && a.branchId === null && ["system_admin", "group_admin"].includes(a.roleCode)));
 }
 
 function formatDate(d: string | null | undefined) {
@@ -661,7 +663,7 @@ function MedicalInsurancesSection({ employeeId, canManageDoc, onChildOpen, docum
 
 // ── 3. DEPENDENTS SECTION ─────────────────────────────────────────────────────
 
-function DependentsSection({ employeeId, canManageDoc, onChildOpen, documentWizardEnabled }: { employeeId: number; canManageDoc: boolean; onChildOpen?: (open: boolean) => void; documentWizardEnabled?: boolean }) {
+function DependentsSection({ employeeId, canManageDoc, canManageMedical, onChildOpen, documentWizardEnabled }: { employeeId: number; canManageDoc: boolean; canManageMedical: boolean; onChildOpen?: (open: boolean) => void; documentWizardEnabled?: boolean }) {
   const qc = useQueryClient();
   const [addDialogOpen, setAddDialogOpenRaw] = useState(false);
   const [dmsWizardOpen, setDmsWizardOpenRaw] = useState(false);
@@ -702,7 +704,8 @@ function DependentsSection({ employeeId, canManageDoc, onChildOpen, documentWiza
 
   const relTypeOptions = (relTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }));
 
-  const buildPayload = (f: DependentForm) => ({
+  const buildPayload = (f: DependentForm) => {
+    const payload = ({
     ...f,
     dms_document_id: f.dms_document_id,
     relationship_type_id: f.relationship_type_id!,
@@ -714,6 +717,9 @@ function DependentsSection({ employeeId, canManageDoc, onChildOpen, documentWiza
     medical_insurance_expiry: f.medical_insurance_expiry || null, sponsored_by: f.sponsored_by || null,
     notes: f.notes || null, dependent_name_ar: f.dependent_name_ar || null,
   });
+    if (!canManageMedical) for (const key of ["medical_insurance_provider", "medical_insurance_policy", "medical_insurance_card", "medical_insurance_expiry"] as const) delete (payload as Partial<typeof payload>)[key];
+    return payload;
+  };
 
   const validateDependent = (f: DependentForm) => {
     if (!f.dependent_name_en.trim()) return "Dependent name is required";
@@ -740,7 +746,9 @@ function DependentsSection({ employeeId, canManageDoc, onChildOpen, documentWiza
       <div className="col-span-6"><Label>Emirates ID Expiry</Label><Input type="date" value={f.emirates_id_expiry} onChange={(e) => setF((p) => ({ ...p, emirates_id_expiry: e.target.value }))} /></div>
       <div className="col-span-6"><Label>Residence Visa Number</Label><Input value={f.residence_visa_number} onChange={(e) => setF((p) => ({ ...p, residence_visa_number: e.target.value }))} /></div>
       <div className="col-span-6"><Label>Residence Visa Expiry</Label><Input type="date" value={f.residence_visa_expiry} onChange={(e) => setF((p) => ({ ...p, residence_visa_expiry: e.target.value }))} /></div>
+      {canManageMedical && <>
       <div className="col-span-12 border-t pt-3"><p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Medical Insurance</p></div>
+      </>}
       <div className="col-span-6"><Label>Insurance Provider</Label><Input value={f.medical_insurance_provider} onChange={(e) => setF((p) => ({ ...p, medical_insurance_provider: e.target.value }))} /></div>
       <div className="col-span-6"><Label>Insurance Policy</Label><Input value={f.medical_insurance_policy} onChange={(e) => setF((p) => ({ ...p, medical_insurance_policy: e.target.value }))} /></div>
       <div className="col-span-6"><Label>Insurance Card</Label><Input value={f.medical_insurance_card} onChange={(e) => setF((p) => ({ ...p, medical_insurance_card: e.target.value }))} /></div>
@@ -1483,7 +1491,7 @@ export function EmployeeComplianceTab({ employeeId, authContext, onChildOpen }: 
   });
   const documentWizardEnabled = wizardStatus ?? false;
 
-  if (!canView(authContext)) {
+  if (!canView(authContext) && !medView) {
     return (
       <div className="flex items-center gap-3 p-6 bg-muted/30 rounded-lg border">
         <Lock className="h-5 w-5 text-muted-foreground flex-shrink-0" />
@@ -1502,11 +1510,11 @@ export function EmployeeComplianceTab({ employeeId, authContext, onChildOpen }: 
         <Badge variant="secondary" className="text-xs">HR.3</Badge>
       </div>
 
-      <IdentityDocumentsSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} documentWizardEnabled={documentWizardEnabled} />
-      <MedicalInsurancesSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} documentWizardEnabled={documentWizardEnabled} />
-      <DependentsSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} documentWizardEnabled={documentWizardEnabled} />
-      <AccessCardsSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} />
-      <TrainingCertificatesSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} />
+      {canView(authContext) && <IdentityDocumentsSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} documentWizardEnabled={documentWizardEnabled} />}
+      {medView && <MedicalInsurancesSection employeeId={employeeId} canManageDoc={medManage} onChildOpen={onChildOpen} documentWizardEnabled={documentWizardEnabled} />}
+      {canView(authContext) && <DependentsSection employeeId={employeeId} canManageDoc={manage} canManageMedical={medManage} onChildOpen={onChildOpen} documentWizardEnabled={documentWizardEnabled} />}
+      {canView(authContext) && <AccessCardsSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} />}
+      {canView(authContext) && <TrainingCertificatesSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} />}
       <MedicalRecordsSection employeeId={employeeId} canMedView={medView} canMedManage={medManage} onChildOpen={onChildOpen} />
     </div>
   );

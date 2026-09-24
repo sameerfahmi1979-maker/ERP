@@ -3,26 +3,44 @@
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
-import { assignPermissionToRole, removePermissionFromRole } from "@/server/actions/permissions";
+import { saveRolePermissionDraftChanges } from "@/server/actions/permissions";
+import { Button } from "@/components/ui/button";
 import { getRolePermissionsAction } from "@/server/actions/roles";
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink, Lock, ShieldAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
+import { parsePermissionDraft, type PermissionDraft } from "./permission-draft";
+import { permissionModuleLabel } from "@/lib/rbac/permission-taxonomy";
 
 type Props = {
   roleId: number;
   isSystemRole: boolean;
   canManage: boolean;
   isGlobalAdmin: boolean;
+  onDirtyChange?: (dirty: boolean) => void;
 };
 
-export function RolePermissionsSection({ roleId, isSystemRole, canManage, isGlobalAdmin }: Props) {
+export function RolePermissionsSection({ roleId, isSystemRole, canManage, isGlobalAdmin, onDirtyChange }: Props) {
   const router = useRouter();
-  const [toggling, setToggling] = useState<number | null>(null);
-
   const canEdit = canManage && (!isSystemRole || isGlobalAdmin);
+  const { getDraftDefault, writeDraftField, clearDraft } = useWorkspaceFormDraft({
+    formId: `role-permission-draft-${roleId}`, enabled: canEdit,
+  });
+  const [toggling, setToggling] = useState<number | null>(null);
+  const [draft, setDraft] = useState<PermissionDraft>(() => parsePermissionDraft(getDraftDefault("permission_changes", "{}")));
+  const [reviewing, setReviewing] = useState(false);
+
+  const dirty = Object.keys(draft).length > 0;
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
 
   const { data: groups = [], isFetching: isLoading, refetch, error } = useQuery({
     queryKey: ["role-permissions", roleId],
@@ -35,16 +53,27 @@ export function RolePermissionsSection({ roleId, isSystemRole, canManage, isGlob
   });
   useEffect(() => { if (error) toast.error(error.message); }, [error]);
 
-  const handleToggle = async (permId: number, currentlyAssigned: boolean) => {
+  const handleToggle = (permId: number, originallyAssigned: boolean) => {
+    if (!canEdit || toggling !== null) return;
+    setReviewing(false);
+    const next = { ...draft };
+    const expectedAssigned = draft[permId]?.expectedAssigned ?? originallyAssigned;
+    const assigned = !(draft[permId]?.assigned ?? originallyAssigned);
+    if (assigned === expectedAssigned) delete next[permId]; else next[permId] = { assigned, expectedAssigned };
+    writeDraftField("permission_changes", JSON.stringify(next));
+    setDraft(next);
+  };
+  const handleApply = async () => {
     if (!canEdit) return;
-    setToggling(permId);
+    setToggling(-1);
     try {
-      const result = currentlyAssigned
-        ? await removePermissionFromRole(roleId, permId)
-        : await assignPermissionToRole(roleId, permId);
+      const result = await saveRolePermissionDraftChanges(Object.entries(draft).map(([id,change]) => ({
+        permissionId: Number(id), roleId, action: change.assigned ? "grant" : "revoke", expectedAssigned: change.expectedAssigned, permissionCode: "", permissionName: "", roleCode: "", roleName: "",
+      })));
 
       if (result.success) {
-        toast.success(currentlyAssigned ? "Permission removed" : "Permission assigned");
+        toast.success("Reviewed permission changes applied");
+        clearDraft(); setDraft({}); setReviewing(false);
         router.refresh();
         await refetch();
       } else {
@@ -109,6 +138,13 @@ export function RolePermissionsSection({ roleId, isSystemRole, canManage, isGlob
       )}
 
       {/* Permission groups */}
+      {canEdit && Object.keys(draft).length > 0 && <div className="rounded-md border p-3 space-y-3">
+        <p role="status">{Object.keys(draft).length} unsaved permission changes. Nothing is applied until you review and confirm.</p>
+        {reviewing && <ul className="list-disc pl-5">{Object.entries(draft).map(([id,change]) => <li key={id}>{change.assigned ? "Grant" : "Revoke"}: {groups.flatMap(g => g.permissions).find(p => p.id === Number(id))?.permission_name ?? id}</li>)}</ul>}
+        <div className="flex gap-2"><Button type="button" variant="outline" disabled={toggling !== null} onClick={() => { clearDraft(); setDraft({}); setReviewing(false); }}>Discard changes</Button>
+          {reviewing ? <Button type="button" disabled={toggling !== null} onClick={handleApply}>Apply reviewed changes</Button> : <Button type="button" onClick={() => setReviewing(true)}>Review changes</Button>}
+        </div>
+      </div>}
       <div className="space-y-4">
         {groups.map((group) => {
           const assignedCount = group.permissions.filter((p) => p.assigned).length;
@@ -117,7 +153,7 @@ export function RolePermissionsSection({ roleId, isSystemRole, canManage, isGlob
               <div className="flex items-center justify-between px-4 py-2.5 border-b bg-muted/20">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold capitalize">
-                    {group.module_code.replace(/_/g, " ")}
+                    {permissionModuleLabel(group.module_code)}
                   </span>
                   <Badge variant="outline" className="text-xs">
                     {assignedCount}/{group.permissions.length}
@@ -134,8 +170,8 @@ export function RolePermissionsSection({ roleId, isSystemRole, canManage, isGlob
                   >
                     <Checkbox
                       id={`perm-${perm.id}`}
-                      checked={perm.assigned}
-                      disabled={!canEdit || toggling === perm.id || !perm.is_active}
+                      checked={draft[perm.id]?.assigned ?? perm.assigned}
+                      disabled={!canEdit || toggling !== null || !perm.is_active}
                       onCheckedChange={() => handleToggle(perm.id, perm.assigned)}
                       className="shrink-0"
                     />

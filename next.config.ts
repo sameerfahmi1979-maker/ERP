@@ -1,6 +1,19 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  async headers() {
+    return [{ source: "/:path*", headers: [
+      { key: "X-Content-Type-Options", value: "nosniff" },
+      { key: "Referrer-Policy", value: "no-referrer" },
+      { key: "X-Frame-Options", value: "SAMEORIGIN" },
+      { key: "Content-Security-Policy", value: "base-uri 'self'; object-src 'none'; frame-ancestors 'self'" },
+      // Full script/style policy is staged for compatibility evidence; no false XSS-prevention claim.
+      { key: "Content-Security-Policy-Report-Only", value: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: wss:; frame-src 'self' blob:" },
+      { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+      ...(process.env.NODE_ENV === "production" && process.env.NEXT_PUBLIC_SITE_URL?.startsWith("https://")
+        ? [{ key: "Strict-Transport-Security", value: "max-age=31536000" }] : []),
+    ] }];
+  },
   // Nested package.json files (e.g. under spikes/) confuse Turbopack's
   // workspace-root inference and crash the dev server with "Next.js package
   // not found". Pin the root explicitly to this repository.

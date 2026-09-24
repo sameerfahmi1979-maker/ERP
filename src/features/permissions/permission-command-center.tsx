@@ -19,7 +19,13 @@ import { cn } from "@/lib/utils";
 import { saveRolePermissionDraftChanges, type PermissionDraftChangeInput } from "@/server/actions/permissions";
 import type { Permission, Role } from "@/types/domain";
 import { AlertTriangle, Check, Lock, Search, Shield, Trash2, X } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
+import { useWorkspaceTabDirty } from "@/hooks/use-workspace-tab-dirty";
+import { useWorkspaceContext } from "@/components/workspace/workspace-provider";
+import { permissionModuleGroup, permissionModuleLabel } from "@/lib/rbac/permission-taxonomy";
+import { parseCommandCenterDraft } from "./command-center-draft";
 import { toast } from "sonner";
 import { PermissionExplorer } from "./permission-explorer";
 import { PermissionReviewSaveDialog } from "./permission-review-save-dialog";
@@ -72,26 +78,8 @@ function StatusBadge({ status }: { status: AssignmentStatus }) {
 
 // ── Module name map (shared) ──────────────────────────────────────────────────
 
-const MODULE_LABELS: Record<string, string> = {
-  hr: "Human Resource",
-  users: "Users",
-  roles: "Roles",
-  permissions: "Permissions",
-  dms: "Document Management",
-  audit: "Audit & Logs",
-  finance: "Finance",
-  inventory: "Inventory",
-  purchasing: "Purchasing",
-  sales: "Sales",
-  master_data: "Master Data",
-  settings: "Settings",
-  notifications: "Notifications",
-  reports: "Reports",
-  system: "System",
-};
-
 function humanizeModule(code: string): string {
-  return MODULE_LABELS[code] ?? code.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return permissionModuleLabel(code);
 }
 
 // ── Role filter chips ─────────────────────────────────────────────────────────
@@ -115,7 +103,7 @@ type StatsBarProps = {
 
 function StatsBar({ permissions, roles, rolePermissions }: StatsBarProps) {
   const modulesCount = useMemo(
-    () => new Set(permissions.map((p) => p.module_code)).size,
+    () => new Set(permissions.map((p) => permissionModuleGroup(p.module_code))).size,
     [permissions],
   );
   const systemPermsCount = permissions.filter((p) => p.is_system_permission).length;
@@ -493,12 +481,32 @@ export function PermissionCommandCenter({
   rolePermissions,
   canManage,
 }: PermissionCommandCenterProps) {
+  const router = useRouter();
+  const savingRef = useRef(false);
+  const { getDraftDefault, writeDraftField, clearDraft } = useWorkspaceFormDraft({
+    formId: "permission-command-center", enabled: canManage, ownerRoute: "/admin/permissions",
+  });
   const [selectedPermission, setSelectedPermission] = useState<Permission | null>(null);
-  const [draftChanges, setDraftChanges] = useState<Map<string, PermissionDraftChange>>(new Map());
+  const [draftChanges, setDraftChanges] = useState<Map<string, PermissionDraftChange>>(
+    () => parseCommandCenterDraft(getDraftDefault("permission_changes", "[]")),
+  );
   const [showDiscardDialog, setShowDiscardDialog] = useState(false);
   const [showReviewDialog, setShowReviewDialog] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [failedKeys, setFailedKeys] = useState<Set<string>>(new Set());
+  const workspace = useWorkspaceContext();
+  const tabId = workspace?.state.tabs.find(tab => tab.route === "/admin/permissions")?.id;
+  useWorkspaceTabDirty({ isDirty: draftChanges.size > 0, enabled: canManage && !!tabId, tabId });
+  useEffect(() => {
+    if (draftChanges.size) writeDraftField("permission_changes", JSON.stringify([...draftChanges.values()]));
+    else clearDraft();
+  }, [draftChanges, writeDraftField, clearDraft]);
+  useEffect(() => {
+    if (!draftChanges.size) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [draftChanges.size]);
 
   // Build the original assignment lookup map
   const originalPermissions = useMemo(() => {
@@ -518,7 +526,7 @@ export function PermissionCommandCenter({
 
   const handleToggle = useCallback(
     (role: Role, permission: Permission, originalAssigned: boolean) => {
-      if (!canManage) return;
+      if (!canManage || savingRef.current) return;
       const key = `${permission.id}:${role.id}`;
       setDraftChanges((prev) => {
         const next = new Map(prev);
@@ -541,17 +549,9 @@ export function PermissionCommandCenter({
             permissionIsSystem: permission.is_system_permission ?? false,
           });
         }
-        // Clear failed status if user re-toggles
-        setFailedKeys((prevFailed) => {
-          if (prevFailed.has(key)) {
-            const next2 = new Set(prevFailed);
-            next2.delete(key);
-            return next2;
-          }
-          return prevFailed;
-        });
         return next;
       });
+      setFailedKeys((previous) => { const next = new Set(previous); next.delete(key); return next; });
     },
     [canManage],
   );
@@ -563,6 +563,7 @@ export function PermissionCommandCenter({
   }, [draftChanges.size]);
 
   const confirmDiscard = useCallback(() => {
+    if (savingRef.current) return;
     setDraftChanges(new Map());
     setFailedKeys(new Set());
     setShowDiscardDialog(false);
@@ -570,7 +571,8 @@ export function PermissionCommandCenter({
   }, []);
 
   const handleSave = useCallback(async () => {
-    if (draftChanges.size === 0) return;
+    if (!canManage || savingRef.current || draftChanges.size === 0) return;
+    savingRef.current = true;
     setIsSaving(true);
 
     const inputs: PermissionDraftChangeInput[] = [...draftChanges.values()].map((c) => ({
@@ -581,6 +583,7 @@ export function PermissionCommandCenter({
       roleCode: c.roleCode,
       roleName: c.roleName,
       action: c.action,
+      expectedAssigned: c.originalAssigned,
     }));
 
     try {
@@ -612,6 +615,7 @@ export function PermissionCommandCenter({
       }
 
       if (succeeded.length > 0) {
+        router.refresh();
         toast.success(
           `${succeeded.length} permission change${succeeded.length !== 1 ? "s" : ""} saved successfully.`,
         );
@@ -623,9 +627,10 @@ export function PermissionCommandCenter({
     } catch {
       toast.error("An unexpected error occurred while saving permission changes.");
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
-  }, [draftChanges]);
+  }, [draftChanges, canManage, router]);
 
   const changesList = [...draftChanges.values()];
   const hasDraft = changesList.length > 0;
@@ -647,14 +652,14 @@ export function PermissionCommandCenter({
       )}
 
       {/* Two-panel layout */}
-      <div
+      <fieldset disabled={isSaving} aria-busy={isSaving}
         className={cn(
-          "flex gap-0 border rounded-lg overflow-hidden bg-card",
-          "h-[calc(100vh-320px)] min-h-[500px]",
+          "flex flex-col md:flex-row gap-0 border rounded-lg overflow-hidden bg-card min-w-0",
+          "md:h-[calc(100vh-320px)] min-h-[500px]",
         )}
       >
         {/* LEFT — Permission Explorer */}
-        <div className="w-[340px] lg:w-[380px] shrink-0 border-r flex flex-col">
+        <div className="w-full md:w-[340px] lg:w-[380px] shrink-0 border-b md:border-b-0 md:border-r flex flex-col h-80 md:h-auto">
           <div className="px-3 py-3 border-b bg-muted/30">
             <h2 className="text-sm font-semibold">1. Find a Permission</h2>
           </div>
@@ -686,7 +691,7 @@ export function PermissionCommandCenter({
             />
           </div>
         </div>
-      </div>
+      </fieldset>
 
       {/* Pending Changes sticky bar */}
       {hasDraft && (

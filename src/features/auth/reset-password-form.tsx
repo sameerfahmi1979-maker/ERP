@@ -1,11 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { navigateAfterIdentityChange } from "@/lib/auth/client-session";
+import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { createClient } from "@/lib/supabase/client";
 import { resetPasswordSchema } from "@/lib/validation/auth";
 import { recordPasswordResetCompleted } from "@/server/actions/users/account-security";
 import { Button } from "@/components/ui/button";
@@ -22,35 +21,32 @@ import {
 type ResetInput = { password: string; confirmPassword: string };
 
 export function ResetPasswordForm() {
-  const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const operationId = useRef<string | null>(null);
   const {
     register,
     handleSubmit,
     formState: { errors },
   } = useForm<ResetInput>({ resolver: zodResolver(resetPasswordSchema) });
 
-  const onSubmit = handleSubmit(async (values) => {
+  const onSubmit = async (values: ResetInput) => {
     setLoading(true);
     try {
-      const supabase = createClient();
-      const { error } = await supabase.auth.updateUser({ password: values.password });
-
-      if (error) {
-        toast.error(error.message);
+      operationId.current ??= crypto.randomUUID();
+      const result = await recordPasswordResetCompleted({ newPassword: values.password, operationId: operationId.current });
+      if (!result.success) {
+        if (result.canStartNewAttempt) operationId.current = null;
+        toast.error(result.error ?? "Password change could not complete.");
         return;
       }
-
-      // USERS.2A — Update lifecycle fields after successful password reset
-      await recordPasswordResetCompleted();
-
       toast.success("Password updated");
-      router.push("/dashboard");
-      router.refresh();
+      navigateAfterIdentityChange("/dashboard");
+    } catch {
+      toast.error("The request was interrupted. Please sign in again before trying another password change.");
     } finally {
       setLoading(false);
     }
-  });
+  };
 
   return (
     <Card className="w-full max-w-md">
@@ -60,7 +56,7 @@ export function ResetPasswordForm() {
           Enter your new password. Must be 10+ characters with uppercase, lowercase, and digit.
         </CardDescription>
       </CardHeader>
-      <form onSubmit={onSubmit}>
+      <form onSubmit={(event) => void handleSubmit(onSubmit)(event)}>
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <RequiredLabel htmlFor="password" required>New password</RequiredLabel>

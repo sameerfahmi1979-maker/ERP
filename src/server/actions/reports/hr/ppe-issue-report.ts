@@ -3,13 +3,13 @@
  * Phase: REPORT.4 — HR.11 Reports + Letters + Forms Library
  */
 import type { ReportFetcher, ReportDataResult } from "@/lib/report-center/types";
-import { createAdminClient } from "@/lib/supabase/admin";
+import type { ReportReadClient } from "@/lib/report-center/scoped-read-client";
 
 export const ppeIssueReportFetcher: ReportFetcher = {
   reportCode: "HR_PPE_ISSUE_REPORT",
 
-  async fetch(filters: Record<string, unknown>): Promise<ReportDataResult> {
-    const db = createAdminClient();
+  async fetch(filters: Record<string, unknown>, _permissions: string[], db: ReportReadClient): Promise<ReportDataResult> {
+
 
     let empIds: number[] | null = null;
     if (filters.owner_company_id || filters.department_id || filters.work_site_id) {
@@ -25,9 +25,9 @@ export const ppeIssueReportFetcher: ReportFetcher = {
     let q = db
       .from("employee_ppe_issues")
       .select(
-        `id, employee_id, ppe_item_name, ppe_category, issue_date, quantity, condition_at_issue,
-         return_date, return_condition, ppe_status, notes,
-         issued_by_profile:profiles!issued_by(display_name),
+        `id, employee_id, ppe_item_name:ppe_item, issue_date:issued_date, quantity,
+         return_date:returned_date, ppe_status:status, notes,
+         issued_by_profile:user_profiles!issued_by(display_name),
          employee:employees(
            employee_code, full_name_en, owner_company_id,
            department:departments(department_name_en),
@@ -35,12 +35,12 @@ export const ppeIssueReportFetcher: ReportFetcher = {
          )`
       )
       .is("deleted_at", null)
-      .order("issue_date", { ascending: false });
+      .order("issued_date", { ascending: false });
 
     if (empIds) q = q.in("employee_id", empIds);
-    if (filters.date_from) q = q.gte("issue_date", String(filters.date_from));
-    if (filters.date_to) q = q.lte("issue_date", String(filters.date_to));
-    if (filters.employee_status) q = q.eq("ppe_status", String(filters.employee_status));
+    if (filters.date_from) q = q.gte("issued_date", String(filters.date_from));
+    if (filters.date_to) q = q.lte("issued_date", String(filters.date_to));
+    if (filters.employee_status) q = q.eq("status", String(filters.employee_status));
 
     const { data, error } = await q.limit(5000);
     if (error) throw new Error(`HR_PPE_ISSUE_REPORT fetch error: ${error.message}`);
@@ -53,12 +53,12 @@ export const ppeIssueReportFetcher: ReportFetcher = {
         company: emp?.owner_company?.legal_name_en ?? "",
         department: emp?.department?.department_name_en ?? "",
         ppe_item: r.ppe_item_name,
-        ppe_category: r.ppe_category ?? "",
+        ppe_category: "[Not recorded]",
         quantity: r.quantity ?? 1,
-        condition_at_issue: r.condition_at_issue ?? "",
+        condition_at_issue: "[Not recorded]",
         issue_date: r.issue_date,
         return_date: r.return_date ?? "",
-        return_condition: r.return_condition ?? "",
+        return_condition: "[Not recorded]",
         ppe_status: r.ppe_status,
         issued_by: (r.issued_by_profile as unknown as { display_name: string } | null)?.display_name ?? "",
         owner_company_id: emp?.owner_company_id ?? 0,

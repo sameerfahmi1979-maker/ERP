@@ -7,6 +7,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 import type {
   PdfRenderRequest,
   PdfRenderResult,
@@ -96,7 +97,7 @@ export async function listPdfHistoryForRecord(
   sourceRecordId: number,
   limit = 20,
 ) {
-  const supabase = createAdminClient();
+  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from("erp_generated_pdf_documents")

@@ -3,13 +3,13 @@
  * Phase: REPORT.4 — HR.11 Reports + Letters + Forms Library
  */
 import type { ReportFetcher, ReportDataResult } from "@/lib/report-center/types";
-import { createAdminClient } from "@/lib/supabase/admin";
+import type { ReportReadClient } from "@/lib/report-center/scoped-read-client";
 
 export const leaveRequestsFetcher: ReportFetcher = {
   reportCode: "HR_LEAVE_REQUESTS",
 
-  async fetch(filters: Record<string, unknown>): Promise<ReportDataResult> {
-    const db = createAdminClient();
+  async fetch(filters: Record<string, unknown>, _permissions: string[], db: ReportReadClient): Promise<ReportDataResult> {
+
 
     let empIds: number[] | null = null;
     if (filters.owner_company_id || filters.department_id) {
@@ -27,7 +27,7 @@ export const leaveRequestsFetcher: ReportFetcher = {
         `id, employee_id, start_date, end_date, total_days, reason, approval_status,
          approved_at, request_date,
          leave_type:hr_leave_types(name_en),
-         approver:profiles!approved_by(display_name),
+         approver:user_profiles!approved_by(display_name),
          employee:employees(
            employee_code, full_name_en, owner_company_id,
            owner_company:owner_companies!employees_owner_company_id_fkey(legal_name_en)

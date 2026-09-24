@@ -1,5 +1,4 @@
-import { signOut } from "@/features/auth/actions";
-import { Button } from "@/components/ui/button";
+import { SignOutButton } from "@/features/auth/sign-out-button";
 import {
   Card,
   CardContent,
@@ -24,11 +23,7 @@ export default function AccountDisabledPage() {
       </CardHeader>
       <CardContent />
       <CardFooter className="justify-center">
-        <form action={signOut}>
-          <Button type="submit" variant="outline">
-            Sign out
-          </Button>
-        </form>
+        <SignOutButton />
       </CardFooter>
     </Card>
   );

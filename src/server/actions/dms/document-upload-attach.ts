@@ -4,6 +4,7 @@ import { clampToValidDate, zOptionalDateString } from "@/lib/dms/date-validators
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { checkDocumentConfidentialityAccess } from "@/lib/dms/document-access";
 import { logAudit } from "@/server/actions/audit";
 import {
   resolveStandardFileNameForDocumentCreate,
@@ -137,6 +138,13 @@ export async function attachUploadToExistingDocument(
 
     if (docError || !document) return { success: false, error: "Document not found" };
 
+    // Authorize the destination action before using the service-key Storage client.
+    // A read grant or an upload grant in another company is not attachment authority.
+    const destination = await checkDocumentConfidentialityAccess(supabase, documentId, ctx, "dms.documents.upload");
+    const editable = destination.allowed ? destination : await checkDocumentConfidentialityAccess(supabase, documentId, ctx, "dms.documents.edit");
+    const administrative = editable.allowed ? editable : await checkDocumentConfidentialityAccess(supabase, documentId, ctx, "dms.admin");
+    if (!administrative.allowed) return { success: false, error: "Document attachment access is restricted." };
+
     const typeCode = (document.document_type as unknown as { type_code: string } | null)?.type_code ?? "OTHER";
     const year = new Date().getFullYear();
     const userId = ctx.profile.id;
@@ -265,7 +273,7 @@ export async function attachUploadToExistingDocument(
         created_by: userId,
         created_at: new Date().toISOString(),
       })
-      .select()
+      .select("id")
       .single();
 
     if (fileError) return { success: false, error: fileError.message };
@@ -277,7 +285,7 @@ export async function attachUploadToExistingDocument(
 
     await supabase
       .from("dms_upload_sessions")
-      .update({ status: "completed", completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .update({ document_id: documentId, status: "completed", completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
       .eq("id", uploadSessionId);
 
     await insertDmsEvent(supabase, documentId, "file_uploaded", userId,
@@ -546,7 +554,7 @@ export async function createDocumentFromUpload(
         updated_by: userId,
         updated_at: new Date().toISOString(),
       })
-      .select()
+      .select("id")
       .single();
 
     if (docInsertError) return { success: false, error: docInsertError.message };
@@ -609,7 +617,7 @@ export async function createDocumentFromUpload(
         created_by: userId,
         created_at: new Date().toISOString(),
       })
-      .select()
+      .select("id")
       .single();
 
     if (fileError) return { success: false, error: fileError.message };
@@ -621,7 +629,7 @@ export async function createDocumentFromUpload(
 
     await supabase
       .from("dms_upload_sessions")
-      .update({ status: "completed", completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .update({ document_id: document.id, status: "completed", completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
       .eq("id", uploadSessionId);
 
     await insertDmsEvent(supabase, document.id, "document_created", userId,

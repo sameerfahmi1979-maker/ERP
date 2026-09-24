@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { queryKeys } from "@/lib/query/query-keys";
+import type { AuthContext } from "@/lib/rbac/check";
+import { hasPermissionInScope, hasGlobalPermission } from "@/lib/rbac/scope";
 import type { OfferRow } from "@/server/actions/hr/recruitment";
 import { archiveOffer, changeOfferStatus, createOffer, listCandidateOffers, updateOffer } from "@/server/actions/hr/recruitment";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -18,6 +20,9 @@ import { toast } from "sonner";
 type Props = {
   candidateId: number;
   canManage: boolean;
+  authContext: AuthContext;
+  defaultCompanyId: number|null;
+  defaultBranchId: number|null;
   onChildOpen?: (open: boolean) => void;
 };
 
@@ -67,12 +72,16 @@ const EMPTY_FORM: OfferForm = {
   notes: "",
 };
 
-export function CandidateOffersTab({ candidateId, canManage, onChildOpen }: Props) {
+export function CandidateOffersTab({ candidateId, canManage, authContext, defaultCompanyId, defaultBranchId, onChildOpen }: Props) {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<OfferRow | null>(null);
   const [form, setForm] = useState<OfferForm>(EMPTY_FORM);
   const [isPending, startTransition] = useTransition();
+  const salaryCompany=editing?editing.owner_company_id:defaultCompanyId;
+  const salaryBranch=editing?editing.branch_id:defaultBranchId;
+  const salaryAllowed=(code:string)=>salaryCompany===null?hasGlobalPermission(authContext,code):hasPermissionInScope(authContext,code,salaryCompany,salaryBranch);
+  const canManageSalary=salaryAllowed('hr.payroll.view')&&salaryAllowed('hr.payroll.manage');
 
   const { data: res, isLoading } = useQuery({
     queryKey: queryKeys.recruitment.candidateOffers(candidateId),
@@ -118,8 +127,10 @@ export function CandidateOffersTab({ candidateId, canManage, onChildOpen }: Prop
         offer_date: form.offer_date || null,
         valid_until: form.valid_until || null,
         proposed_joining_date: form.proposed_joining_date || null,
-        basic_salary: form.basic_salary ? parseFloat(form.basic_salary) : null,
-        gross_salary: form.gross_salary ? parseFloat(form.gross_salary) : null,
+        ...(canManageSalary?{
+          basic_salary:form.basic_salary?parseFloat(form.basic_salary):null,
+          gross_salary:form.gross_salary?parseFloat(form.gross_salary):null,
+        }:{}),
         currency: form.currency || "AED",
         notes: form.notes || null,
       };
@@ -193,7 +204,7 @@ export function CandidateOffersTab({ candidateId, canManage, onChildOpen }: Prop
                   {offer.designation && <span className="text-sm font-medium">{offer.designation.designation_name_en}</span>}
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {offer.basic_salary != null ? `Basic: ${offer.basic_salary.toLocaleString()} ${offer.currency}` : "Salary: Not specified"}
+                  {offer.basic_salary != null ? `Basic: ${offer.basic_salary.toLocaleString()} ${offer.currency}` : "Salary: Restricted or not recorded"}
                   {offer.proposed_joining_date && ` · Joining: ${offer.proposed_joining_date}`}
                   {offer.valid_until && ` · Valid until: ${offer.valid_until}`}
                 </p>
@@ -248,11 +259,11 @@ export function CandidateOffersTab({ candidateId, canManage, onChildOpen }: Prop
           </div>
           <div className="col-span-12 md:col-span-3">
             <Label>Basic Salary</Label>
-            <Input type="number" min={0} value={form.basic_salary} onChange={(e) => set("basic_salary", e.target.value)} placeholder="0.00" />
+            <Input type="number" min={0} value={form.basic_salary} onChange={(e) => set("basic_salary", e.target.value)} disabled={!canManageSalary} placeholder={canManageSalary?"0.00":"Salary access restricted"} />
           </div>
           <div className="col-span-12 md:col-span-3">
             <Label>Gross Salary</Label>
-            <Input type="number" min={0} value={form.gross_salary} onChange={(e) => set("gross_salary", e.target.value)} placeholder="0.00" />
+            <Input type="number" min={0} value={form.gross_salary} onChange={(e) => set("gross_salary", e.target.value)} disabled={!canManageSalary} placeholder={canManageSalary?"0.00":"Salary access restricted"} />
           </div>
           <div className="col-span-12 md:col-span-2">
             <Label>Currency</Label>

@@ -35,6 +35,8 @@ import {
 } from "@/lib/hr/ai/types";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { getEmployeeAccess } from "@/lib/rbac/employee-access";
 
 // ── Usage logger (shared pattern) ─────────────────────────────────────────────
 
@@ -75,7 +77,7 @@ async function logHrAiUsage(params: {
 // ── Shared employee data loader ───────────────────────────────────────────────
 
 async function loadEmployeeSafeProfile(employeeId: number) {
-  const db = createAdminClient();
+  const db = await createClient();
   const { data, error } = await db
     .from("employees")
     .select(`
@@ -87,7 +89,7 @@ async function loadEmployeeSafeProfile(employeeId: number) {
       branch:branches(branch_name_en),
       owner_company:owner_companies!employees_owner_company_id_fkey(legal_name_en),
       primary_work_site:work_sites(site_name),
-      employment_type:employment_types(type_name)
+      employment_type:hr_employment_types(type_name:name_en)
     `)
     .eq("id", employeeId)
     .is("deleted_at", null)
@@ -110,7 +112,8 @@ export async function generateEmployeeCorrectionSuggestions(
 ): Promise<HrAiActionResult<HrAiCorrectionOutput>> {
   const start = Date.now();
   try {
-    const ctx = await getAuthContext();
+    const access = await getEmployeeAccess(await getAuthContext(), employeeId);
+    const ctx = access.scopedContext;
     if (!ctx.profile?.id) return { success: false, error: "Not authenticated." };
     if (!hasPermission(ctx, "hr.ai.use"))
       return { success: false, error: "Permission denied: hr.ai.use required." };
@@ -206,7 +209,8 @@ export async function explainEmployeeCompliance(
 ): Promise<HrAiActionResult<HrAiComplianceExplanation>> {
   const start = Date.now();
   try {
-    const ctx = await getAuthContext();
+    const access = await getEmployeeAccess(await getAuthContext(), employeeId);
+    const ctx = access.scopedContext;
     if (!ctx.profile?.id) return { success: false, error: "Not authenticated." };
     if (!hasPermission(ctx, "hr.ai.use"))
       return { success: false, error: "Permission denied: hr.ai.use required." };
@@ -221,7 +225,7 @@ export async function explainEmployeeCompliance(
     const emp = await loadEmployeeSafeProfile(employeeId);
     if (!emp) return { success: false, error: "Employee not found." };
 
-    const db = createAdminClient();
+    const db = await createClient();
     const canMedical = hasPermission(ctx, "hr.medical.view");
     const today = new Date().toISOString().split("T")[0];
 
@@ -312,7 +316,8 @@ export async function explainEmployeeReadiness(
 ): Promise<HrAiActionResult<HrAiReadinessExplanation>> {
   const start = Date.now();
   try {
-    const ctx = await getAuthContext();
+    const access = await getEmployeeAccess(await getAuthContext(), employeeId);
+    const ctx = access.scopedContext;
     if (!ctx.profile?.id) return { success: false, error: "Not authenticated." };
     if (!hasPermission(ctx, "hr.ai.use"))
       return { success: false, error: "Permission denied: hr.ai.use required." };
@@ -327,7 +332,7 @@ export async function explainEmployeeReadiness(
     const emp = await loadEmployeeSafeProfile(employeeId);
     if (!emp) return { success: false, error: "Employee not found." };
 
-    const db = createAdminClient();
+    const db = await createClient();
 
     // Load readiness data (deterministic)
     const [blocksRes, siteReadinessRes] = await Promise.all([

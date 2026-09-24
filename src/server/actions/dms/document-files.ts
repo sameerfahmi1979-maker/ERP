@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
+import { checkDocumentConfidentialityAccess } from "@/lib/dms/document-access";
 
 export type ActionResult<T = unknown> = {
   success: boolean;
@@ -68,40 +69,6 @@ export type DmsDocumentVersionRow = {
 
 function canViewDms(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
   return hasPermission(ctx, "dms.documents.view") || hasPermission(ctx, "dms.admin");
-}
-
-/** DMS.3C — Check confidentiality access for a document. Returns true if access is allowed. */
-export async function checkDocumentConfidentialityAccess(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  documentId: number,
-  ctx: Awaited<ReturnType<typeof getAuthContext>>
-): Promise<{ allowed: boolean; error?: string }> {
-  const isAdmin = hasPermission(ctx, "dms.admin") || ctx.roleCodes.includes("system_admin");
-  if (isAdmin) return { allowed: true };
-
-  const { data: doc, error } = await supabase
-    .from("dms_documents")
-    .select("id, confidentiality_level, owner_user_id, created_by")
-    .eq("id", documentId)
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  if (error || !doc) return { allowed: false, error: "Document not found" };
-
-  const level = doc.confidentiality_level as string;
-  const profileId = ctx.profile?.id ?? null;
-
-  // Owner or creator always has access
-  if (profileId && (doc.owner_user_id === profileId || doc.created_by === profileId)) {
-    return { allowed: true };
-  }
-
-  const SENSITIVE = ["hr", "finance", "legal", "executive"];
-  if (!SENSITIVE.includes(level)) return { allowed: true }; // internal/company — base view is sufficient
-
-  if (hasPermission(ctx, `dms.documents.view.${level}`)) return { allowed: true };
-
-  return { allowed: false, error: "Document access is restricted." };
 }
 
 // ── Get files for a document ──────────────────────────────────────────────────
@@ -176,16 +143,14 @@ export async function getDmsDocumentVersions(
 
 // ── Get signed URL for preview or download ────────────────────────────────────
 
-const PREVIEW_EXPIRY_SECONDS = 5 * 60;   // 5 min
-const DOWNLOAD_EXPIRY_SECONDS = 60 * 60; // 1 hour
-
+/** Compatibility name: new URLs are authenticated endpoints, not bearer capabilities. */
 export async function getDmsDocumentFileSignedUrl(
   fileId: number,
   action: "preview" | "download"
 ): Promise<ActionResult<{ signedUrl: string; expiresIn: number }>> {
   try {
+    if (!Number.isSafeInteger(fileId) || fileId <= 0 || !["preview", "download"].includes(action)) return { success: false, error: "Invalid file action" };
     const supabase = await createClient();
-    const adminClient = createAdminClient();
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
 
@@ -206,41 +171,11 @@ export async function getDmsDocumentFileSignedUrl(
     if (fileError || !file) return { success: false, error: "File not found" };
 
     // DMS.3C — confidentiality check before issuing signed URL
-    const access = await checkDocumentConfidentialityAccess(supabase, file.document_id as number, ctx);
+    const access = await checkDocumentConfidentialityAccess(supabase, file.document_id as number, ctx, `dms.documents.${action}`);
     if (!access.allowed) return { success: false, error: access.error ?? "Document access is restricted." };
 
-    const expiresIn = action === "preview" ? PREVIEW_EXPIRY_SECONDS : DOWNLOAD_EXPIRY_SECONDS;
-
-    const { data: signedData, error: signedError } = await adminClient.storage
-      .from(file.storage_bucket as string)
-      .createSignedUrl(
-        file.storage_path as string,
-        expiresIn,
-        action === "download" ? { download: file.file_name as string } : undefined
-      );
-
-    if (signedError || !signedData)
-      return { success: false, error: signedError?.message ?? "Failed to generate URL" };
-
-    // Insert audit event (do not log the URL itself)
-    await supabase.from("dms_document_events").insert({
-      document_id: file.document_id,
-      event_type: action === "preview" ? "file_previewed" : "file_downloaded",
-      description: `File ${action === "preview" ? "previewed" : "downloaded"}: ${file.file_name}`,
-      performed_by: ctx.profile.id,
-      performed_at: new Date().toISOString(),
-      metadata_json: { file_id: fileId, action },
-    });
-
-    await logAudit({
-      module_code: "DMS",
-      entity_name: "dms_document_files",
-      entity_id: fileId,
-      entity_reference: String(file.document_id),
-      action: action === "preview" ? "read" : "export",
-    });
-
-    return { success: true, data: { signedUrl: signedData.signedUrl, expiresIn } };
+    // A URL request is not a download. The endpoint records actual server byte delivery.
+    return { success: true, data: { signedUrl: `/api/dms/file?fileId=${fileId}&disposition=${action === "download" ? "attachment" : "inline"}`, expiresIn: 0 } };
   } catch (e) {
     return { success: false, error: String(e) };
   }
@@ -491,6 +426,8 @@ export async function adminDeleteDmsDocumentFile(
 
     const documentId = file.document_id as number;
     const versionId = file.version_id as number | null;
+    const access = await checkDocumentConfidentialityAccess(supabase, documentId, ctx, "dms.admin");
+    if (!access.allowed) return { success: false, error: "Document administration is outside your permitted scope." };
     const storageBucket = (file.storage_bucket as string) || "dms-documents";
     const storagePath = file.storage_path as string | null;
     const fileName = file.file_name as string;
@@ -662,7 +599,7 @@ export async function adminDeleteDmsDocumentFile(
   }
 }
 
-// ── Admin: list ALL files for inspection (including from deleted documents) ───
+// ── Admin: scoped files, including deleted files of accessible active documents ──
 
 export type AdminFileRow = {
   id: number;
@@ -695,15 +632,18 @@ export async function adminListDmsFiles(opts?: {
     if (!hasPermission(ctx, "dms.admin")) return { success: false, error: "Permission denied: requires dms.admin" };
 
     const { includeDeleted = true, limit = 100, offset = 0 } = opts ?? {};
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 250 || !Number.isSafeInteger(offset) || offset < 0) {
+      return { success: false, error: "Invalid file-list page." };
+    }
 
     let query = supabase
-      .from("dms_document_files")
+      .rpc("f03_read_document_files_for_admin", {}, { get: true, count: "exact" })
       .select(`
         id, document_id, version_id, file_role, storage_bucket, storage_path,
         file_name, mime_type, file_size_bytes, sha256_hash,
         ocr_status, created_at, deleted_at,
         document:dms_documents!document_id(document_no, title, deleted_at)
-      `, { count: "exact" })
+      `)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -713,8 +653,9 @@ export async function adminListDmsFiles(opts?: {
 
     const { data, error, count } = await query;
     if (error) return { success: false, error: error.message };
+    if (!Array.isArray(data)) return { success: false, error: "Invalid file-list response." };
 
-    const rows: AdminFileRow[] = (data ?? []).map((f) => {
+    const rows: AdminFileRow[] = data.map((f) => {
       const docRaw = f.document as unknown;
       const doc = (Array.isArray(docRaw) ? docRaw[0] : docRaw) as { document_no: string; title: string; deleted_at: string | null } | null;
       return {
@@ -759,7 +700,7 @@ export async function adminHardDeleteDmsFile(
 
     // Load file record (allow already-soft-deleted rows so we can fully clean them)
     const { data: file, error: fileError } = await supabase
-      .from("dms_document_files")
+      .rpc("f03_read_document_files_for_admin", {}, { get: true })
       .select("id, document_id, storage_bucket, storage_path, file_name")
       .eq("id", fileId)
       .maybeSingle();
@@ -770,6 +711,9 @@ export async function adminHardDeleteDmsFile(
     const storagePath = file.storage_path as string | null;
     const fileName = file.file_name as string;
     const documentId = file.document_id as number | null;
+    if (documentId === null || !(await checkDocumentConfidentialityAccess(supabase, documentId, ctx, "dms.admin")).allowed) {
+      return { success: false, error: "Document administration is outside your permitted scope." };
+    }
 
     let storageDeleted = false;
 

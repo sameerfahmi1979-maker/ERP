@@ -6,13 +6,13 @@
  * Only status, type, date, severity, and counts.
  */
 import type { ReportFetcher, ReportDataResult } from "@/lib/report-center/types";
-import { createAdminClient } from "@/lib/supabase/admin";
+import type { ReportReadClient } from "@/lib/report-center/scoped-read-client";
 
 export const disciplinarySummaryFetcher: ReportFetcher = {
   reportCode: "HR_DISCIPLINARY_SUMMARY",
 
-  async fetch(filters: Record<string, unknown>, permissionCodes: string[]): Promise<ReportDataResult> {
-    const db = createAdminClient();
+  async fetch(filters: Record<string, unknown>, permissionCodes: string[], db: ReportReadClient): Promise<ReportDataResult> {
+
     const canViewDetails = permissionCodes.includes("hr.actions.manage");
 
     let empIds: number[] | null = null;

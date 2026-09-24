@@ -6,22 +6,22 @@
  * Sensitive sections are redacted server-side based on permissions.
  */
 import type { ReportFetcher, ReportDataResult } from "@/lib/report-center/types";
-import { createAdminClient } from "@/lib/supabase/admin";
+import type { ReportReadClient } from "@/lib/report-center/scoped-read-client";
 
 export const employeeProfileFetcher: ReportFetcher = {
   reportCode: "HR_EMPLOYEE_PROFILE",
 
-  async fetch(filters: Record<string, unknown>, permissionCodes: string[]): Promise<ReportDataResult> {
+  async fetch(filters: Record<string, unknown>, permissionCodes: string[], db: ReportReadClient): Promise<ReportDataResult> {
     const employeeId = filters.employee_id ? Number(filters.employee_id) : null;
     if (!employeeId) throw new Error("employee_id filter is required for HR_EMPLOYEE_PROFILE");
 
-    const db = createAdminClient();
+
 
     const { data: emp, error } = await db
       .from("employees")
       .select(
         `id, employee_code, full_name_en, full_name_ar, mobile_number, personal_email,
-         gender, date_of_birth, marital_status, blood_group,
+         gender, date_of_birth, marital_status,
          employee_status, joining_date, actual_joining_date, contract_type,
          contract_start_date, contract_end_date, probation_end_date,
          owner_company_id,
@@ -31,8 +31,8 @@ export const employeeProfileFetcher: ReportFetcher = {
          designation:designations(id, designation_name_en),
          nationality:countries(id, name_en),
          primary_work_site:work_sites(id, site_name),
-         employee_category:employee_categories(id, name_en),
-         employment_type:employment_types(id, name_en)`
+         employee_category:hr_employee_categories(id, name_en),
+         employment_type:hr_employment_types(id, name_en)`
       )
       .eq("id", employeeId)
       .is("deleted_at", null)

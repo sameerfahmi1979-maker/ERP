@@ -25,6 +25,7 @@ import { useMemo, useState } from "react";
 type Props = {
   employee: EmployeeListRow | null;
   mode: "add" | "edit" | "view";
+  canManageMedical?: boolean;
   formId: string;
   getDraftDefault: UseWorkspaceFormDraftReturn["getDraftDefault"];
   syncDraft: UseWorkspaceFormDraftReturn["syncDraft"];
@@ -100,6 +101,7 @@ export function EmployeeProfileTab({
   syncDraft,
   form,
   setForm,
+  canManageMedical = false,
 }: Props) {
   const disabled = mode === "view";
 
@@ -315,9 +317,10 @@ export function EmployeeProfileTab({
               onValueChange={(v) => setForm((p) => ({ ...p, blood_group: v as string }))}
               options={BLOOD_GROUP_OPTIONS}
               placeholder="Select..."
-              disabled={disabled}
+              disabled={disabled || !canManageMedical}
               allowClear
             />
+            {!canManageMedical && <p className="text-xs text-muted-foreground">Separate medical access is required to change this field.</p>}
           </div>
           <div className="col-span-4 space-y-1.5">
             <RequiredLabel htmlFor="mobile_number">Mobile Number</RequiredLabel>

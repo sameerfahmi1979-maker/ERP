@@ -1,5 +1,6 @@
 import { redirect, notFound } from "next/navigation";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext } from "@/lib/rbac/check";
+import { canBrowseEmployees, getEmployeeAccess } from "@/lib/rbac/employee-access";
 import { getEmployee } from "@/server/actions/hr/employees";
 import { EmployeeWorkspaceForm } from "@/features/hr/employees/employee-workspace-form";
 import Link from "next/link";
@@ -19,16 +20,15 @@ export default async function EmployeeRecordPage({
   const { id: idStr } = await params;
   const { mode: modeParam } = await searchParams;
 
-  const id = parseInt(idStr, 10);
-  if (isNaN(id)) {
+  const id = Number(idStr);
+  if (!Number.isSafeInteger(id) || id <= 0) {
     notFound();
   }
 
   const authContext = await getAuthContext();
 
   if (
-    !hasPermission(authContext, "hr.employees.view") &&
-    !authContext.roleCodes?.includes("system_admin")
+    !canBrowseEmployees(authContext)
   ) {
     redirect("/access-denied");
   }
@@ -49,9 +49,8 @@ export default async function EmployeeRecordPage({
     );
   }
 
-  const canEdit =
-    hasPermission(authContext, "hr.employees.update") ||
-    authContext.roleCodes?.includes("system_admin");
+  const access = await getEmployeeAccess(authContext,id);
+  const canEdit = access.allows("hr.employees.update");
 
   let mode: "view" | "edit" = "view";
   if (modeParam === "edit" && canEdit) {
@@ -67,7 +66,7 @@ export default async function EmployeeRecordPage({
       <EmployeeWorkspaceForm
         employee={result.data}
         mode={mode}
-        authContext={authContext}
+        authContext={access.scopedContext}
       />
     </div>
   );

@@ -37,6 +37,7 @@ export function RoleWorkspaceForm({ role, mode, authContext }: RoleWorkspaceForm
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSection, setActiveSection] = useState("overview");
+  const [permissionsDirty, setPermissionsDirty] = useState(false);
 
   const isEditing = mode === "edit";
   const isViewing = mode === "view";
@@ -55,8 +56,8 @@ export function RoleWorkspaceForm({ role, mode, authContext }: RoleWorkspaceForm
   const { getDraftDefault, syncDraft, clearDraft } = useWorkspaceFormDraft({ formId: FORM_ID, enabled: !isViewing });
 
   useEffect(() => {
-    if (activeTab?.id) markDirty(activeTab.id, isDirty);
-  }, [isDirty, activeTab?.id, markDirty]);
+    if (activeTab?.id) markDirty(activeTab.id, isDirty || permissionsDirty);
+  }, [isDirty, permissionsDirty, activeTab?.id, markDirty]);
 
   // Sections: add mode has only overview; view/edit modes have all four
   const sections = [
@@ -72,6 +73,11 @@ export function RoleWorkspaceForm({ role, mode, authContext }: RoleWorkspaceForm
 
   const handleSave = async (): Promise<boolean> => {
     if (isViewing) return false;
+    if (permissionsDirty) {
+      toast.error("Review and apply, or discard, the pending permission changes first.");
+      setActiveSection("permissions");
+      return false;
+    }
     const form = document.getElementById(FORM_ID) as HTMLFormElement;
     const formData = new FormData(form);
     setIsSubmitting(true);
@@ -146,7 +152,7 @@ export function RoleWorkspaceForm({ role, mode, authContext }: RoleWorkspaceForm
       sections={sections}
       activeSection={activeSection}
       onSectionChange={setActiveSection}
-      isDirty={isDirty}
+      isDirty={isDirty || permissionsDirty}
       onSave={isEditable ? handleSave : undefined}
       onSaveAndClose={isEditable ? handleSaveAndClose : undefined}
       onRequestClose={handleRequestClose}
@@ -323,10 +329,12 @@ export function RoleWorkspaceForm({ role, mode, authContext }: RoleWorkspaceForm
       {!isAdding && role && (
         <ERPRecordSectionPanel id="permissions" activeId={activeSection} title="Permissions" lazyMount>
           <RolePermissionsSection
+            key={role.id}
             roleId={role.id}
             isSystemRole={role.is_system_role}
-            canManage={canManage ?? false}
+            canManage={!isViewing && (canManage ?? false)}
             isGlobalAdmin={isAdmin}
+            onDirtyChange={setPermissionsDirty}
           />
         </ERPRecordSectionPanel>
       )}
@@ -338,7 +346,7 @@ export function RoleWorkspaceForm({ role, mode, authContext }: RoleWorkspaceForm
             roleId={role.id}
             roleName={role.role_name}
             canManageUsers={
-              authContext.permissionCodes?.includes("users.update") ||
+              authContext.permissionCodes?.includes("users.roles.assign") ||
               authContext.roleCodes?.includes("system_admin") ||
               false
             }

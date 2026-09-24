@@ -1,11 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { createClient } from "@/lib/supabase/client";
 import { changePasswordSchema } from "@/lib/validation/auth";
 import { completeRequiredPasswordChange } from "@/server/actions/users/account-security";
 import { Button } from "@/components/ui/button";
@@ -21,6 +19,7 @@ import {
 } from "@/components/ui/card";
 import { ShieldAlert } from "lucide-react";
 import { signOut } from "@/features/auth/actions";
+import { navigateAfterIdentityChange } from "@/lib/auth/client-session";
 
 type FormInput = { password: string; confirmPassword: string };
 
@@ -29,40 +28,32 @@ type Props = {
 };
 
 export function ChangePasswordRequiredForm({ reason }: Props) {
-  const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const operationId = useRef<string | null>(null);
   const {
     register,
     handleSubmit,
     formState: { errors },
   } = useForm<FormInput>({ resolver: zodResolver(changePasswordSchema) });
 
-  const onSubmit = handleSubmit(async (values) => {
+  const onSubmit = async (values: FormInput) => {
     setLoading(true);
     try {
-      const supabase = createClient();
-      const { error: authError } = await supabase.auth.updateUser({
-        password: values.password,
-      });
-
-      if (authError) {
-        toast.error(authError.message);
-        return;
-      }
-
-      const result = await completeRequiredPasswordChange();
+      operationId.current ??= crypto.randomUUID();
+      const result = await completeRequiredPasswordChange({ newPassword: values.password, operationId: operationId.current });
       if (!result.success) {
-        toast.error(result.error ?? "Failed to complete password change");
+        if (result.canStartNewAttempt) operationId.current = null;
+        toast.error(result.error ?? "Password change could not complete.");
         return;
       }
-
       toast.success("Password changed successfully. Welcome to ALGT ERP.");
-      router.push("/dashboard");
-      router.refresh();
+      navigateAfterIdentityChange("/dashboard");
+    } catch {
+      toast.error("The request was interrupted. Please sign in again before trying another password change.");
     } finally {
       setLoading(false);
     }
-  });
+  };
 
   return (
     <Card className="w-full max-w-md">
@@ -80,7 +71,7 @@ export function ChangePasswordRequiredForm({ reason }: Props) {
           </p>
         ) : null}
       </CardHeader>
-      <form onSubmit={onSubmit}>
+      <form onSubmit={(event) => void handleSubmit(onSubmit)(event)}>
         <CardContent className="flex flex-col gap-4">
           <p className="text-xs text-muted-foreground">
             Password must be at least 10 characters and include at least one uppercase letter, one lowercase letter, and one digit.
@@ -117,8 +108,12 @@ export function ChangePasswordRequiredForm({ reason }: Props) {
             {loading ? "Saving..." : "Set new password"}
           </Button>
           <Button
-            type="submit"
-            formAction={signOut}
+            type="button"
+            onClick={async () => {
+              const result = await signOut();
+              if (!result.success) toast.error(result.error);
+              else navigateAfterIdentityChange();
+            }}
             variant="ghost"
             size="sm"
             className="text-muted-foreground"

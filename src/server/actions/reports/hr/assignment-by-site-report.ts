@@ -3,31 +3,31 @@
  * Phase: REPORT.4 — HR.11 Reports + Letters + Forms Library
  */
 import type { ReportFetcher, ReportDataResult } from "@/lib/report-center/types";
-import { createAdminClient } from "@/lib/supabase/admin";
+import type { ReportReadClient } from "@/lib/report-center/scoped-read-client";
 
 export const assignmentBySiteFetcher: ReportFetcher = {
   reportCode: "HR_ASSIGNMENT_BY_SITE",
 
-  async fetch(filters: Record<string, unknown>): Promise<ReportDataResult> {
-    const db = createAdminClient();
+  async fetch(filters: Record<string, unknown>, _permissions: string[], db: ReportReadClient): Promise<ReportDataResult> {
+
 
     let q = db
       .from("employee_assignments")
       .select(
-        `id, employee_id, work_site_id, assignment_start, assignment_end, assignment_status,
+        `id, employee_id, work_site_id, assignment_start:effective_from, assignment_end:effective_to, assignment_status,
          notes,
-         employee:employees(
+         employee:employees!employee_assignments_employee_id_fkey(
            employee_code, full_name_en, owner_company_id,
            owner_company:owner_companies!employees_owner_company_id_fkey(legal_name_en)
          ),
          work_site:work_sites(site_name, site_code)`
       )
       .is("deleted_at", null)
-      .order("assignment_start", { ascending: false });
+      .order("effective_from", { ascending: false });
 
     if (filters.work_site_id) q = q.eq("work_site_id", Number(filters.work_site_id));
-    if (filters.date_from) q = q.gte("assignment_start", String(filters.date_from));
-    if (filters.date_to) q = q.lte("assignment_start", String(filters.date_to));
+    if (filters.date_from) q = q.gte("effective_from", String(filters.date_from));
+    if (filters.date_to) q = q.lte("effective_from", String(filters.date_to));
     if (filters.employee_status) q = q.eq("assignment_status", String(filters.employee_status));
 
     if (filters.owner_company_id) {

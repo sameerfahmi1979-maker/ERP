@@ -9,6 +9,7 @@ import { revalidatePath } from "next/cache";
 import { logAudit, createAuditDiff } from "@/server/actions/audit";
 import { sanitizeServerActionError } from "@/lib/audit/sanitizers";
 import { batchSafeAuthMetadata } from "@/lib/users/auth-metadata";
+import { permissionModuleGroup } from "@/lib/rbac/permission-taxonomy";
 import {
   createRoleSchema,
   updateRoleSchema,
@@ -147,6 +148,7 @@ export async function updateRole(input: UpdateRoleInput): Promise<ActionResult> 
     if (oldData.is_system_role && !isGlobalAdmin(ctx)) {
       return { success: false, error: "System roles can only be modified by a global administrator." };
     }
+    if (oldData.role_code === "system_admin" && updates.is_active === false) return { success: false, error: "The system administrator role cannot be deactivated." };
 
     // Never allow role_code or is_system_role mutation
     const dataToUpdate: Record<string, unknown> = {};
@@ -347,100 +349,10 @@ export async function cloneRole(
 
     const supabase = await createClient();
 
-    // 1. Load source role
-    const { data: sourceRole, error: sourceErr } = await supabase
-      .from("roles")
-      .select("*")
-      .eq("id", sourceRoleId)
-      .single();
-
-    if (sourceErr || !sourceRole) {
-      return { success: false, error: "Source role not found" };
-    }
-
-    // 2. Check new role_code uniqueness
-    const { data: existing } = await supabase
-      .from("roles")
-      .select("id")
-      .eq("role_code", validated.role_code)
-      .maybeSingle();
-
-    if (existing) {
-      return { success: false, error: `Role code "${validated.role_code}" is already in use` };
-    }
-
-    // 3. Create new custom role
-    const { data: newRole, error: insertErr } = await supabase
-      .from("roles")
-      .insert({
-        role_code: validated.role_code,
-        role_name: validated.role_name,
-        display_name: validated.display_name || null,
-        description: validated.description || null,
-        role_category: validated.role_category || null,
-        role_level: validated.role_level || null,
-        notes: validated.notes || null,
-        is_system_role: false,  // always custom
-        is_assignable: true,
-        is_active: true,
-      })
-      .select("id, role_code")
-      .single();
-
-    if (insertErr || !newRole) {
-      logger.error("cloneRole insert error", insertErr);
-      return { success: false, error: insertErr?.message ?? "Failed to create cloned role" };
-    }
-
-    // 4. Copy active permissions from source role
-    const { data: sourcePerms } = await supabase
-      .from("role_permissions")
-      .select("permission_id, permissions!permission_id(is_active)")
-      .eq("role_id", sourceRoleId);
-
-    let permissionsCopiedCount = 0;
-
-    if (sourcePerms && sourcePerms.length > 0) {
-      const activePerms = sourcePerms.filter((sp) => {
-        const perm = sp.permissions as { is_active?: boolean } | null;
-        return perm?.is_active !== false; // copy active permissions only
-      });
-
-      if (activePerms.length > 0) {
-        const permInserts = activePerms.map((sp) => ({
-          role_id: newRole.id,
-          permission_id: sp.permission_id,
-        }));
-
-        const { error: permErr } = await supabase
-          .from("role_permissions")
-          .insert(permInserts);
-
-        if (permErr) {
-          // Best-effort cleanup: delete the new role so we don't leave orphaned record
-          await supabase.from("roles").delete().eq("id", newRole.id);
-          logger.error("cloneRole permission copy error", permErr);
-          return { success: false, error: "Failed to copy permissions — role creation rolled back" };
-        }
-
-        permissionsCopiedCount = activePerms.length;
-      }
-    }
-
-    // 5. Audit
-    await logAudit({
-      module_code: "roles",
-      entity_name: "roles",
-      entity_id: newRole.id,
-      entity_reference: newRole.role_code,
-      action: "ROLE_CLONED",
-      new_values: {
-        source_role_code: sourceRole.role_code,
-        new_role_code: newRole.role_code,
-        permissions_copied_count: permissionsCopiedCount,
-        is_system_role: false,
-      },
-    });
+    if (!Number.isSafeInteger(sourceRoleId) || sourceRoleId <= 0) return { success: false, error: "Invalid source role" };
+    // Role, permissions and audit commit together; any failure rolls back all three.
+    const { data: newRole, error } = await supabase.rpc("f03_clone_role", { source_id: sourceRoleId, details: validated });
+    if (error || !newRole) return { success: false, error: "Role cloning did not complete. Reload the roles list before retrying." };
 
     revalidatePath("/admin/roles");
     return { success: true, data: { id: newRole.id, role_code: newRole.role_code } };
@@ -508,7 +420,7 @@ export async function getRoleWithUsersAction(
 
     if (userRolesError) {
       logger.error("getRoleWithUsersAction user_roles error", userRolesError.message);
-      return { success: true, data: { role, assigned_users: [] } };
+      return { success: false, error: "Assigned users could not be loaded." };
     }
 
     if (!userRoles || userRoles.length === 0) {
@@ -620,7 +532,8 @@ export async function getRolePermissionsAction(
     const supabase = await createClient();
 
     // Get role to know if it is a system role
-    const { data: role } = await supabase.from("roles").select("is_system_role").eq("id", roleId).single();
+    const { data: role, error: roleError } = await supabase.from("roles").select("is_system_role").eq("id", roleId).single();
+    if (roleError || !role) return { success: false, error: "Role could not be loaded." };
 
     // Get all permissions
     const { data: allPerms, error: permsError } = await supabase
@@ -636,18 +549,20 @@ export async function getRolePermissionsAction(
     }
 
     // Get assigned permission ids for this role
-    const { data: rolePerms } = await supabase
+    const { data: rolePerms, error: assignedError } = await supabase
       .from("role_permissions")
       .select("permission_id")
       .eq("role_id", roleId);
 
+    if (assignedError) return { success: false, error: "Assigned permissions could not be loaded." };
     const assignedIds = new Set((rolePerms ?? []).map((rp) => rp.permission_id));
 
     // Group by module_code
     const groupMap = new Map<string, PermissionGroupRow["permissions"]>();
     for (const perm of allPerms ?? []) {
-      if (!groupMap.has(perm.module_code)) groupMap.set(perm.module_code, []);
-      groupMap.get(perm.module_code)!.push({
+      const moduleGroup = permissionModuleGroup(perm.module_code);
+      if (!groupMap.has(moduleGroup)) groupMap.set(moduleGroup, []);
+      groupMap.get(moduleGroup)!.push({
         id: perm.id,
         permission_code: perm.permission_code,
         permission_name: perm.permission_name,

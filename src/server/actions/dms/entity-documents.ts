@@ -108,7 +108,6 @@ export async function getDmsDocumentsByEntity(
           issue_date,
           expiry_date,
           migrated_from_table,
-          ai_summary,
           ai_risk_level,
           ai_risk_score,
           completeness_score,
@@ -179,7 +178,8 @@ export async function getDmsDocumentsByEntity(
         document_type_code: docType?.type_code ?? null,
         has_files: filesCount > 0,
         files_count: filesCount,
-        // Redact AI summary for restricted documents unless user is admin
+        // Content is loaded separately by the checked summary action, never by
+        // an embedded metadata join (which cannot apply column masking).
         ai_summary:
           isConfidential && !isAdmin
             ? null

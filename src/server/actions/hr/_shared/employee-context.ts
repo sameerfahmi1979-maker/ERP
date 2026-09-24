@@ -5,10 +5,9 @@
  * pattern that previously appeared in actions.ts, compliance.ts, operations.ts,
  * payroll.ts, and time.ts.
  */
-"use server";
+import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 
 export type EmployeeCtx = {
   id: number;
@@ -32,12 +31,10 @@ export async function getEmployeeCtx(employeeId: number): Promise<EmployeeCtx | 
 }
 
 /**
- * Load minimal employee context using the admin Supabase client (bypasses RLS).
- * Use in server actions that already have an admin client available, or where
- * the operation requires bypassing RLS (e.g. audit logging).
+ * Compatibility name for internal callers. This no longer bypasses employee RLS.
  */
 export async function getEmployeeCtxAdmin(employeeId: number): Promise<EmployeeCtx | null> {
-  const admin = await createAdminClient();
+  const admin = await createClient();
   const { data } = await admin
     .from("employees")
     .select("id, employee_code, full_name_en, owner_company_id")

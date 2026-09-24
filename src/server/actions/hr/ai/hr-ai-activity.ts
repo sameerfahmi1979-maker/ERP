@@ -8,7 +8,9 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, hasPermissionInScope } from "@/lib/rbac/check";
+import { getEmployeeAccess } from "@/lib/rbac/employee-access";
+import { createClient } from "@/lib/supabase/server";
 import { HR_AI_FEATURE_FLAGS } from "@/lib/hr/ai/types";
 import type { HrAiActivityRecord, HrAiActionResult } from "@/lib/hr/ai/types";
 
@@ -23,6 +25,14 @@ export async function listHrAiActivity(
     if (!ctx.profile?.id) return { success: false, error: "Not authenticated." };
     if (!hasPermission(ctx, "hr.ai.view"))
       return { success: false, error: "Permission denied: hr.ai.view required." };
+
+    if (!Number.isSafeInteger(entityId) || entityId <= 0) return { success: false, error: "Invalid subject." };
+    if (entityType === "employee") {
+      if (!(await getEmployeeAccess(ctx, entityId)).allows("hr.ai.view")) return { success: false, error: "Access denied." };
+    } else if (entityType === "candidate") {
+      const candidate = await (await createClient()).from("hr_candidates").select("id,owner_company_id,branch_id").eq("id",entityId).is("deleted_at",null).maybeSingle();
+      if (candidate.error || !candidate.data || !hasPermissionInScope(ctx,"hr.ai.view",candidate.data.owner_company_id,candidate.data.branch_id)) return { success: false, error: "Candidate unavailable or access denied." };
+    } else return { success: false, error: "Invalid subject." };
 
     const db = createAdminClient();
     const { data, error } = await db

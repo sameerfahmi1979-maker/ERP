@@ -16,6 +16,8 @@
 
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { getEmployeeAccess } from "@/lib/rbac/employee-access";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { callCommonAiStructuredCompletion } from "@/lib/ai/common/provider-bridge";
 import { isHrAiMasterEnabled, isHrAiFeatureEnabled } from "@/lib/hr/ai/feature-flags";
@@ -44,7 +46,10 @@ export async function draftHrLetterOrEmail(
 ): Promise<HrAiActionResult<HrAiDraftOutput>> {
   const start = Date.now();
   try {
-    const ctx = await getAuthContext();
+    const validatedInput = DraftInputSchema.safeParse(input);
+    if (!validatedInput.success) return { success: false, error: "Invalid input." };
+    const access = await getEmployeeAccess(await getAuthContext(), validatedInput.data.employeeId);
+    const ctx = access.scopedContext;
     if (!ctx.profile?.id) return { success: false, error: "Not authenticated." };
     if (!hasPermission(ctx, "hr.ai.use"))
       return { success: false, error: "Permission denied: hr.ai.use required." };
@@ -60,8 +65,8 @@ export async function draftHrLetterOrEmail(
 
     if (requiresPayrollView && !hasPermission(ctx, "hr.payroll.view"))
       return { success: false, error: "Permission denied: hr.payroll.view required for salary certificate drafts." };
-    if (requiresActionsView && !hasPermission(ctx, "hr.actions.view"))
-      return { success: false, error: "Permission denied: hr.actions.view required for warning letter drafts." };
+    if (requiresActionsView && (!hasPermission(ctx, "hr.actions.view") || !hasPermission(ctx, "hr.confidential.view")))
+      return { success: false, error: "Permission denied: HR action and confidential-record access are required for warning letter drafts." };
 
     const [masterEnabled, featureEnabled] = await Promise.all([
       isHrAiMasterEnabled(),
@@ -70,7 +75,7 @@ export async function draftHrLetterOrEmail(
     if (!masterEnabled || !featureEnabled)
       return { success: false, error: "HR AI letter draft feature is currently disabled.", featureDisabled: true };
 
-    const db = createAdminClient();
+    const db = await createClient();
 
     // Load safe employee context.
     // NOTE: employees has TWO FKs to owner_companies (owner_company_id + sponsor_company_id),

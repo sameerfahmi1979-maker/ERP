@@ -160,7 +160,7 @@ const navSections: NavSection[] = [
         items: [
           { label: "Dashboard", icon: LayoutDashboard, path: "/admin/hr/dashboard", requiredAnyPermissions: ["hr.dashboard.view", "hr.employees.view", "hr.admin"] },
           { label: "Search",    icon: Search,          path: "/admin/hr/search",    requiredAnyPermissions: ["hr.search.use", "hr.admin"] },
-          { label: "Employees", icon: UsersRound,      path: "/admin/hr/employees", requiredAnyPermissions: ["hr.employees.view", "hr.admin"] },
+          { label: "Employees", icon: UsersRound,      path: "/admin/hr/employees", requiredAnyPermissions: ["hr.employees.view", "hr.employee_profile.view", "hr.employees.view.self", "hr.employees.view.team"] },
           { label: "Document Browser", icon: FolderSearch, path: "/admin/hr/document-browser", requiredAnyPermissions: ["hr.employees.view", "hr.admin"] },
         ],
       },

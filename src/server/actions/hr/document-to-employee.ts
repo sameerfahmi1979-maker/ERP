@@ -14,7 +14,8 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, hasPermissionInScope } from "@/lib/rbac/check";
+import { checkDocumentConfidentialityAccess } from "@/lib/dms/document-access";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
 import { logger } from "@/lib/logger";
@@ -65,7 +66,7 @@ export async function getDmsDocumentsForEmployeeCreate(params: {
       return { success: false, error: "Permission denied: dms.documents.view required" };
     }
 
-    const adminClient = createAdminClient();
+    const adminClient = await createClient();
 
     const limit = Math.min(params.limit ?? 50, 200);
     const offset = params.offset ?? 0;
@@ -196,7 +197,7 @@ export async function aggregateEmployeeDraftFromDmsDocuments(
       return { success: false, error: "No documents selected" };
     }
 
-    const adminClient = createAdminClient();
+    const adminClient = await createClient();
     const supabase = await createClient();
 
     // Load selected documents (adminClient — permission already verified above)
@@ -216,6 +217,10 @@ export async function aggregateEmployeeDraftFromDmsDocuments(
       .is("deleted_at", null);
 
     if (docsError) return { success: false, error: docsError.message };
+    if (docs?.length !== new Set(documentIds).size) return { success: false, error: "One or more documents are unavailable or outside your access scope." };
+    for (const docId of documentIds) {
+      if (!(await checkDocumentConfidentialityAccess(supabase,docId,ctx,"dms.documents.preview")).allowed) return { success: false, error: "Document content access is required for every selected document." };
+    }
 
     // Load HR identity document type map
     const { data: identityTypes } = await adminClient
@@ -404,9 +409,17 @@ export async function createEmployeeFromDmsDocuments(
     }
 
     const input = parsed.data;
-    const adminClient = createAdminClient();
+    if (!hasPermissionInScope(ctx,"hr.employees.create",input.owner_company_id,input.branch_id ?? null)) return { success: false, error: "Employee creation is not permitted in this company/branch." };
+    const adminClient = await createClient();
     const supabase = await createClient();
     const warnings: string[] = [];
+    for (const docId of input.selectedDocumentIds) {
+      if (!(await checkDocumentConfidentialityAccess(supabase,docId,ctx,"dms.documents.preview")).allowed) return { success: false, error: "Document content access is required for every selected document." };
+    }
+    for (const rec of input.complianceRecords) {
+      const capability = rec.kind === "medical_insurance" ? "hr.medical.manage" : "hr.compliance.manage";
+      if (!hasPermissionInScope(ctx,capability,input.owner_company_id,input.branch_id ?? null)) return { success: false, error: "A selected compliance record requires separate access in the employee's company/branch." };
+    }
 
     // Server-side duplicate check (mobile / email / name+DOB)
     const duplicates = await runDuplicateChecks(supabase, {
@@ -479,7 +492,7 @@ export async function createEmployeeFromDmsDocuments(
     }
 
     // Step 1: Generate employee code
-    const { data: numData, error: numError } = await adminClient.rpc(
+    const { data: numData, error: numError } = await createAdminClient().rpc(
       "generate_next_reference_number",
       {
         p_rule_code: "HR_EMPLOYEE",

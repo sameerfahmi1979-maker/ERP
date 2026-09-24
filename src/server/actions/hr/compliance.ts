@@ -14,13 +14,13 @@
  *
  * Security model:
  *   - All reads use createClient() (RLS enforced)
- *   - All writes use createAdminClient() with explicit permission + employee-access check
+ *   - All writes use createClient() with subject-scoped RLS and application capability checks
  *   - Medical records require hr.medical.view/manage separately from hr.compliance.view/manage
  */
 
 import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { createAdminClient } from "@/lib/supabase/admin";
+
 import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
@@ -248,7 +248,7 @@ async function validateIdentityDocumentGeography(input: {
   issuing_emirate_id?: number | null;
   issue_city_id?: number | null;
 }): Promise<string | null> {
-  const admin = await createAdminClient();
+  const admin = await createClient();
 
   if (input.issue_city_id && !input.issuing_emirate_id) {
     return "Place of issue (city) requires an issuing region to be selected";
@@ -369,7 +369,7 @@ export async function createEmployeeIdentityDocument(
       dmsLinkCreated = linkResult.data?.created ?? false;
     }
 
-    const admin = await createAdminClient();
+    const admin = await createClient();
     const { data, error } = await admin
       .from("employee_identity_documents")
       .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id, updated_by: ctx.profile?.id })
@@ -404,7 +404,7 @@ export async function updateEmployeeIdentityDocument(
     const parsed = identityDocumentSchema.partial().safeParse(input);
     if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
-    const admin = await createAdminClient();
+    const admin = await createClient();
     const { data: existing } = await admin
       .from("employee_identity_documents")
       .select("id, employee_id, document_number, issue_country_id, issuing_emirate_id, issue_city_id")
@@ -464,7 +464,7 @@ export async function archiveEmployeeIdentityDocument(id: number): Promise<Actio
     if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
       return { success: false, error: "Permission denied" };
     }
-    const admin = await createAdminClient();
+    const admin = await createClient();
     const { data: existing } = await admin
       .from("employee_identity_documents")
       .select("id, employee_id, document_number")
@@ -500,7 +500,7 @@ export async function verifyEmployeeIdentityDocument(id: number): Promise<Action
     if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
       return { success: false, error: "Permission denied" };
     }
-    const admin = await createAdminClient();
+    const admin = await createClient();
     const { data: existing } = await admin
       .from("employee_identity_documents")
       .select("id, employee_id, document_number")
@@ -531,7 +531,7 @@ export async function updateIdentityDocumentRenewalStatus(
     if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
       return { success: false, error: "Permission denied" };
     }
-    const admin = await createAdminClient();
+    const admin = await createClient();
     const { data: existing } = await admin
       .from("employee_identity_documents")
       .select("id, employee_id")
@@ -578,7 +578,7 @@ export async function listEmployeeMedicalInsurances(
 ): Promise<ActionResult<EmployeeMedicalInsuranceRow[]>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.compliance.view") && !hasPermission(ctx, "hr.admin")) {
+    if (!hasPermission(ctx, "hr.medical.view")) {
       return { success: false, error: "Permission denied" };
     }
     const supabase = await createClient();
@@ -601,7 +601,7 @@ export async function createEmployeeMedicalInsurance(
 ): Promise<ActionResult<{ id: number; dmsLinkCreated?: boolean }>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
+    if (!hasPermission(ctx, "hr.medical.manage")) {
       return { success: false, error: "Permission denied" };
     }
     const parsed = medicalInsuranceSchema.safeParse(input);
@@ -621,7 +621,7 @@ export async function createEmployeeMedicalInsurance(
       dmsLinkCreated = linkResult.data?.created ?? false;
     }
 
-    const admin = await createAdminClient();
+    const admin = await createClient();
     const { data, error } = await admin
       .from("employee_medical_insurances")
       .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id, updated_by: ctx.profile?.id })
@@ -650,13 +650,13 @@ export async function updateEmployeeMedicalInsurance(
 ): Promise<ActionResult> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
+    if (!hasPermission(ctx, "hr.medical.manage")) {
       return { success: false, error: "Permission denied" };
     }
     const parsed = medicalInsuranceSchema.partial().safeParse(input);
     if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
-    const admin = await createAdminClient();
+    const admin = await createClient();
     const { data: existing } = await admin
       .from("employee_medical_insurances")
       .select("id, employee_id, policy_number")
@@ -690,10 +690,10 @@ export async function updateEmployeeMedicalInsurance(
 export async function archiveEmployeeMedicalInsurance(id: number): Promise<ActionResult> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
+    if (!hasPermission(ctx, "hr.medical.manage")) {
       return { success: false, error: "Permission denied" };
     }
-    const admin = await createAdminClient();
+    const admin = await createClient();
     const { data: existing } = await admin
       .from("employee_medical_insurances")
       .select("id, employee_id")
@@ -718,10 +718,10 @@ export async function archiveEmployeeMedicalInsurance(id: number): Promise<Actio
 export async function verifyEmployeeMedicalInsurance(id: number): Promise<ActionResult> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
+    if (!hasPermission(ctx, "hr.medical.manage")) {
       return { success: false, error: "Permission denied" };
     }
-    const admin = await createAdminClient();
+    const admin = await createClient();
     const { data: existing } = await admin
       .from("employee_medical_insurances")
       .select("id, employee_id")
@@ -749,10 +749,10 @@ export async function updateMedicalInsuranceRenewalStatus(
 ): Promise<ActionResult> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
+    if (!hasPermission(ctx, "hr.medical.manage")) {
       return { success: false, error: "Permission denied" };
     }
-    const admin = await createAdminClient();
+    const admin = await createClient();
     const { data: existing } = await admin
       .from("employee_medical_insurances")
       .select("id, employee_id")
@@ -846,7 +846,7 @@ export async function createEmployeeDependent(
       dmsLinkCreated = linkResult.data?.created ?? false;
     }
 
-    const admin = await createAdminClient();
+    const admin = await createClient();
     const { data, error } = await admin
       .from("employee_dependents")
       .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id, updated_by: ctx.profile?.id })
@@ -881,7 +881,7 @@ export async function updateEmployeeDependent(
     const parsed = dependentSchema.partial().safeParse(input);
     if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
-    const admin = await createAdminClient();
+    const admin = await createClient();
     const { data: existing } = await admin
       .from("employee_dependents")
       .select("id, employee_id")
@@ -918,7 +918,7 @@ export async function archiveEmployeeDependent(id: number): Promise<ActionResult
     if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
       return { success: false, error: "Permission denied" };
     }
-    const admin = await createAdminClient();
+    const admin = await createClient();
     const { data: existing } = await admin
       .from("employee_dependents")
       .select("id, employee_id")
@@ -966,7 +966,7 @@ export async function listEmployeeDependentDocumentLinks(
       return { success: false, error: "Permission denied" };
     }
 
-    const admin = createAdminClient();
+    const admin = await createClient();
     const { data, error } = await admin
       .from("dms_document_links")
       .select(
@@ -1027,7 +1027,7 @@ export async function applyEmployeeDependentDocumentLinks(
       return { success: true, data: { added: 0, removed: 0 } };
     }
 
-    const admin = createAdminClient();
+    const admin = await createClient();
     const { data: dependent } = await admin
       .from("employee_dependents")
       .select("id, employee_id, dependent_name_en")
@@ -1170,7 +1170,7 @@ export async function createEmployeeAccessCard(
       dmsLinkCreated = linkResult.data?.created ?? false;
     }
 
-    const admin = await createAdminClient();
+    const admin = await createClient();
     const { data, error } = await admin
       .from("employee_access_cards")
       .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id, updated_by: ctx.profile?.id })
@@ -1205,7 +1205,7 @@ export async function updateEmployeeAccessCard(
     const parsed = accessCardSchema.partial().safeParse(input);
     if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
-    const admin = await createAdminClient();
+    const admin = await createClient();
     const { data: existing } = await admin
       .from("employee_access_cards")
       .select("id, employee_id")
@@ -1242,7 +1242,7 @@ export async function archiveEmployeeAccessCard(id: number): Promise<ActionResul
     if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
       return { success: false, error: "Permission denied" };
     }
-    const admin = await createAdminClient();
+    const admin = await createClient();
     const { data: existing } = await admin
       .from("employee_access_cards")
       .select("id, employee_id")
@@ -1273,7 +1273,7 @@ export async function updateAccessCardRenewalStatus(
     if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
       return { success: false, error: "Permission denied" };
     }
-    const admin = await createAdminClient();
+    const admin = await createClient();
     const { data: existing } = await admin
       .from("employee_access_cards")
       .select("id, employee_id")
@@ -1361,7 +1361,7 @@ export async function createEmployeeTrainingCertificate(
       dmsLinkCreated = linkResult.data?.created ?? false;
     }
 
-    const admin = await createAdminClient();
+    const admin = await createClient();
     const { data, error } = await admin
       .from("employee_training_certificates")
       .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id, updated_by: ctx.profile?.id })
@@ -1396,7 +1396,7 @@ export async function updateEmployeeTrainingCertificate(
     const parsed = trainingCertificateSchema.partial().safeParse(input);
     if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
-    const admin = await createAdminClient();
+    const admin = await createClient();
     const { data: existing } = await admin
       .from("employee_training_certificates")
       .select("id, employee_id")
@@ -1433,7 +1433,7 @@ export async function archiveEmployeeTrainingCertificate(id: number): Promise<Ac
     if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
       return { success: false, error: "Permission denied" };
     }
-    const admin = await createAdminClient();
+    const admin = await createClient();
     const { data: existing } = await admin
       .from("employee_training_certificates")
       .select("id, employee_id")
@@ -1461,7 +1461,7 @@ export async function verifyEmployeeTrainingCertificate(id: number): Promise<Act
     if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
       return { success: false, error: "Permission denied" };
     }
-    const admin = await createAdminClient();
+    const admin = await createClient();
     const { data: existing } = await admin
       .from("employee_training_certificates")
       .select("id, employee_id")
@@ -1492,7 +1492,7 @@ export async function updateTrainingCertificateRenewalStatus(
     if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
       return { success: false, error: "Permission denied" };
     }
-    const admin = await createAdminClient();
+    const admin = await createClient();
     const { data: existing } = await admin
       .from("employee_training_certificates")
       .select("id, employee_id")
@@ -1536,7 +1536,7 @@ export async function listEmployeeMedicalRecords(
 ): Promise<ActionResult<EmployeeMedicalRecordRow[]>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.medical.view") && !hasPermission(ctx, "hr.admin")) {
+    if (!hasPermission(ctx, "hr.medical.view")) {
       return { success: false, error: "Medical records restricted" };
     }
     const supabase = await createClient();
@@ -1559,7 +1559,7 @@ export async function createEmployeeMedicalRecord(
 ): Promise<ActionResult<{ id: number; dmsLinkCreated?: boolean }>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.medical.manage") && !hasPermission(ctx, "hr.admin")) {
+    if (!hasPermission(ctx, "hr.medical.manage")) {
       return { success: false, error: "Medical record management permission required" };
     }
     const parsed = medicalRecordSchema.safeParse(input);
@@ -1579,7 +1579,7 @@ export async function createEmployeeMedicalRecord(
       dmsLinkCreated = linkResult.data?.created ?? false;
     }
 
-    const admin = await createAdminClient();
+    const admin = await createClient();
     const { data, error } = await admin
       .from("employee_medical_records")
       .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id, updated_by: ctx.profile?.id })
@@ -1612,13 +1612,13 @@ export async function updateEmployeeMedicalRecord(
 ): Promise<ActionResult> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.medical.manage") && !hasPermission(ctx, "hr.admin")) {
+    if (!hasPermission(ctx, "hr.medical.manage")) {
       return { success: false, error: "Medical record management permission required" };
     }
     const parsed = medicalRecordSchema.partial().safeParse(input);
     if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
-    const admin = await createAdminClient();
+    const admin = await createClient();
     const { data: existing } = await admin
       .from("employee_medical_records")
       .select("id, employee_id")
@@ -1652,10 +1652,10 @@ export async function updateEmployeeMedicalRecord(
 export async function archiveEmployeeMedicalRecord(id: number): Promise<ActionResult> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.medical.manage") && !hasPermission(ctx, "hr.admin")) {
+    if (!hasPermission(ctx, "hr.medical.manage")) {
       return { success: false, error: "Medical record management permission required" };
     }
-    const admin = await createAdminClient();
+    const admin = await createClient();
     const { data: existing } = await admin
       .from("employee_medical_records")
       .select("id, employee_id")
@@ -1687,7 +1687,7 @@ export async function getEmployeeComplianceSummary(
     if (!hasPermission(ctx, "hr.compliance.view") && !hasPermission(ctx, "hr.admin")) {
       return { success: false, error: "Permission denied" };
     }
-    const admin = await createAdminClient();
+    const admin = await createClient();
     const today = new Date().toISOString().split("T")[0];
     const soonDate = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 

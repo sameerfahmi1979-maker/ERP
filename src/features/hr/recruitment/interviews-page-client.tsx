@@ -87,7 +87,7 @@ export function InterviewsPageClient({ authContext }: Props) {
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {row.interview_datetime ? new Date(row.interview_datetime).toLocaleString() : "No date set"}
-                  {row.interviewer && ` · Interviewer: ${row.interviewer.full_name_en ?? row.interviewer.email}`}
+                  {row.interviewer && ` · Interviewer: ${row.interviewer.full_name_en ?? `User #${row.interviewer.id}`}`}
                   {row.interview_location && ` · ${row.interview_location}`}
                 </p>
               </div>

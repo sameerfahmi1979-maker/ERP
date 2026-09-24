@@ -24,6 +24,8 @@ import { applyRedaction } from "./redaction-engine";
 import type { ApplyRedactionOptions } from "./redaction-engine";
 import { REPORT_FETCHERS } from "./report-fetchers";
 import type { ReportDataResult, ReportRegistryEntry } from "./types";
+import { getAuthContext, assertAccountActive, hasPermission } from "@/lib/rbac/check";
+import { createScopedReportReadClient } from "./scoped-read-client";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -101,9 +103,11 @@ async function loadRegistryEntry(
 export async function runReportFetcherPreview(
   input: PreviewRunInput
 ): Promise<PreviewRunResult> {
-  const { reportCode, filters, permissionCodes, maxRows = PREVIEW_ROW_LIMIT } = input;
+  const { reportCode, filters, maxRows = PREVIEW_ROW_LIMIT } = input;
 
   try {
+    const actor=await getAuthContext(); assertAccountActive(actor);
+    const permissionCodes=actor.permissionCodes; // Ignore any caller-supplied capability list.
     // ── 1. Load registry ──────────────────────────────────────────────────
     const registryEntry = await loadRegistryEntry(reportCode);
     if (!registryEntry) {
@@ -115,7 +119,7 @@ export async function runReportFetcherPreview(
 
     // ── 2. Permission check ───────────────────────────────────────────────
     const missingPerms = (registryEntry.required_permissions ?? []).filter(
-      (p: string) => !permissionCodes.includes(p)
+      (p: string) => !hasPermission(actor,p)&&!hasPermission(actor,p+".self")&&!hasPermission(actor,p+".team")
     );
     if (missingPerms.length > 0) {
       return {
@@ -134,7 +138,7 @@ export async function runReportFetcherPreview(
     }
 
     // ── 4. Execute fetcher (read-only) ────────────────────────────────────
-    const rawResult: ReportDataResult = await fetcher.fetch(filters ?? {}, permissionCodes);
+    const rawResult: ReportDataResult = await fetcher.fetch(filters ?? {}, permissionCodes,await createScopedReportReadClient(actor,reportCode,registryEntry.required_permissions));
 
     const allRows = rawResult.rows ?? [];
     const totalRows = allRows.length;

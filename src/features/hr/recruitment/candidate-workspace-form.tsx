@@ -5,7 +5,8 @@ import type { ERPRecordSection } from "@/components/workspace/erp-record-section
 import { ERPRecordSectionPanel, ERPRecordWorkspaceForm } from "@/components/workspace/erp-record-workspace-form";
 import type { AuthContext } from "@/lib/rbac/check";
 import type { CandidateRow } from "@/server/actions/hr/recruitment";
-import { createCandidate, updateCandidate } from "@/server/actions/hr/recruitment";
+import { createCandidate, updateCandidate, getRecruitmentSalaryAccess } from "@/server/actions/hr/recruitment";
+import { useQuery } from "@tanstack/react-query";
 import { Calendar, CheckSquare, FileText, Gift, LayoutDashboard, User, UserCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -115,6 +116,9 @@ export function CandidateWorkspaceForm({ candidate, mode, authContext }: Props) 
   const canManage = checkPermission(authContext, "hr.recruitment.manage");
   const canView = checkPermission(authContext, "hr.recruitment.view") || canManage;
   const canCreateEmployee = checkPermission(authContext, "hr.employees.create");
+  const {data:salaryAccess}=useQuery({queryKey:['security','recruitment-salary',form.requisition_id],
+    queryFn:()=>getRecruitmentSalaryAccess(form.requisition_id),retry:false,staleTime:0,gcTime:0});
+  const canManageSalary=salaryAccess?.success===true&&salaryAccess.data?.canManage===true;
 
   const isNew = mode === "add";
   const title = isNew ? "New Candidate" : (candidate?.full_name_en ?? "Candidate");
@@ -137,7 +141,7 @@ export function CandidateWorkspaceForm({ candidate, mode, authContext }: Props) 
         referred_by_employee_id: form.referred_by_employee_id,
         current_employer: form.current_employer || null,
         current_position: form.current_position || null,
-        expected_salary: form.expected_salary ? parseFloat(form.expected_salary) : null,
+        ...(canManageSalary?{expected_salary:form.expected_salary?parseFloat(form.expected_salary):null}:{}),
         notice_period_days: form.notice_period_days ? parseInt(form.notice_period_days) : null,
         candidate_status: (form.candidate_status as "new" | "screening" | "shortlisted" | "interview" | "selected" | "offered" | "accepted" | "rejected" | "withdrawn" | "hired" | "blacklisted"),
         pipeline_stage: (form.pipeline_stage as "new" | "screening" | "shortlisted" | "interview" | "offer" | "onboarding" | "hired" | "closed"),
@@ -198,6 +202,7 @@ export function CandidateWorkspaceForm({ candidate, mode, authContext }: Props) 
           setForm={setForm}
           mode={mode}
           canManage={canManage}
+          canManageSalary={canManageSalary}
         />
       </ERPRecordSectionPanel>
 
@@ -230,6 +235,9 @@ export function CandidateWorkspaceForm({ candidate, mode, authContext }: Props) 
           <CandidateOffersTab
             candidateId={candidate.id}
             canManage={canManage}
+            authContext={authContext}
+            defaultCompanyId={salaryAccess?.data?.companyId??null}
+            defaultBranchId={salaryAccess?.data?.branchId??null}
             onChildOpen={setChildDialogOpen}
           />
         ) : (

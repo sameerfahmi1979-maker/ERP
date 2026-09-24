@@ -411,7 +411,7 @@ export function EmployeeWorkspaceForm({ employee, mode, authContext }: Props) {
 
         {/* Profile */}
         <ERPRecordSectionPanel id="profile" activeId={activeSection} title="Employee Profile">
-          <EmployeeProfileTab {...profileTabProps} />
+          <EmployeeProfileTab {...profileTabProps} canManageMedical={checkPermission(authContext,"hr.medical.manage")} />
         </ERPRecordSectionPanel>
 
         {/* Compliance — HR.3 */}

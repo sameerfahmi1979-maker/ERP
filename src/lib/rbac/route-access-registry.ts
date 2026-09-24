@@ -33,7 +33,7 @@ export const ROUTE_ACCESS_REGISTRY: Record<string, RouteAccess> = {
   // ── Human Resource ─────────────────────────────────────────────────────────
   "/admin/hr/dashboard":                          { requiredAnyPermissions: ["hr.dashboard.view", "hr.employees.view", "hr.admin"] },
   "/admin/hr/search":                             { requiredAnyPermissions: ["hr.search.use", "hr.admin"] },
-  "/admin/hr/employees":                          { requiredAnyPermissions: ["hr.employees.view", "hr.admin"] },
+  "/admin/hr/employees":                          { requiredAnyPermissions: ["hr.employees.view", "hr.employee_profile.view", "hr.employees.view.self", "hr.employees.view.team"] },
   "/admin/hr/actions/pro":                        { requiredAnyPermissions: ["hr.actions.view", "hr.actions.manage", "hr.admin"] },
   "/admin/hr/actions/disciplinary":               { requiredAnyPermissions: ["hr.actions.view", "hr.actions.manage", "hr.admin"] },
   "/admin/hr/actions/approvals":                  { requiredAnyPermissions: ["hr.actions.view", "hr.actions.manage", "hr.admin"] },
@@ -169,6 +169,7 @@ export function canAccessRoute(
 const FIRST_ROUTE_PRIORITY = [
   "/dashboard",
   "/admin/hr/dashboard",
+  "/admin/hr/employees",
   "/dms",
   "/admin/reports",
   "/admin/users",

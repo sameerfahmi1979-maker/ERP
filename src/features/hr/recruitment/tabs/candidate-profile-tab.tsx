@@ -38,6 +38,7 @@ type Props = {
   setForm: (f: FormState | ((prev: FormState) => FormState)) => void;
   mode: "add" | "edit" | "view";
   canManage: boolean;
+  canManageSalary: boolean;
 };
 
 const SOURCE_OPTIONS = [
@@ -87,7 +88,7 @@ const RATING_OPTIONS = [
   { value: "not_suitable", label: "Not Suitable" },
 ];
 
-export function CandidateProfileTab({ form, setForm, mode, canManage }: Props) {
+export function CandidateProfileTab({ form, setForm, mode, canManage, canManageSalary }: Props) {
   const isView = mode === "view" || !canManage;
 
   const { data: reqRes } = useQuery({
@@ -231,7 +232,8 @@ export function CandidateProfileTab({ form, setForm, mode, canManage }: Props) {
 
           <div className="col-span-12 md:col-span-4">
             <Label>Expected Salary (AED)</Label>
-            <Input type="number" value={form.expected_salary} onChange={(e) => set("expected_salary", e.target.value)} disabled={isView} placeholder="0.00" min={0} />
+            <Input type="number" value={form.expected_salary} onChange={(e) => set("expected_salary", e.target.value)} disabled={isView||!canManageSalary} placeholder={canManageSalary?"0.00":"Salary access restricted"} min={0} />
+            {!canManageSalary&&<p className="text-xs text-muted-foreground">Separate scoped salary permissions are required to edit this field.</p>}
           </div>
           <div className="col-span-12 md:col-span-4">
             <Label>Notice Period (Days)</Label>

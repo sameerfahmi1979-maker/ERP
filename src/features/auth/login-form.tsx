@@ -8,12 +8,15 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { ArrowRight } from "lucide-react";
 import gsap from "gsap";
-import { createClient } from "@/lib/supabase/client";
+import { signIn } from "@/features/auth/login-action";
+import { broadcastIdentityChange } from "@/lib/auth/client-session";
 import { loginSchema, type LoginInput } from "@/lib/validation/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RequiredLabel } from "@/components/erp/required-label";
 import type { RuntimeAppBranding } from "@/lib/branding/runtime-types";
+import { useSearchParams } from "next/navigation";
+import { safeAuthDestination } from "@/lib/auth/navigation";
 
 const signupEnabled = process.env.NEXT_PUBLIC_SIGNUP_ENABLED === "true";
 
@@ -22,6 +25,8 @@ type LoginFormProps = {
 };
 
 export function LoginForm({ branding }: LoginFormProps) {
+  const searchParams = useSearchParams();
+  const errorCode = searchParams.get("error");
   const [loading, setLoading] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -102,24 +107,28 @@ export function LoginForm({ branding }: LoginFormProps) {
 
   const onSubmit = handleSubmit(async (values) => {
     setLoading(true);
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({
+    try {
+    const result = await signIn({
       email: values.email,
       password: values.password,
     });
 
-    if (error) {
+    if (!result.success) {
       setLoading(false);
-      toast.error(error.message);
+      toast.error("Unable to sign in. Check your email and password, or try again later.");
       return;
     }
 
     toast.success("Signed in successfully");
-
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    broadcastIdentityChange();
 
     // A full same-origin navigation clears pre-login router state after cookies change.
-    window.location.assign(new URL("/start", window.location.origin).href);
+    window.location.assign(new URL(safeAuthDestination(searchParams.get("redirectTo")), window.location.origin).href);
+    } catch {
+      toast.error("Sign-in service is unavailable. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   });
 
   return (
@@ -177,6 +186,11 @@ export function LoginForm({ branding }: LoginFormProps) {
         />
 
         <form onSubmit={onSubmit} className="px-8 pb-8">
+          {errorCode && <p role="alert" className="mb-4 text-sm text-amber-200">
+            {errorCode === "auth_unavailable" ? "The sign-in service is temporarily unavailable. Please try again." :
+              errorCode === "account_mismatch" ? "This link belongs to another account. Sign out, then request and open a new link." :
+              "This link is invalid, expired or already used. Request a new password reset, or ask your administrator to resend your invitation."}
+          </p>}
           <div data-auth-reveal className="flex flex-col gap-1.5">
             <RequiredLabel
               htmlFor="email"

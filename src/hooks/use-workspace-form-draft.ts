@@ -33,6 +33,8 @@ import { snapshotFormData } from "@/lib/workspace/workspace-draft-store";
 export type UseWorkspaceFormDraftOptions = {
   /** HTML id of the form element — used for FormData snapshot */
   formId: string;
+  /** Bind to the owning route rather than the next active tab during navigation. */
+  ownerRoute?: string;
   /** Set false in view mode to disable draft capture. Default: true */
   enabled?: boolean;
   /** Entity type for record-scoped keys (optional, defaults to tab scope) */
@@ -79,6 +81,7 @@ export type UseWorkspaceFormDraftReturn = {
 
 export function useWorkspaceFormDraft({
   formId,
+  ownerRoute,
   enabled = true,
   entityType,
   entityId,
@@ -88,7 +91,7 @@ export function useWorkspaceFormDraft({
 
   // Get active tab id
   const activeTabId = workspaceCtx?.state.tabs.find(
-    (t) => t.id === workspaceCtx.state.activeTabId
+    (t) => ownerRoute ? t.route === ownerRoute : t.id === workspaceCtx.state.activeTabId
   )?.id ?? null;
 
   // Build the draft key for this tab + form

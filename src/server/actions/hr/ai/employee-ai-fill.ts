@@ -22,6 +22,8 @@ import type { HrAiActionResult, HrAiDocumentFillOutput } from "@/lib/hr/ai/types
 import { HR_AI_FEATURE_FLAGS, HrAiDocumentFillOutputSchema } from "@/lib/hr/ai/types";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { getEmployeeAccess } from "@/lib/rbac/employee-access";
 
 // ── Usage log helper ──────────────────────────────────────────────────────────
 
@@ -70,7 +72,8 @@ export async function generateEmployeeDocumentFillSuggestions(
   const start = Date.now();
 
   try {
-    const ctx = await getAuthContext();
+    const access = await getEmployeeAccess(await getAuthContext(), employeeId);
+    const ctx = access.scopedContext;
     if (!ctx.profile?.id) return { success: false, error: "Not authenticated." };
     if (!hasPermission(ctx, "hr.ai.use"))
       return { success: false, error: "Permission denied: hr.ai.use required." };
@@ -85,7 +88,7 @@ export async function generateEmployeeDocumentFillSuggestions(
       return { success: false, error: "HR AI document fill feature is currently disabled.", featureDisabled: true };
     }
 
-    const db = createAdminClient();
+    const db = await createClient();
 
     // 1. Load employee safe profile
     const { data: emp } = await db
@@ -117,8 +120,8 @@ export async function generateEmployeeDocumentFillSuggestions(
       .select(`
         id,
         document:dms_documents(
-          id, document_number, document_type:dms_document_types(type_code, type_name_en),
-          ai_summary, completeness_score, ai_risk_level, issue_date, expiry_date
+          id, document_no, document_type:dms_document_types(type_code, name_en),
+          completeness_score, ai_risk_level, issue_date, expiry_date
         )
       `)
       .eq("entity_type", "employee")
@@ -131,7 +134,7 @@ export async function generateEmployeeDocumentFillSuggestions(
         const doc = firstOrSelf(link.document as unknown) as Record<string, unknown> | null;
         if (!doc) return null;
         const docType = firstOrSelf(doc.document_type as unknown) as Record<string, unknown> | null;
-        const typeName = (docType?.type_name_en as string) ?? "Unknown";
+        const typeName = (docType?.name_en as string) ?? "Unknown";
         const summary = doc.ai_summary as string | null;
         return `Document: ${typeName} | Completeness: ${doc.completeness_score ?? "?"}% | ${
           summary ? `AI Summary: ${summary.slice(0, 300)}` : "No AI summary"

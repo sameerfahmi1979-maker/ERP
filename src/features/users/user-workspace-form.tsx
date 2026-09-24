@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import type { UserWithRoles, OwnerCompany, Branch, Role, UserRoleAssignment } from "@/types/domain";
+import type { UserWithRoles, Role, UserRoleAssignment } from "@/types/domain";
+import type { UserCompanyOption, UserBranchOption } from "@/lib/users/scope-options";
 import { createUser, adminUpdateUserProfile, removeRoleFromUser } from "@/server/actions/users";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { useFormDirty } from "@/hooks/use-form-dirty";
@@ -34,6 +35,7 @@ import { AssignRoleDialog } from "./assign-role-dialog";
 import { SecuritySection } from "./user-security-section";
 import { UserSecurityHistorySection } from "./user-security-history-section";
 import { UserEffectiveAccessSection } from "./user-effective-access-section";
+import { EmployeeIdentityLink } from "./employee-identity-link";
 import { formatRoleScopeLabel } from "@/lib/users/role-scope";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -42,8 +44,8 @@ type UserWorkspaceFormProps = {
   user?: UserWithRoles | null;
   mode: "add" | "edit" | "view";
   authContext: AuthContext;
-  companies?: OwnerCompany[];
-  branches?: Branch[];
+  companies?: UserCompanyOption[];
+  branches?: UserBranchOption[];
   roles?: Role[];
 };
 
@@ -82,9 +84,9 @@ export function UserWorkspaceForm({
   const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const creationOperation = useRef<string | null>(null);
   const [activeSection, setActiveSection] = useState(mode === "add" ? "auth" : "overview");
   const [sendInvite, setSendInvite] = useState(true);
-  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(user?.owner_company_id ?? null);
   const [assignRoleOpen, setAssignRoleOpen] = useState(false);
   const [roleToRemove, setRoleToRemove] = useState<UserRoleAssignment | null>(null);
   const [isRemovingRole, setIsRemovingRole] = useState(false);
@@ -102,6 +104,15 @@ export function UserWorkspaceForm({
   const { getDraftDefault, syncDraft, writeDraftField, clearDraft } = useWorkspaceFormDraft({
     formId: FORM_ID,
     enabled: !isViewing,
+  });
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(() => {
+    const saved = getDraftDefault("owner_company_id", user?.owner_company_id ?? "");
+    return saved && Number.isSafeInteger(Number(saved)) && Number(saved) > 0 ? Number(saved) : null;
+  });
+  const [initialRoleScope, setInitialRoleScope] = useState(() => getDraftDefault("initial_role_scope_company_id", ""));
+  const [initialRoleBranch, setInitialRoleBranch] = useState(() => {
+    const saved = getDraftDefault("initial_role_scope_branch_id", "");
+    return branches.some(b => String(b.id) === saved && String(b.owner_company_id) === initialRoleScope) ? saved : "";
   });
 
   const filteredBranches = selectedCompanyId
@@ -163,7 +174,9 @@ export function UserWorkspaceForm({
         return false;
       }
 
+      creationOperation.current ??= crypto.randomUUID();
       const data = {
+        creation_operation_id: creationOperation.current,
         email: formData.get("email") as string,
         temporary_password: sendInvite ? undefined : (formData.get("temporary_password") as string),
         send_invite_email: sendInvite,
@@ -176,16 +189,19 @@ export function UserWorkspaceForm({
         branch_id: formData.get("branch_id") ? Number(formData.get("branch_id")) : null,
         status: (formData.get("status") as "active" | "inactive" | "suspended") || "active",
         initial_role_id: formData.get("initial_role_id") ? Number(formData.get("initial_role_id")) : null,
-        initial_role_scope_company_id: formData.get("initial_role_scope_company_id") ? Number(formData.get("initial_role_scope_company_id")) : null,
+        initial_role_scope_company_id: initialRoleScope && initialRoleScope !== "global" ? Number(initialRoleScope) : null,
         initial_role_scope_branch_id: formData.get("initial_role_scope_branch_id") ? Number(formData.get("initial_role_scope_branch_id")) : null,
+        initial_role_global_confirmed: initialRoleScope === "global",
       };
       const result = await createUser(data);
       if (result.success) {
-        toast.success("User created successfully");
+        toast.success(`Account created: #${result.data?.user_profile_id}. ${result.data?.stages.email === "provider_accepted" ? "Setup email accepted by provider; delivery is not yet confirmed." : "Review account setup status."}`);
         if (result.error) toast.warning(result.error);
         form.reset();
+        creationOperation.current = null;
         setSendInvite(true);
         setSelectedCompanyId(null);
+        setInitialRoleScope("");
         clearDraft();
         resetDirty();
         if (activeTab?.id) markDirty(activeTab.id, false);
@@ -354,7 +370,7 @@ export function UserWorkspaceForm({
                 {!sendInvite && (
                   <div className="col-span-12 space-y-1.5">
                     <RequiredLabel htmlFor="temporary_password">Temporary Password</RequiredLabel>
-                    <Input type="password" id="temporary_password" name="temporary_password" required={!sendInvite} placeholder="Minimum 8 characters" minLength={8} />
+                    <Input type="password" id="temporary_password" name="temporary_password" required={!sendInvite} placeholder="10+ characters, uppercase, lowercase and digit" minLength={10} maxLength={128} autoComplete="new-password" />
                     <p className="text-[10px] text-muted-foreground">User will be required to change password on first login</p>
                   </div>
                 )}
@@ -457,8 +473,8 @@ export function UserWorkspaceForm({
               <div className="grid grid-cols-12 gap-4">
                 <div className="col-span-12 space-y-1.5">
                   <Label htmlFor="initial_role_id" className="text-muted-foreground text-xs">Primary Role</Label>
-                  <select id="initial_role_id" name="initial_role_id" className={selectClass}>
-                    <option value="">No initial role (Read-only)</option>
+                  <select id="initial_role_id" name="initial_role_id" className={selectClass} defaultValue={getDraftDefault("initial_role_id", "")}>
+                    <option value="">No initial role (No business access)</option>
                     {assignableRoles.map((r) => (
                       <option key={r.id} value={r.id}>{r.role_name} ({r.role_code})</option>
                     ))}
@@ -466,8 +482,9 @@ export function UserWorkspaceForm({
                 </div>
                 <div className="col-span-6 space-y-1.5">
                   <Label htmlFor="initial_role_scope_company_id" className="text-muted-foreground text-xs">Role Scope: Company</Label>
-                  <select id="initial_role_scope_company_id" name="initial_role_scope_company_id" className={selectClass}>
-                    <option value="">Global Scope (All Companies)</option>
+                  <select id="initial_role_scope_company_id" name="initial_role_scope_company_id" className={selectClass} value={initialRoleScope} onChange={(e)=>{ setInitialRoleScope(e.target.value); setInitialRoleBranch(""); writeDraftField("initial_role_scope_company_id",e.target.value); writeDraftField("initial_role_scope_branch_id",""); }}>
+                    <option value="">Choose scope — no default grant</option>
+                    <option value="global">Global — explicitly authorize all companies</option>
                     {companies.map((c) => (
                       <option key={c.id} value={c.id}>{c.legal_name_en}</option>
                     ))}
@@ -475,9 +492,9 @@ export function UserWorkspaceForm({
                 </div>
                 <div className="col-span-6 space-y-1.5">
                   <Label htmlFor="initial_role_scope_branch_id" className="text-muted-foreground text-xs">Role Scope: Branch</Label>
-                  <select id="initial_role_scope_branch_id" name="initial_role_scope_branch_id" className={selectClass}>
-                    <option value="">Global Scope (All Branches)</option>
-                    {branches.map((b) => (
+                  <select id="initial_role_scope_branch_id" name="initial_role_scope_branch_id" className={selectClass} value={initialRoleBranch} onChange={e => {setInitialRoleBranch(e.target.value);writeDraftField("initial_role_scope_branch_id",e.target.value);}} disabled={!initialRoleScope || initialRoleScope==="global"}>
+                    <option value="">All branches within the chosen scope</option>
+                    {branches.filter(b=>String(b.owner_company_id)===initialRoleScope).map((b) => (
                       <option key={b.id} value={b.id}>{b.branch_name_en} ({b.branch_code})</option>
                     ))}
                   </select>
@@ -485,7 +502,7 @@ export function UserWorkspaceForm({
                 <div className="col-span-12 flex gap-2.5 p-3 rounded-lg border border-border bg-muted/20">
                   <ShieldAlert className="h-4 w-4 shrink-0 text-indigo-500 mt-0.5" />
                   <p className="text-[10px] text-muted-foreground leading-normal font-medium">
-                    Leave scopes empty for default access. Select a company to enforce company-wide policies, or select a branch for granular access checks.
+                    Choose the smallest required scope. Global access must be selected deliberately. With no initial role, the new account has no business access.
                   </p>
                 </div>
               </div>
@@ -549,7 +566,7 @@ export function UserWorkspaceForm({
           {mode !== "add" && (
             <ERPRecordSectionPanel id="security" activeId={activeSection} title="Security" lazyMount>
               {user ? (
-                <SecuritySection user={user} authContext={authContext} />
+                <SecuritySection user={user} authContext={authContext} readOnly={isViewing} />
               ) : (
                 <p className="text-sm text-muted-foreground">Security information unavailable.</p>
               )}
@@ -560,7 +577,10 @@ export function UserWorkspaceForm({
           {mode !== "add" && (
             <ERPRecordSectionPanel id="access" activeId={activeSection} title="Effective Access" lazyMount>
               {user ? (
-                <UserEffectiveAccessSection userProfileId={user.id} authContext={authContext} />
+                <div className="space-y-5">
+                  {(authContext.permissionCodes.includes("users.employee_link.manage") || authContext.roleCodes.some(r=>["system_admin","group_admin"].includes(r))) && <EmployeeIdentityLink profileId={user.id} readOnly={isViewing} />}
+                  <UserEffectiveAccessSection userProfileId={user.id} authContext={authContext} />
+                </div>
               ) : (
                 <p className="text-sm text-muted-foreground">Effective access unavailable.</p>
               )}

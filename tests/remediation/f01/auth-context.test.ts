@@ -4,7 +4,7 @@ const query=(table:string)=>{
  const data=table==='user_profiles'?state.profile:table==='user_roles'?state.assignments:table==='roles'?state.roles:table==='role_permissions'?state.links:state.permissions;
  const q:any={select:()=>q,eq:()=>q,in:()=>q,maybeSingle:async()=>({data}),then:(ok:any)=>Promise.resolve({data}).then(ok)};return q;
 };
-vi.mock('@/lib/supabase/server',()=>({createClient:async()=>({auth:{getUser:async()=>({data:{user:{id:'test',email:'f00-test@example.invalid'}}})},from:query})}));
+vi.mock('@/lib/supabase/server',()=>({createClient:async()=>({auth:{getUser:async()=>({data:{user:{id:'test',email:'f00-test@example.invalid'}}})},rpc:async()=>({data:true,error:null}),from:query})}));
 vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>({from:query})}));
 import { getAuthContext,isGlobalAdmin,hasPermission } from '@/lib/rbac/check';
 beforeEach(()=>{state.profile.status='active';state.assignments=[{role_id:1,owner_company_id:900101,branch_id:null}];state.roles=[{id:1,role_code:'system_admin'}];state.permissions=[];state.links=[];});

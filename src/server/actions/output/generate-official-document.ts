@@ -17,7 +17,9 @@
  * (unit-tested); this file wires the real ports.
  */
 
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext } from "@/lib/rbac/check";
+import { getEmployeeAccess } from "@/lib/rbac/employee-access";
+import { canAccessIssuedFile, issuedFileUrl } from "@/lib/output/issued-file-access";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
 import { logAudit } from "@/server/actions/audit";
@@ -25,7 +27,7 @@ import { runReport } from "@/lib/report-center/report-runner";
 import { resolveTemplateForExport } from "@/lib/report-center/template-export";
 import { renderExecutiveLedgerHtml } from "@/lib/executive-ledger/html-renderer";
 import type { ExportBrandingContext } from "@/lib/export/export-types";
-import { buildPdfStoragePath, uploadGeneratedPdf, createPdfSignedUrl } from "@/lib/pdf/storage";
+import { buildPdfStoragePath, uploadGeneratedPdf } from "@/lib/pdf/storage";
 import { generateVerificationToken, buildVerificationUrl, buildVerificationPath } from "@/lib/public-verification/token";
 import { generateQrDataUrl } from "@/lib/public-verification/qr";
 import { buildLetterExecutiveLedgerDocument } from "@/lib/output/letter-document-builder";
@@ -101,7 +103,8 @@ export async function generateOfficialDocument(
     if (!ctx?.profile?.id) {
       return { success: false, blocked: "permission_denied", error: "Not authenticated." };
     }
-    if (!hasPermission(ctx, "reports.pdf.generate") && !hasPermission(ctx, "reports.run")) {
+    const employeeAccess = await getEmployeeAccess(ctx, recordId);
+    if (!employeeAccess.allows("reports.pdf.generate") || !employeeAccess.allows("reports.run")) {
       return {
         success: false,
         blocked: "permission_denied",
@@ -109,6 +112,15 @@ export async function generateOfficialDocument(
       };
     }
     const actorId = ctx.profile.id;
+    if (options.supersedesIssuanceId) {
+      if (!(await canAccessIssuedFile(options.supersedesIssuanceId, "reports.pdf.approve")) && !(await canAccessIssuedFile(options.supersedesIssuanceId, "outputs.ops.retry"))) {
+        return { success: false, blocked: "permission_denied", error: "The superseded document is unavailable or outside your approval scope." };
+      }
+      const prior = await createAdminClient().from("erp_generated_pdf_documents").select("source_record_type,source_record_id,output_code").eq("id",options.supersedesIssuanceId).single();
+      if (prior.error || prior.data.source_record_type !== "employee" || prior.data.source_record_id !== recordId || prior.data.output_code !== outputCode) {
+        return { success: false, blocked: "validation_failed", error: "A reissue must refer to the same employee and output type." };
+      }
+    }
 
     // ── 2. Registry + class policy ─────────────────────────────────────────
     const db = createAdminClient();
@@ -134,7 +146,7 @@ export async function generateOfficialDocument(
       };
     }
 
-    const missingPerms = registry.required_permissions.filter((p) => !ctx.permissionCodes.includes(p));
+    const missingPerms = registry.required_permissions.filter((p) => !employeeAccess.allows(p));
     if (missingPerms.length > 0) {
       return {
         success: false,
@@ -208,7 +220,7 @@ export async function generateOfficialDocument(
     }
 
     // ── 3. Approval policy ─────────────────────────────────────────────────
-    if (policy.approvalRequired && !hasPermission(ctx, "reports.pdf.approve")) {
+    if (policy.approvalRequired && !employeeAccess.allows("reports.pdf.approve")) {
       return {
         success: false,
         blocked: "approval_required",
@@ -223,11 +235,11 @@ export async function generateOfficialDocument(
       {
         reportCode: outputCode,
         outputFormat: "pdf",
-        filters: { employee_id: String(recordId), ...(options.filters ?? {}) },
+        filters: { ...(options.filters ?? {}), employee_id: String(recordId) },
         templateId: options.templateId,
         requestedByUserId: actorId,
       },
-      ctx.permissionCodes
+      ctx
     );
     if (!runResult.success || !runResult.data) {
       return {
@@ -258,24 +270,8 @@ export async function generateOfficialDocument(
         error: "Record has no owning company — cannot resolve branding safely.",
       };
     }
-    const isGlobalAdmin =
-      ctx.roleCodes.includes("system_admin") || ctx.roleCodes.includes("group_admin");
-    if (!isGlobalAdmin) {
-      const { data: userRoles } = await db
-        .from("user_roles")
-        .select("owner_company_id")
-        .eq("user_id", actorId)
-        .not("owner_company_id", "is", null);
-      const companyIds = (userRoles ?? [])
-        .map((r: { owner_company_id: number | null }) => r.owner_company_id)
-        .filter((id): id is number => id !== null);
-      if (!companyIds.includes(ownerCompanyId)) {
-        return {
-          success: false,
-          blocked: "company_isolation_violation",
-          error: "You do not have access to this record's company.",
-        };
-      }
+    if (ownerCompanyId !== employeeAccess.subject.owner_company_id) {
+      return { success: false, blocked: "company_isolation_violation", error: "Report data does not match the authorized employee's company." };
     }
 
     // ── 6. Branding (versioned signed assets; stamp/signature need reports.sign)
@@ -286,7 +282,7 @@ export async function generateOfficialDocument(
       options.templateId &&
       runResult.resolvedTemplateId &&
       options.templateId !== runResult.resolvedTemplateId &&
-      !hasPermission(ctx, "reports.branding.override")
+      !employeeAccess.allows("reports.branding.override")
     ) {
       return {
         success: false,
@@ -419,12 +415,7 @@ export async function generateOfficialDocument(
       return { success: false, blocked: "reconciliation_required", error: outcome.error, issuanceId: outcome.issuanceId };
     }
 
-    let downloadUrl: string | null = null;
-    try {
-      downloadUrl = await createPdfSignedUrl(storagePath, 3600);
-    } catch {
-      downloadUrl = null; // non-fatal — document is issued; ops console can re-sign
-    }
+    const downloadUrl = employeeAccess.allows("reports.export") ? issuedFileUrl(outcome.issuanceId) : null;
 
     return {
       success: true,

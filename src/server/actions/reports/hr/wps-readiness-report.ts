@@ -6,13 +6,13 @@
  * Only readiness status, bank name, and flag fields.
  */
 import type { ReportFetcher, ReportDataResult } from "@/lib/report-center/types";
-import { createAdminClient } from "@/lib/supabase/admin";
+import type { ReportReadClient } from "@/lib/report-center/scoped-read-client";
 
 export const wpsReadinessFetcher: ReportFetcher = {
   reportCode: "HR_WPS_READINESS",
 
-  async fetch(filters: Record<string, unknown>): Promise<ReportDataResult> {
-    const db = createAdminClient();
+  async fetch(filters: Record<string, unknown>, _permissions: string[], db: ReportReadClient): Promise<ReportDataResult> {
+
 
     let empQ = db
       .from("employees")
@@ -42,9 +42,9 @@ export const wpsReadinessFetcher: ReportFetcher = {
 
     const { data: holds } = await db
       .from("employee_payroll_holds")
-      .select("employee_id, hold_status")
+      .select("employee_id, is_active")
       .in("employee_id", empIds)
-      .eq("hold_status", "active")
+      .eq("is_active", true)
       .is("deleted_at", null);
 
     const holdSet = new Set((holds ?? []).map((h) => h.employee_id));

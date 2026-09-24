@@ -5,13 +5,13 @@
  * SECURITY: Does NOT expose expected_salary, offer amounts, or personal notes.
  */
 import type { ReportFetcher, ReportDataResult } from "@/lib/report-center/types";
-import { createAdminClient } from "@/lib/supabase/admin";
+import type { ReportReadClient } from "@/lib/report-center/scoped-read-client";
 
 export const candidatePipelineFetcher: ReportFetcher = {
   reportCode: "HR_CANDIDATE_PIPELINE",
 
-  async fetch(filters: Record<string, unknown>): Promise<ReportDataResult> {
-    const db = createAdminClient();
+  async fetch(filters: Record<string, unknown>, _permissions: string[], db: ReportReadClient): Promise<ReportDataResult> {
+
 
     let q = db
       .from("hr_candidates")

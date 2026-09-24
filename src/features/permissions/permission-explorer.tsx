@@ -7,29 +7,12 @@ import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Permission } from "@/types/domain";
+import { permissionModuleGroup, permissionModuleLabel } from "@/lib/rbac/permission-taxonomy";
 
 // ── Module label map ──────────────────────────────────────────────────────────
 
-const MODULE_LABELS: Record<string, string> = {
-  hr: "Human Resource",
-  users: "Users",
-  roles: "Roles",
-  permissions: "Permissions",
-  dms: "Document Management",
-  audit: "Audit & Logs",
-  finance: "Finance",
-  inventory: "Inventory",
-  purchasing: "Purchasing",
-  sales: "Sales",
-  master_data: "Master Data",
-  settings: "Settings",
-  notifications: "Notifications",
-  reports: "Reports",
-  system: "System",
-};
-
 function humanizeModule(code: string): string {
-  return MODULE_LABELS[code] ?? code.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return permissionModuleLabel(code);
 }
 
 const LS_KEY = "erp_role_permission_center_expanded_modules:v1";
@@ -46,7 +29,7 @@ function subscribeToExpansion(onChange: () => void): () => void {
 function loadExpandedModules(raw: string): Set<string> {
   try {
     const value: unknown = JSON.parse(raw);
-    if (Array.isArray(value) && value.every((entry) => typeof entry === "string")) return new Set(value);
+    if (Array.isArray(value) && value.every((entry) => typeof entry === "string")) return new Set(value.map(permissionModuleGroup));
   } catch {}
   return new Set();
 }
@@ -83,9 +66,9 @@ export function PermissionExplorer({
   const expandedModules = useMemo(() => expansionChoice?.search === searchLower
     ? expansionChoice.modules
     : searchLower ? new Set(permissions.filter((p) => (
-      [p.permission_name, p.permission_code, p.display_name ?? "", p.module_code, p.action_code, p.description ?? ""]
+      [p.permission_name, p.permission_code, p.display_name ?? "", p.module_code, permissionModuleLabel(p.module_code), p.action_code, p.description ?? ""]
         .some((value) => value.toLowerCase().includes(searchLower))
-    )).map((p) => p.module_code)) : persistedModules,
+    )).map((p) => permissionModuleGroup(p.module_code))) : persistedModules,
   [expansionChoice, searchLower, permissions, persistedModules]);
 
   const toggleModule = useCallback(
@@ -110,6 +93,7 @@ export function PermissionExplorer({
         p.permission_code.toLowerCase().includes(searchLower) ||
         (p.display_name ?? "").toLowerCase().includes(searchLower) ||
         p.module_code.toLowerCase().includes(searchLower) ||
+        permissionModuleLabel(p.module_code).toLowerCase().includes(searchLower) ||
         p.action_code.toLowerCase().includes(searchLower) ||
         (p.description ?? "").toLowerCase().includes(searchLower)
       );
@@ -119,8 +103,9 @@ export function PermissionExplorer({
   const grouped = useMemo(() => {
     const map: Record<string, Permission[]> = {};
     for (const perm of filtered) {
-      if (!map[perm.module_code]) map[perm.module_code] = [];
-      map[perm.module_code].push(perm);
+      const moduleGroup = permissionModuleGroup(perm.module_code);
+      if (!map[moduleGroup]) map[moduleGroup] = [];
+      map[moduleGroup].push(perm);
     }
     return Object.entries(map).sort(([a], [b]) => a.localeCompare(b));
   }, [filtered]);

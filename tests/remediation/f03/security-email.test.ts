@@ -1,4 +1,4 @@
-import { beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 const state=vi.hoisted(()=>({inserts:[] as any[],updates:[] as any[],message:null as any,result:{ok:true,status:'sent'} as any,throwTransport:false,throwConfig:false,failReceipt:false}));
 vi.mock('server-only',()=>({}));
 vi.mock('next/headers',()=>({headers:async()=>new Headers()}));
@@ -14,14 +14,31 @@ vi.mock('@/lib/email/providers/factory',()=>({getDefaultEmailProviderSystem:asyn
  return {sendEmail:async(message:any)=>{state.message=message;if(state.throwTransport)throw new Error('synthetic timeout');return state.result;}};
 }}));
 import { sendSecurityTemplate } from '@/lib/auth/security-email';
-const input={to:'synthetic@example.invalid',profileId:42,kind:'recovery' as const,variables:{display_name:'<script>test</script>\r\nInjected:',action_link:'https://erp.invalid/auth/confirm?code=synthetic&x="quoted"'}};
-beforeEach(()=>{state.inserts=[];state.updates=[];state.message=null;state.result={ok:true,status:'sent'};state.throwTransport=false;state.throwConfig=false;state.failReceipt=false;});
+const input={to:'synthetic@example.invalid',profileId:42,kind:'recovery' as const,variables:{display_name:'<script>test</script>\r\nInjected:',action_link:'https://erp.invalid/auth/verify?token_hash='+'b'.repeat(56)+'&type=recovery'}};
+beforeEach(()=>{vi.stubEnv('NEXT_PUBLIC_SITE_URL','https://erp.invalid');state.inserts=[];state.updates=[];state.message=null;state.result={ok:true,status:'sent'};state.throwTransport=false;state.throwConfig=false;state.failReceipt=false;});
+afterEach(()=>vi.unstubAllEnvs());
 it('records provider acceptance, not inbox delivery, with no link/body in journal',async()=>{
  const r=await sendSecurityTemplate(input);expect(r.accepted).toBe(true);expect(r.recorded).toBe(true);expect(state.updates[0].row.state).toBe('provider_accepted');
- const journal=JSON.stringify([state.inserts,state.updates]);expect(journal).not.toContain('synthetic&x');expect(journal).not.toContain('script');expect(journal).not.toContain(input.to);
+ const journal=JSON.stringify([state.inserts,state.updates]);expect(journal).not.toContain('token_hash');expect(journal).not.toContain('b'.repeat(56));expect(journal).not.toContain('script');expect(journal).not.toContain(input.to);
 });
 it('escapes HTML variables and removes subject header newlines',async()=>{
- await sendSecurityTemplate(input);expect(state.message.htmlBody).toContain('&lt;script&gt;');expect(state.message.htmlBody).toContain('&amp;x=&quot;quoted&quot;');expect(state.message.subject).not.toMatch(/[\r\n]/);
+ await sendSecurityTemplate(input);expect(state.message.htmlBody).toContain('&lt;script&gt;');expect(state.message.htmlBody).toContain('&amp;type=recovery');expect(state.message.subject).not.toMatch(/[\r\n]/);
+});
+it('always sends recovery with the same ALGT HTML presentation, ignoring the old editable template',async()=>{
+ const r=await sendSecurityTemplate(input);expect(r.accepted).toBe(true);
+ expect(state.message.subject).toBe('Reset your password · ALGT ERP');
+ expect(state.message.htmlBody).toContain('ALGT logo');expect(state.message.htmlBody).toContain('ACCOUNT SECURITY');
+ expect(state.message.htmlBody).toContain('Reset your password');expect(state.message.htmlBody).toContain('same browser window');
+ expect(state.message.htmlBody).not.toContain('24 hours');expect(state.message.htmlBody).not.toContain('YOUR INVITATION');
+ expect(state.message.textBody).toContain(input.variables.action_link);
+});
+it('fails closed before transport for a noncanonical recovery link',async()=>{
+ const r=await sendSecurityTemplate({...input,variables:{...input.variables,action_link:'https://evil.invalid/auth/verify?token_hash='+'b'.repeat(56)+'&type=recovery'}});
+ expect(r.accepted).toBe(false);expect(state.message).toBeNull();expect(state.updates[0].row.state).toBe('failed');
+});
+it('retains the separate editable security-notice template without changing its behavior',async()=>{
+ const r=await sendSecurityTemplate({...input,kind:'notice'});expect(r.accepted).toBe(true);
+ expect(state.message.htmlBody).toContain('&lt;script&gt;');expect(state.message.subject).toMatch(/^Hello /);
 });
 it('records interrupted transport as unknown with no automatic resend',async()=>{
  state.throwTransport=true;const r=await sendSecurityTemplate(input);expect(r.accepted).toBe(false);expect(state.updates[0].row.state).toBe('unknown');expect(state.inserts).toHaveLength(1);

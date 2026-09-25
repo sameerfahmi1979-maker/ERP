@@ -9,6 +9,7 @@ import { getAuthContext, assertAccountActive, hasGlobalPermission, hasPermission
 import { authEmailSchema, passwordPolicySchema } from "@/lib/validation/auth";
 import { performPasswordChange, type PasswordChangeResult } from "@/lib/auth/password-change";
 import { buildPasswordEmailLink } from "@/lib/auth/password-flow";
+import { issueAccountInvitation } from "@/lib/auth/invitations";
 import { allowSecurityRequest, sendSecurityTemplate } from "@/lib/auth/security-email";
 import { logAudit } from "@/server/actions/audit";
 import { logger } from "@/lib/logger";
@@ -125,10 +126,19 @@ async function sendAccountLink(userProfileId: number, requested: "invite" | "rec
     if (!await allowSecurityRequest("recovery", user.email.toLowerCase())) return { success: false, error: "Too many requests. Please wait before sending another link." };
     // Decide from verified account state; never reinterpret a transient invite error as recovery.
     const flow = requested === "invite" && !user.email_confirmed_at ? "invite" : "recovery";
-    const { data, error } = await admin.auth.admin.generateLink({ type: flow, email: user.email });
-    if (error || !data.properties?.hashed_token || data.user?.id !== user.id) return { success: false, error: "The setup link could not be generated. No password or account restriction was changed." };
+    let actionLink: string;
+    let invitationExpiresAt = "";
+    if (flow === "invite") {
+      const invitation = await issueAccountInvitation({ profileId: target.id, authUserId: user.id, email: user.email, siteUrl: SITE_URL });
+      actionLink = invitation.actionLink;
+      invitationExpiresAt = invitation.expiresAt;
+    } else {
+      const { data, error } = await admin.auth.admin.generateLink({ type: "recovery", email: user.email });
+      if (error || !data.properties?.hashed_token || data.user?.id !== user.id) return { success: false, error: "The setup link could not be generated. No password or account restriction was changed." };
+      actionLink = buildPasswordEmailLink(SITE_URL, data.properties.hashed_token, "recovery");
+    }
     const result = await sendSecurityTemplate({ to: user.email, profileId: target.id, kind: flow,
-      variables: { ...variablesFor(target.display_name ?? target.full_name ?? "User"), action_link: buildPasswordEmailLink(SITE_URL, data.properties.hashed_token, flow) } });
+      variables: { ...variablesFor(target.display_name ?? target.full_name ?? "User"), action_link: actionLink, invitation_expires_at: invitationExpiresAt } });
     if (!result.accepted) return { success: false, error: "Delivery was not confirmed by the email provider. Check the security-email attempt before retrying; no password or account restriction was changed." };
     const now = new Date().toISOString();
     const { error: stateError } = await admin.from("user_profiles").update({ password_reset_sent_at: now }).eq("id", target.id);

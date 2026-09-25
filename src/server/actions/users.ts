@@ -10,7 +10,7 @@ import { revalidatePath } from "next/cache";
 import { logAudit, createAuditDiff } from "@/server/actions/audit";
 import { sanitizeServerActionError } from "@/lib/audit/sanitizers";
 import { randomBytes, randomUUID, createHash } from "node:crypto";
-import { buildPasswordEmailLink } from "@/lib/auth/password-flow";
+import { issueAccountInvitation } from "@/lib/auth/invitations";
 import { sendSecurityTemplate } from "@/lib/auth/security-email";
 import {
   adminUpdateUserProfileSchema,
@@ -174,13 +174,13 @@ export async function createUser(input: CreateUserInput): Promise<ActionResult<{
       if (!assigned.success) warnings.push("Initial role was not assigned. Review the account and assign only the permitted scope.");
     }
     if (validated.send_invite_email) {
-      const link = await admin.auth.admin.generateLink({ type: "invite", email: validated.email });
-      if (link.error || !link.data.properties?.hashed_token || link.data.user?.id !== authUser.id) {
+      const site = process.env.NEXT_PUBLIC_SITE_URL ?? "https://erp.algt.net";
+      const link = await issueAccountInvitation({ profileId: profile.id, authUserId: authUser.id, email: validated.email, siteUrl: site }).catch(() => null);
+      if (!link) {
         stages.email = "link_failed"; warnings.push("Account created, but setup-link generation failed. Use resend from this account.");
       } else {
-        const site = process.env.NEXT_PUBLIC_SITE_URL ?? "https://erp.algt.net";
         const delivery = await sendSecurityTemplate({ to: validated.email, profileId: profile.id, kind: "invite", variables: {
-          display_name: validated.full_name, action_link: buildPasswordEmailLink(site, link.data.properties.hashed_token, "invite"),
+          display_name: validated.full_name, action_link: link.actionLink, invitation_expires_at: link.expiresAt,
           login_url: new URL("/login",site).href, company_name: process.env.NEXT_PUBLIC_ERP_COMPANY_NAME ?? "ALGT ERP",
           support_email: process.env.NEXT_PUBLIC_ERP_SUPPORT_EMAIL ?? "support@algt.net",
           expiry_note: "This is a one-time link. Request a new invitation if it expires.",

@@ -6,10 +6,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getDefaultEmailProviderSystem } from "@/lib/email/providers/factory";
 import { renderTemplate } from "@/lib/notifications/template-renderer";
 import { logger } from "@/lib/logger";
+import { loadRuntimeAppBranding } from "@/lib/branding/load-runtime-app-branding";
+import { escapeEmailHtml, renderInvitationEmail } from "./invitation-email";
 
-export function escapeEmailHtml(text: string): string {
-  return text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
-}
+export { escapeEmailHtml } from "./invitation-email";
 
 /** Durable quotas fail closed. No untrusted forwarded-IP header is accepted by default. */
 export async function allowSecurityRequest(kind: "login" | "recovery", email: string): Promise<boolean> {
@@ -44,13 +44,23 @@ export async function sendSecurityTemplate(input: {
   let transportStarted = false;
   try {
     const templateCode = input.kind === "invite" ? "USER_INVITE_LINK" : input.kind === "recovery" ? "USER_PASSWORD_RESET" : "USER_FORCE_PASSWORD_CHANGE_NOTICE";
-    const { data: template, error } = await admin.from("erp_notification_templates").select("subject_template,text_template,html_template")
+    const { data: template, error } = input.kind === "invite" ? { data: null, error: null } : await admin.from("erp_notification_templates").select("subject_template,text_template,html_template")
       .eq("template_code", templateCode).eq("is_active", true).is("deleted_at", null).maybeSingle();
     if (error) throw new Error("Template lookup failed");
-    const subject = renderTemplate(template?.subject_template ?? (input.kind === "invite" ? "Set up your ERP account" : input.kind === "recovery" ? "Reset your ERP password" : "ERP account security notice"), input.variables).replace(/[\r\n]/g, " ");
+    let subject = renderTemplate(template?.subject_template ?? (input.kind === "invite" ? "Set up your ERP account" : input.kind === "recovery" ? "Reset your ERP password" : "ERP account security notice"), input.variables).replace(/[\r\n]/g, " ");
     const fallback = input.kind === "notice" ? "Hello {{display_name}},\nYour administrator requires a password change.\n{{login_url}}" : "Hello {{display_name}},\nContinue securely to choose your password:\n{{action_link}}\nIf you did not request this, contact your administrator.";
-    const textBody = renderTemplate(template?.text_template ?? fallback, input.variables);
-    const htmlBody = template?.html_template ? renderTemplate(template.html_template, Object.fromEntries(Object.entries(input.variables).map(([key,value]) => [key, escapeEmailHtml(value)]))) : undefined;
+    let textBody = renderTemplate(template?.text_template ?? fallback, input.variables);
+    let htmlBody = template?.html_template ? renderTemplate(template.html_template, Object.fromEntries(Object.entries(input.variables).map(([key,value]) => [key, escapeEmailHtml(value)]))) : undefined;
+    if (input.kind === "invite") {
+      const branding = await loadRuntimeAppBranding();
+      ({ subject, textBody, htmlBody } = renderInvitationEmail({
+        displayName: input.variables.display_name, appName: branding.appName,
+        siteUrl: process.env.NEXT_PUBLIC_SITE_URL ?? "https://erp.algt.net",
+        logoPath: branding.assets.app_logo?.publicUrl ?? "/api/branding/public/app_logo",
+        actionLink: input.variables.action_link, expiresAt: input.variables.invitation_expires_at,
+        supportEmail: branding.supportEmail ?? process.env.NEXT_PUBLIC_ERP_SUPPORT_EMAIL,
+      }));
+    }
     const provider = await getDefaultEmailProviderSystem();
     transportStarted = true;
     const result = await provider.sendEmail({ to: [input.to], subject, textBody, htmlBody, metadata: { feature: templateCode, attempt_id: attemptId } });

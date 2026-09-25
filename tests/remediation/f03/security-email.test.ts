@@ -3,6 +3,7 @@ const state=vi.hoisted(()=>({inserts:[] as any[],updates:[] as any[],message:nul
 vi.mock('server-only',()=>({}));
 vi.mock('next/headers',()=>({headers:async()=>new Headers()}));
 vi.mock('@/lib/logger',()=>({logger:{warn:vi.fn()}}));
+vi.mock('@/lib/branding/load-runtime-app-branding',()=>({loadRuntimeAppBranding:async()=>({appName:'ALGT ERP',supportEmail:'support@example.invalid',assets:{app_logo:{publicUrl:'/api/branding/public/app_logo?v=1'}}})}));
 vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>({from:(table:string)=>({
  insert:async(row:any)=>{state.inserts.push({table,row});return {error:null};},
  update:(row:any)=>({eq:async()=>{state.updates.push({table,row});return {error:state.failReceipt?{message:'synthetic fault'}:null};}}),
@@ -13,7 +14,7 @@ vi.mock('@/lib/email/providers/factory',()=>({getDefaultEmailProviderSystem:asyn
  return {sendEmail:async(message:any)=>{state.message=message;if(state.throwTransport)throw new Error('synthetic timeout');return state.result;}};
 }}));
 import { sendSecurityTemplate } from '@/lib/auth/security-email';
-const input={to:'synthetic@example.invalid',profileId:42,kind:'invite' as const,variables:{display_name:'<script>test</script>\r\nInjected:',action_link:'https://erp.invalid/auth/confirm?code=synthetic&x="quoted"'}};
+const input={to:'synthetic@example.invalid',profileId:42,kind:'recovery' as const,variables:{display_name:'<script>test</script>\r\nInjected:',action_link:'https://erp.invalid/auth/confirm?code=synthetic&x="quoted"'}};
 beforeEach(()=>{state.inserts=[];state.updates=[];state.message=null;state.result={ok:true,status:'sent'};state.throwTransport=false;state.throwConfig=false;state.failReceipt=false;});
 it('records provider acceptance, not inbox delivery, with no link/body in journal',async()=>{
  const r=await sendSecurityTemplate(input);expect(r.accepted).toBe(true);expect(r.recorded).toBe(true);expect(state.updates[0].row.state).toBe('provider_accepted');
@@ -36,4 +37,14 @@ it('records configuration failure before transport as a non-send',async()=>{
 });
 it('keeps acceptance distinct from a failed receipt write',async()=>{
  state.failReceipt=true;const r=await sendSecurityTemplate(input);expect(r.accepted).toBe(true);expect(r.recorded).toBe(false);
+});
+it('always sends canonical branded HTML for invitation, independent of editable generic templates',async()=>{
+ vi.stubEnv('NEXT_PUBLIC_SITE_URL','https://erp.invalid');
+ try {
+  await sendSecurityTemplate({...input,kind:'invite',variables:{display_name:'Test <user>',action_link:'https://erp.invalid/auth/verify?invitation='+'a'.repeat(43),invitation_expires_at:'2026-09-26T08:00:00Z'}});
+  expect(state.message.htmlBody).toContain('ALGT logo');expect(state.message.htmlBody).toContain('Set up your password');
+  expect(state.message.htmlBody).toContain('Valid for 24 hours');expect(state.message.htmlBody).toContain('Test &lt;user&gt;');
+  expect(state.message.textBody).toContain('24 hours');expect(state.message.subject).toBe('Your invitation to ALGT ERP');
+  expect(JSON.stringify([state.inserts,state.updates])).not.toContain('invitation=');
+ } finally {vi.unstubAllEnvs();}
 });

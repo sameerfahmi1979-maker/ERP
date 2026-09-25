@@ -11,11 +11,13 @@ import { Input } from "@/components/ui/input";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { KeyRound } from "lucide-react";
+import { PasswordReverification } from "@/features/auth/password-reverification";
 
 type FormInput = { password: string; confirmPassword: string };
 
 export function ChangePasswordCard() {
   const [loading, setLoading] = useState(false);
+  const [needsVerification, setNeedsVerification] = useState(false);
   const operationId = useRef<string | null>(null);
   const {
     register,
@@ -31,6 +33,7 @@ export function ChangePasswordCard() {
       const result = await changeOwnPassword({ newPassword: values.password, operationId: operationId.current });
       if (!result.success) {
         if (result.canStartNewAttempt) operationId.current = null;
+        if (result.requiresFreshSignIn) { reset(); setNeedsVerification(true); return; }
         toast.error(result.error ?? "Password change could not complete.");
         return;
       }
@@ -43,6 +46,8 @@ export function ChangePasswordCard() {
       setLoading(false);
     }
   };
+
+  if (needsVerification) return <PasswordReverification mode="self" onCancel={() => setNeedsVerification(false)} />;
 
   return (
     <Card>

@@ -10,6 +10,7 @@ import { recordPasswordResetCompleted } from "@/server/actions/users/account-sec
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RequiredLabel } from "@/components/erp/required-label";
+import { PasswordReverification } from "./password-reverification";
 import {
   Card,
   CardContent,
@@ -22,10 +23,12 @@ type ResetInput = { password: string; confirmPassword: string };
 
 export function ResetPasswordForm() {
   const [loading, setLoading] = useState(false);
+  const [needsVerification, setNeedsVerification] = useState(false);
   const operationId = useRef<string | null>(null);
   const {
     register,
     handleSubmit,
+    reset,
     formState: { errors },
   } = useForm<ResetInput>({ resolver: zodResolver(resetPasswordSchema) });
 
@@ -36,6 +39,7 @@ export function ResetPasswordForm() {
       const result = await recordPasswordResetCompleted({ newPassword: values.password, operationId: operationId.current });
       if (!result.success) {
         if (result.canStartNewAttempt) operationId.current = null;
+        if (result.requiresFreshSignIn) { reset(); setNeedsVerification(true); return; }
         toast.error(result.error ?? "Password change could not complete.");
         return;
       }
@@ -47,6 +51,8 @@ export function ResetPasswordForm() {
       setLoading(false);
     }
   };
+
+  if (needsVerification) return <PasswordReverification mode="recovery" />;
 
   return (
     <Card className="w-full max-w-md">

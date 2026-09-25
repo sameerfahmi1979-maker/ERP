@@ -20,6 +20,7 @@ import {
 import { ShieldAlert } from "lucide-react";
 import { signOut } from "@/features/auth/actions";
 import { navigateAfterIdentityChange } from "@/lib/auth/client-session";
+import { PasswordReverification } from "./password-reverification";
 
 type FormInput = { password: string; confirmPassword: string };
 
@@ -29,10 +30,12 @@ type Props = {
 
 export function ChangePasswordRequiredForm({ reason }: Props) {
   const [loading, setLoading] = useState(false);
+  const [needsVerification, setNeedsVerification] = useState(false);
   const operationId = useRef<string | null>(null);
   const {
     register,
     handleSubmit,
+    reset,
     formState: { errors },
   } = useForm<FormInput>({ resolver: zodResolver(changePasswordSchema) });
 
@@ -43,6 +46,7 @@ export function ChangePasswordRequiredForm({ reason }: Props) {
       const result = await completeRequiredPasswordChange({ newPassword: values.password, operationId: operationId.current });
       if (!result.success) {
         if (result.canStartNewAttempt) operationId.current = null;
+        if (result.requiresFreshSignIn) { reset(); setNeedsVerification(true); return; }
         toast.error(result.error ?? "Password change could not complete.");
         return;
       }
@@ -54,6 +58,8 @@ export function ChangePasswordRequiredForm({ reason }: Props) {
       setLoading(false);
     }
   };
+
+  if (needsVerification) return <PasswordReverification mode="required" />;
 
   return (
     <Card className="w-full max-w-md">

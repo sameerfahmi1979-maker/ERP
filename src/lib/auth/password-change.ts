@@ -8,7 +8,7 @@ import { logger } from "@/lib/logger";
 
 const inputSchema = z.object({ newPassword: passwordPolicySchema, operationId: z.string().uuid() });
 type Mode = "self" | "required" | "recovery";
-export type PasswordChangeResult = { success: boolean; error?: string; passwordChanged?: boolean; canStartNewAttempt?: boolean };
+export type PasswordChangeResult = { success: boolean; error?: string; passwordChanged?: boolean; canStartNewAttempt?: boolean; requiresFreshSignIn?: boolean };
 
 /** The only application path that acknowledges a password change. Never trusts a client receipt. */
 export async function performPasswordChange(input: unknown, mode: Mode): Promise<PasswordChangeResult> {
@@ -62,6 +62,11 @@ export async function performPasswordChange(input: unknown, mode: Mode): Promise
       if (changed.error || changed.data.user?.id !== user.id) {
         const rejected = !!changed.error && [400,401,403,422,429].includes(changed.error.status ?? 0);
         const receipt = await admin.from("erp_auth_password_operations").update({ stage: rejected ? "failed" : "needs_reconciliation" }).eq("id", operationId);
+        if (rejected && changed.error?.code === "reauthentication_needed") {
+          return { success: false, canStartNewAttempt: !receipt.error, requiresFreshSignIn: !receipt.error,
+            error: receipt.error ? "Your password was not changed, but this attempt needs administrator review."
+              : "For your security, sign in again before choosing a new password. Your password has not changed." };
+        }
         return rejected
           ? { success: false, canStartNewAttempt: !receipt.error, error: "The password was not changed. Choose a different password that meets the policy, or sign in again." }
           : { success: false, error: "The password service outcome is uncertain. Sign in again or contact your administrator before another change." };

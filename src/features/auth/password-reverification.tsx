@@ -48,7 +48,7 @@ export function PasswordReverification({ mode, onCancel }: Props) {
       </h2>
       <p className="text-sm text-muted-foreground">
         {mode === "recovery" ? "This password-setup session needs to be renewed. Request a new link to choose your password."
-          : "Your sign-in is more than 24 hours old. Confirm your identity by signing in again, then return here to choose a new password."}
+          : "For your security, confirm your identity with a fresh sign-in, then return here to choose a new password. This can be required for an older or no-longer-valid session."}
       </p>
     </CardHeader>
     <CardContent className="flex flex-col gap-4">

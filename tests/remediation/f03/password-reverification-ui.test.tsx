@@ -12,6 +12,12 @@ import { ChangePasswordRequiredForm } from '@/features/auth/change-password-requ
 import { ResetPasswordForm } from '@/features/auth/reset-password-form';
 beforeEach(()=>{vi.clearAllMocks();m.signOut.mockResolvedValue({success:true});});
 afterEach(cleanup);
+it.each(['self','required'] as const)('%s re-verification does not claim an unverified session age',mode=>{
+ const ui=render(<PasswordReverification mode={mode}/>);
+ expect(ui.getByText(/older or no-longer-valid session/)).toBeTruthy();
+ expect(ui.queryByText(/Your sign-in is more than 24 hours old/)).toBeNull();
+ expect(m.signOut).not.toHaveBeenCalled();
+});
 it.each([
  ['self','/login?redirectTo=%2Fprofile'],
  ['required','/login?redirectTo=%2Fchange-password-required'],

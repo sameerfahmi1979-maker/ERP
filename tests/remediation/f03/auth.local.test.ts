@@ -75,6 +75,7 @@ it('ordinary session cannot invoke recovery completion', async () => {
 it('a definite same-password rejection allows a new attempt without claiming a change',async()=>{
  const operationId=randomUUID();const result=await performPasswordChange({newPassword:password,operationId},'self');
  expect(result.success).toBe(false);expect(result.canStartNewAttempt).toBe(true);expect(result.passwordChanged).not.toBe(true);
+ expect(result.error).toContain('different from your current password');
  const receipt=await state.admin.from('erp_auth_password_operations').select('stage').eq('id',operationId).single();expect(receipt.error).toBeNull();expect(receipt.data.stage).toBe('failed');
  expect((await performPasswordChange({newPassword:password,operationId},'self')).canStartNewAttempt).toBe(true);pass('known rejection / explicit safe retry');
 });

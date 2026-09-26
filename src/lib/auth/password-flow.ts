@@ -19,14 +19,22 @@ export async function establishPasswordFlow(session: Session, flow: "invite" | "
   (await cookies()).set(COOKIE, token, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/reset-password", maxAge: 900 });
 }
 
-export async function getPasswordFlow(userId: string, sessionId: string): Promise<string | null> {
+export type PasswordFlowContext = { hash: string; type: "invite" | "recovery" };
+
+/** Read presentation context only from the same verified, unconsumed server grant. */
+export async function getPasswordFlowContext(userId: string, sessionId: string): Promise<PasswordFlowContext | null> {
   const token = (await cookies()).get(COOKIE)?.value;
   if (!token || !/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
   const hash = digest(token);
   const { data, error } = await createAdminClient().from("erp_auth_flow_grants")
-    .select("token_hash").eq("token_hash", hash).eq("auth_user_id", userId).eq("session_id", sessionId)
+    .select("token_hash,flow_type").eq("token_hash", hash).eq("auth_user_id", userId).eq("session_id", sessionId)
     .is("consumed_at", null).gt("expires_at", new Date().toISOString()).maybeSingle();
-  return error || !data ? null : hash;
+  if (error || !data || (data.flow_type !== "invite" && data.flow_type !== "recovery")) return null;
+  return { hash, type: data.flow_type };
+}
+
+export async function getPasswordFlow(userId: string, sessionId: string): Promise<string | null> {
+  return (await getPasswordFlowContext(userId, sessionId))?.hash ?? null;
 }
 
 export async function clearPasswordFlow() {

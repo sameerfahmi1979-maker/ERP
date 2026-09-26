@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { clearPasswordFlow, getPasswordFlow } from "./password-flow";
 import { logger } from "@/lib/logger";
+import { passwordRejectionFeedback } from "./password-feedback";
 
 const inputSchema = z.object({ newPassword: passwordPolicySchema, operationId: z.string().uuid() });
 type Mode = "self" | "required" | "recovery";
@@ -57,19 +58,25 @@ export async function performPasswordChange(input: unknown, mode: Mode): Promise
         changed = await client.auth.updateUser({ password: parsed.data.newPassword });
       } catch {
         await admin.from("erp_auth_password_operations").update({ stage: "needs_reconciliation" }).eq("id", operationId);
+        logger.warn("auth credential operation", { operationId, mode, category: "response_interrupted" });
         return { success: false, error: "The password service response was interrupted. Do not repeat this attempt; sign in again or contact your administrator." };
       }
       if (changed.error || changed.data.user?.id !== user.id) {
         const rejected = !!changed.error && [400,401,403,422,429].includes(changed.error.status ?? 0);
         const receipt = await admin.from("erp_auth_password_operations").update({ stage: rejected ? "failed" : "needs_reconciliation" }).eq("id", operationId);
-        if (rejected && changed.error?.code === "reauthentication_needed") {
-          return { success: false, canStartNewAttempt: !receipt.error, requiresFreshSignIn: !receipt.error,
+        if (rejected && changed.error) {
+          const feedback = passwordRejectionFeedback(changed.error);
+          // Only fixed categories, a bounded HTTP status and our operation ID enter logs.
+          // Passwords, provider messages, email addresses, tokens and sessions never do.
+          logger.warn("auth credential operation", { operationId, mode, category: feedback.category,
+            status: changed.error.status, journalSaved: !receipt.error });
+          return { success: false, canStartNewAttempt: !receipt.error,
+            requiresFreshSignIn: feedback.requiresFreshSignIn && !receipt.error,
             error: receipt.error ? "Your password was not changed, but this attempt needs administrator review."
-              : "For your security, sign in again before choosing a new password. Your password has not changed." };
+              : feedback.message };
         }
-        return rejected
-          ? { success: false, canStartNewAttempt: !receipt.error, error: "The password was not changed. Choose a different password that meets the policy, or sign in again." }
-          : { success: false, error: "The password service outcome is uncertain. Sign in again or contact your administrator before another change." };
+        logger.warn("auth credential operation", { operationId, mode, category: "outcome_uncertain", journalSaved: !receipt.error });
+        return { success: false, error: "The password service outcome is uncertain. Sign in again or contact your administrator before another change." };
       }
       passwordChanged = true;
       const { error } = await admin.from("erp_auth_password_operations").update({ stage: "provider_completed", provider_completed_at: new Date().toISOString() }).eq("id", operationId).eq("stage", "started");

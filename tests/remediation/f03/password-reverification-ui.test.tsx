@@ -61,3 +61,18 @@ it.each(['self','required','recovery'] as const)('%s form clears new-password in
   expect((ui.getByLabelText(/^Confirm/) as HTMLInputElement).value).toBe('');
  }
 });
+
+it.each([
+ ['invite','Create your password','Create password'],
+ ['recovery','Reset password','Update password'],
+] as const)('shows accurate %s wording while using the shared completion action',async(flow,heading,button)=>{
+ m.recovery.mockResolvedValue({success:true});const ui=render(<ResetPasswordForm flow={flow}/>);
+ expect(ui.getByRole('heading',{level:1}).textContent).toBe(heading);
+ expect(ui.getByRole('button',{name:button})).toBeTruthy();
+ expect(ui.getByText(/previously exposed passwords/)).toBeTruthy();
+ fireEvent.change(ui.getByLabelText(/^New password/),{target:{value:'SyntheticTestOnly82!'}});
+ fireEvent.change(ui.getByLabelText(/^Confirm/),{target:{value:'SyntheticTestOnly82!'}});
+ fireEvent.submit(ui.container.querySelector('form')!);
+ await waitFor(()=>expect(m.navigate).toHaveBeenCalledWith('/dashboard'));
+ expect(m.recovery).toHaveBeenCalledOnce();expect(m.recovery.mock.calls[0][0]).not.toHaveProperty('flow');
+});

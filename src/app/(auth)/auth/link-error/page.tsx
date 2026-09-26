@@ -22,9 +22,13 @@ export default async function AuthLinkErrorPage({ searchParams }: { searchParams
         : "The link may have expired, already been used or been replaced by a newer email. You cannot set a password with this link."}</CardDescription>
     </CardHeader>
     <CardContent className="space-y-5">
-      {!mismatch && <p className="text-sm">{recovery ? "Request a new password-reset email and open the most recent message." : "Ask your ERP administrator to resend your invitation. A new invitation gives you 24 hours to begin activation; it does not require an existing password."}</p>}
-      {recovery && <Link className="inline-flex min-h-11 items-center rounded-md bg-primary px-5 font-medium text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-4" href="/forgot-password">Request a new reset link</Link>}
-      {!recovery && safeSupport && <a className="inline-flex min-h-11 items-center rounded-md bg-primary px-5 font-medium text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-4" href={`mailto:${safeSupport}?subject=ERP%20invitation%20assistance`}>Contact your administrator</a>}
+      {!mismatch && <>
+        <p className="text-sm">{recovery ? "Request a new password-reset email and open the most recent message." : "If you already selected Continue securely but did not finish creating your password, resume setup in the same browser window. If that setup session has expired or you changed browsers, request a password-reset email. You do not need an existing password."}</p>
+        {!recovery && <Link className="inline-flex min-h-11 items-center text-sm underline underline-offset-4" href="/reset-password">Resume password setup in this browser</Link>}
+        <Link className="inline-flex min-h-11 items-center rounded-md bg-primary px-5 font-medium text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-4" href="/forgot-password">Request a new reset link</Link>
+        {!recovery && <p className="text-sm">If you never began activation, ask your ERP administrator to resend your invitation. A new invitation gives you 24 hours to begin activation.</p>}
+      </>}
+      {!mismatch && !recovery && safeSupport && <a className="inline-flex min-h-11 items-center rounded-md bg-primary px-5 font-medium text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-4" href={`mailto:${safeSupport}?subject=ERP%20invitation%20assistance`}>Contact your administrator</a>}
       <p className="text-sm text-muted-foreground">Never forward your activation link or share your password.</p>
       <Link className="inline-flex min-h-11 items-center text-sm underline underline-offset-4" href="/login">Already set your password? Go to sign in</Link>
     </CardContent>

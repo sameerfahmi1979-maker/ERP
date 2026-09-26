@@ -21,7 +21,8 @@ import {
 
 type ResetInput = { password: string; confirmPassword: string };
 
-export function ResetPasswordForm() {
+export function ResetPasswordForm({ flow = "recovery" }: { flow?: "invite" | "recovery" }) {
+  const invitation = flow === "invite";
   const [loading, setLoading] = useState(false);
   const [needsVerification, setNeedsVerification] = useState(false);
   const operationId = useRef<string | null>(null);
@@ -43,7 +44,7 @@ export function ResetPasswordForm() {
         toast.error(result.error ?? "Password change could not complete.");
         return;
       }
-      toast.success("Password updated");
+      toast.success(invitation ? "Password created. Your account setup is complete." : "Password updated");
       navigateAfterIdentityChange("/dashboard");
     } catch {
       toast.error("The request was interrupted. Please sign in again before trying another password change.");
@@ -57,9 +58,11 @@ export function ResetPasswordForm() {
   return (
     <Card className="w-full max-w-md">
       <CardHeader>
-        <CardTitle>Reset password</CardTitle>
+        <CardTitle><h1>{invitation ? "Create your password" : "Reset password"}</h1></CardTitle>
         <CardDescription>
+          {invitation && "Welcome. Create your own password to finish account setup. You do not need an existing password. "}
           Enter your new password. Must be 10+ characters with uppercase, lowercase, and digit.
+          {" Common or previously exposed passwords may be rejected. Finish in this browser within 15 minutes of verification."}
         </CardDescription>
       </CardHeader>
       <form onSubmit={(event) => void handleSubmit(onSubmit)(event)}>
@@ -91,7 +94,7 @@ export function ResetPasswordForm() {
             ) : null}
           </div>
           <Button type="submit" disabled={loading}>
-            {loading ? "Updating..." : "Update password"}
+            {loading ? (invitation ? "Creating..." : "Updating...") : invitation ? "Create password" : "Update password"}
           </Button>
         </CardContent>
       </form>

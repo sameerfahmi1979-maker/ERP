@@ -1,42 +1,15 @@
 "use client";
 
-import { useState } from "react";
-import { toast } from "sonner";
-import {
-  FileText,
-  Sparkles,
-  Brain,
-  Compass,
-  Zap,
-  AlertTriangle,
-  RefreshCw,
-  ChevronDown,
-  ChevronUp,
-  Tag,
-  Link2,
-  FileSearch,
-  ClipboardList,
-  ShieldAlert,
-  Search,
-} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
-import { adminBackfillDmsContentText } from "@/server/actions/dms/document-content";
-import { bulkGenerateMissingSummaries } from "@/server/actions/dms/ai-summary";
-import { bulkEvaluateDmsDocuments } from "@/server/actions/dms/ai-intelligence";
-import { bulkGenerateMissingDmsEmbeddings } from "@/server/actions/dms/semantic-search";
-import {
-  adminBackfillMissingOcrText,
-  getDmsOcrBackfillQueueSummary,
-  adminSemanticIndexBackfill,
-  getSemanticIndexQueueSummary,
-} from "@/server/actions/dms/intelligence-admin";
-import { runDmsValidationForDocument } from "@/server/actions/dms/validation";
-import { runDmsEntityMatchingForDocument } from "@/server/actions/dms/entity-matching";
-import type { DmsValidationRunResult } from "@/lib/dms/validation/validation-types";
 import type { DmsEntityMatchRunResult } from "@/lib/dms/entity-matching/entity-match-types";
+import type { DmsValidationRunResult } from "@/lib/dms/validation/validation-types";
+import { bulkEvaluateDmsDocuments } from "@/server/actions/dms/ai-intelligence";
+import { bulkGenerateMissingSummaries } from "@/server/actions/dms/ai-summary";
+import { adminBackfillDmsContentText } from "@/server/actions/dms/document-content";
+import { runDmsEntityMatchingForDocument } from "@/server/actions/dms/entity-matching";
 import type {
   DmsIntelligenceAdminStats,
   OcrBackfillMode,
@@ -44,6 +17,33 @@ import type {
   SemanticIndexBackfillMode,
   SemanticIndexQueueSummary,
 } from "@/server/actions/dms/intelligence-admin";
+import {
+  adminBackfillMissingOcrText,
+  adminSemanticIndexBackfill,
+  getDmsOcrBackfillQueueSummary,
+  getSemanticIndexQueueSummary,
+} from "@/server/actions/dms/intelligence-admin";
+import { bulkGenerateMissingDmsEmbeddings } from "@/server/actions/dms/semantic-search";
+import { runDmsValidationForDocument } from "@/server/actions/dms/validation";
+import {
+  AlertTriangle,
+  Brain,
+  ChevronDown,
+  ChevronUp,
+  ClipboardList,
+  Compass,
+  FileSearch,
+  FileText,
+  Link2,
+  RefreshCw,
+  Search,
+  ShieldAlert,
+  Sparkles,
+  Tag,
+  Zap,
+} from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 

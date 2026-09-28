@@ -9,7 +9,6 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
@@ -374,7 +373,7 @@ export async function listGlobalProProcesses(
 ): Promise<ProProcessRow[]> {
   const ctx = await getAuthContext();
   if (!hasPermission(ctx, "hr.actions.view")) throw new Error("No permission");
-  const admin = createAdminClient();
+  const admin = await createClient();
   let query = admin
     .from("employee_pro_processes")
     .select("*, process_type:hr_pro_process_types(name_en), assigned_to_profile:user_profiles!assigned_to(display_name)")
@@ -397,7 +396,7 @@ export async function createEmployeeProProcess(
   if (!parsed.success) return { success: false, error: parsed.error.message };
   const empCtx = await getEmployeeContext(employeeId);
   if (!empCtx) return { success: false, error: "Employee not found" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { data, error } = await adminClient
     .from("employee_pro_processes")
     .insert({ ...parsed.data, employee_id: employeeId, created_by: ctx.profile?.id, updated_by: ctx.profile?.id })
@@ -426,7 +425,7 @@ export async function updateEmployeeProProcess(
   const { data: existing } = await supabase.from("employee_pro_processes").select("employee_id").eq("id", id).is("deleted_at", null).single();
   if (!existing) return { success: false, error: "PRO process not found" };
   const empCtx = await getEmployeeContext(existing.employee_id);
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { data, error } = await adminClient
     .from("employee_pro_processes")
     .update({ ...parsed.data, updated_by: ctx.profile?.id })
@@ -450,7 +449,7 @@ export async function archiveEmployeeProProcess(id: number): Promise<ActionResul
   const supabase = await createClient();
   const { data: existing } = await supabase.from("employee_pro_processes").select("employee_id, process_title").eq("id", id).is("deleted_at", null).single();
   if (!existing) return { success: false, error: "PRO process not found" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { error } = await adminClient.from("employee_pro_processes").update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id }).eq("id", id);
   if (error) return { success: false, error: error.message };
   await hrAuditLog({
@@ -478,7 +477,7 @@ export async function changeEmployeeProProcessStatus(
   if (status === "submitted") updates.submitted_date = new Date().toISOString().split("T")[0];
   if (status === "completed") updates.completed_date = new Date().toISOString().split("T")[0];
   if (notes) updates.notes = notes;
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { error } = await adminClient.from("employee_pro_processes").update(updates).eq("id", id);
   if (error) return { success: false, error: error.message };
   await hrAuditLog({
@@ -516,7 +515,7 @@ export async function listEmployeeHrActions(
 export async function listGlobalHrActions(params?: Record<string, unknown>): Promise<HrActionRow[]> {
   const ctx = await getAuthContext();
   if (!hasPermission(ctx, "hr.actions.view")) throw new Error("No permission");
-  const admin = createAdminClient();
+  const admin = await createClient();
   let query = admin
     .from("employee_hr_actions")
     .select("*")
@@ -539,7 +538,7 @@ export async function createEmployeeHrAction(
   if (!parsed.success) return { success: false, error: parsed.error.message };
   const empCtx = await getEmployeeContext(employeeId);
   if (!empCtx) return { success: false, error: "Employee not found" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { data, error } = await adminClient
     .from("employee_hr_actions")
     .insert({ ...parsed.data, employee_id: employeeId, created_by: ctx.profile?.id, updated_by: ctx.profile?.id })
@@ -567,7 +566,7 @@ export async function updateEmployeeHrAction(
   const supabase = await createClient();
   const { data: existing } = await supabase.from("employee_hr_actions").select("employee_id").eq("id", id).is("deleted_at", null).single();
   if (!existing) return { success: false, error: "HR action not found" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { data, error } = await adminClient
     .from("employee_hr_actions")
     .update({ ...parsed.data, updated_by: ctx.profile?.id })
@@ -590,7 +589,7 @@ export async function archiveEmployeeHrAction(id: number): Promise<ActionResult>
   const supabase = await createClient();
   const { data: existing } = await supabase.from("employee_hr_actions").select("employee_id, action_title").eq("id", id).is("deleted_at", null).single();
   if (!existing) return { success: false, error: "HR action not found" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { error } = await adminClient.from("employee_hr_actions").update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id }).eq("id", id);
   if (error) return { success: false, error: error.message };
   await hrAuditLog({
@@ -608,7 +607,7 @@ export async function closeEmployeeHrAction(id: number, notes?: string): Promise
   const supabase = await createClient();
   const { data: existing } = await supabase.from("employee_hr_actions").select("employee_id").eq("id", id).is("deleted_at", null).single();
   if (!existing) return { success: false, error: "HR action not found" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const updates: Record<string, unknown> = { action_status: "closed", updated_by: ctx.profile?.id };
   if (notes) updates.notes = notes;
   const { error } = await adminClient.from("employee_hr_actions").update(updates).eq("id", id);
@@ -628,7 +627,7 @@ export async function cancelEmployeeHrAction(id: number, reason: string): Promis
   const supabase = await createClient();
   const { data: existing } = await supabase.from("employee_hr_actions").select("employee_id").eq("id", id).is("deleted_at", null).single();
   if (!existing) return { success: false, error: "HR action not found" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { error } = await adminClient.from("employee_hr_actions").update({ action_status: "cancelled", notes: reason, updated_by: ctx.profile?.id }).eq("id", id);
   if (error) return { success: false, error: error.message };
   await hrAuditLog({
@@ -673,7 +672,7 @@ export async function createEmployeePerformanceRecord(
   if (!parsed.success) return { success: false, error: parsed.error.message };
   const empCtx = await getEmployeeContext(employeeId);
   if (!empCtx) return { success: false, error: "Employee not found" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { data, error } = await adminClient
     .from("employee_performance_records")
     .insert({ ...parsed.data, employee_id: employeeId, created_by: ctx.profile?.id, updated_by: ctx.profile?.id })
@@ -702,7 +701,7 @@ export async function updateEmployeePerformanceRecord(
   const { data: existing } = await supabase.from("employee_performance_records").select("employee_id, status").eq("id", id).is("deleted_at", null).single();
   if (!existing) return { success: false, error: "Performance record not found" };
   if (existing.status === "closed" || existing.status === "approved") return { success: false, error: "Cannot modify a closed/approved review" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { data, error } = await adminClient
     .from("employee_performance_records")
     .update({ ...parsed.data, updated_by: ctx.profile?.id })
@@ -725,7 +724,7 @@ export async function archiveEmployeePerformanceRecord(id: number): Promise<Acti
   const supabase = await createClient();
   const { data: existing } = await supabase.from("employee_performance_records").select("employee_id").eq("id", id).is("deleted_at", null).single();
   if (!existing) return { success: false, error: "Record not found" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { error } = await adminClient.from("employee_performance_records").update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id }).eq("id", id);
   if (error) return { success: false, error: error.message };
   revalidatePath(`/admin/hr/employees`);
@@ -750,7 +749,7 @@ async function changePerformanceStatus(id: number, status: string): Promise<Acti
   const supabase = await createClient();
   const { data: existing } = await supabase.from("employee_performance_records").select("employee_id").eq("id", id).is("deleted_at", null).single();
   if (!existing) return { success: false, error: "Record not found" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { error } = await adminClient.from("employee_performance_records").update({ status, updated_by: ctx.profile?.id }).eq("id", id);
   if (error) return { success: false, error: error.message };
   await hrAuditLog({
@@ -788,7 +787,7 @@ export async function listEmployeeDisciplinaryRecords(
 export async function listGlobalDisciplinaryRecords(params?: Record<string, unknown>): Promise<DisciplinaryRow[]> {
   const ctx = await getAuthContext();
   if (!hasPermission(ctx, "hr.actions.view")) throw new Error("No permission");
-  const admin = createAdminClient();
+  const admin = await createClient();
   let query = admin
     .from("employee_disciplinary_records")
     .select("*, issued_by_profile:user_profiles!issued_by(display_name), employee:employees!employee_id(full_name_en, employee_code)")
@@ -811,7 +810,7 @@ export async function createEmployeeDisciplinaryRecord(
   if (!parsed.success) return { success: false, error: parsed.error.message };
   const empCtx = await getEmployeeContext(employeeId);
   if (!empCtx) return { success: false, error: "Employee not found" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { data, error } = await adminClient
     .from("employee_disciplinary_records")
     .insert({ ...parsed.data, employee_id: employeeId, created_by: ctx.profile?.id, updated_by: ctx.profile?.id })
@@ -839,7 +838,7 @@ export async function updateEmployeeDisciplinaryRecord(
   const supabase = await createClient();
   const { data: existing } = await supabase.from("employee_disciplinary_records").select("employee_id").eq("id", id).is("deleted_at", null).single();
   if (!existing) return { success: false, error: "Disciplinary record not found" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { data, error } = await adminClient
     .from("employee_disciplinary_records")
     .update({ ...parsed.data, updated_by: ctx.profile?.id })
@@ -862,7 +861,7 @@ export async function archiveEmployeeDisciplinaryRecord(id: number): Promise<Act
   const supabase = await createClient();
   const { data: existing } = await supabase.from("employee_disciplinary_records").select("employee_id, subject").eq("id", id).is("deleted_at", null).single();
   if (!existing) return { success: false, error: "Record not found" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { error } = await adminClient.from("employee_disciplinary_records").update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id }).eq("id", id);
   if (error) return { success: false, error: error.message };
   revalidatePath(`/admin/hr/employees`);
@@ -875,7 +874,7 @@ export async function acknowledgeEmployeeDisciplinaryRecord(id: number): Promise
   const supabase = await createClient();
   const { data: existing } = await supabase.from("employee_disciplinary_records").select("employee_id").eq("id", id).is("deleted_at", null).single();
   if (!existing) return { success: false, error: "Record not found" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { error } = await adminClient.from("employee_disciplinary_records").update({ acknowledged_by_employee: true, acknowledged_at: new Date().toISOString(), updated_by: ctx.profile?.id }).eq("id", id);
   if (error) return { success: false, error: error.message };
   await hrAuditLog({
@@ -895,7 +894,7 @@ export async function closeEmployeeDisciplinaryRecord(id: number, notes?: string
   if (!existing) return { success: false, error: "Record not found" };
   const updates: Record<string, unknown> = { status: "closed", updated_by: ctx.profile?.id };
   if (notes) updates.action_taken = notes;
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { error } = await adminClient.from("employee_disciplinary_records").update(updates).eq("id", id);
   if (error) return { success: false, error: error.message };
   revalidatePath(`/admin/hr/employees`);
@@ -935,7 +934,7 @@ export async function createEmployeeHrNote(
   if (!parsed.success) return { success: false, error: parsed.error.message };
   const empCtx = await getEmployeeContext(employeeId);
   if (!empCtx) return { success: false, error: "Employee not found" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { data, error } = await adminClient
     .from("employee_hr_notes")
     .insert({ ...parsed.data, employee_id: employeeId, created_by: ctx.profile?.id })
@@ -958,7 +957,7 @@ export async function archiveEmployeeHrNote(id: number): Promise<ActionResult> {
   const supabase = await createClient();
   const { data: existing } = await supabase.from("employee_hr_notes").select("employee_id").eq("id", id).is("deleted_at", null).single();
   if (!existing) return { success: false, error: "Note not found" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { error } = await adminClient.from("employee_hr_notes").update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id }).eq("id", id);
   if (error) return { success: false, error: error.message };
   revalidatePath(`/admin/hr/employees`);
@@ -991,7 +990,7 @@ export async function listEmployeeApprovalRequests(
 export async function listGlobalApprovalRequests(params?: Record<string, unknown>): Promise<ApprovalRequestRow[]> {
   const ctx = await getAuthContext();
   if (!hasPermission(ctx, "hr.actions.view")) throw new Error("No permission");
-  const admin = createAdminClient();
+  const admin = await createClient();
   let query = admin
     .from("employee_approval_requests")
     .select("*, approval_role:approval_roles(name), requested_by_profile:user_profiles!requested_by(display_name)")
@@ -1014,7 +1013,7 @@ export async function createEmployeeApprovalRequest(
   if (!parsed.success) return { success: false, error: parsed.error.message };
   const empCtx = await getEmployeeContext(employeeId);
   if (!empCtx) return { success: false, error: "Employee not found" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { data, error } = await adminClient
     .from("employee_approval_requests")
     .insert({
@@ -1046,7 +1045,7 @@ export async function approveEmployeeApprovalRequest(id: number, reason?: string
   const { data: existing } = await supabase.from("employee_approval_requests").select("employee_id, request_title, request_status").eq("id", id).is("deleted_at", null).single();
   if (!existing) return { success: false, error: "Approval request not found" };
   if (existing.request_status !== "pending") return { success: false, error: "Only pending requests can be approved" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { error } = await adminClient.from("employee_approval_requests").update({
     request_status: "approved",
     approved_by: ctx.profile?.id,
@@ -1072,7 +1071,7 @@ export async function rejectEmployeeApprovalRequest(id: number, reason: string):
   const { data: existing } = await supabase.from("employee_approval_requests").select("employee_id, request_title, request_status").eq("id", id).is("deleted_at", null).single();
   if (!existing) return { success: false, error: "Approval request not found" };
   if (existing.request_status !== "pending") return { success: false, error: "Only pending requests can be rejected" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { error } = await adminClient.from("employee_approval_requests").update({
     request_status: "rejected",
     rejected_by: ctx.profile?.id,
@@ -1097,7 +1096,7 @@ export async function cancelEmployeeApprovalRequest(id: number, reason: string):
   const { data: existing } = await supabase.from("employee_approval_requests").select("employee_id, request_status").eq("id", id).is("deleted_at", null).single();
   if (!existing) return { success: false, error: "Approval request not found" };
   if (existing.request_status !== "pending") return { success: false, error: "Only pending requests can be cancelled" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { error } = await adminClient.from("employee_approval_requests").update({
     request_status: "cancelled",
     cancelled_by: ctx.profile?.id,
@@ -1116,7 +1115,7 @@ export async function archiveEmployeeApprovalRequest(id: number): Promise<Action
   const supabase = await createClient();
   const { data: existing } = await supabase.from("employee_approval_requests").select("employee_id").eq("id", id).is("deleted_at", null).single();
   if (!existing) return { success: false, error: "Request not found" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { error } = await adminClient.from("employee_approval_requests").update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id }).eq("id", id);
   if (error) return { success: false, error: error.message };
   revalidatePath(`/admin/hr/employees`);
@@ -1149,7 +1148,7 @@ export async function listEmployeeEosCases(
 export async function listGlobalEosCases(params?: Record<string, unknown>): Promise<EosCaseRow[]> {
   const ctx = await getAuthContext();
   if (!hasPermission(ctx, "hr.actions.view") && !hasPermission(ctx, "hr.eos.view")) throw new Error("No permission");
-  const admin = createAdminClient();
+  const admin = await createClient();
   let query = admin
     .from("employee_eos_cases")
     .select("*")
@@ -1172,7 +1171,7 @@ export async function createEmployeeEosCase(
   if (!parsed.success) return { success: false, error: parsed.error.message };
   const empCtx = await getEmployeeContext(employeeId);
   if (!empCtx) return { success: false, error: "Employee not found" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { data, error } = await adminClient
     .from("employee_eos_cases")
     .insert({ ...parsed.data, employee_id: employeeId, created_by: ctx.profile?.id, updated_by: ctx.profile?.id })
@@ -1201,7 +1200,7 @@ export async function updateEmployeeEosCase(
   const { data: existing } = await supabase.from("employee_eos_cases").select("employee_id, case_status").eq("id", id).is("deleted_at", null).single();
   if (!existing) return { success: false, error: "EOS case not found" };
   if (existing.case_status === "closed") return { success: false, error: "Cannot modify a closed EOS case" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { data, error } = await adminClient
     .from("employee_eos_cases")
     .update({ ...parsed.data, updated_by: ctx.profile?.id })
@@ -1224,7 +1223,7 @@ export async function archiveEmployeeEosCase(id: number): Promise<ActionResult> 
   const supabase = await createClient();
   const { data: existing } = await supabase.from("employee_eos_cases").select("employee_id").eq("id", id).is("deleted_at", null).single();
   if (!existing) return { success: false, error: "EOS case not found" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { error } = await adminClient.from("employee_eos_cases").update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id }).eq("id", id);
   if (error) return { success: false, error: error.message };
   revalidatePath(`/admin/hr/employees`);
@@ -1245,7 +1244,7 @@ export async function changeEmployeeEosCaseStatus(
   if (!existing) return { success: false, error: "EOS case not found" };
   const updates: Record<string, unknown> = { case_status: status, updated_by: ctx.profile?.id };
   if (notes) updates.notes = notes;
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { error } = await adminClient.from("employee_eos_cases").update(updates).eq("id", id);
   if (error) return { success: false, error: error.message };
   await hrAuditLog({
@@ -1287,7 +1286,7 @@ export async function createEmployeeClearanceItem(
   const supabase = await createClient();
   const { data: eosCase } = await supabase.from("employee_eos_cases").select("employee_id").eq("id", eosCaseId).is("deleted_at", null).single();
   if (!eosCase) return { success: false, error: "EOS case not found" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { data, error } = await adminClient
     .from("employee_clearance_items")
     .insert({ ...parsed.data, eos_case_id: eosCaseId, employee_id: eosCase.employee_id, created_by: ctx.profile?.id, updated_by: ctx.profile?.id })
@@ -1314,7 +1313,7 @@ export async function updateEmployeeClearanceItem(
   const supabase = await createClient();
   const { data: existing } = await supabase.from("employee_clearance_items").select("eos_case_id, employee_id").eq("id", id).is("deleted_at", null).single();
   if (!existing) return { success: false, error: "Clearance item not found" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { data, error } = await adminClient
     .from("employee_clearance_items")
     .update({ ...parsed.data, updated_by: ctx.profile?.id })
@@ -1332,7 +1331,7 @@ export async function clearEmployeeClearanceItem(id: number, notes?: string): Pr
   const supabase = await createClient();
   const { data: existing } = await supabase.from("employee_clearance_items").select("eos_case_id, employee_id").eq("id", id).is("deleted_at", null).single();
   if (!existing) return { success: false, error: "Item not found" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { error } = await adminClient.from("employee_clearance_items").update({
     item_status: "cleared",
     cleared_by: ctx.profile?.id,
@@ -1356,7 +1355,7 @@ export async function blockEmployeeClearanceItem(id: number, notes?: string): Pr
   const supabase = await createClient();
   const { data: existing } = await supabase.from("employee_clearance_items").select("eos_case_id").eq("id", id).is("deleted_at", null).single();
   if (!existing) return { success: false, error: "Item not found" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { error } = await adminClient.from("employee_clearance_items").update({ item_status: "blocked", notes: notes ?? null, updated_by: ctx.profile?.id }).eq("id", id);
   if (error) return { success: false, error: error.message };
   revalidatePath(`/admin/hr/employees`);
@@ -1369,7 +1368,7 @@ export async function archiveEmployeeClearanceItem(id: number): Promise<ActionRe
   const supabase = await createClient();
   const { data: existing } = await supabase.from("employee_clearance_items").select("eos_case_id").eq("id", id).is("deleted_at", null).single();
   if (!existing) return { success: false, error: "Item not found" };
-  const adminClient = await createAdminClient();
+  const adminClient = await createClient();
   const { error } = await adminClient.from("employee_clearance_items").update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id }).eq("id", id);
   if (error) return { success: false, error: error.message };
   revalidatePath(`/admin/hr/employees`);

@@ -1,21 +1,20 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { queryKeys } from "@/lib/query/query-keys";
-import { listCandidateDocuments, linkCandidateDmsDocument, archiveCandidateDocument, verifyCandidateDocument } from "@/server/actions/hr/recruitment";
-import type { CandidateDocumentRow } from "@/server/actions/hr/recruitment";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { ERPCombobox } from "@/components/erp/combobox";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Link2, CheckCircle, Trash2, FileText } from "lucide-react";
-import { toast } from "sonner";
+import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { RequiredLabel } from "@/components/erp/required-label";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
+import { queryKeys } from "@/lib/query/query-keys";
+import { archiveCandidateDocument, linkCandidateDmsDocument, listCandidateDocuments, verifyCandidateDocument } from "@/server/actions/hr/recruitment";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { CheckCircle, FileText, Link2, Trash2 } from "lucide-react";
+import { useState, useTransition } from "react";
+import { toast } from "sonner";
 
 type Props = {
   candidateId: number;

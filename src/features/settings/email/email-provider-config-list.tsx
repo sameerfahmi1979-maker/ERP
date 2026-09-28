@@ -1,17 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  MoreHorizontal, Pencil, Key, Wifi, WifiOff, Star, Trash2,
-  Send, CheckCircle2, XCircle, Clock, AlertTriangle,
-} from "lucide-react";
 import type { EmailProviderConfig } from "@/lib/email/providers/types";
 import {
   deleteEmailProviderConfig,
@@ -19,6 +13,17 @@ import {
   testEmailProviderConnection,
   updateEmailProviderConfig,
 } from "@/server/actions/settings/email-settings";
+import {
+  CheckCircle2,
+  Key,
+  MoreHorizontal, Pencil,
+  Send,
+  Star, Trash2,
+  Wifi, WifiOff,
+  XCircle
+} from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 import { EmailProviderFormDialog } from "./email-provider-form-dialog";
 import { EmailProviderSecretDialog } from "./email-provider-secret-dialog";
 import { EmailTestSendDialog } from "./email-test-send-dialog";

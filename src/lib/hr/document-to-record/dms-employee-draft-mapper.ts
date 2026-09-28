@@ -6,10 +6,10 @@
  */
 
 import type {
-  HrEmployeeDraftFromDocuments,
-  HrDocumentFieldSuggestion,
-  HrDocumentConflict,
   HrDmsDocumentSelection,
+  HrDocumentConflict,
+  HrDocumentFieldSuggestion,
+  HrEmployeeDraftFromDocuments,
 } from "./types";
 
 type DocWithExtraction = {

@@ -323,7 +323,7 @@ export function BrandingAssetUploadCard({
 
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
 
-            {/* eslint-disable-next-line @next/next/no-img-element */}
+            { }
 
             <img src={previewUrl} alt={label} className="h-8 w-8" />
 

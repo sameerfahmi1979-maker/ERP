@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DmsRenewalRequestsTable } from "./dms-renewal-requests-table";
 
 export function DmsRenewalRequestsPageClient() {

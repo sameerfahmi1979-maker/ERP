@@ -4,6 +4,7 @@ import { getDmsDocuments } from "@/server/actions/dms/documents";
 import { getDmsNewDocumentDefaults } from "@/server/actions/dms/documents";
 import { DmsDocumentsTable } from "@/features/dms/documents/dms-documents-table";
 import { ERPPageHeader } from "@/components/erp/page-header";
+import { DmsLoadError } from "@/features/dms/documents/dms-load-error";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -33,12 +34,12 @@ export default async function DmsDocumentsPage() {
         breadcrumbs={[{ label: "DMS", href: "/dms" }, { label: "All Documents" }]}
       />
 
-      <DmsDocumentsTable
+      {!docsResult.success || !defaultsResult.success ? <DmsLoadError /> : <DmsDocumentsTable
         initialDocuments={documents}
         categories={categories}
         documentTypes={documentTypes}
         canHardDelete={isGlobalAdmin(authContext)}
-      />
+      />}
     </div>
   );
 }

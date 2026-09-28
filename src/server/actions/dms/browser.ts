@@ -180,7 +180,7 @@ export async function searchDmsBrowser(
     const limit = filters.limit ?? PAGE_SIZE;
 
     // ── Content FTS (Layer 2): find document IDs via dms_document_content ─────
-    let contentMatchIds: Set<number> = new Set();
+    const contentMatchIds: Set<number> = new Set();
     const contentExcerptMap = new Map<number, string>(); // docId → excerpt
 
     if (rawQuery.length >= 2) {

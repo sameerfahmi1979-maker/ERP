@@ -1,47 +1,55 @@
 "use client";
+import { useQuery } from "@tanstack/react-query";
+import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
+import { useWorkspaceFormOwner } from "@/hooks/use-workspace-form-owner";
 
-import { useState, useCallback, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { ReportPreviewHeader } from "@/components/report-center/report-preview-header";
+import { ReportTemplateSelectDialog } from "@/components/report-center/report-template-select-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  FileText,
-  ArrowLeft,
-  AlertCircle,
-  Bookmark,
-  BookmarkCheck,
-  ChevronDown,
-  Save,
-  Trash2,
-  AlertTriangle,
-} from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ReportFilterPanel } from "./report-filter-panel";
-import { ReportResultsTable } from "./report-results-table";
-import { ReportExportToolbar } from "./report-export-toolbar";
-import { ReportPreviewHeader } from "@/components/report-center/report-preview-header";
-import { ReportTemplateSelectDialog } from "@/components/report-center/report-template-select-dialog";
+import { Input } from "@/components/ui/input";
+import { exportToExcel } from "@/lib/export/excel";
+import type { ExportBrandingContext } from "@/lib/export/export-types";
+import { exportToPDF } from "@/lib/export/pdf";
+import { exportToPrint } from "@/lib/export/print";
+import type { ReportRegistryEntry, ReportRunResult } from "@/lib/report-center/types";
+import { getReportFilterLookups } from "@/server/actions/reports/filter-lookups";
 import { runReportAction } from "@/server/actions/reports/runner";
-import { resolveTemplatePreview } from "@/server/actions/reports/templates";
 import {
-  listSavedFilters,
   createSavedFilter,
   deleteSavedFilter,
+  listSavedFilters,
   setDefaultSavedFilter,
   type SavedFilter,
 } from "@/server/actions/reports/saved-filters";
-import { getReportFilterLookups } from "@/server/actions/reports/filter-lookups";
+import { resolveTemplatePreview } from "@/server/actions/reports/templates";
+import {
+  AlertCircle,
+  AlertTriangle,
+  ArrowLeft,
+  Bookmark,
+  BookmarkCheck,
+  ChevronDown,
+  FileText,
+  Save,
+  Trash2,
+} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
+import { ReportExportToolbar } from "./report-export-toolbar";
 import type { FilterLookupMap } from "./report-filter-panel";
+import { ReportFilterPanel } from "./report-filter-panel";
+import { ReportResultsTable } from "./report-results-table";
 
 const ENTITY_FILTER_KEYS = [
   "employee_id",
@@ -52,11 +60,6 @@ const ENTITY_FILTER_KEYS = [
   "work_site_id",
 ] as const;
 type FilterLookupKey = (typeof ENTITY_FILTER_KEYS)[number];
-import type { ReportRegistryEntry, ReportDataResult, ReportRunResult } from "@/lib/report-center/types";
-import { exportToPDF } from "@/lib/export/pdf";
-import { exportToExcel } from "@/lib/export/excel";
-import { exportToPrint } from "@/lib/export/print";
-import type { ExportBrandingContext } from "@/lib/export/export-types";
 
 const LARGE_EXPORT_PDF_THRESHOLD = 500;
 
@@ -67,7 +70,11 @@ interface ReportRunPageProps {
 
 export function ReportRunPage({ registryEntry, initialFilters = {} }: ReportRunPageProps) {
   const router = useRouter();
-  const [filters, setFilters] = useState<Record<string, string>>(initialFilters);
+  const owner = useWorkspaceFormOwner();
+  const stateKey = owner ? `report-view:${owner.id}:${registryEntry.report_code}` : undefined;
+  // Filters and repeated column selections survive a workspace switch, in this
+  // principal's memory only. Report rows and resolved branding are never cached here.
+  const [filters, setFilters] = usePersistentUiState<Record<string, string>>(stateKey ? `${stateKey}:filters` : undefined, initialFilters);
   const [isRunning, setIsRunning] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [runResult, setRunResult] = useState<ReportRunResult | null>(null);
@@ -78,41 +85,33 @@ export function ReportRunPage({ registryEntry, initialFilters = {} }: ReportRunP
   const [resolvedBranding, setResolvedBranding] = useState<ExportBrandingContext | undefined>(undefined);
 
   // Saved filters
-  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([]);
   const [showSaveFilterDialog, setShowSaveFilterDialog] = useState(false);
   const [saveFilterName, setSaveFilterName] = useState("");
   const [isSavingFilter, setIsSavingFilter] = useState(false);
 
   // Column visibility
-  const [visibleColumns, setVisibleColumns] = useState<string[] | null>(null);
+  const [visibleColumns, setVisibleColumns] = usePersistentUiState<string[] | null>(stateKey ? `${stateKey}:columns` : undefined, null);
 
   // Entity lookup data for filter comboboxes
-  const [lookups, setLookups] = useState<FilterLookupMap>({});
-  const [lookupsLoading, setLookupsLoading] = useState(false);
-
-  const loadSavedFilters = useCallback(async () => {
-    const result = await listSavedFilters(registryEntry.report_code);
-    if (result.success && result.data) {
-      setSavedFilters(result.data);
-    }
-  }, [registryEntry.report_code]);
-
-  useEffect(() => {
-    loadSavedFilters();
-  }, [loadSavedFilters]);
-
-  // Load entity lookups for filter fields that need them
-  useEffect(() => {
-    const schema = registryEntry.filter_schema_json as { filters?: string[] };
-    const filterKeys = schema.filters ?? [];
-    const entityKeys = ENTITY_FILTER_KEYS.filter((k) =>
-      filterKeys.includes(k)
-    ) as FilterLookupKey[];
-    if (entityKeys.length === 0) return;
-
-    setLookupsLoading(true);
-    getReportFilterLookups(entityKeys).then((result) => {
-      if (result.success && result.data) {
+  const savedFilterQuery = useQuery({
+    queryKey: ["report-saved-filters", registryEntry.report_code],
+    queryFn: async () => {
+      const result = await listSavedFilters(registryEntry.report_code);
+      if (!result.success) throw new Error(result.error ?? "Failed to load saved filters");
+      return result.data ?? [];
+    },
+    retry: false, gcTime: 0, refetchOnWindowFocus: false,
+  });
+  const savedFilters = savedFilterQuery.data ?? [];
+  const loadSavedFilters = () => savedFilterQuery.refetch();
+  const schema = registryEntry.filter_schema_json as { filters?: string[] };
+  const entityKeys = ENTITY_FILTER_KEYS.filter(k => (schema.filters ?? []).includes(k)) as FilterLookupKey[];
+  const lookupQuery = useQuery({
+    queryKey: ["report-filter-lookups", registryEntry.report_code, entityKeys],
+    enabled: entityKeys.length > 0,
+    queryFn: async () => {
+      const result = await getReportFilterLookups(entityKeys);
+      if (!result.success || !result.data) throw new Error(result.error ?? "Failed to load report filters");
         const map: FilterLookupMap = {};
         const d = result.data;
         if (d.employees) map.employee_id = d.employees;
@@ -121,22 +120,27 @@ export function ReportRunPage({ registryEntry, initialFilters = {} }: ReportRunP
         if (d.branches) map.branch_id = d.branches;
         if (d.designations) map.designation_id = d.designations;
         if (d.workSites) map.work_site_id = d.workSites;
-        setLookups(map);
-      }
-      setLookupsLoading(false);
-    });
-  }, [registryEntry.filter_schema_json]);
+      return map;
+    },
+    retry: false, gcTime: 0, refetchOnWindowFocus: false,
+  });
+  const lookups = lookupQuery.data ?? {};
+  const lookupsLoading = entityKeys.length > 0 && lookupQuery.isPending;
+  useEffect(() => {
+    const error = savedFilterQuery.error ?? lookupQuery.error;
+    if (error) toast.error(error.message);
+  }, [savedFilterQuery.error, lookupQuery.error]);
 
   const handleFilterChange = useCallback((key: string, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
-  }, []);
+  }, [setFilters]);
 
   const handleReset = useCallback(() => {
     setFilters(initialFilters);
     setRunResult(null);
     setError(null);
     setVisibleColumns(null);
-  }, [initialFilters]);
+  }, [initialFilters, setFilters, setVisibleColumns]);
 
   const handleApplySavedFilter = (filter: SavedFilter) => {
     const f = filter.filters_json as Record<string, string>;
@@ -220,7 +224,7 @@ export function ReportRunPage({ registryEntry, initialFilters = {} }: ReportRunP
       }
 
       setRunResult(runResult);
-      setVisibleColumns(null);
+      setVisibleColumns(previous => previous?.filter(column => runResult.data?.columns.includes(column)) ?? null);
 
       // Resolve branding for export/preview if the run produced a template
       const templateId = runResult.resolvedTemplateId ?? selectedTemplateId;

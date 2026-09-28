@@ -24,15 +24,18 @@
  * Draft is never written to localStorage or sessionStorage.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useWorkspaceContext } from "@/components/workspace/workspace-provider";
 import { useWorkspaceDraftStoreContext } from "@/components/workspace/workspace-draft-provider";
 import { buildWorkspaceDraftKey, isDraftFieldAllowed } from "@/lib/workspace/workspace-draft-types";
 import { snapshotFormData } from "@/lib/workspace/workspace-draft-store";
+import { useWorkspaceFormOwner } from "@/hooks/use-workspace-form-owner";
 
 export type UseWorkspaceFormDraftOptions = {
   /** HTML id of the form element — used for FormData snapshot */
   formId: string;
+  /** Bind to the owning route rather than the next active tab during navigation. */
+  ownerRoute?: string;
   /** Set false in view mode to disable draft capture. Default: true */
   enabled?: boolean;
   /** Entity type for record-scoped keys (optional, defaults to tab scope) */
@@ -62,9 +65,13 @@ export type UseWorkspaceFormDraftReturn = {
    * Returns serverFallback if no draft entry exists for the field.
    */
   getDraftBoolean: (fieldName: string, serverFallback?: boolean) => boolean;
+  /** Empty is an explicit cleared selection, not a request to restore the server value. */
+  getDraftNullableId: (fieldName: string, serverFallback?: number | null) => number | null;
+  /** Distinguishes an explicit clear from a field that was never edited. */
+  hasDraftField: (fieldName: string) => boolean;
   /**
    * Snapshot the form's current FormData into the draft store.
-   * Safe to call from onInput / onChange — internally debounced.
+   * Captures synchronously: navigation must not race a delayed DOM read.
    */
   syncDraft: () => void;
   /**
@@ -79,6 +86,7 @@ export type UseWorkspaceFormDraftReturn = {
 
 export function useWorkspaceFormDraft({
   formId,
+  ownerRoute,
   enabled = true,
   entityType,
   entityId,
@@ -86,22 +94,22 @@ export function useWorkspaceFormDraft({
   const workspaceCtx = useWorkspaceContext();
   const draftStore = useWorkspaceDraftStoreContext();
 
-  // Get active tab id
-  const activeTabId = workspaceCtx?.state.tabs.find(
-    (t) => t.id === workspaceCtx.state.activeTabId
-  )?.id ?? null;
+  const owner = useWorkspaceFormOwner(ownerRoute);
+  const activeTabId = owner?.id ?? null;
+  // Standalone controls cannot share a form-id-only fallback with another record.
+  const [standaloneId] = useState(() => crypto.randomUUID());
 
   // Build the draft key for this tab + form
   const draftKey = useMemo(
     () =>
       buildWorkspaceDraftKey({
-        tabId: activeTabId,
+        tabId: activeTabId ?? standaloneId,
         formId,
         entityType,
         entityId,
         scope: "tab",
       }),
-    [activeTabId, formId, entityType, entityId]
+    [activeTabId, standaloneId, formId, entityType, entityId]
   );
 
   // Freeze the draft snapshot at first render so defaultValue props remain stable.
@@ -111,15 +119,10 @@ export function useWorkspaceFormDraft({
   // By freezing once, defaultValue is stable — the frozen snapshot is always the
   // correct draft value because by the time the form mounts, the workspace has
   // already set activeTabId (SET_ACTIVE_TAB + router.push happen together).
-  const frozenDefaultsRef = useRef<Record<string, string> | null>(null);
-  if (frozenDefaultsRef.current === null) {
-    frozenDefaultsRef.current = (enabled && draftStore)
-      ? (draftStore.getDraft(draftKey) ?? {})
-      : {};
-  }
-
-  // Debounce ref for syncDraft
-  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [frozenDefaults] = useState<Record<string, string>>(() =>
+    enabled && draftStore ? { ...draftStore.getDraft(draftKey) } : {}
+  );
+  const [restorationAcknowledged, setRestorationAcknowledged] = useState(false);
 
   // ── Restore dirty indicator on remount if draft exists ───────────────────
   useEffect(() => {
@@ -138,38 +141,33 @@ export function useWorkspaceFormDraft({
         return serverFallback != null ? String(serverFallback) : "";
       }
       // Read from the frozen snapshot — stable across all renders of this instance.
-      const frozen = frozenDefaultsRef.current ?? {};
+      const frozen = frozenDefaults;
       if (fieldName in frozen) return frozen[fieldName];
       return serverFallback != null ? String(serverFallback) : "";
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [enabled] // Intentionally omit frozenDefaultsRef — it's a ref, stable by design
+
+    [enabled, frozenDefaults]
   );
 
   const getDraftBoolean = useCallback(
     (fieldName: string, serverFallback = false): boolean => {
       if (!enabled) return serverFallback;
       // Read from the frozen snapshot — stable across all renders of this instance.
-      const frozen = frozenDefaultsRef.current ?? {};
+      const frozen = frozenDefaults;
       if (fieldName in frozen) {
         const v = frozen[fieldName];
         return v === "true" || v === "on";
       }
       return serverFallback;
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [enabled]
+
+    [enabled, frozenDefaults]
   );
 
   const syncDraft = useCallback(() => {
     if (!enabled || !draftStore) return;
-    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
-    syncTimerRef.current = setTimeout(() => {
-      const snapshot = snapshotFormData(formId);
-      if (Object.keys(snapshot).length > 0) {
-        draftStore.patchDraft(draftKey, snapshot);
-      }
-    }, 200);
+    const snapshot = snapshotFormData(formId);
+    if (Object.keys(snapshot).length > 0) draftStore.patchDraft(draftKey, snapshot);
   }, [enabled, draftStore, draftKey, formId]);
 
   const writeDraftField = useCallback(
@@ -184,16 +182,23 @@ export function useWorkspaceFormDraft({
   const clearDraft = useCallback(() => {
     if (!draftStore) return;
     draftStore.clearDraft(draftKey);
+    setRestorationAcknowledged(true);
   }, [draftStore, draftKey]);
 
   const hasDraft = draftStore?.hasDraft(draftKey) ?? false;
+  const hasDraftField = useCallback((fieldName: string) =>
+    enabled && isDraftFieldAllowed(fieldName) && Object.hasOwn(frozenDefaults, fieldName),
+  [enabled, frozenDefaults]);
+  const getDraftNullableId = useCallback((fieldName: string, serverFallback?: number | null) => {
+    const raw = getDraftDefault(fieldName, serverFallback);
+    const value = Number(raw);
+    return raw && Number.isSafeInteger(value) && value > 0 ? value : null;
+  }, [getDraftDefault]);
 
   // Frozen at mount — "did this form restore a non-empty draft?" (WS.3).
   // Lazy useState initializer: computed exactly once on first render, matching
   // the frozen-snapshot semantics above without reading a ref during render.
-  const [restoredFromDraft] = useState<boolean>(() =>
-    enabled && !!draftStore && draftStore.hasDraft(draftKey)
-  );
+  const restoredFromDraft = enabled && !restorationAcknowledged && Object.keys(frozenDefaults).length > 0;
 
   return {
     draftKey,
@@ -201,6 +206,8 @@ export function useWorkspaceFormDraft({
     restoredFromDraft,
     getDraftDefault,
     getDraftBoolean,
+    getDraftNullableId,
+    hasDraftField,
     syncDraft,
     writeDraftField,
     clearDraft,

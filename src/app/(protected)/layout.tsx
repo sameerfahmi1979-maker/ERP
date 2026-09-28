@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { ErpShell } from "@/components/layout/erp-shell";
 import { getAuthContext, isGlobalAdmin } from "@/lib/rbac/check";
 import { loadRuntimeAppBranding } from "@/lib/branding/load-runtime-app-branding";
+import { SessionBoundary } from "@/components/layout/session-boundary";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,8 @@ export default async function ProtectedLayout({
   const appBranding = await loadRuntimeAppBranding();
 
   return (
-    <ErpShell
+    <SessionBoundary key={ctx.profile.auth_user_id} authUserId={ctx.profile.auth_user_id}><ErpShell
+      principalId={ctx.profile.auth_user_id}
       displayName={ctx.profile.display_name ?? ctx.profile.full_name}
       email={ctx.email}
       permissionCodes={ctx.permissionCodes}
@@ -36,6 +38,6 @@ export default async function ProtectedLayout({
       appBranding={appBranding}
     >
       {children}
-    </ErpShell>
+    </ErpShell></SessionBoundary>
   );
 }

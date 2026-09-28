@@ -1,29 +1,28 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, User, Info, ShieldAlert } from "lucide-react";
+import { ERPCombobox } from "@/components/erp/combobox";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { ERPCombobox } from "@/components/erp/combobox";
-import { cn } from "@/lib/utils";
-import type {
-  HrEmployeeDraftFromDocuments,
-  HrDocumentFieldSuggestion,
-  HrDocumentConflict,
-} from "@/lib/hr/document-to-record/types";
-import { HrDocumentConfidenceBadge } from "./hr-document-confidence-badge";
-import { HrDocumentConflictCard } from "./hr-document-conflict-card";
-import { useOwnerCompaniesQuery, useBranchesQuery } from "@/hooks/lookups/use-org-queries";
 import { useCountriesQuery } from "@/hooks/lookups/use-geography-queries";
+import { useBranchesQuery, useOwnerCompaniesQuery } from "@/hooks/lookups/use-org-queries";
+import type { DuplicateCheckResult } from "@/lib/hr/document-to-record/duplicate-checks";
+import type {
+  HrDocumentConflict,
+  HrDocumentFieldSuggestion,
+  HrEmployeeDraftFromDocuments,
+} from "@/lib/hr/document-to-record/types";
+import { cn } from "@/lib/utils";
 import { listDepartments } from "@/server/actions/common-master-data/departments";
 import { listDesignations } from "@/server/actions/common-master-data/designations";
 import {
   listHrEmployeeCategories,
   listHrEmploymentTypes,
 } from "@/server/actions/hr/settings";
-import type { DuplicateCheckResult } from "@/lib/hr/document-to-record/duplicate-checks";
+import { useQuery } from "@tanstack/react-query";
+import { AlertTriangle, Info, ShieldAlert, User } from "lucide-react";
+import { HrDocumentConfidenceBadge } from "./hr-document-confidence-badge";
+import { HrDocumentConflictCard } from "./hr-document-conflict-card";
 
 type EmployeeFormState = {
   full_name_en: string;

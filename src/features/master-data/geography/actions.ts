@@ -1388,7 +1388,7 @@ export async function getAreasZones(filters?: {
 
     // Transform data to flatten nested emirate from city
     const transformedData = (data || []).map(area => {
-      const { city, ...rest } = area as any;
+      const { city, ...rest } = area;
       const { emirate, ...cityWithoutEmirate } = city || {};
       
       return {

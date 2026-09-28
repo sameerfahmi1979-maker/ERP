@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext } from "@/lib/rbac/check";
+import { canBrowseEmployees } from "@/lib/rbac/employee-access";
 import { listEmployees } from "@/server/actions/hr/employees";
 import { EmployeesTable } from "@/features/hr/employees/employees-table";
 import { ERPPageHeader } from "@/components/erp/page-header";
@@ -13,8 +14,7 @@ export default async function EmployeesPage() {
   const authContext = await getAuthContext();
 
   if (
-    !hasPermission(authContext, "hr.employees.view") &&
-    !authContext.roleCodes?.includes("system_admin")
+    !canBrowseEmployees(authContext)
   ) {
     redirect("/access-denied");
   }

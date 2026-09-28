@@ -1,15 +1,15 @@
 "use client";
 
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { queryKeys } from "@/lib/query/query-keys";
-import { listGlobalOnboardingTasks } from "@/server/actions/hr/recruitment";
-import type { AuthContext } from "@/lib/rbac/check";
-import { Skeleton } from "@/components/ui/skeleton";
 import { ERPCombobox } from "@/components/erp/combobox";
-import { CheckSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { queryKeys } from "@/lib/query/query-keys";
+import type { AuthContext } from "@/lib/rbac/check";
+import { listGlobalOnboardingTasks } from "@/server/actions/hr/recruitment";
+import { useQuery } from "@tanstack/react-query";
+import { CheckSquare } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 
 type Props = { authContext: AuthContext };
 
@@ -94,7 +94,7 @@ export function GlobalOnboardingPageClient({ authContext }: Props) {
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {row.candidate && `Candidate: ${row.candidate.full_name_en}`}
                   {row.due_date && ` · Due: ${row.due_date}`}
-                  {row.assigned_user && ` · Assigned to: ${row.assigned_user.full_name_en ?? row.assigned_user.email}`}
+                  {row.assigned_user && ` · Assigned to: ${row.assigned_user.full_name_en ?? `User #${row.assigned_user.id}`}`}
                 </p>
               </div>
               {row.candidate_id && (

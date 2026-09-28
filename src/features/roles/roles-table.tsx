@@ -35,7 +35,7 @@ import {
   X,
   RefreshCw,
 } from "lucide-react";
-import type { Role } from "@/types/database";
+import type { Role } from "@/types/domain";
 import { updateRoleStatus, deleteRole } from "@/server/actions/roles";
 import { CloneRoleDialog } from "@/features/roles/clone-role-dialog";
 import { toast } from "sonner";

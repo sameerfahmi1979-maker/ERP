@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getDmsAiErrorBreakdown, type ObservabilityFilters, type ErrorBreakdownRow } from "@/server/actions/dms/ai-observability";
+import { getDmsAiErrorBreakdown, type ObservabilityFilters } from "@/server/actions/dms/ai-observability";
+import { useQuery } from "@tanstack/react-query";
 
 interface Props {
   filters: ObservabilityFilters;
@@ -9,20 +9,18 @@ interface Props {
 }
 
 export function AiErrorBreakdown({ filters, refreshKey }: Props) {
-  const [data, setData] = useState<ErrorBreakdownRow[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setLoading(true);
-    getDmsAiErrorBreakdown(filters)
-      .then((res) => {
-        if (res.success && res.data) setData(res.data);
-        else setError(res.error ?? "Failed to load.");
-      })
-      .catch(() => setError("Failed to load error breakdown."))
-      .finally(() => setLoading(false));
-  }, [filters, refreshKey]);
+  const { data, isPending: loading, error: queryError } = useQuery({
+    queryKey: ["dms-observability", "getDmsAiErrorBreakdown", filters, refreshKey],
+    queryFn: async () => {
+      const result = await getDmsAiErrorBreakdown(filters);
+      if (!result.success || !result.data) throw new Error(result.error ?? "Failed to load.");
+      return result.data;
+    },
+    retry: false,
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+  });
+  const error = queryError?.message;
 
   if (loading) return <div className="text-sm text-muted-foreground">Loading error analysis...</div>;
   if (error) return <div className="text-sm text-destructive">{error}</div>;

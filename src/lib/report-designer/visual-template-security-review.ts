@@ -26,18 +26,18 @@
  * `SecurityFinding[]` / `SecurityReviewResult` contract.
  */
 
+import type { SecurityFinding } from "@/lib/template-governance/security-review";
+import { ERP_BINDING_REGISTRY, extractBindingsFromText } from "./binding-registry";
+import {
+  REPORT_DESIGNER_BLOCK_TYPES,
+} from "./constants";
+import { getReportFieldByPath, isRegisteredSensitiveField } from "./field-registry";
 import {
   ReportDesignerLayoutJsonSchema,
 } from "./layout-schema";
 import {
   CURRENT_LAYOUT_SCHEMA_VERSION,
 } from "./types";
-import {
-  REPORT_DESIGNER_BLOCK_TYPES,
-} from "./constants";
-import { ERP_BINDING_REGISTRY, extractBindingsFromText } from "./binding-registry";
-import { isRegisteredSensitiveField, getReportFieldByPath } from "./field-registry";
-import type { SecurityFinding } from "@/lib/template-governance/security-review";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants

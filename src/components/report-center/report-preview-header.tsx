@@ -10,10 +10,10 @@
  */
 
 import { Badge } from "@/components/ui/badge";
-import { Building2, FileText, Palette, Globe, Phone, Mail } from "lucide-react";
+import type { ExportBrandingContext } from "@/lib/export";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import type { ExportBrandingContext } from "@/lib/export";
+import { Building2, FileText, Mail, Palette, Phone } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props

@@ -1,30 +1,30 @@
-import { ERPStatCard } from "@/components/erp/stat-card";
 import { ERPModuleCard } from "@/components/erp/module-card";
-import { ERPSectionCard } from "@/components/erp/section-card";
 import { ERPPageHeader } from "@/components/erp/page-header";
-import { Button } from "@/components/ui/button";
+import { ERPSectionCard } from "@/components/erp/section-card";
+import { ERPStatCard } from "@/components/erp/stat-card";
 import { Badge } from "@/components/ui/badge";
-import {
-  Users,
-  Truck,
-  Package,
-  DollarSign,
-  UserCog,
-  Wrench,
-  HardHat,
-  ShoppingCart,
-  FileText,
-  Building2,
-  AlertTriangle,
-  Clock,
-  ArrowUpRight,
-  Plus,
-  TrendingUp,
-} from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { getAuthContext, hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
-import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
 import { getFirstPermittedRoute } from "@/lib/rbac/route-access-registry";
+import { createClient } from "@/lib/supabase/server";
+import {
+  AlertTriangle,
+  ArrowUpRight,
+  Building2,
+  Clock,
+  DollarSign,
+  FileText,
+  HardHat,
+  Package,
+  Plus,
+  ShoppingCart,
+  TrendingUp,
+  Truck,
+  UserCog,
+  Users,
+  Wrench,
+} from "lucide-react";
+import { redirect } from "next/navigation";
 
 export default async function DashboardPage() {
   const ctx = await getAuthContext();

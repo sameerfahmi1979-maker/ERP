@@ -23,46 +23,12 @@
  * - ERPRecordSectionPanel instead of ERPDrawerSection
  */
 
-import { useState, useCallback, useMemo, useRef } from "react";
-import { useRouter } from "next/navigation";
-import { cn } from "@/lib/utils";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
-import { toast } from "sonner";
-import { AlertTriangle, Lock, Building2, Tag, Shield, DollarSign, Users, MapPin, Landmark, FileText, Brain } from "lucide-react";
-import type { Party, DuplicateMatch } from "@/features/master-data/parties/party-types";
-import type { AuthContext } from "@/lib/rbac/check";
-import { createParty, updateParty, detectPartyDuplicates } from "@/server/actions/master-data/parties";
-import { CountrySelect, EmirateSelect, CitySelect, AreaZoneSelect } from "@/components/erp/geography";
-import { RequiredLabel } from "@/components/erp/required-label";
-import { ERPFieldGrid } from "@/components/erp/erp-drawer-form";
-import { ERPRecordWorkspaceForm, ERPRecordSectionPanel } from "@/components/workspace/erp-record-workspace-form";
-import { useFormDirty } from "@/hooks/use-form-dirty";
-import { useWorkspace } from "@/hooks/use-workspace";
-import { useWorkspaceTabDirty } from "@/hooks/use-workspace-tab-dirty";
-import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
-import { useWorkspaceSectionState } from "@/hooks/use-workspace-section-state";
-import { useWorkspaceScrollState } from "@/hooks/use-workspace-scroll-state";
-import { PartyTypesTab } from "./party-types-tab";
-import { PartyLicensesTab } from "./party-licenses-tab";
-import { PartyTaxFinanceTab } from "./party-tax-finance-tab";
-import { PartyContactsTab } from "./party-contacts-tab";
-import { PartyAddressesTab } from "./party-addresses-tab";
-import { PartyBankDetailsTab } from "./party-bank-details-tab";
-import { PartyDmsDocumentsTab } from "./party-dms-documents-tab";
-import { PartyServicesTab } from "./party-services-tab";
-import { PartyNotesTab } from "./party-notes-tab";
-import { PartyAuditTab } from "./party-audit-tab";
-import { AiFieldSuggestionsPanel } from "@/features/ai/common/field-suggestions";
-import { DuplicateCandidateAlert } from "@/features/ai/common/duplicate-detection";
-import { ComplianceFindingAlert } from "@/features/ai/common/compliance-checker";
-import { RiskScoreAlert } from "@/features/ai/common/risk-scoring";
-import { useQuery } from "@tanstack/react-query";
-import { getPartyNatures, getPartyStatuses } from "@/server/actions/master-data/parties";
-import { PartySelect } from "@/components/erp/party-select";
 import { ERPCombobox } from "@/components/erp/combobox";
+import { ERPFieldGrid } from "@/components/erp/erp-drawer-form";
+import { AreaZoneSelect, CitySelect, CountrySelect, EmirateSelect } from "@/components/erp/geography";
+import { PartySelect } from "@/components/erp/party-select";
+import { RequiredLabel } from "@/components/erp/required-label";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -71,8 +37,40 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import type { ERPRecordSection } from "@/components/workspace/erp-record-section-nav";
+import { ERPRecordSectionPanel, ERPRecordWorkspaceForm } from "@/components/workspace/erp-record-workspace-form";
+import { ComplianceFindingAlert } from "@/features/ai/common/compliance-checker";
+import { DuplicateCandidateAlert } from "@/features/ai/common/duplicate-detection";
+import { AiFieldSuggestionsPanel } from "@/features/ai/common/field-suggestions";
+import { RiskScoreAlert } from "@/features/ai/common/risk-scoring";
+import type { DuplicateMatch, Party } from "@/features/master-data/parties/party-types";
+import { useWorkspaceFormDirty as useFormDirty } from "@/hooks/use-workspace-form-dirty";
+import { useWorkspaceFormNavigation as useWorkspace } from "@/hooks/use-workspace-form-navigation";
+import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
+import { useWorkspaceScrollState } from "@/hooks/use-workspace-scroll-state";
+import { useWorkspaceSectionState } from "@/hooks/use-workspace-section-state";
+import { useWorkspaceTabDirty } from "@/hooks/use-workspace-tab-dirty";
+import type { AuthContext } from "@/lib/rbac/check";
+import { createParty, detectPartyDuplicates, getPartyNatures, getPartyStatuses, updateParty } from "@/server/actions/master-data/parties";
+import { useQuery } from "@tanstack/react-query";
+import { AlertTriangle, Brain, Building2, DollarSign, FileText, Landmark, Lock, MapPin, Shield, Tag, Users } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { PartyAddressesTab } from "./party-addresses-tab";
+import { PartyAuditTab } from "./party-audit-tab";
+import { PartyBankDetailsTab } from "./party-bank-details-tab";
+import { PartyContactsTab } from "./party-contacts-tab";
+import { PartyDmsDocumentsTab } from "./party-dms-documents-tab";
+import { PartyLicensesTab } from "./party-licenses-tab";
+import { PartyNotesTab } from "./party-notes-tab";
+import { PartyServicesTab } from "./party-services-tab";
+import { PartyTaxFinanceTab } from "./party-tax-finance-tab";
+import { PartyTypesTab } from "./party-types-tab";
 
 function hasPerm(ctx: AuthContext, code: string) {
   return (
@@ -174,22 +172,22 @@ function PartyWorkspaceFormInner({
   useWorkspaceTabDirty({ isDirty, enabled: !isViewing });
 
   // â”€â”€ Draft preservation (UI.4E.2) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const { getDraftDefault, syncDraft, writeDraftField, clearDraft } = useWorkspaceFormDraft({
+  const { getDraftDefault, getDraftNullableId, syncDraft, writeDraftField, clearDraft } = useWorkspaceFormDraft({
     formId: "party-workspace-form",
     enabled: !isViewing,
   });
 
   // â”€â”€ Geography state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const [countryId, setCountryId] = useState<number | null>(() => { const d = getDraftDefault("country_id", ""); return d ? Number(d) : party?.country_id ?? null; });
-  const [emirateId, setEmirateId] = useState<number | null>(() => { const d = getDraftDefault("emirate_id", ""); return d ? Number(d) : party?.emirate_id ?? null; });
-  const [cityId, setCityId] = useState<number | null>(() => { const d = getDraftDefault("city_id", ""); return d ? Number(d) : party?.city_id ?? null; });
-  const [areaZoneId, setAreaZoneId] = useState<number | null>(() => { const d = getDraftDefault("area_zone_id", ""); return d ? Number(d) : party?.area_zone_id ?? null; });
+  const [countryId, setCountryId] = useState<number | null>(() => { return getDraftNullableId("country_id", party?.country_id ?? null); });
+  const [emirateId, setEmirateId] = useState<number | null>(() => { return getDraftNullableId("emirate_id", party?.emirate_id ?? null); });
+  const [cityId, setCityId] = useState<number | null>(() => { return getDraftNullableId("city_id", party?.city_id ?? null); });
+  const [areaZoneId, setAreaZoneId] = useState<number | null>(() => { return getDraftNullableId("area_zone_id", party?.area_zone_id ?? null); });
 
   // â”€â”€ Lookup state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const [partyNatureId, setPartyNatureId] = useState<number | null>(() => { const d = getDraftDefault("party_nature_id", ""); return d ? Number(d) : party?.party_nature_id ?? null; });
-  const [partyStatusId, setPartyStatusId] = useState<number | null>(() => { const d = getDraftDefault("party_status_id", ""); return d ? Number(d) : party?.party_status_id ?? null; });
+  const [partyNatureId, setPartyNatureId] = useState<number | null>(() => { return getDraftNullableId("party_nature_id", party?.party_nature_id ?? null); });
+  const [partyStatusId, setPartyStatusId] = useState<number | null>(() => { return getDraftNullableId("party_status_id", party?.party_status_id ?? null); });
   const [isActive, setIsActive] = useState<boolean>(() => { const d = getDraftDefault("is_active", ""); return d ? d === "true" : party?.is_active ?? true; });
-  const [parentPartyId, setParentPartyId] = useState<number | null>(() => { const d = getDraftDefault("parent_party_id", ""); return d ? Number(d) : party?.parent_party_id ?? null; });
+  const [parentPartyId, setParentPartyId] = useState<number | null>(() => { return getDraftNullableId("parent_party_id", party?.parent_party_id ?? null); });
 
   // â”€â”€ Child dialog blocking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [childDialogOpen, setChildDialogOpen] = useState(false);

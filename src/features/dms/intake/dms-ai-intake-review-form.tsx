@@ -1,4 +1,5 @@
 "use client";
+import { useQuery } from "@tanstack/react-query";
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Input } from "@/components/ui/input";
@@ -47,6 +48,7 @@ const CONFIDENTIALITY_OPTIONS = [
   { value: "legal", label: "Legal Confidential" },
   { value: "executive", label: "Executive" },
 ];
+const EMPTY_DOCUMENT_TYPES: DmsDocumentTypeRow[] = [];
 
 export type ReviewFormValues = {
   title: string;
@@ -87,32 +89,23 @@ export function DmsAiIntakeReviewForm({
   const aiResult = aiResultOverride ?? session.ai_result;
   const extractedFields = aiResult?.extracted_fields_json ?? {};
   const fieldConf = aiResult?.field_confidence_json ?? {};
-  const [docTypes, setDocTypes] = useState<DmsDocumentTypeRow[]>(initialDocTypes);
-  const [isLoadingTypes, setIsLoadingTypes] = useState(initialDocTypes.length === 0);
+  const typesQuery = useQuery({
+    queryKey: ["dms-active-document-types"],
+    enabled: initialDocTypes.length === 0,
+    queryFn: async () => {
+      const result = await getDmsDocumentTypes({ is_active: true });
+      if (!result.success) throw new Error(result.error ?? "Failed to load document types");
+      return result.data ?? [];
+    },
+    retry: false, gcTime: 0, refetchOnWindowFocus: false,
+  });
+  const docTypes = initialDocTypes.length ? initialDocTypes : typesQuery.data ?? EMPTY_DOCUMENT_TYPES;
+  const isLoadingTypes = initialDocTypes.length === 0 && typesQuery.isPending;
   const [isRerunning, startRerun] = useTransition();
   const [typeChangeDialogOpen, setTypeChangeDialogOpen] = useState(false);
   const [pendingTypeId, setPendingTypeId] = useState<number | null>(null);
   const [pendingMergeMode, setPendingMergeMode] = useState<RerunExtractionMergeMode>("fill_missing_only");
   const suggestedTypeIdRef = useRef(aiResult?.suggested_document_type_id ?? null);
-
-  useEffect(() => {
-    if (initialDocTypes.length > 0) {
-      setDocTypes(initialDocTypes);
-      setIsLoadingTypes(false);
-      return;
-    }
-
-    let cancelled = false;
-    (async () => {
-      setIsLoadingTypes(true);
-      const res = await getDmsDocumentTypes({ is_active: true });
-      if (!cancelled && res.success && res.data) setDocTypes(res.data);
-      if (!cancelled) setIsLoadingTypes(false);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [initialDocTypes]);
 
   // Sync category when types load and AI suggested a type
   useEffect(() => {

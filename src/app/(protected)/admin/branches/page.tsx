@@ -1,10 +1,9 @@
 import { ERPPageHeader } from "@/components/erp/page-header";
+import { AddBranchButton } from "@/features/branches/add-branch-button";
+import { BranchesTable } from "@/features/branches/branches-table";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { GitBranch } from "lucide-react";
 import { listBranches } from "@/server/queries/branches";
 import { listOrganizations } from "@/server/queries/organizations";
-import { BranchesTable } from "@/features/branches/branches-table";
-import { AddBranchButton } from "@/features/branches/add-branch-button";
 
 export default async function AdminBranchesPage() {
   const ctx = await getAuthContext();

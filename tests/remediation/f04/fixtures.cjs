@@ -1,0 +1,24 @@
+'use strict';
+const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+const db=require('../f00/local-db.cjs'),api=require('../f00/local-client.cjs');
+const dir=path.resolve('CODEX_AUDIT_13_09_2026/IMPLEMENTATION/F04/continuation-20260928');
+const file=path.join(dir,'FIXTURES.json'),privateFile=path.join(dir,'private/credentials.json');
+const q=x=>"'"+String(x).replaceAll("'","''")+"'";
+(async()=>{
+ db.assertDatabase();fs.mkdirSync(path.dirname(privateFile),{recursive:true});
+ if(fs.existsSync(file)) throw Error('Existing fixture ledger; do not duplicate');
+ const run='f04-'+crypto.randomBytes(4).toString('hex'),email='f00-'+run+'@example.invalid';
+ const ledger={run,email,target:'algt-f00-local',state:'PREPARING',production_mutations:0,records:[]};
+ const save=()=>fs.writeFileSync(file,JSON.stringify(ledger,null,2));save();
+ const password=crypto.randomBytes(22).toString('base64url')+'aA9!';
+ const u=await api.request('/auth/v1/admin/users',{method:'POST',admin:true,body:{email,password,email_confirm:true}});
+ if(!u.ok) throw Error('Local create user HTTP '+u.status);ledger.authId=u.data.id;save();
+ ledger.profileId=db.sql(`update public.user_profiles set status='active',must_change_password=false,full_name='F04 SYNTHETIC WORKSPACE TEST' where auth_user_id=${q(ledger.authId)} returning to_json(id);`,{json:true});save();
+ const role=db.sql("select json_build_object('id',id,'active',is_active) from public.roles where role_code='system_admin';",{json:true});
+ ledger.role=role;save();
+ db.sql(`update public.roles set is_active=true where id=${role.id};insert into public.user_roles(user_profile_id,role_id,owner_company_id,branch_id,is_active) values(${ledger.profileId},${role.id},null,null,true);`,{transaction:true});
+ fs.writeFileSync(privateFile,JSON.stringify({email,password}),{mode:0o600});
+ ledger.state='READY';save();
+ console.log(JSON.stringify({email,profileId:ledger.profileId,local_only:true,ledger:file}));
+ console.log(JSON.stringify(db.sql("select json_build_object('rules',(select json_agg(rule_code) from public.global_numbering_rules),'categories',(select json_agg(id) from public.hr_employee_categories),'requisitions',(select json_agg(id) from public.hr_job_requisitions));",{json:true})));
+})().catch(e=>{console.error(e.message);process.exitCode=1;});

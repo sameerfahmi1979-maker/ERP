@@ -1,20 +1,20 @@
 "use client";
 
-import * as React from "react";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
-import { 
-  X, 
-  Printer, 
-  AlertTriangle,
-  Info,
-  Clock
-} from "lucide-react";
 import { UnsavedChangesDialog } from "@/components/erp/unsaved-changes-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { useWorkspaceTabDirty } from "@/hooks/use-workspace-tab-dirty";
+import { cn } from "@/lib/utils";
+import {
+  AlertTriangle,
+  Clock,
+  Info,
+  Printer,
+  X
+} from "lucide-react";
+import * as React from "react";
 
 // Minimal structural type for Base UI Dialog change event details
 type DialogChangeEventDetails = {
@@ -327,11 +327,9 @@ export function ERPDrawerSection({
   // If lazyMount=true we start false and flip to true on first activation.
   const [hasMounted, setHasMounted] = React.useState<boolean>(!lazyMount || isActive);
 
-  React.useEffect(() => {
-    if (isActive && !hasMounted) {
-      setHasMounted(true);
-    }
-  }, [isActive, hasMounted]);
+  // Adjust this component's state on the activation transition, before rendering
+  // its children. Once mounted, preserve their state while the panel is hidden.
+  if ((!lazyMount || isActive) && !hasMounted) setHasMounted(true);
 
   // Before first activation, render nothing (no DOM, no data fetches).
   if (!hasMounted) return null;

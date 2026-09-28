@@ -731,6 +731,15 @@ const REGISTRY: WorkspaceRouteConfig[] = [
   { route: "/admin/hr/employees/record/",    title: "Employee Record",   icon: "User",             tabKind: "record", closable: true, singleton: false, moduleCode: "HR", entityType: "employee", pattern: /^\/admin\/hr\/employees\/record\/\d+/ },
 ];
 
+REGISTRY.push(
+  { route: "/admin/common-master-data/departments/record/new", title: "New Department", icon: "FileText", tabKind: "record", closable: true, singleton: false, moduleCode: "DEPARTMENTS", entityType: "department" },
+  { route: "/admin/common-master-data/departments/record/", title: "Department Record", icon: "FileText", tabKind: "record", closable: true, singleton: false, moduleCode: "DEPARTMENTS", entityType: "department", pattern: /^\/admin\/common-master-data\/departments\/record\/\d+$/ },
+);
+REGISTRY.push(
+  { route: "/admin/hr/recruitment/candidates/record/new", title: "New Candidate", icon: "FileText", tabKind: "record", closable: true, singleton: false, moduleCode: "HR", entityType: "candidate" },
+  { route: "/admin/hr/recruitment/candidates/record/", title: "Candidate Record", icon: "FileText", tabKind: "record", closable: true, singleton: false, moduleCode: "HR", entityType: "candidate", pattern: /^\/admin\/hr\/recruitment\/candidates\/record\/\d+$/ },
+);
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 /** Exact-match → pattern-match → prefix match for dynamic segments */
@@ -749,14 +758,26 @@ export function getWorkspaceRouteConfig(
   if (patternMatch) return patternMatch;
 
   // 3. Prefix match for dynamic segments (e.g. /parties/customers is under /parties)
-  const prefix = REGISTRY.find(
+  const prefix = REGISTRY.filter(
     (r) => pathname.startsWith(r.route + "/") && r.route !== "/"
-  );
+  ).sort((a, b) => b.route.length - a.route.length)[0];
   return prefix ?? null;
 }
 
 export function isWorkspaceRoute(route: string): boolean {
-  return route.startsWith("/") && !route.startsWith("/_next");
+  if (!route.startsWith("/") || route.startsWith("//") || route.startsWith("/_next")) return false;
+  // Reject protocol-relative URLs, backslashes and control characters before router.push.
+  return !/[\\\u0000-\u001f\u007f]/.test(route);
+}
+
+/** Only known paths and the enumerated view mode may enter durable metadata. */
+export function safePersistedWorkspaceRoute(route: string): string | null {
+  if (!isWorkspaceRoute(route) || route.length > 2048) return null;
+  const pathname = route.split(/[?#]/)[0];
+  const config = getWorkspaceRouteConfig(pathname);
+  if (!config || (config.route !== pathname && config.pattern?.exec(pathname)?.[0] !== pathname)) return null;
+  const mode = new URLSearchParams(route.split("?")[1]?.split("#")[0]).get("mode");
+  return pathname + (mode === "view" || mode === "edit" ? `?mode=${mode}` : "");
 }
 
 /** Build a full WorkspaceTab from a route — used for auto-open on direct URL */
@@ -773,6 +794,9 @@ export function createTabFromRoute(route: string): WorkspaceTab {
     pinned: config?.pinned ?? false,
     singleton: config?.singleton ?? false,
     moduleCode: config?.moduleCode,
+    entityType: config?.entityType,
+    formMode: route.split("?")[0].endsWith("/record/new") ? "add"
+      : new URLSearchParams(route.split("?")[1]).get("mode") === "edit" ? "edit" : undefined,
     openedAt: now,
     lastActiveAt: now,
   } as WorkspaceTab & { singleton?: boolean };

@@ -5,16 +5,17 @@
  * Review-based entity risk scores — no auto-block/update/resolve.
  */
 
-import { z } from "zod";
-import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { logAudit } from "@/server/actions/audit";
 import {
+  countMissingRequiredDocuments,
+} from "@/lib/ai/common/compliance-checker/rule-engine";
+import {
+  loadLinkedDocuments,
+  loadRulesForEntityType,
+} from "@/lib/ai/common/compliance-checker/scan-engine";
+import {
+  buildStoredRiskJson,
   calculateEntityRisk,
   computeIsStale,
-  buildStoredRiskJson,
   parseRiskBreakdownJson,
   parseRiskReasonsJson,
   parseSourceCountsJson,
@@ -28,13 +29,12 @@ import {
   type RiskScoreRow,
   type RiskScoreStatus,
 } from "@/lib/ai/common/risk-scoring";
-import {
-  countMissingRequiredDocuments,
-} from "@/lib/ai/common/compliance-checker/rule-engine";
-import {
-  loadLinkedDocuments,
-  loadRulesForEntityType,
-} from "@/lib/ai/common/compliance-checker/scan-engine";
+import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { logAudit } from "@/server/actions/audit";
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 export type ActionResult<T = undefined> = T extends undefined
   ? { success: boolean; error?: string; code?: string }

@@ -1,0 +1,16 @@
+import { beforeEach, expect, it, vi } from 'vitest';
+const m=vi.hoisted(()=>({ctx:vi.fn(),db:vi.fn(),data:[] as unknown[],filters:vi.fn()}));
+vi.mock('@/lib/rbac/check',()=>({getAuthContext:m.ctx,hasPermission:(ctx:{permissionCodes:string[]},code:string)=>ctx.permissionCodes.includes(code)}));
+vi.mock('@/lib/supabase/admin',()=>({createAdminClient:m.db}));
+vi.mock('@/server/actions/audit',()=>({logAudit:vi.fn()}));
+vi.mock('@/lib/branding/resolve-report-branding-assets',()=>({resolveReportBrandingProfileAssetUrls:vi.fn()}));
+vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
+import { listReportTemplatesForSelection } from '@/server/actions/reports/templates';
+const row={id:910001,template_code:'F02',template_name:'Synthetic',template_type:'letter',is_default:null,governance_status:'approved',visual_editor_engine:null,branding_profile_id:910002,branding_profile:{profile_name:'F02 brand',profile_type:'company',logo_url:null,owner_company:{legal_name_en:'Synthetic company'}}};
+beforeEach(()=>{vi.clearAllMocks();m.ctx.mockResolvedValue({permissionCodes:['reports.view']});m.data=[row];const q={select:()=>q,eq:()=>q,is:()=>q,in:(...args:unknown[])=>{m.filters(...args);return q;},order:()=>q,then:(resolve:(v:unknown)=>unknown)=>Promise.resolve({data:m.data,error:null}).then(resolve)};m.db.mockReturnValue({from:()=>q});});
+it('many-to-one branding and company project correctly with nullable default',async()=>{const r=await listReportTemplatesForSelection();expect(r.success).toBe(true);expect(r.data?.[0]).toMatchObject({is_default:false,branding_profile_name:'F02 brand',company_name:'Synthetic company'});});
+it('template without branding retains a valid null projection',async()=>{m.data=[{...row,branding_profile_id:null,branding_profile:null}];expect((await listReportTemplatesForSelection()).data?.[0].branding_profile_name).toBeNull();});
+it('group profile without company is supported',async()=>{m.data=[{...row,branding_profile:{...row.branding_profile,owner_company:null}}];expect((await listReportTemplatesForSelection()).data?.[0].company_name).toBeNull();});
+it('malformed joined shape returns failure rather than silently blank branding',async()=>{m.data=[{...row,branding_profile:[row.branding_profile]}];expect((await listReportTemplatesForSelection()).success).toBe(false);});
+it('issuable filtering is retained',async()=>{await listReportTemplatesForSelection({issuableOnly:true});expect(m.filters).toHaveBeenCalledWith('governance_status',['approved','published']);});
+it('denied user cannot create service client',async()=>{m.ctx.mockResolvedValue({permissionCodes:[]});expect((await listReportTemplatesForSelection()).success).toBe(false);expect(m.db).not.toHaveBeenCalled();});

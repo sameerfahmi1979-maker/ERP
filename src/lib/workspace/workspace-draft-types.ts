@@ -21,6 +21,7 @@ export type WorkspaceDraftKeyInput = {
 };
 
 export type WorkspaceDraftStoreApi = {
+  subscribe: (listener: () => void) => () => void;
   getDraft: (key: WorkspaceDraftKey) => WorkspaceFormDraft | undefined;
   setDraft: (key: WorkspaceDraftKey, draft: WorkspaceFormDraft) => void;
   patchDraft: (key: WorkspaceDraftKey, patch: WorkspaceFormDraft) => void;
@@ -28,6 +29,8 @@ export type WorkspaceDraftStoreApi = {
   clearDraft: (key: WorkspaceDraftKey) => void;
   clearDraftsForTab: (tabId: string) => void;
   hasDraft: (key: WorkspaceDraftKey) => boolean;
+  getViewState: (key: string) => string | undefined;
+  setViewState: (key: string, value: string) => void;
 };
 
 /**
@@ -117,7 +120,10 @@ export function buildWorkspaceDraftKey(input: WorkspaceDraftKeyInput): Workspace
  * allowed per decision D3 because the store never touches disk.
  */
 export function isDraftFieldAllowed(fieldName: string): boolean {
-  const lower = fieldName.toLowerCase();
+  const lower = fieldName.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
+  const segments = lower.split(/[^a-z0-9]+/);
+  if (segments.some(part => NEVER_DRAFT_FIELDS.includes(part))) return false;
+  if (["__proto__", "constructor", "prototype"].includes(lower)) return false;
   if (NEVER_DRAFT_FIELDS.some((d) => d.toLowerCase() === lower)) return false;
   if (NEVER_DRAFT_SUBSTRINGS.some((s) => lower.includes(s.toLowerCase()))) return false;
   return true;

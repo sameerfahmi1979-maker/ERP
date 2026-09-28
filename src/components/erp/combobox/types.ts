@@ -53,6 +53,7 @@ export interface ERPComboboxProps {
 
   // Form
   name?: string;
+  ariaLabel?: string;
 
   // Advanced
   renderOption?: (option: ERPComboboxOption, selected: boolean) => React.ReactNode;

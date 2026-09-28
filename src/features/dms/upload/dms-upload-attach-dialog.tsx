@@ -23,7 +23,11 @@ interface DmsUploadAttachDialogProps {
   onSuccess?: (documentId: number) => void;
 }
 
-export function DmsUploadAttachDialog({
+export function DmsUploadAttachDialog(props: DmsUploadAttachDialogProps) {
+  return props.open && props.session ? <UploadAttachSession key={props.session.id} {...props} /> : null;
+}
+
+function UploadAttachSession({
   open,
   onOpenChange,
   session,
@@ -93,6 +97,7 @@ export function DmsUploadAttachDialog({
       mode="add"
       size="lg"
       isSubmitting={isSubmitting}
+      isDirty={documentId !== null || changeNotes !== "" || versionLabel !== ""}
       onSubmit={handleSubmit}
     >
       <div className="space-y-4">

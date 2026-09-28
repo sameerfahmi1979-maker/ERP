@@ -310,7 +310,7 @@ Failure-mode audit (VERIFIED — code): double-click → two PDFs + two history 
 - Stale signed URLs: 3600 s expiry; no revocation of issued URLs (acceptable; document).
 - Public verification leakage: sanitizer allowlist blocks salary/IBAN/passport/IDs (VERIFIED — code; BRANDING.9 tested 16 patterns).
 - Stamp/signature URL leakage: storage policy gates bytes behind `reports.sign`; but any HTML embedding signed URLs shares them with document recipients by design — issuance policy must treat rendered output as containing the assets.
-- Cron secrets: `cron.job` commands embed static bearer tokens (`DmsScheduler@2026`, `ErpInternal@2026`) readable by anyone who can read `cron.job` — LOW-MEDIUM finding, rotate to strong secrets/vault (VERIFIED — live DB).
+- Cron secrets: `cron.job` commands embed static bearer tokens (`DmsScheduler@2026`, `[REDACTED_ROTATE_INTERNAL_API_SECRET]`) readable by anyone who can read `cron.job` — LOW-MEDIUM finding, rotate to strong secrets/vault (VERIFIED — live DB).
 
 ---
 

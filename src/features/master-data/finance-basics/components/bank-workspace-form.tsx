@@ -11,11 +11,12 @@ import { CountrySelect } from "@/components/erp/geography";
 import { LookupSelect } from "@/components/erp/lookup-select";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { useQueryClient } from "@tanstack/react-query";
-import { useFormDirty } from "@/hooks/use-form-dirty";
+import { useWorkspaceFormDirty as useFormDirty } from "@/hooks/use-workspace-form-dirty";
 import { invalidateBanks } from "@/lib/query/invalidation";
 import { Landmark, Phone, Shield, Info } from "lucide-react";
 import type { AuthContext } from "@/lib/rbac/check";
-import { useWorkspace } from "@/hooks/use-workspace";
+import { useWorkspaceFormNavigation as useWorkspace } from "@/hooks/use-workspace-form-navigation";
+import { useWorkspaceFormSection } from "@/hooks/use-workspace-form-section";
 import {
   ERPRecordWorkspaceForm,
   ERPRecordSectionPanel,
@@ -35,17 +36,22 @@ export function BankWorkspaceForm({ bank, mode }: BankWorkspaceFormProps) {
   const queryClient = useQueryClient();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeSection, setActiveSection] = useState("basic");
+  const sections = [
+    { id: "basic", label: "Basic Info", icon: Landmark },
+    { id: "contact", label: "Contact", icon: Phone },
+    { id: "status", label: "Status", icon: Shield },
+    { id: "audit", label: "Audit Info", icon: Info },
+  ];
+  const [activeSection, setActiveSection] = useWorkspaceFormSection(FORM_ID, "basic", sections.map(section => section.id));
 
   const isEditing = mode === "edit";
   const isViewing = mode === "view";
 
   const { isDirty, resetDirty } = useFormDirty({ formId: FORM_ID, enabled: !isViewing });
-  const { getDraftDefault, getDraftBoolean, syncDraft, writeDraftField, clearDraft } = useWorkspaceFormDraft({ formId: FORM_ID, enabled: !isViewing });
+  const { getDraftDefault, getDraftNullableId, getDraftBoolean, syncDraft, writeDraftField, clearDraft } = useWorkspaceFormDraft({ formId: FORM_ID, enabled: !isViewing });
 
   const [countryId, setCountryId] = useState<number | null>(() => {
-    const d = getDraftDefault("country_id", "");
-    return d ? Number(d) : bank?.country_id ?? null;
+    return getDraftNullableId("country_id", bank?.country_id ?? null);
   });
   const [bankTypeCode, setBankTypeCode] = useState<string | null>(() =>
     getDraftDefault("bank_type_code", bank?.bank_type_code ?? "") || null
@@ -55,12 +61,6 @@ export function BankWorkspaceForm({ bank, mode }: BankWorkspaceFormProps) {
     if (activeTab?.id) markDirty(activeTab.id, isDirty);
   }, [isDirty, activeTab?.id, markDirty]);
 
-  const sections = [
-    { id: "basic", label: "Basic Info", icon: Landmark },
-    { id: "contact", label: "Contact", icon: Phone },
-    { id: "status", label: "Status", icon: Shield },
-    { id: "audit", label: "Audit Info", icon: Info },
-  ];
 
   const handleRequestClose = () => closeTab(activeTab?.id ?? "");
 

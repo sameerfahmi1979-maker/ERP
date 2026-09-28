@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { Mail, CheckCircle2, XCircle, Clock } from "lucide-react";
@@ -37,24 +38,19 @@ interface ReportDeliveryLogPanelProps {
 }
 
 export function ReportDeliveryLogPanel({ runId }: ReportDeliveryLogPanelProps) {
-  const [logs, setLogs] = useState<DeliveryLog[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-
-  useEffect(() => {
-    if (!runId) return;
-    setIsLoading(true);
-    const db = createClient();
-    db.from("erp_report_delivery_logs")
-      .select("*")
-      .eq("run_id", runId)
-      .order("created_at", { ascending: false })
-      .then(({ data }: { data: DeliveryLog[] | null }) => {
-        setLogs(data ?? []);
-        setIsLoading(false);
-      });
-  }, [runId]);
+  const { data: logs = [], isPending: isLoading, error } = useQuery({
+    queryKey: ["report-delivery-logs", runId],
+    enabled: !!runId,
+    queryFn: async () => {
+      const { data, error } = await createClient().from("erp_report_delivery_logs").select("*").eq("run_id", runId!).order("created_at", { ascending: false });
+      if (error) throw new Error(error.message);
+      return (data ?? []) as DeliveryLog[];
+    },
+    retry: false, gcTime: 0, refetchOnWindowFocus: false,
+  });
 
   if (!runId) return <div className="text-xs text-muted-foreground">No run selected.</div>;
+  if (error) return <div role="alert">Could not load delivery history.</div>;
   if (isLoading) return <div className="text-xs text-muted-foreground">Loading...</div>;
   if (logs.length === 0) {
     return (

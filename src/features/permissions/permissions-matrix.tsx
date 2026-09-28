@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 
-import type { Permission, Role } from "@/types/database";
+import type { Permission, Role } from "@/types/domain";
 import { assignPermissionToRole, removePermissionFromRole } from "@/server/actions/permissions";
 import { toast } from "sonner";
 

@@ -8,8 +8,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Briefcase, ScrollText } from "lucide-react";
 import type { AuthContext } from "@/lib/rbac/check";
-import { useWorkspace } from "@/hooks/use-workspace";
-import { useFormDirty } from "@/hooks/use-form-dirty";
+import { useWorkspaceFormNavigation as useWorkspace } from "@/hooks/use-workspace-form-navigation";
+import { useWorkspaceFormSection } from "@/hooks/use-workspace-form-section";
+import { useWorkspaceFormDirty as useFormDirty } from "@/hooks/use-workspace-form-dirty";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
 import { ERPRecordWorkspaceForm, ERPRecordSectionPanel } from "@/components/workspace/erp-record-workspace-form";
 import { RequiredLabel } from "@/components/erp/required-label";
@@ -37,7 +38,11 @@ const MGMT_LEVELS = [
 export function DesignationWorkspaceForm({ designation, mode, companies = [] }: Props) {
   const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeSection, setActiveSection] = useState("basic");
+  const sections = [
+    { id: "basic", label: "Designation Info", icon: Briefcase },
+    { id: "notes", label: "Description", icon: ScrollText },
+  ];
+  const [activeSection, setActiveSection] = useWorkspaceFormSection(FORM_ID, "basic", sections.map(section => section.id));
   const isEditing = mode === "edit";
   const isViewing = mode === "view";
   const disabled = isViewing;
@@ -46,10 +51,6 @@ export function DesignationWorkspaceForm({ designation, mode, companies = [] }: 
   useEffect(() => { if (activeTab?.id) markDirty(activeTab.id, isDirty); }, [isDirty, activeTab?.id, markDirty]);
   const { getDraftDefault, syncDraft, clearDraft } = useWorkspaceFormDraft({ formId: FORM_ID, enabled: !isViewing });
 
-  const sections = [
-    { id: "basic", label: "Designation Info", icon: Briefcase },
-    { id: "notes", label: "Description", icon: ScrollText },
-  ];
 
   const handleRequestClose = () => closeTab(activeTab?.id ?? "");
 

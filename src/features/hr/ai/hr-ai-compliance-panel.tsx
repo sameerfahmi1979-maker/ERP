@@ -4,16 +4,15 @@
  * HR.12 — HR AI Compliance Explanation Panel
  */
 
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Brain, Info, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
-import { toast } from "sonner";
-import { explainEmployeeCompliance } from "@/server/actions/hr/ai/employee-ai-review";
 import type { HrAiComplianceExplanation } from "@/lib/hr/ai/types";
 import { cn } from "@/lib/utils";
+import { explainEmployeeCompliance } from "@/server/actions/hr/ai/employee-ai-review";
+import { AlertTriangle, Brain, CheckCircle2, Info, XCircle } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 const COMPLIANCE_COLORS = {
   compliant:      "text-emerald-600",
@@ -66,7 +65,7 @@ export function HrAiCompliancePanel({ employeeId, canUse }: Props) {
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-medium">Compliance Explanation</p>
-          <p className="text-xs text-muted-foreground">AI explains the employee's compliance status based on deterministic document and record data.</p>
+          <p className="text-xs text-muted-foreground">AI explains the employee&apos;s compliance status based on deterministic document and record data.</p>
         </div>
         <Button size="sm" variant="outline" onClick={handleExplain} disabled={isLoading} className="shrink-0 gap-1.5">
           <Brain className="h-3.5 w-3.5" />

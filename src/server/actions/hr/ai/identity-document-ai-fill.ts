@@ -8,6 +8,9 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { getEmployeeAccess } from "@/lib/rbac/employee-access";
+import { checkDocumentConfidentialityAccess } from "@/lib/dms/document-access";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { callCommonAiStructuredCompletion } from "@/lib/ai/common/provider-bridge";
 import { isHrAiMasterEnabled, isHrAiFeatureEnabled } from "@/lib/hr/ai/feature-flags";
@@ -163,16 +166,20 @@ export async function prefillIdentityDocumentFromDms(
   dmsDocumentId: number
 ): Promise<HrAiActionResult<IdentityDocumentPrefillResult>> {
   try {
-    const ctx = await getAuthContext();
+    const access = await getEmployeeAccess(await getAuthContext(), employeeId);
+    const ctx = access.scopedContext;
     if (!ctx.profile?.id) return { success: false, error: "Not authenticated." };
-    if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
+    if (!access.allows("hr.compliance.manage")) {
       return { success: false, error: "Permission denied: hr.compliance.manage required." };
     }
     if (!hasPermission(ctx, "dms.documents.view") && !hasPermission(ctx, "dms.admin")) {
       return { success: false, error: "Permission denied: dms.documents.view required." };
     }
 
-    const db = createAdminClient();
+    const db = await createClient();
+    if (!(await checkDocumentConfidentialityAccess(db, dmsDocumentId, ctx, "dms.documents.preview")).allowed) {
+      return { success: false, error: "Document content access is restricted." };
+    }
 
     const { data: entityLink } = await db
       .from("dms_document_links")

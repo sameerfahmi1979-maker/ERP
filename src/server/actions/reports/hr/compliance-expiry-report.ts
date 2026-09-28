@@ -6,7 +6,7 @@
  * Masks document numbers. Does not expose medical results.
  */
 import type { ReportFetcher, ReportDataResult } from "@/lib/report-center/types";
-import { createAdminClient } from "@/lib/supabase/admin";
+import type { ReportReadClient } from "@/lib/report-center/scoped-read-client";
 
 function maskDocNumber(doc: string | null): string {
   if (!doc) return "";
@@ -30,8 +30,8 @@ function expiryStatus(days: number | null): string {
 export const complianceExpiryFetcher: ReportFetcher = {
   reportCode: "HR_COMPLIANCE_EXPIRY",
 
-  async fetch(filters: Record<string, unknown>): Promise<ReportDataResult> {
-    const db = createAdminClient();
+  async fetch(filters: Record<string, unknown>, _permissions: string[], db: ReportReadClient): Promise<ReportDataResult> {
+
 
     // Base employee filter
     let empQ = db
@@ -53,7 +53,7 @@ export const complianceExpiryFetcher: ReportFetcher = {
     // 1. Identity documents
     const { data: idDocs } = await db
       .from("employee_identity_documents")
-      .select("employee_id, document_type, document_number, issue_date, expiry_date")
+      .select("employee_id, document_type:hr_identity_document_types(name_en), document_number, issue_date, expiry_date")
       .in("employee_id", empIds)
       .is("deleted_at", null);
 
@@ -71,7 +71,7 @@ export const complianceExpiryFetcher: ReportFetcher = {
         company: (emp.owner_company as unknown as { legal_name_en: string } | null)?.legal_name_en ?? "",
         department: (emp.department as unknown as { department_name_en: string } | null)?.department_name_en ?? "",
         document_category: "Identity",
-        document_type: doc.document_type,
+        document_type: (doc.document_type as unknown as {name_en:string}|null)?.name_en ?? "Identity document",
         document_number_masked: maskDocNumber(doc.document_number),
         issue_date: doc.issue_date ?? "",
         expiry_date: doc.expiry_date ?? "",
@@ -84,7 +84,7 @@ export const complianceExpiryFetcher: ReportFetcher = {
     // 2. Medical insurance
     const { data: medIns } = await db
       .from("employee_medical_insurances")
-      .select("employee_id, insurance_type, policy_number, start_date, expiry_date, status")
+      .select("employee_id, policy_number, effective_date, expiry_date, status")
       .in("employee_id", empIds)
       .is("deleted_at", null);
 
@@ -102,9 +102,9 @@ export const complianceExpiryFetcher: ReportFetcher = {
         company: (emp.owner_company as unknown as { legal_name_en: string } | null)?.legal_name_en ?? "",
         department: (emp.department as unknown as { department_name_en: string } | null)?.department_name_en ?? "",
         document_category: "Medical Insurance",
-        document_type: ins.insurance_type ?? "insurance",
+        document_type: "Medical insurance",
         document_number_masked: maskDocNumber(ins.policy_number),
-        issue_date: ins.start_date ?? "",
+        issue_date: ins.effective_date ?? "",
         expiry_date: ins.expiry_date ?? "",
         days_remaining: days,
         status,
@@ -115,7 +115,7 @@ export const complianceExpiryFetcher: ReportFetcher = {
     // 3. Training certificates
     const { data: certs } = await db
       .from("employee_training_certificates")
-      .select("employee_id, certificate_name, certificate_number, issue_date, expiry_date")
+      .select("employee_id, training_type:hr_training_types(name_en), certificate_number, completion_date, expiry_date")
       .in("employee_id", empIds)
       .is("deleted_at", null);
 
@@ -133,9 +133,9 @@ export const complianceExpiryFetcher: ReportFetcher = {
         company: (emp.owner_company as unknown as { legal_name_en: string } | null)?.legal_name_en ?? "",
         department: (emp.department as unknown as { department_name_en: string } | null)?.department_name_en ?? "",
         document_category: "Training",
-        document_type: cert.certificate_name,
+        document_type: (cert.training_type as unknown as {name_en:string}|null)?.name_en ?? "Training certificate",
         document_number_masked: maskDocNumber(cert.certificate_number),
-        issue_date: cert.issue_date ?? "",
+        issue_date: cert.completion_date ?? "",
         expiry_date: cert.expiry_date ?? "",
         days_remaining: days,
         status,

@@ -91,7 +91,7 @@ export async function runReportAction(
       requestedByUserId: ctx.profile.id,
     };
 
-    const result = await runReport(request, ctx.permissionCodes);
+    const result = await runReport(request, ctx);
 
     if (result.success) {
       await logAudit({

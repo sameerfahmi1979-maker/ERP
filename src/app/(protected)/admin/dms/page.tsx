@@ -1,10 +1,9 @@
-import { Suspense } from "react";
-import { redirect } from "next/navigation";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { getDmsAdminOverviewStats } from "@/server/actions/dms/overview";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { DmsOverviewClient } from "@/features/dms/admin/dms-overview-client";
-import { FolderOpen } from "lucide-react";
+import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getDmsAdminOverviewStats } from "@/server/actions/dms/overview";
+import { redirect } from "next/navigation";
+import { Suspense } from "react";
 
 export const metadata = {
   title: "DMS Admin | ERP",

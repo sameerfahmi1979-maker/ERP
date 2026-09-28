@@ -7,17 +7,17 @@
  * Uses ERPChildDialogForm — ERP standard for Add/Edit config records.
  */
 
-import { useState, useEffect } from "react";
-import { Palette } from "lucide-react";
+import { ERPCombobox } from "@/components/erp/combobox";
+import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { ERPCombobox } from "@/components/erp/combobox";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
-import { toast } from "sonner";
-import { createBrandingProfile, updateBrandingProfile } from "@/server/actions/reports/templates";
 import { ReportBrandingAssetsSection } from "@/features/branding/report-branding-assets-section";
 import type { ReportBrandingProfile } from "@/lib/report-center/types";
+import { createBrandingProfile, updateBrandingProfile } from "@/server/actions/reports/templates";
+import { Palette } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 interface Props {
   open: boolean;
@@ -66,21 +66,18 @@ const profileTypeOptions = [
   { value: "custom", label: "Custom" },
 ];
 
-export function BrandingProfileForm({
+export function BrandingProfileForm(props: Props) {
+  return props.open ? <BrandingProfileFormSession key={props.profile?.id ?? "new"} {...props} /> : null;
+}
+
+function BrandingProfileFormSession({
   open,
   onOpenChange,
   profile,
   onSaved,
   canUpload,
 }: Props) {
-  const [form, setForm] = useState(defaultForm);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const isEditing = !!profile;
-
-  useEffect(() => {
-    if (!open) return;
-    if (profile) {
-      setForm({
+  const [form, setForm] = useState(() => profile ? {
         profile_code: profile.profile_code,
         profile_name: profile.profile_name,
         profile_type: profile.profile_type as typeof defaultForm.profile_type,
@@ -110,11 +107,9 @@ export function BrandingProfileForm({
         is_group_profile: profile.is_group_profile,
         is_neutral_profile: profile.is_neutral_profile,
         is_active: profile.is_active,
-      });
-    } else {
-      setForm(defaultForm);
-    }
-  }, [open, profile]);
+      } : defaultForm);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isEditing = !!profile;
 
   const handleSubmit = async () => {
     if (!form.profile_name.trim()) { toast.error("Profile name is required"); return; }

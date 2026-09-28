@@ -18,13 +18,14 @@ import gsap from "gsap";
  * or drift.
  */
 export function AuthAtmosphere() {
+  const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
     const prefersReducedMotion = window.matchMedia(
       "(prefers-reduced-motion: reduce)"
     ).matches;
-    if (prefersReducedMotion || !svgRef.current) return;
+    if (prefersReducedMotion || !svgRef.current || !containerRef.current) return;
 
     const ctx = gsap.context(() => {
       const lanes = gsap.utils.toArray<SVGPathElement>(".auth-atmo-lane");
@@ -58,13 +59,13 @@ export function AuthAtmosphere() {
         repeat: -1,
         yoyo: true,
       });
-    }, svgRef);
+    }, containerRef);
 
     return () => ctx.revert();
   }, []);
 
   return (
-    <div className="fixed inset-0 -z-10 overflow-hidden bg-[#070c14]" aria-hidden>
+    <div ref={containerRef} className="fixed inset-0 -z-10 overflow-hidden bg-[#070c14]" aria-hidden>
       <div
         className="auth-atmo-mesh absolute inset-0 opacity-90"
         style={{

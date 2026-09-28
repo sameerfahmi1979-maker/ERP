@@ -9,9 +9,9 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Copy, AlertTriangle, CheckCircle, Info } from "lucide-react";
-import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { AlertTriangle, Copy, Info } from "lucide-react";
+import { toast } from "sonner";
 
 interface SuggestionCardProps {
   fieldLabel: string;

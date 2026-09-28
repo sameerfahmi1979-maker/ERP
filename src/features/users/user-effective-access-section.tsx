@@ -1,18 +1,14 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Lock, Shield, Search, AlertTriangle } from "lucide-react";
 import type { AuthContext } from "@/lib/rbac/check";
 import { getUserEffectiveAccess, type EffectivePermissionRow } from "@/server/actions/users/effective-access";
-
-const SCOPE_LABELS: Record<string, string> = {
-  global: "Global",
-  company: "Company",
-  branch: "Branch",
-};
+import { permissionModuleGroup, permissionModuleLabel, permissionScopeLabel } from "@/lib/rbac/permission-taxonomy";
 
 function canViewEffectiveAccess(ctx: AuthContext): boolean {
   return (
@@ -28,48 +24,27 @@ type Props = {
   userProfileId: number;
   authContext: AuthContext;
 };
+const EMPTY_PERMISSIONS: EffectivePermissionRow[] = [];
 
 export function UserEffectiveAccessSection({ userProfileId, authContext }: Props) {
-  const [permissions, setPermissions] = useState<EffectivePermissionRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const allowed = canViewEffectiveAccess(authContext);
+  const { data, isPending: loading, error: queryError } = useQuery({
+    queryKey: ["user-effective-access", authContext.profile?.id, userProfileId],
+    enabled: allowed,
+    queryFn: async () => {
+      const result = await getUserEffectiveAccess(userProfileId);
+      if (!result.success || !result.data) throw new Error(result.error ?? "Failed to load effective access");
+      return result;
+    },
+    gcTime: 0,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const permissions = allowed ? data?.data ?? EMPTY_PERMISSIONS : EMPTY_PERMISSIONS;
+  const error = queryError?.message;
 
-  const isGlobalAdmin =
-    authContext.roleCodes.includes("system_admin") ||
-    authContext.roleCodes.includes("group_admin");
-
-  useEffect(() => {
-    if (!canViewEffectiveAccess(authContext)) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    getUserEffectiveAccess(userProfileId)
-      .then((result) => {
-        if (result.success && result.data) {
-          setPermissions(result.data);
-        } else {
-          setError(result.error ?? "Failed to load effective access");
-        }
-      })
-      .catch(() => setError("Failed to load effective access"))
-      .finally(() => setLoading(false));
-  }, [userProfileId, authContext]);
-
-  if (!canViewEffectiveAccess(authContext)) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-        <Lock className="h-4 w-4 shrink-0" />
-        <span>
-          Viewing effective access requires <code className="font-mono text-xs">users.view</code>,{" "}
-          <code className="font-mono text-xs">permissions.view</code>, or{" "}
-          <code className="font-mono text-xs">audit.view</code>.
-        </span>
-      </div>
-    );
-  }
+  const isGlobalAdmin = data?.subject?.globalAdmin === true;
 
   // Group by module
   const filtered = useMemo(() => {
@@ -80,6 +55,7 @@ export function UserEffectiveAccessSection({ userProfileId, authContext }: Props
         p.permission_name?.toLowerCase().includes(q) ||
         p.permission_code.toLowerCase().includes(q) ||
         p.module_code?.toLowerCase().includes(q) ||
+        permissionModuleLabel(p.module_code ?? "other").toLowerCase().includes(q) ||
         p.source_role_code.toLowerCase().includes(q),
     );
   }, [permissions, search]);
@@ -87,7 +63,7 @@ export function UserEffectiveAccessSection({ userProfileId, authContext }: Props
   const grouped = useMemo(() => {
     const map = new Map<string, EffectivePermissionRow[]>();
     for (const p of filtered) {
-      const mod = p.module_code ?? "other";
+      const mod = permissionModuleGroup(p.module_code ?? "other");
       if (!map.has(mod)) map.set(mod, []);
       map.get(mod)!.push(p);
     }
@@ -102,8 +78,18 @@ export function UserEffectiveAccessSection({ userProfileId, authContext }: Props
   const moduleCount = grouped.length;
   const totalCount = permissions.length;
 
+  if (!allowed) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+        <Lock className="h-4 w-4 shrink-0" />
+        <span>Viewing effective access requires users.view, permissions.view, or audit.view.</span>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
+      {data?.subject && (!data.subject.active || data.subject.requiredChange) && <p role="status" className="text-sm text-warning">This account is restricted. Its assigned roles do not currently authorize application access.</p>}
       {/* Global admin banner */}
       {isGlobalAdmin && (
         <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 px-3 py-2.5 text-sm text-amber-800 dark:text-amber-300">
@@ -171,11 +157,11 @@ export function UserEffectiveAccessSection({ userProfileId, authContext }: Props
       {/* Grouped permissions */}
       {!loading && !error && grouped.length > 0 && (
         <div className="space-y-4">
-          {grouped.map(([module, perms]) => (
-            <div key={module} className="rounded-md border border-border overflow-hidden">
+          {grouped.map(([moduleGroup, perms]) => (
+            <div key={moduleGroup} className="rounded-md border border-border overflow-hidden">
               <div className="flex items-center justify-between px-3 py-2 bg-muted/30 border-b border-border">
                 <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {module.replace(/_/g, " ")}
+                  {permissionModuleLabel(moduleGroup)}
                 </span>
                 <Badge variant="outline" className="text-[10px]">
                   {perms.length}
@@ -200,7 +186,7 @@ export function UserEffectiveAccessSection({ userProfileId, authContext }: Props
                         variant="outline"
                         className="text-[10px] text-muted-foreground"
                       >
-                        {SCOPE_LABELS[p.scope_type] ?? p.scope_type}
+                        {permissionScopeLabel(p)}
                       </Badge>
                     </div>
                   </div>

@@ -9,8 +9,8 @@
  * to be sent to a vision model (e.g. GPT-4o) for OCR + extraction.
  */
 
-import path from "path";
 import { logger } from "@/lib/logger";
+import path from "path";
 
 export interface PdfPageImage {
   fileName: string;

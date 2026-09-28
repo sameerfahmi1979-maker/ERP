@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ERPSendEmailDialog } from "@/components/erp/email/erp-send-email-dialog";
 import { sendReportEmail } from "@/server/actions/email";
+import { useLegacyEmailAccess } from "@/hooks/use-legacy-email-access";
 import { generatePDFAttachment, generateExcelAttachment, generateCSVAttachment } from "@/lib/export/generate-attachment";
 import type { ReportDataResult, ReportRegistryEntry } from "@/lib/report-center/types";
 import type { ExportBrandingContext, ERPExportOptions } from "@/lib/export/export-types";
@@ -45,6 +46,7 @@ export function ReportExportToolbar({
   resolvedBranding,
 }: ReportExportToolbarProps) {
   const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const canEmail = useLegacyEmailAccess();
 
   const formats = registryEntry.default_output_formats;
   const hasPdf = formats.includes("pdf");
@@ -182,10 +184,11 @@ export function ReportExportToolbar({
               size="sm"
               className="h-7 text-xs gap-1"
               onClick={() => setShowEmailDialog(true)}
-              disabled={isExporting}
+              disabled={isExporting || !canEmail}
+              title={!canEmail ? "Legacy Email Export temporarily requires global sending authority" : undefined}
             >
               <Mail className="h-3 w-3" />
-              Email
+              {canEmail ? "Email" : "Email restricted"}
             </Button>
           )}
         </div>

@@ -1,8 +1,7 @@
-import Link from "next/link";
-import { AlertTriangle, AlertCircle, Info, ArrowUpRight } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { AttentionItem } from "@/server/actions/hr/dashboard";
+import { AlertCircle, AlertTriangle, ArrowUpRight, Info } from "lucide-react";
+import Link from "next/link";
 
 const categoryLabel: Record<AttentionItem["category"], string> = {
   employee: "Employee",

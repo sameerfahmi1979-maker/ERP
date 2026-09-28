@@ -1,9 +1,11 @@
 import "server-only";
 
-import type { UserProfile } from "@/types/database";
+import type { UserProfile } from "@/types/domain";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
+import { hasPermission } from "./scope";
+export { canUseApplication, hasRole, hasPermission, isGlobalAdmin, hasGlobalPermission, hasPermissionInScope } from "./scope";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -19,6 +21,9 @@ export type AuthContext = {
   accountStatus: AccountStatus;
   /** True only when accountStatus === "active" */
   isAccountActive: boolean;
+  /** Explicit scope is retained; legacy permissionCodes is a capability list, not a row-access grant. */
+  roleAssignments?: Array<{ roleId: number; roleCode: string; ownerCompanyId: number | null; branchId: number | null; permissionCodes: string[] }>;
+  globalPermissionCodes?: string[];
 };
 
 // ── Account-disabled error ────────────────────────────────────────────────────
@@ -40,28 +45,51 @@ export async function getAuthContext(): Promise<AuthContext> {
   const supabase = await createClient();
   const {
     data: { user },
+    error: authError,
   } = await supabase.auth.getUser();
 
-  if (!user) {
+  if (authError || !user) {
     return { profile: null, email: null, roleCodes: [], permissionCodes: [], accountStatus: "none", isAccountActive: false };
   }
 
-  const { data: profile } = await supabase
+  // An unexpired JWT alone is not proof that the underlying session remains live.
+  const { data: sessionValid, error: sessionError } = await supabase.rpc("f03_current_session_valid");
+  if (sessionError || sessionValid !== true) {
+    return { profile: null, email: null, roleCodes: [], permissionCodes: [], accountStatus: "none", isAccountActive: false };
+  }
+  // Narrow bootstrap lookup also supports the forced-change page while business RLS denies access.
+  const { data: profile, error: profileError } = await createAdminClient()
     .from("user_profiles")
     .select("*")
     .eq("auth_user_id", user.id)
     .maybeSingle();
 
-  if (!profile) {
+  if (profileError || !profile) {
     return { profile: null, email: user.email ?? null, roleCodes: [], permissionCodes: [], accountStatus: "none", isAccountActive: false };
   }
 
-  const rawStatus = (profile.status ?? "active") as string;
+  return buildAuthContext(profile as UserProfile, user.email ?? null);
+}
+
+/** Internal worker entry point. Never expose this through a Server Action. */
+export async function getAuthContextForProfileId(profileId: number): Promise<AuthContext> {
+  if (!Number.isSafeInteger(profileId) || profileId <= 0) throw new Error("Invalid principal");
+  const { data: profile, error } = await createAdminClient().from("user_profiles")
+    .select("*").eq("id", profileId).maybeSingle();
+  if (error || !profile) throw new Error("Principal not found");
+  const ctx = await buildAuthContext(profile as UserProfile, null);
+  assertAccountActive(ctx);
+  return ctx;
+}
+
+async function buildAuthContext(profile: UserProfile, email: string | null): Promise<AuthContext> {
+  const rawStatus = profile.status as string;
   const accountStatus: AccountStatus =
     rawStatus === "active" || rawStatus === "inactive" || rawStatus === "suspended"
       ? rawStatus
-      : "active";
+      : "none";
   const isAccountActive = accountStatus === "active";
+  if (!isAccountActive || profile.must_change_password === true) return { profile, email, roleCodes: [], permissionCodes: [], roleAssignments: [], globalPermissionCodes: [], accountStatus, isAccountActive };
 
   // ── USERS.4: flat separate queries to avoid !inner join ambiguity ──────────
   // IMPORTANT: use the admin client (service role) for roles/permissions lookups.
@@ -74,17 +102,18 @@ export async function getAuthContext(): Promise<AuthContext> {
   // Step 1 — get role_ids the user is actively assigned to
   const { data: userRoleRows, error: err1 } = await admin
     .from("user_roles")
-    .select("role_id")
+    .select("role_id, owner_company_id, branch_id")
     .eq("user_profile_id", profile.id)
     .eq("is_active", true);
 
-  if (err1) logger.error("getAuthContext: user_roles query failed", { error: err1 });
+  if (err1) throw new Error("Unable to resolve role assignments");
 
   const roleIds = (userRoleRows ?? []).map((r) => r.role_id as number).filter(Boolean);
 
   // Step 2 — get active role records (filter inactive roles at role level)
   const roleCodes: string[] = [];
   const activeRoleIds: number[] = [];
+  const roleNames = new Map<number, string>();
 
   if (roleIds.length > 0) {
     const { data: activeRoles, error: err2 } = await admin
@@ -93,24 +122,32 @@ export async function getAuthContext(): Promise<AuthContext> {
       .in("id", roleIds)
       .eq("is_active", true);
 
-    if (err2) logger.error("getAuthContext: roles query failed", { error: err2 });
+    if (err2) throw new Error("Unable to resolve active roles");
 
     for (const r of activeRoles ?? []) {
-      if (r.role_code) roleCodes.push(r.role_code as string);
+      if (r.role_code) {
+        roleNames.set(r.id as number, r.role_code as string);
+        // Existing callers inspect roleCodes directly. Privileged codes must NEVER
+        // acquire global meaning from a company/branch assignment.
+        const isGlobal = (userRoleRows ?? []).some(a => a.role_id === r.id && a.owner_company_id === null && a.branch_id === null);
+        if (isGlobal || !["system_admin", "group_admin"].includes(r.role_code as string)) roleCodes.push(r.role_code as string);
+      }
       if (r.id) activeRoleIds.push(r.id as number);
     }
   }
 
   // Step 3 — get permission_ids linked to the active roles
   const permissionSet = new Set<string>();
+  const globalPermissionSet = new Set<string>();
+  const rolePermissions = new Map<number, string[]>();
 
   if (activeRoleIds.length > 0) {
     const { data: rolePermRows, error: err3 } = await admin
       .from("role_permissions")
-      .select("permission_id")
+      .select("role_id, permission_id")
       .in("role_id", activeRoleIds);
 
-    if (err3) logger.error("getAuthContext: role_permissions query failed", { error: err3 });
+    if (err3) throw new Error("Unable to resolve role permissions");
 
     const permissionIds = (rolePermRows ?? []).map((r) => r.permission_id as number).filter(Boolean);
 
@@ -118,14 +155,25 @@ export async function getAuthContext(): Promise<AuthContext> {
     if (permissionIds.length > 0) {
       const { data: activePerms, error: err4 } = await admin
         .from("permissions")
-        .select("permission_code")
+        .select("id, permission_code")
         .in("id", permissionIds)
         .eq("is_active", true);
 
-      if (err4) logger.error("getAuthContext: permissions query failed", { error: err4 });
+      if (err4) throw new Error("Unable to resolve permissions");
 
       for (const p of activePerms ?? []) {
-        if (p.permission_code) permissionSet.add(p.permission_code as string);
+        if (!p.permission_code) continue;
+        for (const link of rolePermRows ?? []) {
+          if (link.permission_id !== p.id) continue;
+          const codes = rolePermissions.get(link.role_id as number) ?? [];
+          codes.push(p.permission_code as string);
+          rolePermissions.set(link.role_id as number, codes);
+          const assignments = (userRoleRows ?? []).filter(a => a.role_id === link.role_id);
+          const global = assignments.some(a => a.owner_company_id === null && a.branch_id === null);
+          if (global) globalPermissionSet.add(p.permission_code as string);
+          // These are platform-wide capabilities, not company capabilities.
+          if (global || (p.permission_code !== "erp.admin" && !p.permission_code.startsWith("settings.") && !p.permission_code.startsWith("numbering.rules.") && !["roles.manage", "permissions.manage"].includes(p.permission_code))) permissionSet.add(p.permission_code as string);
+        }
       }
     }
   }
@@ -136,33 +184,17 @@ export async function getAuthContext(): Promise<AuthContext> {
 
   return {
     profile: profile as UserProfile,
-    email: user.email ?? null,
+    email,
     roleCodes,
     permissionCodes: Array.from(permissionSet),
     accountStatus,
     isAccountActive,
+    globalPermissionCodes: Array.from(globalPermissionSet),
+    roleAssignments: (userRoleRows ?? []).filter(a => activeRoleIds.includes(a.role_id as number)).map(a => ({ roleId: a.role_id as number, roleCode: roleNames.get(a.role_id as number)!, ownerCompanyId: a.owner_company_id as number | null, branchId: a.branch_id as number | null, permissionCodes: rolePermissions.get(a.role_id as number) ?? [] })),
   };
 }
 
 // ── Boolean helpers ───────────────────────────────────────────────────────────
-
-export function hasRole(ctx: AuthContext, roleCode: string): boolean {
-  return ctx.roleCodes.includes(roleCode);
-}
-
-export function hasPermission(ctx: AuthContext, permissionCode: string): boolean {
-  return (
-    ctx.permissionCodes.includes(permissionCode) ||
-    ctx.roleCodes.includes("system_admin") ||
-    ctx.roleCodes.includes("group_admin")
-  );
-}
-
-export function isGlobalAdmin(ctx: AuthContext): boolean {
-  return (
-    ctx.roleCodes.includes("system_admin") || ctx.roleCodes.includes("group_admin")
-  );
-}
 
 /**
  * ERP USERS.1 — Composite helper for user management operations.
@@ -195,8 +227,10 @@ export function assertAccountActive(ctx: AuthContext): void {
       profileId: ctx.profile.id,
       status: ctx.accountStatus,
     });
-    throw new AccountDisabledError(ctx.accountStatus as "inactive" | "suspended");
+    if (ctx.accountStatus === "inactive" || ctx.accountStatus === "suspended") throw new AccountDisabledError(ctx.accountStatus);
+    throw new Error("Account status could not be verified");
   }
+  if (ctx.profile.must_change_password === true) throw new Error("Password change required before using the application");
 }
 
 /**

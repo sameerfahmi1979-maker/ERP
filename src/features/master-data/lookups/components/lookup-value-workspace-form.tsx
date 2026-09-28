@@ -21,10 +21,11 @@ import { createLookupValue, updateLookupValue } from "@/server/actions/master-da
 import { RequiredLabel } from "@/components/erp/required-label";
 import { FileText, Layers, Calendar, Shield, Info, Palette } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useFormDirty } from "@/hooks/use-form-dirty";
+import { useWorkspaceFormDirty as useFormDirty } from "@/hooks/use-workspace-form-dirty";
 import { invalidateAllLookups } from "@/lib/query/invalidation";
 import type { AuthContext } from "@/lib/rbac/check";
-import { useWorkspace } from "@/hooks/use-workspace";
+import { useWorkspaceFormNavigation as useWorkspace } from "@/hooks/use-workspace-form-navigation";
+import { useWorkspaceFormSection } from "@/hooks/use-workspace-form-section";
 import {
   ERPRecordWorkspaceForm,
   ERPRecordSectionPanel,
@@ -40,38 +41,15 @@ type LookupValueWorkspaceFormProps = {
 
 const FORM_ID = "lookup-value-workspace-form";
 
-export function LookupValueWorkspaceForm({ value, categories, mode }: LookupValueWorkspaceFormProps) {
+export function LookupValueWorkspaceForm(props: LookupValueWorkspaceFormProps) {
+  return <LookupValueFormSession key={props.value?.id ?? "new"} {...props} />;
+}
+
+function LookupValueFormSession({ value, categories, mode }: LookupValueWorkspaceFormProps) {
   const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const queryClient = useQueryClient();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeSection, setActiveSection] = useState("basic");
-  const [colorPreview, setColorPreview] = useState(value?.color_hex ?? "");
-
-  const isEditing = mode === "edit";
-  const isViewing = mode === "view";
-
-  const { isDirty, resetDirty } = useFormDirty({ formId: FORM_ID, enabled: !isViewing });
-  const { getDraftDefault, getDraftBoolean, syncDraft, writeDraftField, clearDraft } = useWorkspaceFormDraft({ formId: FORM_ID, enabled: !isViewing });
-
-  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(() => {
-    const d = getDraftDefault("category_id", "");
-    return d ? Number(d) : value?.category_id ?? (categories[0]?.id ?? null);
-  });
-
-  useEffect(() => {
-    if (activeTab?.id) markDirty(activeTab.id, isDirty);
-  }, [isDirty, activeTab?.id, markDirty]);
-
-  useEffect(() => {
-    if (value) {
-      setSelectedCategoryId(value.category_id);
-      setColorPreview(value.color_hex ?? "");
-    }
-  }, [value]);
-
-  const selectedCategory = categories.find((cat) => cat.id === selectedCategoryId);
-
   const sections = [
     { id: "basic", label: "Basic Info", icon: FileText },
     { id: "display", label: "Display & Hierarchy", icon: Layers },
@@ -79,6 +57,25 @@ export function LookupValueWorkspaceForm({ value, categories, mode }: LookupValu
     { id: "status", label: "Status", icon: Shield },
     { id: "audit", label: "Audit Info", icon: Info },
   ];
+  const [activeSection, setActiveSection] = useWorkspaceFormSection(FORM_ID, "basic", sections.map(section => section.id));
+  const [colorPreview, setColorPreview] = useState(value?.color_hex ?? "");
+
+  const isEditing = mode === "edit";
+  const isViewing = mode === "view";
+
+  const { isDirty, resetDirty } = useFormDirty({ formId: FORM_ID, enabled: !isViewing });
+  const { getDraftDefault, getDraftNullableId, getDraftBoolean, syncDraft, writeDraftField, clearDraft } = useWorkspaceFormDraft({ formId: FORM_ID, enabled: !isViewing });
+
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(() => {
+    return getDraftNullableId("category_id", value?.category_id ?? (categories[0]?.id ?? null));
+  });
+
+  useEffect(() => {
+    if (activeTab?.id) markDirty(activeTab.id, isDirty);
+  }, [isDirty, activeTab?.id, markDirty]);
+
+  const selectedCategory = categories.find((cat) => cat.id === selectedCategoryId);
+
 
   const handleRequestClose = () => closeTab(activeTab?.id ?? "");
 

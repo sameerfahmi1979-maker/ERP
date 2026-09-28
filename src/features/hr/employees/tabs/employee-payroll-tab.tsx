@@ -18,66 +18,67 @@
  *   - No workspace draft for payroll sensitive fields
  */
 
-import { useState, useTransition } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import {
-  DollarSign, CreditCard, History, Landmark, PauseCircle,
-  Plus, Edit2, Archive, CheckCircle, AlertTriangle, Lock,
-  Eye, EyeOff,
-} from "lucide-react";
-import { format } from "date-fns";
-import { Button } from "@/components/ui/button";
+import { ERPCombobox } from "@/components/erp/combobox";
+import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
+import { BankSelect } from "@/components/erp/finance-basics/bank-select";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
-import { ERPCombobox } from "@/components/erp/combobox";
-import { BankSelect } from "@/components/erp/finance-basics/bank-select";
-import { queryKeys } from "@/lib/query/query-keys";
 import {
-  getWpsReadinessLabel,
   getWpsReadinessBadgeVariant,
+  getWpsReadinessLabel,
 } from "@/lib/hr/payroll/wps-readiness";
 import {
-  getEmployeePayrollProfile,
-  createOrUpdateEmployeePayrollProfile,
-  archiveEmployeePayrollProfile,
-  listEmployeeSalaryComponents,
-  createEmployeeSalaryComponent,
-  updateEmployeeSalaryComponent,
-  archiveEmployeeSalaryComponent,
-  calculateEmployeeGrossSalary,
-  calculateEmployeeBasicSalary,
-  listEmployeeSalaryRevisions,
-  createEmployeeSalaryRevision,
-  listEmployeePayrollHolds,
-  placeEmployeePayrollHold,
-  releaseEmployeePayrollHold,
-  archiveEmployeePayrollHold,
-  getEmployeeWpsProfile,
-  createOrUpdateEmployeeWpsProfile,
-  getEmployeeWpsReadiness,
-  listHrSalaryComponentTypesForPayroll,
-  listHrPayrollGroupsForPayroll,
-  listHrMohreEstablishmentsForPayroll,
-  type PayrollProfileRow,
-  type SalaryComponentRow,
-  type SalaryRevisionRow,
-  type PayrollHoldRow,
-  type WpsProfileRow,
-} from "@/server/actions/hr/payroll";
-import {
   invalidateHrEmployeePayroll,
+  invalidateHrEmployeePayrollHolds,
   invalidateHrEmployeeSalaryComponents,
   invalidateHrEmployeeSalaryRevisions,
-  invalidateHrEmployeePayrollHolds,
   invalidateHrEmployeeWps,
 } from "@/lib/query/invalidation";
+import { queryKeys } from "@/lib/query/query-keys";
 import type { AuthContext } from "@/lib/rbac/check";
+import {
+  archiveEmployeePayrollHold,
+  archiveEmployeeSalaryComponent,
+  calculateEmployeeBasicSalary,
+  calculateEmployeeGrossSalary,
+  createEmployeeSalaryComponent,
+  createEmployeeSalaryRevision,
+  createOrUpdateEmployeePayrollProfile,
+  createOrUpdateEmployeeWpsProfile,
+  getEmployeePayrollProfile,
+  getEmployeeWpsProfile,
+  getEmployeeWpsReadiness,
+  listEmployeePayrollHolds,
+  listEmployeeSalaryComponents,
+  listEmployeeSalaryRevisions,
+  listHrMohreEstablishmentsForPayroll,
+  listHrPayrollGroupsForPayroll,
+  listHrSalaryComponentTypesForPayroll,
+  placeEmployeePayrollHold,
+  releaseEmployeePayrollHold,
+  updateEmployeeSalaryComponent,
+  type SalaryComponentRow
+} from "@/server/actions/hr/payroll";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { format } from "date-fns";
+import {
+  AlertTriangle,
+  Archive, CheckCircle,
+  DollarSign,
+  Edit2,
+  EyeOff,
+  History, Landmark,
+  Lock,
+  PauseCircle,
+  Plus
+} from "lucide-react";
+import { useState, useTransition } from "react";
+import { toast } from "sonner";
 
 // ── Props ──────────────────────────────────────────────────────────────────────
 

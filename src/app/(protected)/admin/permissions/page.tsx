@@ -1,11 +1,11 @@
+import { ERPExportMenu } from "@/components/erp/export/erp-export-menu";
 import { ERPPageHeader } from "@/components/erp/page-header";
-import { getAuthContext, hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
-import { listPermissions, getAllRolePermissions } from "@/server/queries/permissions";
-import { listRoles } from "@/server/queries/roles";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PermissionCommandCenter } from "@/features/permissions/permission-command-center";
+import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAllRolePermissions, listPermissions } from "@/server/queries/permissions";
+import { listRoles } from "@/server/queries/roles";
 import { Shield } from "lucide-react";
-import { ERPExportMenu } from "@/components/erp/export/erp-export-menu";
 
 export default async function AdminPermissionsPage() {
   const ctx = await getAuthContext();

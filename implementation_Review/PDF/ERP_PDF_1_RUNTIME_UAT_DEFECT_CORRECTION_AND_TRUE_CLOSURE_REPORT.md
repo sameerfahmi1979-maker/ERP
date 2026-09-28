@@ -160,7 +160,7 @@ Browser / Gotenberg
 docker run -p 3100:3000 --rm gotenberg/gotenberg:8
 
 # Set env vars and run
-$env:PDF_PRINT_TOKEN_SECRET="cacb8aded7291b69908fd5ad8e5ee9da7ed370b43c85f08fd69983b02ede66cb"
+$env:PDF_PRINT_TOKEN_SECRET="[REDACTED_ROTATE_PDF_PRINT_TOKEN_SECRET]"
 $env:GOTENBERG_URL="http://localhost:3100"
 npx playwright test tests/pdf/e2e-pdf-generation.spec.ts
 ```

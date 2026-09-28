@@ -1,8 +1,7 @@
 import { notFound } from "next/navigation";
 import { getAuthContext, hasPermission, canManageUsers } from "@/lib/rbac/check";
 import { getUserById } from "@/server/queries/users";
-import { listOrganizations } from "@/server/queries/organizations";
-import { listBranches } from "@/server/queries/branches";
+import { listUserScopeOptions } from "@/server/queries/user-scope-options";
 import { listRoles } from "@/server/queries/roles";
 import { UserWorkspaceForm } from "@/features/users/user-workspace-form";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,10 +28,9 @@ export default async function UserRecordPage({ params, searchParams }: Props) {
   const userId = parseInt(id, 10);
   if (isNaN(userId)) notFound();
 
-  const [user, companies, branches, roles] = await Promise.all([
+  const [user, { companies, branches }, roles] = await Promise.all([
     getUserById(userId),
-    listOrganizations(),
-    listBranches(),
+    listUserScopeOptions(),
     listRoles(),
   ]);
 

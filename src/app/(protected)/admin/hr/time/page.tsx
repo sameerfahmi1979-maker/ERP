@@ -1,9 +1,9 @@
-﻿import { redirect } from "next/navigation";
+﻿import { HrReportsMenu } from "@/components/erp/hr-reports-menu";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { Clock, Calendar, Plane, Timer } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Calendar, Clock, Plane, Timer } from "lucide-react";
 import Link from "next/link";
-import { HrReportsMenu } from "@/components/erp/hr-reports-menu";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;

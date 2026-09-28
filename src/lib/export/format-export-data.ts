@@ -20,14 +20,14 @@ export function getColumnValue<T>(
   }
 
   // Extract value from row using key
-  const value = (row as any)[column.key as string];
+  const value = row == null ? undefined : (row as Record<string, unknown>)[column.key as string];
   return formatValue(value);
 }
 
 /**
  * Format a value for export
  */
-export function formatValue(value: any): string {
+export function formatValue(value: unknown): string {
   if (value === null || value === undefined) {
     return "";
   }
@@ -83,7 +83,7 @@ export function escapeCsvField(value: string): string {
  * Format filters for display
  */
 export function formatFilters(
-  filters?: Record<string, string | number | boolean | null | undefined>
+  filters?: Record<string, unknown>
 ): string {
   if (!filters || Object.keys(filters).length === 0) {
     return "No filters applied";

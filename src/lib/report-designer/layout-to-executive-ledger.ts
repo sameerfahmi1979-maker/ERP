@@ -12,38 +12,37 @@
  *  - No salary/IBAN/passport/EID values in sample data
  */
 
-import type { ExportBrandingContext } from "@/lib/export/export-types";
 import type {
-  ExecutiveLedgerDocument,
-  ExecutiveLedgerSection,
   ExecutiveLedgerBodySection,
-  ExecutiveLedgerKeyValueSection,
-  ExecutiveLedgerTableSection,
-  ExecutiveLedgerDividerSection,
   ExecutiveLedgerColumnSection,
   ExecutiveLedgerColumnSlot,
+  ExecutiveLedgerDividerSection,
+  ExecutiveLedgerDocument,
+  ExecutiveLedgerKeyValueSection,
+  ExecutiveLedgerSection,
+  ExecutiveLedgerTableSection,
 } from "@/lib/executive-ledger/types";
+import type { ExportBrandingContext } from "@/lib/export/export-types";
+import { ReportDesignerLayoutJsonSchema } from "./layout-schema";
+import { isCorruptRichContentDoc } from "./prosemirror-plaintext";
+import { renderProseMirrorDocToHtml } from "./prosemirror-renderer";
 import type {
-  ReportDesignerLayoutJson,
-  ReportDesignerBlock,
-  HeadingBlock,
   BodyTextSectionBlock,
-  KeyValueSectionBlock,
-  DividerBlock,
-  SpacerBlock,
   BrandingHeaderBlock,
-  CompanyLogoBlock,
-  SignatoryBlock,
-  StampBlock,
-  VerificationQrBlock,
-  ReportTableBlock,
   ColumnStripBlock,
   ColumnStripSlot,
+  CompanyLogoBlock,
+  DividerBlock,
+  HeadingBlock,
+  KeyValueSectionBlock,
+  ReportDesignerBlock,
+  ReportDesignerLayoutJson,
+  ReportTableBlock,
+  SignatoryBlock,
+  SpacerBlock,
+  VerificationQrBlock
 } from "./types";
 import { EMPTY_LAYOUT } from "./types";
-import { ReportDesignerLayoutJsonSchema } from "./layout-schema";
-import { renderProseMirrorDocToHtml } from "./prosemirror-renderer";
-import { isCorruptRichContentDoc } from "./prosemirror-plaintext";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Public input / result types

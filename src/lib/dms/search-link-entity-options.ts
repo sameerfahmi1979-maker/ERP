@@ -2,9 +2,9 @@
  * Searchable entity options for DMS document link picker (Add Link form).
  */
 
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { logger } from "@/lib/logger";
 import { getDmsEntityTypeLabel } from "@/lib/dms/dms-entity-types";
+import { logger } from "@/lib/logger";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type DmsLinkEntityOption = {
   id: number;

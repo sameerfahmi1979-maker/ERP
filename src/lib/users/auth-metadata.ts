@@ -2,15 +2,10 @@ import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
+import type { UserAuthMetadata } from "@/types/domain";
 
 /** Safe auth fields exposed to authorized admins only — never include secrets or raw identities. */
-export type SafeUserAuthMetadata = {
-  email: string | null;
-  last_sign_in_at: string | null;
-  auth_created_at: string | null;
-  // USERS.2A
-  email_confirmed_at: string | null;
-};
+export type SafeUserAuthMetadata = UserAuthMetadata;
 
 const CONCURRENCY = 8;
 

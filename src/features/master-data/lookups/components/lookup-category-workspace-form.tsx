@@ -18,10 +18,11 @@ import { createLookupCategory, updateLookupCategory } from "@/server/actions/mas
 import { RequiredLabel } from "@/components/erp/required-label";
 import { Folder, Settings, Shield, Info } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useFormDirty } from "@/hooks/use-form-dirty";
+import { useWorkspaceFormDirty as useFormDirty } from "@/hooks/use-workspace-form-dirty";
 import { invalidateAllLookups } from "@/lib/query/invalidation";
 import type { AuthContext } from "@/lib/rbac/check";
-import { useWorkspace } from "@/hooks/use-workspace";
+import { useWorkspaceFormNavigation as useWorkspace } from "@/hooks/use-workspace-form-navigation";
+import { useWorkspaceFormSection } from "@/hooks/use-workspace-form-section";
 import {
   ERPRecordWorkspaceForm,
   ERPRecordSectionPanel,
@@ -41,7 +42,13 @@ export function LookupCategoryWorkspaceForm({ category, mode }: LookupCategoryWo
   const queryClient = useQueryClient();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeSection, setActiveSection] = useState("basic");
+  const sections = [
+    { id: "basic", label: "Basic Info", icon: Folder },
+    { id: "scope", label: "Scope & Behavior", icon: Settings },
+    { id: "status", label: "Status", icon: Shield },
+    { id: "audit", label: "Audit Info", icon: Info },
+  ];
+  const [activeSection, setActiveSection] = useWorkspaceFormSection(FORM_ID, "basic", sections.map(section => section.id));
 
   const isEditing = mode === "edit";
   const isViewing = mode === "view";
@@ -53,12 +60,6 @@ export function LookupCategoryWorkspaceForm({ category, mode }: LookupCategoryWo
     if (activeTab?.id) markDirty(activeTab.id, isDirty);
   }, [isDirty, activeTab?.id, markDirty]);
 
-  const sections = [
-    { id: "basic", label: "Basic Info", icon: Folder },
-    { id: "scope", label: "Scope & Behavior", icon: Settings },
-    { id: "status", label: "Status", icon: Shield },
-    { id: "audit", label: "Audit Info", icon: Info },
-  ];
 
   const handleRequestClose = () => closeTab(activeTab?.id ?? "");
 

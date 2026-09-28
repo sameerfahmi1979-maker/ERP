@@ -1,11 +1,10 @@
 import { createAdminClient } from '@/lib/supabase/admin';
-import type { DataQualityScanInput, DataQualityScanResult, DataQualitySeverity } from './types';
-import { buildFindingKey } from './finding-builder';
-import { scanOrganizationRules, scanBranchRules, scanPartyRules, scanWorkSiteRules } from './entity-rules';
-import { scanDmsRules } from './dms-rules';
 import { scanAiRules } from './ai-rules';
-import { scanPermissionRules } from './permission-rules';
+import { scanDmsRules } from './dms-rules';
+import { scanBranchRules, scanOrganizationRules, scanPartyRules, scanWorkSiteRules } from './entity-rules';
 import { dedupeFindings } from './finding-builder';
+import { scanPermissionRules } from './permission-rules';
+import type { DataQualityScanInput, DataQualityScanResult, DataQualitySeverity } from './types';
 
 export async function runDataQualityScan(
   input: DataQualityScanInput,

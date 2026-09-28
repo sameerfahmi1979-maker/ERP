@@ -1,0 +1,12 @@
+'use strict';
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),db=require('../f00/local-db.cjs');
+db.assertDatabase();
+const departments=db.sql("select coalesce(json_agg(json_build_object('id',id,'code',department_code,'revision',workspace_revision,'company',owner_company_id)),'[]'::json) from public.departments where department_code='F04-CLOSE-2809'",{json:true});
+assert.equal(departments.length,1);assert.equal(departments[0].company,900101);
+const child=db.sql("select to_json(count(*)) from public.owner_company_signatories where full_name='F04 CLOSURE DISCARD ONLY'",{json:true});
+assert.equal(Number(child),0);
+const receipts=db.sql("select coalesce(json_agg(json_build_object('operation',operation_id,'id',record_id,'revision',revision)),'[]'::json) from erp_private.workspace_save_receipts where entity='departments' and record_id="+Number(departments[0].id),{json:true});
+assert.equal(receipts.length,1);
+const proof={at:new Date().toISOString(),target:'algt-f00-local',departments,receipts,discarded_child_rows:0,production_writes:0};
+fs.writeFileSync(path.resolve('CODEX_AUDIT_13_09_2026/IMPLEMENTATION/F04/closure-20260928/ROW_PROOF.json'),JSON.stringify(proof,null,2));
+console.log(JSON.stringify(proof));

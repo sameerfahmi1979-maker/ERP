@@ -1,97 +1,60 @@
 import "server-only";
+import fs from "node:fs";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+import { isAllowedAiSecretReference } from "./ai-secret-policy";
 
-import fs from "fs";
-import path from "path";
-
-/**
- * ERP SETTINGS — server-side env file secret writer.
- *
- * Persists an API key to the server's `.env.local` file and applies it to the
- * running process immediately (no restart required).
- *
- * Security invariants (per erp-ai-settings-standard):
- *  - The key is NEVER written to the database.
- *  - The key is NEVER logged.
- *  - Callers must enforce the `settings.ai.secrets.manage` permission BEFORE calling.
- *
- * Note: works for self-hosted Node deployments where the app has write access
- * to its project root. On read-only hosts (e.g. serverless), the file write
- * fails and an error is returned; the env var must then be set on the host.
+/** Opt-in self-hosted single-process writer. Managed/multi-replica deployments must
+ * rotate through their deployment secret store. Never logs or returns raw keys.
+ * Atomic file replacement, exclusive lock and compensation on metadata failure.
  */
-
-const ENV_FILE = ".env.local";
-
-function isValidEnvVarName(name: string): boolean {
-  return /^[A-Z][A-Z0-9_]*$/.test(name);
-}
-
-/** Quote the value if it contains characters that would break dotenv parsing. */
-function serializeEnvValue(value: string): string {
-  if (/[\s#'"\\]/.test(value)) {
-    return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-  }
-  return value;
-}
-
-export function writeEnvSecret(
-  envVarName: string,
-  secretValue: string
-): { success: boolean; error?: string } {
-  if (!isValidEnvVarName(envVarName)) {
-    return {
-      success: false,
-      error: "Invalid environment variable name. Use uppercase letters, digits and underscores.",
-    };
-  }
-  if (!secretValue.trim()) {
-    return { success: false, error: "Secret value is empty." };
-  }
-  if (/^https?:\/\//i.test(secretValue.trim())) {
-    return {
-      success: false,
-      error: "The value looks like a URL. Paste the API key (e.g. KEY 1 from Azure Portal), not the endpoint. The endpoint belongs in the API Endpoint field.",
-    };
-  }
-
-  const envPath = path.join(process.cwd(), ENV_FILE);
-  const newLine = `${envVarName}=${serializeEnvValue(secretValue.trim())}`;
-
+export async function writeAiProviderSecret(
+  input: { providerType: string; providerId: number; secretRef: string; secretValue: string },
+  persistReference: () => Promise<boolean>,
+): Promise<{ success: boolean; error?: string }> {
+  const { providerType, providerId, secretRef, secretValue } = input;
+  if (!isAllowedAiSecretReference(providerType, providerId, secretRef)) return { success: false, error: "Secret reference is not approved for this provider." };
+  const value = secretValue.trim();
+  // Approved provider keys are opaque ASCII tokens. Reject dotenv expansion,
+  // quoting and multiline syntax so the restarted process reads the same key.
+  if (!/^[A-Za-z0-9._~+/=:!-]+$/.test(value) || /^https?:\/\//i.test(value)) return { success: false, error: "Enter an API key token, without whitespace, quotes or an endpoint." };
+  if (process.env.AI_SECRET_FILE_WRITES_ENABLED !== "true") return { success: false, error: "Server-file secret updates are disabled. Ask the deployment administrator to rotate the approved provider key in the managed environment." };
+  const file = path.join(process.cwd(), ".env.local");
+  const lock = file + ".ai-secret.lock";
+  const temporary = file + "." + randomUUID() + ".tmp";
+  let descriptor: number | undefined;
+  let oldContent: Buffer | undefined;
+  let replaced = false;
   try {
-    let content = "";
-    if (fs.existsSync(envPath)) {
-      content = fs.readFileSync(envPath, "utf8");
-    }
-
-    const lines = content.split(/\r?\n/);
-    const prefix = `${envVarName}=`;
-    let replaced = false;
-
-    const updated = lines.map((line) => {
-      if (line.trimStart().startsWith(prefix)) {
-        replaced = true;
-        return newLine;
-      }
-      return line;
-    });
-
-    if (!replaced) {
-      // Append at end, ensuring we don't create a blank gap
-      while (updated.length > 0 && updated[updated.length - 1].trim() === "") {
-        updated.pop();
-      }
-      updated.push(newLine);
-    }
-
-    fs.writeFileSync(envPath, updated.join("\n") + "\n", { encoding: "utf8", mode: 0o600 });
-
-    // Apply immediately to the running process so no restart is needed
-    process.env[envVarName] = secretValue.trim();
-
+    descriptor = fs.openSync(lock, "wx", 0o600);
+    if (fs.existsSync(file)) oldContent = fs.readFileSync(file);
+    const serialized = JSON.stringify(value);
+    const matcher = new RegExp(`^\\s*(?:export\\s+)?${secretRef}\\s*=`);
+    const lines = (oldContent?.toString("utf8") ?? "").split(/\r?\n/).filter(line => !matcher.test(line));
+    lines.push(`${secretRef}=${serialized}`);
+    fs.writeFileSync(temporary, lines.join("\n") + "\n", { mode: 0o600, flag: "wx" });
+    fs.renameSync(temporary, file);
+    replaced = true;
+    if (!(await persistReference())) throw new Error("Metadata persistence failed");
+    process.env[secretRef] = value;
     return { success: true };
-  } catch (e) {
-    return {
-      success: false,
-      error: `Could not write to ${ENV_FILE}: ${e instanceof Error ? e.message : String(e)}`,
-    };
+  } catch {
+    if (replaced) {
+      try {
+        if (oldContent !== undefined) {
+          fs.writeFileSync(temporary, oldContent, { mode: 0o600 });
+          fs.renameSync(temporary, file);
+        } else fs.unlinkSync(file);
+      } catch {
+        return { success: false, error: "Secret update failed and file recovery needs administrator attention. Do not retry until the provider reference and server environment have been reconciled." };
+      }
+    }
+    return { success: false, error: "Secret update did not complete. The running key was not changed; verify the provider reference before retrying." };
+  } finally {
+    if (descriptor !== undefined) {
+      fs.closeSync(descriptor);
+      if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
+      fs.unlinkSync(lock);
+    }
   }
 }

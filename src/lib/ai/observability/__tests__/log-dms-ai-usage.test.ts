@@ -8,7 +8,7 @@
  * Security rule: These tests never use real DB or real API keys.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // ── Mock createAdminClient before importing the module ────────────────────────
 

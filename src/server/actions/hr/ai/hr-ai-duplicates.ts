@@ -13,13 +13,13 @@
  * - No record deletion, merging, or modification.
  */
 
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { callCommonAiStructuredCompletion } from "@/lib/ai/common/provider-bridge";
-import { isHrAiMasterEnabled, isHrAiFeatureEnabled } from "@/lib/hr/ai/feature-flags";
-import { HR_AI_FEATURE_FLAGS, HrAiDuplicateOutputSchema } from "@/lib/hr/ai/types";
+import { isHrAiFeatureEnabled, isHrAiMasterEnabled } from "@/lib/hr/ai/feature-flags";
 import type { HrAiActionResult, HrAiDuplicateOutput, HrAiDuplicateSuggestion } from "@/lib/hr/ai/types";
-import { maskDocumentNumber } from "@/lib/hr/ai/hr-ai-redaction";
+import { HR_AI_FEATURE_FLAGS } from "@/lib/hr/ai/types";
+import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { getEmployeeAccess } from "@/lib/rbac/employee-access";
 
 async function logHrAiUsage(params: { featureCode: string; entityId: number; outputType: string; status: "success" | "failure"; durationMs: number; model: string | null; promptTokens: number | null; completionTokens: number | null; profileId: number | null; providerCode: string | null; configCode: string | null; configId: number | null }) {
   try {
@@ -33,7 +33,8 @@ export async function detectEmployeeDuplicates(
 ): Promise<HrAiActionResult<HrAiDuplicateOutput>> {
   const start = Date.now();
   try {
-    const ctx = await getAuthContext();
+    const access = await getEmployeeAccess(await getAuthContext(), employeeId);
+    const ctx = access.scopedContext;
     if (!ctx.profile?.id) return { success: false, error: "Not authenticated." };
     if (!hasPermission(ctx, "hr.ai.use"))
       return { success: false, error: "Permission denied: hr.ai.use required." };
@@ -45,7 +46,7 @@ export async function detectEmployeeDuplicates(
     if (!masterEnabled || !featureEnabled)
       return { success: false, error: "HR AI duplicate detection is currently disabled.", featureDisabled: true };
 
-    const db = createAdminClient();
+    const db = await createClient();
 
     const { data: emp } = await db
       .from("employees")

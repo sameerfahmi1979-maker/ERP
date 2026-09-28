@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useTransition, useCallback } from "react";
-import { Mail, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { EmailQueueTable } from "./email-queue-table";
-import { EmailQueueProcessPanel } from "./email-queue-process-panel";
 import type { EmailQueueRow } from "@/server/actions/notifications/email-queue";
 import { getEmailQueue } from "@/server/actions/notifications/email-queue";
+import { Mail, RefreshCw } from "lucide-react";
+import { useCallback, useState, useTransition } from "react";
+import { EmailQueueProcessPanel } from "./email-queue-process-panel";
+import { EmailQueueTable } from "./email-queue-table";
 
 interface EmailQueuePageClientProps {
   initialItems: EmailQueueRow[];

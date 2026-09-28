@@ -14,11 +14,11 @@
 
 import { resolveEmailProviderSecret } from "../vault";
 import type {
-  IEmailProvider,
-  EmailProviderConfig,
   EmailMessageInput,
+  EmailProviderConfig,
   EmailSendResult,
   EmailTestConnectionResult,
+  IEmailProvider,
 } from "./types";
 
 interface GraphTokenResponse {

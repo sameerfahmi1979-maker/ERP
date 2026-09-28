@@ -77,7 +77,7 @@ export function DmsExpiryFilterBar({ onChange, className }: DmsExpiryFilterBarPr
 
   // Keep a stable ref to `onChange` so the emit effect doesn't need it as a dep
   const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
+  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
 
   // Track first render — skip emitting on mount (parent starts with empty filter `{}`)
   const didMountRef = useRef(false);
@@ -134,7 +134,7 @@ export function DmsExpiryFilterBar({ onChange, className }: DmsExpiryFilterBarPr
       entityType: entityType ?? undefined,
       entityId: entityId && !isNaN(entityId) ? entityId : undefined,
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [searchText, documentTypeId, categoryId, status, expiryDateFrom, expiryDateTo, daysPreset, entityType, entityIdText]);
 
   const handleClearAll = () => {

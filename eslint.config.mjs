@@ -12,6 +12,14 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Evidence and independent prototypes are not application lint targets.
+    // `npm run lint` still checks every file under src, including app/dev.
+    "CODEX_AUDIT_13_09_2026/**",
+    "UIUX_Design/**",
+    "ChatGPT/**",
+    "spikes/**",
+    "test-results/**",
+    "playwright-report/**",
   ]),
 ]);
 

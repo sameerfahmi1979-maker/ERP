@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import type { Permission } from "@/types/database";
+import type { Permission } from "@/types/domain";
 
 /**
  * List all permissions

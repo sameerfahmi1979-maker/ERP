@@ -21,7 +21,7 @@
 
 import type { DmsAiJobHandler, DmsAiJobHandlerResult } from "@/lib/dms/ai-jobs/job-types";
 import { DMS_AI_JOB_TYPE, GenerateMetadataDefinitionSuggestionsPayloadSchema } from "@/lib/dms/ai-jobs/job-types";
-import { generateAndQueueMetadataSuggestions } from "@/server/actions/dms/metadata-suggestion-queue";
+import { generateAndQueueMetadataSuggestions } from "@/lib/dms/metadata/metadata-suggestion-queue";
 
 export const generateMetadataDefinitionSuggestionsHandler: DmsAiJobHandler = {
   jobType: DMS_AI_JOB_TYPE.GENERATE_METADATA_DEFINITION_SUGGESTIONS,

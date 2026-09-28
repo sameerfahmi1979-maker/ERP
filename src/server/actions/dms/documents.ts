@@ -1,18 +1,18 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
-import { logger } from "@/lib/logger";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { revalidatePath } from "next/cache";
-import { logAudit } from "@/server/actions/audit";
-import { z } from "zod";
 import { zNullableDateString } from "@/lib/dms/date-validators";
+import { logger } from "@/lib/logger";
+import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { logAudit } from "@/server/actions/audit";
 import {
   generateDmsExpiryRemindersForDocument,
   rebuildDmsExpiryReminders,
 } from "@/server/actions/dms/expiry-reminders";
 import { getDmsNotificationSettingsForScheduler } from "@/server/actions/dms/notification-settings";
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 export type ActionResult<T = unknown> = {
   success: boolean;
@@ -245,7 +245,13 @@ export async function getDmsDocuments(
     let query = supabase
       .from("dms_documents")
       .select(`
-        *,
+        id, document_no, legacy_document_code, title, description,
+        document_type_id, category_id, status, confidentiality_level,
+        owner_user_id, owning_company_id, owning_branch_id, party_id,
+        issue_date, expiry_date, reminder_policy_id, ocr_status, ai_status,
+        review_status, is_archived, archived_at, created_by, created_at,
+        updated_by, updated_at, deleted_at, ai_risk_score, ai_risk_level,
+        completeness_score, superseded_by_document_id,
         document_type:dms_document_types(type_code, name_en, requires_expiry_tracking, default_confidentiality),
         category:dms_document_categories(category_code, name_en),
         tags:dms_document_tags(tag_id, tag:dms_tags(tag_name, color_hex))
@@ -409,8 +415,11 @@ export async function getDmsDocuments(
       if (ids.length > 0) query = query.not("id", "in", `(${ids.join(",")})`);
     }
 
-    const { data, error } = await query;
-    if (error) return { success: false, error: error.message };
+    const { data, error } = await query.returns<DmsDocumentRow[]>();
+    if (error) {
+      logger.error("DMS document list query failed", { code: error.code });
+      return { success: false, error: "Documents could not be loaded. Please try again." };
+    }
 
     // Redact ai_summary for confidential documents when user is not admin
     const CONFIDENTIAL_LEVELS = ["hr", "legal", "executive"];
@@ -795,7 +804,7 @@ export async function updateDmsDocument(
 
     const supabase = await createClient();
 
-    const { error } = await supabase
+    const { data: updated, error } = await supabase
       .from("dms_documents")
       .update({
         ...data,
@@ -803,9 +812,12 @@ export async function updateDmsDocument(
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
-      .is("deleted_at", null);
+      .is("deleted_at", null)
+      .select("id")
+      .maybeSingle();
 
     if (error) return { success: false, error: error.message };
+    if (!updated) return { success: false, error: "Document unavailable or access denied" };
 
     await insertDmsEvent(supabase, id, "document_updated", ctx.profile?.id ?? null, "Document metadata updated");
 
@@ -1040,4 +1052,3 @@ export async function deleteDmsDocument(id: number): Promise<ActionResult> {
     return { success: false, error: "Failed to delete document" };
   }
 }
-

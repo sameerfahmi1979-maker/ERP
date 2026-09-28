@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { CheckCircle2, XCircle, MinusCircle, Hash, Coins, DollarSign } from "lucide-react";
-import { getDmsAiObservabilityOverview, type ObservabilityFilters, type UsageOverviewData } from "@/server/actions/dms/ai-observability";
+import { getDmsAiObservabilityOverview, type ObservabilityFilters } from "@/server/actions/dms/ai-observability";
+import { useQuery } from "@tanstack/react-query";
+import { CheckCircle2, Coins, DollarSign, Hash, MinusCircle, XCircle } from "lucide-react";
 
 interface Props {
   filters: ObservabilityFilters;
@@ -29,21 +29,18 @@ function fmt(n: number) {
 }
 
 export function AiUsageOverviewCards({ filters, refreshKey }: Props) {
-  const [data, setData] = useState<UsageOverviewData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setLoading(true);
-    setError(null);
-    getDmsAiObservabilityOverview(filters)
-      .then((res) => {
-        if (res.success && res.data) setData(res.data);
-        else setError(res.error ?? "Failed to load.");
-      })
-      .catch(() => setError("Failed to load overview."))
-      .finally(() => setLoading(false));
-  }, [filters, refreshKey]);
+  const { data, isPending: loading, error: queryError } = useQuery({
+    queryKey: ["dms-observability", "getDmsAiObservabilityOverview", filters, refreshKey],
+    queryFn: async () => {
+      const result = await getDmsAiObservabilityOverview(filters);
+      if (!result.success || !result.data) throw new Error(result.error ?? "Failed to load.");
+      return result.data;
+    },
+    retry: false,
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+  });
+  const error = queryError?.message;
 
   if (loading) return <div className="text-sm text-muted-foreground">Loading overview...</div>;
   if (error) return <div className="text-sm text-destructive">{error}</div>;

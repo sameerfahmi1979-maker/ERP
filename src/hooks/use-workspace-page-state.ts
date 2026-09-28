@@ -18,12 +18,10 @@
  * See workspace-page-state.ts for allowed/disallowed values.
  */
 
-import { useState, useCallback, useMemo } from "react";
+import { useCallback, useMemo } from "react";
+import { usePersistentUiState } from "./use-persistent-ui-state";
 import {
   buildPageStateKey,
-  readPageState,
-  writePageState,
-  clearPageState,
   type WorkspacePageStateScope,
 } from "@/lib/workspace/workspace-page-state";
 
@@ -71,32 +69,11 @@ export function useWorkspacePageState<
     [scope, identifier, key]
   );
 
-  const [state, setStateInternal] = useState<TState>(() => {
-    if (!persist) return initialState;
-    return readPageState<TState>(storageKey, initialState);
-  });
-
-  const setState = useCallback(
-    (patch: Partial<TState> | ((prev: TState) => TState)) => {
-      setStateInternal((prev) => {
-        const next =
-          typeof patch === "function"
-            ? patch(prev)
-            : { ...prev, ...patch };
-
-        if (persist) {
-          writePageState(storageKey, next);
-        }
-        return next;
-      });
-    },
-    [persist, storageKey]
-  );
-
-  const resetState = useCallback(() => {
-    if (persist) clearPageState(storageKey);
-    setStateInternal(initialState);
-  }, [persist, storageKey, initialState]);
+  const [state,setStateInternal]=usePersistentUiState(persist ? storageKey : undefined,initialState);
+  const setState=useCallback((patch:Partial<TState>|((prev:TState)=>TState))=>{
+    setStateInternal(prev=>typeof patch==="function" ? patch(prev) : {...prev,...patch});
+  },[setStateInternal]);
+  const resetState=useCallback(()=>setStateInternal(initialState),[initialState,setStateInternal]);
 
   return { state, setState, resetState, storageKey };
 }

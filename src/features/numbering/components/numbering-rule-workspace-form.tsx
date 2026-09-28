@@ -18,10 +18,11 @@ import { toast } from "sonner";
 import type { NumberingRule } from "@/features/numbering/numbering-types";
 import { createNumberingRule, updateNumberingRule } from "@/server/actions/numbering";
 import { RequiredLabel } from "@/components/erp/required-label";
-import { useFormDirty } from "@/hooks/use-form-dirty";
+import { useWorkspaceFormDirty as useFormDirty } from "@/hooks/use-workspace-form-dirty";
 import { Binary, FileCode2, Hash, Settings, Shield, ScrollText, Info, Sparkles } from "lucide-react";
 import type { AuthContext } from "@/lib/rbac/check";
-import { useWorkspace } from "@/hooks/use-workspace";
+import { useWorkspaceFormNavigation as useWorkspace } from "@/hooks/use-workspace-form-navigation";
+import { useWorkspaceFormSection } from "@/hooks/use-workspace-form-section";
 import {
   ERPRecordWorkspaceForm,
   ERPRecordSectionPanel,
@@ -40,7 +41,16 @@ export function NumberingRuleWorkspaceForm({ rule, mode }: NumberingRuleWorkspac
   const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeSection, setActiveSection] = useState("basic");
+  const sections = [
+    { id: "basic", label: "Basic Info", icon: Binary },
+    { id: "module", label: "Module & Document", icon: FileCode2 },
+    { id: "format", label: "Number Format", icon: Hash },
+    { id: "sequence", label: "Sequence Settings", icon: Settings },
+    { id: "policy", label: "Generation Policy", icon: Shield },
+    { id: "audit", label: "Audit Info", icon: Info },
+    { id: "notes", label: "Notes", icon: ScrollText },
+  ];
+  const [activeSection, setActiveSection] = useWorkspaceFormSection(FORM_ID, "basic", sections.map(section => section.id));
   const [previewPrefix, setPreviewPrefix] = useState(rule?.document_prefix || "EMP");
   const [previewTemplate, setPreviewTemplate] = useState(rule?.format_template || "{DOC}-{SEQ4}");
   const [previewLength, setPreviewLength] = useState(rule?.sequence_length || 4);
@@ -57,15 +67,6 @@ export function NumberingRuleWorkspaceForm({ rule, mode }: NumberingRuleWorkspac
     if (activeTab?.id) markDirty(activeTab.id, isDirty);
   }, [isDirty, activeTab?.id, markDirty]);
 
-  const sections = [
-    { id: "basic", label: "Basic Info", icon: Binary },
-    { id: "module", label: "Module & Document", icon: FileCode2 },
-    { id: "format", label: "Number Format", icon: Hash },
-    { id: "sequence", label: "Sequence Settings", icon: Settings },
-    { id: "policy", label: "Generation Policy", icon: Shield },
-    { id: "audit", label: "Audit Info", icon: Info },
-    { id: "notes", label: "Notes", icon: ScrollText },
-  ];
 
   const generateLivePreview = (): string => {
     try {

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { passwordPolicySchema } from "@/lib/validation/auth";
+import { authEmailSchema, passwordPolicySchema } from "@/lib/validation/auth";
 
 /**
  * User Profile Admin Update Schema
@@ -34,7 +34,8 @@ export const userRoleRemovalSchema = z.object({
 
 // Phase 002D: Create User Schema — USERS.2A updates temporary_password to use strong policy
 export const createUserSchema = z.object({
-  email: z.string().email("Invalid email format"),
+  creation_operation_id: z.string().uuid().optional(),
+  email: authEmailSchema,
   temporary_password: passwordPolicySchema.optional(),
   send_invite_email: z.boolean().default(false),
   full_name: z.string().min(1, "Full name is required").max(255),
@@ -49,6 +50,12 @@ export const createUserSchema = z.object({
   initial_role_id: z.number().int().positive().optional().nullable(),
   initial_role_scope_company_id: z.number().int().positive().optional().nullable(),
   initial_role_scope_branch_id: z.number().int().positive().optional().nullable(),
+  initial_role_global_confirmed: z.boolean().optional(),
+}).superRefine((value,ctx)=>{
+  if(value.initial_role_id && !value.initial_role_scope_company_id && value.initial_role_global_confirmed!==true)
+    ctx.addIssue({code:"custom",path:["initial_role_scope_company_id"],message:"Choose a company scope explicitly, or confirm global access."});
+  if(value.initial_role_scope_branch_id && !value.initial_role_scope_company_id)
+    ctx.addIssue({code:"custom",path:["initial_role_scope_branch_id"],message:"A branch scope requires its company."});
 });
 
 // Type exports

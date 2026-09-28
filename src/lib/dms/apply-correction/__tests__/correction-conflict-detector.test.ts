@@ -1,188 +1,61 @@
-/**
- * ERP DMS AI Phase 17 — Correction Conflict Detector Unit Tests
- *
- * Tests:
- *   - Proposal status conflict checks (already applied, cancelled, etc.)
- *   - Original item status checks (not applied)
- *   - Target allowlist check (forbidden/not allowlisted)
- *
- * Note: Live value comparison tests require Supabase client — deferred to runtime UAT.
- * The detectCorrectionConflicts function is imported and tested with stubs where possible.
- */
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { detectCorrectionConflicts, type PreApplyState } from "../correction-conflict-detector";
 
-import { describe, it, expect } from "vitest";
-
-// ── Inline conflict detection logic for status checks ─────────────────────────
-// (mirrors the first two sections of detectCorrectionConflicts)
-
-type ConflictResult =
-  | { conflict: false }
-  | { conflict: true; reason: string; code: string };
-
-function checkProposalStatus(proposalStatus: string): ConflictResult {
-  if (proposalStatus === "applied") {
-    return {
-      conflict: true,
-      reason: "This correction has already been applied.",
-      code: "proposal_already_applied",
-    };
-  }
-  if (proposalStatus === "cancelled") {
-    return {
-      conflict: true,
-      reason: "This correction proposal was cancelled.",
-      code: "proposal_already_cancelled",
-    };
-  }
-  if (proposalStatus !== "draft" && proposalStatus !== "pending_confirmation") {
-    return {
-      conflict: true,
-      reason: `Proposal is in '${proposalStatus}' status and cannot be applied.`,
-      code: "proposal_not_in_correctable_state",
-    };
-  }
-  return { conflict: false };
-}
-
-function checkOriginalItemStatus(originalItemStatus: string): ConflictResult {
-  if (originalItemStatus !== "applied") {
-    return {
-      conflict: true,
-      reason: `Original apply item is '${originalItemStatus}', not 'applied'. Cannot correct.`,
-      code: "original_item_not_applied",
-    };
-  }
-  return { conflict: false };
-}
-
-// ── Tests: proposal status ────────────────────────────────────────────────────
-
-describe("conflict detector — proposal status", () => {
-  it("blocks when proposal is already applied", () => {
-    const result = checkProposalStatus("applied");
-    expect(result.conflict).toBe(true);
-    if (result.conflict) {
-      expect(result.code).toBe("proposal_already_applied");
-    }
-  });
-
-  it("blocks when proposal is cancelled", () => {
-    const result = checkProposalStatus("cancelled");
-    expect(result.conflict).toBe(true);
-    if (result.conflict) {
-      expect(result.code).toBe("proposal_already_cancelled");
-    }
-  });
-
-  it("blocks when proposal is in conflict status", () => {
-    const result = checkProposalStatus("conflict");
-    expect(result.conflict).toBe(true);
-    if (result.conflict) {
-      expect(result.code).toBe("proposal_not_in_correctable_state");
-    }
-  });
-
-  it("blocks when proposal is in failed status", () => {
-    const result = checkProposalStatus("failed");
-    expect(result.conflict).toBe(true);
-  });
-
-  it("allows draft status", () => {
-    const result = checkProposalStatus("draft");
-    expect(result.conflict).toBe(false);
-  });
-
-  it("allows pending_confirmation status", () => {
-    const result = checkProposalStatus("pending_confirmation");
-    expect(result.conflict).toBe(false);
-  });
+// Only transport is mocked. Status, allowlist and live-value comparisons use
+// the production function, not a mirrored implementation.
+const db = vi.hoisted(() => ({ from: vi.fn(), select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn() }));
+vi.mock("@/lib/supabase/server", () => ({ createClient: async () => db }));
+const base: PreApplyState = {
+  proposalStatus: "draft", originalItemStatus: "applied", targetTable: "dms_documents",
+  targetField: "title", targetModule: "dms", targetRecordId: 90001,
+  proposalCurrentSummary: null, replaceExistingConfirmed: false,
+};
+beforeEach(() => {
+  vi.resetAllMocks();
+  db.from.mockReturnValue(db); db.select.mockReturnValue(db); db.eq.mockReturnValue(db);
+  db.maybeSingle.mockResolvedValue({ data: { title: null }, error: null });
 });
-
-// ── Tests: original item status ───────────────────────────────────────────────
-
-describe("conflict detector — original item status", () => {
-  it("blocks when original item is skipped", () => {
-    const result = checkOriginalItemStatus("skipped");
-    expect(result.conflict).toBe(true);
-    if (result.conflict) {
-      expect(result.code).toBe("original_item_not_applied");
-    }
+describe("actual correction conflict detector", () => {
+  it.each([
+    ["applied", "proposal_already_applied"], ["cancelled", "proposal_already_cancelled"],
+    ["conflict", "proposal_not_in_correctable_state"], ["failed", "proposal_not_in_correctable_state"],
+  ])("blocks proposal %s before any database read", async (proposalStatus, code) => {
+    expect(await detectCorrectionConflicts({ ...base, proposalStatus })).toMatchObject({ conflict: true, code });
+    expect(db.from).not.toHaveBeenCalled();
   });
-
-  it("blocks when original item is conflict", () => {
-    const result = checkOriginalItemStatus("conflict");
-    expect(result.conflict).toBe(true);
+  it.each(["draft", "pending_confirmation"])("allows %s only after the actual target read", async (proposalStatus) => {
+    expect(await detectCorrectionConflicts({ ...base, proposalStatus })).toEqual({ conflict: false });
+    expect(db.from).toHaveBeenCalledWith("dms_documents"); expect(db.eq).toHaveBeenCalledWith("id", 90001);
   });
-
-  it("blocks when original item is failed", () => {
-    const result = checkOriginalItemStatus("failed");
-    expect(result.conflict).toBe(true);
+  it.each(["skipped", "conflict", "failed"])("blocks original item %s", async (originalItemStatus) => {
+    expect(await detectCorrectionConflicts({ ...base, originalItemStatus })).toMatchObject({ conflict: true, code: "original_item_not_applied" });
+    expect(db.from).not.toHaveBeenCalled();
   });
-
-  it("allows applied status", () => {
-    const result = checkOriginalItemStatus("applied");
-    expect(result.conflict).toBe(false);
+  it("allows an applied original item with an unchanged empty target", async () => {
+    expect(await detectCorrectionConflicts(base)).toEqual({ conflict: false }); expect(db.maybeSingle).toHaveBeenCalledOnce();
   });
-});
-
-// ── Tests: live value comparison (pure function) ──────────────────────────────
-
-function normalizeForComparison(value: string | null | undefined): string {
-  if (value == null || value === "") return "";
-  return value.trim().toLowerCase();
-}
-
-function checkValueChanged(
-  liveSummary: string | null,
-  capturedSummary: string | null,
-  replaceExistingConfirmed: boolean
-): ConflictResult {
-  if (normalizeForComparison(liveSummary) !== normalizeForComparison(capturedSummary)) {
-    return {
-      conflict: true,
-      reason: "Target field has changed since proposal was created.",
-      code: "conflict_detected",
-    };
-  }
-  if (liveSummary != null && liveSummary !== "" && !replaceExistingConfirmed) {
-    return {
-      conflict: true,
-      reason: "Field already has a value. Confirm you want to replace it.",
-      code: "replace_existing_required",
-    };
-  }
-  return { conflict: false };
-}
-
-describe("conflict detector — live value comparison", () => {
-  it("detects conflict when live value changed", () => {
-    const result = checkValueChanged("new value", "original value", false);
-    expect(result.conflict).toBe(true);
-    if (result.conflict) {
-      expect(result.code).toBe("conflict_detected");
-    }
+  it.each([
+    ["new value", "original value", false, "conflict_detected"],
+    ["Trade License", "Trade License", false, "replace_existing_required"],
+    ["Trade License", "Trade License", true, null],
+    [null, null, false, null],
+    ["trade license", "Trade License", true, null],
+  ])("compares live %s against snapshot %s", async (live, snapshot, confirmed, code) => {
+    db.maybeSingle.mockResolvedValue({ data: { title: live }, error: null });
+    const result = await detectCorrectionConflicts({ ...base, proposalCurrentSummary: snapshot, replaceExistingConfirmed: confirmed });
+    expect(result).toMatchObject(code ? { conflict: true, code } : { conflict: false });
+    expect(db.select).toHaveBeenCalledWith("title");
   });
-
-  it("detects conflict when value exists and replace not confirmed", () => {
-    const result = checkValueChanged("Trade License", "Trade License", false);
-    expect(result.conflict).toBe(true);
-    if (result.conflict) {
-      expect(result.code).toBe("replace_existing_required");
-    }
+  it("rejects a forbidden target through the actual registry before querying it", async () => {
+    expect(await detectCorrectionConflicts({ ...base, targetTable: "user_roles", targetField: "role_id" })).toMatchObject({ conflict: true, code: "target_not_allowlisted" });
+    expect(db.from).not.toHaveBeenCalled();
   });
-
-  it("allows when value unchanged and replace confirmed", () => {
-    const result = checkValueChanged("Trade License", "Trade License", true);
-    expect(result.conflict).toBe(false);
+  it("blocks a missing row or returned read error instead of allowing overwrite", async () => {
+    db.maybeSingle.mockResolvedValue({ data: null, error: { message: "synthetic read failure" } });
+    expect(await detectCorrectionConflicts(base)).toMatchObject({ conflict: true, code: "target_record_not_found" });
   });
-
-  it("allows when field is empty and no replacement needed", () => {
-    const result = checkValueChanged(null, null, false);
-    expect(result.conflict).toBe(false);
-  });
-
-  it("is case-insensitive in comparison", () => {
-    const result = checkValueChanged("trade license", "Trade License", true);
-    expect(result.conflict).toBe(false);
+  it("blocks a rejected live-value read", async () => {
+    db.maybeSingle.mockRejectedValue(new Error("synthetic transport failure"));
+    expect(await detectCorrectionConflicts(base)).toMatchObject({ conflict: true, code: "conflict_detected" });
   });
 });

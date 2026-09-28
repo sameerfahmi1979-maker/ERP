@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
-import type { BranchWithCompany } from "@/types/database";
+import type { BranchWithCompany } from "@/types/domain";
 
 /**
  * List all branches with owner company info

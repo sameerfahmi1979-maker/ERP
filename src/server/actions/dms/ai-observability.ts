@@ -15,10 +15,10 @@
  *   - Never mutates dms_documents, dms_document_metadata_values, or any ERP entity.
  */
 
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { extractSafeUsageDisplayFields, sanitizeErrorMessage } from "@/lib/ai/observability/safe-usage-redaction";
+import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

@@ -1,9 +1,9 @@
 import { ERPPageHeader } from "@/components/erp/page-header";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AuditFiltersBar } from "@/features/audit/audit-filters-bar";
+import { AuditLogsTable } from "@/features/audit/audit-logs-table";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { listAuditLogs } from "@/server/queries/audit";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AuditLogsTable } from "@/features/audit/audit-logs-table";
-import { AuditFiltersBar } from "@/features/audit/audit-filters-bar";
 import { Suspense } from "react";
 
 type AuditPageProps = {

@@ -1,24 +1,23 @@
 "use client";
 
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { 
-  Building, 
-  Settings, 
-  Binary, 
-  Mail, 
-  Image as ImageIcon, 
-  Upload, 
-  Check, 
+import {
+  Binary,
+  Building,
+  Check,
   FileText,
+  Globe2,
+  Image as ImageIcon,
+  Mail,
   Save,
-  Globe2
+  Settings,
+  Upload
 } from "lucide-react";
+import { useState } from "react";
 
 export default function AppSettingsPrototype() {
   const [activeTab, setActiveTab] = useState("company");

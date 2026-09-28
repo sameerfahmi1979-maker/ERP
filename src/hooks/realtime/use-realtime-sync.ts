@@ -51,7 +51,7 @@ export function useRealtimeSync({
   // Keep a stable ref to onEvent so we don't need it in the effect dep array
   // (avoids re-subscribing every render just because the callback changes).
   const onEventRef = useRef(onEvent);
-  onEventRef.current = onEvent;
+  useEffect(() => { onEventRef.current = onEvent; }, [onEvent]);
 
   useEffect(() => {
     if (!REALTIME_ENABLED || !enabled) return;
@@ -96,6 +96,6 @@ export function useRealtimeSync({
       if (debounceTimer) clearTimeout(debounceTimer);
       void supabase.removeChannel(channel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [table, event, filter, enabled, debounceMs]);
 }

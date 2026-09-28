@@ -1,18 +1,18 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Zap, GitMerge, Mail, Send } from "lucide-react";
-import { useState } from "react";
-import { DmsNotificationsTable } from "./dms-notifications-table";
-import { generateDmsExpiryNotifications } from "@/server/actions/dms/notifications";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { invalidateDmsNotifications, invalidateEmailQueue } from "@/lib/query/invalidation";
 import {
   bridgeDueDmsNotificationsToGlobal,
   processDmsExpiryEmailQueue,
 } from "@/server/actions/dms/dms-email-bridge";
-import { invalidateDmsNotifications, invalidateEmailQueue } from "@/lib/query/invalidation";
+import { generateDmsExpiryNotifications } from "@/server/actions/dms/notifications";
+import { useQueryClient } from "@tanstack/react-query";
+import { GitMerge, Send, Zap } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+import { DmsNotificationsTable } from "./dms-notifications-table";
 
 interface DmsNotificationsPageClientProps {
   isAdmin: boolean;

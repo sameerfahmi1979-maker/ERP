@@ -14,7 +14,7 @@ import { Settings } from "lucide-react";
 export default async function ReportCenterPage() {
   const ctx = await getAuthContext();
   if (!hasPermission(ctx, "reports.view")) {
-    redirect("/admin");
+    redirect("/access-denied");
   }
 
   const result = await listReportRegistry();

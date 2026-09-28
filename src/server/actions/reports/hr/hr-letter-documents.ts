@@ -11,15 +11,15 @@
  * - All letters require employee_id filter
  */
 import type { ReportFetcher, ReportDataResult } from "@/lib/report-center/types";
-import { createAdminClient } from "@/lib/supabase/admin";
+import type { ReportReadClient } from "@/lib/report-center/scoped-read-client";
 import { calculateGrossSalary, calculateBasicSalary } from "@/lib/hr/payroll/wps-readiness";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared helper: load employee base data
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function loadEmployeeBase(employeeId: number) {
-  const db = createAdminClient();
+async function loadEmployeeBase(employeeId: number, db: ReportReadClient) {
+
   const { data, error } = await db
     .from("employees")
     .select(
@@ -46,15 +46,15 @@ async function loadEmployeeBase(employeeId: number) {
 export const experienceLetterFetcher: ReportFetcher = {
   reportCode: "HR_EXPERIENCE_LETTER",
 
-  async fetch(filters: Record<string, unknown>): Promise<ReportDataResult> {
+  async fetch(filters: Record<string, unknown>, _permissions: string[], db: ReportReadClient): Promise<ReportDataResult> {
     const employeeId = filters.employee_id ? Number(filters.employee_id) : null;
     if (!employeeId) throw new Error("employee_id is required");
 
-    const emp = await loadEmployeeBase(employeeId);
+    const emp = await loadEmployeeBase(employeeId, db);
     const company = emp.owner_company as unknown as { legal_name_en: string } | null;
 
     // Find last_working_date from EOS cases if employee left
-    const db = createAdminClient();
+
     const { data: eos } = await db
       .from("employee_eos_cases")
       .select("last_working_date")
@@ -93,11 +93,11 @@ export const experienceLetterFetcher: ReportFetcher = {
 export const employmentLetterFetcher: ReportFetcher = {
   reportCode: "HR_EMPLOYMENT_LETTER",
 
-  async fetch(filters: Record<string, unknown>): Promise<ReportDataResult> {
+  async fetch(filters: Record<string, unknown>, _permissions: string[], db: ReportReadClient): Promise<ReportDataResult> {
     const employeeId = filters.employee_id ? Number(filters.employee_id) : null;
     if (!employeeId) throw new Error("employee_id is required");
 
-    const emp = await loadEmployeeBase(employeeId);
+    const emp = await loadEmployeeBase(employeeId, db);
     const company = emp.owner_company as unknown as { legal_name_en: string } | null;
 
     const row = {
@@ -128,11 +128,11 @@ export const employmentLetterFetcher: ReportFetcher = {
 export const employmentConfirmationFetcher: ReportFetcher = {
   reportCode: "HR_EMPLOYMENT_CONFIRMATION",
 
-  async fetch(filters: Record<string, unknown>): Promise<ReportDataResult> {
+  async fetch(filters: Record<string, unknown>, _permissions: string[], db: ReportReadClient): Promise<ReportDataResult> {
     const employeeId = filters.employee_id ? Number(filters.employee_id) : null;
     if (!employeeId) throw new Error("employee_id is required");
 
-    const emp = await loadEmployeeBase(employeeId);
+    const emp = await loadEmployeeBase(employeeId, db);
     const company = emp.owner_company as unknown as {
       legal_name_en: string;
       legal_name_ar: string | null;
@@ -172,12 +172,12 @@ export const employmentConfirmationFetcher: ReportFetcher = {
 export const warningLetterFetcher: ReportFetcher = {
   reportCode: "HR_WARNING_LETTER",
 
-  async fetch(filters: Record<string, unknown>): Promise<ReportDataResult> {
+  async fetch(filters: Record<string, unknown>, _permissions: string[], db: ReportReadClient): Promise<ReportDataResult> {
     const employeeId = filters.employee_id ? Number(filters.employee_id) : null;
     if (!employeeId) throw new Error("employee_id is required");
 
-    const emp = await loadEmployeeBase(employeeId);
-    const db = createAdminClient();
+    const emp = await loadEmployeeBase(employeeId, db);
+
 
     // Optional action_id pins the letter to a specific disciplinary record;
     // otherwise the latest non-deleted record is used.
@@ -233,11 +233,11 @@ export const warningLetterFetcher: ReportFetcher = {
 export const salaryCertGeneralFetcher: ReportFetcher = {
   reportCode: "HR_SALARY_CERT_GENERAL",
 
-  async fetch(filters: Record<string, unknown>): Promise<ReportDataResult> {
+  async fetch(filters: Record<string, unknown>, _permissions: string[], db: ReportReadClient): Promise<ReportDataResult> {
     const employeeId = filters.employee_id ? Number(filters.employee_id) : null;
     if (!employeeId) throw new Error("employee_id is required");
 
-    const emp = await loadEmployeeBase(employeeId);
+    const emp = await loadEmployeeBase(employeeId, db);
     const company = emp.owner_company as unknown as { legal_name_en: string } | null;
 
     const row = {
@@ -268,7 +268,7 @@ export const salaryCertGeneralFetcher: ReportFetcher = {
 export const salaryCertWithAmountFetcher: ReportFetcher = {
   reportCode: "HR_SALARY_CERT_WITH_AMOUNT",
 
-  async fetch(filters: Record<string, unknown>, permissionCodes: string[]): Promise<ReportDataResult> {
+  async fetch(filters: Record<string, unknown>, permissionCodes: string[], db: ReportReadClient): Promise<ReportDataResult> {
     if (!permissionCodes.includes("hr.payroll.view")) {
       throw new Error("You do not have permission to generate salary certificates with amounts. Requires hr.payroll.view.");
     }
@@ -276,9 +276,9 @@ export const salaryCertWithAmountFetcher: ReportFetcher = {
     const employeeId = filters.employee_id ? Number(filters.employee_id) : null;
     if (!employeeId) throw new Error("employee_id is required");
 
-    const emp = await loadEmployeeBase(employeeId);
+    const emp = await loadEmployeeBase(employeeId, db);
     const company = emp.owner_company as unknown as { legal_name_en: string } | null;
-    const db = createAdminClient();
+
 
     // gross_salary and basic_salary are NOT stored on employee_payroll_profiles —
     // they are computed from employee_salary_components. Query both tables.
@@ -335,20 +335,20 @@ export const salaryCertWithAmountFetcher: ReportFetcher = {
 export const nocFetcher: ReportFetcher = {
   reportCode: "HR_NOC",
 
-  async fetch(filters: Record<string, unknown>): Promise<ReportDataResult> {
+  async fetch(filters: Record<string, unknown>, _permissions: string[], db: ReportReadClient): Promise<ReportDataResult> {
     const employeeId = filters.employee_id ? Number(filters.employee_id) : null;
     if (!employeeId) throw new Error("employee_id is required");
 
-    const emp = await loadEmployeeBase(employeeId);
+    const emp = await loadEmployeeBase(employeeId, db);
     const company = emp.owner_company as unknown as { legal_name_en: string } | null;
-    const db = createAdminClient();
+
 
     // Fetch passport number (masked)
     const { data: idDocs } = await db
       .from("employee_identity_documents")
-      .select("document_number")
+      .select("document_number, document_type:hr_identity_document_types!inner(code)")
       .eq("employee_id", employeeId)
-      .eq("document_type", "passport")
+      .eq("document_type.code", "passport")
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
       .limit(1);
@@ -384,11 +384,11 @@ export const nocFetcher: ReportFetcher = {
 export const employeeIdCardFetcher: ReportFetcher = {
   reportCode: "HR_EMPLOYEE_ID_CARD",
 
-  async fetch(filters: Record<string, unknown>): Promise<ReportDataResult> {
+  async fetch(filters: Record<string, unknown>, _permissions: string[], db: ReportReadClient): Promise<ReportDataResult> {
     const employeeId = filters.employee_id ? Number(filters.employee_id) : null;
     if (!employeeId) throw new Error("employee_id is required");
 
-    const emp = await loadEmployeeBase(employeeId);
+    const emp = await loadEmployeeBase(employeeId, db);
     const company = emp.owner_company as unknown as { legal_name_en: string; company_code: string } | null;
 
     const row = {
@@ -417,30 +417,30 @@ export const employeeIdCardFetcher: ReportFetcher = {
 export const ppeIssueFormFetcher: ReportFetcher = {
   reportCode: "HR_PPE_ISSUE_FORM",
 
-  async fetch(filters: Record<string, unknown>): Promise<ReportDataResult> {
+  async fetch(filters: Record<string, unknown>, _permissions: string[], db: ReportReadClient): Promise<ReportDataResult> {
     const employeeId = filters.employee_id ? Number(filters.employee_id) : null;
     if (!employeeId) throw new Error("employee_id is required");
 
-    const emp = await loadEmployeeBase(employeeId);
-    const db = createAdminClient();
+    const emp = await loadEmployeeBase(employeeId, db);
+
 
     const { data: ppeItems } = await db
       .from("employee_ppe_issues")
-      .select("ppe_item_name, ppe_category, quantity, issue_date, condition_at_issue, issued_by_profile:profiles!issued_by(display_name)")
+      .select("ppe_item_name:ppe_item, quantity, issue_date:issued_date, issued_by_profile:user_profiles!issued_by(display_name)")
       .eq("employee_id", employeeId)
-      .eq("ppe_status", "issued")
+      .eq("status", "issued")
       .is("deleted_at", null)
-      .order("issue_date", { ascending: false })
+      .order("issued_date", { ascending: false })
       .limit(50);
 
     const rows = (ppeItems ?? []).map((p) => ({
       employee_code: emp.employee_code,
       employee_name: emp.full_name_en,
       ppe_item: p.ppe_item_name,
-      ppe_category: p.ppe_category ?? "",
+      ppe_category: "[Not recorded]",
       quantity: p.quantity ?? 1,
       issue_date: p.issue_date,
-      condition: p.condition_at_issue ?? "",
+      condition: "[Not recorded]",
       issued_by: (p.issued_by_profile as unknown as { display_name: string } | null)?.display_name ?? "",
       signature_placeholder: "[_______________________]",
       owner_company_id: emp.owner_company_id,
@@ -461,11 +461,11 @@ export const ppeIssueFormFetcher: ReportFetcher = {
 export const joiningChecklistFetcher: ReportFetcher = {
   reportCode: "HR_JOINING_CHECKLIST",
 
-  async fetch(filters: Record<string, unknown>): Promise<ReportDataResult> {
+  async fetch(filters: Record<string, unknown>, _permissions: string[], db: ReportReadClient): Promise<ReportDataResult> {
     const employeeId = filters.employee_id ? Number(filters.employee_id) : null;
     if (!employeeId) throw new Error("employee_id is required");
 
-    const emp = await loadEmployeeBase(employeeId);
+    const emp = await loadEmployeeBase(employeeId, db);
 
     const checklistItems = [
       { item: "Employee Profile Created", area: "HR" },
@@ -506,12 +506,12 @@ export const joiningChecklistFetcher: ReportFetcher = {
 export const clearanceFormFetcher: ReportFetcher = {
   reportCode: "HR_CLEARANCE_FORM",
 
-  async fetch(filters: Record<string, unknown>): Promise<ReportDataResult> {
+  async fetch(filters: Record<string, unknown>, _permissions: string[], db: ReportReadClient): Promise<ReportDataResult> {
     const employeeId = filters.employee_id ? Number(filters.employee_id) : null;
     if (!employeeId) throw new Error("employee_id is required");
 
-    const emp = await loadEmployeeBase(employeeId);
-    const db = createAdminClient();
+    const emp = await loadEmployeeBase(employeeId, db);
+
 
     // Load existing clearance items from EOS case if present
     const { data: eosCases } = await db

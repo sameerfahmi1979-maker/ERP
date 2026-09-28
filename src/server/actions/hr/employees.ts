@@ -1,8 +1,12 @@
 "use server";
+import {saveWorkspaceRecord, type WorkspaceSaveResult} from "@/server/workspace-save";
+import type {WorkspaceSaveContract} from "@/lib/workspace/save-contract";
+import { workspaceValidationFailure } from "@/lib/workspace/field-errors";
+import { canBrowseEmployees, getEmployeeAccess } from "@/lib/rbac/employee-access";
+import { EMPLOYEE_PUBLIC_FIELDS } from "@/lib/hr/employee-public-fields";
 
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
@@ -71,6 +75,7 @@ export type EmployeeRow = {
   // Metadata
   created_at: string;
   updated_at: string;
+  workspace_revision: number;
   created_by: number | null;
   updated_by: number | null;
   deleted_at: string | null;
@@ -184,7 +189,7 @@ export async function listEmployees(params?: Partial<EmployeeListParams>): Promi
 > {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.employees.view") && !ctx.roleCodes?.includes("system_admin")) {
+    if (!canBrowseEmployees(ctx)) {
       return { success: false, error: "Permission denied" };
     }
 
@@ -224,7 +229,7 @@ export async function listEmployees(params?: Partial<EmployeeListParams>): Promi
 
     let query = supabase
       .from("employees")
-      .select(`*,${JOINS}`, { count: "exact" })
+      .select(`${EMPLOYEE_PUBLIC_FIELDS},${JOINS}`, { count: "exact" })
       .is("deleted_at", null);
 
     if (search) {
@@ -257,7 +262,7 @@ export async function listEmployees(params?: Partial<EmployeeListParams>): Promi
     return {
       success: true,
       data: {
-        rows: (data ?? []) as unknown as EmployeeListRow[],
+        rows: (data ?? []).map(row=>({...row as unknown as Omit<EmployeeListRow,"blood_group">,blood_group:null})),
         totalCount: count ?? 0,
         page,
         pageSize,
@@ -276,7 +281,7 @@ export async function listEmployees(params?: Partial<EmployeeListParams>): Promi
 export async function getEmployee(employeeId: number): Promise<ActionResult<EmployeeListRow>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.employees.view") && !ctx.roleCodes?.includes("system_admin")) {
+    if (!canBrowseEmployees(ctx)) {
       return { success: false, error: "Permission denied" };
     }
 
@@ -296,7 +301,7 @@ export async function getEmployee(employeeId: number): Promise<ActionResult<Empl
 
     const { data, error } = await supabase
       .from("employees")
-      .select(`*,${JOINS}`)
+      .select(`${EMPLOYEE_PUBLIC_FIELDS},${JOINS}`)
       .eq("id", employeeId)
       .is("deleted_at", null)
       .single();
@@ -306,7 +311,9 @@ export async function getEmployee(employeeId: number): Promise<ActionResult<Empl
       return { success: false, error: error.message };
     }
 
-    return { success: true, data: data as unknown as EmployeeListRow };
+    const medical = await supabase.rpc("f03_employee_blood_group", { employee_id: employeeId });
+    if(medical.error) return { success:false, error:"Employee medical-field access could not be verified." };
+    return { success: true, data: { ...data as unknown as Omit<EmployeeListRow,"blood_group">, blood_group: medical.data } };
   } catch (err) {
     logger.error("getEmployee exception", err);
     return { success: false, error: "Failed to get employee" };
@@ -327,7 +334,7 @@ export async function getEmployeeOverview(
 ): Promise<ActionResult<EmployeeOverview>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.employees.view") && !ctx.roleCodes?.includes("system_admin")) {
+    if (!canBrowseEmployees(ctx)) {
       return { success: false, error: "Permission denied" };
     }
 
@@ -357,186 +364,30 @@ export async function getEmployeeOverview(
 // createEmployee
 // ============================================================================
 
-export async function createEmployee(
-  input: EmployeeCreateInput
-): Promise<ActionResult<{ id: number; employee_code: string }>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.employees.create") && !ctx.roleCodes?.includes("system_admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-
-    const parsed = employeeCreateSchema.safeParse(input);
-    if (!parsed.success) {
-      return { success: false, error: parsed.error.issues.map((i) => i.message).join("; ") };
-    }
-
-    const supabase = await createClient();
-
-    // Step 1: Generate employee code using admin client (bypasses numbering permission)
-    const adminClient = createAdminClient();
-    const { data: numData, error: numError } = await adminClient.rpc(
-      "generate_next_reference_number",
-      {
-        p_rule_code: "HR_EMPLOYEE",
-        p_document_type_code: null,
-        p_target_table_name: "employees",
-        p_target_record_id: null,
-        p_generation_reason: "New employee",
-        p_generated_by: ctx.profile?.id ?? null,
-      }
-    );
-
-    if (numError || !numData || numData.length === 0) {
-      logger.error("Employee code generation error", numError);
-      return { success: false, error: "Failed to generate employee code" };
-    }
-
-    const employeeCode: string = numData[0].generated_reference_number;
-
-    // Step 2: Insert employee
-    const { data: employee, error: insertError } = await supabase
-      .from("employees")
-      .insert({
-        ...parsed.data,
-        employee_code: employeeCode,
-        created_by: ctx.profile?.id ?? null,
-        updated_by: ctx.profile?.id ?? null,
-      })
-      .select("id, employee_code")
-      .single();
-
-    if (insertError) {
-      logger.error("createEmployee insert error", insertError);
-      return { success: false, error: insertError.message };
-    }
-
-    // Step 3: Insert initial status event
-    await supabase.from("employee_status_events").insert({
-      employee_id: employee.id,
-      old_status: null,
-      new_status: parsed.data.employee_status ?? "active",
-      reason: "Employee created",
-      effective_date: parsed.data.joining_date,
-      created_by: ctx.profile?.id ?? null,
-    });
-
-    // Step 4: Audit
-    await logAudit({
-      module_code: "HR",
-      entity_name: "employees",
-      entity_id: employee.id,
-      entity_reference: employee.employee_code,
-      action: "create",
-      new_values: {
-        employee_code: employee.employee_code,
-        employee_name: parsed.data.full_name_en,
-      },
-    });
-
-    revalidatePath("/admin/hr/employees");
-
-    return { success: true, data: { id: employee.id, employee_code: employee.employee_code } };
-  } catch (err) {
-    logger.error("createEmployee exception", err);
-    return { success: false, error: "Failed to create employee" };
-  }
+export async function createEmployee(input: EmployeeCreateInput, contract: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const ctx=await getAuthContext();
+  if(!hasPermission(ctx,"hr.employees.create")&&!ctx.roleCodes?.includes("system_admin")) return {success:false,error:"Permission denied"};
+  const parsed=employeeCreateSchema.safeParse(input);
+  if(!parsed.success) return workspaceValidationFailure(parsed.error.issues);
+  const result=await saveWorkspaceRecord("employees",null,parsed.data,contract);
+  if(result.success) revalidatePath("/admin/hr/employees");
+  return result;
 }
 
 // ============================================================================
 // updateEmployee
 // ============================================================================
 
-export async function updateEmployee(
-  employeeId: number,
-  input: EmployeeUpdateInput
-): Promise<ActionResult<void>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.employees.update") && !ctx.roleCodes?.includes("system_admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-
-    const parsed = employeeUpdateSchema.safeParse(input);
-    if (!parsed.success) {
-      return { success: false, error: parsed.error.issues.map((i) => i.message).join("; ") };
-    }
-
-    const supabase = await createClient();
-
-    // Fetch current employee to detect status change
-    const { data: current, error: fetchError } = await supabase
-      .from("employees")
-      .select("id, employee_code, full_name_en, employee_status")
-      .eq("id", employeeId)
-      .is("deleted_at", null)
-      .single();
-
-    if (fetchError || !current) {
-      return { success: false, error: "Employee not found" };
-    }
-
-    const { error: updateError } = await supabase
-      .from("employees")
-      .update({
-        ...parsed.data,
-        updated_by: ctx.profile?.id ?? null,
-      })
-      .eq("id", employeeId)
-      .is("deleted_at", null);
-
-    if (updateError) {
-      logger.error("updateEmployee error", updateError);
-      return { success: false, error: updateError.message };
-    }
-
-    // If status changed, insert status event
-    if (parsed.data.employee_status && parsed.data.employee_status !== current.employee_status) {
-      await supabase.from("employee_status_events").insert({
-        employee_id: employeeId,
-        old_status: current.employee_status,
-        new_status: parsed.data.employee_status,
-        reason: parsed.data.inactive_reason ?? "Status updated",
-        effective_date: parsed.data.inactive_date ?? null,
-        created_by: ctx.profile?.id ?? null,
-      });
-
-      await logAudit({
-        module_code: "HR",
-        entity_name: "employee_status_events",
-        entity_id: employeeId,
-        entity_reference: current.employee_code,
-        action: "create",
-        new_values: {
-          parent_employee_id: employeeId,
-          employee_code: current.employee_code,
-          employee_name: current.full_name_en,
-          old_status: current.employee_status,
-          new_status: parsed.data.employee_status,
-        },
-      });
-    }
-
-    await logAudit({
-      module_code: "HR",
-      entity_name: "employees",
-      entity_id: employeeId,
-      entity_reference: current.employee_code,
-      action: "update",
-      new_values: {
-        employee_code: current.employee_code,
-        employee_name: current.full_name_en,
-      },
-    });
-
-    revalidatePath("/admin/hr/employees");
-    revalidatePath(`/admin/hr/employees/record/${employeeId}`);
-
-    return { success: true };
-  } catch (err) {
-    logger.error("updateEmployee exception", err);
-    return { success: false, error: "Failed to update employee" };
-  }
+export async function updateEmployee(employeeId: number,input: EmployeeUpdateInput,contract: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const ctx=await getAuthContext();
+  if(!hasPermission(ctx,"hr.employees.update")&&!ctx.roleCodes?.includes("system_admin")) return {success:false,error:"Permission denied"};
+  const parsed=employeeUpdateSchema.safeParse(input);
+  if(!parsed.success) return workspaceValidationFailure(parsed.error.issues);
+  const access=await getEmployeeAccess(ctx,employeeId);
+  if(!access.allows("hr.medical.manage")) delete parsed.data.blood_group;
+  const result=await saveWorkspaceRecord("employees",employeeId,parsed.data,contract);
+  if(result.success) {revalidatePath("/admin/hr/employees");revalidatePath(`/admin/hr/employees/record/${employeeId}`);}
+  return result;
 }
 
 // ============================================================================
@@ -705,7 +556,7 @@ export async function getEmployeeStatusHistory(
 ): Promise<ActionResult<EmployeeStatusEvent[]>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.employees.view") && !ctx.roleCodes?.includes("system_admin")) {
+    if (!canBrowseEmployees(ctx)) {
       return { success: false, error: "Permission denied" };
     }
 

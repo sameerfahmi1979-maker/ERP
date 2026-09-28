@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useId } from "react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -61,6 +61,8 @@ export function PartyContactsTab({ partyId, disabled, onChildOpen }: PartyContac
   const [editing, setEditing] = useState<PartyContact | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [form, setForm] = useState({ ...emptyForm });
+  const [initialForm, setInitialForm] = useState({ ...emptyForm });
+  const fieldId = useId();
 
   // ERP REALTIME.1B — scoped live sync for this party's contacts.
   // Subscription is suppressed while a child dialog is open to protect unsaved form data.
@@ -90,12 +92,13 @@ export function PartyContactsTab({ partyId, disabled, onChildOpen }: PartyContac
   const openAdd = () => {
     setEditing(null);
     setForm({ ...emptyForm });
+    setInitialForm({ ...emptyForm });
     setDialogOpen(true);
   };
 
   const openEdit = (item: PartyContact) => {
     setEditing(item);
-    setForm({
+    const values = {
       full_name: item.full_name,
       designation: item.designation ?? "",
       department_id: item.department_id,
@@ -112,7 +115,9 @@ export function PartyContactsTab({ partyId, disabled, onChildOpen }: PartyContac
       is_documents_contact: item.is_documents_contact,
       is_active: item.is_active,
       notes: item.notes ?? "",
-    });
+    };
+    setInitialForm(values);
+    setForm(values);
     setDialogOpen(true);
   };
 
@@ -128,7 +133,7 @@ export function PartyContactsTab({ partyId, disabled, onChildOpen }: PartyContac
   };
 
   const handleSubmit = async () => {
-    if (!form.full_name) {
+    if (!form.full_name.trim()) {
       toast.error("Full name is required");
       return;
     }
@@ -229,12 +234,13 @@ export function PartyContactsTab({ partyId, disabled, onChildOpen }: PartyContac
         mode={editing ? "edit" : "add"}
         size="lg"
         isSubmitting={isSubmitting}
+        isDirty={JSON.stringify(form) !== JSON.stringify(initialForm)}
         onSubmit={handleSubmit}
       >
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
-            <RequiredLabel required>Full Name</RequiredLabel>
-            <Input value={form.full_name} onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))} />
+            <RequiredLabel required htmlFor={`${fieldId}-name`}>Full Name</RequiredLabel>
+            <Input id={`${fieldId}-name`} required value={form.full_name} onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))} />
           </div>
           <div className="col-span-6">
             <Label>Designation</Label>
@@ -261,8 +267,8 @@ export function PartyContactsTab({ partyId, disabled, onChildOpen }: PartyContac
             />
           </div>
           <div className="col-span-6">
-            <Label>Email</Label>
-            <Input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
+            <Label htmlFor={`${fieldId}-email`}>Email</Label>
+            <Input id={`${fieldId}-email`} type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
           </div>
           <div className="col-span-4">
             <Label>Phone</Label>

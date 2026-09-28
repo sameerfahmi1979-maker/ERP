@@ -22,6 +22,8 @@ import type {
 import { resolveReportBranding } from "./branding-resolver";
 import { applyRedaction } from "./redaction-engine";
 import { REPORT_FETCHERS } from "./report-fetchers";
+import { assertAccountActive, hasPermission, type AuthContext } from "@/lib/rbac/check";
+import { createScopedReportReadClient } from "./scoped-read-client";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Registry loader
@@ -164,9 +166,14 @@ export async function failReportRunLog(
  */
 export async function runReport(
   request: ReportRunRequest,
-  callerPermissionCodes: string[]
+  actor: AuthContext
 ): Promise<ReportRunResult> {
   const startMs = Date.now();
+  assertAccountActive(actor);
+  if(actor.profile!.id!==request.requestedByUserId) return {success:false,error:"Report principal mismatch"};
+  const callerPermissionCodes=actor.permissionCodes;
+  const deliveryPermissions = request.outputFormat === "screen" ? [] : request.outputFormat === "email" ? ["reports.export","reports.email"] : ["reports.export"];
+  if (deliveryPermissions.some(code=>!hasPermission(actor,code))) return {success:false,error:"Separate report export/email permission is required."};
 
   // ── 1. Load registry ──────────────────────────────────────────────────────
   const registryEntry = await loadRegistryEntry(request.reportCode);
@@ -179,7 +186,7 @@ export async function runReport(
 
   // ── 2. Permission check ───────────────────────────────────────────────────
   const missingPerms = registryEntry.required_permissions.filter(
-    (p) => !callerPermissionCodes.includes(p)
+    (p) => !hasPermission(actor,p) && !hasPermission(actor,p+".self") && !hasPermission(actor,p+".team")
   );
   if (missingPerms.length > 0) {
     return {
@@ -236,7 +243,8 @@ export async function runReport(
   try {
     rawData = await fetcher.fetch(
       request.filters ?? {},
-      callerPermissionCodes
+      callerPermissionCodes,
+      await createScopedReportReadClient(actor,request.reportCode,[...registryEntry.required_permissions,...deliveryPermissions])
     );
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);

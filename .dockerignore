@@ -1,0 +1,14 @@
+# Allowlist: never upload credentials, production fixtures or audit archives.
+**
+!Dockerfile
+!.dockerignore
+!package.json
+!package-lock.json
+!next.config.ts
+!tsconfig.json
+!tsconfig.shipping.json
+!postcss.config.mjs
+!src/
+!src/**
+!public/
+!public/**

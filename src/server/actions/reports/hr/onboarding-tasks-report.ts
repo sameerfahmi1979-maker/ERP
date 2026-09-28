@@ -3,7 +3,7 @@
  * Phase: REPORT.4 — HR.11 Reports + Letters + Forms Library
  */
 import type { ReportFetcher, ReportDataResult } from "@/lib/report-center/types";
-import { createAdminClient } from "@/lib/supabase/admin";
+import type { ReportReadClient } from "@/lib/report-center/scoped-read-client";
 
 function agingDays(dueDate: string | null): number | null {
   if (!dueDate) return null;
@@ -13,16 +13,16 @@ function agingDays(dueDate: string | null): number | null {
 export const onboardingTasksFetcher: ReportFetcher = {
   reportCode: "HR_ONBOARDING_TASKS",
 
-  async fetch(filters: Record<string, unknown>): Promise<ReportDataResult> {
-    const db = createAdminClient();
+  async fetch(filters: Record<string, unknown>, _permissions: string[], db: ReportReadClient): Promise<ReportDataResult> {
+
 
     let q = db
       .from("hr_onboarding_tasks")
       .select(
         `id, candidate_id, employee_id, task_title, task_category, task_status,
          due_date, completed_at,
-         assigned_to_profile:profiles!assigned_to(display_name),
-         completed_by_profile:profiles!completed_by(display_name),
+         assigned_to_profile:user_profiles!assigned_to(display_name),
+         completed_by_profile:user_profiles!completed_by(display_name),
          candidate:hr_candidates(full_name_en, candidate_code),
          employee:employees(
            full_name_en, employee_code, owner_company_id,

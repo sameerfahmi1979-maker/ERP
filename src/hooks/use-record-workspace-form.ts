@@ -23,6 +23,7 @@
 import { useState, useCallback } from "react";
 import { useWorkspaceContext } from "@/components/workspace/workspace-provider";
 import { useWorkspaceTabDirty } from "./use-workspace-tab-dirty";
+import { useWorkspaceFormOwner } from "./use-workspace-form-owner";
 
 export type UseRecordWorkspaceFormOptions = {
   /** Must be unique for this record form in the DOM */
@@ -73,37 +74,15 @@ export function useRecordWorkspaceForm({
 
   // ── 2. Workspace context (null when standalone) ────────────────────────────
   const ctx = useWorkspaceContext();
+  const owner = useWorkspaceFormOwner();
 
   // ── 3. Standalone fallback dialog ─────────────────────────────────────────
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
 
   // ── requestClose ───────────────────────────────────────────────────────────
   const requestClose = useCallback(() => {
-    if (ctx) {
-      // Inside workspace: delegate to closeTab which triggers 4B dirty dialog
-      const activeTabId = ctx.state.activeTabId;
-      if (activeTabId) {
-        // Find the active tab and check closable
-        const activeTab = ctx.state.tabs.find((t) => t.id === activeTabId);
-        if (activeTab?.closable !== false) {
-          // closeTab is now dirty-safe via 4B
-          ctx.dispatch({ type: "SET_ACTIVE_TAB", tabId: activeTabId }); // noop, already active
-          // We need to call the provider's closeTab — use the exported function
-          // Access via a custom event to avoid coupling: emit a workspace close request.
-          // Simpler approach: call onClose directly for clean forms, or let the
-          // caller pass the workspace closeTab as onClose.
-          //
-          // RECOMMENDED PATTERN for callers:
-          //   const { closeTab, activeTab } = useWorkspace();
-          //   <ERPRecordWorkspaceForm onRequestClose={() => closeTab(activeTab.id)} />
-          //
-          // If the caller wired onRequestClose correctly, this function should
-          // never be called directly for the workspace case — the caller's
-          // onRequestClose already calls workspace.closeTab.
-          // We call onClose as fallback to keep standalone behavior working.
-        }
-      }
-      onClose?.();
+    if (ctx && owner) {
+      ctx.closeTab(owner.id);
     } else {
       // Outside workspace: handle dirty check ourselves
       if (isDirty && mode !== "view") {
@@ -112,7 +91,7 @@ export function useRecordWorkspaceForm({
         onClose?.();
       }
     }
-  }, [ctx, isDirty, mode, onClose]);
+  }, [ctx, owner, isDirty, mode, onClose]);
 
   // ── confirmDiscard (standalone fallback) ──────────────────────────────────
   const confirmDiscard = useCallback(() => {
@@ -129,12 +108,12 @@ export function useRecordWorkspaceForm({
   const markWorkspaceDirty = useCallback(
     (dirty: boolean) => {
       if (!ctx) return;
-      const activeTabId = ctx.state.activeTabId;
+      const activeTabId = owner?.id;
       if (activeTabId) {
         ctx.dispatch({ type: "MARK_DIRTY", tabId: activeTabId, dirty });
       }
     },
-    [ctx]
+    [ctx, owner]
   );
 
   const resetWorkspaceDirty = useCallback(() => {

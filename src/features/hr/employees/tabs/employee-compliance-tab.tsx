@@ -12,101 +12,108 @@
  *   6. Medical & Health Records (employee_medical_records — restricted: hr.medical.view)
  */
 
-import { useState, useTransition, useCallback, useRef, type Dispatch, type SetStateAction } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import {
-  Shield, FileText, Heart, Users, CreditCard, GraduationCap, Activity,
-  Plus, Edit2, Archive, CheckCircle, RefreshCw, ExternalLink, Lock, FileStack,
-} from "lucide-react";
-import { format } from "date-fns";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { ERPCombobox } from "@/components/erp/combobox";
+import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
+import { CountrySelect } from "@/components/erp/geography/country-select";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { CountrySelect } from "@/components/erp/geography/country-select";
-import { EmirateSelect } from "@/components/erp/geography/emirate-select";
-import { OwnerCompanySelect } from "@/components/erp/organizations/owner-company-select";
-import { queryKeys } from "@/lib/query/query-keys";
-import {
-  getExpiryStatus,
-  getExpiryStatusBadge,
-  getComplianceStatusBadge,
-  getVerificationStatusBadge,
-  getRenewalStatusBadge,
-  getMedicalResultBadge,
-} from "@/lib/hr/compliance/expiry";
-import {
-  listEmployeeIdentityDocuments,
-  updateEmployeeIdentityDocument,
-  archiveEmployeeIdentityDocument,
-  verifyEmployeeIdentityDocument,
-  listEmployeeMedicalInsurances,
-  createEmployeeMedicalInsurance,
-  updateEmployeeMedicalInsurance,
-  archiveEmployeeMedicalInsurance,
-  verifyEmployeeMedicalInsurance,
-  listEmployeeDependents,
-  createEmployeeDependent,
-  updateEmployeeDependent,
-  archiveEmployeeDependent,
-  applyEmployeeDependentDocumentLinks,
-  listEmployeeAccessCards,
-  createEmployeeAccessCard,
-  updateEmployeeAccessCard,
-  archiveEmployeeAccessCard,
-  listEmployeeTrainingCertificates,
-  createEmployeeTrainingCertificate,
-  updateEmployeeTrainingCertificate,
-  archiveEmployeeTrainingCertificate,
-  verifyEmployeeTrainingCertificate,
-  listEmployeeMedicalRecords,
-  createEmployeeMedicalRecord,
-  updateEmployeeMedicalRecord,
-  archiveEmployeeMedicalRecord,
-  type EmployeeIdentityDocumentRow,
-  type EmployeeMedicalInsuranceRow,
-  type EmployeeDependentRow,
-  type EmployeeAccessCardRow,
-  type EmployeeTrainingCertificateRow,
-  type EmployeeMedicalRecordRow,
-} from "@/server/actions/hr/compliance";
-import type { AuthContext } from "@/lib/rbac/check";
-import {
-  listHrIdentityDocumentTypes,
-  listHrAccessCardTypes,
-  listHrTrainingCategories,
-  listHrTrainingTypes,
-  listHrMedicalRecordTypes,
-  listHrRelationshipTypes,
-  type HrIdentityDocTypeRow,
-  type HrAccessCardTypeRow,
-  type HrSettingsRow,
-  type HrTrainingTypeRow,
-  type HrMedicalRecordTypeRow,
-} from "@/server/actions/hr/settings";
-import { invalidateDmsEntityDocuments } from "@/lib/query/invalidation";
-import { IdentityDocumentAddDialog } from "@/features/hr/employees/compliance/identity-document-add-dialog";
 import { ComplianceDmsAddDialog } from "@/features/hr/employees/compliance/compliance-dms-add-dialog";
+import { ComplianceDmsPrefillBanner } from "@/features/hr/employees/compliance/compliance-dms-prefill-banner";
 import {
   DependentDocumentLinksSection,
   EMPTY_DEP_LINK_CHANGES,
   type DependentDocLinkChanges,
 } from "@/features/hr/employees/compliance/dependent-document-links-section";
-import { ComplianceDmsPrefillBanner } from "@/features/hr/employees/compliance/compliance-dms-prefill-banner";
-import { HrDocumentToRecordWizard } from "@/features/hr/employees/document-to-record/hr-doc-to-record-wizard";
-import { checkHrDocumentToRecordEnabled } from "@/server/actions/hr/document-to-record";
+import { IdentityDocumentAddDialog } from "@/features/hr/employees/compliance/identity-document-add-dialog";
 import { IdentityDocumentFormFields } from "@/features/hr/employees/compliance/identity-document-form-fields";
+import { HrDocumentToRecordWizard } from "@/features/hr/employees/document-to-record/hr-doc-to-record-wizard";
+import {
+  getComplianceStatusBadge,
+  getExpiryStatus,
+  getExpiryStatusBadge,
+  getMedicalResultBadge,
+  getVerificationStatusBadge
+} from "@/lib/hr/compliance/expiry";
 import {
   createEmptyIdentityDocumentForm,
   identityDocumentFormToPayload,
   type IdentityDocumentFormState,
 } from "@/lib/hr/compliance/identity-document-form";
+import { invalidateDmsEntityDocuments } from "@/lib/query/invalidation";
+import { queryKeys } from "@/lib/query/query-keys";
+import type { AuthContext } from "@/lib/rbac/check";
+import {
+  applyEmployeeDependentDocumentLinks,
+  archiveEmployeeAccessCard,
+  archiveEmployeeDependent,
+  archiveEmployeeIdentityDocument,
+  archiveEmployeeMedicalInsurance,
+  archiveEmployeeMedicalRecord,
+  archiveEmployeeTrainingCertificate,
+  createEmployeeAccessCard,
+  createEmployeeDependent,
+  createEmployeeMedicalInsurance,
+  createEmployeeMedicalRecord,
+  createEmployeeTrainingCertificate,
+  listEmployeeAccessCards,
+  listEmployeeDependents,
+  listEmployeeIdentityDocuments,
+  listEmployeeMedicalInsurances,
+  listEmployeeMedicalRecords,
+  listEmployeeTrainingCertificates,
+  updateEmployeeAccessCard,
+  updateEmployeeDependent,
+  updateEmployeeIdentityDocument,
+  updateEmployeeMedicalInsurance,
+  updateEmployeeMedicalRecord,
+  updateEmployeeTrainingCertificate,
+  verifyEmployeeIdentityDocument,
+  verifyEmployeeMedicalInsurance,
+  verifyEmployeeTrainingCertificate,
+  type EmployeeAccessCardRow,
+  type EmployeeDependentRow,
+  type EmployeeIdentityDocumentRow,
+  type EmployeeMedicalInsuranceRow,
+  type EmployeeMedicalRecordRow,
+  type EmployeeTrainingCertificateRow,
+} from "@/server/actions/hr/compliance";
+import { checkHrDocumentToRecordEnabled } from "@/server/actions/hr/document-to-record";
+import {
+  listHrAccessCardTypes,
+  listHrIdentityDocumentTypes,
+  listHrMedicalRecordTypes,
+  listHrRelationshipTypes,
+  listHrTrainingCategories,
+  listHrTrainingTypes,
+  type HrAccessCardTypeRow,
+  type HrIdentityDocTypeRow,
+  type HrMedicalRecordTypeRow,
+  type HrSettingsRow,
+  type HrTrainingTypeRow,
+} from "@/server/actions/hr/settings";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { format } from "date-fns";
+import {
+  Activity,
+  Archive, CheckCircle,
+  CreditCard,
+  Edit2,
+  FileStack,
+  FileText,
+  GraduationCap,
+  Heart,
+  Lock,
+  Plus,
+  Shield,
+  Users
+} from "lucide-react";
+import { useCallback, useRef, useState, useTransition, type Dispatch, type SetStateAction } from "react";
+import { toast } from "sonner";
 
 // ── Prop Types ────────────────────────────────────────────────────────────────
 
@@ -125,10 +132,12 @@ function canView(ctx: AuthContext) {
   return ctx.permissionCodes?.includes("hr.compliance.view") || canManage(ctx);
 }
 function canMedicalView(ctx: AuthContext) {
-  return ctx.permissionCodes?.includes("hr.medical.view") || ctx.permissionCodes?.includes("hr.admin") || ctx.roleCodes?.includes("system_admin") || ctx.roleCodes?.includes("group_admin");
+  return ctx.isAccountActive && !ctx.profile?.must_change_password && (ctx.permissionCodes.includes("hr.medical.view") ||
+    !!ctx.roleAssignments?.some(a => a.ownerCompanyId === null && a.branchId === null && ["system_admin", "group_admin"].includes(a.roleCode)));
 }
 function canMedicalManage(ctx: AuthContext) {
-  return ctx.permissionCodes?.includes("hr.medical.manage") || ctx.permissionCodes?.includes("hr.admin") || ctx.roleCodes?.includes("system_admin") || ctx.roleCodes?.includes("group_admin");
+  return ctx.isAccountActive && !ctx.profile?.must_change_password && (ctx.permissionCodes.includes("hr.medical.manage") ||
+    !!ctx.roleAssignments?.some(a => a.ownerCompanyId === null && a.branchId === null && ["system_admin", "group_admin"].includes(a.roleCode)));
 }
 
 function formatDate(d: string | null | undefined) {
@@ -654,7 +663,7 @@ function MedicalInsurancesSection({ employeeId, canManageDoc, onChildOpen, docum
 
 // ── 3. DEPENDENTS SECTION ─────────────────────────────────────────────────────
 
-function DependentsSection({ employeeId, canManageDoc, onChildOpen, documentWizardEnabled }: { employeeId: number; canManageDoc: boolean; onChildOpen?: (open: boolean) => void; documentWizardEnabled?: boolean }) {
+function DependentsSection({ employeeId, canManageDoc, canManageMedical, onChildOpen, documentWizardEnabled }: { employeeId: number; canManageDoc: boolean; canManageMedical: boolean; onChildOpen?: (open: boolean) => void; documentWizardEnabled?: boolean }) {
   const qc = useQueryClient();
   const [addDialogOpen, setAddDialogOpenRaw] = useState(false);
   const [dmsWizardOpen, setDmsWizardOpenRaw] = useState(false);
@@ -695,7 +704,8 @@ function DependentsSection({ employeeId, canManageDoc, onChildOpen, documentWiza
 
   const relTypeOptions = (relTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }));
 
-  const buildPayload = (f: DependentForm) => ({
+  const buildPayload = (f: DependentForm) => {
+    const payload = ({
     ...f,
     dms_document_id: f.dms_document_id,
     relationship_type_id: f.relationship_type_id!,
@@ -707,6 +717,9 @@ function DependentsSection({ employeeId, canManageDoc, onChildOpen, documentWiza
     medical_insurance_expiry: f.medical_insurance_expiry || null, sponsored_by: f.sponsored_by || null,
     notes: f.notes || null, dependent_name_ar: f.dependent_name_ar || null,
   });
+    if (!canManageMedical) for (const key of ["medical_insurance_provider", "medical_insurance_policy", "medical_insurance_card", "medical_insurance_expiry"] as const) delete (payload as Partial<typeof payload>)[key];
+    return payload;
+  };
 
   const validateDependent = (f: DependentForm) => {
     if (!f.dependent_name_en.trim()) return "Dependent name is required";
@@ -733,7 +746,9 @@ function DependentsSection({ employeeId, canManageDoc, onChildOpen, documentWiza
       <div className="col-span-6"><Label>Emirates ID Expiry</Label><Input type="date" value={f.emirates_id_expiry} onChange={(e) => setF((p) => ({ ...p, emirates_id_expiry: e.target.value }))} /></div>
       <div className="col-span-6"><Label>Residence Visa Number</Label><Input value={f.residence_visa_number} onChange={(e) => setF((p) => ({ ...p, residence_visa_number: e.target.value }))} /></div>
       <div className="col-span-6"><Label>Residence Visa Expiry</Label><Input type="date" value={f.residence_visa_expiry} onChange={(e) => setF((p) => ({ ...p, residence_visa_expiry: e.target.value }))} /></div>
+      {canManageMedical && <>
       <div className="col-span-12 border-t pt-3"><p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Medical Insurance</p></div>
+      </>}
       <div className="col-span-6"><Label>Insurance Provider</Label><Input value={f.medical_insurance_provider} onChange={(e) => setF((p) => ({ ...p, medical_insurance_provider: e.target.value }))} /></div>
       <div className="col-span-6"><Label>Insurance Policy</Label><Input value={f.medical_insurance_policy} onChange={(e) => setF((p) => ({ ...p, medical_insurance_policy: e.target.value }))} /></div>
       <div className="col-span-6"><Label>Insurance Card</Label><Input value={f.medical_insurance_card} onChange={(e) => setF((p) => ({ ...p, medical_insurance_card: e.target.value }))} /></div>
@@ -1476,7 +1491,7 @@ export function EmployeeComplianceTab({ employeeId, authContext, onChildOpen }: 
   });
   const documentWizardEnabled = wizardStatus ?? false;
 
-  if (!canView(authContext)) {
+  if (!canView(authContext) && !medView) {
     return (
       <div className="flex items-center gap-3 p-6 bg-muted/30 rounded-lg border">
         <Lock className="h-5 w-5 text-muted-foreground flex-shrink-0" />
@@ -1495,11 +1510,11 @@ export function EmployeeComplianceTab({ employeeId, authContext, onChildOpen }: 
         <Badge variant="secondary" className="text-xs">HR.3</Badge>
       </div>
 
-      <IdentityDocumentsSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} documentWizardEnabled={documentWizardEnabled} />
-      <MedicalInsurancesSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} documentWizardEnabled={documentWizardEnabled} />
-      <DependentsSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} documentWizardEnabled={documentWizardEnabled} />
-      <AccessCardsSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} />
-      <TrainingCertificatesSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} />
+      {canView(authContext) && <IdentityDocumentsSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} documentWizardEnabled={documentWizardEnabled} />}
+      {medView && <MedicalInsurancesSection employeeId={employeeId} canManageDoc={medManage} onChildOpen={onChildOpen} documentWizardEnabled={documentWizardEnabled} />}
+      {canView(authContext) && <DependentsSection employeeId={employeeId} canManageDoc={manage} canManageMedical={medManage} onChildOpen={onChildOpen} documentWizardEnabled={documentWizardEnabled} />}
+      {canView(authContext) && <AccessCardsSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} />}
+      {canView(authContext) && <TrainingCertificatesSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} />}
       <MedicalRecordsSection employeeId={employeeId} canMedView={medView} canMedManage={medManage} onChildOpen={onChildOpen} />
     </div>
   );

@@ -6,7 +6,7 @@
  */
 
 import type { ReportFetcher, ReportDataResult } from "./types";
-import { createAdminClient } from "@/lib/supabase/admin";
+import type { ReportReadClient } from "./scoped-read-client";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ADMIN_PERMISSION_MATRIX fetcher
@@ -14,8 +14,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 const adminPermissionMatrixFetcher: ReportFetcher = {
   reportCode: "ADMIN_PERMISSION_MATRIX",
-  async fetch(): Promise<ReportDataResult> {
-    const db = createAdminClient();
+  async fetch(_filters: Record<string,unknown>, _permissions: string[], db: ReportReadClient): Promise<ReportDataResult> {
     const { data: perms } = await db
       .from("permissions")
       .select("permission_code, permission_name, module_code, action_code, is_active")

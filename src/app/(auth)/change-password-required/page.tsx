@@ -1,28 +1,17 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getAuthContext } from "@/lib/rbac/check";
 import { ChangePasswordRequiredForm } from "@/features/auth/change-password-required-form";
 
 export const dynamic = "force-dynamic";
 
 export default async function ChangePasswordRequiredPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  // Not authenticated — go to login
-  if (!user) {
+  const ctx = await getAuthContext();
+  const profile = ctx.profile;
+  if (!profile) {
     redirect("/login");
   }
 
-  const { data: profile } = await supabase
-    .from("user_profiles")
-    .select("must_change_password, must_change_password_reason, status")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  // Inactive/suspended — let account-disabled handle it
-  if (profile?.status && profile.status !== "active") {
+  if (!ctx.isAccountActive) {
     redirect("/account-disabled");
   }
 

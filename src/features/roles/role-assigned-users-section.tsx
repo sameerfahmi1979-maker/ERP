@@ -1,10 +1,5 @@
 ﻿"use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,6 +10,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -23,11 +21,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { toast } from "sonner";
-import { Users, ExternalLink, UserMinus } from "lucide-react";
+import { useWorkspace } from "@/hooks/use-workspace";
 import { getRoleWithUsersAction, type AssignedUserRow } from "@/server/actions/roles";
 import { removeRoleFromUser } from "@/server/actions/users";
-import { useWorkspace } from "@/hooks/use-workspace";
+import { useQuery } from "@tanstack/react-query";
+import { ExternalLink, UserMinus, Users } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   active: "default",
@@ -45,22 +46,21 @@ type Props = {
 export function RoleAssignedUsersSection({ roleId, roleName, canManageUsers }: Props) {
   const router = useRouter();
   const { openTab } = useWorkspace();
-  const [isLoading, setIsLoading] = useState(true);
-  const [users, setUsers] = useState<AssignedUserRow[]>([]);
   const [deassignTarget, setDeassignTarget] = useState<AssignedUserRow | null>(null);
   const [isDeassigning, setIsDeassigning] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
 
-  const load = useCallback(async () => {
-    setIsLoading(true);
-    const result = await getRoleWithUsersAction(roleId);
-    if (result.success && result.data) {
-      setUsers(result.data.assigned_users);
-    }
-    setIsLoading(false);
-  }, [roleId]);
-
-  useEffect(() => { load(); }, [load]);
+  const { data: users = [], isFetching: isLoading, refetch, error } = useQuery({
+    queryKey: ["role-assigned-users", roleId],
+    queryFn: async () => {
+      const result = await getRoleWithUsersAction(roleId);
+      if (!result.success || !result.data) throw new Error(result.error ?? "Failed to load assigned users");
+      return result.data.assigned_users;
+    },
+    retry: false, gcTime: 0, refetchOnWindowFocus: false,
+  });
+  const load = () => refetch();
+  useEffect(() => { if (error) toast.error(error.message); }, [error]);
 
   const handleDeassign = async () => {
     if (!deassignTarget) return;

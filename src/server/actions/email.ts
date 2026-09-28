@@ -12,7 +12,8 @@
 import { logger } from "@/lib/logger";
 import { getDefaultEmailProvider } from "@/lib/email/providers/factory";
 import { logAudit } from "./audit";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext } from "@/lib/rbac/check";
+import { canSendLegacyExport } from "@/lib/email/legacy-export-policy";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { SendEmailResult, EmailAttachment } from "@/lib/email/email-types";
 
@@ -32,8 +33,8 @@ export type SendExportEmailInput = {
   subject: string;
   /** Email body (plain text) */
   body: string;
-  /** Attachment */
-  attachment: EmailAttachment;
+  /** Optional for body-only expiry messages. Report messages still require an attachment. */
+  attachment?: EmailAttachment;
   /** Context metadata for audit logging */
   context?: {
     moduleCode?: string;
@@ -41,6 +42,10 @@ export type SendExportEmailInput = {
     exportMode?: "selected" | "filtered" | "all";
   };
 };
+
+export async function getLegacyEmailExportAccess(): Promise<boolean> {
+  try { return canSendLegacyExport(await getAuthContext()); } catch { return false; }
+}
 
 /**
  * Send export email via Microsoft Graph
@@ -95,13 +100,10 @@ export async function sendExportEmail(input: SendExportEmailInput): Promise<Send
       };
     }
     
-    // 2. Check permission
-    // Use module-specific permission if available, otherwise require erp.admin
-    const requiredPermission = input.context?.moduleCode
-      ? `${input.context.moduleCode}.view`
-      : "erp.admin";
-    
-    if (!hasPermission(ctx, requiredPermission)) {
+    // D03: client metadata and attachments cannot establish company provenance.
+    const requiredPermission = "global reports.email and reports.export";
+    const permitted = canSendLegacyExport(ctx);
+    if (!permitted) {
       logger.warn(`[sendExportEmail] Permission denied for user ${ctx.profile.id}: ${requiredPermission}`);
       
       // Log denied attempt
@@ -120,7 +122,7 @@ export async function sendExportEmail(input: SendExportEmailInput): Promise<Send
       return {
         success: false,
         provider: "microsoft_graph",
-        error: "Permission denied: You do not have permission to send emails",
+        error: "Legacy Email Export is temporarily limited to globally authorized senders. You can still view and download reports permitted by your access.",
         statusCode: 403,
       };
     }
@@ -168,14 +170,14 @@ export async function sendExportEmail(input: SendExportEmailInput): Promise<Send
       bcc: bccList,
       subject: input.subject,
       textBody: input.body,
-      attachments: [
+      attachments: input.attachment ? [
         {
           filename: input.attachment.filename,
           contentType: input.attachment.contentType,
           base64Content: input.attachment.base64Content,
           sizeBytes: input.attachment.sizeBytes,
         },
-      ],
+      ] : [],
     });
 
     const success = providerResult.ok;
@@ -192,10 +194,10 @@ export async function sendExportEmail(input: SendExportEmailInput): Promise<Send
         to_count: toList.length,
         cc_count: ccList?.length || 0,
         subject: input.subject,
-        attachment_filename: input.attachment.filename,
-        attachment_content_type: input.attachment.contentType,
-        attachment_size_bytes: input.attachment.sizeBytes,
-        attachment_size_mb: (input.attachment.sizeBytes / (1024 * 1024)).toFixed(2),
+        attachment_filename: input.attachment?.filename ?? null,
+        attachment_content_type: input.attachment?.contentType ?? null,
+        attachment_size_bytes: input.attachment?.sizeBytes ?? 0,
+        attachment_size_mb: ((input.attachment?.sizeBytes ?? 0) / (1024 * 1024)).toFixed(2),
         record_count: input.context?.recordCount,
         export_mode: input.context?.exportMode,
         success,
@@ -240,6 +242,7 @@ export async function sendExportEmail(input: SendExportEmailInput): Promise<Send
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type SendReportEmailInput = SendExportEmailInput & {
+  attachment: EmailAttachment;
   runId?: number;
   attachmentFormat?: string;
   attachmentFilename?: string;
@@ -249,8 +252,8 @@ export type SendReportEmailInput = SendExportEmailInput & {
 /**
  * Send a report via email and log to erp_report_delivery_logs.
  * Requires reports.email permission.
- * Never sends sensitive data beyond the caller's permission level
- * (redaction is already applied by the report runner before reaching here).
+ * Browser attachments cannot prove redaction or company scope. Temporarily
+ * requires global export AND email authorization until F08 replaces this path.
  */
 export async function sendReportEmail(
   input: SendReportEmailInput
@@ -261,8 +264,8 @@ export async function sendReportEmail(
     return { success: false, provider: "microsoft_graph", error: "Authentication required.", statusCode: 401 };
   }
 
-  if (!hasPermission(ctx, "reports.email")) {
-    return { success: false, provider: "microsoft_graph", error: "You do not have permission to email reports.", statusCode: 403 };
+  if (!canSendLegacyExport(ctx)) {
+    return { success: false, provider: "microsoft_graph", error: "Legacy Email Export is temporarily limited to globally authorized senders.", statusCode: 403 };
   }
 
   const result = await sendExportEmail({

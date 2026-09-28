@@ -10,11 +10,12 @@ import type { Currency } from "@/features/master-data/finance-basics/types";
 import { createCurrency, updateCurrency } from "@/features/master-data/finance-basics/actions";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { useQueryClient } from "@tanstack/react-query";
-import { useFormDirty } from "@/hooks/use-form-dirty";
+import { useWorkspaceFormDirty as useFormDirty } from "@/hooks/use-workspace-form-dirty";
 import { invalidateCurrencies } from "@/lib/query/invalidation";
 import { Coins, Tag, Shield, Info } from "lucide-react";
 import type { AuthContext } from "@/lib/rbac/check";
-import { useWorkspace } from "@/hooks/use-workspace";
+import { useWorkspaceFormNavigation as useWorkspace } from "@/hooks/use-workspace-form-navigation";
+import { useWorkspaceFormSection } from "@/hooks/use-workspace-form-section";
 import { ERPRecordWorkspaceForm, ERPRecordSectionPanel } from "@/components/workspace/erp-record-workspace-form";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
 
@@ -30,7 +31,13 @@ export function CurrencyWorkspaceForm({ currency, mode }: CurrencyWorkspaceFormP
   const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeSection, setActiveSection] = useState("basic");
+  const sections = [
+    { id: "basic", label: "Basic Info", icon: Coins },
+    { id: "details", label: "Details", icon: Tag },
+    { id: "status", label: "Status", icon: Shield },
+    { id: "audit", label: "Audit Info", icon: Info },
+  ];
+  const [activeSection, setActiveSection] = useWorkspaceFormSection(FORM_ID, "basic", sections.map(section => section.id));
   const isEditing = mode === "edit";
   const isViewing = mode === "view";
   const { isDirty, resetDirty } = useFormDirty({ formId: FORM_ID, enabled: !isViewing });
@@ -40,12 +47,6 @@ export function CurrencyWorkspaceForm({ currency, mode }: CurrencyWorkspaceFormP
     if (activeTab?.id) markDirty(activeTab.id, isDirty);
   }, [isDirty, activeTab?.id, markDirty]);
 
-  const sections = [
-    { id: "basic", label: "Basic Info", icon: Coins },
-    { id: "details", label: "Details", icon: Tag },
-    { id: "status", label: "Status", icon: Shield },
-    { id: "audit", label: "Audit Info", icon: Info },
-  ];
 
   const handleRequestClose = () => closeTab(activeTab?.id ?? "");
 

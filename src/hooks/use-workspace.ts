@@ -8,11 +8,8 @@
  */
 
 import { useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { useWorkspaceContext } from "@/components/workspace/workspace-provider";
-import { useWorkspaceDraftStoreContext } from "@/components/workspace/workspace-draft-provider";
 import type { WorkspaceTab } from "@/lib/workspace/workspace-types";
-import { DASHBOARD_ROUTE } from "@/lib/workspace/workspace-route-registry";
 
 export type OpenTabOptions = Partial<WorkspaceTab> & { route: string };
 
@@ -21,9 +18,7 @@ export function useWorkspace() {
   if (!ctx) {
     throw new Error("useWorkspace must be used inside WorkspaceProvider");
   }
-  const { state, dispatch, openTab, closeTab, setActiveTab } = ctx;
-  const draftStore = useWorkspaceDraftStoreContext();
-  const router = useRouter();
+  const { state, dispatch, openTab, closeTab, setActiveTab, isTabActive, closeOtherTabs, closeAllClosableTabs } = ctx;
 
   const activeTab = state.tabs.find((t) => t.id === state.activeTabId) ?? null;
 
@@ -66,20 +61,6 @@ export function useWorkspace() {
     }
   }, [activeTab, closeTab]);
 
-  const closeOtherTabs = useCallback((tabId: string) => {
-    const closing = state.tabs.filter((t) => t.closable && t.id !== tabId);
-    closing.forEach((t) => draftStore?.clearDraftsForTab(t.id));
-    dispatch({ type: "CLOSE_OTHER_TABS", tabId });
-  }, [state.tabs, draftStore, dispatch]);
-
-  const closeAllClosableTabs = useCallback(() => {
-    const closing = state.tabs.filter((t) => t.closable);
-    closing.forEach((t) => draftStore?.clearDraftsForTab(t.id));
-    dispatch({ type: "CLOSE_ALL_CLOSABLE" });
-    // Navigate to the dashboard so the viewport reflects the now-active tab.
-    router.push(DASHBOARD_ROUTE);
-  }, [state.tabs, draftStore, dispatch, router]);
-
   return {
     /** All open tabs */
     tabs: state.tabs,
@@ -99,6 +80,7 @@ export function useWorkspace() {
     requestCloseTab: closeTab,
     /** Set a tab as active and navigate to its route */
     setActiveTab,
+    isTabActive,
     /** Mark a tab as dirty (has unsaved changes) */
     markDirty,
     /** Mark a tab's child dialog open state */

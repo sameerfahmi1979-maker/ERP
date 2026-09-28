@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { buildDataQualityFinding, buildFindingKey, type FindingInput } from './finding-builder';
+import { buildDataQualityFinding } from './finding-builder';
 
 const BATCH_LIMIT = 200;
 

@@ -13,23 +13,39 @@
  * - Feature flag ERP_AI_DOC_UNDERSTANDING must be enabled; shows disabled notice otherwise.
  */
 
-import { useQuery } from "@tanstack/react-query";
-import { Brain, Sparkles, AlertCircle, ExternalLink, CheckCircle2, XCircle,
-  Clock, SkipForward, FileText, Link2, Tag, Zap, RefreshCw, Info, GitMerge, Scale, TrendingUp } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { queryKeys } from "@/lib/query/query-keys";
-import { getDmsDocumentUnderstanding } from "@/server/actions/dms/document-understanding";
 import { RiskLevelBadge } from "@/features/ai/common/risk-scoring";
 import type {
-  DmsDocumentUnderstanding,
   DmsUnderstandingAction,
-  DmsUnderstandingHealth,
+  DmsUnderstandingHealth
 } from "@/lib/dms/understanding/types";
+import { queryKeys } from "@/lib/query/query-keys";
+import { cn } from "@/lib/utils";
+import { getDmsDocumentUnderstanding } from "@/server/actions/dms/document-understanding";
+import { useQuery } from "@tanstack/react-query";
+import {
+  AlertCircle,
+  Brain,
+  CheckCircle2,
+  Clock,
+  ExternalLink,
+  FileText,
+  GitMerge,
+  Info,
+  Link2,
+  RefreshCw,
+  Scale,
+  SkipForward,
+  Sparkles,
+  Tag,
+  TrendingUp,
+  XCircle,
+  Zap
+} from "lucide-react";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 

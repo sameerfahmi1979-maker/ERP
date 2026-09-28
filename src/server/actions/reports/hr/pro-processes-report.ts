@@ -3,7 +3,7 @@
  * Phase: REPORT.4 — HR.11 Reports + Letters + Forms Library
  */
 import type { ReportFetcher, ReportDataResult } from "@/lib/report-center/types";
-import { createAdminClient } from "@/lib/supabase/admin";
+import type { ReportReadClient } from "@/lib/report-center/scoped-read-client";
 
 function agingDays(requestDate: string): number {
   return Math.ceil((Date.now() - new Date(requestDate).getTime()) / 86400000);
@@ -12,8 +12,8 @@ function agingDays(requestDate: string): number {
 export const proProcessesFetcher: ReportFetcher = {
   reportCode: "HR_PRO_PROCESSES",
 
-  async fetch(filters: Record<string, unknown>): Promise<ReportDataResult> {
-    const db = createAdminClient();
+  async fetch(filters: Record<string, unknown>, _permissions: string[], db: ReportReadClient): Promise<ReportDataResult> {
+
 
     let empIds: number[] | null = null;
     if (filters.owner_company_id || filters.department_id) {
@@ -31,7 +31,7 @@ export const proProcessesFetcher: ReportFetcher = {
         `id, employee_id, process_title, process_status, priority, request_date,
          target_date, submitted_date, completed_date,
          process_type:hr_pro_process_types(name_en),
-         assigned_to_profile:profiles!assigned_to(display_name),
+         assigned_to_profile:user_profiles!assigned_to(display_name),
          employee:employees(
            employee_code, full_name_en, owner_company_id,
            owner_company:owner_companies!employees_owner_company_id_fkey(legal_name_en)

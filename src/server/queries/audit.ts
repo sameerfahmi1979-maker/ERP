@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
-import type { AuditLog } from "@/types/database";
+import type { AuditLog } from "@/types/domain";
 
 /**
  * List audit logs with filters

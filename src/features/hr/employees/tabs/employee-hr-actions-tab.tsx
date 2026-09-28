@@ -13,53 +13,84 @@
  *   7. EOS & Clearance
  */
 
-import { useState, useTransition, useCallback } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import {
-  Globe, Zap, TrendingUp, AlertTriangle, StickyNote, CheckSquare, UserMinus,
-  Plus, Edit2, Archive, CheckCircle, XCircle, ChevronDown,
-  AlertCircle, Clock, Flag, FileText,
-} from "lucide-react";
+import { ERPCombobox } from "@/components/erp/combobox";
+import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
-import { ERPCombobox } from "@/components/erp/combobox";
-import { queryKeys } from "@/lib/query/query-keys";
 import {
-  invalidateHrEmployeeProProcesses,
-  invalidateHrEmployeeHrActions,
-  invalidateHrEmployeePerformance,
-  invalidateHrEmployeeDisciplinary,
-  invalidateHrEmployeeNotes,
-  invalidateHrEmployeeApprovals,
-  invalidateHrEmployeeEos,
-  invalidateHrEmployeeClearance,
   invalidateHrEmployeeActions,
+  invalidateHrEmployeeApprovals,
+  invalidateHrEmployeeClearance,
+  invalidateHrEmployeeDisciplinary,
+  invalidateHrEmployeeEos,
+  invalidateHrEmployeeHrActions,
+  invalidateHrEmployeeNotes,
+  invalidateHrEmployeePerformance,
+  invalidateHrEmployeeProProcesses,
 } from "@/lib/query/invalidation";
-import {
-  listEmployeeProProcesses, createEmployeeProProcess, updateEmployeeProProcess,
-  archiveEmployeeProProcess, changeEmployeeProProcessStatus,
-  listEmployeeHrActions, createEmployeeHrAction, updateEmployeeHrAction,
-  archiveEmployeeHrAction, closeEmployeeHrAction, cancelEmployeeHrAction,
-  listEmployeePerformanceRecords, createEmployeePerformanceRecord, updateEmployeePerformanceRecord,
-  archiveEmployeePerformanceRecord, submitEmployeePerformanceRecord, approveEmployeePerformanceRecord,
-  listEmployeeDisciplinaryRecords, createEmployeeDisciplinaryRecord, updateEmployeeDisciplinaryRecord,
-  archiveEmployeeDisciplinaryRecord, acknowledgeEmployeeDisciplinaryRecord,
-  listEmployeeHrNotes, createEmployeeHrNote, archiveEmployeeHrNote,
-  listEmployeeApprovalRequests, createEmployeeApprovalRequest,
-  approveEmployeeApprovalRequest, rejectEmployeeApprovalRequest, cancelEmployeeApprovalRequest,
-  listEmployeeEosCases, createEmployeeEosCase, updateEmployeeEosCase,
-  changeEmployeeEosCaseStatus, listEmployeeClearanceItems, createEmployeeClearanceItem,
-  clearEmployeeClearanceItem, blockEmployeeClearanceItem,
-  type ProProcessRow, type HrActionRow, type PerformanceRow, type DisciplinaryRow,
-  type HrNoteRow, type ApprovalRequestRow, type EosCaseRow, type ClearanceItemRow,
-} from "@/server/actions/hr/actions";
+import { queryKeys } from "@/lib/query/query-keys";
 import type { AuthContext } from "@/lib/rbac/check";
+import {
+  acknowledgeEmployeeDisciplinaryRecord,
+  approveEmployeeApprovalRequest,
+  approveEmployeePerformanceRecord,
+  archiveEmployeeDisciplinaryRecord,
+  archiveEmployeeHrAction,
+  archiveEmployeeHrNote,
+  archiveEmployeePerformanceRecord,
+  archiveEmployeeProProcess,
+  blockEmployeeClearanceItem,
+  cancelEmployeeApprovalRequest,
+  clearEmployeeClearanceItem,
+  closeEmployeeHrAction,
+  createEmployeeApprovalRequest,
+  createEmployeeClearanceItem,
+  createEmployeeDisciplinaryRecord,
+  createEmployeeEosCase,
+  createEmployeeHrAction,
+  createEmployeeHrNote,
+  createEmployeePerformanceRecord,
+  createEmployeeProProcess,
+  listEmployeeApprovalRequests,
+  listEmployeeClearanceItems,
+  listEmployeeDisciplinaryRecords,
+  listEmployeeEosCases,
+  listEmployeeHrActions,
+  listEmployeeHrNotes,
+  listEmployeePerformanceRecords,
+  listEmployeeProProcesses,
+  rejectEmployeeApprovalRequest,
+  submitEmployeePerformanceRecord,
+  updateEmployeeDisciplinaryRecord,
+  updateEmployeeEosCase,
+  updateEmployeeHrAction,
+  updateEmployeePerformanceRecord,
+  updateEmployeeProProcess,
+  type DisciplinaryRow,
+  type EosCaseRow,
+  type HrActionRow, type PerformanceRow,
+  type ProProcessRow
+} from "@/server/actions/hr/actions";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  AlertCircle,
+  AlertTriangle,
+  Archive, CheckCircle,
+  CheckSquare,
+  Edit2,
+  Globe,
+  Plus,
+  StickyNote,
+  TrendingUp,
+  UserMinus,
+  XCircle,
+  Zap
+} from "lucide-react";
+import { useCallback, useState, useTransition } from "react";
+import { toast } from "sonner";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 

@@ -12,7 +12,7 @@
  *  - getHrDocBrowserDocuments:  unified document list for an entity (Column 2)
  */
 
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 
@@ -84,7 +84,7 @@ export async function getHrDocBrowserEmployees(): Promise<
     const access = await checkBrowserAccess();
     if (!access.ok) return { success: false, error: access.error };
 
-    const admin = createAdminClient();
+    const admin = await createClient();
 
     const [empRes, depRes] = await Promise.all([
       admin
@@ -144,7 +144,7 @@ export async function getHrDocBrowserEmployees(): Promise<
 
 /** Loads full DMS document rows (+ types + files) for a set of document IDs. */
 async function loadDmsDocumentsByIds(
-  admin: ReturnType<typeof createAdminClient>,
+  admin: Awaited<ReturnType<typeof createClient>>,
   documentIds: number[],
   source: HrDocBrowserDocument["source"]
 ): Promise<HrDocBrowserDocument[]> {
@@ -202,7 +202,7 @@ export async function getHrDocBrowserDocuments(
       return { success: false, error: "Invalid entity id" };
     }
 
-    const admin = createAdminClient();
+    const admin = await createClient();
     const results: HrDocBrowserDocument[] = [];
     const seenDocIds = new Set<number>();
 

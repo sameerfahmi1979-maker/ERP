@@ -1,6 +1,19 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  async headers() {
+    return [{ source: "/:path*", headers: [
+      { key: "X-Content-Type-Options", value: "nosniff" },
+      { key: "Referrer-Policy", value: "no-referrer" },
+      { key: "X-Frame-Options", value: "SAMEORIGIN" },
+      { key: "Content-Security-Policy", value: "base-uri 'self'; object-src 'none'; frame-ancestors 'self'" },
+      // Full script/style policy is staged for compatibility evidence; no false XSS-prevention claim.
+      { key: "Content-Security-Policy-Report-Only", value: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: wss:; frame-src 'self' blob:" },
+      { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+      ...(process.env.NODE_ENV === "production" && process.env.NEXT_PUBLIC_SITE_URL?.startsWith("https://")
+        ? [{ key: "Strict-Transport-Security", value: "max-age=31536000" }] : []),
+    ] }];
+  },
   // Nested package.json files (e.g. under spikes/) confuse Turbopack's
   // workspace-root inference and crash the dev server with "Next.js package
   // not found". Pin the root explicitly to this repository.
@@ -22,13 +35,11 @@ const nextConfig: NextConfig = {
       static: 300,
     },
   },
-  // Supabase Edge Functions (Deno runtime) live in supabase/functions/ and use
-  // Deno-specific imports (https://esm.sh/..., Deno.serve, etc.) that are
-  // incompatible with the Next.js TypeScript checker. The functions directory
-  // is already excluded from tsconfig.json; this flag prevents Next.js from
-  // failing the build if Turbopack's checker still traverses those files.
+  // Check every shipping source file and generated production route contract.
+  // Independent Deno/spike/test projects are not Next application entry points.
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
+    tsconfigPath: "tsconfig.shipping.json",
   },
   // Native-binary server packages must not be bundled by Turbopack/Webpack.
   // @napi-rs/canvas ships pre-built .node files; pdf-parse and sharp also

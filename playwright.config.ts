@@ -12,6 +12,7 @@ import { defineConfig, devices } from "@playwright/test";
  *   APP_BASE_URL      — defaults to http://localhost:3000
  */
 export default defineConfig({
+  tsconfig: './tests/e2e/tsconfig.json',
   testDir: "./tests",
   testMatch: ["**/e2e/**/*.spec.ts", "**/pdf/**/*.spec.ts"],
   fullyParallel: false,
@@ -21,10 +22,11 @@ export default defineConfig({
   reporter: [["html", { open: "never" }], ["list"]],
   use: {
     baseURL: process.env.APP_BASE_URL ?? "http://localhost:3000",
-    trace: "on-first-retry",
-    screenshot: "only-on-failure",
-    // Required: ignore TLS errors for corporate cert environment
-    ignoreHTTPSErrors: true,
+    // Tokens and fixture credentials must not enter traces/screenshots or public artifacts.
+    trace: "off",
+    screenshot: "off",
+    // Trust the operating-system/corporate CA store; never bypass bad certificates.
+    ignoreHTTPSErrors: false,
   },
   projects: [
     {

@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import { Filter, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { HrSearchCategory, HrSearchInput } from "@/lib/hr/search/types";
 import { HR_SEARCH_CATEGORY_LABELS, HR_SEARCH_CATEGORY_ORDER } from "@/lib/hr/search/types";
 import { cn } from "@/lib/utils";
+import { ChevronDown, ChevronUp, Filter } from "lucide-react";
+import { useState } from "react";
 
 type Props = {
   filters: HrSearchInput;

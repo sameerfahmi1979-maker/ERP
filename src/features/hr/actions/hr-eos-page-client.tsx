@@ -1,11 +1,11 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { queryKeys } from "@/lib/query/query-keys";
-import { listGlobalEosCases } from "@/server/actions/hr/actions";
 import { Skeleton } from "@/components/ui/skeleton";
-import { UserMinus } from "lucide-react";
+import { queryKeys } from "@/lib/query/query-keys";
 import type { AuthContext } from "@/lib/rbac/check";
+import { listGlobalEosCases } from "@/server/actions/hr/actions";
+import { useQuery } from "@tanstack/react-query";
+import { UserMinus } from "lucide-react";
 
 type Props = { authContext: AuthContext };
 

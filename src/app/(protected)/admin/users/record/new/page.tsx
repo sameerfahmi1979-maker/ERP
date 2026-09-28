@@ -1,6 +1,5 @@
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { listOrganizations } from "@/server/queries/organizations";
-import { listBranches } from "@/server/queries/branches";
+import { listUserScopeOptions } from "@/server/queries/user-scope-options";
 import { listRoles } from "@/server/queries/roles";
 import { UserWorkspaceForm } from "@/features/users/user-workspace-form";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,9 +18,8 @@ export default async function NewUserRecordPage() {
     );
   }
 
-  const [companies, branches, roles] = await Promise.all([
-    listOrganizations(),
-    listBranches(),
+  const [{ companies, branches }, roles] = await Promise.all([
+    listUserScopeOptions(),
     listRoles(),
   ]);
 

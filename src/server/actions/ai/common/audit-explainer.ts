@@ -8,34 +8,31 @@
  * No raw OCR / content_text / prompt / AI response / API key stored or returned.
  */
 
-import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { AUDIT_EXPLAINER_PROMPT_VERSION } from "@/lib/ai/common/audit-explainer/types";
 import {
-  collectAuditLogEntries,
-  collectEntityAuditTimeline,
   collectAiEventTimeline,
-  collectDmsEventTimeline,
   collectAuditExplainerOverview,
+  collectAuditLogEntries,
+  collectEntityAuditTimeline
 } from "@/lib/ai/common/audit-explainer/audit-collectors";
 import {
-  generateAuditExplanation,
   buildDeterministicAuditSummary,
+  generateAuditExplanation,
 } from "@/lib/ai/common/audit-explainer/explanation-builder";
 import {
-  saveAuditExplanation,
   getCachedAuditExplanation,
-  softDeleteAuditExplanation,
+  saveAuditExplanation
 } from "@/lib/ai/common/audit-explainer/explanation-cache";
 import type {
-  AuditExplainerScope,
-  AuditExplainerSourceType,
-  AuditTimelineItem,
-  AuditExplanationSummary,
   AuditExplainerOverview,
+  AuditExplainerScope,
+  AuditExplanationSummary,
+  AuditTimelineItem
 } from "@/lib/ai/common/audit-explainer/types";
+import { AUDIT_EXPLAINER_PROMPT_VERSION } from "@/lib/ai/common/audit-explainer/types";
+import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { z } from "zod";
 
 export type ActionResult<T = undefined> = T extends undefined
   ? { success: boolean; error?: string }

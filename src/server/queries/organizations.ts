@@ -1,12 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
-import type { OwnerCompany } from "@/types/database";
+import type { OwnerCompany, OwnerCompanyWithGeography } from "@/types/domain";
 
 /**
  * List all owner companies (organizations)
  * RLS-protected query with geography relationships (Phase 002F.3C.1B.1 & 002F.3C.4B)
  */
-export async function listOrganizations(): Promise<OwnerCompany[]> {
+export async function listOrganizations(): Promise<OwnerCompanyWithGeography[]> {
   const supabase = await createClient();
 
   const { data, error } = await supabase
@@ -25,7 +25,7 @@ export async function listOrganizations(): Promise<OwnerCompany[]> {
     return [];
   }
 
-  return (data ?? []) as OwnerCompany[];
+  return (data ?? []) as OwnerCompanyWithGeography[];
 }
 
 /**

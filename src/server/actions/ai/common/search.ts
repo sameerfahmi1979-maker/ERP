@@ -7,26 +7,25 @@
  * Never returns content_text, OCR text, prompts, raw AI responses, or API keys.
  */
 
-import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { logAudit } from "@/server/actions/audit";
-import {
-  runErpSearch,
-  extractErpSearchIntent,
-  loadRecentSearches,
-  saveRecentSearch,
-  clearRecentSearches,
-} from "@/lib/ai/common/search";
 import type {
-  ErpSearchMode,
+  ErpRecentSearch,
   ErpSearchEntityType,
   ErpSearchFilters,
+  ErpSearchMode,
   ErpSearchResponse,
-  ErpRecentSearch,
   SaveRecentSearchInput,
 } from "@/lib/ai/common/search";
+import {
+  clearRecentSearches,
+  extractErpSearchIntent,
+  loadRecentSearches,
+  runErpSearch,
+  saveRecentSearch,
+} from "@/lib/ai/common/search";
+import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { createClient } from "@/lib/supabase/server";
+import { logAudit } from "@/server/actions/audit";
+import { z } from "zod";
 
 export type ActionResult<T = undefined> = T extends undefined
   ? { success: boolean; error?: string; code?: string }

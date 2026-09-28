@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { ERPCombobox } from "@/components/erp/combobox";
 import { ShieldCheck, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import type { UserWithRoles, Role, OwnerCompany, Branch } from "@/types/database";
+import type { UserWithRoles, Role } from "@/types/domain";
+import type { UserCompanyOption, UserBranchOption } from "@/lib/users/scope-options";
 import { assignRoleToUser } from "@/server/actions/users";
 import { RequiredLabel } from "@/components/erp/required-label";
 
@@ -22,15 +23,19 @@ type AssignRoleDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   roles?: Role[];
-  companies?: OwnerCompany[];
-  branches?: Branch[];
+  companies?: UserCompanyOption[];
+  branches?: UserBranchOption[];
 };
 
 function filterAssignableRoles(roles: Role[]): Role[] {
   return roles.filter((r) => r.is_active && r.is_assignable !== false);
 }
 
-export function AssignRoleDialog({
+export function AssignRoleDialog(props: AssignRoleDialogProps) {
+  return props.open ? <AssignRoleDialogFields key={props.user.id} {...props} /> : null;
+}
+
+function AssignRoleDialogFields({
   user,
   open,
   onOpenChange,
@@ -40,20 +45,10 @@ export function AssignRoleDialog({
 }: AssignRoleDialogProps) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedScope, setSelectedScope] = useState<"global" | "company" | "branch">("global");
+  const [selectedScope, setSelectedScope] = useState<"global" | "company" | "branch">(user.branch_id ? "branch" : "company");
   const [roleId, setRoleId] = useState<string>("");
-  const [ownerCompanyId, setOwnerCompanyId] = useState<string>("");
-  const [branchId, setBranchId] = useState<string>("");
-
-  // Reset form whenever dialog opens
-  useEffect(() => {
-    if (open) {
-      setSelectedScope("global");
-      setRoleId("");
-      setOwnerCompanyId("");
-      setBranchId("");
-    }
-  }, [open]);
+  const [ownerCompanyId, setOwnerCompanyId] = useState<string>(user.owner_company_id ? String(user.owner_company_id) : "");
+  const [branchId, setBranchId] = useState<string>(user.branch_id ? String(user.branch_id) : "");
 
   const assignableRoles = useMemo(() => filterAssignableRoles(roles), [roles]);
 
@@ -169,9 +164,9 @@ export function AssignRoleDialog({
           <ERPCombobox
             value={selectedScope}
             onValueChange={(v) => {
-              setSelectedScope((v as "global" | "company" | "branch") ?? "global");
-              setOwnerCompanyId("");
-              setBranchId("");
+              // Clearing a required selector must never widen the assignment.
+              if (v !== "global" && v !== "company" && v !== "branch") return;
+              setSelectedScope(v);
             }}
             options={[
               { value: "global", label: "Global" },
@@ -179,6 +174,7 @@ export function AssignRoleDialog({
               { value: "branch", label: "Branch" },
             ]}
             placeholder="Select scope..."
+            required
           />
         </div>
 

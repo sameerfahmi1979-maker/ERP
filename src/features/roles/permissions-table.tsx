@@ -2,7 +2,7 @@
 
 import type { ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/tables/data-table";
-import type { Permission } from "@/types/database";
+import type { Permission } from "@/types/domain";
 
 const columns: ColumnDef<Permission>[] = [
   { accessorKey: "id", header: "ID" },

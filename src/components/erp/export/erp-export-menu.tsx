@@ -10,8 +10,8 @@
 
 "use client";
 
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import type { PreparedEmailInput } from "@/components/erp/email/email-types-ui";
+import { ERPSendEmailDialog } from "@/components/erp/email/erp-send-email-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,8 +21,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Download, FileDown, FileSpreadsheet, FileText, Printer, Loader2, MailPlus } from "lucide-react";
-import { toast } from "sonner";
 import {
   exportToCSV,
   exportToExcel,
@@ -35,12 +33,14 @@ import {
   type ERPExportOptions,
   type ExportBrandingContext,
 } from "@/lib/export";
-import { ERPSendEmailDialog } from "@/components/erp/email/erp-send-email-dialog";
-import type { AttachmentOption, PreparedEmailInput } from "@/components/erp/email/email-types-ui";
 import { sendExportEmail } from "@/server/actions/email";
+import { useLegacyEmailAccess } from "@/hooks/use-legacy-email-access";
 import { format } from "date-fns";
+import { Download, FileDown, FileSpreadsheet, FileText, Loader2, MailPlus, Printer } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
-export interface ERPExportMenuProps<T = any> {
+export interface ERPExportMenuProps<T = unknown> {
   /** Report title */
   title: string;
   /** Filename base (without extension) */
@@ -87,7 +87,7 @@ export interface ERPExportMenuProps<T = any> {
   selectedTemplateId?: number;
 }
 
-export function ERPExportMenu<T = any>({
+export function ERPExportMenu<T = unknown>({
   title,
   filename,
   data,
@@ -114,6 +114,7 @@ export function ERPExportMenu<T = any>({
   // Email dialog state (Phase 002E.3D)
   const [isEmailDialogOpen, setIsEmailDialogOpen] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const canEmail = useLegacyEmailAccess();
 
   // Check if data is available
   const hasData = data && data.length > 0;
@@ -147,7 +148,7 @@ export function ERPExportMenu<T = any>({
         data,
         generatedBy,
         generatedAt: new Date(),
-        filters: filters as any,
+        filters,
         orientation,
         exportMode,
         rowCount: data.length,
@@ -320,17 +321,19 @@ export function ERPExportMenu<T = any>({
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => {
+                if (!canEmail) return;
                 if (requiresTemplateSelection) {
                   onRequireTemplateSelection?.();
                   return;
                 }
                 setIsEmailDialogOpen(true);
               }}
-              disabled={isExporting || isSendingEmail}
+              disabled={isExporting || isSendingEmail || !canEmail}
+              title={!canEmail ? "Legacy Email Export temporarily requires global sending authority" : undefined}
               className="cursor-pointer"
             >
               <MailPlus className="mr-2 h-4 w-4" />
-              <span>Send by Email</span>
+              <span>{canEmail ? "Send by Email" : "Email — global senders only"}</span>
             </DropdownMenuItem>
           </DropdownMenuGroup>
         </DropdownMenuContent>
@@ -368,7 +371,7 @@ Best Regards`}
                 data,
                 generatedBy,
                 generatedAt: new Date(),
-                filters: filters as any,
+                filters,
                 orientation,
                 exportMode,
                 rowCount: data.length,
@@ -388,7 +391,7 @@ Best Regards`}
                 data,
                 generatedBy,
                 generatedAt: new Date(),
-                filters: filters as any,
+                filters,
                 orientation,
                 exportMode,
                 rowCount: data.length,
@@ -408,7 +411,7 @@ Best Regards`}
                 data,
                 generatedBy,
                 generatedAt: new Date(),
-                filters: filters as any,
+                filters,
                 orientation,
                 exportMode,
                 rowCount: data.length,

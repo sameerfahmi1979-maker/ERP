@@ -1,23 +1,24 @@
 ﻿"use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
-import type { BranchWithCompany, OwnerCompany } from "@/types/database";
+import type { BranchWithCompany, OwnerCompany } from "@/types/domain";
 import { createBranch, updateBranch } from "@/server/actions/branches";
 import { RequiredLabel } from "@/components/erp/required-label";
-import { useFormDirty } from "@/hooks/use-form-dirty";
+import { useWorkspaceFormDirty as useFormDirty } from "@/hooks/use-workspace-form-dirty";
 import { CountrySelect } from "@/components/erp/geography/country-select";
 import { EmirateSelect } from "@/components/erp/geography/emirate-select";
 import { CitySelect } from "@/components/erp/geography/city-select";
 import { AreaZoneSelect } from "@/components/erp/geography/area-zone-select";
 import { Building2, MapPin, Contact, Wrench, ScrollText, Files } from "lucide-react";
 import type { AuthContext } from "@/lib/rbac/check";
-import { useWorkspace } from "@/hooks/use-workspace";
+import { useWorkspaceFormNavigation as useWorkspace } from "@/hooks/use-workspace-form-navigation";
+import { useWorkspaceFormSection } from "@/hooks/use-workspace-form-section";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
 import {
   ERPRecordWorkspaceForm,
@@ -34,15 +35,23 @@ type BranchWorkspaceFormProps = {
 
 const FORM_ID = "branch-workspace-form";
 
-export function BranchWorkspaceForm({ branch, companies = [], mode }: BranchWorkspaceFormProps) {
+export function BranchWorkspaceForm(props: BranchWorkspaceFormProps) {
+  return <BranchWorkspaceFormFields key={props.branch?.id ?? "new"} {...props} />;
+}
+
+function BranchWorkspaceFormFields({ branch, companies = [], mode }: BranchWorkspaceFormProps) {
   const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeSection, setActiveSection] = useState("basic");
-  const [countryId, setCountryId] = useState<number | null>(null);
-  const [emirateId, setEmirateId] = useState<number | null>(null);
-  const [cityId, setCityId] = useState<number | null>(null);
-  const [areaZoneId, setAreaZoneId] = useState<number | null>(null);
+  const sections = [
+    { id: "basic", label: "Basic Info", icon: Building2 },
+    { id: "location", label: "Location", icon: MapPin },
+    { id: "contact", label: "Contact Details", icon: Contact },
+    { id: "operations", label: "Operations Flags", icon: Wrench },
+    { id: "notes", label: "Internal Notes", icon: ScrollText },
+    { id: "documents", label: "Documents", icon: Files },
+  ];
+  const [activeSection, setActiveSection] = useWorkspaceFormSection(FORM_ID, "basic", sections.map(section => section.id));
 
   const isEditing = mode === "edit";
   const isViewing = mode === "view";
@@ -54,17 +63,25 @@ export function BranchWorkspaceForm({ branch, companies = [], mode }: BranchWork
   }, [isDirty, activeTab?.id, markDirty]);
 
   // ── Draft preservation (UI.4E.2) ──────────────────────────────────────────
-  const { getDraftDefault, syncDraft, writeDraftField, clearDraft } = useWorkspaceFormDraft({
+  const { getDraftDefault, getDraftNullableId, getDraftBoolean, hasDraftField, syncDraft, writeDraftField: writeField, clearDraft } = useWorkspaceFormDraft({
     formId: FORM_ID,
     enabled: !isViewing,
   });
+  const [countryId, setCountryId] = useState(() => getDraftNullableId("country_id"));
+  const [emirateId, setEmirateId] = useState(() => getDraftNullableId("emirate_id"));
+  const [cityId, setCityId] = useState(() => getDraftNullableId("city_id"));
+  const [areaZoneId, setAreaZoneId] = useState(() => getDraftNullableId("area_zone_id"));
+  const geographyEdited = useRef(new Set(["country_id", "emirate_id", "city_id", "area_zone_id"].filter(hasDraftField)));
+  const saving = useRef(false);
+  const writeDraftField: typeof writeField = (name, value) => {
+    if (["country_id", "emirate_id", "city_id", "area_zone_id"].includes(name)) geographyEdited.current.add(name);
+    writeField(name, value);
+  };
 
   // Initialize geography selects from legacy text fields when editing
   useEffect(() => {
-    if (!branch) {
-      setCountryId(null); setEmirateId(null); setCityId(null); setAreaZoneId(null);
-      return;
-    }
+    if (!branch) return;
+    let cancelled = false;
     async function initGeography() {
       const supabase = createClient();
       let resolvedCountryId: number | null = null;
@@ -92,9 +109,16 @@ export function BranchWorkspaceForm({ branch, companies = [], mode }: BranchWork
         if (match) { resolvedAreaZoneId = match.id; if (!resolvedCityId) resolvedCityId = match.city_id; }
       }
 
-      setCountryId(resolvedCountryId); setEmirateId(resolvedEmirateId); setCityId(resolvedCityId); setAreaZoneId(resolvedAreaZoneId);
+      return { resolvedCountryId, resolvedEmirateId, resolvedCityId, resolvedAreaZoneId };
     }
-    initGeography();
+    void initGeography().then((ids) => {
+      if (cancelled) return;
+      if (!geographyEdited.current.has("country_id")) setCountryId(ids.resolvedCountryId);
+      if (!geographyEdited.current.has("emirate_id")) setEmirateId(ids.resolvedEmirateId);
+      if (!geographyEdited.current.has("city_id")) setCityId(ids.resolvedCityId);
+      if (!geographyEdited.current.has("area_zone_id")) setAreaZoneId(ids.resolvedAreaZoneId);
+    }).catch(() => { if (!cancelled) toast.error("Could not load branch geography."); });
+    return () => { cancelled = true; };
   }, [branch]);
 
   const handleCountryChange = (id: number | null) => { setCountryId(id); setEmirateId(null); setCityId(null); setAreaZoneId(null); writeDraftField("country_id", id ?? ""); writeDraftField("emirate_id", ""); writeDraftField("city_id", ""); writeDraftField("area_zone_id", ""); };
@@ -103,29 +127,23 @@ export function BranchWorkspaceForm({ branch, companies = [], mode }: BranchWork
 
   async function resolveGeographyText() {
     const supabase = createClient();
-    let emirateText = branch?.emirate ?? null;
-    let cityText = branch?.city ?? null;
-    let areaText = branch?.area ?? null;
-    if (emirateId) { const { data } = await supabase.from("emirates").select("name_en").eq("id", emirateId).maybeSingle(); if (data) emirateText = data.name_en; }
-    if (cityId) { const { data } = await supabase.from("cities").select("name_en").eq("id", cityId).maybeSingle(); if (data) cityText = data.name_en; }
-    if (areaZoneId) { const { data } = await supabase.from("areas_zones").select("name_en").eq("id", areaZoneId).maybeSingle(); if (data) areaText = data.name_en; }
+    let emirateText = geographyEdited.current.has("emirate_id") ? null : branch?.emirate ?? null;
+    let cityText = geographyEdited.current.has("city_id") ? null : branch?.city ?? null;
+    let areaText = geographyEdited.current.has("area_zone_id") ? null : branch?.area ?? null;
+    if (emirateId) { const { data, error } = await supabase.from("emirates").select("name_en").eq("id", emirateId).maybeSingle(); if (error || !data) throw new Error("Geography unavailable"); emirateText = data.name_en; }
+    if (cityId) { const { data, error } = await supabase.from("cities").select("name_en").eq("id", cityId).maybeSingle(); if (error || !data) throw new Error("Geography unavailable"); cityText = data.name_en; }
+    if (areaZoneId) { const { data, error } = await supabase.from("areas_zones").select("name_en").eq("id", areaZoneId).maybeSingle(); if (error || !data) throw new Error("Geography unavailable"); areaText = data.name_en; }
     return { emirateText, cityText, areaText };
   }
 
-  const sections = [
-    { id: "basic", label: "Basic Info", icon: Building2 },
-    { id: "location", label: "Location", icon: MapPin },
-    { id: "contact", label: "Contact Details", icon: Contact },
-    { id: "operations", label: "Operations Flags", icon: Wrench },
-    { id: "notes", label: "Internal Notes", icon: ScrollText },
-    { id: "documents", label: "Documents", icon: Files },
-  ];
 
   const handleRequestClose = () => closeTab(activeTab?.id ?? "");
 
   const handleSave = async (): Promise<boolean> => {
-    if (isViewing) return false;
+    if (isViewing || saving.current) return false;
+    saving.current = true;
     setIsSubmitting(true);
+    try {
     const form = document.getElementById(FORM_ID) as HTMLFormElement;
     const formData = new FormData(form);
     const { emirateText, cityText, areaText } = await resolveGeographyText();
@@ -162,13 +180,12 @@ export function BranchWorkspaceForm({ branch, companies = [], mode }: BranchWork
       legal_branch_name: (formData.get("legal_branch_name") as string) || null,
       trade_license_branch_ref: (formData.get("trade_license_branch_ref") as string) || null,
     };
-    try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = isEditing && branch ? await updateBranch({ ...data, id: branch.id } as any) : await createBranch({ ...data, branch_code: formData.get("branch_code") as string });
       if (result.success) { toast.success(isEditing ? "Branch updated" : "Branch created"); clearDraft(); resetDirty(); if (activeTab?.id) markDirty(activeTab.id, false); return true; }
       else { toast.error(result.error ?? "Failed to save branch"); return false; }
     } catch { toast.error("An unexpected error occurred"); return false; }
-    finally { setIsSubmitting(false); }
+    finally { setIsSubmitting(false); saving.current = false; }
   };
 
   const handleSaveAndClose = async () => {
@@ -247,7 +264,7 @@ export function BranchWorkspaceForm({ branch, companies = [], mode }: BranchWork
               </select>
             </div>
             <div className="col-span-12 flex items-center space-x-2 pt-2">
-              <Checkbox id="is_main_branch" name="is_main_branch" defaultChecked={branch?.is_main_branch ?? false} disabled={isViewing} />
+              <Checkbox id="is_main_branch" name="is_main_branch" defaultChecked={getDraftBoolean("is_main_branch", branch?.is_main_branch ?? false)} disabled={isViewing} />
               <Label htmlFor="is_main_branch" className="cursor-pointer text-muted-foreground text-xs font-normal">Main Branch (Head Office)</Label>
             </div>
           </div>
@@ -337,7 +354,7 @@ export function BranchWorkspaceForm({ branch, companies = [], mode }: BranchWork
                 { id: "has_weighbridge", label: "Has Weighbridge (Cargo/Truck Scale)", checked: branch?.has_weighbridge ?? false },
               ].map(({ id, label, checked }) => (
                 <div key={id} className="flex items-center space-x-2.5">
-                  <Checkbox id={id} name={id} defaultChecked={checked} disabled={isViewing} />
+                  <Checkbox id={id} name={id} defaultChecked={getDraftBoolean(id, checked)} disabled={isViewing} />
                   <Label htmlFor={id} className="cursor-pointer text-muted-foreground text-xs font-normal">{label}</Label>
                 </div>
               ))}

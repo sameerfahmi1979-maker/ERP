@@ -156,10 +156,12 @@ export function EmployeesTable({ initialRows, initialTotal, authContext, documen
   // Re-sync local state whenever the server re-provides fresh props
   // (e.g. after router.refresh() following a create/update, or on tab return).
   // Without this, the initial useState() snapshot never updates on re-render.
-  useEffect(() => {
+  const [serverSnapshot, setServerSnapshot] = useState({ initialRows, initialTotal });
+  if (serverSnapshot.initialRows !== initialRows || serverSnapshot.initialTotal !== initialTotal) {
+    setServerSnapshot({ initialRows, initialTotal });
     setRows(initialRows);
     setTotalCount(initialTotal);
-  }, [initialRows, initialTotal]);
+  }
   const [archiveTarget, setArchiveTarget] = useState<EmployeeListRow | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [sortKey, setSortKey] = useState<string | null>("employee_code");

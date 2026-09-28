@@ -1,18 +1,14 @@
 import { z } from "zod";
 
-export const loginSchema = z.object({
-  email: z.string().email("Enter a valid email address"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
-});
+export const authEmailSchema = z.string().trim().toLowerCase().max(254).email("Enter a valid email address");
 
-export const signupSchema = z.object({
-  email: z.string().email("Enter a valid email address"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
-  fullName: z.string().min(2, "Full name is required"),
+export const loginSchema = z.object({
+  email: authEmailSchema,
+  password: z.string().min(1, "Enter your password").max(1024),
 });
 
 export const forgotPasswordSchema = z.object({
-  email: z.string().email("Enter a valid email address"),
+  email: authEmailSchema,
 });
 
 // USERS.2A — Shared strong password policy for all password-change/set flows.
@@ -20,9 +16,16 @@ export const forgotPasswordSchema = z.object({
 export const passwordPolicySchema = z
   .string()
   .min(10, "Password must be at least 10 characters")
+  .max(128, "Password must be at most 128 characters")
   .refine((v) => /[A-Z]/.test(v), { message: "Password must contain at least one uppercase letter" })
   .refine((v) => /[a-z]/.test(v), { message: "Password must contain at least one lowercase letter" })
   .refine((v) => /[0-9]/.test(v), { message: "Password must contain at least one digit" });
+
+export const signupSchema = z.object({
+  email: authEmailSchema,
+  password: passwordPolicySchema,
+  fullName: z.string().trim().min(2, "Full name is required").max(255),
+});
 
 export const changePasswordSchema = z
   .object({

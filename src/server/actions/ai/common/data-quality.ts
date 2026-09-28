@@ -9,9 +9,9 @@
  * - F-007: Replaced custom checkPermission() with standard getAuthContext() + hasPermission().
  */
 
-import { createAdminClient } from '@/lib/supabase/admin';
-import { getAuthContext, hasPermission } from '@/lib/rbac/check';
-import { logAudit } from '@/server/actions/audit';
+import { buildEntityLink } from '@/lib/ai/common/data-quality/route-links';
+import { runDataQualityScan as executeScan } from '@/lib/ai/common/data-quality/scan-engine';
+import { buildDataQualitySummary } from '@/lib/ai/common/data-quality/summary-builder';
 import type {
   DataQualityFinding,
   DataQualityFindingEvent,
@@ -21,9 +21,9 @@ import type {
   DataQualityStatus,
   DataQualitySummary,
 } from '@/lib/ai/common/data-quality/types';
-import { buildEntityLink } from '@/lib/ai/common/data-quality/route-links';
-import { buildDataQualitySummary } from '@/lib/ai/common/data-quality/summary-builder';
-import { runDataQualityScan as executeScan } from '@/lib/ai/common/data-quality/scan-engine';
+import { getAuthContext, hasPermission } from '@/lib/rbac/check';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { logAudit } from '@/server/actions/audit';
 
 // ---------- permission helpers ----------
 

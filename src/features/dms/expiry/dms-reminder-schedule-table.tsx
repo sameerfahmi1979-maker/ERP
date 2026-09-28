@@ -60,7 +60,7 @@ export function DmsReminderScheduleTable({ documentId }: DmsReminderScheduleTabl
   if (reminders.length === 0) {
     return (
       <div className="py-4 text-center text-xs text-muted-foreground">
-        No reminders generated yet. Click "Generate Reminders" to create the schedule.
+        No reminders generated yet. Click &quot;Generate Reminders&quot; to create the schedule.
       </div>
     );
   }

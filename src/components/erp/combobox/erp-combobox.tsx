@@ -58,6 +58,7 @@ export function ERPCombobox({
   triggerClassName,
   popoverClassName,
   name,
+  ariaLabel,
   renderOption,
   filterFn,
   onDirtyMark,
@@ -214,6 +215,8 @@ export function ERPCombobox({
             type="button"
             variant="outline"
             role="combobox"
+            data-workspace-field={name}
+            aria-label={ariaLabel ?? name?.replaceAll('_', ' ')}
             aria-expanded={open}
             aria-invalid={!!error}
             aria-disabled={disabled || readOnly}

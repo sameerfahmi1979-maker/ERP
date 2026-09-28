@@ -3,6 +3,7 @@ import { getAuthContext, hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
 import { getArchivedDocuments, getDmsNewDocumentDefaults } from "@/server/actions/dms/documents";
 import { DmsArchiveTable } from "@/features/dms/archive/dms-archive-table";
 import { ERPPageHeader } from "@/components/erp/page-header";
+import { DmsLoadError } from "@/features/dms/documents/dms-load-error";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -39,12 +40,12 @@ export default async function DmsArchivePage() {
         breadcrumbs={[{ label: "DMS", href: "/dms" }, { label: "Archive" }]}
       />
 
-      <DmsArchiveTable
+      {!docsResult.success || !defaultsResult.success ? <DmsLoadError /> : <DmsArchiveTable
         initialDocuments={documents}
         categories={categories}
         documentTypes={documentTypes}
         canUnarchive={canUnarchive}
-      />
+      />}
     </div>
   );
 }

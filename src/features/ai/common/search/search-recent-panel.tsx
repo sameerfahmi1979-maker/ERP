@@ -1,10 +1,10 @@
 "use client";
 
-import { Clock, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useTransition } from "react";
-import { clearRecentSearchesAction } from "@/server/actions/ai/common/search";
 import type { ErpRecentSearch } from "@/lib/ai/common/search/types";
+import { clearRecentSearchesAction } from "@/server/actions/ai/common/search";
+import { Clock, Trash2 } from "lucide-react";
+import { useTransition } from "react";
 
 interface SearchRecentPanelProps {
   recent: ErpRecentSearch[];

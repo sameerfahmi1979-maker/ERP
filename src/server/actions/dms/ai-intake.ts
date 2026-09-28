@@ -11,27 +11,13 @@
  * - OCR text and AI prompts are NEVER logged.
  */
 
-import { z } from "zod";
-import { logger } from "@/lib/logger";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { logAudit } from "@/server/actions/audit";
-import { upsertDmsReviewQueueItem, isDmsAiReviewEnabled } from "@/lib/dms/review-queue/review-queue-upsert";
 import { logDmsAiUsage } from "@/lib/ai/observability/log-dms-ai-usage";
-import { getDmsAiProvider, getAzureDocumentIntelligenceProvider } from "@/lib/dms/ai/factory";
-import { hashOcrText, PROMPT_VERSION } from "@/lib/dms/ai/prompt-builders";
 import { buildClassificationCandidates, loadClassificationCandidateData } from "@/lib/dms/ai/classification-candidate-builder";
 import { buildSanitizedClassificationPayload } from "@/lib/dms/ai/classification-output";
 import { resolveSuggestedDocumentType } from "@/lib/dms/ai/classification-resolver";
+import { getAzureDocumentIntelligenceProvider, getDmsAiProvider } from "@/lib/dms/ai/factory";
 import { loadMetadataFieldsForDocumentType } from "@/lib/dms/ai/load-metadata-fields";
-import { extractFileContent } from "@/lib/dms/file-content-extractor";
-import { loadOcrFeatureFlags, routeOcr } from "@/lib/dms/ocr/ocr-router";
-import { AzureOcrProvider } from "@/lib/dms/ocr/azure-ocr-provider";
-import { revalidatePath } from "next/cache";
-import { resolveStandardFileNameForIntakeApprove } from "@/server/actions/dms/standard-file-name";
-import { validateStandardFileName } from "@/lib/dms/standard-file-name";
-import { runApproveAiIntakeSaga } from "@/lib/dms/approve/approve-ai-intake";
+import { hashOcrText, PROMPT_VERSION } from "@/lib/dms/ai/prompt-builders";
 import type {
   DmsAiDocumentTypeCandidate,
   DmsAiImageFile,
@@ -40,7 +26,21 @@ import type {
   DmsDetectedEntity,
   DmsSuggestedLink,
 } from "@/lib/dms/ai/types";
+import { runApproveAiIntakeSaga } from "@/lib/dms/approve/approve-ai-intake";
+import { extractFileContent } from "@/lib/dms/file-content-extractor";
+import { AzureOcrProvider } from "@/lib/dms/ocr/azure-ocr-provider";
+import { loadOcrFeatureFlags, routeOcr } from "@/lib/dms/ocr/ocr-router";
+import { isDmsAiReviewEnabled, upsertDmsReviewQueueItem } from "@/lib/dms/review-queue/review-queue-upsert";
+import { validateStandardFileName } from "@/lib/dms/standard-file-name";
+import { logger } from "@/lib/logger";
+import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { logAudit } from "@/server/actions/audit";
+import { resolveStandardFileNameForIntakeApprove } from "@/server/actions/dms/standard-file-name";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 // ── Entity → party database matching ──────────────────────────────────────────
 

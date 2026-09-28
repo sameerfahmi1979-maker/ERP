@@ -8,14 +8,11 @@
  * Confidential documents (hr/legal/executive) require dms.admin.
  */
 
-import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { logAudit } from "@/server/actions/audit";
+import { logDmsAiUsage } from "@/lib/ai/observability/log-dms-ai-usage";
+import { buildClassificationCandidates } from "@/lib/dms/ai/classification-candidate-builder";
+import { buildSanitizedClassificationPayload } from "@/lib/dms/ai/classification-output";
 import { getDmsAiProvider } from "@/lib/dms/ai/factory";
-import { upsertDmsReviewQueueItem, isDmsAiReviewEnabled } from "@/lib/dms/review-queue/review-queue-upsert";
-import { logger } from "@/lib/logger";
+import { loadMetadataFieldsForDocumentType } from "@/lib/dms/ai/load-metadata-fields";
 import { hashOcrText, PROMPT_VERSION } from "@/lib/dms/ai/prompt-builders";
 import type {
   DmsAiDocumentTypeCandidate,
@@ -24,13 +21,16 @@ import type {
   DmsAiOutput,
   DmsClassificationCandidatePacket,
 } from "@/lib/dms/ai/types";
-import { revalidatePath } from "next/cache";
 import { extractFileContent } from "@/lib/dms/file-content-extractor";
 import { persistFileOcrResult } from "@/lib/dms/ocr/persist-file-ocr-result";
-import { loadMetadataFieldsForDocumentType } from "@/lib/dms/ai/load-metadata-fields";
-import { buildClassificationCandidates } from "@/lib/dms/ai/classification-candidate-builder";
-import { buildSanitizedClassificationPayload } from "@/lib/dms/ai/classification-output";
-import { logDmsAiUsage } from "@/lib/ai/observability/log-dms-ai-usage";
+import { isDmsAiReviewEnabled, upsertDmsReviewQueueItem } from "@/lib/dms/review-queue/review-queue-upsert";
+import { logger } from "@/lib/logger";
+import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { logAudit } from "@/server/actions/audit";
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -912,17 +912,16 @@ export type ApplyAiMetadataResult = {
 };
 
 import {
-  buildMetadataDiff,
-  convertAiValueForFieldType,
-  summarizeMetadataValue,
-  type CurrentMetadataValueRow,
-  type ConfidenceEntry,
-} from "@/lib/dms/metadata/metadata-diff";
-import {
   DMS_METADATA_DEFINITION_SELECT,
   filterMetadataDefinitionsByContext,
   mapMetadataDefinitionRow,
 } from "@/lib/dms/metadata/metadata-definition-shared";
+import {
+  buildMetadataDiff,
+  summarizeMetadataValue,
+  type ConfidenceEntry,
+  type CurrentMetadataValueRow
+} from "@/lib/dms/metadata/metadata-diff";
 
 const ApplyAiMetadataSchema = z.object({
   documentId: z.number().int().positive(),

@@ -7,7 +7,9 @@ import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
 import { getAiProvider } from "@/lib/ai/providers/factory";
 import type { AiProviderConfig, AiFeatureFlag } from "@/lib/ai/providers/types";
-import { writeEnvSecret } from "@/lib/settings/env-file-secrets";
+import { writeAiProviderSecret } from "@/lib/settings/env-file-secrets";
+import { isAllowedAiSecretReference } from "@/lib/settings/ai-secret-policy";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 const REVALIDATE_PATH = "/admin/settings/ai";
 
@@ -324,12 +326,27 @@ export async function saveAiProviderSecret(
 
     const { id, secret_value, secret_ref } = parsed.data;
 
+    // Bind the approved reference to an existing active provider BEFORE side effects.
+    const supabase = createAdminClient();
+    const { data: provider, error: providerError } = await supabase.from("erp_ai_provider_configs")
+      .select("id, provider_type, updated_at").eq("id", id).eq("is_active", true).is("deleted_at", null).maybeSingle();
+    if (providerError || !provider) return { success: false, error: "Active provider not found." };
+    if (!isAllowedAiSecretReference(provider.provider_type, id, secret_ref)) return { success: false, error: "Secret reference is not approved for this provider." };
+
     // Generate masked preview: show first 4 and last 4 characters only
     const masked = maskSecret(secret_value);
 
     // Persist the key to the server's .env.local (NEVER the database) and
     // apply it to the running process so it takes effect without a restart.
-    const envWrite = writeEnvSecret(secret_ref, secret_value);
+    const envWrite = await writeAiProviderSecret({ providerType: provider.provider_type, providerId: id, secretRef: secret_ref, secretValue: secret_value }, async () => {
+      const { data, error } = await supabase.from("erp_ai_provider_configs").update({
+        secret_ref, masked_secret_preview: masked, last_test_status: "not_tested",
+        last_test_at: null, last_test_message: null, updated_by: ctx.profile?.id ?? null,
+        updated_at: new Date().toISOString(),
+      }).eq("id", id).eq("provider_type", provider.provider_type).eq("updated_at", provider.updated_at)
+        .eq("is_active", true).is("deleted_at", null).select("id");
+      return !error && data?.length === 1;
+    });
     if (!envWrite.success) {
       return {
         success: false,
@@ -337,30 +354,13 @@ export async function saveAiProviderSecret(
       };
     }
 
-    // We store only: the env var name (secret_ref) and the masked preview
-    const supabase = await createClient();
-    const { error } = await supabase
-      .from("erp_ai_provider_configs")
-      .update({
-        secret_ref,
-        masked_secret_preview: masked,
-        last_test_status: "not_tested",
-        last_test_at: null,
-        last_test_message: null,
-        updated_by: ctx.profile?.id ?? null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id);
-
-    if (error) return { success: false, error: error.message };
-
     await logAudit({
       module_code: "SETTINGS",
       entity_name: "erp_ai_provider_configs",
       entity_id: id,
       entity_reference: `secret_updated_for_${id}`,
       action: "update",
-      new_values: { secret_ref, masked_preview: masked },
+      new_values: { secret_ref, secret_updated: true },
     });
 
     revalidatePath(REVALIDATE_PATH);

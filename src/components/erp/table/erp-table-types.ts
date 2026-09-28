@@ -4,7 +4,7 @@
  * Phase 002E.2B - Table-State-Aware Export
  */
 
-import type { ColumnDef, SortingState, ColumnSizingState, VisibilityState, RowSelectionState } from "@tanstack/react-table";
+import type { ColumnDef, ColumnSizingState, SortingState, Table, VisibilityState } from "@tanstack/react-table";
 
 /**
  * TanStack Table Column Metadata Extension
@@ -80,7 +80,7 @@ export interface ERPTableConfig<TData> {
   /** Unique table ID for preferences */
   tableId: string;
   /** Column definitions */
-  columns: ColumnDef<TData, any>[];
+  columns: ColumnDef<TData, unknown>[];
   /** Table data */
   data: TData[];
   /** Enable sorting */
@@ -112,9 +112,9 @@ export interface ERPTableConfig<TData> {
 /**
  * Table toolbar props
  */
-export interface ERPTableToolbarProps {
+export interface ERPTableToolbarProps<TData = unknown> {
   /** Table instance */
-  table: any;
+  table: Table<TData>;
   /** Search placeholder */
   searchPlaceholder?: string;
   /** Enable global filter */
@@ -129,9 +129,9 @@ export interface ERPTableToolbarProps {
 
 /**
  * Column visibility menu props */
-export interface ERPColumnMenuProps {
+export interface ERPColumnMenuProps<TData = unknown> {
   /** Table instance */
-  table: any;
+  table: Table<TData>;
   /** Required column IDs that cannot be hidden */
   requiredColumns?: string[];
 }
@@ -139,9 +139,9 @@ export interface ERPColumnMenuProps {
 /**
  * Pagination props
  */
-export interface ERPTablePaginationProps {
+export interface ERPTablePaginationProps<TData = unknown> {
   /** Table instance */
-  table: any;
+  table: Table<TData>;
   /** Page size options */
   pageSizeOptions?: number[];
   /** Show total rows */

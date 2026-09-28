@@ -422,7 +422,7 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
     setHistPage(1);
   };
 
-  const SortIcon = ({ col }: { col: typeof sortCol }) => {
+  const renderSortIcon = (col: typeof sortCol) => {
     if (sortCol !== col) return <ChevronsUpDown className="h-3 w-3 opacity-40" />;
     return sortDir === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />;
   };
@@ -747,22 +747,22 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
                 <tr>
                   <th className="text-left font-medium px-3 py-2">
                     <button className="flex items-center gap-1 hover:text-foreground" onClick={() => toggleSort("file_name")}>
-                      Document <SortIcon col="file_name" />
+                      Document {renderSortIcon("file_name")}
                     </button>
                   </th>
                   <th className="text-left font-medium px-3 py-2">
                     <button className="flex items-center gap-1 hover:text-foreground" onClick={() => toggleSort("status")}>
-                      Status <SortIcon col="status" />
+                      Status {renderSortIcon("status")}
                     </button>
                   </th>
                   <th className="text-left font-medium px-3 py-2">
                     <button className="flex items-center gap-1 hover:text-foreground" onClick={() => toggleSort("issued_at")}>
-                      Issued <SortIcon col="issued_at" />
+                      Issued {renderSortIcon("issued_at")}
                     </button>
                   </th>
                   <th className="text-left font-medium px-3 py-2 hidden md:table-cell">
                     <button className="flex items-center gap-1 hover:text-foreground" onClick={() => toggleSort("serial_no")}>
-                      Serial <SortIcon col="serial_no" />
+                      Serial {renderSortIcon("serial_no")}
                     </button>
                   </th>
                   <th className="text-right font-medium px-3 py-2">Actions</th>

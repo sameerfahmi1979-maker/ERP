@@ -1,8 +1,5 @@
 'use client';
 
-import { useState, useTransition } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { ShieldCheck, AlertTriangle } from 'lucide-react';
 import type {
   DataQualityFinding,
   DataQualityFindingEvent,
@@ -10,17 +7,20 @@ import type {
   DataQualityPermissionState,
   DataQualitySummary,
 } from '@/lib/ai/common/data-quality/types';
-import {
-  getDataQualityFindings,
-  getDataQualityFindingEvents,
-} from '@/server/actions/ai/common/data-quality';
 import { queryKeys } from '@/lib/query/query-keys';
-import { DataQualitySummaryCards } from './data-quality-summary-cards';
-import { DataQualityScanCard } from './data-quality-scan-card';
+import {
+  getDataQualityFindingEvents,
+  getDataQualityFindings,
+} from '@/server/actions/ai/common/data-quality';
+import { useQuery } from '@tanstack/react-query';
+import { AlertTriangle, ShieldCheck } from 'lucide-react';
+import { useState, useTransition } from 'react';
 import { DataQualityFilters } from './data-quality-filters';
-import { DataQualityFindingsTable } from './data-quality-findings-table';
 import { DataQualityFindingDetailPanel } from './data-quality-finding-detail-panel';
+import { DataQualityFindingsTable } from './data-quality-findings-table';
 import { DataQualityPermissionEmpty } from './data-quality-permission-empty';
+import { DataQualityScanCard } from './data-quality-scan-card';
+import { DataQualitySummaryCards } from './data-quality-summary-cards';
 
 interface Props {
   initialSummary: DataQualitySummary | null;

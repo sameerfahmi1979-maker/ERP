@@ -5,24 +5,8 @@
  * Provides the governance dropdown, status badges, and history dialog for templates.
  */
 
-import { useState, useTransition } from "react";
-import {
-  SendHorizonal,
-  CheckCircle2,
-  XCircle,
-  Globe,
-  Archive,
-  Copy,
-  History,
-  ShieldCheck,
-  ShieldAlert,
-  ShieldQuestion,
-  Loader2,
-  MoreHorizontal,
-  ChevronRight,
-} from "lucide-react";
+import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,25 +14,40 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
-import { toast } from "sonner";
 import type {
   ReportTemplate,
   ReportTemplateEvent,
   TemplateGovernanceStatus,
   TemplateSecurityReviewStatus,
 } from "@/lib/report-center/types";
+import { cn } from "@/lib/utils";
 import {
-  submitTemplateForReview,
   approveTemplate,
-  rejectTemplate,
-  publishTemplate,
   archiveTemplate,
   createTemplateDraftVersion,
   getTemplateGovernanceHistory,
+  publishTemplate,
+  rejectTemplate,
   runTemplateSecurityReviewAction,
+  submitTemplateForReview,
 } from "@/server/actions/reports/template-governance";
-import { cn } from "@/lib/utils";
+import {
+  Archive,
+  CheckCircle2,
+  ChevronRight,
+  Copy,
+  Globe,
+  History,
+  Loader2,
+  MoreHorizontal,
+  SendHorizonal,
+  ShieldAlert,
+  ShieldCheck,
+  ShieldQuestion,
+  XCircle,
+} from "lucide-react";
+import { useState, useTransition } from "react";
+import { toast } from "sonner";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Status badge helpers

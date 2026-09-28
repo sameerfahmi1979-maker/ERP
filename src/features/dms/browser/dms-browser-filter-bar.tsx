@@ -5,11 +5,10 @@
  * Chips: Document Type, Status, Date Range, Linked Entity Type, AI Semantic toggle.
  */
 
-import { useState } from "react";
-import { X, ChevronDown, Sparkles } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { DmsBrowserDocType } from "@/server/actions/dms/browser";
+import { ChevronDown, Sparkles, X } from "lucide-react";
+import { useState } from "react";
 
 export interface DmsBrowserActiveFilters {
   documentTypeIds: number[];

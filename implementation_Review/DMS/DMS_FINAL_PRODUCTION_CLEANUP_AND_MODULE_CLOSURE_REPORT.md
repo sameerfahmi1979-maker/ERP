@@ -165,7 +165,7 @@ if (SCHEDULER_SECRET) {
 **Alignment evidence:**
 - The scheduler has been producing notifications successfully (9+ unread DMS notifications confirmed in DMS.4 browser QA)
 - For notifications to be created, the bearer token must match `DMS_SCHEDULER_SECRET` in the Edge Function env
-- Therefore `DMS_SCHEDULER_SECRET = "DmsScheduler@2026"` is confirmed aligned in production
+- Therefore `DMS_SCHEDULER_SECRET = [REDACTED_HISTORICAL_SCHEDULER_SECRET]` is confirmed aligned in production
 
 **Service role key:** Loaded from `Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")` — never hardcoded in source ✅
 

@@ -1,13 +1,13 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { queryKeys } from "@/lib/query/query-keys";
-import { getCandidateSummary } from "@/server/actions/hr/recruitment";
-import type { CandidateRow } from "@/server/actions/hr/recruitment";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Calendar, FileText, Gift, CheckSquare, Mail, Phone, MapPin, Briefcase, User } from "lucide-react";
+import { queryKeys } from "@/lib/query/query-keys";
+import type { CandidateRow } from "@/server/actions/hr/recruitment";
+import { getCandidateSummary } from "@/server/actions/hr/recruitment";
+import { useQuery } from "@tanstack/react-query";
+import { Calendar, CheckSquare, FileText, Gift, Mail, MapPin, Phone, User } from "lucide-react";
 
 type Props = {
   candidate: CandidateRow;

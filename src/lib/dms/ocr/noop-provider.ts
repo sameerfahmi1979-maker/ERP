@@ -9,7 +9,7 @@
  * clear message and the job record is still created for auditability.
  */
 
-import type { IOcrProvider, OcrInput, OcrResult, OcrProviderCode } from "./types";
+import type { IOcrProvider, OcrInput, OcrProviderCode, OcrResult } from "./types";
 
 export class NoopOcrProvider implements IOcrProvider {
   readonly providerCode: OcrProviderCode = "noop";

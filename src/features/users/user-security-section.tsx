@@ -1,14 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
-import { toast } from "sonner";
-import { format } from "date-fns";
+import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,33 +11,40 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
-import { RequiredLabel } from "@/components/erp/required-label";
-import {
-  Mail,
-  KeyRound,
-  AlertTriangle,
-  CheckCircle2,
-  ShieldCheck,
-  Send,
-  RefreshCw,
-  XCircle,
-} from "lucide-react";
-import type { UserWithRoles } from "@/types/database";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import type { AuthContext } from "@/lib/rbac/check";
+import { passwordPolicySchema } from "@/lib/validation/auth";
 import {
-  adminSendPasswordResetEmail,
-  adminSetTemporaryPassword,
-  adminForcePasswordChange,
   adminClearForcePasswordChange,
   adminConfirmUserEmail,
-  adminSendWelcomeEmail,
+  adminForcePasswordChange,
   adminGenerateAndSendInviteEmail,
+  adminSendPasswordResetEmail,
+  adminSendWelcomeEmail,
+  adminSetTemporaryPassword,
   getUserSecurityStatus,
   type UserSecurityStatus,
 } from "@/server/actions/users/account-security";
-import { passwordPolicySchema } from "@/lib/validation/auth";
+import type { UserWithRoles } from "@/types/domain";
+import { format } from "date-fns";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  KeyRound,
+  Mail,
+  RefreshCw,
+  Send,
+  ShieldCheck,
+  XCircle,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 
 const EMPTY = "—";
 
@@ -57,6 +56,7 @@ function fmt(ts: string | null | undefined): string {
 type Props = {
   user: UserWithRoles;
   authContext?: AuthContext;
+  readOnly?: boolean;
 };
 
 type TempPasswordDialogState = {
@@ -75,16 +75,20 @@ type ForceChangeDialogState = {
   submitting: boolean;
 };
 
-export function SecuritySection({ user, authContext }: Props) {
-  const router = useRouter();
+export function SecuritySection({ user, authContext, readOnly = false }: Props) {
   const canManageSecurity = authContext
     ? authContext.roleCodes.includes("system_admin") ||
       authContext.roleCodes.includes("group_admin") ||
       authContext.permissionCodes.includes("users.security.manage")
     : false;
+  return <SecuritySectionContent key={`${user.id}:${canManageSecurity}:${readOnly}`} user={user} canManageSecurity={canManageSecurity} readOnly={readOnly} />;
+}
+
+function SecuritySectionContent({ user, canManageSecurity, readOnly }: { user: UserWithRoles; canManageSecurity: boolean; readOnly: boolean }) {
+  const router = useRouter();
 
   const [securityStatus, setSecurityStatus] = useState<UserSecurityStatus | null>(null);
-  const [loadingStatus, setLoadingStatus] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState(canManageSecurity);
 
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
@@ -120,12 +124,21 @@ export function SecuritySection({ user, authContext }: Props) {
     }
   }, [user.id, canManageSecurity]);
 
-  useEffect(() => { loadStatus(); }, [loadStatus]);
+  useEffect(() => {
+    if (!canManageSecurity) return;
+    let cancelled = false;
+    void getUserSecurityStatus(user.id).then((result) => {
+      if (!cancelled && result.success && result.data) setSecurityStatus(result.data);
+    }).catch(() => { if (!cancelled) toast.error("Could not load security status."); })
+      .finally(() => { if (!cancelled) setLoadingStatus(false); });
+    return () => { cancelled = true; };
+  }, [user.id, canManageSecurity]);
 
   const runAction = async (label: string, fn: () => Promise<{ success: boolean; error?: string }>) => {
+    if (readOnly) return;
     const result = await fn();
     if (result.success) {
-      toast.success(`${label} successful`);
+      toast.success(/email|link/i.test(label) ? "Email accepted by the provider. Inbox delivery is not yet confirmed." : `${label} successful`);
       router.refresh();
       await loadStatus();
     } else {
@@ -272,7 +285,7 @@ export function SecuritySection({ user, authContext }: Props) {
             <div>{fmt(status.password_changed_at)}</div>
           </div>
           <div className="col-span-6 space-y-1">
-            <Label className="text-muted-foreground text-xs">Reset Email Sent At</Label>
+            <Label className="text-muted-foreground text-xs">Reset Email Accepted At</Label>
             <div>{fmt(status.password_reset_sent_at)}</div>
           </div>
           <div className="col-span-6 space-y-1">
@@ -309,7 +322,7 @@ export function SecuritySection({ user, authContext }: Props) {
       </div>
 
       {/* Admin Actions */}
-      {canManageSecurity && (
+      {canManageSecurity && !readOnly && (
         <div className="rounded-md border p-4 space-y-4">
           <h4 className="text-sm font-medium flex items-center gap-2">
             <ShieldCheck className="h-4 w-4 text-muted-foreground" />
@@ -328,7 +341,7 @@ export function SecuritySection({ user, authContext }: Props) {
                 size="sm"
                 onClick={() => openConfirm(
                   "Send Reset Link",
-                  `Send a password reset email to ${status.auth_email}? The link will expire in 1 hour.`,
+                  `Send a one-time password reset link to ${status.auth_email}? Its expiry is controlled by the authentication provider.`,
                   async () => { await runAction("Send reset link", () => adminSendPasswordResetEmail(user.id)); }
                 )}
               >
@@ -385,8 +398,8 @@ export function SecuritySection({ user, authContext }: Props) {
                 variant="outline"
                 size="sm"
                 onClick={() => openConfirm(
-                  "Send Welcome Email with Credentials",
-                  `This will generate a new temporary password, set it on the account, and email the login URL, username, and temporary password to ${status.auth_email}.\n\nThe user will be required to change their password on first login.\n\nProceed?`,
+                  "Send Secure Setup Instructions",
+                  `Send a one-time setup or recovery link to ${status.auth_email}? No password will be generated or included in the email, and the current password will not be changed.`,
                   async () => { await runAction("Send welcome email", () => adminSendWelcomeEmail(user.id)); }
                 )}
               >
@@ -429,6 +442,7 @@ export function SecuritySection({ user, authContext }: Props) {
       )}
 
       {/* View-only locked message */}
+      {readOnly && <p className="text-sm text-muted-foreground">View mode is read-only. Open Edit to perform authorized security actions.</p>}
       {!canManageSecurity && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground border rounded-md px-3 py-2.5 bg-muted/20">
           <KeyRound className="h-4 w-4 shrink-0" />

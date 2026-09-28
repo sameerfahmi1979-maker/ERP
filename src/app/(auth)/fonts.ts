@@ -16,6 +16,10 @@ export const displayFont = Big_Shoulders({
   weight: ["600", "700", "800"],
   display: "swap",
   variable: "--font-auth-display",
+  // Next's bundled metrics do not include Big Shoulders. Use an explicit
+  // fallback instead of requesting an unavailable automatic metric override.
+  adjustFontFallback: false,
+  fallback: ["Arial Narrow", "Arial", "sans-serif"],
 });
 
 export const bodyFont = IBM_Plex_Sans({

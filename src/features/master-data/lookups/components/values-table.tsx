@@ -1,12 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import type { LookupValueWithCategory, LookupCategory } from "@/features/master-data/lookups/types";
 import { ERPDataTable } from "@/components/erp/table/erp-data-table";
-import type { ColumnDef } from "@tanstack/react-table";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,24 +11,27 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import type { LookupCategory, LookupValueWithCategory } from "@/features/master-data/lookups/types";
+import {
+  setDefaultLookupValue,
+  toggleLookupValueLock,
+  toggleLookupValueStatus,
+} from "@/server/actions/master-data/lookups";
+import type { ColumnDef } from "@tanstack/react-table";
+import { format } from "date-fns";
 import {
   Eye,
-  Pencil,
-  Power,
   Lock,
-  Unlock,
-  Star,
   MoreHorizontal,
+  Pencil,
   Plus,
+  Power,
+  Star,
+  Unlock,
 } from "lucide-react";
-import {
-  toggleLookupValueStatus,
-  toggleLookupValueLock,
-  setDefaultLookupValue,
-} from "@/server/actions/master-data/lookups";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { toast } from "sonner";
-import { format } from "date-fns";
-import { cn } from "@/lib/utils";
 
 type ValuesTableProps = {
   values: LookupValueWithCategory[];

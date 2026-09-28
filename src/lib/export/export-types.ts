@@ -91,7 +91,7 @@ export interface ExportBrandingContext {
   templateOrientation?: "portrait" | "landscape";
 }
 
-export type ERPExportColumn<T = any> = {
+export type ERPExportColumn<T = unknown> = {
   /** Key to extract value from row object */
   key: keyof T | string;
   /** Column header text */
@@ -102,7 +102,7 @@ export type ERPExportColumn<T = any> = {
   width?: number;
 };
 
-export type ERPExportOptions<T = any> = {
+export type ERPExportOptions<T = unknown> = {
   /** Report title */
   title: string;
   /** Report subtitle/description */
@@ -118,7 +118,7 @@ export type ERPExportOptions<T = any> = {
   /** When was this generated */
   generatedAt?: Date;
   /** Applied filters (for display in report) */
-  filters?: Record<string, string | number | boolean | null | undefined>;
+  filters?: Record<string, unknown>;
   /** Page orientation */
   orientation?: "portrait" | "landscape";
   /** Export mode (for subtitle) */

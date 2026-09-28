@@ -16,39 +16,38 @@
  * - DMS confidentiality respected via evidence loader
  */
 
-import { createClient } from "@/lib/supabase/server";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { logAudit } from "@/server/actions/audit";
-import { z } from "zod";
 import {
-  lookupCommonAiRegistry,
-  isCommonAiEntityType,
-} from "@/lib/ai/common/registry/index";
-import {
-  ERP_COMMON_AI_STAGE_1_ENTITY_TYPES,
   ERP_COMMON_AI_PROMPT_VERSION,
+  ERP_COMMON_AI_STAGE_1_ENTITY_TYPES,
 } from "@/lib/ai/common/constants";
-import { loadLinkedDmsDocumentEvidence } from "@/lib/ai/common/field-suggestions/evidence-loader";
+import {
+  applyAiSuggestionByRegisteredHandler,
+  insertSuggestionEvent,
+  loadSuggestionForApply,
+  updateSuggestionStatus,
+} from "@/lib/ai/common/field-suggestions/apply-engine";
 import { loadCurrentRecordSnapshot } from "@/lib/ai/common/field-suggestions/current-record-loader";
+import { loadLinkedDmsDocumentEvidence } from "@/lib/ai/common/field-suggestions/evidence-loader";
+import { validateErpAiSuggestionOutput } from "@/lib/ai/common/field-suggestions/output-validator";
+import {
+  insertGeneratedEvents,
+  insertPendingSuggestions,
+  insertSupersededEvents,
+  logCommonAiUsage,
+  supersedePendingSuggestions,
+} from "@/lib/ai/common/field-suggestions/persistence";
 import {
   buildErpAiFieldSuggestionPrompt,
 } from "@/lib/ai/common/field-suggestions/prompt-builder";
-import { validateErpAiSuggestionOutput } from "@/lib/ai/common/field-suggestions/output-validator";
 import { callCommonAiStructuredCompletion } from "@/lib/ai/common/provider-bridge";
 import {
-  supersedePendingSuggestions,
-  insertSupersededEvents,
-  insertPendingSuggestions,
-  insertGeneratedEvents,
-  logCommonAiUsage,
-} from "@/lib/ai/common/field-suggestions/persistence";
-import {
-  applyAiSuggestionByRegisteredHandler,
-  updateSuggestionStatus,
-  insertSuggestionEvent,
-  loadSuggestionForApply,
-} from "@/lib/ai/common/field-suggestions/apply-engine";
+  lookupCommonAiRegistry
+} from "@/lib/ai/common/registry/index";
+import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { createClient } from "@/lib/supabase/server";
+import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 // ── Shared ActionResult type ──────────────────────────────────────────────────
 

@@ -1,59 +1,50 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { cn } from "@/lib/utils";
+import {
+  ERPDrawerBody,
+  ERPDrawerForm,
+  ERPDrawerSection,
+  ERPDrawerSectionNav,
+  ERPFieldGrid,
+} from "@/components/erp/erp-drawer-form";
+import { ERPFormFooter } from "@/components/erp/erp-form-footer";
+import { AreaZoneSelect, CitySelect, CountrySelect, EmirateSelect } from "@/components/erp/geography";
+import { RequiredLabel } from "@/components/erp/required-label";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
-import { toast } from "sonner";
-import { AlertTriangle, Lock } from "lucide-react";
-import type { Party, DuplicateMatch } from "@/features/master-data/parties/party-types";
+import { Textarea } from "@/components/ui/textarea";
+import type { DuplicateMatch, Party } from "@/features/master-data/parties/party-types";
+import { useFormDirty } from "@/hooks/use-form-dirty";
 import type { AuthContext } from "@/lib/rbac/check";
+import { cn } from "@/lib/utils";
+import { createParty, detectPartyDuplicates, updateParty } from "@/server/actions/master-data/parties";
+import {
+  AlertTriangle, Building2, DollarSign, FileText, Landmark, Lock, MapPin,
+  Shield,
+  Tag, Users
+} from "lucide-react";
+import { useCallback, useState } from "react";
+import { toast } from "sonner";
+import { PartyAddressesTab } from "./party-addresses-tab";
+import { PartyAuditTab } from "./party-audit-tab";
+import { PartyBankDetailsTab } from "./party-bank-details-tab";
+import { PartyContactsTab } from "./party-contacts-tab";
+import { PartyDmsDocumentsTab } from "./party-dms-documents-tab";
+import { PartyLicensesTab } from "./party-licenses-tab";
+import { PartyNotesTab } from "./party-notes-tab";
+import { PartyServicesTab } from "./party-services-tab";
+import { PartyTaxFinanceTab } from "./party-tax-finance-tab";
+import { PartyTypesTab } from "./party-types-tab";
 
 function hasPerm(ctx: AuthContext, code: string) {
   return ctx.permissionCodes?.includes(code) || ctx.roleCodes?.includes("system_admin") || ctx.roleCodes?.includes("group_admin");
 }
-import { createParty, updateParty, detectPartyDuplicates } from "@/server/actions/master-data/parties";
-import { CountrySelect, EmirateSelect, CitySelect, AreaZoneSelect } from "@/components/erp/geography";
-import { CurrencySelect, PaymentTermSelect } from "@/components/erp/finance-basics";
-import { RequiredLabel } from "@/components/erp/required-label";
-import { ERPFormFooter } from "@/components/erp/erp-form-footer";
-import {
-  ERPDrawerForm,
-  ERPDrawerSectionNav,
-  ERPDrawerBody,
-  ERPDrawerSection,
-  ERPFieldGrid,
-} from "@/components/erp/erp-drawer-form";
-import {
-  Building2,
-  Users,
-  FileText,
-  DollarSign,
-  MapPin,
-  Shield,
-  Tag,
-  Landmark,
-} from "lucide-react";
-import { useFormDirty } from "@/hooks/use-form-dirty";
-import { PartyTypesTab } from "./party-types-tab";
-import { PartyLicensesTab } from "./party-licenses-tab";
-import { PartyTaxFinanceTab } from "./party-tax-finance-tab";
-import { PartyContactsTab } from "./party-contacts-tab";
-import { PartyAddressesTab } from "./party-addresses-tab";
-import { PartyBankDetailsTab } from "./party-bank-details-tab";
-import { PartyDmsDocumentsTab } from "./party-dms-documents-tab";
-import { PartyServicesTab } from "./party-services-tab";
-import { PartyNotesTab } from "./party-notes-tab";
-import { PartyAuditTab } from "./party-audit-tab";
 
 // Dynamic ID-backed selects for party-specific lookups
-import { useQuery } from "@tanstack/react-query";
-import { getPartyNatures, getPartyStatuses } from "@/server/actions/master-data/parties";
-import { PartySelect } from "@/components/erp/party-select";
 import { ERPCombobox } from "@/components/erp/combobox";
+import { PartySelect } from "@/components/erp/party-select";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -62,7 +53,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { getPartyNatures, getPartyStatuses } from "@/server/actions/master-data/parties";
+import { useQuery } from "@tanstack/react-query";
 
 type PartyFormDrawerProps = {
   party?: Party | null;

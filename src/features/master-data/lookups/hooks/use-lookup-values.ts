@@ -5,7 +5,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { getActiveLookupValuesByCategoryCode } from "@/server/actions/master-data/lookups";
 import type { LookupValue } from "@/features/master-data/lookups/types";
 
@@ -36,48 +36,29 @@ export interface UseLookupValuesResult {
 export function useLookupValues(options: UseLookupValuesOptions): UseLookupValuesResult {
   const { categoryCode, parentValueCode, includeInactive = false, enabled = true } = options;
 
-  const [values, setValues] = useState<LookupValue[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchValues = async () => {
-    if (!enabled || !categoryCode) {
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
+  const active = enabled && !!categoryCode;
+  const query = useQuery({
+    queryKey: ["lookup-values", categoryCode, parentValueCode, includeInactive],
+    enabled: active,
+    queryFn: async () => {
       const result = await getActiveLookupValuesByCategoryCode(
         categoryCode,
         parentValueCode,
         includeInactive
       );
 
-      if (result.success && result.data) {
-        setValues(result.data);
-      } else {
-        setError(result.error || "Failed to load lookup values");
-        setValues([]);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An unexpected error occurred");
-      setValues([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchValues();
-  }, [categoryCode, parentValueCode, includeInactive, enabled]);
+      if (!result.success || !result.data) throw new Error(result.error || "Failed to load lookup values");
+      return result.data;
+    },
+    retry: false,
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+  });
 
   return {
-    values,
-    loading,
-    error,
-    refetch: fetchValues,
+    values: active ? query.data ?? [] : [],
+    loading: active && query.isFetching,
+    error: query.error?.message ?? null,
+    refetch: async () => { if (active) await query.refetch(); },
   };
 }

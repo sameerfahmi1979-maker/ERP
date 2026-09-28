@@ -5,35 +5,32 @@
  * Status cards, approver queue, failed security review list.
  */
 
-import { useState, useTransition } from "react";
-import {
-  FileText,
-  SendHorizonal,
-  CheckCircle2,
-  XCircle,
-  Globe,
-  Archive,
-  ShieldAlert,
-  ShieldCheck,
-  Loader2,
-  RefreshCcw,
-  ArrowLeft,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { ERPPageHeader } from "@/components/erp/page-header";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
-import { toast } from "sonner";
+import { ERPPageHeader } from "@/components/erp/page-header";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { GovernanceStatusBadge, SecurityReviewBadge } from "@/features/report-center/template-governance-actions";
+import type { ReportTemplate, TemplateGovernanceStatus } from "@/lib/report-center/types";
 import { cn } from "@/lib/utils";
 import {
   approveTemplate,
-  rejectTemplate,
   publishTemplate,
+  rejectTemplate,
   runTemplateSecurityReviewAction,
 } from "@/server/actions/reports/template-governance";
-import type { ReportTemplate, TemplateGovernanceStatus } from "@/lib/report-center/types";
-import { GovernanceStatusBadge, SecurityReviewBadge } from "@/features/report-center/template-governance-actions";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Globe,
+  Loader2,
+  SendHorizonal,
+  ShieldAlert,
+  ShieldCheck,
+  XCircle
+} from "lucide-react";
 import Link from "next/link";
+import { useState, useTransition } from "react";
+import { toast } from "sonner";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Status card config

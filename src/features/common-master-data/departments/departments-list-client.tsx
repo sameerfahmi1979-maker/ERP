@@ -1,17 +1,5 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,10 +10,21 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { MoreHorizontal, Pencil, PowerOff, Power, Trash2 } from "lucide-react";
-import { toast } from "sonner";
-import { updateDepartment, softDeleteDepartment } from "@/server/actions/common-master-data/departments";
+import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { DepartmentRow } from "@/server/actions/common-master-data/departments";
+import { softDeleteDepartment, updateDepartment } from "@/server/actions/common-master-data/departments";
+import { MoreHorizontal, Pencil, Power, PowerOff, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { toast } from "sonner";
 
 interface Props {
   departments: DepartmentRow[];
@@ -41,7 +40,7 @@ export function DepartmentsListClient({ departments: initial, canManage }: Props
   const handleToggleActive = async (dept: DepartmentRow) => {
     setPendingId(dept.id);
     try {
-      const result = await updateDepartment({ id: dept.id, is_active: !dept.is_active });
+      const result = await updateDepartment({ id: dept.id, is_active: !dept.is_active }, {operationId:crypto.randomUUID(),revision:String(dept.workspace_revision)});
       if (result.success) {
         setDepartments((prev) =>
           prev.map((d) => (d.id === dept.id ? { ...d, is_active: !d.is_active } : d))

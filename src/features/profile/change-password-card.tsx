@@ -1,10 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { createClient } from "@/lib/supabase/client";
 import { changePasswordSchema } from "@/lib/validation/auth";
 import { changeOwnPassword } from "@/server/actions/users/account-security";
 import { Button } from "@/components/ui/button";
@@ -12,11 +11,14 @@ import { Input } from "@/components/ui/input";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { KeyRound } from "lucide-react";
+import { PasswordReverification } from "@/features/auth/password-reverification";
 
 type FormInput = { password: string; confirmPassword: string };
 
 export function ChangePasswordCard() {
   const [loading, setLoading] = useState(false);
+  const [needsVerification, setNeedsVerification] = useState(false);
+  const operationId = useRef<string | null>(null);
   const {
     register,
     handleSubmit,
@@ -24,31 +26,28 @@ export function ChangePasswordCard() {
     formState: { errors },
   } = useForm<FormInput>({ resolver: zodResolver(changePasswordSchema) });
 
-  const onSubmit = handleSubmit(async (values) => {
+  const onSubmit = async (values: FormInput) => {
     setLoading(true);
     try {
-      const supabase = createClient();
-      const { error: authError } = await supabase.auth.updateUser({
-        password: values.password,
-      });
-
-      if (authError) {
-        toast.error(authError.message);
-        return;
-      }
-
-      const result = await changeOwnPassword(null);
+      operationId.current ??= crypto.randomUUID();
+      const result = await changeOwnPassword({ newPassword: values.password, operationId: operationId.current });
       if (!result.success) {
-        toast.error(result.error ?? "Password updated in auth but lifecycle update failed.");
+        if (result.canStartNewAttempt) operationId.current = null;
+        if (result.requiresFreshSignIn) { reset(); setNeedsVerification(true); return; }
+        toast.error(result.error ?? "Password change could not complete.");
         return;
       }
-
       toast.success("Password changed successfully.");
       reset();
+      operationId.current = null;
+    } catch {
+      toast.error("The request was interrupted. Please sign in again before trying another password change.");
     } finally {
       setLoading(false);
     }
-  });
+  };
+
+  if (needsVerification) return <PasswordReverification mode="self" onCancel={() => setNeedsVerification(false)} />;
 
   return (
     <Card>
@@ -63,7 +62,7 @@ export function ChangePasswordCard() {
           </CardDescription>
         </div>
       </CardHeader>
-      <form onSubmit={onSubmit}>
+      <form onSubmit={(event) => void handleSubmit(onSubmit)(event)}>
         <CardContent className="grid gap-4 md:grid-cols-2">
           <div className="flex flex-col gap-2">
             <RequiredLabel htmlFor="profile-password" required>New password</RequiredLabel>

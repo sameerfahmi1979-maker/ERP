@@ -1,9 +1,10 @@
+import { resolveAiProviderSecret } from "@/lib/settings/resolve-ai-secret";
 // ============================================================================
 // Azure Document Intelligence Provider
 // Phase: ERP SETTINGS.1B
 // Implements testConnection for provider_type "azure_document_intelligence".
 // OCR analysis itself is handled by src/lib/dms/ai/azure-document-intelligence-adapter.ts.
-// Security: API key resolved from process.env[secretRef] at call time — never logged.
+// Security: API key resolved from resolveAiProviderSecret(this.config) at call time — never logged.
 // ============================================================================
 
 import type { AiProviderInterface, AiProviderConfig, AiTestConnectionResult } from "./types";
@@ -42,7 +43,7 @@ export class AzureDocumentIntelligenceProvider implements AiProviderInterface {
       return fail("No API key reference configured. Enter the API key in the provider form.");
     }
 
-    const apiKey = process.env[secretRef];
+    const apiKey = resolveAiProviderSecret(this.config);
     if (!apiKey) {
       return fail(`Environment variable '${secretRef}' is not set. Save the API key in the provider form.`);
     }

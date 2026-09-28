@@ -10,10 +10,11 @@ import type { UomConversionWithUnits } from "@/features/master-data/uom/types";
 import { createUomConversion, updateUomConversion } from "@/features/master-data/uom/actions";
 import { UnitOfMeasureSelect } from "@/components/erp/uom/unit-of-measure-select";
 import { RequiredLabel } from "@/components/erp/required-label";
-import { useFormDirty } from "@/hooks/use-form-dirty";
+import { useWorkspaceFormDirty as useFormDirty } from "@/hooks/use-workspace-form-dirty";
 import { ArrowRight, Shield, Info } from "lucide-react";
 import type { AuthContext } from "@/lib/rbac/check";
-import { useWorkspace } from "@/hooks/use-workspace";
+import { useWorkspaceFormNavigation as useWorkspace } from "@/hooks/use-workspace-form-navigation";
+import { useWorkspaceFormSection } from "@/hooks/use-workspace-form-section";
 import { ERPRecordWorkspaceForm, ERPRecordSectionPanel } from "@/components/workspace/erp-record-workspace-form";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
 
@@ -28,32 +29,30 @@ const FORM_ID = "conversion-workspace-form";
 export function ConversionWorkspaceForm({ conversion, mode }: ConversionWorkspaceFormProps) {
   const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeSection, setActiveSection] = useState("basic");
+  const sections = [
+    { id: "basic", label: "Conversion", icon: ArrowRight },
+    { id: "status", label: "Status", icon: Shield },
+    { id: "audit", label: "Audit Info", icon: Info },
+  ];
+  const [activeSection, setActiveSection] = useWorkspaceFormSection(FORM_ID, "basic", sections.map(section => section.id));
 
   const isEditing = mode === "edit";
   const isViewing = mode === "view";
 
   const { isDirty, resetDirty } = useFormDirty({ formId: FORM_ID, enabled: !isViewing });
-  const { getDraftDefault, getDraftBoolean, syncDraft, writeDraftField, clearDraft } = useWorkspaceFormDraft({ formId: FORM_ID, enabled: !isViewing });
+  const { getDraftDefault, getDraftNullableId, getDraftBoolean, syncDraft, writeDraftField, clearDraft } = useWorkspaceFormDraft({ formId: FORM_ID, enabled: !isViewing });
 
   const [fromUomId, setFromUomId] = useState<number | null>(() => {
-    const d = getDraftDefault("from_uom_id", "");
-    return d ? Number(d) : conversion?.from_uom_id ?? null;
+    return getDraftNullableId("from_uom_id", conversion?.from_uom_id ?? null);
   });
   const [toUomId, setToUomId] = useState<number | null>(() => {
-    const d = getDraftDefault("to_uom_id", "");
-    return d ? Number(d) : conversion?.to_uom_id ?? null;
+    return getDraftNullableId("to_uom_id", conversion?.to_uom_id ?? null);
   });
 
   useEffect(() => {
     if (activeTab?.id) markDirty(activeTab.id, isDirty);
   }, [isDirty, activeTab?.id, markDirty]);
 
-  const sections = [
-    { id: "basic", label: "Conversion", icon: ArrowRight },
-    { id: "status", label: "Status", icon: Shield },
-    { id: "audit", label: "Audit Info", icon: Info },
-  ];
 
   const handleRequestClose = () => closeTab(activeTab?.id ?? "");
 

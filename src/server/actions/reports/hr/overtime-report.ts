@@ -3,13 +3,13 @@
  * Phase: REPORT.4 — HR.11 Reports + Letters + Forms Library
  */
 import type { ReportFetcher, ReportDataResult } from "@/lib/report-center/types";
-import { createAdminClient } from "@/lib/supabase/admin";
+import type { ReportReadClient } from "@/lib/report-center/scoped-read-client";
 
 export const overtimeReportFetcher: ReportFetcher = {
   reportCode: "HR_OVERTIME_REPORT",
 
-  async fetch(filters: Record<string, unknown>): Promise<ReportDataResult> {
-    const db = createAdminClient();
+  async fetch(filters: Record<string, unknown>, _permissions: string[], db: ReportReadClient): Promise<ReportDataResult> {
+
 
     let empIds: number[] | null = null;
     if (filters.owner_company_id || filters.department_id) {
@@ -25,7 +25,7 @@ export const overtimeReportFetcher: ReportFetcher = {
       .from("employee_overtime_records")
       .select(
         `id, employee_id, overtime_date, hours, reason, approval_status, approved_at,
-         approver:profiles!approved_by(display_name),
+         approver:user_profiles!approved_by(display_name),
          employee:employees(
            employee_code, full_name_en, owner_company_id,
            department:departments(department_name_en),

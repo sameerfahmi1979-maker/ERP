@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getDmsAiPipelineHealth, type PipelineHealthData } from "@/server/actions/dms/ai-observability";
+import { getDmsAiPipelineHealth } from "@/server/actions/dms/ai-observability";
+import { useQuery } from "@tanstack/react-query";
 
 interface Props {
   refreshKey: number;
@@ -19,20 +19,18 @@ function HealthRow({ label, value, warn }: { label: string; value: number; warn?
 }
 
 export function AiPipelineHealth({ refreshKey }: Props) {
-  const [data, setData] = useState<PipelineHealthData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setLoading(true);
-    getDmsAiPipelineHealth()
-      .then((res) => {
-        if (res.success && res.data) setData(res.data);
-        else setError(res.error ?? "Failed to load.");
-      })
-      .catch(() => setError("Failed to load pipeline health."))
-      .finally(() => setLoading(false));
-  }, [refreshKey]);
+  const { data, isPending: loading, error: queryError } = useQuery({
+    queryKey: ["dms-observability", "getDmsAiPipelineHealth", refreshKey],
+    queryFn: async () => {
+      const result = await getDmsAiPipelineHealth();
+      if (!result.success || !result.data) throw new Error(result.error ?? "Failed to load.");
+      return result.data;
+    },
+    retry: false,
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+  });
+  const error = queryError?.message;
 
   if (loading) return <div className="text-sm text-muted-foreground">Loading pipeline health...</div>;
   if (error) return <div className="text-sm text-destructive">{error}</div>;

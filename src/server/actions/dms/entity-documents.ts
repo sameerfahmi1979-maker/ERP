@@ -1,22 +1,21 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
-import { logger } from "@/lib/logger";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { revalidatePath } from "next/cache";
-import { logAudit } from "@/server/actions/audit";
-import { z } from "zod";
-import {
-  DMS_ENTITY_TYPE_CODES,
-  isValidDmsEntityType,
-  getDmsEntityTypeLabel,
-} from "@/lib/dms/dms-entity-types";
 import {
   countMissingRequiredDocuments,
   loadLinkedDocuments,
   loadRulesForEntityType,
 } from "@/lib/ai/common/compliance-checker";
+import {
+  DMS_ENTITY_TYPE_CODES,
+  isValidDmsEntityType
+} from "@/lib/dms/dms-entity-types";
+import { logger } from "@/lib/logger";
+import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { logAudit } from "@/server/actions/audit";
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 export type ActionResult<T = unknown> = {
   success: boolean;
@@ -109,7 +108,6 @@ export async function getDmsDocumentsByEntity(
           issue_date,
           expiry_date,
           migrated_from_table,
-          ai_summary,
           ai_risk_level,
           ai_risk_score,
           completeness_score,
@@ -180,7 +178,8 @@ export async function getDmsDocumentsByEntity(
         document_type_code: docType?.type_code ?? null,
         has_files: filesCount > 0,
         files_count: filesCount,
-        // Redact AI summary for restricted documents unless user is admin
+        // Content is loaded separately by the checked summary action, never by
+        // an embedded metadata join (which cannot apply column masking).
         ai_summary:
           isConfidential && !isAdmin
             ? null

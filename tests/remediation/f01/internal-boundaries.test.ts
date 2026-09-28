@@ -1,0 +1,23 @@
+import { beforeEach, expect, it, vi } from 'vitest';
+const mocks=vi.hoisted(()=>({db:vi.fn(),principal:vi.fn(),assets:vi.fn(),query:vi.fn(),value:null as unknown}));
+vi.mock('@/lib/supabase/admin',()=>({createAdminClient:mocks.db}));
+vi.mock('@/lib/supabase/server',()=>({createClient:vi.fn()}));
+vi.mock('@/lib/rbac/check',async original=>({...await original<typeof import('@/lib/rbac/check')>(),getAuthContextForProfileId:mocks.principal}));
+vi.mock('@/lib/branding/resolve-report-branding-assets',()=>({resolveReportBrandingProfileAssetUrls:mocks.assets}));
+import { resolveTemplateForExport } from '@/lib/report-center/template-export';
+import { supersedeDmsReviewQueueItems } from '@/lib/dms/review-queue/supersede';
+import { resolveAiProviderSecret } from '@/lib/settings/resolve-ai-secret';
+beforeEach(()=>{
+ vi.clearAllMocks();
+ const q:any={select:()=>q,update:()=>q,eq:(...a:unknown[])=>{mocks.query(...a);return q;},is:()=>q,in:()=>q,single:async()=>({data:mocks.value}),then:(fn:any)=>Promise.resolve({data:[]}).then(fn)};
+ mocks.db.mockReturnValue({from:()=>q});mocks.assets.mockResolvedValue({stamp:'synthetic-signed-url',signature:'synthetic-signature'});
+ mocks.value={show_stamp:true,show_signatory:true,branding_profile:{id:1,owner_company_id:900101,stamp_url:null}};
+ mocks.principal.mockResolvedValue({profile:{id:1},isAccountActive:true,roleCodes:[],permissionCodes:['reports.view'],globalPermissionCodes:[],roleAssignments:[{roleId:1,roleCode:'reader',ownerCompanyId:900101,branchId:null,permissionCodes:['reports.view']}]});
+});
+it('worker resolver reloads trusted principal and ignores supplied permission claims',async()=>{const r=await resolveTemplateForExport({templateId:1,principalId:1,...{permissionCodes:['reports.sign']}});expect(mocks.principal).toHaveBeenCalledWith(1);expect(r?.stampUrl).toBeNull();expect(r?.signatureUrl).toBeNull();});
+it('authorized company signer retains stamp and signature',async()=>{const ctx=await mocks.principal();ctx.permissionCodes.push('reports.sign');ctx.roleAssignments[0].permissionCodes.push('reports.sign');const r=await resolveTemplateForExport({templateId:1,principalId:1});expect(r?.stampUrl).toBe('synthetic-signed-url');expect(r?.signatureUrl).toBe('synthetic-signature');});
+it('other-company template denied before signing assets',async()=>{mocks.value={branding_profile:{id:1,owner_company_id:900102}};expect(await resolveTemplateForExport({templateId:1,principalId:1})).toBeNull();expect(mocks.assets).not.toHaveBeenCalled();});
+it('missing/inactive principal denied',async()=>{mocks.principal.mockRejectedValue(Error('inactive'));expect(await resolveTemplateForExport({templateId:1,principalId:1})).toBeNull();expect(mocks.db).not.toHaveBeenCalled();});
+it.each(['','%','ai_job:1%','ai_job:1_','meta_suggestions:type:'])('rejects wildcard or incomplete review key %s',async key=>{await expect(supersedeDmsReviewQueueItems(key)).rejects.toThrow();expect(mocks.db).not.toHaveBeenCalled();});
+it('exact review key uses equality, not prefix matching',async()=>{await supersedeDmsReviewQueueItems('ai_job:123');expect(mocks.query).toHaveBeenCalledWith('idempotency_key','ai_job:123');});
+it('persisted provider config cannot resolve arbitrary server secrets',()=>{vi.stubEnv('F01_SYNTHETIC_RESERVED','not-an-ai-key');expect(resolveAiProviderSecret({id:1,providerType:'openai',secretRef:'F01_SYNTHETIC_RESERVED'})).toBeUndefined();vi.unstubAllEnvs();});

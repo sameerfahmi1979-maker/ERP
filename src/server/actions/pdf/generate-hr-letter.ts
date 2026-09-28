@@ -24,12 +24,13 @@
  */
 
 import { getAuthContext } from "@/lib/rbac/check";
+import { getEmployeeAccess } from "@/lib/rbac/employee-access";
+import { issuedFileUrl } from "@/lib/output/issued-file-access";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { renderPdf } from "@/lib/pdf/renderer";
 import {
   buildPdfStoragePath,
   uploadGeneratedPdf,
-  createPdfSignedUrl,
 } from "@/lib/pdf/storage";
 import { createPdfHistoryRow, markPdfGenerationFailed } from "@/lib/pdf/history";
 import type { PdfRenderRequest } from "@/lib/pdf/types";
@@ -96,63 +97,16 @@ export async function generateHrEmploymentLetterPdf(
 async function generateHrEmploymentLetterPdfLegacy(
   input: GenerateHrLetterPdfInput,
 ): Promise<GenerateHrLetterPdfResult | GenerateHrLetterPdfError> {
-  // 1. Authenticate
   const ctx = await getAuthContext();
-  if (!ctx) {
-    return { success: false, error: "Not authenticated" };
-  }
-
-  // 2. Authorize — requires reports.pdf.generate permission
-  const hasPermission =
-    ctx.permissionCodes.includes("reports.pdf.generate") ||
-    ctx.roleCodes.includes("system_admin") ||
-    ctx.roleCodes.includes("group_admin") ||
-    ctx.roleCodes.includes("company_admin");
-
-  if (!hasPermission) {
-    return {
-      success: false,
-      error: "You do not have permission to generate official PDFs (reports.pdf.generate).",
-    };
-  }
-
-  const supabase = createAdminClient();
-
-  // 3. Verify employee exists and belongs to an accessible company
-  const { data: employee, error: empErr } = await supabase
-    .from("employees")
-    .select("id, employee_code, full_name_en, owner_company_id")
-    .eq("id", input.employeeId)
-    .single();
-
-  if (empErr || !employee) {
-    return { success: false, error: `Employee #${input.employeeId} not found.` };
-  }
-
-  const isGlobalAdmin =
-    ctx.roleCodes.includes("system_admin") || ctx.roleCodes.includes("group_admin");
-
-  // Company access check
-  // (or be a group/system admin). We skip the per-company check for global admins.
-  if (!isGlobalAdmin) {
-    // Fetch user's accessible company IDs from user_roles
-    const { data: userRoles } = await supabase
-      .from("user_roles")
-      .select("owner_company_id")
-      .eq("user_id", ctx.profile?.id ?? 0)
-      .not("owner_company_id", "is", null);
-
-    const userCompanyIds = (userRoles ?? [])
-      .map((r) => r.owner_company_id)
-      .filter((id): id is number => id !== null);
-
-    if (!userCompanyIds.includes(employee.owner_company_id)) {
-      return {
-        success: false,
-        error: "You do not have access to this employee's company.",
-      };
-    }
-  }
+  try {
+    const access = await getEmployeeAccess(ctx, input.employeeId);
+    if (!access.allows("reports.pdf.generate") || !access.allows("reports.export")) return { success: false, error: "You do not have generation/export permission for this employee." };
+  } catch { return { success: false, error: "Employee unavailable or access denied." }; }
+  // This rollback path supports exactly one reviewed template, not a client-selected print route.
+  if (input.templateKey && input.templateKey !== "hr-employment-letter-en") return { success: false, error: "Unsupported legacy template." };
+  const { data: employee, error: empErr } = await createAdminClient().from("employees")
+    .select("id,employee_code,full_name_en,owner_company_id").eq("id", input.employeeId).is("deleted_at", null).single();
+  if (empErr || !employee) return { success: false, error: "Employee unavailable." };
 
   const templateKey = input.templateKey ?? "hr-employment-letter-en";
   const outputLabel = `Employment_Letter_${employee.employee_code ?? employee.id}`;
@@ -232,16 +186,8 @@ async function generateHrEmploymentLetterPdfLegacy(
     historyId = 0;
   }
 
-  // 7. Create signed download URL (60 min TTL)
-  let downloadUrl: string;
-  try {
-    downloadUrl = await createPdfSignedUrl(finalStoragePath, 3600);
-  } catch (urlErr) {
-    return {
-      success: false,
-      error: `PDF was generated and stored, but signed URL creation failed: ${urlErr instanceof Error ? urlErr.message : "unknown"}`,
-    };
-  }
+  if (!historyId) return { success: false, error: "The file was stored but its history could not be recorded. Administrator reconciliation is required; no download was issued." };
+  const downloadUrl = issuedFileUrl(historyId);
 
   return {
     success: true,

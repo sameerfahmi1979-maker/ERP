@@ -13,7 +13,8 @@
  * DEPLOYMENT: see deployment notes at bottom of this file.
  */
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.106.2";
+import { schedulerGate } from "./auth.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -21,16 +22,20 @@ const SCHEDULER_SECRET = Deno.env.get("DMS_SCHEDULER_SECRET");
 const APP_URL = (Deno.env.get("APP_URL") ?? "https://erp.algt.net").replace(/\/$/, "");
 
 Deno.serve(async (req: Request) => {
-  // ── Auth gate: only allow requests with matching scheduler secret ──────────
-  if (SCHEDULER_SECRET) {
-    const authHeader = req.headers.get("Authorization");
-    const token = authHeader?.replace("Bearer ", "");
-    if (token !== SCHEDULER_SECRET) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+  // This mandatory custom gate replaces the incompatible JWT gateway contract.
+  const denied = await schedulerGate(req, SCHEDULER_SECRET);
+  if (denied) return denied;
+  const mode = new URL(req.url).searchParams.get("mode") ?? "run";
+  if (mode !== "run" && mode !== "health") {
+    return Response.json({ error: "Unknown mode" }, { status: 400 });
+  }
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !Deno.env.get("INTERNAL_API_SECRET")) {
+    return Response.json({ error: "Scheduler dependencies are not configured" }, { status: 503 });
+  }
+  // Strictly no-work: before constructing a DB client, generating notifications,
+  // queuing messages or calling Railway. Does not certify provider delivery.
+  if (mode === "health") {
+    return Response.json({ ok: true, mode: "health", processed: 0, sent: 0 });
   }
 
   const runId = crypto.randomUUID();
@@ -423,41 +428,16 @@ Deno.serve(async (req: Request) => {
  * DEPLOYMENT REQUIREMENTS
  * ========================
  *
- * 1. Deploy this Edge Function:
- *    supabase functions deploy dms-expiry-scheduler
- *
- * 2. Set required secrets (never commit these):
- *    supabase secrets set DMS_SCHEDULER_SECRET=<your-random-secret>
- *
- * 3. Register a pg_cron job to call this function daily at 06:00 UTC:
- *    (Run this SQL in Supabase SQL editor as a one-time setup)
- *
- *    SELECT cron.schedule(
- *      'dms-expiry-scheduler-daily',
- *      '0 6 * * *',
- *      $$
- *        SELECT net.http_post(
- *          url := current_setting('app.settings.supabase_url') || '/functions/v1/dms-expiry-scheduler',
- *          headers := jsonb_build_object(
- *            'Content-Type', 'application/json',
- *            'Authorization', 'Bearer ' || current_setting('app.settings.dms_scheduler_secret')
- *          ),
- *          body := '{}'::jsonb
- *        );
- *      $$
- *    );
- *
- * 4. Or use a simpler pg_cron job with the service-role URL (requires pg_net extension):
- *    Verify pg_net is enabled: SELECT * FROM pg_extension WHERE extname = 'pg_net';
- *
- * 5. Manual invocation for testing (without pg_cron):
- *    curl -X POST https://<project>.supabase.co/functions/v1/dms-expiry-scheduler \
- *      -H "Authorization: Bearer <DMS_SCHEDULER_SECRET>"
- *
- * NOTES:
- * - SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are auto-injected by Supabase Edge Runtime.
- * - DMS_SCHEDULER_SECRET must be set manually via `supabase secrets set`.
- * - The function is idempotent: re-running will not create duplicate notifications.
- * - Email sending is handled by processEmailQueue (existing global email pipeline).
- *   The scheduler does NOT directly call the email provider.
+ * Deploy auth.ts with index.ts and the explicit verify_jwt=false configuration.
+ * The mandatory custom gate must pass negative/positive tests before deployment.
+ * Set DMS_SCHEDULER_SECRET through the approved secret store; the same value is
+ * held in Vault as algt_dms_scheduler_secret. Cron sends it only in the
+ * x-dms-scheduler-secret header. Never embed it in cron SQL or shell arguments.
+ * Update existing cron job 1 in place; do not create a second daily producer.
+ * Coordinate INTERNAL_API_SECRET with Railway and the separate email cron job.
+ * Authorized POST ?mode=health returns zero work; it cannot send mail or certify
+ * business-delivery idempotency. Ordinary POST preserves the existing pipeline.
+ * Keep the provider-owned net schema out of the Data API and expose no public
+ * SQL bridge to its request/response rows; verify that boundary before cutover.
+ * See the recorded F02 blocker-repair cutover plan for guards and exact targets.
  */

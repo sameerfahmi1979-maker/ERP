@@ -1,11 +1,14 @@
 "use server";
+import {saveWorkspaceRecord, type WorkspaceSaveResult} from "@/server/workspace-save";
+import type {WorkspaceSaveContract} from "@/lib/workspace/save-contract";
+import { workspaceValidationFailure } from "@/lib/workspace/field-errors";
 
-import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
+import { getAuthContext, hasPermission, hasPermissionInScope, hasGlobalPermission } from "@/lib/rbac/check";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { revalidatePath } from "next/cache";
+import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/server/actions/audit";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 // ============================================================================
@@ -17,6 +20,21 @@ export type ActionResult<T = unknown> = {
   data?: T;
   error?: string;
 };
+
+export async function getRecruitmentSalaryAccess(requisitionId: number | null): Promise<ActionResult<{canView:boolean;canManage:boolean;companyId:number|null;branchId:number|null}>> {
+  const ctx=await getAuthContext();
+  if(!hasPermission(ctx,'hr.recruitment.view')&&!hasPermission(ctx,'hr.recruitment.manage')) return {success:false,error:'Permission denied'};
+  let companyId:number|null=null,branchId:number|null=null;
+  if(requisitionId!==null){
+    if(!Number.isSafeInteger(requisitionId)||requisitionId<=0)return {success:false,error:'Invalid requisition'};
+    const db=await createClient();const r=await db.from('hr_job_requisitions').select('owner_company_id,branch_id').eq('id',requisitionId).is('deleted_at',null).single();
+    if(r.error||!r.data)return {success:false,error:'Requisition unavailable'};
+    companyId=r.data.owner_company_id;branchId=r.data.branch_id;
+  }
+  const allowed=(code:string)=>companyId===null?hasGlobalPermission(ctx,code):hasPermissionInScope(ctx,code,companyId,branchId);
+  const canView=allowed('hr.payroll.view');
+  return {success:true,data:{canView,canManage:canView&&allowed('hr.payroll.manage'),companyId,branchId}};
+}
 
 // ============================================================================
 // Audit helper
@@ -337,6 +355,7 @@ export type CandidateRow = {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  workspace_revision: number;
   created_by: number | null;
   deleted_at: string | null;
   // Joins
@@ -362,7 +381,7 @@ export type InterviewRow = {
   updated_at: string;
   deleted_at: string | null;
   candidate?: { id: number; candidate_code: string | null; full_name_en: string } | null;
-  interviewer?: { id: number; full_name_en: string | null; email: string } | null;
+  interviewer?: { id: number; full_name_en: string | null } | null;
 };
 
 export type OfferRow = {
@@ -410,7 +429,7 @@ export type OnboardingTaskRow = {
   updated_at: string;
   deleted_at: string | null;
   candidate?: { id: number; candidate_code: string | null; full_name_en: string } | null;
-  assigned_user?: { id: number; full_name_en: string | null; email: string } | null;
+  assigned_user?: { id: number; full_name_en: string | null } | null;
 };
 
 export type RecruitmentLinkRow = {
@@ -555,7 +574,7 @@ export async function updateJobRequisition(
     const { data: current } = await supabase.from("hr_job_requisitions").select("id, requisition_code").eq("id", id).is("deleted_at", null).single();
     if (!current) return { success: false, error: "Requisition not found" };
 
-    const { error } = await supabase.from("hr_job_requisitions").update({ ...parsed.data, updated_by: ctx.profile?.id ?? null }).eq("id", id).is("deleted_at", null);
+    const { error } = await supabase.from("hr_job_requisitions").update({ ...parsed.data, updated_by: ctx.profile?.id ?? null }).eq("id", id).is("deleted_at", null).select("id").single();
     if (error) return { success: false, error: error.message };
 
     await recruitmentAuditLog({ action: "update", entity_name: "hr_job_requisitions", entity_id: id, entity_reference: current.requisition_code ?? undefined, requisition_id: id, requisition_code: current.requisition_code ?? undefined });
@@ -577,7 +596,7 @@ export async function archiveJobRequisition(id: number): Promise<ActionResult<vo
     const { data: current } = await supabase.from("hr_job_requisitions").select("id, requisition_code").eq("id", id).is("deleted_at", null).single();
     if (!current) return { success: false, error: "Requisition not found" };
 
-    const { error } = await supabase.from("hr_job_requisitions").update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id ?? null }).eq("id", id);
+    const { error } = await supabase.from("hr_job_requisitions").update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id ?? null }).eq("id", id).select("id").single();
     if (error) return { success: false, error: error.message };
 
     await recruitmentAuditLog({ action: "archive", entity_name: "hr_job_requisitions", entity_id: id, entity_reference: current.requisition_code ?? undefined });
@@ -602,7 +621,7 @@ export async function changeJobRequisitionStatus(id: number, status: string, not
     const { data: current } = await supabase.from("hr_job_requisitions").select("id, requisition_code, requisition_status").eq("id", id).is("deleted_at", null).single();
     if (!current) return { success: false, error: "Requisition not found" };
 
-    const { error } = await supabase.from("hr_job_requisitions").update({ requisition_status: status, updated_by: ctx.profile?.id ?? null, notes: notes ?? undefined }).eq("id", id);
+    const { error } = await supabase.from("hr_job_requisitions").update({ requisition_status: status, updated_by: ctx.profile?.id ?? null, notes: notes ?? undefined }).eq("id", id).select("id").single();
     if (error) return { success: false, error: error.message };
 
     await recruitmentAuditLog({ action: "update", entity_name: "hr_job_requisitions", entity_id: id, entity_reference: current.requisition_code ?? undefined, extra: { old_status: current.requisition_status, new_status: status } });
@@ -677,70 +696,24 @@ export async function getCandidate(id: number): Promise<ActionResult<CandidateRo
   }
 }
 
-export async function createCandidate(
-  input: z.infer<typeof candidateCreateSchema>
-): Promise<ActionResult<{ id: number; candidate_code: string }>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.recruitment.manage") && !ctx.roleCodes?.includes("system_admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-    const parsed = candidateCreateSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues.map((i) => i.message).join("; ") };
-
-    const adminClient = createAdminClient();
-    const { data: numData, error: numError } = await adminClient.rpc("generate_next_reference_number", {
-      p_rule_code: "HR_CANDIDATE",
-      p_document_type_code: null,
-      p_target_table_name: "hr_candidates",
-      p_target_record_id: null,
-      p_generation_reason: "New candidate",
-      p_generated_by: ctx.profile?.id ?? null,
-    });
-    if (numError || !numData || numData.length === 0) return { success: false, error: "Failed to generate candidate code" };
-    const candidateCode: string = numData[0].generated_reference_number;
-
-    const supabase = await createClient();
-    const { data: rec, error: insertError } = await supabase
-      .from("hr_candidates")
-      .insert({ ...parsed.data, candidate_code: candidateCode, created_by: ctx.profile?.id ?? null, updated_by: ctx.profile?.id ?? null })
-      .select("id, candidate_code")
-      .single();
-    if (insertError || !rec) return { success: false, error: insertError?.message ?? "Insert failed" };
-
-    await recruitmentAuditLog({ action: "create", entity_name: "hr_candidates", entity_id: rec.id, entity_reference: candidateCode, candidate_id: rec.id, candidate_code: candidateCode, candidate_name: parsed.data.full_name_en });
-    revalidatePath("/admin/hr/recruitment/candidates");
-    return { success: true, data: { id: rec.id, candidate_code: candidateCode } };
-  } catch (err) {
-    logger.error("createCandidate error", err);
-    return { success: false, error: "Failed to create candidate" };
-  }
+export async function createCandidate(input: z.infer<typeof candidateCreateSchema>,contract: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const ctx=await getAuthContext();
+  if(!hasPermission(ctx,"hr.recruitment.manage")&&!ctx.roleCodes?.includes("system_admin")) return {success:false,error:"Permission denied"};
+  const parsed=candidateCreateSchema.safeParse(input);
+  if(!parsed.success) return workspaceValidationFailure(parsed.error.issues);
+  const result=await saveWorkspaceRecord("hr_candidates",null,parsed.data,contract);
+  if(result.success) revalidatePath("/admin/hr/recruitment/candidates");
+  return result;
 }
 
-export async function updateCandidate(id: number, input: z.infer<typeof candidateUpdateSchema>): Promise<ActionResult<void>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.recruitment.manage") && !ctx.roleCodes?.includes("system_admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-    const parsed = candidateUpdateSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues.map((i) => i.message).join("; ") };
-
-    const supabase = await createClient();
-    const { data: current } = await supabase.from("hr_candidates").select("id, candidate_code, full_name_en").eq("id", id).is("deleted_at", null).single();
-    if (!current) return { success: false, error: "Candidate not found" };
-
-    const { error } = await supabase.from("hr_candidates").update({ ...parsed.data, updated_by: ctx.profile?.id ?? null }).eq("id", id).is("deleted_at", null);
-    if (error) return { success: false, error: error.message };
-
-    await recruitmentAuditLog({ action: "update", entity_name: "hr_candidates", entity_id: id, entity_reference: current.candidate_code ?? undefined, candidate_id: id, candidate_code: current.candidate_code ?? undefined, candidate_name: current.full_name_en });
-    revalidatePath("/admin/hr/recruitment/candidates");
-    revalidatePath(`/admin/hr/recruitment/candidates/record/${id}`);
-    return { success: true };
-  } catch (err) {
-    logger.error("updateCandidate error", err);
-    return { success: false, error: "Failed to update candidate" };
-  }
+export async function updateCandidate(id: number,input: z.infer<typeof candidateUpdateSchema>,contract: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const ctx=await getAuthContext();
+  if(!hasPermission(ctx,"hr.recruitment.manage")&&!ctx.roleCodes?.includes("system_admin")) return {success:false,error:"Permission denied"};
+  const parsed=candidateUpdateSchema.safeParse(input);
+  if(!parsed.success) return workspaceValidationFailure(parsed.error.issues);
+  const result=await saveWorkspaceRecord("hr_candidates",id,parsed.data,contract);
+  if(result.success) {revalidatePath("/admin/hr/recruitment/candidates");revalidatePath(`/admin/hr/recruitment/candidates/record/${id}`);}
+  return result;
 }
 
 export async function archiveCandidate(id: number): Promise<ActionResult<void>> {
@@ -753,7 +726,7 @@ export async function archiveCandidate(id: number): Promise<ActionResult<void>> 
     const { data: current } = await supabase.from("hr_candidates").select("id, candidate_code").eq("id", id).is("deleted_at", null).single();
     if (!current) return { success: false, error: "Candidate not found" };
 
-    const { error } = await supabase.from("hr_candidates").update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id ?? null }).eq("id", id);
+    const { error } = await supabase.from("hr_candidates").update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id ?? null }).eq("id", id).select("id").single();
     if (error) return { success: false, error: error.message };
 
     await recruitmentAuditLog({ action: "archive", entity_name: "hr_candidates", entity_id: id, entity_reference: current.candidate_code ?? undefined });
@@ -784,7 +757,7 @@ export async function changeCandidateStatus(
     const updatePayload: Record<string, unknown> = { candidate_status: parsed.data.candidate_status, updated_by: ctx.profile?.id ?? null };
     if (parsed.data.pipeline_stage) updatePayload.pipeline_stage = parsed.data.pipeline_stage;
 
-    const { error } = await supabase.from("hr_candidates").update(updatePayload).eq("id", id);
+    const { error } = await supabase.from("hr_candidates").update(updatePayload).eq("id", id).select("id").single();
     if (error) return { success: false, error: error.message };
 
     await recruitmentAuditLog({ action: "update", entity_name: "hr_candidates", entity_id: id, entity_reference: current.candidate_code ?? undefined, candidate_id: id, candidate_code: current.candidate_code ?? undefined, candidate_name: current.full_name_en, extra: { action_type: "candidate_status_changed", old_status: current.candidate_status, new_status: parsed.data.candidate_status } });
@@ -898,7 +871,7 @@ export async function verifyCandidateDocument(id: number): Promise<ActionResult<
       return { success: false, error: "Permission denied" };
     }
     const supabase = await createClient();
-    const { error } = await supabase.from("hr_candidate_documents").update({ verification_status: "verified" }).eq("id", id).is("deleted_at", null);
+    const { error } = await supabase.from("hr_candidate_documents").update({ verification_status: "verified" }).eq("id", id).is("deleted_at", null).select("id").single();
     if (error) return { success: false, error: error.message };
     return { success: true };
   } catch (err) {
@@ -914,7 +887,7 @@ export async function archiveCandidateDocument(id: number): Promise<ActionResult
       return { success: false, error: "Permission denied" };
     }
     const supabase = await createClient();
-    const { error } = await supabase.from("hr_candidate_documents").update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id ?? null }).eq("id", id);
+    const { error } = await supabase.from("hr_candidate_documents").update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id ?? null }).eq("id", id).select("id").single();
     if (error) return { success: false, error: error.message };
     return { success: true };
   } catch (err) {
@@ -929,7 +902,7 @@ export async function archiveCandidateDocument(id: number): Promise<ActionResult
 
 const INT_JOINS = [
   "candidate:hr_candidates(id,candidate_code,full_name_en)",
-  "interviewer:user_profiles(id,full_name_en,email)",
+  "interviewer:user_profiles!hr_interviews_interviewer_id_fkey(id,full_name_en:full_name)",
   "requisition:hr_job_requisitions(id,requisition_code,requisition_title)",
 ].join(",");
 
@@ -1024,7 +997,7 @@ export async function updateInterview(id: number, input: z.infer<typeof intervie
     const { data: current } = await supabase.from("hr_interviews").select("id, candidate_id").eq("id", id).is("deleted_at", null).single();
     if (!current) return { success: false, error: "Interview not found" };
 
-    const { error } = await supabase.from("hr_interviews").update({ ...parsed.data, updated_by: ctx.profile?.id ?? null }).eq("id", id);
+    const { error } = await supabase.from("hr_interviews").update({ ...parsed.data, updated_by: ctx.profile?.id ?? null }).eq("id", id).select("id").single();
     if (error) return { success: false, error: error.message };
 
     revalidatePath(`/admin/hr/recruitment/candidates/record/${current.candidate_id}`);
@@ -1043,7 +1016,7 @@ export async function archiveInterview(id: number): Promise<ActionResult<void>> 
       return { success: false, error: "Permission denied" };
     }
     const supabase = await createClient();
-    const { error } = await supabase.from("hr_interviews").update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id ?? null }).eq("id", id);
+    const { error } = await supabase.from("hr_interviews").update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id ?? null }).eq("id", id).select("id").single();
     if (error) return { success: false, error: error.message };
     revalidatePath("/admin/hr/recruitment/interviews");
     return { success: true };
@@ -1066,7 +1039,7 @@ export async function completeInterview(id: number, input: z.infer<typeof interv
     const { data: current } = await supabase.from("hr_interviews").select("id, candidate_id").eq("id", id).is("deleted_at", null).single();
     if (!current) return { success: false, error: "Interview not found" };
 
-    const { error } = await supabase.from("hr_interviews").update({ interview_status: "completed", ...parsed.data, updated_by: ctx.profile?.id ?? null }).eq("id", id);
+    const { error } = await supabase.from("hr_interviews").update({ interview_status: "completed", ...parsed.data, updated_by: ctx.profile?.id ?? null }).eq("id", id).select("id").single();
     if (error) return { success: false, error: error.message };
 
     await recruitmentAuditLog({ action: "update", entity_name: "hr_interviews", entity_id: id, candidate_id: current.candidate_id, extra: { action_type: "interview_completed", result: parsed.data.result } });
@@ -1089,7 +1062,7 @@ export async function cancelInterview(id: number, reason: string): Promise<Actio
     const { data: current } = await supabase.from("hr_interviews").select("id, candidate_id").eq("id", id).is("deleted_at", null).single();
     if (!current) return { success: false, error: "Interview not found" };
 
-    const { error } = await supabase.from("hr_interviews").update({ interview_status: "cancelled", next_step: reason, updated_by: ctx.profile?.id ?? null }).eq("id", id);
+    const { error } = await supabase.from("hr_interviews").update({ interview_status: "cancelled", next_step: reason, updated_by: ctx.profile?.id ?? null }).eq("id", id).select("id").single();
     if (error) return { success: false, error: error.message };
 
     revalidatePath(`/admin/hr/recruitment/candidates/record/${current.candidate_id}`);
@@ -1169,12 +1142,19 @@ export async function createOffer(candidateId: number, input: z.infer<typeof off
     if (!parsed.success) return { success: false, error: parsed.error.issues.map((i) => i.message).join("; ") };
 
     const supabase = await createClient();
-    const { data: candidate } = await supabase.from("hr_candidates").select("candidate_code, full_name_en").eq("id", candidateId).is("deleted_at", null).single();
+    const { data: candidate } = await supabase.from("hr_candidates").select("candidate_code, full_name_en,requisition_id").eq("id", candidateId).is("deleted_at", null).single();
     if (!candidate) return { success: false, error: "Candidate not found" };
+    // Candidate offer dialogs do not choose an owner: inherit the authorized
+    // requisition, never default a branch-scoped offer to an unscoped record.
+    const scope=await getRecruitmentSalaryAccess(candidate.requisition_id);
+    if(!scope.success||!scope.data)return {success:false,error:scope.error??'Candidate scope unavailable'};
+    const offerScope={requisition_id:parsed.data.requisition_id??candidate.requisition_id,
+      owner_company_id:parsed.data.owner_company_id??scope.data.companyId,
+      branch_id:parsed.data.branch_id??scope.data.branchId};
 
     const { data: rec, error } = await supabase
       .from("hr_offers")
-      .insert({ candidate_id: candidateId, ...parsed.data, created_by: ctx.profile?.id ?? null, updated_by: ctx.profile?.id ?? null })
+      .insert({ candidate_id: candidateId, ...parsed.data, ...offerScope, created_by: ctx.profile?.id ?? null, updated_by: ctx.profile?.id ?? null })
       .select("id")
       .single();
     if (error || !rec) return { success: false, error: error?.message ?? "Insert failed" };
@@ -1202,7 +1182,7 @@ export async function updateOffer(id: number, input: z.infer<typeof offerUpdateS
     const { data: current } = await supabase.from("hr_offers").select("id, candidate_id").eq("id", id).is("deleted_at", null).single();
     if (!current) return { success: false, error: "Offer not found" };
 
-    const { error } = await supabase.from("hr_offers").update({ ...parsed.data, updated_by: ctx.profile?.id ?? null }).eq("id", id);
+    const { error } = await supabase.from("hr_offers").update({ ...parsed.data, updated_by: ctx.profile?.id ?? null }).eq("id", id).select("id").single();
     if (error) return { success: false, error: error.message };
 
     revalidatePath(`/admin/hr/recruitment/candidates/record/${current.candidate_id}`);
@@ -1221,7 +1201,7 @@ export async function archiveOffer(id: number): Promise<ActionResult<void>> {
       return { success: false, error: "Permission denied" };
     }
     const supabase = await createClient();
-    const { error } = await supabase.from("hr_offers").update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id ?? null }).eq("id", id);
+    const { error } = await supabase.from("hr_offers").update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id ?? null }).eq("id", id).select("id").single();
     if (error) return { success: false, error: error.message };
     revalidatePath("/admin/hr/recruitment/offers");
     return { success: true };
@@ -1246,7 +1226,7 @@ export async function changeOfferStatus(id: number, status: string, notes?: stri
 
     const updatePayload: Record<string, unknown> = { offer_status: status, updated_by: ctx.profile?.id ?? null };
     if (notes) updatePayload.notes = notes;
-    const { error } = await supabase.from("hr_offers").update(updatePayload).eq("id", id);
+    const { error } = await supabase.from("hr_offers").update(updatePayload).eq("id", id).select("id").single();
     if (error) return { success: false, error: error.message };
 
     await recruitmentAuditLog({ action: "update", entity_name: "hr_offers", entity_id: id, candidate_id: current.candidate_id, extra: { action_type: `offer_${status}`, old_status: current.offer_status, new_status: status } });
@@ -1269,7 +1249,7 @@ export async function withdrawOffer(id: number, reason: string) { return changeO
 
 const TASK_JOINS = [
   "candidate:hr_candidates(id,candidate_code,full_name_en)",
-  "assigned_user:user_profiles!hr_onboarding_tasks_assigned_to_fkey(id,full_name_en,email)",
+  "assigned_user:user_profiles!hr_onboarding_tasks_assigned_to_fkey(id,full_name_en:full_name)",
 ].join(",");
 
 export async function listCandidateOnboardingTasks(candidateId: number): Promise<ActionResult<OnboardingTaskRow[]>> {
@@ -1380,7 +1360,7 @@ export async function updateOnboardingTask(id: number, input: z.infer<typeof onb
     const { data: current } = await supabase.from("hr_onboarding_tasks").select("id, candidate_id, employee_id").eq("id", id).is("deleted_at", null).single();
     if (!current) return { success: false, error: "Task not found" };
 
-    const { error } = await supabase.from("hr_onboarding_tasks").update({ ...parsed.data, updated_by: ctx.profile?.id ?? null }).eq("id", id);
+    const { error } = await supabase.from("hr_onboarding_tasks").update({ ...parsed.data, updated_by: ctx.profile?.id ?? null }).eq("id", id).select("id").single();
     if (error) return { success: false, error: error.message };
 
     revalidatePath("/admin/hr/recruitment/onboarding");
@@ -1403,7 +1383,7 @@ export async function completeOnboardingTask(id: number, notes?: string): Promis
 
     const updatePayload: Record<string, unknown> = { task_status: "completed", completed_by: ctx.profile?.id ?? null, completed_at: new Date().toISOString(), updated_by: ctx.profile?.id ?? null };
     if (notes) updatePayload.notes = notes;
-    const { error } = await supabase.from("hr_onboarding_tasks").update(updatePayload).eq("id", id);
+    const { error } = await supabase.from("hr_onboarding_tasks").update(updatePayload).eq("id", id).select("id").single();
     if (error) return { success: false, error: error.message };
 
     await recruitmentAuditLog({ action: "update", entity_name: "hr_onboarding_tasks", entity_id: id, candidate_id: current.candidate_id ?? undefined, employee_id: current.employee_id ?? undefined, extra: { action_type: "onboarding_task_completed", task_title: current.task_title } });
@@ -1422,7 +1402,7 @@ export async function blockOnboardingTask(id: number, reason: string): Promise<A
       return { success: false, error: "Permission denied" };
     }
     const supabase = await createClient();
-    const { error } = await supabase.from("hr_onboarding_tasks").update({ task_status: "blocked", notes: reason, updated_by: ctx.profile?.id ?? null }).eq("id", id).is("deleted_at", null);
+    const { error } = await supabase.from("hr_onboarding_tasks").update({ task_status: "blocked", notes: reason, updated_by: ctx.profile?.id ?? null }).eq("id", id).is("deleted_at", null).select("id").single();
     if (error) return { success: false, error: error.message };
     revalidatePath("/admin/hr/recruitment/onboarding");
     return { success: true };
@@ -1439,7 +1419,7 @@ export async function markOnboardingTaskNotApplicable(id: number, reason: string
       return { success: false, error: "Permission denied" };
     }
     const supabase = await createClient();
-    const { error } = await supabase.from("hr_onboarding_tasks").update({ task_status: "not_applicable", notes: reason, updated_by: ctx.profile?.id ?? null }).eq("id", id).is("deleted_at", null);
+    const { error } = await supabase.from("hr_onboarding_tasks").update({ task_status: "not_applicable", notes: reason, updated_by: ctx.profile?.id ?? null }).eq("id", id).is("deleted_at", null).select("id").single();
     if (error) return { success: false, error: error.message };
     return { success: true };
   } catch (err) {
@@ -1455,7 +1435,7 @@ export async function archiveOnboardingTask(id: number): Promise<ActionResult<vo
       return { success: false, error: "Permission denied" };
     }
     const supabase = await createClient();
-    const { error } = await supabase.from("hr_onboarding_tasks").update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id ?? null }).eq("id", id);
+    const { error } = await supabase.from("hr_onboarding_tasks").update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id ?? null }).eq("id", id).select("id").single();
     if (error) return { success: false, error: error.message };
     return { success: true };
   } catch (err) {
@@ -1585,7 +1565,7 @@ export async function convertCandidateToEmployee(
       created_by: ctx.profile?.id ?? null,
     });
 
-    await adminClient.from("employee_recruitment_links").insert({
+    await supabase.from("employee_recruitment_links").insert({
       employee_id: employee.id,
       candidate_id: candidateId,
       requisition_id: parsed.data.requisition_id ?? null,
@@ -1596,7 +1576,7 @@ export async function convertCandidateToEmployee(
       created_by: ctx.profile?.id ?? null,
     });
 
-    await supabase.from("hr_candidates").update({ candidate_status: "hired", pipeline_stage: "hired", updated_by: ctx.profile?.id ?? null }).eq("id", candidateId);
+    await supabase.from("hr_candidates").update({ candidate_status: "hired", pipeline_stage: "hired", updated_by: ctx.profile?.id ?? null }).eq("id", candidateId).select("id").single();
 
     await supabase.from("hr_onboarding_tasks").update({ employee_id: employee.id, updated_by: ctx.profile?.id ?? null }).eq("candidate_id", candidateId).is("deleted_at", null);
 

@@ -1,16 +1,16 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { navigateAfterIdentityChange } from "@/lib/auth/client-session";
+import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { createClient } from "@/lib/supabase/client";
 import { resetPasswordSchema } from "@/lib/validation/auth";
 import { recordPasswordResetCompleted } from "@/server/actions/users/account-security";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RequiredLabel } from "@/components/erp/required-label";
+import { PasswordReverification } from "./password-reverification";
 import {
   Card,
   CardContent,
@@ -21,46 +21,51 @@ import {
 
 type ResetInput = { password: string; confirmPassword: string };
 
-export function ResetPasswordForm() {
-  const router = useRouter();
+export function ResetPasswordForm({ flow = "recovery" }: { flow?: "invite" | "recovery" }) {
+  const invitation = flow === "invite";
   const [loading, setLoading] = useState(false);
+  const [needsVerification, setNeedsVerification] = useState(false);
+  const operationId = useRef<string | null>(null);
   const {
     register,
     handleSubmit,
+    reset,
     formState: { errors },
   } = useForm<ResetInput>({ resolver: zodResolver(resetPasswordSchema) });
 
-  const onSubmit = handleSubmit(async (values) => {
+  const onSubmit = async (values: ResetInput) => {
     setLoading(true);
     try {
-      const supabase = createClient();
-      const { error } = await supabase.auth.updateUser({ password: values.password });
-
-      if (error) {
-        toast.error(error.message);
+      operationId.current ??= crypto.randomUUID();
+      const result = await recordPasswordResetCompleted({ newPassword: values.password, operationId: operationId.current });
+      if (!result.success) {
+        if (result.canStartNewAttempt) operationId.current = null;
+        if (result.requiresFreshSignIn) { reset(); setNeedsVerification(true); return; }
+        toast.error(result.error ?? "Password change could not complete.");
         return;
       }
-
-      // USERS.2A — Update lifecycle fields after successful password reset
-      await recordPasswordResetCompleted();
-
-      toast.success("Password updated");
-      router.push("/dashboard");
-      router.refresh();
+      toast.success(invitation ? "Password created. Your account setup is complete." : "Password updated");
+      navigateAfterIdentityChange("/dashboard");
+    } catch {
+      toast.error("The request was interrupted. Please sign in again before trying another password change.");
     } finally {
       setLoading(false);
     }
-  });
+  };
+
+  if (needsVerification) return <PasswordReverification mode="recovery" />;
 
   return (
     <Card className="w-full max-w-md">
       <CardHeader>
-        <CardTitle>Reset password</CardTitle>
+        <CardTitle><h1>{invitation ? "Create your password" : "Reset password"}</h1></CardTitle>
         <CardDescription>
+          {invitation && "Welcome. Create your own password to finish account setup. You do not need an existing password. "}
           Enter your new password. Must be 10+ characters with uppercase, lowercase, and digit.
+          {" Common or previously exposed passwords may be rejected. Finish in this browser within 15 minutes of verification."}
         </CardDescription>
       </CardHeader>
-      <form onSubmit={onSubmit}>
+      <form onSubmit={(event) => void handleSubmit(onSubmit)(event)}>
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <RequiredLabel htmlFor="password" required>New password</RequiredLabel>
@@ -89,7 +94,7 @@ export function ResetPasswordForm() {
             ) : null}
           </div>
           <Button type="submit" disabled={loading}>
-            {loading ? "Updating..." : "Update password"}
+            {loading ? (invitation ? "Creating..." : "Updating...") : invitation ? "Create password" : "Update password"}
           </Button>
         </CardContent>
       </form>

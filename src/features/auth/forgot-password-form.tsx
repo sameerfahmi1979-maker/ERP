@@ -37,7 +37,9 @@ export function ForgotPasswordForm() {
       // Always returns success — never reveals whether email exists.
       await requestPasswordReset(values.email);
       setSubmitted(true);
-      toast.success("If an account exists, a reset link has been sent.");
+      toast.success("Request received. If eligible, your account will receive reset instructions.");
+    } catch {
+      toast.error("Your request could not reach the service. Please try again later.");
     } finally {
       setLoading(false);
     }
@@ -49,8 +51,8 @@ export function ForgotPasswordForm() {
         <CardHeader>
           <CardTitle>Check your email</CardTitle>
           <CardDescription>
-            If an account with that email exists, a password reset link has been sent.
-            Check your inbox and follow the link to reset your password.
+            If your account is eligible, you will receive password reset instructions.
+            Check your inbox and junk folder. If nothing arrives, contact your administrator.
           </CardDescription>
         </CardHeader>
         <CardContent />

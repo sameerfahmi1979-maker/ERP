@@ -10,8 +10,9 @@ import { Calendar, Clock, PlusCircle, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { AuthContext } from "@/lib/rbac/check";
-import { useWorkspace } from "@/hooks/use-workspace";
-import { useFormDirty } from "@/hooks/use-form-dirty";
+import { useWorkspaceFormNavigation as useWorkspace } from "@/hooks/use-workspace-form-navigation";
+import { useWorkspaceFormSection } from "@/hooks/use-workspace-form-section";
+import { useWorkspaceFormDirty as useFormDirty } from "@/hooks/use-workspace-form-dirty";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
 import { ERPRecordWorkspaceForm, ERPRecordSectionPanel } from "@/components/workspace/erp-record-workspace-form";
 import { RequiredLabel } from "@/components/erp/required-label";
@@ -35,7 +36,11 @@ const FORM_ID = "work-calendar-workspace-form";
 export function WorkCalendarWorkspaceForm({ calendar, mode, companies = [] }: Props) {
   const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeSection, setActiveSection] = useState("basic");
+  const sections = [
+    { id: "basic", label: "Calendar Info", icon: Calendar },
+    { id: "shifts", label: "Shifts", icon: Clock },
+  ];
+  const [activeSection, setActiveSection] = useWorkspaceFormSection(FORM_ID, "basic", sections.map(section => section.id));
   const [workingDays, setWorkingDays] = useState<string[]>(calendar?.working_days ?? ['mon','tue','wed','thu','fri']);
   const [shiftDialog, setShiftDialog] = useState<{ open: boolean; editing: Record<string, unknown> | null }>({ open: false, editing: null });
   const [shiftSaving, setShiftSaving] = useState(false);
@@ -59,10 +64,6 @@ export function WorkCalendarWorkspaceForm({ calendar, mode, companies = [] }: Pr
     initialData: calendar?.shifts ?? [],
   });
 
-  const sections = [
-    { id: "basic", label: "Calendar Info", icon: Calendar },
-    { id: "shifts", label: "Shifts", icon: Clock },
-  ];
 
   const handleRequestClose = () => closeTab(activeTab?.id ?? "");
 

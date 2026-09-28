@@ -3,31 +3,31 @@
  * Phase: REPORT.4 — HR.11 Reports + Letters + Forms Library
  */
 import type { ReportFetcher, ReportDataResult } from "@/lib/report-center/types";
-import { createAdminClient } from "@/lib/supabase/admin";
+import type { ReportReadClient } from "@/lib/report-center/scoped-read-client";
 
 export const requisitionsFetcher: ReportFetcher = {
   reportCode: "HR_REQUISITIONS",
 
-  async fetch(filters: Record<string, unknown>): Promise<ReportDataResult> {
-    const db = createAdminClient();
+  async fetch(filters: Record<string, unknown>, _permissions: string[], db: ReportReadClient): Promise<ReportDataResult> {
+
 
     let q = db
       .from("hr_job_requisitions")
       .select(
-        `id, requisition_code, requisition_title, headcount_required, requisition_status,
-         opened_date, target_fill_date, owner_company_id,
+        `id, requisition_code, requisition_title, headcount_required:vacancies_count, requisition_status,
+         opened_date:created_at, target_fill_date:target_start_date, owner_company_id,
          department:departments(department_name_en),
          designation:designations(designation_name_en),
          owner_company:owner_companies(legal_name_en)`
       )
       .is("deleted_at", null)
-      .order("opened_date", { ascending: false });
+      .order("created_at", { ascending: false });
 
     if (filters.owner_company_id) q = q.eq("owner_company_id", Number(filters.owner_company_id));
     if (filters.department_id) q = q.eq("department_id", Number(filters.department_id));
     if (filters.requisition_status) q = q.eq("requisition_status", String(filters.requisition_status));
-    if (filters.date_from) q = q.gte("opened_date", String(filters.date_from));
-    if (filters.date_to) q = q.lte("opened_date", String(filters.date_to));
+    if (filters.date_from) q = q.gte("created_at", String(filters.date_from));
+    if (filters.date_to) q = q.lte("created_at", String(filters.date_to));
 
     const { data: reqs, error } = await q.limit(2000);
     if (error) throw new Error(`HR_REQUISITIONS fetch error: ${error.message}`);

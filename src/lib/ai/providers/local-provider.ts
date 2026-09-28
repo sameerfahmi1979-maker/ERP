@@ -38,7 +38,7 @@ export class LocalProvider implements AiProviderInterface {
     }
 
     if (this.config.providerType === "local_ollama") {
-      const rawEndpoint = this.config.apiEndpoint ?? (process.env[this.config.secretRef ?? "LOCAL_LLM_ENDPOINT"] ?? "http://localhost:11434");
+      const rawEndpoint = this.config.apiEndpoint ?? (process.env.LOCAL_LLM_ENDPOINT ?? "http://localhost:11434");
       // Warn if a non-localhost endpoint uses plain HTTP (security risk in production)
       const endpoint = rawEndpoint;
       if (process.env.NODE_ENV === "production" && endpoint.startsWith("http://") && !endpoint.includes("localhost") && !endpoint.includes("127.0.0.1")) {

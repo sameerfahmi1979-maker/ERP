@@ -1,6 +1,9 @@
 "use client";
 
-import { type ReactNode, useRef, useCallback } from "react";
+import { type ReactNode, useRef, useCallback, useState, useEffect } from "react";
+import { toast } from "sonner";
+import { useWorkspaceNavigationLock } from "@/hooks/use-workspace-navigation-lock";
+import { collectWorkspaceFieldIssues, type WorkspaceFieldIssue } from "@/lib/workspace/form-validation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Loader2, X as XIcon } from "lucide-react";
@@ -34,7 +37,9 @@ export type ERPChildDialogFormProps = {
   size?: keyof typeof SIZE_CLASSES;
   isSubmitting?: boolean;
   onCancel?: () => void;
-  onSubmit?: () => void;
+  onSubmit?: () => void | Promise<unknown>;
+  /** Controlled/custom inputs should supply meaningful dirty state. Otherwise native edits are tracked conservatively. */
+  isDirty?: boolean;
   submitLabel?: string;
   cancelLabel?: string;
   children: ReactNode;
@@ -51,7 +56,12 @@ export type ERPChildDialogFormProps = {
  *   - Outside click and Esc are disabled — user must Cancel/Save explicitly
  *   - Parent record content is inert (handled by ERPRecordWorkspaceForm)
  */
-export function ERPChildDialogForm({
+export function ERPChildDialogForm(props: ERPChildDialogFormProps) {
+  // Each opening owns a fresh interaction/validation session; no field values go to storage.
+  return props.open ? <ChildDialogSession {...props} /> : null;
+}
+
+function ChildDialogSession({
   open,
   onOpenChange,
   title,
@@ -60,6 +70,7 @@ export function ERPChildDialogForm({
   mode = "add",
   size = "lg",
   isSubmitting = false,
+  isDirty,
   onCancel,
   onSubmit,
   submitLabel,
@@ -68,6 +79,21 @@ export function ERPChildDialogForm({
 }: ERPChildDialogFormProps) {
   // Track programmatic closes (Cancel/X/Save) to block outside-click and Esc.
   const programmaticCloseRef = useRef(false);
+  const flight = useRef(false);
+  const body = useRef<HTMLDivElement>(null);
+  const [pending, setPending] = useState(false);
+  const [edited, setEdited] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [issues, setIssues] = useState<WorkspaceFieldIssue[]>([]);
+  const busy = isSubmitting || pending;
+  useWorkspaceNavigationLock(mode !== "view");
+
+  useEffect(() => {
+    if (mode === "view") return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [mode]);
 
   const closeDialog = useCallback(() => {
     programmaticCloseRef.current = true;
@@ -78,9 +104,23 @@ export function ERPChildDialogForm({
   }, [onOpenChange]);
 
   const handleCancel = useCallback(() => {
+    if (flight.current || isSubmitting) return;
+    if (mode !== "view" && (isDirty ?? edited)) { setConfirmDiscard(true); return; }
     onCancel?.();
     closeDialog();
-  }, [onCancel, closeDialog]);
+  }, [onCancel, closeDialog, isSubmitting, mode, isDirty, edited]);
+
+  const submit = async () => {
+    if (flight.current || isSubmitting || !onSubmit) return;
+    const invalid = body.current ? collectWorkspaceFieldIssues(body.current) : [];
+    setIssues(invalid);
+    if (invalid.length) { invalid[0].control?.focus(); return; }
+    flight.current = true;
+    setPending(true);
+    try { await onSubmit(); }
+    catch { toast.error("The save could not be confirmed. Your entries are still here. Check the record before retrying to avoid duplicates."); }
+    finally { flight.current = false; setPending(false); }
+  };
 
   // Guard: only allow close if triggered programmatically (not by Esc/outside click).
   const guardedOnOpenChange = useCallback(
@@ -114,6 +154,7 @@ export function ERPChildDialogForm({
           "max-w-none",
         )}
       >
+        {mode !== "view" && <p className="px-6 pt-3 text-xs text-muted-foreground">Finish or cancel this dialog before leaving the page. Unsaved dialog entries and selected files are not restored after leaving or reloading.</p>}
         {/* ── Header ─────────────────────────────────────────────────── */}
         <div className="flex items-start gap-3 px-6 py-4 border-b shrink-0">
           {icon && (
@@ -134,7 +175,7 @@ export function ERPChildDialogForm({
             variant="ghost"
             size="icon-sm"
             className="shrink-0 -mr-2 -mt-1"
-            disabled={isSubmitting}
+            disabled={busy}
             type="button"
             onClick={handleCancel}
             aria-label="Close"
@@ -144,7 +185,24 @@ export function ERPChildDialogForm({
         </div>
 
         {/* ── Body (scrollable) ───────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto p-6 min-h-0">{children}</div>
+        <div ref={body} className="flex-1 overflow-y-auto p-6 min-h-0" inert={busy || undefined}
+          onChangeCapture={() => { setEdited(true); if (issues.length && body.current) setIssues(collectWorkspaceFieldIssues(body.current)); }}>
+          {issues.length > 0 && <div role="alert" className="mb-4 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm">
+            <p className="font-medium">Check these fields before saving</p>
+            <ul className="mt-2 space-y-1">{issues.map((issue, index) => <li key={index}>
+              <button type="button" className="text-left underline underline-offset-2" onClick={() => issue.control?.focus()}>{issue.label}: {issue.message}</button>
+            </li>)}</ul>
+          </div>}
+          {children}
+        </div>
+
+        {confirmDiscard && <div role="alert" className="border-t border-amber-500/40 bg-amber-500/10 px-6 py-3 text-sm">
+          <p className="font-medium">Discard unsaved changes?</p><p>Your entries in this dialog have not been saved.</p>
+          <div className="mt-2 flex gap-2">
+            <Button type="button" variant="outline" onClick={() => setConfirmDiscard(false)}>Keep editing</Button>
+            <Button type="button" variant="destructive" disabled={busy} onClick={() => { if (flight.current || isSubmitting) return; onCancel?.(); closeDialog(); }}>Discard changes</Button>
+          </div>
+        </div>}
 
         {/* ── Footer (sticky) ────────────────────────────────────────── */}
         <div className="flex items-center justify-between px-6 py-3 border-t bg-muted/30 shrink-0">
@@ -152,7 +210,7 @@ export function ERPChildDialogForm({
             type="button"
             variant="outline"
             onClick={handleCancel}
-            disabled={isSubmitting}
+            disabled={busy}
           >
             {cancelLabel}
           </Button>
@@ -160,10 +218,10 @@ export function ERPChildDialogForm({
           {mode !== "view" && onSubmit && (
             <Button
               type="button"
-              onClick={onSubmit}
-              disabled={isSubmitting}
+              onClick={submit}
+              disabled={busy || confirmDiscard}
             >
-              {isSubmitting && (
+              {busy && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
               {resolvedSubmitLabel}

@@ -8,6 +8,7 @@ import { DmsUploadInboxPageClient } from "@/features/dms/upload/dms-upload-inbox
 import type { DmsDocumentTypeOption, DmsEntityContext } from "@/features/dms/upload/dms-create-document-from-upload-dialog";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { DMS_ENTITY_TYPES } from "@/features/dms/documents/dms-document-constants";
+import { DmsLoadError } from "@/features/dms/documents/dms-load-error";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -56,7 +57,7 @@ export default async function DmsInboxPage({
         breadcrumbs={[{ label: "DMS", href: "/dms" }, { label: "Upload Inbox" }]}
       />
 
-      <DmsUploadInboxPageClient
+      {!sessionsResult.success || !documentsResult.success || !defaultsResult.success ? <DmsLoadError /> : <DmsUploadInboxPageClient
         initialSessions={sessions}
         documents={documents}
         documentTypes={documentTypes}
@@ -64,7 +65,7 @@ export default async function DmsInboxPage({
         isAdmin={hasPermission(authContext, "dms.admin")}
         batchEnabled={batchEnabled}
         autoStartEnabled={autoStartEnabled}
-      />
+      />}
     </div>
   );
 }

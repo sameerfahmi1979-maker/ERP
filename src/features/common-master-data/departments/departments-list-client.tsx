@@ -40,7 +40,7 @@ export function DepartmentsListClient({ departments: initial, canManage }: Props
   const handleToggleActive = async (dept: DepartmentRow) => {
     setPendingId(dept.id);
     try {
-      const result = await updateDepartment({ id: dept.id, is_active: !dept.is_active });
+      const result = await updateDepartment({ id: dept.id, is_active: !dept.is_active }, {operationId:crypto.randomUUID(),revision:String(dept.workspace_revision)});
       if (result.success) {
         setDepartments((prev) =>
           prev.map((d) => (d.id === dept.id ? { ...d, is_active: !d.is_active } : d))

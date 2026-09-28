@@ -48,8 +48,8 @@ import { DuplicateCandidateAlert } from "@/features/ai/common/duplicate-detectio
 import { AiFieldSuggestionsPanel } from "@/features/ai/common/field-suggestions";
 import { RiskScoreAlert } from "@/features/ai/common/risk-scoring";
 import type { DuplicateMatch, Party } from "@/features/master-data/parties/party-types";
-import { useFormDirty } from "@/hooks/use-form-dirty";
-import { useWorkspace } from "@/hooks/use-workspace";
+import { useWorkspaceFormDirty as useFormDirty } from "@/hooks/use-workspace-form-dirty";
+import { useWorkspaceFormNavigation as useWorkspace } from "@/hooks/use-workspace-form-navigation";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
 import { useWorkspaceScrollState } from "@/hooks/use-workspace-scroll-state";
 import { useWorkspaceSectionState } from "@/hooks/use-workspace-section-state";
@@ -172,22 +172,22 @@ function PartyWorkspaceFormInner({
   useWorkspaceTabDirty({ isDirty, enabled: !isViewing });
 
   // â”€â”€ Draft preservation (UI.4E.2) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const { getDraftDefault, syncDraft, writeDraftField, clearDraft } = useWorkspaceFormDraft({
+  const { getDraftDefault, getDraftNullableId, syncDraft, writeDraftField, clearDraft } = useWorkspaceFormDraft({
     formId: "party-workspace-form",
     enabled: !isViewing,
   });
 
   // â”€â”€ Geography state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const [countryId, setCountryId] = useState<number | null>(() => { const d = getDraftDefault("country_id", ""); return d ? Number(d) : party?.country_id ?? null; });
-  const [emirateId, setEmirateId] = useState<number | null>(() => { const d = getDraftDefault("emirate_id", ""); return d ? Number(d) : party?.emirate_id ?? null; });
-  const [cityId, setCityId] = useState<number | null>(() => { const d = getDraftDefault("city_id", ""); return d ? Number(d) : party?.city_id ?? null; });
-  const [areaZoneId, setAreaZoneId] = useState<number | null>(() => { const d = getDraftDefault("area_zone_id", ""); return d ? Number(d) : party?.area_zone_id ?? null; });
+  const [countryId, setCountryId] = useState<number | null>(() => { return getDraftNullableId("country_id", party?.country_id ?? null); });
+  const [emirateId, setEmirateId] = useState<number | null>(() => { return getDraftNullableId("emirate_id", party?.emirate_id ?? null); });
+  const [cityId, setCityId] = useState<number | null>(() => { return getDraftNullableId("city_id", party?.city_id ?? null); });
+  const [areaZoneId, setAreaZoneId] = useState<number | null>(() => { return getDraftNullableId("area_zone_id", party?.area_zone_id ?? null); });
 
   // â”€â”€ Lookup state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const [partyNatureId, setPartyNatureId] = useState<number | null>(() => { const d = getDraftDefault("party_nature_id", ""); return d ? Number(d) : party?.party_nature_id ?? null; });
-  const [partyStatusId, setPartyStatusId] = useState<number | null>(() => { const d = getDraftDefault("party_status_id", ""); return d ? Number(d) : party?.party_status_id ?? null; });
+  const [partyNatureId, setPartyNatureId] = useState<number | null>(() => { return getDraftNullableId("party_nature_id", party?.party_nature_id ?? null); });
+  const [partyStatusId, setPartyStatusId] = useState<number | null>(() => { return getDraftNullableId("party_status_id", party?.party_status_id ?? null); });
   const [isActive, setIsActive] = useState<boolean>(() => { const d = getDraftDefault("is_active", ""); return d ? d === "true" : party?.is_active ?? true; });
-  const [parentPartyId, setParentPartyId] = useState<number | null>(() => { const d = getDraftDefault("parent_party_id", ""); return d ? Number(d) : party?.parent_party_id ?? null; });
+  const [parentPartyId, setParentPartyId] = useState<number | null>(() => { return getDraftNullableId("parent_party_id", party?.parent_party_id ?? null); });
 
   // â”€â”€ Child dialog blocking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [childDialogOpen, setChildDialogOpen] = useState(false);

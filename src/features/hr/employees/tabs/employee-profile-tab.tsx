@@ -8,7 +8,6 @@ import { RequiredLabel } from "@/components/erp/required-label";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import type { UseWorkspaceFormDraftReturn } from "@/hooks/use-workspace-form-draft";
 import { listDepartments } from "@/server/actions/common-master-data/departments";
 import { listDesignations } from "@/server/actions/common-master-data/designations";
 import { listWorkSites } from "@/server/actions/common-master-data/work-sites";
@@ -20,22 +19,35 @@ import {
   listHrRelationshipTypes,
 } from "@/server/actions/hr/settings";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 type Props = {
   employee: EmployeeListRow | null;
   mode: "add" | "edit" | "view";
   canManageMedical?: boolean;
-  formId: string;
-  getDraftDefault: UseWorkspaceFormDraftReturn["getDraftDefault"];
-  syncDraft: UseWorkspaceFormDraftReturn["syncDraft"];
-  writeDraftField: UseWorkspaceFormDraftReturn["writeDraftField"];
-  // Controlled state for comboboxes (not capturable by FormData)
+  // All editable values share one memory-only draft adapter.
   form: EmployeeProfileFormState;
   setForm: (updater: (prev: EmployeeProfileFormState) => EmployeeProfileFormState) => void;
 };
 
 export type EmployeeProfileFormState = {
+  full_name_en: string;
+  full_name_ar: string;
+  known_name: string;
+  date_of_birth: string;
+  mobile_number: string;
+  personal_email: string;
+  uae_address: string;
+  home_country_address: string;
+  joining_date: string;
+  actual_joining_date: string;
+  contract_start_date: string;
+  contract_end_date: string;
+  probation_start_date: string;
+  probation_end_date: string;
+  notice_period_days: string;
+  emergency_contact_name: string;
+  emergency_contact_mobile: string;
   owner_company_id: number | null;
   branch_id: number | null;
   department_id: number | null;
@@ -96,37 +108,11 @@ const CONTRACT_TYPE_OPTIONS = [
 export function EmployeeProfileTab({
   employee,
   mode,
-  formId,
-  getDraftDefault,
-  syncDraft,
   form,
   setForm,
   canManageMedical = false,
 }: Props) {
   const disabled = mode === "view";
-
-  // Freeze all defaultValue computations on first render so Base UI's FieldControl
-  // never sees a changing defaultValue prop (which triggers an uncontrolled→controlled
-  // warning). Re-initialised naturally on full unmount/remount (tab switch, new record).
-  const [d] = useState<Record<string, string>>(() => ({
-      full_name_en:             getDraftDefault("full_name_en",             employee?.full_name_en              ?? ""),
-      full_name_ar:             getDraftDefault("full_name_ar",             employee?.full_name_ar              ?? ""),
-      known_name:               getDraftDefault("known_name",               employee?.known_name                ?? ""),
-      date_of_birth:            getDraftDefault("date_of_birth",            employee?.date_of_birth             ?? ""),
-      mobile_number:            getDraftDefault("mobile_number",            employee?.mobile_number             ?? ""),
-      personal_email:           getDraftDefault("personal_email",           employee?.personal_email            ?? ""),
-      uae_address:              getDraftDefault("uae_address",              employee?.uae_address               ?? ""),
-      home_country_address:     getDraftDefault("home_country_address",     employee?.home_country_address      ?? ""),
-      joining_date:             getDraftDefault("joining_date",             employee?.joining_date              ?? ""),
-      actual_joining_date:      getDraftDefault("actual_joining_date",      employee?.actual_joining_date       ?? ""),
-      contract_start_date:      getDraftDefault("contract_start_date",      employee?.contract_start_date       ?? ""),
-      contract_end_date:        getDraftDefault("contract_end_date",        employee?.contract_end_date         ?? ""),
-      probation_start_date:     getDraftDefault("probation_start_date",     employee?.probation_start_date      ?? ""),
-      probation_end_date:       getDraftDefault("probation_end_date",       employee?.probation_end_date        ?? ""),
-      notice_period_days:       getDraftDefault("notice_period_days",       employee?.notice_period_days?.toString() ?? ""),
-      emergency_contact_name:   getDraftDefault("emergency_contact_name",   employee?.emergency_contact_name   ?? ""),
-      emergency_contact_mobile: getDraftDefault("emergency_contact_mobile", employee?.emergency_contact_mobile ?? ""),
-  }));
 
   // ── Lookup Queries ──────────────────────────────────────────────────────────
 
@@ -213,10 +199,6 @@ export function EmployeeProfileTab({
     },
   });
 
-  const f = (k: keyof EmployeeProfileFormState) =>
-    (v: number | null | string) =>
-      setForm((prev) => ({ ...prev, [k]: v }));
-
   return (
     <div className="space-y-8 p-6">
       {/* ── Personal Information ─────────────────────────────────────────────── */}
@@ -244,7 +226,8 @@ export function EmployeeProfileTab({
             <Input
               id="full_name_en"
               name="full_name_en"
-              defaultValue={d.full_name_en}
+              value={form.full_name_en}
+              onChange={event => setForm(previous => ({...previous, full_name_en: event.target.value}))}
               disabled={disabled}
               required
             />
@@ -255,7 +238,8 @@ export function EmployeeProfileTab({
               id="full_name_ar"
               name="full_name_ar"
               dir="rtl"
-              defaultValue={d.full_name_ar}
+              value={form.full_name_ar}
+              onChange={event => setForm(previous => ({...previous, full_name_ar: event.target.value}))}
               disabled={disabled}
             />
           </div>
@@ -264,13 +248,14 @@ export function EmployeeProfileTab({
             <Input
               id="known_name"
               name="known_name"
-              defaultValue={d.known_name}
+              value={form.known_name}
+              onChange={event => setForm(previous => ({...previous, known_name: event.target.value}))}
               disabled={disabled}
             />
           </div>
           <div className="col-span-4 space-y-1.5">
             <RequiredLabel htmlFor="gender">Gender</RequiredLabel>
-            <ERPCombobox
+            <ERPCombobox name="gender"
               value={form.gender}
               onValueChange={(v) => setForm((p) => ({ ...p, gender: v as string }))}
               options={GENDER_OPTIONS}
@@ -281,7 +266,7 @@ export function EmployeeProfileTab({
           </div>
           <div className="col-span-4 space-y-1.5">
             <Label htmlFor="marital_status">Marital Status</Label>
-            <ERPCombobox
+            <ERPCombobox name="marital_status"
               value={form.marital_status}
               onValueChange={(v) => setForm((p) => ({ ...p, marital_status: v as string }))}
               options={MARITAL_OPTIONS}
@@ -305,14 +290,15 @@ export function EmployeeProfileTab({
               id="date_of_birth"
               name="date_of_birth"
               type="date"
-              defaultValue={d.date_of_birth}
+              value={form.date_of_birth}
+              onChange={event => setForm(previous => ({...previous, date_of_birth: event.target.value}))}
               disabled={disabled}
               required
             />
           </div>
           <div className="col-span-4 space-y-1.5">
             <Label htmlFor="blood_group">Blood Group</Label>
-            <ERPCombobox
+            <ERPCombobox name="blood_group"
               value={form.blood_group}
               onValueChange={(v) => setForm((p) => ({ ...p, blood_group: v as string }))}
               options={BLOOD_GROUP_OPTIONS}
@@ -327,7 +313,8 @@ export function EmployeeProfileTab({
             <Input
               id="mobile_number"
               name="mobile_number"
-              defaultValue={d.mobile_number}
+              value={form.mobile_number}
+              onChange={event => setForm(previous => ({...previous, mobile_number: event.target.value}))}
               disabled={disabled}
               required
             />
@@ -338,7 +325,8 @@ export function EmployeeProfileTab({
               id="personal_email"
               name="personal_email"
               type="email"
-              defaultValue={d.personal_email}
+              value={form.personal_email}
+              onChange={event => setForm(previous => ({...previous, personal_email: event.target.value}))}
               disabled={disabled}
             />
           </div>
@@ -348,7 +336,8 @@ export function EmployeeProfileTab({
               id="uae_address"
               name="uae_address"
               rows={2}
-              defaultValue={d.uae_address}
+              value={form.uae_address}
+              onChange={event => setForm(previous => ({...previous, uae_address: event.target.value}))}
               disabled={disabled}
             />
           </div>
@@ -358,7 +347,8 @@ export function EmployeeProfileTab({
               id="home_country_address"
               name="home_country_address"
               rows={2}
-              defaultValue={d.home_country_address}
+              value={form.home_country_address}
+              onChange={event => setForm(previous => ({...previous, home_country_address: event.target.value}))}
               disabled={disabled}
             />
           </div>
@@ -398,7 +388,7 @@ export function EmployeeProfileTab({
           </div>
           <div className="col-span-4 space-y-1.5">
             <Label>Department</Label>
-            <ERPCombobox
+            <ERPCombobox name="department_id"
               value={form.department_id}
               onValueChange={(v) => setForm((p) => ({ ...p, department_id: Number(v) || null }))}
               options={(departments ?? []).map((d) => ({ value: d.id, label: d.department_name_en }))}
@@ -409,7 +399,7 @@ export function EmployeeProfileTab({
           </div>
           <div className="col-span-4 space-y-1.5">
             <Label>Designation</Label>
-            <ERPCombobox
+            <ERPCombobox name="designation_id"
               value={form.designation_id}
               onValueChange={(v) => setForm((p) => ({ ...p, designation_id: Number(v) || null }))}
               options={(designations ?? []).map((d) => ({ value: d.id, label: d.designation_name_en }))}
@@ -420,7 +410,7 @@ export function EmployeeProfileTab({
           </div>
           <div className="col-span-4 space-y-1.5">
             <RequiredLabel>Employee Category</RequiredLabel>
-            <ERPCombobox
+            <ERPCombobox name="employee_category_id"
               value={form.employee_category_id}
               onValueChange={(v) => setForm((p) => ({ ...p, employee_category_id: Number(v) || null }))}
               options={(employeeCategories ?? []).map((c) => ({ value: c.id, label: c.name_en }))}
@@ -431,7 +421,7 @@ export function EmployeeProfileTab({
           </div>
           <div className="col-span-4 space-y-1.5">
             <Label>Employment Type</Label>
-            <ERPCombobox
+            <ERPCombobox name="employment_type_id"
               value={form.employment_type_id}
               onValueChange={(v) => setForm((p) => ({ ...p, employment_type_id: Number(v) || null }))}
               options={(employmentTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }))}
@@ -446,7 +436,8 @@ export function EmployeeProfileTab({
               id="joining_date"
               name="joining_date"
               type="date"
-              defaultValue={d.joining_date}
+              value={form.joining_date}
+              onChange={event => setForm(previous => ({...previous, joining_date: event.target.value}))}
               disabled={disabled}
               required
             />
@@ -457,13 +448,14 @@ export function EmployeeProfileTab({
               id="actual_joining_date"
               name="actual_joining_date"
               type="date"
-              defaultValue={d.actual_joining_date}
+              value={form.actual_joining_date}
+              onChange={event => setForm(previous => ({...previous, actual_joining_date: event.target.value}))}
               disabled={disabled}
             />
           </div>
           <div className="col-span-4 space-y-1.5">
             <RequiredLabel>Employee Status</RequiredLabel>
-            <ERPCombobox
+            <ERPCombobox name="employee_status"
               value={form.employee_status}
               onValueChange={(v) => setForm((p) => ({ ...p, employee_status: v as string }))}
               options={STATUS_OPTIONS}
@@ -474,7 +466,7 @@ export function EmployeeProfileTab({
           </div>
           <div className="col-span-4 space-y-1.5">
             <Label>Primary Work Site</Label>
-            <ERPCombobox
+            <ERPCombobox name="primary_work_site_id"
               value={form.primary_work_site_id}
               onValueChange={(v) => setForm((p) => ({ ...p, primary_work_site_id: Number(v) || null }))}
               options={(workSites ?? []).map((s) => ({ value: s.id, label: s.site_name }))}
@@ -494,7 +486,7 @@ export function EmployeeProfileTab({
           </div>
           <div className="col-span-4 space-y-1.5">
             <Label>MOHRE Establishment</Label>
-            <ERPCombobox
+            <ERPCombobox name="mohre_establishment_id"
               value={form.mohre_establishment_id}
               onValueChange={(v) =>
                 setForm((p) => ({
@@ -534,7 +526,7 @@ export function EmployeeProfileTab({
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-4 space-y-1.5">
             <Label>Contract Type</Label>
-            <ERPCombobox
+            <ERPCombobox name="contract_type"
               value={form.contract_type}
               onValueChange={(v) => setForm((p) => ({ ...p, contract_type: v as string }))}
               options={CONTRACT_TYPE_OPTIONS}
@@ -549,7 +541,8 @@ export function EmployeeProfileTab({
               id="contract_start_date"
               name="contract_start_date"
               type="date"
-              defaultValue={d.contract_start_date}
+              value={form.contract_start_date}
+              onChange={event => setForm(previous => ({...previous, contract_start_date: event.target.value}))}
               disabled={disabled}
             />
           </div>
@@ -559,7 +552,8 @@ export function EmployeeProfileTab({
               id="contract_end_date"
               name="contract_end_date"
               type="date"
-              defaultValue={d.contract_end_date}
+              value={form.contract_end_date}
+              onChange={event => setForm(previous => ({...previous, contract_end_date: event.target.value}))}
               disabled={disabled}
             />
           </div>
@@ -569,7 +563,8 @@ export function EmployeeProfileTab({
               id="probation_start_date"
               name="probation_start_date"
               type="date"
-              defaultValue={d.probation_start_date}
+              value={form.probation_start_date}
+              onChange={event => setForm(previous => ({...previous, probation_start_date: event.target.value}))}
               disabled={disabled}
             />
           </div>
@@ -579,7 +574,8 @@ export function EmployeeProfileTab({
               id="probation_end_date"
               name="probation_end_date"
               type="date"
-              defaultValue={d.probation_end_date}
+              value={form.probation_end_date}
+              onChange={event => setForm(previous => ({...previous, probation_end_date: event.target.value}))}
               disabled={disabled}
             />
           </div>
@@ -590,7 +586,8 @@ export function EmployeeProfileTab({
               name="notice_period_days"
               type="number"
               min={0}
-              defaultValue={d.notice_period_days}
+              value={form.notice_period_days}
+              onChange={event => setForm(previous => ({...previous, notice_period_days: event.target.value}))}
               disabled={disabled}
             />
           </div>
@@ -608,7 +605,8 @@ export function EmployeeProfileTab({
             <Input
               id="emergency_contact_name"
               name="emergency_contact_name"
-              defaultValue={d.emergency_contact_name}
+              value={form.emergency_contact_name}
+              onChange={event => setForm(previous => ({...previous, emergency_contact_name: event.target.value}))}
               disabled={disabled}
               required
             />
@@ -618,14 +616,15 @@ export function EmployeeProfileTab({
             <Input
               id="emergency_contact_mobile"
               name="emergency_contact_mobile"
-              defaultValue={d.emergency_contact_mobile}
+              value={form.emergency_contact_mobile}
+              onChange={event => setForm(previous => ({...previous, emergency_contact_mobile: event.target.value}))}
               disabled={disabled}
               required
             />
           </div>
           <div className="col-span-4 space-y-1.5">
             <Label>Relationship</Label>
-            <ERPCombobox
+            <ERPCombobox name="emergency_contact_relationship_type_id"
               value={form.emergency_contact_relationship_type_id}
               onValueChange={(v) => setForm((p) => ({ ...p, emergency_contact_relationship_type_id: Number(v) || null }))}
               options={(relationshipTypes ?? []).map((r) => ({ value: r.id, label: r.name_en }))}

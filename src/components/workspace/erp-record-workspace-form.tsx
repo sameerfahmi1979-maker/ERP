@@ -24,6 +24,12 @@
  */
 
 import * as React from "react";
+import { toast } from "sonner";
+import { collectWorkspaceFieldIssues, resolveWorkspaceFieldIssues, type WorkspaceFieldIssue } from "@/lib/workspace/form-validation";
+import { WORKSPACE_FIELD_ERRORS_EVENT, type WorkspaceFieldErrors } from "@/lib/workspace/field-errors";
+import { useWorkspaceContext } from "./workspace-provider";
+import { useWorkspaceFormOwner } from "@/hooks/use-workspace-form-owner";
+import { useWorkspaceNavigationLock } from "@/hooks/use-workspace-navigation-lock";
 import { cn } from "@/lib/utils";
 import { ERPRecordHeader } from "./erp-record-header";
 import { ERPRecordSectionNav } from "./erp-record-section-nav";
@@ -133,6 +139,75 @@ export function ERPRecordWorkspaceForm({
   bodyScrollRef,
   children,
 }: ERPRecordWorkspaceFormProps) {
+  const root = React.useRef<HTMLDivElement>(null);
+  const flight = React.useRef(false);
+  const [saving, setSaving] = React.useState(false);
+  const [issues, setIssues] = React.useState<WorkspaceFieldIssue[]>([]);
+  const [serverIssues, setServerIssues] = React.useState<WorkspaceFieldIssue[]>([]);
+  const [focusTarget, setFocusTarget] = React.useState<WorkspaceFieldIssue | null>(null);
+  const errorId = React.useId();
+  const pending = saving || isSubmitting;
+  useWorkspaceNavigationLock(isChildDialogOpen || pending);
+  const workspace = useWorkspaceContext();
+  const owner = useWorkspaceFormOwner();
+  const dispatch = workspace?.dispatch;
+  const ownerId = owner?.id;
+  React.useEffect(() => {
+    if (!dispatch || !ownerId) return;
+    dispatch({ type: "MARK_CHILD_DIALOG_OPEN", tabId: ownerId, open: isChildDialogOpen || pending });
+    return () => dispatch({ type: "MARK_CHILD_DIALOG_OPEN", tabId: ownerId, open: false });
+  }, [dispatch, ownerId, isChildDialogOpen, pending]);
+  React.useEffect(() => {
+    const originals = [...issues, ...serverIssues].flatMap(({ control }) => control ? [{ control, invalid: control.getAttribute("aria-invalid"), description: control.getAttribute("aria-describedby") }] : []);
+    for (const { control, description } of originals) {
+      control.setAttribute("aria-invalid", "true");
+      control.setAttribute("aria-describedby", [description, errorId].filter(Boolean).join(" "));
+    }
+    return () => {
+      for (const { control, invalid, description } of originals) {
+        if (invalid === null) control.removeAttribute("aria-invalid"); else control.setAttribute("aria-invalid", invalid);
+        if (description === null) control.removeAttribute("aria-describedby"); else control.setAttribute("aria-describedby", description);
+      }
+    };
+  }, [issues, serverIssues, errorId]);
+  const reveal = (issue: WorkspaceFieldIssue) => {
+    if (issue.section) onSectionChange(issue.section);
+    setFocusTarget(issue);
+  };
+  React.useEffect(() => {
+    if (!pending && focusTarget?.control?.isConnected) focusTarget.control.focus();
+  }, [focusTarget, activeSection, pending]);
+  React.useEffect(() => {
+    const element = root.current;
+    const handler = (event: Event) => {
+      const form = element?.querySelector("form");
+      if (!form || event.target !== form) return;
+      const next = resolveWorkspaceFieldIssues(form, (event as CustomEvent<WorkspaceFieldErrors>).detail);
+      setServerIssues(next);
+      if (next[0]) {
+        if (next[0].section) onSectionChange(next[0].section);
+        setFocusTarget(next[0]);
+      }
+    };
+    element?.addEventListener(WORKSPACE_FIELD_ERRORS_EVENT, handler);
+    return () => element?.removeEventListener(WORKSPACE_FIELD_ERRORS_EVENT, handler);
+  }, [onSectionChange]);
+  const validate = () => {
+    const form = root.current?.querySelector("form");
+    const next = form ? collectWorkspaceFieldIssues(form) : [];
+    setIssues(next);
+    setServerIssues([]);
+    if (next.length) reveal(next[0]);
+    return next.length === 0;
+  };
+  const runSave = async (action: NonNullable<typeof onSave>) => {
+    if (flight.current || pending || isChildDialogOpen || !validate()) return;
+    flight.current = true;
+    setSaving(true);
+    try { await action(); }
+    catch { toast.error("The save could not be confirmed. Your draft is retained; check the record before retrying."); }
+    finally { flight.current = false; setSaving(false); }
+  };
   const contextValue = React.useMemo<ERPRecordWorkspaceFormContextValue>(
     () => ({
       requestClose: () => onRequestClose?.(),
@@ -143,7 +218,30 @@ export function ERPRecordWorkspaceForm({
 
   return (
     <ERPRecordWorkspaceFormContext.Provider value={contextValue}>
-      <div className="h-full flex flex-col overflow-hidden bg-background">
+      <div ref={root} className="h-full flex flex-col overflow-hidden bg-background"
+        onChangeCapture={event => {
+          const form = root.current?.querySelector("form");
+          if (issues.length && form && (event.target as HTMLInputElement).form === form) {
+            setIssues(collectWorkspaceFieldIssues(form));
+          }
+        }}
+        onInputCapture={event => {
+          const form = root.current?.querySelector("form");
+          if (issues.length && form && (event.target as HTMLInputElement).form === form) {
+            setIssues(collectWorkspaceFieldIssues(form));
+          }
+        }}
+        onSubmitCapture={event => {
+          // Child dialogs have their own validation and save lifecycle.
+          if (event.target !== root.current?.querySelector("form")) return;
+          if (pending || isChildDialogOpen || !validate()) { event.preventDefault(); event.stopPropagation(); }
+        }}
+        onInvalidCapture={event => {
+          if ((event.target as HTMLInputElement).form !== root.current?.querySelector("form")) return;
+          event.preventDefault();
+          validate();
+        }}
+      >
 
         {/* ── Header — always active (never dimmed by child dialog) ── */}
         <ERPRecordHeader
@@ -156,7 +254,7 @@ export function ERPRecordWorkspaceForm({
           typeBadges={typeBadges}
           isDirty={isDirty}
           actions={headerActions}
-          onRequestClose={onRequestClose}
+          onRequestClose={pending || isChildDialogOpen ? undefined : onRequestClose}
         />
 
         {/* ── Content zone — inert + dimmed when child dialog is open ── */}
@@ -171,7 +269,7 @@ export function ERPRecordWorkspaceForm({
           {/* Section nav + scrollable body.
               ERP GLOBAL UI.4E.1: section nav is hidden when sections.length <= 1 (compact/single-section forms).
               This allows Finance Basics, UOM, Geography etc. to use the same shell without a heavy nav. */}
-          <div className="flex flex-1 min-h-0 overflow-hidden">
+          <div inert={pending || undefined} aria-busy={pending} className="flex flex-1 min-h-0 overflow-hidden">
             {sections.length > 1 && (
               <ERPRecordSectionNav
                 sections={sections}
@@ -187,6 +285,12 @@ export function ERPRecordWorkspaceForm({
               className="flex-1 min-h-0 overflow-y-auto overscroll-contain"
             >
               <div className="p-6 max-w-3xl space-y-6 pb-8">
+                {issues.length + serverIssues.length > 0 && <div role="alert" id={errorId} className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm">
+                  <p className="font-medium">Check {issues.length + serverIssues.length} {issues.length + serverIssues.length === 1 ? "field" : "fields"} before saving</p>
+                  <ul className="mt-2 space-y-1">
+                    {[...issues, ...serverIssues].map((issue, index) => <li key={index}>{issue.control ? <button type="button" className="text-left underline underline-offset-2 focus-visible:outline-2" onClick={() => reveal(issue)}>{issue.label}: {issue.message}</button> : <span>{issue.label}: {issue.message}</span>}</li>)}
+                  </ul>
+                </div>}
                 {children}
               </div>
             </div>
@@ -195,12 +299,12 @@ export function ERPRecordWorkspaceForm({
           {/* Footer */}
           <ERPRecordFormFooter
             mode={mode}
-            onCancel={onRequestClose}
-            onSave={onSave as (() => void) | undefined}
-            onSaveAndClose={onSaveAndClose as (() => void) | undefined}
+            onCancel={pending || isChildDialogOpen ? undefined : onRequestClose}
+            onSave={onSave ? () => { void runSave(onSave); } : undefined}
+            onSaveAndClose={onSaveAndClose ? () => { void runSave(onSaveAndClose); } : undefined}
             hasUnsavedChanges={isDirty}
-            isSubmitting={isSubmitting}
-            validationErrorsCount={validationErrorsCount}
+            isSubmitting={pending}
+            validationErrorsCount={Math.max(validationErrorsCount, issues.length + serverIssues.length)}
             activeSubmitAction={activeSubmitAction}
           />
         </div>
@@ -243,6 +347,7 @@ export function ERPRecordSectionPanel({
 
   return (
     <div
+      data-workspace-section={id}
       className={cn("space-y-4.5", isActive ? "animate-in fade-in duration-200" : "hidden")}
       aria-hidden={!isActive}
     >

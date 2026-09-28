@@ -1,0 +1,14 @@
+'use strict';
+const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process'),crypto=require('node:crypto');
+const root=path.resolve(__dirname,'../../..');
+const out=path.join(root,'CODEX_AUDIT_13_09_2026/IMPLEMENTATION/F04');
+const git=args=>cp.execFileSync('git',args,{cwd:root,encoding:'utf8',windowsHide:true}).trim();
+const target=path.join(out,'BASELINE.json');
+if(fs.existsSync(target))throw Error('Baseline already exists; do not overwrite');
+const modified=git(['diff','--name-only']).split('\n').filter(Boolean).map(file=>({file,sha256:crypto.createHash('sha256').update(fs.readFileSync(path.join(root,file))).digest('hex')}));
+const files=git(['ls-files','src']).split('\n');
+const adopters=files.flatMap(file=>{const body=fs.readFileSync(path.join(root,file),'utf8');const contracts=['useWorkspaceFormDraft','useWorkspaceTabDirty','useWorkspacePageState','useWorkspaceSectionState','useWorkspaceScrollState','useRecordWorkspaceForm'].filter(name=>body.includes(name));return contracts.length?[{file,contracts}]:[];});
+fs.mkdirSync(out,{recursive:true});
+const result={at:new Date().toISOString(),commit:git(['rev-parse','HEAD']),branch:git(['branch','--show-current']),modified_preserve:modified,adopters,production_mutations:0};
+fs.writeFileSync(target,JSON.stringify(result,null,2));
+console.log(JSON.stringify({commit:result.commit,branch:result.branch,unrelated_modified:modified.length,adopters:adopters.length}));

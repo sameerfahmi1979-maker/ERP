@@ -7,6 +7,7 @@ import { WorkspaceTabBar } from "@/components/workspace/workspace-tab-bar";
 import { WorkspaceContent } from "@/components/workspace/workspace-content";
 import { WorkspaceProvider } from "@/components/workspace/workspace-provider";
 import { WorkspaceDraftProvider } from "@/components/workspace/workspace-draft-provider";
+import { WorkspaceUiMemoryProvider } from "@/hooks/use-persistent-ui-state";
 import { RealtimeProvider } from "@/components/layout/realtime-provider";
 import { canAccessRoute } from "@/lib/rbac/route-access-registry";
 import type { RuntimeAppBranding } from "@/lib/branding/runtime-types";
@@ -30,6 +31,7 @@ function getDefaultRoute(permissionCodes: string[], isGlobalAdmin: boolean): str
 }
 
 type ErpShellProps = {
+  principalId: string;
   children: React.ReactNode;
   displayName?: string | null;
   email?: string | null;
@@ -42,6 +44,7 @@ type ErpShellProps = {
 };
 
 export function ErpShell({
+  principalId,
   children,
   displayName,
   email,
@@ -58,8 +61,8 @@ export function ErpShell({
   return (
     // WorkspaceDraftProvider must wrap WorkspaceProvider so it can consume the draft
     // store context to clear drafts on tab close.
-    <WorkspaceDraftProvider>
-      <WorkspaceProvider defaultRoute={defaultRoute}>
+    <WorkspaceUiMemoryProvider key={principalId}><WorkspaceDraftProvider key={principalId}>
+      <WorkspaceProvider defaultRoute={defaultRoute} principalId={principalId} canRestoreRoute={route => canAccessRoute(route.split("?")[0], permissionCodes, isGlobalAdmin)}>
         <RealtimeProvider>
           <div className="flex h-screen w-full overflow-hidden bg-background">
             <AppSidebar
@@ -81,6 +84,6 @@ export function ErpShell({
           </div>
         </RealtimeProvider>
       </WorkspaceProvider>
-    </WorkspaceDraftProvider>
+    </WorkspaceDraftProvider></WorkspaceUiMemoryProvider>
   );
 }

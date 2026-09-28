@@ -8,10 +8,11 @@ import { toast } from "sonner";
 import type { Role } from "@/types/domain";
 import { createRole, updateRole } from "@/server/actions/roles";
 import { RequiredLabel } from "@/components/erp/required-label";
-import { useFormDirty } from "@/hooks/use-form-dirty";
+import { useWorkspaceFormDirty as useFormDirty } from "@/hooks/use-workspace-form-dirty";
 import { Shield, ShieldAlert, Users, Lock, Clock } from "lucide-react";
 import type { AuthContext } from "@/lib/rbac/check";
-import { useWorkspace } from "@/hooks/use-workspace";
+import { useWorkspaceFormNavigation as useWorkspace } from "@/hooks/use-workspace-form-navigation";
+import { useWorkspaceFormSection } from "@/hooks/use-workspace-form-section";
 import {
   ERPRecordWorkspaceForm,
   ERPRecordSectionPanel,
@@ -36,7 +37,15 @@ export function RoleWorkspaceForm({ role, mode, authContext }: RoleWorkspaceForm
   const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeSection, setActiveSection] = useState("overview");
+  const sections = [
+    { id: "overview", label: "Overview", icon: Shield },
+    ...(mode !== "add" ? [
+      { id: "permissions", label: "Permissions", icon: Lock },
+      { id: "assigned-users", label: "Assigned Users", icon: Users },
+      { id: "audit", label: "Audit Info", icon: Clock },
+    ] : []),
+  ];
+  const [activeSection, setActiveSection] = useWorkspaceFormSection(FORM_ID, "overview", sections.map(section => section.id));
   const [permissionsDirty, setPermissionsDirty] = useState(false);
 
   const isEditing = mode === "edit";
@@ -60,14 +69,6 @@ export function RoleWorkspaceForm({ role, mode, authContext }: RoleWorkspaceForm
   }, [isDirty, permissionsDirty, activeTab?.id, markDirty]);
 
   // Sections: add mode has only overview; view/edit modes have all four
-  const sections = [
-    { id: "overview", label: "Overview", icon: Shield },
-    ...(!isAdding ? [
-      { id: "permissions", label: "Permissions", icon: Lock },
-      { id: "assigned-users", label: "Assigned Users", icon: Users },
-      { id: "audit", label: "Audit Info", icon: Clock },
-    ] : []),
-  ];
 
   const handleRequestClose = () => closeTab(activeTab?.id ?? "");
 

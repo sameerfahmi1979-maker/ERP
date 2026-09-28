@@ -16,6 +16,7 @@ export default defineConfig({
       'tests/remediation/f02-completion/*.test.{ts,tsx}',
       'tests/remediation/f02-final/*.test.{ts,tsx}',
       'tests/remediation/f03/*.test.{ts,tsx}',
+      'tests/remediation/f04/*.test.{ts,tsx}',
     ],
     setupFiles: ['tests/remediation/f01/offline-setup.ts'],
   },

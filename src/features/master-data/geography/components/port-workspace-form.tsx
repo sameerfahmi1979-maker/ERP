@@ -11,11 +11,12 @@ import { EmirateSelect, CountrySelect } from "@/components/erp/geography";
 import { LookupSelect } from "@/components/erp/lookup-select";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { useQueryClient } from "@tanstack/react-query";
-import { useFormDirty } from "@/hooks/use-form-dirty";
+import { useWorkspaceFormDirty as useFormDirty } from "@/hooks/use-workspace-form-dirty";
 import { invalidatePorts } from "@/lib/query/invalidation";
 import { Anchor, Tag, Shield, Info } from "lucide-react";
 import type { AuthContext } from "@/lib/rbac/check";
-import { useWorkspace } from "@/hooks/use-workspace";
+import { useWorkspaceFormNavigation as useWorkspace } from "@/hooks/use-workspace-form-navigation";
+import { useWorkspaceFormSection } from "@/hooks/use-workspace-form-section";
 import { ERPRecordWorkspaceForm, ERPRecordSectionPanel } from "@/components/workspace/erp-record-workspace-form";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
 
@@ -31,21 +32,25 @@ export function PortWorkspaceForm({ port, mode }: PortWorkspaceFormProps) {
   const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeSection, setActiveSection] = useState("basic");
+  const sections = [
+    { id: "basic", label: "Basic Info", icon: Anchor },
+    { id: "details", label: "Port Details", icon: Tag },
+    { id: "status", label: "Status", icon: Shield },
+    { id: "audit", label: "Audit Info", icon: Info },
+  ];
+  const [activeSection, setActiveSection] = useWorkspaceFormSection(FORM_ID, "basic", sections.map(section => section.id));
 
   const isEditing = mode === "edit";
   const isViewing = mode === "view";
 
   const { isDirty, resetDirty } = useFormDirty({ formId: FORM_ID, enabled: !isViewing });
-  const { getDraftDefault, getDraftBoolean, syncDraft, writeDraftField, clearDraft } = useWorkspaceFormDraft({ formId: FORM_ID, enabled: !isViewing });
+  const { getDraftDefault, getDraftNullableId, getDraftBoolean, syncDraft, writeDraftField, clearDraft } = useWorkspaceFormDraft({ formId: FORM_ID, enabled: !isViewing });
 
   const [countryId, setCountryId] = useState<number | null>(() => {
-    const d = getDraftDefault("country_id", "");
-    return d ? Number(d) : port?.country_id ?? null;
+    return getDraftNullableId("country_id", port?.country_id ?? null);
   });
   const [emirateId, setEmirateId] = useState<number | null>(() => {
-    const d = getDraftDefault("emirate_id", "");
-    return d ? Number(d) : port?.emirate_id ?? null;
+    return getDraftNullableId("emirate_id", port?.emirate_id ?? null);
   });
   const [portTypeCode, setPortTypeCode] = useState<string | null>(() =>
     getDraftDefault("port_type_code", port?.port_type_code ?? "") || null
@@ -63,12 +68,6 @@ export function PortWorkspaceForm({ port, mode }: PortWorkspaceFormProps) {
 
   }, [writeDraftField]);
 
-  const sections = [
-    { id: "basic", label: "Basic Info", icon: Anchor },
-    { id: "details", label: "Port Details", icon: Tag },
-    { id: "status", label: "Status", icon: Shield },
-    { id: "audit", label: "Audit Info", icon: Info },
-  ];
 
   const handleRequestClose = () => closeTab(activeTab?.id ?? "");
 

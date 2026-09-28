@@ -1,0 +1,25 @@
+// @vitest-environment jsdom
+import { act, cleanup, renderHook } from '@testing-library/react';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { createWorkspaceDraftStore } from '@/lib/workspace/workspace-draft-store';
+import { createSaveAdmission } from '@/lib/workspace/save-admission';
+const mock=vi.hoisted(()=>({store:null as ReturnType<typeof createWorkspaceDraftStore>|null,dispatch:vi.fn()}));
+vi.mock('next/navigation',()=>({usePathname:()=>'/new'}));
+vi.mock('@/components/workspace/workspace-provider',()=>({useWorkspaceContext:()=>({state:{activeTabId:'owner',tabs:[{id:'owner',route:'/new'}]},dispatch:mock.dispatch})}));
+vi.mock('@/components/workspace/workspace-draft-provider',()=>({useWorkspaceDraftStoreContext:()=>mock.store}));
+import { useWorkspaceControlledDraft, type WorkspaceDraftCodec } from '@/hooks/use-workspace-controlled-draft';
+import { useWorkspaceFormSection } from '@/hooks/use-workspace-form-section';
+const codec:WorkspaceDraftCodec<{name:string;active:boolean}>={encode:v=>({name:v.name,active:String(v.active)}),restore:(v,read)=>({name:read('name',v.name),active:read('active',String(v.active))==='true'})};
+const initial={name:'saved',active:true};
+const useDraft=()=>useWorkspaceControlledDraft({formId:'controlled',initialValue:initial,codec,enabled:true});
+beforeEach(()=>{mock.store=createWorkspaceDraftStore();mock.dispatch.mockClear();});
+afterEach(cleanup);
+it('edit then revert becomes clean without losing false',()=>{const hook=renderHook(useDraft);act(()=>hook.result.current.setValue({name:'edit',active:false}));expect(hook.result.current.isDirty).toBe(true);act(()=>hook.result.current.setValue(initial));expect(hook.result.current.isDirty).toBe(false);});
+it('controlled values restore on a genuine remount',()=>{const first=renderHook(useDraft);act(()=>first.result.current.setValue({name:'draft',active:false}));first.unmount();const second=renderHook(useDraft);expect(second.result.current.value).toEqual({name:'draft',active:false});expect(second.result.current.isDirty).toBe(true);expect(second.result.current.restoredFromDraft).toBe(true);});
+it('save receipt does not clear edits newer than the submitted revision',()=>{const hook=renderHook(useDraft);const submitted={name:'sent',active:false};act(()=>hook.result.current.setValue(submitted));act(()=>hook.result.current.setValue({name:'newer',active:false}));let clean=false;act(()=>{clean=hook.result.current.acceptSaved(submitted);});expect(clean).toBe(false);expect(hook.result.current.isDirty).toBe(true);expect(mock.store?.getDraft('draft:tab:owner:controlled')?.name).toBe('newer');});
+it('save of current revision clears draft and restoration notice',()=>{mock.store?.writeField('draft:tab:owner:controlled','name','restored');const hook=renderHook(useDraft);act(()=>hook.result.current.acceptSaved(hook.result.current.value));expect(hook.result.current.isDirty).toBe(false);expect(hook.result.current.restoredFromDraft).toBe(false);expect(mock.store?.hasDraft('draft:tab:owner:controlled')).toBe(false);});
+it('readonly mode ignores edits and stored values',()=>{mock.store?.writeField('draft:tab:owner:controlled','name','old');const hook=renderHook(()=>useWorkspaceControlledDraft({formId:'controlled',initialValue:initial,codec,enabled:false}));act(()=>hook.result.current.setValue({name:'ignored',active:false}));expect(hook.result.current.value).toEqual(initial);expect(hook.result.current.isDirty).toBe(false);});
+it('sections restore independently without creating a dirty draft',()=>{const first=renderHook(()=>useWorkspaceFormSection('form','basic',['basic','notes']));act(()=>first.result.current[1]('notes'));first.unmount();const second=renderHook(()=>useWorkspaceFormSection('form','basic',['basic','notes']));expect(second.result.current[0]).toBe('notes');expect(mock.store?.hasDraft('draft:tab:owner:form')).toBe(false);expect(mock.dispatch).not.toHaveBeenCalled();});
+it('discard clears only its owner view state',()=>{mock.store?.setViewState('draft:tab:owner:section:form','notes');mock.store?.setViewState('draft:tab:other:section:form','kept');mock.store?.clearDraftsForTab('owner');expect(mock.store?.getViewState('draft:tab:owner:section:form')).toBeUndefined();expect(mock.store?.getViewState('draft:tab:other:section:form')).toBe('kept');});
+it('rejects an unknown section from memory',()=>{mock.store?.setViewState('draft:tab:owner:section:form','removed');const hook=renderHook(()=>useWorkspaceFormSection('form','basic',['basic','notes']));expect(hook.result.current[0]).toBe('basic');});
+it('same form admits only one pending operation and can release for retry',()=>{const gate=createSaveAdmission();expect(gate.enter()).toBe(true);expect(gate.enter()).toBe(false);gate.leave();expect(gate.enter()).toBe(true);});

@@ -1,4 +1,7 @@
 "use server";
+import {saveWorkspaceRecord, type WorkspaceSaveResult} from "@/server/workspace-save";
+import type {WorkspaceSaveContract} from "@/lib/workspace/save-contract";
+import { workspaceValidationFailure } from "@/lib/workspace/field-errors";
 
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
@@ -24,6 +27,7 @@ export type DepartmentRow = {
   effective_to: string | null;
   created_at: string;
   updated_at: string;
+  workspace_revision: number;
   deleted_at: string | null;
   owner_company?: { id: number; legal_name_en: string; company_code: string } | null;
   branch?: { id: number; branch_name_en: string } | null;
@@ -103,48 +107,25 @@ export async function getDepartmentById(id: number): Promise<ActionResult<Depart
   }
 }
 
-export async function createDepartment(input: CreateDeptInput): Promise<ActionResult<{ id: number }>> {
-  try {
-    const parsed = createDepartmentSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
-    const ctx = await getAuthContext();
-    if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-    const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("departments")
-      .insert({ ...parsed.data, created_by: ctx.profile?.id ?? null, updated_by: ctx.profile?.id ?? null })
-      .select("id")
-      .single();
-    if (error) return { success: false, error: error.message };
-    await logAudit({ module_code: "common_md", entity_name: "departments", entity_id: data.id, entity_reference: parsed.data.department_code, action: "create", new_values: parsed.data, owner_company_id: parsed.data.owner_company_id });
-    revalidatePath("/admin/common-master-data/departments");
-    return { success: true, data: { id: data.id } };
-  } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : String(e) };
-  }
+export async function createDepartment(input: CreateDeptInput, contract: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const parsed = createDepartmentSchema.safeParse(input);
+  if (!parsed.success) return workspaceValidationFailure(parsed.error.issues);
+  const ctx=await getAuthContext();
+  if (!canManage(ctx)) return {success:false,error:"Permission denied"};
+  const result=await saveWorkspaceRecord("departments",null,parsed.data,contract);
+  if(result.success) revalidatePath("/admin/common-master-data/departments");
+  return result;
 }
 
-export async function updateDepartment(input: UpdateDeptInput): Promise<ActionResult> {
-  try {
-    const parsed = updateDepartmentSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
-    const ctx = await getAuthContext();
-    if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-    const { id, ...rest } = parsed.data;
-    const supabase = await createClient();
-    const { error } = await supabase
-      .from("departments")
-      .update({ ...rest, updated_by: ctx.profile?.id ?? null, updated_at: new Date().toISOString() })
-      .eq("id", id!)
-      .is("deleted_at", null);
-    if (error) return { success: false, error: error.message };
-    await logAudit({ module_code: "common_md", entity_name: "departments", entity_id: id!, entity_reference: String(id), action: "update", new_values: rest });
-    revalidatePath("/admin/common-master-data/departments");
-    revalidatePath(`/admin/common-master-data/departments/record/${id}`);
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : String(e) };
-  }
+export async function updateDepartment(input: UpdateDeptInput, contract: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const parsed=updateDepartmentSchema.safeParse(input);
+  if(!parsed.success) return workspaceValidationFailure(parsed.error.issues);
+  const ctx=await getAuthContext();
+  if(!canManage(ctx)) return {success:false,error:"Permission denied"};
+  const {id,...payload}=parsed.data;
+  const result=await saveWorkspaceRecord("departments",id,payload,contract);
+  if(result.success) revalidatePath("/admin/common-master-data/departments");
+  return result;
 }
 
 export async function softDeleteDepartment(id: number): Promise<ActionResult> {

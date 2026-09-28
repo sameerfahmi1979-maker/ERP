@@ -22,7 +22,6 @@ import { ChevronDown, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { WorkspaceTabChip } from "./workspace-tab";
-import { UnsavedChangesDialog } from "@/components/erp/unsaved-changes-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,7 +39,6 @@ const CHEVRON_SCROLL_STEP = 240;
 export function WorkspaceTabBar() {
   const { tabs, activeTab, setActiveTab, closeTab, closeAllClosableTabs, isHydrated } = useWorkspace();
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [confirmCloseAllOpen, setConfirmCloseAllOpen] = useState(false);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
@@ -52,7 +50,6 @@ export function WorkspaceTabBar() {
   });
 
   const closableTabs = tabs.filter((t) => t.closable);
-  const dirtyCount = closableTabs.filter((t) => t.dirty).length;
   const compact = sortedTabs.length > COMPACT_THRESHOLD;
   const isOverflowing = canScrollLeft || canScrollRight;
 
@@ -101,11 +98,7 @@ export function WorkspaceTabBar() {
 
   const handleCloseAll = () => {
     if (closableTabs.length === 0) return;
-    if (dirtyCount > 0) {
-      setConfirmCloseAllOpen(true);
-    } else {
-      closeAllClosableTabs();
-    }
+    closeAllClosableTabs(); // The provider owns the one authoritative dirty guard.
   };
 
   if (!isHydrated) {
@@ -259,24 +252,6 @@ export function WorkspaceTabBar() {
         )}
       </div>
 
-      {/* Dirty-aware close-all confirmation dialog */}
-      <UnsavedChangesDialog
-        open={confirmCloseAllOpen}
-        onOpenChange={setConfirmCloseAllOpen}
-        title="Close all tabs?"
-        description={
-          dirtyCount === 1
-            ? "1 tab has unsaved changes. Closing all tabs will discard those changes."
-            : `${dirtyCount} tabs have unsaved changes. Closing all tabs will discard those changes.`
-        }
-        stayLabel="Keep tabs open"
-        discardLabel="Close all & discard"
-        onStay={() => setConfirmCloseAllOpen(false)}
-        onDiscard={() => {
-          setConfirmCloseAllOpen(false);
-          closeAllClosableTabs();
-        }}
-      />
     </>
   );
 }

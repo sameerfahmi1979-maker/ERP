@@ -12,10 +12,11 @@ import type { UserWithRoles, Role, UserRoleAssignment } from "@/types/domain";
 import type { UserCompanyOption, UserBranchOption } from "@/lib/users/scope-options";
 import { createUser, adminUpdateUserProfile, removeRoleFromUser } from "@/server/actions/users";
 import { RequiredLabel } from "@/components/erp/required-label";
-import { useFormDirty } from "@/hooks/use-form-dirty";
+import { useWorkspaceFormDirty as useFormDirty } from "@/hooks/use-workspace-form-dirty";
 import { Key, User, Building2, Shield, ShieldAlert, Info, Lock, Clock, LayoutDashboard } from "lucide-react";
 import type { AuthContext } from "@/lib/rbac/check";
-import { useWorkspace } from "@/hooks/use-workspace";
+import { useWorkspaceFormNavigation as useWorkspace } from "@/hooks/use-workspace-form-navigation";
+import { useWorkspaceFormSection } from "@/hooks/use-workspace-form-section";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
 import {
   ERPRecordWorkspaceForm,
@@ -85,8 +86,24 @@ export function UserWorkspaceForm({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const creationOperation = useRef<string | null>(null);
-  const [activeSection, setActiveSection] = useState(mode === "add" ? "auth" : "overview");
-  const [sendInvite, setSendInvite] = useState(true);
+  const sections = mode === "add"
+    ? [
+        { id: "auth", label: "Authentication", icon: Key },
+        { id: "profile", label: "Profile Details", icon: User },
+        { id: "assignment", label: "Organization", icon: Building2 },
+        { id: "role", label: "Initial Role", icon: Shield },
+      ]
+    : [
+        { id: "overview", label: "Overview", icon: LayoutDashboard },
+        { id: "profile", label: "Profile Details", icon: User },
+        { id: "assignment", label: "Organization", icon: Building2 },
+        { id: "roles", label: "Roles", icon: Shield },
+        { id: "security", label: "Security", icon: Lock },
+        { id: "access", label: "Effective Access", icon: Shield },
+        { id: "history", label: "Security History", icon: Clock },
+        { id: "audit", label: "Audit Info", icon: Info },
+      ];
+  const [activeSection, setActiveSection] = useWorkspaceFormSection(FORM_ID, mode === "add" ? "auth" : "overview", sections.map(section => section.id));
   const [assignRoleOpen, setAssignRoleOpen] = useState(false);
   const [roleToRemove, setRoleToRemove] = useState<UserRoleAssignment | null>(null);
   const [isRemovingRole, setIsRemovingRole] = useState(false);
@@ -105,6 +122,7 @@ export function UserWorkspaceForm({
     formId: FORM_ID,
     enabled: !isViewing,
   });
+  const [sendInvite, setSendInvite] = useState(() => getDraftDefault("send_invite_email", "true") === "true");
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(() => {
     const saved = getDraftDefault("owner_company_id", user?.owner_company_id ?? "");
     return saved && Number.isSafeInteger(Number(saved)) && Number(saved) > 0 ? Number(saved) : null;
@@ -119,23 +137,6 @@ export function UserWorkspaceForm({
     ? branches.filter((b) => b.owner_company_id === selectedCompanyId)
     : branches;
 
-  const sections = mode === "add"
-    ? [
-        { id: "auth", label: "Authentication", icon: Key },
-        { id: "profile", label: "Profile Details", icon: User },
-        { id: "assignment", label: "Organization", icon: Building2 },
-        { id: "role", label: "Initial Role", icon: Shield },
-      ]
-    : [
-        { id: "overview", label: "Overview", icon: LayoutDashboard },
-        { id: "profile", label: "Profile Details", icon: User },
-        { id: "assignment", label: "Organization", icon: Building2 },
-        { id: "roles", label: "Roles", icon: Shield },
-        { id: "security", label: "Security", icon: Lock },
-        { id: "access", label: "Effective Access", icon: Shield },
-        { id: "history", label: "Security History", icon: Clock },
-        { id: "audit", label: "Audit Info", icon: Info },
-      ];
 
   const handleRequestClose = () => closeTab(activeTab?.id ?? "");
 
@@ -361,7 +362,7 @@ export function UserWorkspaceForm({
                     <Label htmlFor="send_invite" className="cursor-pointer text-xs font-semibold">Send Invite Email</Label>
                     <p className="text-[10px] text-muted-foreground">Automatically dispatch login instructions to the user&apos;s inbox.</p>
                   </div>
-                  <Checkbox id="send_invite" checked={sendInvite} onCheckedChange={(v) => setSendInvite(v === true)} />
+                  <Checkbox id="send_invite" checked={sendInvite} onCheckedChange={(v) => { setSendInvite(v === true); writeDraftField("send_invite_email", v === true); }} />
                 </div>
                 <div className="col-span-12 space-y-1.5">
                   <RequiredLabel htmlFor="email">Email Address</RequiredLabel>

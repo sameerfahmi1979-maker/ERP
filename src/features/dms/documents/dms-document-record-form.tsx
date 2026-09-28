@@ -11,8 +11,8 @@
 import { DraftRestoredNotice } from "@/components/workspace/draft-restored-notice";
 import type { ERPRecordSection } from "@/components/workspace/erp-record-section-nav";
 import { ERPRecordSectionPanel, ERPRecordWorkspaceForm } from "@/components/workspace/erp-record-workspace-form";
-import { useFormDirty } from "@/hooks/use-form-dirty";
-import { useWorkspace } from "@/hooks/use-workspace";
+import { useWorkspaceFormDirty as useFormDirty } from "@/hooks/use-workspace-form-dirty";
+import { useWorkspaceFormNavigation as useWorkspace } from "@/hooks/use-workspace-form-navigation";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
 import { useWorkspaceScrollState } from "@/hooks/use-workspace-scroll-state";
 import { useWorkspaceSectionState } from "@/hooks/use-workspace-section-state";
@@ -140,19 +140,17 @@ function DmsDocumentRecordFormInner({
   useWorkspaceTabDirty({ isDirty, enabled: !isViewing });
 
   // ── Draft preservation (UI.4E.2) ──────────────────────────────────────────────
-  const { getDraftDefault, writeDraftField, clearDraft, syncDraft, restoredFromDraft } = useWorkspaceFormDraft({
+  const { getDraftDefault, getDraftNullableId, writeDraftField, clearDraft, syncDraft, restoredFromDraft } = useWorkspaceFormDraft({
     formId: "dms-doc-workspace-form",
     enabled: !isViewing,
   });
 
   // ── Controlled fields ────────────────────────────────────────────────────────
   const [documentTypeId, setDocumentTypeId] = useState<number | null>(() => {
-    const d = getDraftDefault("document_type_id", "");
-    return d ? Number(d) : doc?.document_type_id ?? null;
+    return getDraftNullableId("document_type_id", doc?.document_type_id);
   });
   const [categoryId, setCategoryId] = useState<number | null>(() => {
-    const d = getDraftDefault("category_id", "");
-    return d ? Number(d) : doc?.category_id ?? null;
+    return getDraftNullableId("category_id", doc?.category_id);
   });
   const [status, setStatus] = useState<string>(() => {
     const d = getDraftDefault("status", "");
@@ -163,16 +161,13 @@ function DmsDocumentRecordFormInner({
     return d || doc?.confidentiality_level || "internal";
   });
   const [owningCompanyId, setOwningCompanyId] = useState<number | null>(() => {
-    const d = getDraftDefault("owning_company_id", "");
-    return d ? Number(d) : doc?.owning_company_id ?? null;
+    return getDraftNullableId("owning_company_id", doc?.owning_company_id);
   });
   const [owningBranchId, setOwningBranchId] = useState<number | null>(() => {
-    const d = getDraftDefault("owning_branch_id", "");
-    return d ? Number(d) : doc?.owning_branch_id ?? null;
+    return getDraftNullableId("owning_branch_id", doc?.owning_branch_id);
   });
   const [partyId, setPartyId] = useState<number | null>(() => {
-    const d = getDraftDefault("party_id", "");
-    return d ? Number(d) : doc?.party_id ?? null;
+    return getDraftNullableId("party_id", doc?.party_id);
   });
 
   // ── Child dialog blocking ─────────────────────────────────────────────────────
@@ -389,7 +384,7 @@ function DmsDocumentRecordFormInner({
             status={status}
             setStatus={(v) => { setStatus(v); writeDraftField("status", v); }}
             owningCompanyId={owningCompanyId}
-            setOwningCompanyId={(id) => { setOwningCompanyId(id); writeDraftField("owning_company_id", id); }}
+            setOwningCompanyId={(id) => { setOwningCompanyId(id); setOwningBranchId(null); writeDraftField("owning_company_id", id); writeDraftField("owning_branch_id", null); }}
             owningBranchId={owningBranchId}
             setOwningBranchId={(id) => { setOwningBranchId(id); writeDraftField("owning_branch_id", id); }}
             partyId={partyId}

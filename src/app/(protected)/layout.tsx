@@ -30,6 +30,7 @@ export default async function ProtectedLayout({
 
   return (
     <SessionBoundary key={ctx.profile.auth_user_id} authUserId={ctx.profile.auth_user_id}><ErpShell
+      principalId={ctx.profile.auth_user_id}
       displayName={ctx.profile.display_name ?? ctx.profile.full_name}
       email={ctx.email}
       permissionCodes={ctx.permissionCodes}

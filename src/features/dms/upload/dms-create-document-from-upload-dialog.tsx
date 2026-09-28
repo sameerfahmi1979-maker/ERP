@@ -36,7 +36,11 @@ interface DmsCreateDocumentFromUploadDialogProps {
   onSuccess?: (documentId: number, documentNo: string) => void;
 }
 
-export function DmsCreateDocumentFromUploadDialog({
+export function DmsCreateDocumentFromUploadDialog(props: DmsCreateDocumentFromUploadDialogProps) {
+  return props.open && props.session ? <CreateDocumentSession key={`${props.session.id}:${props.entityContext?.entityType ?? ""}:${props.entityContext?.entityId ?? ""}`} {...props} /> : null;
+}
+
+function CreateDocumentSession({
   open,
   onOpenChange,
   session,
@@ -85,9 +89,12 @@ export function DmsCreateDocumentFromUploadDialog({
 
       // Auto-link to entity context if provided (generic — works for any module)
       if (entityContext) {
-        await linkDmsDocumentToEntity(newDocId, entityContext.entityType, entityContext.entityId, {
-          is_primary: true,
-        });
+        try {
+          const link = await linkDmsDocumentToEntity(newDocId, entityContext.entityType, entityContext.entityId, { is_primary: true });
+          if (!link.success) toast.warning("The document was created, but its record link was not saved. Open the document and check its links; do not create it again.");
+        } catch {
+          toast.warning("The document was created, but its record link could not be confirmed. Open the document and check its links; do not create it again.");
+        }
       }
 
       toast.success(`Document ${newDocNo} created successfully`);
@@ -125,6 +132,7 @@ export function DmsCreateDocumentFromUploadDialog({
       mode="add"
       size="lg"
       isSubmitting={isSubmitting}
+      isDirty={title !== "" || documentTypeId !== null || description !== "" || issueDate !== "" || expiryDate !== ""}
       onSubmit={handleSubmit}
     >
       <div className="space-y-4">
@@ -144,6 +152,7 @@ export function DmsCreateDocumentFromUploadDialog({
           <RequiredLabel required htmlFor="doc-title">Document Title</RequiredLabel>
           <Input
             id="doc-title"
+            required
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="e.g. Trade License 2026 — Alliance Gulf Transport"

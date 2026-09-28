@@ -1,4 +1,6 @@
 "use client";
+import { reportWorkspaceFieldErrors } from "@/lib/workspace/field-errors";
+import {useWorkspaceSaveSession} from "@/hooks/use-workspace-save-session";
 
 /**
  * EmployeeWorkspaceForm — HR.2
@@ -26,10 +28,11 @@ import { ERPRecordSectionPanel, ERPRecordWorkspaceForm } from "@/components/work
 import { DmsEntityDocumentsTab } from "@/features/dms/entity-documents";
 import { HrAiReviewTab } from "@/features/hr/ai/hr-ai-review-tab";
 import { EmployeeLettersForms } from "@/features/hr/employees/employee-letters-forms";
-import { useFormDirty } from "@/hooks/use-form-dirty";
 import { useWorkspace } from "@/hooks/use-workspace";
-import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
-import { useWorkspaceTabDirty } from "@/hooks/use-workspace-tab-dirty";
+import { useWorkspaceFormOwner } from "@/hooks/use-workspace-form-owner";
+import { useWorkspaceFormSection } from "@/hooks/use-workspace-form-section";
+import { useWorkspaceControlledDraft, type WorkspaceDraftCodec } from "@/hooks/use-workspace-controlled-draft";
+import { createSaveAdmission } from "@/lib/workspace/save-admission";
 import type { AuthContext } from "@/lib/rbac/check";
 import type { EmployeeCreateInput, EmployeeListRow, EmployeeUpdateInput } from "@/server/actions/hr/employees";
 import { createEmployee, updateEmployee } from "@/server/actions/hr/employees";
@@ -45,7 +48,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { EmployeeComplianceTab } from "./tabs/employee-compliance-tab";
 import { EmployeeHrActionsTab } from "./tabs/employee-hr-actions-tab";
@@ -123,32 +126,36 @@ const COMBOBOX_NUMERIC_FIELDS = new Set<keyof EmployeeProfileFormState>([
   "emergency_contact_relationship_type_id",
 ]);
 
-/** Sentinel distinguishing "no draft entry" from a legitimately empty draft value. */
-const NO_DRAFT = "\u0000__no_draft__";
-
-/**
- * WS.3: overlay draft values (keys prefixed cb_ to avoid FormData collisions)
- * over the server-derived initial combobox state.
- */
-function applyComboboxDraft(
-  initial: EmployeeProfileFormState,
-  getDraftDefault: (fieldName: string, serverFallback?: string | number | null | undefined) => string
-): EmployeeProfileFormState {
-  const next = { ...initial };
-  for (const key of Object.keys(initial) as (keyof EmployeeProfileFormState)[]) {
-    const raw = getDraftDefault(`cb_${key}`, NO_DRAFT);
-    if (raw === NO_DRAFT) continue;
-    if (COMBOBOX_NUMERIC_FIELDS.has(key)) {
-      (next[key] as number | null) = raw === "" ? null : Number(raw);
-    } else {
-      (next[key] as string) = raw;
-    }
-  }
-  return next;
-}
+const SECTION_IDS = SECTIONS.map(section => section.id);
+const employeeCodec: WorkspaceDraftCodec<EmployeeProfileFormState> = {
+  encode: value => Object.fromEntries(Object.entries(value).map(([field, entry]) => [field, entry == null ? "" : String(entry)])),
+  restore: (initial, read) => Object.fromEntries(Object.entries(initial).map(([field, fallback]) => {
+    const raw = read(field, fallback);
+    const id = Number(raw);
+    return [field, COMBOBOX_NUMERIC_FIELDS.has(field as keyof EmployeeProfileFormState)
+      ? (raw && Number.isSafeInteger(id) && id > 0 ? id : null) : raw];
+  })) as EmployeeProfileFormState,
+};
 
 function buildInitialFormState(employee: EmployeeListRow | null | undefined): EmployeeProfileFormState {
   return {
+    full_name_en: employee?.full_name_en ?? "",
+    full_name_ar: employee?.full_name_ar ?? "",
+    known_name: employee?.known_name ?? "",
+    date_of_birth: employee?.date_of_birth ?? "",
+    mobile_number: employee?.mobile_number ?? "",
+    personal_email: employee?.personal_email ?? "",
+    uae_address: employee?.uae_address ?? "",
+    home_country_address: employee?.home_country_address ?? "",
+    joining_date: employee?.joining_date ?? "",
+    actual_joining_date: employee?.actual_joining_date ?? "",
+    contract_start_date: employee?.contract_start_date ?? "",
+    contract_end_date: employee?.contract_end_date ?? "",
+    probation_start_date: employee?.probation_start_date ?? "",
+    probation_end_date: employee?.probation_end_date ?? "",
+    notice_period_days: employee?.notice_period_days == null ? "" : String(employee.notice_period_days),
+    emergency_contact_name: employee?.emergency_contact_name ?? "",
+    emergency_contact_mobile: employee?.emergency_contact_mobile ?? "",
     owner_company_id: employee?.owner_company_id ?? null,
     branch_id: employee?.branch_id ?? null,
     department_id: employee?.department_id ?? null,
@@ -170,167 +177,89 @@ function buildInitialFormState(employee: EmployeeListRow | null | undefined): Em
   };
 }
 
-export function EmployeeWorkspaceForm({ employee, mode, authContext }: Props) {
-  const { closeTab, activeTab, markDirty, forceCloseActiveTab, renameTab, updateTabRoute } = useWorkspace();
+export function EmployeeWorkspaceForm(props: Props) {
+  return <EmployeeWorkspaceFormInstance key={`${props.employee?.id ?? "new"}:${props.mode}`} {...props} />;
+}
+
+function EmployeeWorkspaceFormInstance({ employee, mode, authContext }: Props) {
+  const { closeTab, markDirty, updateTabRoute, isTabActive } = useWorkspace();
+  const owner = useWorkspaceFormOwner();
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeSection, setActiveSection] = useState("overview");
+  const [activeSection, setActiveSection] = useWorkspaceFormSection(FORM_ID, "overview", SECTION_IDS);
   const [childDialogOpen, setChildDialogOpen] = useState(false);
-
-  const isEditing = mode === "edit";
+  const [admission] = useState(createSaveAdmission);
+  const saveSession = useWorkspaceSaveSession(FORM_ID, employee?.id ?? null, employee?.workspace_revision);
+  const recordId = useRef(saveSession.id);
+  const [savedId, setSavedId] = useState(employee?.id ?? null);
   const isViewing = mode === "view";
-  const isAdding = mode === "add";
-  const disabled = isViewing;
+  const isAdding = savedId === null;
+  const isEditing = !isViewing && !isAdding;
+  const {value: form, setValue: setForm, isDirty, acceptSaved, getCurrent, restoredFromDraft} = useWorkspaceControlledDraft({
+    formId: FORM_ID, initialValue: buildInitialFormState(employee), codec: employeeCodec, enabled: !isViewing,
+  });
 
-  const { isDirty, resetDirty } = useFormDirty({ formId: FORM_ID, enabled: !isViewing });
-  useWorkspaceTabDirty({ isDirty, enabled: !isViewing });
+  const handleRequestClose = () => { if (owner) closeTab(owner.id); };
 
-  const { getDraftDefault, syncDraft, writeDraftField, clearDraft, restoredFromDraft } =
-    useWorkspaceFormDraft({
-      formId: FORM_ID,
-      enabled: !isViewing,
-      entityType: "employee",
-      entityId: employee?.id ?? null,
-    });
-
-  // WS.3: combobox selections restore from the in-memory draft on remount —
-  // before WORKSPACE.PERF.1 they silently reset to server values on tab switch.
-  const [comboboxForm, setComboboxForm] = useState<EmployeeProfileFormState>(() =>
-    isViewing
-      ? buildInitialFormState(employee)
-      : applyComboboxDraft(buildInitialFormState(employee), getDraftDefault)
-  );
-
-  // Skip draft writes for non-user state changes (initial mount, server re-init).
-  const skipComboboxDraftWriteRef = useRef(true);
-
-  // When employee changes (e.g. after redirect on create), re-init combobox form
-  const prevEmployeeIdRef = useRef<number | null>(employee?.id ?? null);
-  useEffect(() => {
-    const id = employee?.id ?? null;
-    if (prevEmployeeIdRef.current === id) return;
-    prevEmployeeIdRef.current = id;
-    skipComboboxDraftWriteRef.current = true;
-    setComboboxForm(buildInitialFormState(employee));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [employee?.id]);
-
-  // WS.3: persist combobox selections to the in-memory draft on every user change
-  useEffect(() => {
-    if (isViewing) return;
-    if (skipComboboxDraftWriteRef.current) {
-      skipComboboxDraftWriteRef.current = false;
-      return;
-    }
-    for (const [key, value] of Object.entries(comboboxForm)) {
-      writeDraftField(`cb_${key}`, value == null ? "" : String(value));
-    }
-  }, [comboboxForm, isViewing, writeDraftField]);
-
-  const handleRequestClose = () => closeTab(activeTab?.id ?? "");
-
-  const gatherFormData = (): Record<string, unknown> => {
-    const formEl = document.getElementById(FORM_ID) as HTMLFormElement | null;
-    if (!formEl) return {};
-    const fd = new FormData(formEl);
-
-    const str = (k: string) => (fd.get(k) as string) || null;
-    const date = (k: string) => (fd.get(k) as string) || null;
-    const num = (k: string) => {
-      const v = fd.get(k) as string;
-      return v ? parseInt(v, 10) : null;
-    };
-
-    return {
-      full_name_en: (fd.get("full_name_en") as string) || "",
-      full_name_ar: str("full_name_ar"),
-      known_name: str("known_name"),
-      gender: comboboxForm.gender || "male",
-      nationality_id: comboboxForm.nationality_id,
-      date_of_birth: date("date_of_birth") || "",
-      marital_status: comboboxForm.marital_status || null,
-      mobile_number: (fd.get("mobile_number") as string) || "",
-      personal_email: str("personal_email"),
-      uae_address: str("uae_address"),
-      home_country_address: str("home_country_address"),
-      blood_group: comboboxForm.blood_group || null,
-      // Employment
-      owner_company_id: comboboxForm.owner_company_id ?? 0,
-      branch_id: comboboxForm.branch_id,
-      department_id: comboboxForm.department_id,
-      designation_id: comboboxForm.designation_id,
-      employee_category_id: comboboxForm.employee_category_id,
-      employment_type_id: comboboxForm.employment_type_id,
-      joining_date: date("joining_date") || "",
-      actual_joining_date: date("actual_joining_date"),
-      employee_status: comboboxForm.employee_status || "active",
-      reporting_manager_id: comboboxForm.reporting_manager_id,
-      supervisor_id: comboboxForm.supervisor_id,
-      primary_work_site_id: comboboxForm.primary_work_site_id,
-      sponsor_company_id: comboboxForm.sponsor_company_id,
-      mohre_establishment_id: comboboxForm.mohre_establishment_id,
-      // Contract
-      contract_type: comboboxForm.contract_type || null,
-      contract_start_date: date("contract_start_date"),
-      contract_end_date: date("contract_end_date"),
-      probation_start_date: date("probation_start_date"),
-      probation_end_date: date("probation_end_date"),
-      notice_period_days: num("notice_period_days"),
-      // Emergency
-      emergency_contact_name: (fd.get("emergency_contact_name") as string) || "",
-      emergency_contact_mobile: (fd.get("emergency_contact_mobile") as string) || "",
-      emergency_contact_relationship_type_id: comboboxForm.emergency_contact_relationship_type_id,
-    };
-  };
-
-  const handleSave = async (): Promise<boolean> => {
-    if (isViewing) return false;
+  const handleSave = async (closeAfter = false): Promise<boolean> => {
+    if (isViewing || !admission.enter()) return false;
     setIsSubmitting(true);
+    const submitted = getCurrent();
     try {
-      const data = gatherFormData();
-
-      let result;
-      if (isAdding) {
-        result = await createEmployee(data as EmployeeCreateInput);
-      } else {
-        result = await updateEmployee(employee!.id, data as EmployeeUpdateInput);
+      const formElement = document.getElementById(FORM_ID) as HTMLFormElement | null;
+      const missingSelection = !submitted.gender ? "gender"
+        : !submitted.owner_company_id ? "owner_company_id"
+        : !submitted.employee_category_id ? "employee_category_id" : null;
+      if (!formElement || !formElement.checkValidity() || missingSelection) {
+        setActiveSection("profile");
+        if (missingSelection) reportWorkspaceFieldErrors(formElement, { [missingSelection]: "Select a value before saving." });
+        else requestAnimationFrame(() => formElement?.reportValidity());
+        toast.error("Check the required employee fields before saving.");
+        return false;
       }
-
-      if (result.success) {
-        toast.success(isAdding ? "Employee created" : "Employee updated");
-        clearDraft();
-        resetDirty();
-        if (isAdding && (result as { data?: { id: number; employee_code: string } }).data?.id) {
-          const newId = (result as { data?: { id: number } }).data!.id;
-          const employeeCode = (result as { data?: { employee_code?: string } }).data?.employee_code ?? "";
-          const displayName = (data.full_name_en as string) || employeeCode;
-          const newRoute = `/admin/hr/employees/record/${newId}?mode=edit`;
-          if (activeTab?.id) {
-            renameTab(activeTab.id, `Employee — ${displayName}`, employeeCode);
-            updateTabRoute(activeTab.id, newRoute, newId, "edit");
-          }
-          router.replace(newRoute);
-        }
-        // Ensure the employees list re-fetches fresh data once the tab is returned to.
-        router.refresh();
-        return true;
+      const data = {
+        ...submitted,
+        full_name_ar: submitted.full_name_ar || null,
+        known_name: submitted.known_name || null,
+        marital_status: submitted.marital_status || null,
+        personal_email: submitted.personal_email || null,
+        uae_address: submitted.uae_address || null,
+        home_country_address: submitted.home_country_address || null,
+        blood_group: submitted.blood_group || null,
+        actual_joining_date: submitted.actual_joining_date || null,
+        contract_type: submitted.contract_type || null,
+        contract_start_date: submitted.contract_start_date || null,
+        contract_end_date: submitted.contract_end_date || null,
+        probation_start_date: submitted.probation_start_date || null,
+        probation_end_date: submitted.probation_end_date || null,
+        notice_period_days: submitted.notice_period_days ? Number(submitted.notice_period_days) : null,
+      };
+      const wasNew = recordId.current === null;
+      const result = wasNew
+        ? await createEmployee(data as EmployeeCreateInput, saveSession.begin(data))
+        : await updateEmployee(recordId.current!, data as EmployeeUpdateInput, saveSession.begin(data));
+      if (!result.success) { if (!result.uncertain) saveSession.rejected(); reportWorkspaceFieldErrors(formElement, result.fieldErrors); toast.error(result.error ?? "Failed to save employee"); return false; }
+      if (!result.data?.revision) { toast.error("Save response incomplete. Retry the same values to reconcile it."); return false; }
+      saveSession.accept(result.data);
+      if (wasNew) {
+        const id = (result as {data?: {id: number}}).data?.id;
+        if (!id) { toast.error("The save response is incomplete. Check the employee list before retrying."); return false; }
+        recordId.current = id;
+        setSavedId(id);
       }
-      toast.error(result.error ?? "Failed to save employee");
+      const unchanged = acceptSaved(submitted);
+      const route = `/admin/hr/employees/record/${recordId.current}?mode=edit`;
+      if (owner) { markDirty(owner.id, !unchanged); updateTabRoute(owner.id, route, recordId.current!, "edit"); }
+      toast.success(wasNew ? "Employee created" : "Employee updated");
+      if (closeAfter && unchanged && owner) closeTab(owner.id, {force:true});
+      else if (wasNew && owner && isTabActive(owner.id)) router.replace(route);
+      // Refresh only the owning, unchanged record. Never refresh a destination form.
+      else if (unchanged && owner && isTabActive(owner.id)) router.refresh();
+      return true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "The save could not be confirmed. Your input is retained; check the employee list before retrying.");
       return false;
-    } catch {
-      toast.error("An unexpected error occurred");
-      return false;
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleSaveAndClose = async () => {
-    const ok = await handleSave();
-    if (ok) {
-      forceCloseActiveTab();
-      router.refresh();
-    }
+    } finally { admission.leave(); setIsSubmitting(false); }
   };
 
   const employeeStatus = employee?.employee_status;
@@ -340,17 +269,13 @@ export function EmployeeWorkspaceForm({ employee, mode, authContext }: Props) {
   const profileTabProps = {
     employee: employee ?? null,
     mode,
-    formId: FORM_ID,
-    getDraftDefault,
-    syncDraft,
-    writeDraftField,
-    form: comboboxForm,
-    setForm: setComboboxForm,
+    form,
+    setForm,
   };
 
   return (
     <ERPRecordWorkspaceForm
-      mode={mode}
+      mode={isViewing ? "view" : isAdding ? "add" : "edit"}
       title={
         isAdding
           ? "New Employee"
@@ -372,8 +297,8 @@ export function EmployeeWorkspaceForm({ employee, mode, authContext }: Props) {
       activeSection={activeSection}
       onSectionChange={setActiveSection}
       isDirty={isDirty}
-      onSave={isViewing ? undefined : handleSave}
-      onSaveAndClose={isViewing ? undefined : handleSaveAndClose}
+      onSave={isViewing ? undefined : () => handleSave()}
+      onSaveAndClose={isViewing ? undefined : () => handleSave(true)}
       onRequestClose={handleRequestClose}
       isSubmitting={isSubmitting}
       isChildDialogOpen={childDialogOpen}
@@ -382,10 +307,8 @@ export function EmployeeWorkspaceForm({ employee, mode, authContext }: Props) {
         id={FORM_ID}
         onSubmit={(e) => {
           e.preventDefault();
-          handleSaveAndClose();
+          void handleSave();
         }}
-        onInput={syncDraft}
-        onChange={syncDraft}
       >
         {/* WS.3: visible signal that unsaved values from a previous visit were restored */}
         <DraftRestoredNotice visible={!isViewing && restoredFromDraft} className="mb-3" />

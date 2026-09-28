@@ -80,3 +80,6 @@ CODEX_AUDIT_13_09_2026/IMPLEMENTATION/F02_FINAL/local-build/
 CODEX_AUDIT_13_09_2026/IMPLEMENTATION/F02_FINAL/linux-build/
 # Restricted F02 closeout evidence; public summaries are reviewed separately.
 CODEX_AUDIT_13_09_2026/IMPLEMENTATION/F02_CLOSEOUT/
+# F04 local evidence, synthetic credentials, database receipts and isolated builds.
+# Review any public summary separately; this evidence tree must not be staged wholesale.
+/CODEX_AUDIT_13_09_2026/IMPLEMENTATION/F04/

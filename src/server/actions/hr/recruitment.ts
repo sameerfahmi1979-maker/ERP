@@ -1,4 +1,7 @@
 "use server";
+import {saveWorkspaceRecord, type WorkspaceSaveResult} from "@/server/workspace-save";
+import type {WorkspaceSaveContract} from "@/lib/workspace/save-contract";
+import { workspaceValidationFailure } from "@/lib/workspace/field-errors";
 
 import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission, hasPermissionInScope, hasGlobalPermission } from "@/lib/rbac/check";
@@ -352,6 +355,7 @@ export type CandidateRow = {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  workspace_revision: number;
   created_by: number | null;
   deleted_at: string | null;
   // Joins
@@ -692,70 +696,24 @@ export async function getCandidate(id: number): Promise<ActionResult<CandidateRo
   }
 }
 
-export async function createCandidate(
-  input: z.infer<typeof candidateCreateSchema>
-): Promise<ActionResult<{ id: number; candidate_code: string }>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.recruitment.manage") && !ctx.roleCodes?.includes("system_admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-    const parsed = candidateCreateSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues.map((i) => i.message).join("; ") };
-
-    const adminClient = createAdminClient();
-    const { data: numData, error: numError } = await adminClient.rpc("generate_next_reference_number", {
-      p_rule_code: "HR_CANDIDATE",
-      p_document_type_code: null,
-      p_target_table_name: "hr_candidates",
-      p_target_record_id: null,
-      p_generation_reason: "New candidate",
-      p_generated_by: ctx.profile?.id ?? null,
-    });
-    if (numError || !numData || numData.length === 0) return { success: false, error: "Failed to generate candidate code" };
-    const candidateCode: string = numData[0].generated_reference_number;
-
-    const supabase = await createClient();
-    const { data: rec, error: insertError } = await supabase
-      .from("hr_candidates")
-      .insert({ ...parsed.data, candidate_code: candidateCode, created_by: ctx.profile?.id ?? null, updated_by: ctx.profile?.id ?? null })
-      .select("id, candidate_code")
-      .single();
-    if (insertError || !rec) return { success: false, error: insertError?.message ?? "Insert failed" };
-
-    await recruitmentAuditLog({ action: "create", entity_name: "hr_candidates", entity_id: rec.id, entity_reference: candidateCode, candidate_id: rec.id, candidate_code: candidateCode, candidate_name: parsed.data.full_name_en });
-    revalidatePath("/admin/hr/recruitment/candidates");
-    return { success: true, data: { id: rec.id, candidate_code: candidateCode } };
-  } catch (err) {
-    logger.error("createCandidate error", err);
-    return { success: false, error: "Failed to create candidate" };
-  }
+export async function createCandidate(input: z.infer<typeof candidateCreateSchema>,contract: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const ctx=await getAuthContext();
+  if(!hasPermission(ctx,"hr.recruitment.manage")&&!ctx.roleCodes?.includes("system_admin")) return {success:false,error:"Permission denied"};
+  const parsed=candidateCreateSchema.safeParse(input);
+  if(!parsed.success) return workspaceValidationFailure(parsed.error.issues);
+  const result=await saveWorkspaceRecord("hr_candidates",null,parsed.data,contract);
+  if(result.success) revalidatePath("/admin/hr/recruitment/candidates");
+  return result;
 }
 
-export async function updateCandidate(id: number, input: z.infer<typeof candidateUpdateSchema>): Promise<ActionResult<void>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.recruitment.manage") && !ctx.roleCodes?.includes("system_admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-    const parsed = candidateUpdateSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues.map((i) => i.message).join("; ") };
-
-    const supabase = await createClient();
-    const { data: current } = await supabase.from("hr_candidates").select("id, candidate_code, full_name_en").eq("id", id).is("deleted_at", null).single();
-    if (!current) return { success: false, error: "Candidate not found" };
-
-    const { error } = await supabase.from("hr_candidates").update({ ...parsed.data, updated_by: ctx.profile?.id ?? null }).eq("id", id).is("deleted_at", null).select("id").single();
-    if (error) return { success: false, error: error.message };
-
-    await recruitmentAuditLog({ action: "update", entity_name: "hr_candidates", entity_id: id, entity_reference: current.candidate_code ?? undefined, candidate_id: id, candidate_code: current.candidate_code ?? undefined, candidate_name: current.full_name_en });
-    revalidatePath("/admin/hr/recruitment/candidates");
-    revalidatePath(`/admin/hr/recruitment/candidates/record/${id}`);
-    return { success: true };
-  } catch (err) {
-    logger.error("updateCandidate error", err);
-    return { success: false, error: "Failed to update candidate" };
-  }
+export async function updateCandidate(id: number,input: z.infer<typeof candidateUpdateSchema>,contract: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const ctx=await getAuthContext();
+  if(!hasPermission(ctx,"hr.recruitment.manage")&&!ctx.roleCodes?.includes("system_admin")) return {success:false,error:"Permission denied"};
+  const parsed=candidateUpdateSchema.safeParse(input);
+  if(!parsed.success) return workspaceValidationFailure(parsed.error.issues);
+  const result=await saveWorkspaceRecord("hr_candidates",id,parsed.data,contract);
+  if(result.success) {revalidatePath("/admin/hr/recruitment/candidates");revalidatePath(`/admin/hr/recruitment/candidates/record/${id}`);}
+  return result;
 }
 
 export async function archiveCandidate(id: number): Promise<ActionResult<void>> {

@@ -1,5 +1,12 @@
 'use strict';
 const path=require('node:path'),fs=require('node:fs');
+function stableKey(key){
+ const [file,rule,message]=JSON.parse(key);
+ // Moving an existing TanStack call is not a new compiler advisory. Keep the
+ // file, rule, semantic diagnostic and count; discard only its rendered frame.
+ return JSON.stringify([file,rule,rule==='react-hooks/incompatible-library'
+  ? message.replace(/\n\n<file>:\d+:\d+[\s\S]*$/,'') : message]);
+}
 function warningKey(root,file,message){
  const normalizedFile=file.replaceAll('\\','/');
  const normalizedRoot=root.replaceAll('\\','/').replace(/\/$/,'');
@@ -7,10 +14,11 @@ function warningKey(root,file,message){
  // React Compiler diagnostics embed an absolute filename in their code frame.
  // The same finding must have one identity on Windows and Linux CI.
  const text=message.message.replaceAll(file,'<file>').replaceAll(normalizedFile,'<file>');
- return JSON.stringify([relative,message.ruleId,text]);
+ return stableKey(JSON.stringify([relative,message.ruleId,text]));
 }
 function assess(results,baseline,root){
- const allowed=new Map(baseline.warnings.map(w=>[w.key,w.count]));
+ const allowed=new Map();
+ for(const w of baseline.warnings){const key=stableKey(w.key);allowed.set(key,(allowed.get(key)||0)+w.count);}
  const actual=new Map();let errors=0;
  for(const result of results){errors+=result.errorCount;for(const m of result.messages)if(m.severity===1){const key=warningKey(root,result.filePath,m);actual.set(key,(actual.get(key)||0)+1);}}
  const newWarnings=[...actual].filter(([key,count])=>count>(allowed.get(key)||0)).map(([key,count])=>({key,count,allowed:allowed.get(key)||0}));

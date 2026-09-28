@@ -9,11 +9,12 @@ import type { Country } from "@/features/master-data/geography/types";
 import { createCountry, updateCountry } from "@/features/master-data/geography/actions";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { useQueryClient } from "@tanstack/react-query";
-import { useFormDirty } from "@/hooks/use-form-dirty";
+import { useWorkspaceFormDirty as useFormDirty } from "@/hooks/use-workspace-form-dirty";
 import { invalidateCountries } from "@/lib/query/invalidation";
 import { Globe, Phone, Tag, Shield, Info } from "lucide-react";
 import type { AuthContext } from "@/lib/rbac/check";
-import { useWorkspace } from "@/hooks/use-workspace";
+import { useWorkspaceFormNavigation as useWorkspace } from "@/hooks/use-workspace-form-navigation";
+import { useWorkspaceFormSection } from "@/hooks/use-workspace-form-section";
 import { ERPRecordWorkspaceForm, ERPRecordSectionPanel } from "@/components/workspace/erp-record-workspace-form";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
 
@@ -29,7 +30,14 @@ export function CountryWorkspaceForm({ country, mode }: CountryWorkspaceFormProp
   const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeSection, setActiveSection] = useState("basic");
+  const sections = [
+    { id: "basic", label: "Basic Info", icon: Globe },
+    { id: "contact", label: "Nationality & Contact", icon: Phone },
+    { id: "classification", label: "Classification", icon: Tag },
+    { id: "status", label: "Status", icon: Shield },
+    { id: "audit", label: "Audit Info", icon: Info },
+  ];
+  const [activeSection, setActiveSection] = useWorkspaceFormSection(FORM_ID, "basic", sections.map(section => section.id));
 
   const isEditing = mode === "edit";
   const isViewing = mode === "view";
@@ -41,13 +49,6 @@ export function CountryWorkspaceForm({ country, mode }: CountryWorkspaceFormProp
     if (activeTab?.id) markDirty(activeTab.id, isDirty);
   }, [isDirty, activeTab?.id, markDirty]);
 
-  const sections = [
-    { id: "basic", label: "Basic Info", icon: Globe },
-    { id: "contact", label: "Nationality & Contact", icon: Phone },
-    { id: "classification", label: "Classification", icon: Tag },
-    { id: "status", label: "Status", icon: Shield },
-    { id: "audit", label: "Audit Info", icon: Info },
-  ];
 
   const handleRequestClose = () => closeTab(activeTab?.id ?? "");
 

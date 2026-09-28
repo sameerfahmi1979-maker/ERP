@@ -8,7 +8,7 @@
  * - Column resizing (drag borders)
  * - Column visibility (show/hide)
  * - Row selection (checkboxes)
- * - Persistent preferences (localStorage)
+ * - Principal-scoped, memory-only preferences
  * - Enhanced pagination
  * - Table-state-aware export (selected/filtered/sorted rows)
  */
@@ -43,7 +43,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import type { ERPTableConfig } from "./erp-table-types";
-import { loadTablePreferences, saveTablePreferences } from "./erp-table-preferences";
+import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
 import { ERPColumnMenu } from "./erp-column-menu";
 import { ERPExportMenu } from "../export/erp-export-menu";
 import type { ERPExportColumn } from "@/lib/export";
@@ -144,31 +144,19 @@ export function ERPDataTable<TData>({
 }: ERPDataTableProps<TData>) {
   // ERP GLOBAL UI.4E.1: route-scoped v2 key prevents cross-screen state leakage.
   // usePathname() is SSR-safe here since ERPDataTable is "use client".
-  const pathname = usePathname();
+  const currentPathname = usePathname();
+  const [pathname] = useState(currentPathname);
+  const key = enablePreferences ? `table:${userProfileId}:${pathname}:${tableId}` : undefined;
 
   // Table state — start with server-safe empty defaults; preferences applied post-mount
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+  const [sorting, setSorting] = usePersistentUiState<SortingState>(key ? key+":sorting" : undefined,[]);
+  const [columnSizing, setColumnSizing] = usePersistentUiState<ColumnSizingState>(key ? key+":columnSizing" : undefined,{});
+  const [columnVisibility, setColumnVisibility] = usePersistentUiState<VisibilityState>(key ? key+":columnVisibility" : undefined,{});
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
-  const [globalFilter, setGlobalFilter] = useState("");
+  const [globalFilter, setGlobalFilter] = usePersistentUiState(key ? key+":search" : undefined,"");
   const [mounted, setMounted] = useState(false);
 
-  // Apply saved preferences after hydration + set mounted flag.
-  // Running this in useEffect guarantees the first render matches SSR output exactly.
-  useEffect(() => {
-    setMounted(true);
-    if (!enablePreferences) return;
-    const prefs = loadTablePreferences(userProfileId, tableId, pathname);
-    if (!prefs) return;
-    if (prefs.sorting?.length) setSorting(prefs.sorting);
-    if (prefs.columnSizing && Object.keys(prefs.columnSizing).length) setColumnSizing(prefs.columnSizing);
-    if (prefs.columnVisibility && Object.keys(prefs.columnVisibility).length) setColumnVisibility(prefs.columnVisibility);
-    if (prefs.globalFilter) setGlobalFilter(prefs.globalFilter);
-    if (prefs.pageSize) table.setPageSize(prefs.pageSize);
-    if (prefs.pageIndex) table.setPageIndex(prefs.pageIndex);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // run once on mount only
+  useEffect(()=>{setMounted(true);},[]);
 
   // Enhanced columns with selection column
   const enhancedColumns = useMemo<ColumnDef<TData, unknown>[]>(() => {
@@ -203,6 +191,8 @@ export function ERPDataTable<TData>({
     return [...cols, ...columns];
   }, [columns, enableRowSelection]);
 
+  const [pagination,setPagination]=usePersistentUiState(key ? key+":pagination" : undefined,{pageSize:initialPageSize,pageIndex:0});
+
   // Initialize table
   const table = useReactTable({
     data,
@@ -213,7 +203,9 @@ export function ERPDataTable<TData>({
       columnVisibility,
       rowSelection,
       globalFilter,
+      pagination,
     },
+    onPaginationChange:setPagination,
     onSortingChange: setSorting,
     onColumnSizingChange: setColumnSizing,
     onColumnVisibilityChange: setColumnVisibility,
@@ -235,28 +227,6 @@ export function ERPDataTable<TData>({
       },
     },
   });
-
-  const { pageSize, pageIndex } = table.getState().pagination;
-  // Save preferences when state changes (client-side only).
-  // UI.4E: also saves globalFilter and pageIndex for workspace session restore.
-  useEffect(() => {
-    if (!enablePreferences || typeof window === "undefined") return;
-
-    const timer = setTimeout(() => {
-      saveTablePreferences(userProfileId, tableId, {
-        sorting,
-        columnSizing,
-        columnVisibility,
-        pageSize,
-        pageIndex,
-        globalFilter: globalFilter || undefined,
-      }, pathname);
-    }, 500); // Debounce saves
-
-    return () => clearTimeout(timer);
-  }, [sorting, columnSizing, columnVisibility, globalFilter,
-      pageSize, pageIndex, pathname,
-      enablePreferences, userProfileId, tableId]);
 
   const selectedRowCount = table.getFilteredSelectedRowModel().rows.length;
 

@@ -1,5 +1,7 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
+import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
+import { useWorkspaceFormOwner } from "@/hooks/use-workspace-form-owner";
 
 import { ReportPreviewHeader } from "@/components/report-center/report-preview-header";
 import { ReportTemplateSelectDialog } from "@/components/report-center/report-template-select-dialog";
@@ -68,7 +70,11 @@ interface ReportRunPageProps {
 
 export function ReportRunPage({ registryEntry, initialFilters = {} }: ReportRunPageProps) {
   const router = useRouter();
-  const [filters, setFilters] = useState<Record<string, string>>(initialFilters);
+  const owner = useWorkspaceFormOwner();
+  const stateKey = owner ? `report-view:${owner.id}:${registryEntry.report_code}` : undefined;
+  // Filters and repeated column selections survive a workspace switch, in this
+  // principal's memory only. Report rows and resolved branding are never cached here.
+  const [filters, setFilters] = usePersistentUiState<Record<string, string>>(stateKey ? `${stateKey}:filters` : undefined, initialFilters);
   const [isRunning, setIsRunning] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [runResult, setRunResult] = useState<ReportRunResult | null>(null);
@@ -84,7 +90,7 @@ export function ReportRunPage({ registryEntry, initialFilters = {} }: ReportRunP
   const [isSavingFilter, setIsSavingFilter] = useState(false);
 
   // Column visibility
-  const [visibleColumns, setVisibleColumns] = useState<string[] | null>(null);
+  const [visibleColumns, setVisibleColumns] = usePersistentUiState<string[] | null>(stateKey ? `${stateKey}:columns` : undefined, null);
 
   // Entity lookup data for filter comboboxes
   const savedFilterQuery = useQuery({
@@ -127,14 +133,14 @@ export function ReportRunPage({ registryEntry, initialFilters = {} }: ReportRunP
 
   const handleFilterChange = useCallback((key: string, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
-  }, []);
+  }, [setFilters]);
 
   const handleReset = useCallback(() => {
     setFilters(initialFilters);
     setRunResult(null);
     setError(null);
     setVisibleColumns(null);
-  }, [initialFilters]);
+  }, [initialFilters, setFilters, setVisibleColumns]);
 
   const handleApplySavedFilter = (filter: SavedFilter) => {
     const f = filter.filters_json as Record<string, string>;
@@ -218,7 +224,7 @@ export function ReportRunPage({ registryEntry, initialFilters = {} }: ReportRunP
       }
 
       setRunResult(runResult);
-      setVisibleColumns(null);
+      setVisibleColumns(previous => previous?.filter(column => runResult.data?.columns.includes(column)) ?? null);
 
       // Resolve branding for export/preview if the run produced a template
       const templateId = runResult.resolvedTemplateId ?? selectedTemplateId;

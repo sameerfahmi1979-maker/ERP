@@ -26,10 +26,9 @@
 import { useEffect, useRef, useMemo, type RefObject } from "react";
 import {
   buildPageStateKey,
-  readPageState,
-  writePageState,
   type WorkspacePageStateScope,
 } from "@/lib/workspace/workspace-page-state";
+import { usePersistentUiState } from "./use-persistent-ui-state";
 
 interface ScrollPosition {
   scrollTop: number;
@@ -74,6 +73,9 @@ export function useWorkspaceScrollState(
   );
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [saved,setSaved]=usePersistentUiState<ScrollPosition>(storageKey,{scrollTop:0,scrollLeft:0});
+  const savedRef=useRef(saved);
+  useEffect(()=>{savedRef.current=saved;},[saved]);
 
   useEffect(() => {
     if (!enabled || typeof window === "undefined") return;
@@ -81,17 +83,13 @@ export function useWorkspaceScrollState(
     if (!el) return;
 
     // Restore scroll position
-    const saved = readPageState<ScrollPosition>(storageKey, {
-      scrollTop: 0,
-      scrollLeft: 0,
-    });
-    el.scrollTop = saved.scrollTop;
-    el.scrollLeft = saved.scrollLeft;
+    el.scrollTop = savedRef.current.scrollTop;
+    el.scrollLeft = savedRef.current.scrollLeft;
 
     const handleScroll = () => {
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => {
-        writePageState<ScrollPosition>(storageKey, {
+        setSaved({
           scrollTop: el.scrollTop,
           scrollLeft: el.scrollLeft,
         });
@@ -104,11 +102,11 @@ export function useWorkspaceScrollState(
       el.removeEventListener("scroll", handleScroll);
       // Save final scroll on unmount
       if (timerRef.current) clearTimeout(timerRef.current);
-      writePageState<ScrollPosition>(storageKey, {
+      setSaved({
         scrollTop: el.scrollTop,
         scrollLeft: el.scrollLeft,
       });
     };
   // storageKey changes when recordId changes — re-attach
-  }, [enabled, ref, storageKey]);
+  }, [enabled, ref, storageKey, setSaved]);
 }

@@ -8,8 +8,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { ERPRecordSectionPanel, ERPRecordWorkspaceForm } from "@/components/workspace/erp-record-workspace-form";
 import { createUomCategory, updateUomCategory } from "@/features/master-data/uom/actions";
 import type { UomCategory } from "@/features/master-data/uom/types";
-import { useFormDirty } from "@/hooks/use-form-dirty";
-import { useWorkspace } from "@/hooks/use-workspace";
+import { useWorkspaceFormDirty as useFormDirty } from "@/hooks/use-workspace-form-dirty";
+import { useWorkspaceFormNavigation as useWorkspace } from "@/hooks/use-workspace-form-navigation";
+import { useWorkspaceFormSection } from "@/hooks/use-workspace-form-section";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
 import type { AuthContext } from "@/lib/rbac/check";
 import { useQueryClient } from "@tanstack/react-query";
@@ -30,7 +31,12 @@ export function UomCategoryWorkspaceForm({ category, mode, onSuccess }: UomCateg
   const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeSection, setActiveSection] = useState("basic");
+  const sections = [
+    { id: "basic", label: "Basic Info", icon: Ruler },
+    { id: "status", label: "Status", icon: Shield },
+    { id: "audit", label: "Audit Info", icon: Info },
+  ];
+  const [activeSection, setActiveSection] = useWorkspaceFormSection(FORM_ID, "basic", sections.map(section => section.id));
   const isEditing = mode === "edit";
   const isViewing = mode === "view";
   const { isDirty, resetDirty } = useFormDirty({ formId: FORM_ID, enabled: !isViewing });
@@ -40,11 +46,6 @@ export function UomCategoryWorkspaceForm({ category, mode, onSuccess }: UomCateg
     if (activeTab?.id) markDirty(activeTab.id, isDirty);
   }, [isDirty, activeTab?.id, markDirty]);
 
-  const sections = [
-    { id: "basic", label: "Basic Info", icon: Ruler },
-    { id: "status", label: "Status", icon: Shield },
-    { id: "audit", label: "Audit Info", icon: Info },
-  ];
 
   const handleRequestClose = () => closeTab(activeTab?.id ?? "");
 

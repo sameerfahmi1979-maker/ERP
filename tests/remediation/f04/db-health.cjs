@@ -1,0 +1,2 @@
+const db=require('../f00/local-db.cjs');
+console.log(JSON.stringify(db.sql("select json_build_object('activity',(select json_agg(json_build_object('pid',pid,'state',state,'wait',wait_event_type,'event',wait_event,'age',now()-query_start,'blocking',pg_blocking_pids(pid))) from pg_stat_activity where datname='postgres' and state<>'idle' and pid<>pg_backend_pid()),'rows',(select json_agg(json_build_object('id',id,'revision',workspace_revision,'description',description)) from public.departments where department_code like 'F04-%'));",{json:true}),null,2));

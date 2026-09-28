@@ -8,8 +8,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { MapPin, Contact, ScrollText, Files } from "lucide-react";
 import type { AuthContext } from "@/lib/rbac/check";
-import { useWorkspace } from "@/hooks/use-workspace";
-import { useFormDirty } from "@/hooks/use-form-dirty";
+import { useWorkspaceFormNavigation as useWorkspace } from "@/hooks/use-workspace-form-navigation";
+import { useWorkspaceFormSection } from "@/hooks/use-workspace-form-section";
+import { useWorkspaceFormDirty as useFormDirty } from "@/hooks/use-workspace-form-dirty";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
 import { ERPRecordWorkspaceForm, ERPRecordSectionPanel } from "@/components/workspace/erp-record-workspace-form";
 import { RequiredLabel } from "@/components/erp/required-label";
@@ -33,10 +34,13 @@ const SITE_TYPES = ['office','yard','workshop','camp','warehouse','project_site'
 export function WorkSiteWorkspaceForm({ site, mode, companies = [] }: Props) {
   const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeSection, setActiveSection] = useState("basic");
-  const [countryId, setCountryId] = useState<number | null>(site?.country_id ?? null);
-  const [emirateId, setEmirateId] = useState<number | null>(site?.emirate_id ?? null);
-  const [cityId, setCityId] = useState<number | null>(site?.city_id ?? null);
+  const sections = [
+    { id: "basic", label: "Site Info", icon: MapPin },
+    { id: "contact", label: "Contact", icon: Contact },
+    { id: "notes", label: "Notes", icon: ScrollText },
+    { id: "documents", label: "Documents", icon: Files },
+  ];
+  const [activeSection, setActiveSection] = useWorkspaceFormSection(FORM_ID, "basic", sections.map(section => section.id));
 
   // After a successful create in mode="add", track the new record ID so
   // subsequent "Save" clicks update instead of trying to create again.
@@ -49,14 +53,11 @@ export function WorkSiteWorkspaceForm({ site, mode, companies = [] }: Props) {
 
   const { isDirty, resetDirty } = useFormDirty({ formId: FORM_ID, enabled: !isViewing });
   useEffect(() => { if (activeTab?.id) markDirty(activeTab.id, isDirty); }, [isDirty, activeTab?.id, markDirty]);
-  const { getDraftDefault, syncDraft, writeDraftField, clearDraft } = useWorkspaceFormDraft({ formId: FORM_ID, enabled: !isViewing });
+  const { getDraftDefault, getDraftNullableId, getDraftBoolean, syncDraft, writeDraftField, clearDraft } = useWorkspaceFormDraft({ formId: FORM_ID, enabled: !isViewing });
+  const [countryId, setCountryId] = useState(() => getDraftNullableId("country_id", site?.country_id));
+  const [emirateId, setEmirateId] = useState(() => getDraftNullableId("emirate_id", site?.emirate_id));
+  const [cityId, setCityId] = useState(() => getDraftNullableId("city_id", site?.city_id));
 
-  const sections = [
-    { id: "basic", label: "Site Info", icon: MapPin },
-    { id: "contact", label: "Contact", icon: Contact },
-    { id: "notes", label: "Notes", icon: ScrollText },
-    { id: "documents", label: "Documents", icon: Files },
-  ];
 
   const handleRequestClose = () => closeTab(activeTab?.id ?? "");
 
@@ -195,11 +196,11 @@ export function WorkSiteWorkspaceForm({ site, mode, companies = [] }: Props) {
             </div>
             <div className="col-span-6 space-y-1.5">
               <Label className="text-muted-foreground text-xs">Country</Label>
-              <CountrySelect value={countryId} onValueChange={(v) => { setCountryId(v); setEmirateId(null); setCityId(null); writeDraftField("country_id", v ?? ""); }} placeholder="Select Country" disabled={disabled} />
+              <CountrySelect value={countryId} onValueChange={(v) => { setCountryId(v); setEmirateId(null); setCityId(null); writeDraftField("country_id", v); writeDraftField("emirate_id", null); writeDraftField("city_id", null); }} placeholder="Select Country" disabled={disabled} />
             </div>
             <div className="col-span-6 space-y-1.5">
               <Label className="text-muted-foreground text-xs">Emirate / Region</Label>
-              <EmirateSelect value={emirateId} onValueChange={(v) => { setEmirateId(v); setCityId(null); writeDraftField("emirate_id", v ?? ""); }} countryId={countryId} placeholder="Select Emirate" disabled={disabled || !countryId} />
+              <EmirateSelect value={emirateId} onValueChange={(v) => { setEmirateId(v); setCityId(null); writeDraftField("emirate_id", v); writeDraftField("city_id", null); }} countryId={countryId} placeholder="Select Emirate" disabled={disabled || !countryId} />
             </div>
             <div className="col-span-6 space-y-1.5">
               <Label className="text-muted-foreground text-xs">City</Label>
@@ -236,7 +237,7 @@ export function WorkSiteWorkspaceForm({ site, mode, companies = [] }: Props) {
                 { id: "adnoc_required", label: "ADNOC Pass Required", checked: site?.adnoc_required ?? false },
               ].map(f => (
                 <div key={f.id} className="flex items-center space-x-2">
-                  <Checkbox id={f.id} name={f.id} defaultChecked={f.checked} disabled={disabled} />
+                  <Checkbox id={f.id} name={f.id} defaultChecked={getDraftBoolean(f.id, f.checked)} disabled={disabled} />
                   <Label htmlFor={f.id} className="text-xs cursor-pointer">{f.label}</Label>
                 </div>
               ))}

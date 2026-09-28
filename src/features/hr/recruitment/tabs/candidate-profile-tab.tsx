@@ -110,16 +110,16 @@ export function CandidateProfileTab({ form, setForm, mode, canManage, canManageS
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12 md:col-span-6">
             <RequiredLabel required>Full Name (English)</RequiredLabel>
-            <Input value={form.full_name_en} onChange={(e) => set("full_name_en", e.target.value)} disabled={isView} placeholder="Full name in English" />
+            <Input name="full_name_en" aria-label="Full Name (English)" required value={form.full_name_en} onChange={(e) => set("full_name_en", e.target.value)} disabled={isView} placeholder="Full name in English" />
           </div>
           <div className="col-span-12 md:col-span-6">
             <Label>Full Name (Arabic)</Label>
-            <Input value={form.full_name_ar} onChange={(e) => set("full_name_ar", e.target.value)} disabled={isView} placeholder="الاسم الكامل بالعربية" dir="rtl" />
+            <Input name="full_name_ar" aria-label="Full Name (Arabic)" value={form.full_name_ar} onChange={(e) => set("full_name_ar", e.target.value)} disabled={isView} placeholder="الاسم الكامل بالعربية" dir="rtl" />
           </div>
 
           <div className="col-span-12 md:col-span-4">
             <Label>Gender</Label>
-            <ERPCombobox
+            <ERPCombobox name="gender" ariaLabel="Gender"
               value={form.gender || null}
               onValueChange={(v) => set("gender", String(v ?? ""))}
               options={GENDER_OPTIONS}
@@ -129,25 +129,25 @@ export function CandidateProfileTab({ form, setForm, mode, canManage, canManageS
           </div>
           <div className="col-span-12 md:col-span-4">
             <Label>Date of Birth</Label>
-            <Input type="date" value={form.date_of_birth} onChange={(e) => set("date_of_birth", e.target.value)} disabled={isView} />
+            <Input name="date_of_birth" aria-label="Date of Birth" type="date" value={form.date_of_birth} onChange={(e) => set("date_of_birth", e.target.value)} disabled={isView} />
           </div>
           <div className="col-span-12 md:col-span-4">
             <Label>Availability Date</Label>
-            <Input type="date" value={form.availability_date} onChange={(e) => set("availability_date", e.target.value)} disabled={isView} />
+            <Input name="availability_date" aria-label="Availability Date" type="date" value={form.availability_date} onChange={(e) => set("availability_date", e.target.value)} disabled={isView} />
           </div>
 
           <div className="col-span-12 md:col-span-6">
             <Label>Mobile Number</Label>
-            <Input value={form.mobile_number} onChange={(e) => set("mobile_number", e.target.value)} disabled={isView} placeholder="+971 50 000 0000" />
+            <Input name="mobile_number" aria-label="Mobile Number" value={form.mobile_number} onChange={(e) => set("mobile_number", e.target.value)} disabled={isView} placeholder="+971 50 000 0000" />
           </div>
           <div className="col-span-12 md:col-span-6">
             <Label>Email</Label>
-            <Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} disabled={isView} placeholder="candidate@email.com" />
+            <Input name="email" aria-label="Email" type="email" value={form.email} onChange={(e) => set("email", e.target.value)} disabled={isView} placeholder="candidate@email.com" />
           </div>
 
           <div className="col-span-12">
             <Label>Current Location</Label>
-            <Input value={form.current_location} onChange={(e) => set("current_location", e.target.value)} disabled={isView} placeholder="City, Country" />
+            <Input name="current_location" aria-label="Current Location" value={form.current_location} onChange={(e) => set("current_location", e.target.value)} disabled={isView} placeholder="City, Country" />
           </div>
         </div>
       </section>
@@ -158,7 +158,7 @@ export function CandidateProfileTab({ form, setForm, mode, canManage, canManageS
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12 md:col-span-6">
             <Label>Job Requisition</Label>
-            <ERPCombobox
+            <ERPCombobox name="requisition_id" ariaLabel="Job Requisition"
               value={form.requisition_id}
               onValueChange={(v) => set("requisition_id", v ? Number(v) : null)}
               options={requisitions.map((r) => ({ value: r.id, label: `${r.requisition_code ?? ""} — ${r.requisition_title}` }))}
@@ -168,7 +168,7 @@ export function CandidateProfileTab({ form, setForm, mode, canManage, canManageS
           </div>
           <div className="col-span-12 md:col-span-3">
             <Label>Source</Label>
-            <ERPCombobox
+            <ERPCombobox name="source" ariaLabel="Source"
               value={form.source || null}
               onValueChange={(v) => set("source", String(v ?? ""))}
               options={SOURCE_OPTIONS}
@@ -178,7 +178,7 @@ export function CandidateProfileTab({ form, setForm, mode, canManage, canManageS
           </div>
           <div className="col-span-12 md:col-span-3">
             <Label>Rating</Label>
-            <ERPCombobox
+            <ERPCombobox name="rating" ariaLabel="Rating"
               value={form.rating || null}
               onValueChange={(v) => set("rating", String(v ?? ""))}
               options={RATING_OPTIONS}
@@ -190,13 +190,13 @@ export function CandidateProfileTab({ form, setForm, mode, canManage, canManageS
           {form.source === "agency" && (
             <div className="col-span-12 md:col-span-6">
               <Label>Agency Name</Label>
-              <Input value={form.agency_name} onChange={(e) => set("agency_name", e.target.value)} disabled={isView} placeholder="Agency name" />
+              <Input name="agency_name" aria-label="Agency Name" value={form.agency_name} onChange={(e) => set("agency_name", e.target.value)} disabled={isView} placeholder="Agency name" />
             </div>
           )}
 
           <div className="col-span-12 md:col-span-6">
             <Label>Candidate Status</Label>
-            <ERPCombobox
+            <ERPCombobox name="candidate_status" ariaLabel="Candidate Status"
               value={form.candidate_status || null}
               onValueChange={(v) => set("candidate_status", String(v ?? "new"))}
               options={STATUS_OPTIONS}
@@ -206,7 +206,7 @@ export function CandidateProfileTab({ form, setForm, mode, canManage, canManageS
           </div>
           <div className="col-span-12 md:col-span-6">
             <Label>Pipeline Stage</Label>
-            <ERPCombobox
+            <ERPCombobox name="pipeline_stage" ariaLabel="Pipeline Stage"
               value={form.pipeline_stage || null}
               onValueChange={(v) => set("pipeline_stage", String(v ?? "new"))}
               options={PIPELINE_OPTIONS}
@@ -223,21 +223,21 @@ export function CandidateProfileTab({ form, setForm, mode, canManage, canManageS
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12 md:col-span-6">
             <Label>Current Employer</Label>
-            <Input value={form.current_employer} onChange={(e) => set("current_employer", e.target.value)} disabled={isView} placeholder="Company name" />
+            <Input name="current_employer" aria-label="Current Employer" value={form.current_employer} onChange={(e) => set("current_employer", e.target.value)} disabled={isView} placeholder="Company name" />
           </div>
           <div className="col-span-12 md:col-span-6">
             <Label>Current Position</Label>
-            <Input value={form.current_position} onChange={(e) => set("current_position", e.target.value)} disabled={isView} placeholder="Job title" />
+            <Input name="current_position" aria-label="Current Position" value={form.current_position} onChange={(e) => set("current_position", e.target.value)} disabled={isView} placeholder="Job title" />
           </div>
 
           <div className="col-span-12 md:col-span-4">
             <Label>Expected Salary (AED)</Label>
-            <Input type="number" value={form.expected_salary} onChange={(e) => set("expected_salary", e.target.value)} disabled={isView||!canManageSalary} placeholder={canManageSalary?"0.00":"Salary access restricted"} min={0} />
+            <Input name="expected_salary" aria-label="Expected Salary (AED)" type="number" value={form.expected_salary} onChange={(e) => set("expected_salary", e.target.value)} disabled={isView||!canManageSalary} placeholder={canManageSalary?"0.00":"Salary access restricted"} min={0} />
             {!canManageSalary&&<p className="text-xs text-muted-foreground">Separate scoped salary permissions are required to edit this field.</p>}
           </div>
           <div className="col-span-12 md:col-span-4">
             <Label>Notice Period (Days)</Label>
-            <Input type="number" value={form.notice_period_days} onChange={(e) => set("notice_period_days", e.target.value)} disabled={isView} placeholder="30" min={0} />
+            <Input name="notice_period_days" aria-label="Notice Period (Days)" type="number" value={form.notice_period_days} onChange={(e) => set("notice_period_days", e.target.value)} disabled={isView} placeholder="30" min={0} />
           </div>
         </div>
       </section>
@@ -247,7 +247,7 @@ export function CandidateProfileTab({ form, setForm, mode, canManage, canManageS
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <Label>Internal Notes</Label>
-            <Textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} disabled={isView} placeholder="Internal notes about this candidate..." rows={4} />
+            <Textarea name="notes" aria-label="Internal Notes" value={form.notes} onChange={(e) => set("notes", e.target.value)} disabled={isView} placeholder="Internal notes about this candidate..." rows={4} />
           </div>
         </div>
       </section>

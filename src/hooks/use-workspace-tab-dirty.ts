@@ -17,6 +17,7 @@
 
 import { useEffect } from "react";
 import { useWorkspaceContext } from "@/components/workspace/workspace-provider";
+import { useWorkspaceFormOwner } from "@/hooks/use-workspace-form-owner";
 
 export type UseWorkspaceTabDirtyOptions = {
   /** The current form dirty state from useFormDirty or local state */
@@ -38,14 +39,14 @@ export function useWorkspaceTabDirty({
 }: UseWorkspaceTabDirtyOptions): void {
   // Null-safe: returns null when outside WorkspaceProvider
   const ctx = useWorkspaceContext();
+  const owner = useWorkspaceFormOwner();
+  const targetId = tabId ?? owner?.id;
+  const dispatch = ctx?.dispatch;
 
   useEffect(() => {
-    if (!ctx || !enabled) return;
-    const targetId = tabId ?? ctx.state.tabs.find((t) => t.id === ctx.state.activeTabId)?.id;
-    if (!targetId) return;
-    ctx.dispatch({ type: "MARK_DIRTY", tabId: targetId, dirty: isDirty });
+    if (!dispatch || !enabled || !targetId) return;
+    dispatch({ type: "MARK_DIRTY", tabId: targetId, dirty: isDirty });
     // Intentionally NOT clearing on unmount — see hook doc above.
     // The form must call resetDirty() / save for the tab dot to clear.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDirty, enabled, tabId, ctx?.state.activeTabId]);
+  }, [isDirty, enabled, targetId, dispatch]);
 }

@@ -10,6 +10,9 @@
 
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { usePathname } from "next/navigation";
+import { useWorkspaceContext } from "./workspace-provider";
+import { isWorkspaceRoute } from "@/lib/workspace/workspace-route-registry";
 
 interface WorkspaceContentProps {
   children: ReactNode;
@@ -17,6 +20,10 @@ interface WorkspaceContentProps {
 }
 
 export function WorkspaceContent({ children, className }: WorkspaceContentProps) {
+  const workspace = useWorkspaceContext();
+  const pathname = usePathname();
+  const awaitingOwner = workspace && (!workspace.state.isHydrated ||
+    (isWorkspaceRoute(pathname) && !workspace.state.tabs.some(tab => tab.route.split("?")[0] === pathname)));
   return (
     <main
       className={cn(
@@ -24,7 +31,7 @@ export function WorkspaceContent({ children, className }: WorkspaceContentProps)
         className
       )}
     >
-      {children}
+      {awaitingOwner ? <div role="status">Preparing workspace…</div> : children}
     </main>
   );
 }

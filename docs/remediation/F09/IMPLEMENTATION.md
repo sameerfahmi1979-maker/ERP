@@ -1,5 +1,13 @@
 # F09 backend foundation
 
+## Latest increment — 30 September 2026
+
+The consumer adapters are now connected locally. See [Email processor and report-delivery integration](ADAPTER_INTEGRATION.md)
+for the implemented permissions, queue/report history contract, 703 passing automated checks,
+rollout flags and remaining release gates. The foundation-only adoption statements below
+are the historical first-checkpoint record, not the current adapter status. F09 remains
+undeployed and open pending full-schema/UAT/provider/output/release acceptance.
+
 Started 2026-09-30 on `codex/f09-backend-foundation` from main commit
 `d9de058abbc410006c0233bac3e69e06e1faccde`.
 

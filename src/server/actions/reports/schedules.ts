@@ -15,11 +15,12 @@
 
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, hasGlobalPermission, hasPermissionInScope } from "@/lib/rbac/check";
+import { requireReportDelivery } from "@/lib/email/queue/policy";
 import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
 import {
-  executeScheduleRun,
+  loadDeliverableSchedule,
   calculateNextRunAt,
 } from "@/lib/report-center/schedule-execution";
 
@@ -437,56 +438,25 @@ export async function deleteReportSchedule(id: number): Promise<ActionResult> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function runReportScheduleNow(
-  id: number
-): Promise<ActionResult<{ deliveryLogId?: number }>> {
+  id: number, requestId: string
+): Promise<ActionResult<{ queueId?: number; queued: boolean }>> {
   try {
     const ctx = await getAuthContext();
-    if (!ctx.profile?.id) {
-      return { success: false, error: "User profile not found." };
-    }
-
-    const db = createAdminClient();
-
-    const { data: schedule } = await db
-      .from("erp_report_schedules")
-      .select(`
-        *,
-        report:erp_report_registry(
-          id, report_code, report_name_en, required_permissions,
-          sensitive_profile, is_active, supports_scheduling
-        )
-      `)
-      .eq("id", id)
-      .is("deleted_at", null)
-      .maybeSingle();
-
-    if (!schedule) return { success: false, error: "Schedule not found." };
-
-    const sched = schedule as ReportSchedule & {
-      report: {
-        id: number;
-        report_code: string;
-        report_name_en: string;
-        required_permissions: string[];
-        sensitive_profile: string;
-        is_active: boolean;
-      };
-    };
-
-    const isOwner = sched.created_by === ctx.profile.id;
-    const canManage = hasPermission(ctx, "reports.schedule.manage");
-
-    if (!isOwner && !canManage) {
-      return { success: false, error: "Permission denied." };
-    }
-
-    const res = await executeScheduleRun(sched, ctx.permissionCodes);
-    return {
-      success: res.success,
-      data: { deliveryLogId: res.deliveryLogId },
-      error: res.error,
-    };
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
-  }
+    if (!ctx.profile || !z.number().int().positive().safeParse(id).success || !z.string().uuid().safeParse(requestId).success)
+      return {success:false,error:"Invalid schedule request."};
+    const sched = await loadDeliverableSchedule(id);
+    requireReportDelivery(ctx,sched.owner_company_id);
+    const manage = sched.owner_company_id === null
+      ? hasGlobalPermission(ctx,"reports.schedule.manage")
+      : hasPermissionInScope(ctx,"reports.schedule.manage",sched.owner_company_id);
+    if(sched.created_by !== ctx.profile.id && !manage)return {success:false,error:"Permission denied."};
+    // The creator, not a more privileged operator, remains the execution principal.
+    const db=createAdminClient();
+    const reserved=await db.rpc("f09_manual_schedule_run",{p_schedule_id:id,p_request_id:requestId});
+    if(reserved.error||!reserved.data)throw new Error("Run reservation failed");
+    const queued=await db.rpc("f09_enqueue_schedule_run",{p_run_id:reserved.data});
+    if(queued.error||!queued.data)throw new Error("Queue creation failed");
+    revalidatePath("/reports/schedules");
+    return {success:true,data:{queueId:Number(queued.data),queued:true}};
+  }catch{return {success:false,error:"Report could not be queued. Retry with the same request key; no direct email was sent."};}
 }

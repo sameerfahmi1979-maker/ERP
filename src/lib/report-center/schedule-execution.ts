@@ -1,266 +1,151 @@
-/**
- * OUTPUT.7 (WP11) — Shared schedule execution logic.
- *
- * Extracted from `src/server/actions/reports/schedules.ts` so that both the
- * user-facing "Run now" server action and the authenticated internal worker
- * (`/api/internal/report-schedules/process`) execute schedules through the
- * exact same permission-checked, delivery-logged path.
- */
-
-import { logger } from "@/lib/logger";
+import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContextForProfileId } from "@/lib/rbac/check";
-import { runReport } from "@/lib/report-center/report-runner";
-import { getDefaultEmailProviderSystem } from "@/lib/email/providers/factory";
+import { getAuthContextForProfileId, hasPermission, type AuthContext } from "@/lib/rbac/check";
+import { runReport } from "./report-runner";
 import { generateAttachmentByType } from "@/lib/export/generate-attachment";
-import { resolveTemplateForExport } from "@/lib/report-center/template-export";
+import { resolveTemplateForExport } from "./template-export";
+import { DeliveryPolicyError, requireReportDelivery } from "@/lib/email/queue/policy";
+import type { DeliveryClaim } from "@/lib/email/queue/source";
+import type { EmailMessageInput } from "@/lib/email/providers/types";
 import type { ERPExportOptions } from "@/lib/export/export-types";
-import type { EmailAttachment } from "@/lib/email/email-types";
-
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-export interface ScheduleExecutionResult {
-  success: boolean;
-  error?: string;
-  reportRunId?: number;
-  deliveryLogId?: number;
-  attachmentFilename?: string;
-  attachmentSizeBytes?: number;
-  recipientCount?: number;
+function grantSnapshot(ctx: AuthContext) {
+    return JSON.stringify((ctx.roleAssignments ?? []).map(r => [r.roleId, r.ownerCompanyId, r.branchId,
+        [...r.permissionCodes].sort()]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))));
 }
-
 export interface ExecutableSchedule {
-  id: number;
-  created_by: number;
-  owner_company_id: number | null;
-  filters_json: Record<string, unknown>;
-  selected_template_id: number | null;
-  output_format: "pdf" | "excel" | "csv";
-  recipient_to: string[];
-  recipient_cc: string[] | null;
-  email_subject_template: string | null;
-  email_body_template: string | null;
-  report: {
     id: number;
-    report_code: string;
-    report_name_en: string;
-    required_permissions: string[];
-    sensitive_profile: string;
+    created_by: number;
+    owner_company_id: number | null;
+    filters_json: Record<string, unknown>;
+    selected_template_id: number | null;
+    output_format: "pdf" | "excel" | "csv";
+    recipient_to: string[];
+    recipient_cc: string[] | null;
+    email_subject_template: string | null;
+    email_body_template: string | null;
     is_active: boolean;
-  };
+    deleted_at: string | null;
+    report: {
+        id: number;
+        report_code: string;
+        report_name_en: string;
+        required_permissions: string[];
+        sensitive_profile: string;
+        is_active: boolean;
+        supports_scheduling: boolean;
+        document_class: string | null;
+    };
 }
-
-export async function executeScheduleRun(
-  sched: ExecutableSchedule,
-  _permissionCodes: string[]
-): Promise<ScheduleExecutionResult> {
-  // Retained call signature for existing workers; caller-provided grants never authorize a run.
-  void _permissionCodes;
-  const db = createAdminClient();
-  const actor = await getAuthContextForProfileId(sched.created_by);
-
-  const runResult = await runReport(
-    {
-      reportCode: sched.report.report_code,
-      outputFormat: sched.output_format,
-      filters: sched.filters_json,
-      templateId: sched.selected_template_id ?? undefined,
-      ownerCompanyIds: sched.owner_company_id ? [sched.owner_company_id] : [],
-      requestedByUserId: sched.created_by,
-    },
-    actor
-  );
-
-  if (!runResult.success || !runResult.data) {
-    return { success: false, error: runResult.error ?? "Report run failed." };
-  }
-
-  const { columns, rows } = runResult.data;
-
-  const exportColumns = columns.map((col) => ({
-    key: col,
-    header: col.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-  }));
-  const exportData = rows.map((row) =>
-    Object.fromEntries(columns.map((col) => [col, row[col] ?? ""]))
-  );
-
-  // Resolve report branding from the selected (or run-resolved) template.
-  const resolvedTemplateId = sched.selected_template_id ?? runResult.resolvedTemplateId;
-  let brandingContext: ERPExportOptions<Record<string, unknown>>["branding"] | undefined;
-  if (resolvedTemplateId) {
-    try {
-      const ctx = await resolveTemplateForExport({
-        templateId: resolvedTemplateId,
+export const SCHEDULE_DELIVERY_SELECT = `*,report:erp_report_registry(
+ id,report_code,report_name_en,required_permissions,sensitive_profile,is_active,supports_scheduling,document_class)`;
+export async function loadDeliverableSchedule(id: number): Promise<ExecutableSchedule> {
+    const { data, error } = await createAdminClient().from("erp_report_schedules").select(SCHEDULE_DELIVERY_SELECT).eq("id", id).maybeSingle();
+    if (error)
+        throw new Error("Schedule lookup failed");
+    const s = data as unknown as ExecutableSchedule | null;
+    if (!s || !s.is_active || s.deleted_at || !s.report?.is_active || !s.report.supports_scheduling
+        || ![null, "", "E", "F", "G"].includes(s.report.document_class) || !["pdf", "excel", "csv"].includes(s.output_format))
+        throw new DeliveryPolicyError();
+    return s;
+}
+/** Preflight ONLY. Each attempt regenerates data with current scoped email permissions. */
+export async function prepareScheduleMessage(q: DeliveryClaim, signal: AbortSignal): Promise<EmailMessageInput> {
+    if (!q.source_entity_id || !q.report_schedule_run_id || !q.source_revision)
+        throw new DeliveryPolicyError();
+    const sched = await loadDeliverableSchedule(q.source_entity_id);
+    if (sched.created_by !== q.created_by)
+        throw new DeliveryPolicyError();
+    const current = await createAdminClient().rpc("f09_schedule_is_current", { p_id: sched.id, p_revision: q.source_revision });
+    if (current.error)
+        throw new Error("Schedule revision lookup failed");
+    if (current.data !== true)
+        throw new DeliveryPolicyError();
+    const actor = await getAuthContextForProfileId(sched.created_by);
+    requireReportDelivery(actor, sched.owner_company_id);
+    if (sched.report.required_permissions.some(p => ![p, p + ".self", p + ".team"].some(code => hasPermission(actor, code))))
+        throw new DeliveryPolicyError();
+    const allRecipients = [...sched.recipient_to, ...(sched.recipient_cc ?? [])];
+    if (!sched.recipient_to.length || allRecipients.length > 100 || allRecipients.some(e => !EMAIL_RE.test(e)))
+        throw new DeliveryPolicyError();
+    signal.throwIfAborted();
+    const runResult = await runReport({
         reportCode: sched.report.report_code,
-        principalId: sched.created_by,
-      });
-      brandingContext = ctx ?? undefined;
-    } catch (err) {
-      logger.warn(`[schedules] Branding resolve failed for schedule ${sched.id}:`, err);
+        outputFormat: "email",
+        filters: sched.filters_json,
+        templateId: sched.selected_template_id ?? undefined,
+        ownerCompanyIds: sched.owner_company_id ? [sched.owner_company_id] : [],
+        requestedByUserId: sched.created_by,
+    }, actor);
+    if (!runResult.success || !runResult.data) {
+        throw new Error("Authorized report generation failed");
     }
-  }
-
-  const exportOptions: ERPExportOptions<Record<string, unknown>> = {
-    title: sched.report.report_name_en,
-    filename: `${sched.report.report_code}_${new Date().toISOString().split("T")[0]}`,
-    columns: exportColumns,
-    data: exportData,
-    branding: brandingContext,
-  };
-
-  let attachment;
-  try {
-    attachment = await generateAttachmentByType(sched.output_format, exportOptions);
-  } catch (err) {
-    return {
-      success: false,
-      error: `Attachment generation failed: ${err instanceof Error ? err.message : String(err)}`,
-    };
-  }
-
-  const subject =
-    sched.email_subject_template ??
-    `${sched.report.report_name_en} — ${new Date().toLocaleDateString("en-GB")}`;
-  const body =
-    sched.email_body_template ??
-    `Dear Recipient,\n\nPlease find attached the scheduled ${sched.report.report_name_en} report.\n\nRegards,\nERP System`;
-
-  // Recipient validation: only well-formed addresses stored on the schedule
-  // are ever used; anything else fails the run before any send.
-  const toList = [...new Set((sched.recipient_to ?? []).map((e) => e.trim()).filter(Boolean))];
-  const ccList = [...new Set((sched.recipient_cc ?? []).map((e) => e.trim()).filter(Boolean))];
-  const invalid = [...toList, ...ccList].filter((e) => !EMAIL_RE.test(e));
-  if (toList.length === 0 || invalid.length > 0) {
-    return {
-      success: false,
-      error: toList.length === 0 ? "Schedule has no valid recipients." : "Schedule has malformed recipient addresses.",
-      reportRunId: runResult.runId ?? undefined,
-    };
-  }
-
-  const emailResult = await sendScheduleEmail({ to: toList, cc: ccList, subject, body, attachment });
-
-  const { data: deliveryLog } = await db
-    .from("erp_report_delivery_logs")
-    .insert({
-      run_id: runResult.runId ?? null,
-      delivery_type: "scheduled_email",
-      recipient_to: sched.recipient_to,
-      recipient_cc: sched.recipient_cc ?? [],
-      subject,
-      body_preview: body.substring(0, 200),
-      attachment_format: sched.output_format,
-      attachment_filename: attachment.filename,
-      attachment_size_bytes: attachment.sizeBytes,
-      provider: emailResult.provider ?? "erp_provider",
-      delivery_status: emailResult.success ? "sent" : "failed",
-      success: emailResult.success,
-      sent_at: emailResult.success ? new Date().toISOString() : null,
-      error_message: emailResult.success ? null : emailResult.error,
-      created_by: sched.created_by,
-    })
-    .select("id")
-    .single();
-
-  return {
-    success: emailResult.success,
-    error: emailResult.success ? undefined : emailResult.error,
-    reportRunId: runResult.runId ?? undefined,
-    deliveryLogId: (deliveryLog as { id?: number } | null)?.id,
-    attachmentFilename: attachment.filename,
-    attachmentSizeBytes: attachment.sizeBytes,
-    recipientCount: sched.recipient_to.length + (sched.recipient_cc?.length ?? 0),
-  };
-}
-
-/**
- * OUTPUT.7: session-independent email send for schedule delivery. The
- * previous implementation used the `sendExportEmail` server action, which
- * requires an authenticated user session — impossible for the worker
- * (machine-to-machine), so every automated delivery failed with
- * "Authentication required". Authorization for this path is enforced
- * upstream (WORKER_SECRET + schedule-creator permission validation, or the
- * "Run now" server action's owner/manage check).
- */
-async function sendScheduleEmail(input: {
-  to: string[];
-  cc: string[];
-  subject: string;
-  body: string;
-  attachment: EmailAttachment;
-}): Promise<{ success: boolean; provider?: string; error?: string }> {
-  let provider;
-  try {
-    provider = await getDefaultEmailProviderSystem();
-  } catch (err) {
-    return {
-      success: false,
-      provider: "erp_provider",
-      error: err instanceof Error ? err.message : "Email service is not configured.",
-    };
-  }
-
-  try {
-    const result = await provider.sendEmail({
-      to: input.to,
-      cc: input.cc.length > 0 ? input.cc : undefined,
-      subject: input.subject,
-      textBody: input.body,
-      attachments: [
-        {
-          filename: input.attachment.filename,
-          contentType: input.attachment.contentType,
-          base64Content: input.attachment.base64Content,
-          sizeBytes: input.attachment.sizeBytes,
-        },
-      ],
-    });
-    return {
-      success: result.ok,
-      provider: provider.config.providerCode,
-      error: result.ok ? undefined : result.message,
-    };
-  } catch (err) {
-    return {
-      success: false,
-      provider: provider.config.providerCode,
-      error: err instanceof Error ? err.message : String(err),
-    };
-  }
-}
-
-export async function getCreatorPermissions(
-  db: ReturnType<typeof createAdminClient>,
-  userId: number
-): Promise<string[]> {
-  try {
-    // OUTPUT.7 fix: the legacy implementation queried a non-existent
-    // `user_role_assignments` table, silently returning [] — which made every
-    // scheduled run skip with "creator missing permissions". Role assignments
-    // live in `user_roles` (see WP9 company-scope fix).
-    const { data } = await db
-      .from("user_roles")
-      .select("role:roles(role_permissions(permission:permissions(permission_code)))")
-      .eq("user_profile_id", userId)
-      .eq("is_active", true);
-
-    if (!data) return [];
-
-    const codes = new Set<string>();
-    for (const ura of data) {
-      const role = (ura as { role?: { role_permissions?: Array<{ permission?: { permission_code?: string } }> } }).role;
-      for (const rp of role?.role_permissions ?? []) {
-        if (rp.permission?.permission_code) {
-          codes.add(rp.permission.permission_code);
+    signal.throwIfAborted();
+    const { columns, rows } = runResult.data;
+    const exportColumns = columns.map((col) => ({
+        key: col,
+        header: col.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+    }));
+    const exportData = rows.map((row) => Object.fromEntries(columns.map((col) => [col, row[col] ?? ""])));
+    // Resolve report branding from the selected (or run-resolved) template.
+    const resolvedTemplateId = sched.selected_template_id ?? runResult.resolvedTemplateId;
+    let brandingContext: ERPExportOptions<Record<string, unknown>>["branding"] | undefined;
+    if (!resolvedTemplateId)
+        throw new DeliveryPolicyError();
+    if (resolvedTemplateId) {
+        try {
+            const ctx = await resolveTemplateForExport({
+                templateId: resolvedTemplateId,
+                reportCode: sched.report.report_code,
+                principalId: sched.created_by,
+            });
+            if (!ctx)
+                throw new DeliveryPolicyError();
+            brandingContext = ctx;
         }
-      }
+        catch {
+            throw new DeliveryPolicyError();
+        }
     }
-    return Array.from(codes);
-  } catch {
-    return [];
-  }
+    const exportOptions: ERPExportOptions<Record<string, unknown>> = {
+        title: sched.report.report_name_en,
+        filename: `${sched.report.report_code}_${new Date().toISOString().split("T")[0]}`,
+        columns: exportColumns,
+        data: exportData,
+        branding: brandingContext,
+    };
+    signal.throwIfAborted();
+    const attachment = await generateAttachmentByType(sched.output_format, exportOptions);
+    signal.throwIfAborted();
+    const subject = sched.email_subject_template ??
+        `${sched.report.report_name_en} — ${new Date().toLocaleDateString("en-GB")}`;
+    const body = sched.email_body_template ??
+        `Dear Recipient,\n\nPlease find attached the scheduled ${sched.report.report_name_en} report.\n\nRegards,\nERP System`;
+    // Recipient validation: only well-formed addresses stored on the schedule
+    // are ever used; anything else fails the run before any send.
+    const toList = [...new Set((sched.recipient_to ?? []).map((e) => e.trim()).filter(Boolean))];
+    const ccList = [...new Set((sched.recipient_cc ?? []).map((e) => e.trim()).filter(Boolean))];
+    const invalid = [...toList, ...ccList].filter((e) => !EMAIL_RE.test(e));
+    if (!toList.length || invalid.length || toList.length + ccList.length > 100)
+        throw new DeliveryPolicyError();
+    const latestActor = await getAuthContextForProfileId(sched.created_by);
+    requireReportDelivery(latestActor, sched.owner_company_id);
+    if (grantSnapshot(latestActor) !== grantSnapshot(actor))
+        throw new DeliveryPolicyError();
+    const latest = await loadDeliverableSchedule(sched.id);
+    if (JSON.stringify(latest.report) !== JSON.stringify(sched.report))
+        throw new DeliveryPolicyError();
+    signal.throwIfAborted();
+    if (!runResult.runId || attachment.sizeBytes > 3000000)
+        throw new DeliveryPolicyError();
+    const recorded = await createAdminClient().rpc("f09_record_report_preparation", {
+        p_id: q.id, p_owner: q.lease_owner, p_token: q.lease_token, p_report_run_id: runResult.runId,
+        p_filename: attachment.filename, p_size: attachment.sizeBytes,
+    });
+    if (recorded.error)
+        throw new Error("Prepared report metadata could not be recorded");
+    if (recorded.data !== true)
+        throw new DeliveryPolicyError();
+    return { to: toList, cc: ccList, subject, textBody: body, attachments: [attachment] };
 }
-
-// Re-exported for existing callers; implementation lives in the pure core module.
-export { calculateNextRunAt } from "@/lib/report-center/schedule-worker-core";
+export { calculateNextRunAt } from "./schedule-calendar";

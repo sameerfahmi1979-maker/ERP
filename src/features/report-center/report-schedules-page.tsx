@@ -25,7 +25,7 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ReportScheduleForm } from "./report-schedule-form";
 
@@ -54,13 +54,23 @@ export function ReportSchedulesPage() {
   const load = () => refetch();
   useEffect(() => { if (error) toast.error(error.message); }, [error]);
 
+  const requestKeys = useRef(new Map<number, string>());
+  const runningRequests = useRef(new Set<number>());
   const handleRunNow = async (id: number) => {
+    if (runningRequests.current.has(id)) return;
+    runningRequests.current.add(id);
+    const requestKey = requestKeys.current.get(id) ?? crypto.randomUUID();
+    requestKeys.current.set(id, requestKey);
     setRunningId(id);
     try {
-      const result = await runReportScheduleNow(id);
-      if (result.success) toast.success("Schedule ran successfully. Email delivered.");
+      const result = await runReportScheduleNow(id, requestKey);
+      if (result.success) {
+        requestKeys.current.delete(id);
+        toast.success("Report queued. Delivery permissions will be checked before sending.");
+      }
       else toast.error(result.error ?? "Run failed.");
     } finally {
+      runningRequests.current.delete(id);
       setRunningId(null);
       load();
     }

@@ -1,9 +1,10 @@
-import {beforeEach,expect,it,vi} from "vitest";
+import {afterEach,beforeEach,expect,it,vi} from "vitest";
 import {processDueSchedules} from "@/lib/report-center/schedule-worker";
 const m=vi.hoisted(()=>({db:vi.fn(),batch:vi.fn(),enabled:vi.fn()}));
 vi.mock("@/lib/supabase/admin",()=>({createAdminClient:m.db}));
 vi.mock("@/lib/email/queue/service",()=>({emailWorkerEnabled:m.enabled,processQueuedBatch:m.batch}));
 let calls:Array<[string,unknown]>,rpc:ReturnType<typeof vi.fn>,rows:Record<string,unknown>[];
+afterEach(()=>{vi.useRealTimers();});
 beforeEach(()=>{
  vi.clearAllMocks();calls=[];m.enabled.mockReturnValue(true);
  vi.stubEnv("F09_SCHEDULE_CATCHUP_POLICY","skip-missed-after-current");
@@ -34,4 +35,13 @@ it("one malformed calendar does not prevent valid reservations or shared deliver
 it("master pause stops report work without a database call",async()=>{
  m.enabled.mockReturnValue(false);expect((await processDueSchedules({workerId:"synthetic"})).queued).toBe(0);
  expect(m.db).not.toHaveBeenCalled();expect(m.batch).not.toHaveBeenCalled();
+});
+it("a lost slot response cannot resume late and enqueue or dispatch after the producer deadline",async()=>{
+ vi.useFakeTimers();let late:(value:unknown)=>void=()=>{};
+ rpc.mockImplementation(()=>new Promise(resolve=>{late=resolve;}));
+ const assertion=expect(processDueSchedules({workerId:"synthetic"})).rejects.toThrow("deadline");
+ await vi.advanceTimersByTimeAsync(15001);await assertion;
+ late({data:44,error:null});await vi.advanceTimersByTimeAsync(1);
+ expect(rpc).toHaveBeenCalledTimes(1);expect(m.batch).not.toHaveBeenCalled();
+ expect(calls.some(([key,args])=>key==="eq"&&(args as unknown[])[0]==="delivery_engine")).toBe(false);
 });

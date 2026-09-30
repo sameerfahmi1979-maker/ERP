@@ -8,6 +8,7 @@ import { acquireGraphToken } from "./graph-token";
 import { prepareGraphDelivery } from "./graph-transport";
 import { prepareQueueMessage, type DeliveryClaim } from "./source";
 import { DeliveryPolicyError } from "./policy";
+import { boundedQuery, F09_LIMITS } from "./runtime-limits";
 export function emailWorkerEnabled() { return process.env.F09_EMAIL_WORKER_ENABLED === "true"; }
 export async function prepareQueuedDelivery(q: DeliveryClaim, signal: AbortSignal): Promise<PreparedDelivery> {
     try {
@@ -72,12 +73,12 @@ export async function processQueuedBatch(options: {
     if (options.limit !== undefined && (!Number.isSafeInteger(options.limit) || options.limit < 1 || options.limit > 100))
         throw new Error("Invalid batch limit");
     const db = createAdminClient();
-    const reaped = await db.rpc("f09_reap_email_leases", { p_limit: 100 });
+    const reaped = await boundedQuery(db.rpc("f09_reap_email_leases", { p_limit: 100 }));
     if (reaped.error)
         throw new Error("Lease recovery failed");
     totals.leasesReaped = Number(reaped.data);
     const started = Date.now();
-    for (let i = 0; i < (options.limit ?? 20) && Date.now() - started < 25000; i++) {
+    for (let i = 0; i < (options.limit ?? 20) && Date.now() - started < F09_LIMITS.batchStartMs; i++) {
         const result = await processQueuedEmail({ module: options.module });
         if (result === "skipped" || result === "paused") {
             totals.skipped++;

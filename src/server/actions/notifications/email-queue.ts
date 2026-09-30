@@ -7,6 +7,8 @@ import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
 import { requireQueuePermission } from "@/lib/email/queue/policy";
 import { processQueuedEmail, processQueuedBatch } from "@/lib/email/queue/service";
+import { boundedQuery } from "@/lib/email/queue/runtime-limits";
+import { QUEUE_LIST_COLUMNS, QUEUE_SORT_COLUMNS, QUEUE_STATUSES, queuePageSchema, queueSearchFilter, type QueuePageOptions } from "@/lib/email/queue/list-contract";
 const REVALIDATE_PATH = "/admin/notifications/email-queue";
 export type ActionResult<T = undefined> = T extends undefined ? {
     success: boolean;
@@ -167,6 +169,43 @@ export async function queueEmail(input: QueueEmailInput, options?: {
     }
 }
 // ── getEmailQueue ─────────────────────────────────────────────────────────────
+export type EmailQueuePage = {
+    items: EmailQueueRow[];
+    total: number;
+    allTotal: number;
+    statusCounts: Record<string, number>;
+    page: number;
+    pageSize: number;
+};
+export async function getEmailQueuePage(input: QueuePageOptions = {}): Promise<ActionResult<EmailQueuePage>> {
+    try {
+        requireQueuePermission(await getAuthContext(), "view");
+        const parsed = queuePageSchema.safeParse(input);
+        if (!parsed.success) return { success: false, error: "Invalid queue filters" };
+        const options = parsed.data;
+        const db = await createClient(); // Session/RLS client, NEVER service-role list access.
+        let query = db.from("erp_email_queue").select(QUEUE_LIST_COLUMNS, { count: "exact" }).is("deleted_at", null);
+        if (options.status) query = query.eq("status", options.status);
+        const search = queueSearchFilter(options.query);
+        if (search) query = query.or(search);
+        query = query.order(QUEUE_SORT_COLUMNS[options.sortKey], { ascending: options.sortDir === "asc", nullsFirst: false });
+        if (options.sortKey !== "id") query = query.order("id", { ascending: options.sortDir === "asc" });
+        const start = (options.page - 1) * options.pageSize;
+        const [page, totals, ...counts] = await Promise.all([
+            boundedQuery(query.range(start, start + options.pageSize - 1)),
+            boundedQuery(db.from("erp_email_queue").select("id", { count: "exact", head: true }).is("deleted_at", null)),
+            ...QUEUE_STATUSES.map(status => boundedQuery(db.from("erp_email_queue").select("id", { count: "exact", head: true })
+                .is("deleted_at", null).eq("status", status))),
+        ]);
+        if ([page, totals, ...counts].some(r => r.error || r.count === null)) throw new Error("Queue read failed");
+        return { success: true, data: {
+            items: (page.data ?? []).map(row => rowToQueue(row as unknown as Record<string, unknown>)),
+            total: page.count!, allTotal: totals.count!,
+            statusCounts: Object.fromEntries(QUEUE_STATUSES.map((status, index) => [status, counts[index].count!])),
+            page: options.page, pageSize: options.pageSize,
+        } };
+    } catch { return { success: false, error: "Queue unavailable or access denied. No records were changed." }; }
+}
 export async function getEmailQueue(filters?: {
     status?: string;
     source_module?: string;
@@ -180,7 +219,7 @@ export async function getEmailQueue(filters?: {
         requireQueuePermission(ctx, "view");
         let q = supabase
             .from("erp_email_queue")
-            .select(`*, provider:erp_email_provider_configs!provider_config_id(provider_name)`)
+            .select(QUEUE_LIST_COLUMNS)
             .is("deleted_at", null)
             .order("created_at", { ascending: false })
             .limit(filters?.limit ?? 200);

@@ -1,4 +1,5 @@
 import { withDeadline, type DeliveryOutcome } from "./delivery-contract";
+import { F09_LIMITS } from "./runtime-limits";
 
 export interface EmailClaim {
   id: number;
@@ -31,7 +32,7 @@ export async function processOneEmail<T extends EmailClaim>(
   if (!claim) return "skipped";
   let prepared: PreparedDelivery;
   try {
-    prepared = await withDeadline(15_000, signal => prepare(claim, signal));
+    prepared = await withDeadline(F09_LIMITS.preparationMs, signal => prepare(claim, signal));
   } catch {
     // No dispatch can have happened under the adapter contract.
     prepared = { ready: false, outcome: { kind: "retry" } };
@@ -45,7 +46,7 @@ export async function processOneEmail<T extends EmailClaim>(
     if (!admission) return "lease_lost";
     if (admission === "rejected") outcome = { kind: "cancelled" };
     else try {
-      outcome = await withDeadline(20_000, signal => prepared.send(signal, claim.lease_token));
+      outcome = await withDeadline(F09_LIMITS.dispatchMs, signal => prepared.send(signal, claim.lease_token));
     } catch {
       outcome = { kind: "unknown" };
     }

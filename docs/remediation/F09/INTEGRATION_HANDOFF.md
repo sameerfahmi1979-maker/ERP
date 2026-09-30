@@ -29,6 +29,10 @@ Overlapping files requiring a human-readable merge review:
 - `src/features/report-center/report-schedule-form.tsx`
 
 Shared nonvisual contract: `src/lib/email/queue/presentation.ts`.
+The later [operations checkpoint](OPERATIONS_ACCEPTANCE.md) adds
+`list-contract.ts`, `runtime-limits.ts`, `readiness.ts` and the permission-checked
+`getEmailQueuePage` action. The baseline queue page now consumes server counts,
+filtering and pagination; preserve those behaviors when adopting F05 components.
 Server schedule actions now use user-session RLS for CRUD, not a service-role
 all-company query. Catalog label hydration follows the already-authorized schedule
 IDs and never renders report contents.
@@ -76,8 +80,9 @@ are checked on reassignment. Server updates use a compare-and-set read version.
 2. Respect view versus manage/run authority for every schedule action. The
    inherited schedule list still exposes controls that the server may deny.
 3. Apply the global validation summary, labels/focus, keyboard and mobile rules.
-4. Add server-side pagination/counts/filtering. The inherited queue initially
-   fetches 200 rows; its displayed total is not a full-backlog count.
+4. Adopt and retest the implemented server-side pagination/counts/filtering.
+   The earlier 200-row cap and partial totals were fixed in the operations
+   checkpoint. Do not reintroduce client-only sorting/filtering of one page.
 5. Display next retry/capacity time, timezone, paused reason and attempt history
    clearly, rather than a raw F09 reason code alone.
 6. Add audited operator reconciliation of unknown outcomes. Never implement

@@ -1,4 +1,4 @@
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { prepareQueuedDelivery, processQueuedEmail, processQueuedBatch } from "@/lib/email/queue/service";
 import { DeliveryPolicyError } from "@/lib/email/queue/policy";
 import type { DeliveryClaim } from "@/lib/email/queue/source";
@@ -10,6 +10,7 @@ vi.mock("@/lib/email/queue/graph-token",()=>({acquireGraphToken:m.token}));
 vi.mock("@/lib/email/queue/graph-transport",()=>({prepareGraphDelivery:m.transport}));
 let provider:Record<string,unknown>,rows:Record<string,unknown>[],rpc:ReturnType<typeof vi.fn>;
 const q={id:1,lease_owner:"owner",lease_token:"fence",attempt_count:1,max_attempts:3,provider_config_id:9} as DeliveryClaim;
+afterEach(()=>{vi.useRealTimers();});
 beforeEach(()=>{
  vi.clearAllMocks();vi.stubEnv("F09_EMAIL_WORKER_ENABLED","true");
  provider={id:9,provider_type:"microsoft_graph",auth_mode:"client_credentials",send_mode:"graph_send_mail",
@@ -81,4 +82,17 @@ it("malformed admission response fails closed without sending",async()=>{
  rpc.mockImplementation(async(name:string)=>({data:name==="f09_claim_email"?[q]:"unexpected",error:null}));
  await expect(processQueuedEmail({id:1})).rejects.toThrow("Invalid provider admission");
  expect(m.send).not.toHaveBeenCalled();
+});
+it("bounds reaper response loss before attempting any claim",async()=>{
+ vi.useFakeTimers(); rpc.mockImplementation(()=>new Promise(()=>{}));
+ const assertion=expect(processQueuedBatch()).rejects.toThrow("deadline");
+ await vi.advanceTimersByTimeAsync(5001);await assertion;
+ expect(rpc.mock.calls.map(c=>c[0])).toEqual(["f09_reap_email_leases"]);expect(m.send).not.toHaveBeenCalled();
+});
+it("does not start another batch claim after its start budget expires",async()=>{
+ vi.useFakeTimers(); m.send.mockImplementation(async()=>{await new Promise(resolve=>setTimeout(resolve,15000));return {kind:"accepted"};});
+ const result=processQueuedBatch({limit:100});
+ await vi.advanceTimersByTimeAsync(30001);
+ expect((await result).accepted).toBe(2);expect(m.send).toHaveBeenCalledTimes(2);
+ expect(rpc.mock.calls.filter(c=>c[0]==="f09_claim_email")).toHaveLength(2);
 });

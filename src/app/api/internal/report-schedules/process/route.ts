@@ -6,6 +6,7 @@ import { emailWorkerEnabled } from "@/lib/email/queue/service";
 import { authorizeWorker } from "@/lib/email/queue/worker-auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { z } from "zod";
+import { boundedQuery, InvalidWorkerInput, readWorkerInput } from "@/lib/email/queue/runtime-limits";
 export const runtime = "nodejs";
 function authorized(r: NextRequest) { return authorizeWorker(r.headers.get("authorization"), process.env.WORKER_SECRET); }
 export async function GET(request: NextRequest) {
@@ -13,8 +14,8 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     try {
         const db = createAdminClient();
-        const result = await db.from("erp_report_schedules").select("id", { count: "exact", head: true })
-            .eq("is_active", true).is("deleted_at", null).lte("next_run_at", new Date().toISOString());
+        const result = await boundedQuery(db.from("erp_report_schedules").select("id", { count: "exact", head: true })
+            .eq("is_active", true).is("deleted_at", null).lte("next_run_at", new Date().toISOString()));
         if (result.error)
             throw new Error("Health read failed");
         return NextResponse.json({ status: "ok", workerEnabled: isSchedulesWorkerEnabled() && emailWorkerEnabled(),
@@ -30,15 +31,14 @@ export async function POST(request: NextRequest) {
     if (!isSchedulesWorkerEnabled() || !emailWorkerEnabled())
         return NextResponse.json({ paused: true, claimed: 0, queued: 0, succeeded: 0 });
     try {
-        const text = await request.text();
-        if (text.length > 2048)
-            return NextResponse.json({ error: "Invalid request" }, { status: 400 });
-        const parsed = z.object({ limit: z.number().int().min(1).max(25).optional() }).strict().safeParse(text ? JSON.parse(text) : {});
+        const parsed = z.object({ limit: z.number().int().min(1).max(25).optional() }).strict().safeParse(await readWorkerInput(request));
         if (!parsed.success)
             return NextResponse.json({ error: "Invalid request" }, { status: 400 });
         return NextResponse.json(await processDueSchedules({ workerId: randomUUID(), limit: parsed.data.limit }));
     }
-    catch {
-        return NextResponse.json({ error: "Schedule processing unavailable" }, { status: 503 });
+    catch (error) {
+        if (error instanceof InvalidWorkerInput)
+            return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+        return NextResponse.json({ error: "Schedule processing unavailable; inspect durable intents before retry." }, { status: 503 });
     }
 }

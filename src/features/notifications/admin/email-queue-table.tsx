@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { queueStatusLabel, queueControls } from "@/lib/email/queue/presentation";
 import { SortColHeader } from "@/components/erp/table/sort-col-header";
 import { TablePagination } from "@/components/erp/table/table-pagination";
-import { useSortPaginate } from "@/hooks/use-sort-paginate";
+import { QUEUE_SORT_COLUMNS, type queuePageSchema, type QueuePageOptions } from "@/lib/email/queue/list-contract";
+import type { z } from "zod";
 import type { EmailQueueRow } from "@/server/actions/notifications/email-queue";
 import {
   retryEmailQueueItem,
@@ -73,25 +74,27 @@ interface EmailQueueTableProps {
   onRefresh: () => void;
   canManage: boolean;
   canProcess: boolean;
+  loading: boolean;
+  total: number;
+  options: z.output<typeof queuePageSchema>;
+  onOptions: (options: QueuePageOptions) => void;
 }
 
-export function EmailQueueTable({ items, onRefresh, canManage, canProcess }: EmailQueueTableProps) {
+export function EmailQueueTable({ items, onRefresh, canManage, canProcess, loading, total, options, onOptions }: EmailQueueTableProps) {
   const [actingId, setActingId] = useState<number | null>(null);
   const [, startTransition] = useTransition();
   const { widths, onResizeStart } = useColWidths(DEFAULT_COL_WIDTHS);
 
-  const table = useSortPaginate(items, {
-    defaultSortKey: "id",
-    defaultSortDir: "desc",
-    defaultPageSize: 25,
-    getSearchText: (r) =>
-      [r.id, r.status, r.priority, r.sourceModule, r.toEmails.join(" "), r.subject, r.lastError ?? ""].join(" "),
-    comparators: {
-      scheduled: (a, b) =>
-        new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime(),
-      attempts: (a, b) => a.attemptCount - b.attemptCount,
+  const table = {
+    ...options, rows: items, totalFiltered: total, totalPages: Math.max(1, Math.ceil(total / options.pageSize)),
+    setQuery: (query: string) => onOptions({ ...options, page: 1, query }),
+    setPage: (page: number) => { if (!loading) onOptions({ ...options, page }); },
+    setPageSize: (pageSize: number) => { if (!loading && [10, 25, 50, 100].includes(pageSize)) onOptions({ ...options, page: 1, pageSize: pageSize as 10 | 25 | 50 | 100 }); },
+    toggleSort: (key: string) => {
+      if (!loading && Object.hasOwn(QUEUE_SORT_COLUMNS, key)) onOptions({ ...options, page: 1,
+        sortKey: key as keyof typeof QUEUE_SORT_COLUMNS, sortDir: options.sortKey === key && options.sortDir === "asc" ? "desc" : "asc" });
     },
-  });
+  };
 
   const handleAction = async (
     id: number,
@@ -124,11 +127,14 @@ export function EmailQueueTable({ items, onRefresh, canManage, canProcess }: Ema
         <Input
           value={table.query}
           onChange={(e) => table.setQuery(e.target.value)}
-          placeholder="Search queue…"
+          placeholder="Search subject, queue code or ID…"
+          aria-label="Search queue by subject, queue code or ID"
+          maxLength={100}
           className="h-8 pl-8 pr-8 text-sm"
         />
         {table.query && (
           <button
+            aria-label="Clear queue search"
             onClick={() => table.setQuery("")}
             className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
           >
@@ -137,9 +143,9 @@ export function EmailQueueTable({ items, onRefresh, canManage, canProcess }: Ema
         )}
       </div>
 
-      {items.length === 0 ? (
+      {items.length === 0 && total === 0 ? (
         <div className="flex flex-col items-center gap-2 py-12 text-muted-foreground border rounded-lg">
-          <p className="text-sm">No items in the email queue</p>
+          <p className="text-sm">{loading ? "Queue results unavailable or loading" : "No queue items match these filters"}</p>
         </div>
       ) : (
         <div className="rounded-lg border bg-card overflow-x-auto">
@@ -203,7 +209,7 @@ export function EmailQueueTable({ items, onRefresh, canManage, canProcess }: Ema
                             size="icon"
                             className="h-7 w-7"
                             title="Process eligible item"
-                            disabled={actingId === item.id}
+                            disabled={loading || actingId === item.id}
                             onClick={() =>
                               handleAction(item.id, () => processEmailQueueItem(item.id, false), "Processing completed; check delivery status.")
                             }
@@ -217,7 +223,7 @@ export function EmailQueueTable({ items, onRefresh, canManage, canProcess }: Ema
                             size="icon"
                             className="h-7 w-7"
                             title="Check retry eligibility"
-                            disabled={actingId === item.id}
+                            disabled={loading || actingId === item.id}
                             onClick={() =>
                               handleAction(item.id, () => retryEmailQueueItem(item.id), "Retry remains scheduled; cooldown and attempt limits are unchanged.")
                             }
@@ -231,7 +237,7 @@ export function EmailQueueTable({ items, onRefresh, canManage, canProcess }: Ema
                             size="icon"
                             className="h-7 w-7 text-destructive"
                             title="Cancel"
-                            disabled={actingId === item.id}
+                            disabled={loading || actingId === item.id}
                             onClick={() =>
                               handleAction(item.id, () => cancelEmailQueueItem(item.id, "Cancelled by admin"), "Cancelled")
                             }
@@ -247,6 +253,7 @@ export function EmailQueueTable({ items, onRefresh, canManage, canProcess }: Ema
             </tbody>
           </table>
 
+          <fieldset disabled={loading} aria-label="Queue page navigation" className="min-w-0 border-0 p-0">
           <TablePagination
             page={table.page}
             totalPages={table.totalPages}
@@ -255,6 +262,7 @@ export function EmailQueueTable({ items, onRefresh, canManage, canProcess }: Ema
             onPageSize={table.setPageSize}
             total={table.totalFiltered}
           />
+          </fieldset>
         </div>
       )}
     </div>

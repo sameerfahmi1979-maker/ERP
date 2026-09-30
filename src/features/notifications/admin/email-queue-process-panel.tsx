@@ -19,9 +19,13 @@ export function EmailQueueProcessPanel({ pendingCount, onRefresh, canManage }: E
   const [queueing, setQueueing] = useState(false);
   const testRequest = useRef<{email:string;key:string}|null>(null);
   const submitting = useRef(false);
+  const processing = useRef(false);
 
   const handleProcess = () => {
+    if (processing.current) return;
+    processing.current = true;
     startTransition(async () => {
+      try {
       const result = await processEmailQueue({ dryRun, limit: 20 });
       if (result.success && result.data) {
         const { processed, sent, failed, skipped } = result.data;
@@ -32,10 +36,12 @@ export function EmailQueueProcessPanel({ pendingCount, onRefresh, canManage }: E
         } else {
           toast.info(`Processed ${processed}: ${sent} provider-accepted, ${failed} failed, ${result.data.retry??0} retrying, ${result.data.deferred??0} waiting for provider capacity, ${result.data.unknown??0} uncertain, ${skipped} skipped. Acceptance is not proof of inbox delivery.`);
         }
-        onRefresh();
       } else {
         toast.error(result.error ?? "Processing failed");
       }
+      } catch {
+        toast.error("Processing response unavailable. Refresh and inspect delivery outcomes before retrying; an email may already have been accepted.");
+      } finally { processing.current = false; onRefresh(); }
     });
   };
 
@@ -75,7 +81,7 @@ export function EmailQueueProcessPanel({ pendingCount, onRefresh, canManage }: E
         <div>
           <p className="text-sm font-medium">Email Queue Processing</p>
           <p className="text-xs text-muted-foreground">
-            {pendingCount} pending item{pendingCount !== 1 ? "s" : ""} — processes up to 20 at a time
+            {pendingCount} pending item{pendingCount !== 1 ? "s" : ""}, including paused and future items. Processes up to 20 due, eligible items.
           </p>
         </div>
         <div className="flex items-center gap-2">

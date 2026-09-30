@@ -1,17 +1,18 @@
 import "server-only";
 import type { EmailClaim, EmailQueueStore } from "./worker";
+import { boundedQuery, type AbortableQuery } from "./runtime-limits";
 
 /** Minimal typed adapter; accepts the server-only admin client's RPC method.
  * No service credential is stored here and no authenticated browser may call
  * these functions. This is not an authorization layer for caller-supplied IDs. */
 export interface QueueRpcClient {
-  rpc(name: string, args: Record<string, unknown>): PromiseLike<{ data: unknown; error: unknown }>;
+  rpc(name: string, args: Record<string, unknown>): AbortableQuery<{ data: unknown; error: unknown }>;
 }
 export function createEmailQueueStore<T extends EmailClaim>(
   db: QueueRpcClient, owner: string, filter: { id?: number; module?: string } = {},
 ): EmailQueueStore<T> {
   const call = async (name: string, args: Record<string, unknown>) => {
-    const result = await db.rpc(name, args);
+    const result = await boundedQuery(db.rpc(name, args));
     if (result.error) throw new Error(`Email queue transition failed: ${name}`);
     return result.data;
   };

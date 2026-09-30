@@ -1,6 +1,10 @@
 # F09 controlled release preparation
 
 Date: 30 September 2026. Status: **NOT AUTHORIZED FOR ACTIVATION / NOT DEPLOYED**.
+Latest local implementation: [operational safeguards and queue acceptance](OPERATIONS_ACCEPTANCE.md).
+Queue DB deadlines, read-only readiness and whole-backlog list behavior are now
+implemented and locally verified. Production deadline alignment, final integrated
+UI/provider/report acceptance and release approvals remain open.
 Latest checkpoint: [compatibility and read-only production review](READINESS_REVIEW.md).
 That follow-up obtained live ERP metadata without changing production. The
 inventory/preparation gates below are updated; activation gates remain open.

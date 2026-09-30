@@ -1,6 +1,9 @@
 # F09 — Compatibility and production-readiness review
 
 Date: 30 September 2026. Application candidate: `fb14db23e`.
+Historical snapshot. Later local changes and tests are recorded in
+[OPERATIONS_ACCEPTANCE.md](OPERATIONS_ACCEPTANCE.md); they do not update this
+snapshot's production inventory or turn it into deployment acceptance.
 Status: **Readiness review completed; integrated acceptance and release remain open.**
 
 This follow-up inspected source compatibility and the authorized ERP project's

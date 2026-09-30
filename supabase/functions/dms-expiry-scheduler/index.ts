@@ -394,7 +394,9 @@ Deno.serve(async (req: Request) => {
                 "Authorization": `Bearer ${internalSecret}`,
               },
               body: JSON.stringify({ module: "DMS", limit: 20 }),
-              signal: AbortSignal.timeout(60000),
+      // F09 queue budget is <75s; leave transport headroom. Configure pg_net
+      // and the ERP host separately at cutover; a timeout never proves no send.
+      signal: AbortSignal.timeout(120000),
               redirect: "error",
             });
             if (sendResp.ok) {

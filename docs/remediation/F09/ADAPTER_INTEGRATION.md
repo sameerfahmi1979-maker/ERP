@@ -2,6 +2,9 @@
 
 Date: 30 September 2026
 
+> Historical checkpoint. See [five-point follow-up verification](FOLLOWUP_VERIFICATION.md)
+> for the latest provider, full-schema, browser and release-preparation results.
+
 State: implemented and locally verified; **not deployed, not pushed, and F09 is not closed**.
 
 Branch: `codex/f09-backend-foundation`

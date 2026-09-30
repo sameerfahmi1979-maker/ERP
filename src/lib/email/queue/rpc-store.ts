@@ -22,9 +22,16 @@ export function createEmailQueueStore<T extends EmailClaim>(
       if (!Array.isArray(rows)) throw new Error("Invalid email claim response");
       return (rows[0] as T | undefined) ?? null;
     },
-    async beginDispatch(q) { return await call("f09_begin_email_dispatch", fence(q)) === true; },
+    async beginDispatch(q, provider) {
+      if (!provider) return "rejected";
+      const result = await call("f09_admit_email_dispatch", { ...fence(q), p_provider_id: provider.id, p_expected: provider.expected });
+      if (result === "allowed") return true;
+      if (result === "deferred" || result === "rejected") return result;
+      if (result === "lease_lost") return false;
+      throw new Error("Invalid provider admission response");
+    },
     async finish(q, outcome) {
-      return await call("f09_finish_email", { ...fence(q), p_outcome: outcome.kind,
+      return await call("f09_finish_provider_email", { ...fence(q), p_outcome: outcome.kind,
         p_retry_after: outcome.kind === "retry" ? outcome.retryAfter ?? null : null }) === true;
     },
   };

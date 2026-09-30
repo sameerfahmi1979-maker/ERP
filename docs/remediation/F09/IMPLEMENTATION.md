@@ -2,6 +2,10 @@
 
 ## Latest increment — 30 September 2026
 
+See [five-point follow-up verification](FOLLOWUP_VERIFICATION.md) for the latest
+provider limits, full-schema/API/RLS, browser checks and release preparation.
+The adapter checkpoint and foundation notes below are retained as history.
+
 The consumer adapters are now connected locally. See [Email processor and report-delivery integration](ADAPTER_INTEGRATION.md)
 for the implemented permissions, queue/report history contract, 703 passing automated checks,
 rollout flags and remaining release gates. The foundation-only adoption statements below

@@ -7,11 +7,12 @@ import { Button } from "@/components/ui/button";
 import { processEmailQueue, queueEmail } from "@/server/actions/notifications/email-queue";
 
 interface EmailQueueProcessPanelProps {
+  canManage: boolean;
   pendingCount: number;
   onRefresh: () => void;
 }
 
-export function EmailQueueProcessPanel({ pendingCount, onRefresh }: EmailQueueProcessPanelProps) {
+export function EmailQueueProcessPanel({ pendingCount, onRefresh, canManage }: EmailQueueProcessPanelProps) {
   const [loading, startTransition] = useTransition();
   const [dryRun, setDryRun] = useState(false);
   const [testEmail, setTestEmail] = useState("");
@@ -29,7 +30,7 @@ export function EmailQueueProcessPanel({ pendingCount, onRefresh }: EmailQueuePr
         } else if (result.data.paused) {
           toast.info("Email processing is paused; no messages were sent.");
         } else {
-          toast.info(`Processed ${processed}: ${sent} provider-accepted, ${failed} failed, ${result.data.retry??0} retrying, ${result.data.unknown??0} uncertain, ${skipped} skipped. Acceptance is not proof of inbox delivery.`);
+          toast.info(`Processed ${processed}: ${sent} provider-accepted, ${failed} failed, ${result.data.retry??0} retrying, ${result.data.deferred??0} waiting for provider capacity, ${result.data.unknown??0} uncertain, ${skipped} skipped. Acceptance is not proof of inbox delivery.`);
         }
         onRefresh();
       } else {
@@ -99,7 +100,7 @@ export function EmailQueueProcessPanel({ pendingCount, onRefresh }: EmailQueuePr
         </div>
       </div>
 
-      <div className="border-t pt-3">
+      {canManage && <div className="border-t pt-3">
         <p className="text-xs font-medium text-muted-foreground mb-2">Queue a Test Email</p>
         <div className="flex gap-2">
           <input
@@ -114,7 +115,7 @@ export function EmailQueueProcessPanel({ pendingCount, onRefresh }: EmailQueuePr
             Queue Test
           </Button>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

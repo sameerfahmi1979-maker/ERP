@@ -29,7 +29,7 @@ export function EmailQueuePageClient({ initialItems, canManage, canProcess }: Em
   const filtered = filter === "all" ? items : items.filter((i) => i.status === filter);
   const pendingCount = items.filter((i) => i.status === "pending").length;
 
-  const statusCounts = ["pending", "processing", "sent", "failed", "cancelled"].reduce((acc, s) => {
+  const statusCounts = ["pending", "processing", "sent", "failed", "cancelled", "delivery_unknown"].reduce((acc, s) => {
     acc[s] = items.filter((i) => i.status === s).length;
     return acc;
   }, {} as Record<string, number>);
@@ -51,7 +51,7 @@ export function EmailQueuePageClient({ initialItems, canManage, canProcess }: Em
         </Button>
       </div>
 
-      {canProcess && <EmailQueueProcessPanel pendingCount={pendingCount} onRefresh={refresh} />}
+      {canProcess && <EmailQueueProcessPanel canManage={canManage} pendingCount={pendingCount} onRefresh={refresh} />}
 
       <div className="flex gap-2 overflow-x-auto pb-1">
         {["all", ...Object.keys(statusCounts)].map((s) => (
@@ -61,12 +61,12 @@ export function EmailQueuePageClient({ initialItems, canManage, canProcess }: Em
             className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors border
               ${filter === s ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground border-border hover:bg-muted"}`}
           >
-            {s === "all" ? `All (${items.length})` : `${s} (${statusCounts[s] ?? 0})`}
+            {s === "all" ? `All (${items.length})` : `${s === "sent" ? "Provider accepted / legacy sent" : s === "delivery_unknown" ? "Delivery uncertain" : s} (${statusCounts[s] ?? 0})`}
           </button>
         ))}
       </div>
 
-      <EmailQueueTable items={filtered} onRefresh={refresh} />
+      <EmailQueueTable items={filtered} onRefresh={refresh} canManage={canManage} canProcess={canProcess} />
     </div>
   );
 }

@@ -69,6 +69,8 @@ export function ReportSchedulesPage() {
         toast.success("Report queued. Delivery permissions will be checked before sending.");
       }
       else toast.error(result.error ?? "Run failed.");
+    } catch {
+      toast.error("Queue response unavailable. Retry this run to check the same request; do not create a duplicate.");
     } finally {
       runningRequests.current.delete(id);
       setRunningId(null);
@@ -82,6 +84,8 @@ export function ReportSchedulesPage() {
       const result = await deleteReportSchedule(id);
       if (result.success) { toast.success("Schedule deleted."); load(); }
       else toast.error(result.error ?? "Delete failed.");
+    } catch {
+      toast.error("Deletion could not be confirmed. Refresh before retrying.");
     } finally {
       setDeletingId(null);
     }

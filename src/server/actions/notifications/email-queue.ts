@@ -27,6 +27,9 @@ export type EmailQueueRow = {
     sourceEntityId: number | null;
     priority: string;
     status: string;
+    deliveryState: string | null;
+    pausedAt: string | null;
+    dispatchStartedAt: string | null;
     fromEmail: string | null;
     toEmails: string[];
     subject: string;
@@ -54,6 +57,9 @@ function rowToQueue(r: Record<string, unknown>): EmailQueueRow {
         sourceEntityId: r.source_entity_id as number | null,
         priority: r.priority as string,
         status: r.status as string,
+        deliveryState: r.delivery_state as string | null,
+        pausedAt: r.paused_at as string | null,
+        dispatchStartedAt: r.dispatch_started_at as string | null,
         fromEmail: r.from_email as string | null,
         toEmails: r.to_emails as string[],
         subject: r.subject as string,
@@ -220,6 +226,7 @@ export async function processEmailQueue(options?: {
     failed: number;
     skipped: number;
     retry?: number;
+    deferred?: number;
     unknown?: number;
     paused?: boolean;
 }>> {

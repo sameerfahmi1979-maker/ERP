@@ -8,15 +8,16 @@ export interface EmailClaim {
   max_attempts: number;
 }
 
+export interface ProviderAdmission { id: number; expected: Record<string, unknown> }
 export interface EmailQueueStore<T extends EmailClaim> {
   claim(): Promise<T | null>;
-  beginDispatch(claim: T): Promise<boolean>;
+  beginDispatch(claim: T, provider?: ProviderAdmission): Promise<boolean | "deferred" | "rejected">;
   finish(claim: T, outcome: DeliveryOutcome): Promise<boolean>;
 }
 
 export type PreparedDelivery =
   | { ready: false; outcome: Exclude<DeliveryOutcome, { kind: "accepted" } | { kind: "unknown" }> }
-  | { ready: true; send: (signal: AbortSignal, correlationId: string) => Promise<DeliveryOutcome> };
+  | { ready: true; provider?: ProviderAdmission; send: (signal: AbortSignal, correlationId: string) => Promise<DeliveryOutcome> };
 
 /** One just-in-time claim, never a leased sequential batch. prepare MUST reload
  * active creator/scope, source, recipients, output and provider on EVERY attempt.
@@ -25,7 +26,7 @@ export type PreparedDelivery =
 export async function processOneEmail<T extends EmailClaim>(
   store: EmailQueueStore<T>,
   prepare: (claim: T, signal: AbortSignal) => Promise<PreparedDelivery>,
-): Promise<"skipped" | "lease_lost" | DeliveryOutcome["kind"]> {
+): Promise<"skipped" | "lease_lost" | "deferred" | DeliveryOutcome["kind"]> {
   const claim = await store.claim();
   if (!claim) return "skipped";
   let prepared: PreparedDelivery;
@@ -39,15 +40,18 @@ export async function processOneEmail<T extends EmailClaim>(
   if (!prepared.ready) {
     outcome = prepared.outcome;
   } else {
-    if (!await store.beginDispatch(claim)) return "lease_lost";
-    try {
+    const admission = await store.beginDispatch(claim, prepared.provider);
+    if (admission === "deferred") return "deferred";
+    if (!admission) return "lease_lost";
+    if (admission === "rejected") outcome = { kind: "cancelled" };
+    else try {
       outcome = await withDeadline(20_000, signal => prepared.send(signal, claim.lease_token));
     } catch {
       outcome = { kind: "unknown" };
     }
   }
-  if (outcome.kind === "retry" && claim.attempt_count >= claim.max_attempts) outcome = { kind: "permanent" };
+  const result = outcome.kind === "retry" && claim.attempt_count >= claim.max_attempts ? "permanent" : outcome.kind;
   // Do NOT catch a database failure and send again. Reaper will hold dispatched
   // mail as unknown, including a lost response after the provider accepted it.
-  return await store.finish(claim, outcome) ? outcome.kind : "lease_lost";
+  return await store.finish(claim, outcome) ? result : "lease_lost";
 }

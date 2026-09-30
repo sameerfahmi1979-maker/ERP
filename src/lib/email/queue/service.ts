@@ -44,7 +44,7 @@ export async function prepareQueuedDelivery(q: DeliveryClaim, signal: AbortSigna
         catch {
             return { ready: false, outcome: { kind: "permanent" } };
         }
-        return { ready: true, send };
+        return { ready: true, provider: { id: p.id, expected: p }, send };
     }
     catch (error) {
         if (error instanceof DeliveryPolicyError)
@@ -66,7 +66,7 @@ export async function processQueuedBatch(options: {
     limit?: number;
     module?: string;
 } = {}) {
-    const totals = { processed: 0, sent: 0, accepted: 0, failed: 0, skipped: 0, retry: 0, unknown: 0, cancelled: 0, leasesReaped: 0, paused: !emailWorkerEnabled() };
+    const totals = { processed: 0, sent: 0, accepted: 0, failed: 0, skipped: 0, retry: 0, deferred: 0, unknown: 0, cancelled: 0, leasesReaped: 0, paused: !emailWorkerEnabled() };
     if (totals.paused)
         return totals;
     if (options.limit !== undefined && (!Number.isSafeInteger(options.limit) || options.limit < 1 || options.limit > 100))
@@ -90,6 +90,8 @@ export async function processQueuedBatch(options: {
         }
         else if (result === "permanent")
             totals.failed++;
+        else if (result === "deferred")
+            totals.deferred++;
         else if (result === "retry")
             totals.retry++;
         else if (result === "unknown")

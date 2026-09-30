@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { RotateCcw, XCircle, Play, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { NotificationStatusBadge } from "@/features/notifications/notification-status-badge";
+import { queueStatusLabel, queueControls } from "@/lib/email/queue/presentation";
 import { SortColHeader } from "@/components/erp/table/sort-col-header";
 import { TablePagination } from "@/components/erp/table/table-pagination";
 import { useSortPaginate } from "@/hooks/use-sort-paginate";
@@ -71,9 +71,11 @@ function useColWidths(defaults: Record<string, number>) {
 interface EmailQueueTableProps {
   items: EmailQueueRow[];
   onRefresh: () => void;
+  canManage: boolean;
+  canProcess: boolean;
 }
 
-export function EmailQueueTable({ items, onRefresh }: EmailQueueTableProps) {
+export function EmailQueueTable({ items, onRefresh, canManage, canProcess }: EmailQueueTableProps) {
   const [actingId, setActingId] = useState<number | null>(null);
   const [, startTransition] = useTransition();
   const { widths, onResizeStart } = useColWidths(DEFAULT_COL_WIDTHS);
@@ -93,19 +95,24 @@ export function EmailQueueTable({ items, onRefresh }: EmailQueueTableProps) {
 
   const handleAction = async (
     id: number,
-    fn: () => Promise<{ success: boolean; error?: string }>,
+    fn: () => Promise<{ success: boolean; error?: string; data?: {message?:string} }>,
     successMsg: string
   ) => {
     setActingId(id);
     startTransition(async () => {
+      try {
       const result = await fn();
       if (result.success) {
-        toast.success(successMsg);
+        toast.info(result.data?.message ?? successMsg);
         onRefresh();
       } else {
-        toast.error(result.error ?? "Action failed");
+        toast.error(result.error ?? result.data?.message ?? "Action failed");
       }
+      } catch { toast.error("Response unavailable. Refresh the queue before retrying."); }
+      finally {
       setActingId(null);
+      onRefresh();
+      }
     });
   };
 
@@ -175,7 +182,7 @@ export function EmailQueueTable({ items, onRefresh }: EmailQueueTableProps) {
                   <tr key={item.id} className="hover:bg-muted/20 transition-colors">
                     <td className="px-3 py-2 text-xs text-muted-foreground truncate">{item.id}</td>
                     <td className="px-3 py-2 truncate">
-                      <NotificationStatusBadge status={item.status} />
+                      <span title={queueStatusLabel(item)}>{queueStatusLabel(item)}</span>
                     </td>
                     <td className="px-3 py-2 capitalize text-xs truncate">{item.priority}</td>
                     <td className="px-3 py-2 text-xs font-medium truncate">{item.sourceModule}</td>
@@ -190,35 +197,35 @@ export function EmailQueueTable({ items, onRefresh }: EmailQueueTableProps) {
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex gap-1 justify-end">
-                        {["pending", "failed"].includes(item.status) && (
+                        {canProcess && queueControls(item).process && (
                           <Button
                             variant="outline"
                             size="icon"
                             className="h-7 w-7"
-                            title="Send now"
+                            title="Process eligible item"
                             disabled={actingId === item.id}
                             onClick={() =>
-                              handleAction(item.id, () => processEmailQueueItem(item.id, false), "Email sent")
+                              handleAction(item.id, () => processEmailQueueItem(item.id, false), "Processing completed; check delivery status.")
                             }
                           >
                             <Play className="h-3 w-3" />
                           </Button>
                         )}
-                        {item.status === "failed" && (
+                        {canProcess && queueControls(item).retry && (
                           <Button
                             variant="outline"
                             size="icon"
                             className="h-7 w-7"
-                            title="Reset to pending"
+                            title="Check retry eligibility"
                             disabled={actingId === item.id}
                             onClick={() =>
-                              handleAction(item.id, () => retryEmailQueueItem(item.id), "Reset to pending")
+                              handleAction(item.id, () => retryEmailQueueItem(item.id), "Retry remains scheduled; cooldown and attempt limits are unchanged.")
                             }
                           >
                             <RotateCcw className="h-3 w-3" />
                           </Button>
                         )}
-                        {["pending", "failed"].includes(item.status) && (
+                        {canManage && queueControls(item).cancel && (
                           <Button
                             variant="ghost"
                             size="icon"

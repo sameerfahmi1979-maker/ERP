@@ -64,7 +64,7 @@ function ReportScheduleSession({
     frequency: editing.frequency,
     dayOfWeek: editing.day_of_week ?? 1,
     dayOfMonth: editing.day_of_month ?? 1,
-    timeOfDay: editing.time_of_day ?? "07:00",
+    timeOfDay: (editing.time_of_day ?? "07:00").slice(0, 5),
     timezone: editing.timezone,
     recipientTo: (editing.recipient_to ?? []).join(", "),
     recipientCc: (editing.recipient_cc ?? []).join(", "),

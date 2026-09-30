@@ -15,7 +15,8 @@
 
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission, hasGlobalPermission, hasPermissionInScope } from "@/lib/rbac/check";
+import { createClient } from "@/lib/supabase/server";
+import { getAuthContext, hasGlobalPermission, hasPermissionInScope } from "@/lib/rbac/check";
 import { requireReportDelivery } from "@/lib/email/queue/policy";
 import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
@@ -67,6 +68,17 @@ export interface ReportSchedule {
 // List report schedules
 // ─────────────────────────────────────────────────────────────────────────────
 
+async function withReportLabels(rows: ReportSchedule[]): Promise<ReportSchedule[]> {
+  if (!rows.length) return rows;
+  // RLS already selected permitted schedules. Fetch only catalog labels for
+  // those IDs; no report data and no widening of the catalog's own policies.
+  const { data, error } = await createAdminClient().from("erp_report_registry")
+    .select("id,report_code,report_name_en,module_code,supports_scheduling")
+    .in("id", [...new Set(rows.map(row => row.report_id))]);
+  if (error) throw new Error("Report labels unavailable.");
+  return rows.map(row => ({ ...row, report: data?.find(report => report.id === row.report_id) }));
+}
+
 export async function listReportSchedules(): Promise<ActionResult<ReportSchedule[]>> {
   try {
     const ctx = await getAuthContext();
@@ -74,15 +86,9 @@ export async function listReportSchedules(): Promise<ActionResult<ReportSchedule
       return { success: false, error: "User profile not found." };
     }
 
-    const canViewAll =
-      hasPermission(ctx, "reports.schedule.view") ||
-      hasPermission(ctx, "reports.schedule.manage");
-
-    // Users without schedule permissions may only see their own schedules.
-    // Users with schedule view/manage permissions see all schedules.
-    const db = createAdminClient();
-
-    let query = db
+    // User-session RLS applies company scope and current owner authority.
+    const db = await createClient();
+    const query = db
       .from("erp_report_schedules")
       .select(`
         *,
@@ -91,15 +97,10 @@ export async function listReportSchedules(): Promise<ActionResult<ReportSchedule
       .is("deleted_at", null)
       .order("schedule_name");
 
-    if (!canViewAll) {
-      // Scope to own schedules only
-      query = query.eq("created_by", ctx.profile.id);
-    }
-
     const { data, error } = await query;
 
     if (error) return { success: false, error: error.message };
-    return { success: true, data: (data ?? []) as ReportSchedule[] };
+    return { success: true, data: await withReportLabels((data ?? []) as ReportSchedule[]) };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
@@ -116,7 +117,7 @@ export async function getReportSchedule(id: number): Promise<ActionResult<Report
       return { success: false, error: "User profile not found." };
     }
 
-    const db = createAdminClient();
+    const db = await createClient();
 
     const { data, error } = await db
       .from("erp_report_schedules")
@@ -131,17 +132,7 @@ export async function getReportSchedule(id: number): Promise<ActionResult<Report
     if (error) return { success: false, error: error.message };
     if (!data) return { success: false, error: "Schedule not found." };
 
-    const rec = data as ReportSchedule;
-    const isOwner = rec.created_by === ctx.profile.id;
-    const canView =
-      hasPermission(ctx, "reports.schedule.view") ||
-      hasPermission(ctx, "reports.schedule.manage");
-
-    if (!isOwner && !canView) {
-      return { success: false, error: "Permission denied." };
-    }
-
-    return { success: true, data: rec };
+    return { success: true, data: (await withReportLabels([data as ReportSchedule]))[0] };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
@@ -158,8 +149,8 @@ const createSchema = z.object({
   selectedTemplateId: z.number().int().positive().nullable().optional(),
   ownerCompanyId: z.number().int().positive().nullable().optional(),
   outputFormat: z.enum(["pdf", "excel", "csv"]).default("pdf"),
-  recipientTo: z.array(z.string().email()).min(1, "At least one recipient is required"),
-  recipientCc: z.array(z.string().email()).optional().default([]),
+  recipientTo: z.array(z.string().email()).min(1, "At least one recipient is required").max(100),
+  recipientCc: z.array(z.string().email()).max(100).optional().default([]),
   emailSubjectTemplate: z.string().max(500).optional(),
   emailBodyTemplate: z.string().max(5000).optional(),
   frequency: z.enum(["daily", "weekly", "monthly"]),
@@ -175,41 +166,37 @@ export async function createReportSchedule(
 ): Promise<ActionResult<{ id: number }>> {
   try {
     const ctx = await getAuthContext();
-    if (
-      !hasPermission(ctx, "reports.schedule.manage") &&
-      !hasPermission(ctx, "reports.run")
-    ) {
-      return { success: false, error: "Permission denied." };
-    }
     if (!ctx.profile?.id) {
       return { success: false, error: "User profile not found." };
     }
-    if (!hasPermission(ctx, "reports.email")) {
-      return { success: false, error: "You need reports.email permission to create scheduled email deliveries." };
-    }
-
     const parsed = createSchema.safeParse(input);
     if (!parsed.success) {
       return { success: false, error: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") };
     }
 
-    const db = createAdminClient();
+    const companyId = parsed.data.ownerCompanyId ?? null;
+    requireReportDelivery(ctx, companyId);
+    if (parsed.data.recipientTo.length + parsed.data.recipientCc.length > 100)
+      return { success: false, error: "At most 100 recipients are allowed." };
+    const db = await createClient();
 
-    const { data: registry } = await db
+    // Delivery scope was checked above. Catalog metadata is not report data.
+    const { data: registry } = await createAdminClient()
       .from("erp_report_registry")
-      .select("id, required_permissions, sensitive_profile")
+      .select("id, required_permissions, sensitive_profile, supports_scheduling, document_class")
       .eq("report_code", parsed.data.reportCode)
       .eq("is_active", true)
       .maybeSingle();
 
-    if (!registry) {
+    if (!registry || !registry.supports_scheduling || ![null, "", "E", "F", "G"].includes(registry.document_class)) {
       return { success: false, error: `Report '${parsed.data.reportCode}' not found or inactive.` };
     }
 
     const reg = registry as { id: number; required_permissions: string[]; sensitive_profile: string };
 
     const missingPerms = reg.required_permissions.filter(
-      (p) => !ctx.permissionCodes.includes(p)
+      (p) => ![p, p + ".self", p + ".team"].some(code => companyId === null
+        ? hasGlobalPermission(ctx, code) : hasPermissionInScope(ctx, code, companyId))
     );
     if (missingPerms.length > 0) {
       return {
@@ -218,7 +205,7 @@ export async function createReportSchedule(
       };
     }
 
-    const scheduleCode = `SCH-${Date.now()}`;
+    const scheduleCode = `SCH-${crypto.randomUUID()}`;
 
     const nextRunAt = calculateNextRunAt(
       parsed.data.frequency,
@@ -283,8 +270,8 @@ const updateSchema = z.object({
   selectedTemplateId: z.number().int().positive().nullable().optional(),
   ownerCompanyId: z.number().int().positive().nullable().optional(),
   outputFormat: z.enum(["pdf", "excel", "csv"]).optional(),
-  recipientTo: z.array(z.string().email()).optional(),
-  recipientCc: z.array(z.string().email()).optional(),
+  recipientTo: z.array(z.string().email()).min(1).max(100).optional(),
+  recipientCc: z.array(z.string().email()).max(100).optional(),
   emailSubjectTemplate: z.string().max(500).nullable().optional(),
   emailBodyTemplate: z.string().max(5000).nullable().optional(),
   frequency: z.enum(["daily", "weekly", "monthly"]).optional(),
@@ -309,11 +296,11 @@ export async function updateReportSchedule(
       return { success: false, error: parsed.error.issues.map((i) => i.message).join("; ") };
     }
 
-    const db = createAdminClient();
+    const db = await createClient();
 
     const { data: existing } = await db
       .from("erp_report_schedules")
-      .select("id, created_by, frequency, day_of_week, day_of_month, time_of_day, timezone")
+      .select("id, created_by, owner_company_id, updated_at, recipient_to, recipient_cc, frequency, day_of_week, day_of_month, time_of_day, timezone")
       .eq("id", parsed.data.id)
       .is("deleted_at", null)
       .maybeSingle();
@@ -323,6 +310,10 @@ export async function updateReportSchedule(
     const rec = existing as {
       id: number;
       created_by: number;
+      owner_company_id: number | null;
+      updated_at: string;
+      recipient_to: string[];
+      recipient_cc: string[] | null;
       frequency: string;
       day_of_week: number | null;
       day_of_month: number | null;
@@ -331,7 +322,12 @@ export async function updateReportSchedule(
     };
 
     const isOwner = rec.created_by === ctx.profile.id;
-    const canManage = hasPermission(ctx, "reports.schedule.manage");
+    const canManage = rec.owner_company_id === null ? hasGlobalPermission(ctx, "reports.schedule.manage")
+      : hasPermissionInScope(ctx, "reports.schedule.manage", rec.owner_company_id);
+    requireReportDelivery(ctx, rec.owner_company_id);
+    requireReportDelivery(ctx, parsed.data.ownerCompanyId === undefined ? rec.owner_company_id : parsed.data.ownerCompanyId);
+    if ((parsed.data.recipientTo ?? rec.recipient_to).length + (parsed.data.recipientCc ?? rec.recipient_cc ?? []).length > 100)
+      return { success: false, error: "At most 100 recipients are allowed." };
 
     if (!isOwner && !canManage) {
       return { success: false, error: "You can only edit your own schedules." };
@@ -360,14 +356,20 @@ export async function updateReportSchedule(
     const newTimeOfDay = parsed.data.timeOfDay ?? rec.time_of_day ?? "07:00";
     const newTimezone = parsed.data.timezone ?? rec.timezone;
 
-    updates.next_run_at = calculateNextRunAt(newFrequency, newDayOfWeek, newDayOfMonth, newTimeOfDay, newTimezone);
+    // A rename/recipient edit must not silently skip the already scheduled slot.
+    if (newFrequency !== rec.frequency || newTimezone !== rec.timezone
+      || newTimeOfDay.slice(0,5) !== (rec.time_of_day ?? "07:00").slice(0,5)
+      || (newFrequency === "weekly" && newDayOfWeek !== rec.day_of_week)
+      || (newFrequency === "monthly" && newDayOfMonth !== rec.day_of_month))
+      updates.next_run_at = calculateNextRunAt(newFrequency, newDayOfWeek, newDayOfMonth, newTimeOfDay, newTimezone);
 
-    const { error } = await db
+    const { data: changed, error } = await db
       .from("erp_report_schedules")
       .update(updates)
-      .eq("id", parsed.data.id);
+      .eq("id", parsed.data.id).eq("updated_at", rec.updated_at).select("id").maybeSingle();
 
     if (error) return { success: false, error: error.message };
+    if (!changed) return { success: false, error: "Schedule changed or access was revoked. Reload before editing." };
 
     revalidatePath("/admin/reports/schedules");
     return { success: true };
@@ -387,35 +389,39 @@ export async function deleteReportSchedule(id: number): Promise<ActionResult> {
       return { success: false, error: "User profile not found." };
     }
 
-    const db = createAdminClient();
+    const db = await createClient();
 
     const { data: existing } = await db
       .from("erp_report_schedules")
-      .select("id, created_by, schedule_code")
+      .select("id, created_by, owner_company_id, updated_at, schedule_code")
       .eq("id", id)
       .is("deleted_at", null)
       .maybeSingle();
 
     if (!existing) return { success: false, error: "Schedule not found." };
 
-    const rec = existing as { id: number; created_by: number; schedule_code: string };
+    const rec = existing as { id: number; created_by: number; owner_company_id: number | null; updated_at: string; schedule_code: string };
     const isOwner = rec.created_by === ctx.profile.id;
-    const canManage = hasPermission(ctx, "reports.schedule.manage");
+    const canManage = rec.owner_company_id === null ? hasGlobalPermission(ctx, "reports.schedule.manage")
+      : hasPermissionInScope(ctx, "reports.schedule.manage", rec.owner_company_id);
+    requireReportDelivery(ctx, rec.owner_company_id);
 
     if (!isOwner && !canManage) {
       return { success: false, error: "You can only delete your own schedules." };
     }
 
-    const { error } = await db
+    const { data: changed, error } = await db
       .from("erp_report_schedules")
       .update({
         deleted_at: new Date().toISOString(),
         deleted_by: ctx.profile.id,
         is_active: false,
+        updated_at: new Date().toISOString(),
       })
-      .eq("id", id);
+      .eq("id", id).eq("updated_at", rec.updated_at).select("id").maybeSingle();
 
     if (error) return { success: false, error: error.message };
+    if (!changed) return { success: false, error: "Schedule changed or access was revoked. Reload before deleting." };
 
     await logAudit({
       module_code: "REPORTS",

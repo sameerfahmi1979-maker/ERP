@@ -1,6 +1,6 @@
 import { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasGlobalPermission } from "@/lib/rbac/check";
 import { getEmailQueue } from "@/server/actions/notifications/email-queue";
 import { EmailQueuePageClient } from "@/features/notifications/admin/email-queue-page-client";
 
@@ -15,9 +15,8 @@ export const metadata: Metadata = {
 export default async function EmailQueuePage() {
   const ctx = await getAuthContext();
   if (
-    !hasPermission(ctx, "notifications.email_queue.view") &&
-    !hasPermission(ctx, "notifications.email_queue.manage") &&
-    !hasPermission(ctx, "notifications.admin")
+    !hasGlobalPermission(ctx, "notifications.email_queue.view") &&
+    !hasGlobalPermission(ctx, "notifications.admin")
   ) {
     redirect("/access-denied");
   }
@@ -29,8 +28,8 @@ export default async function EmailQueuePage() {
     <div className="p-6 space-y-4">
       <EmailQueuePageClient
         initialItems={items}
-        canManage={hasPermission(ctx, "notifications.email_queue.manage") || hasPermission(ctx, "notifications.admin")}
-        canProcess={hasPermission(ctx, "notifications.email_queue.process") || hasPermission(ctx, "notifications.admin")}
+        canManage={hasGlobalPermission(ctx, "notifications.email_queue.manage") || hasGlobalPermission(ctx, "notifications.admin")}
+        canProcess={hasGlobalPermission(ctx, "notifications.email_queue.process") || hasGlobalPermission(ctx, "notifications.admin")}
       />
     </div>
   );

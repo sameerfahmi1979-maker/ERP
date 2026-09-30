@@ -1,9 +1,13 @@
 # F09 controlled release preparation
 
 Date: 30 September 2026. Status: **NOT AUTHORIZED FOR ACTIVATION / NOT DEPLOYED**.
+Latest checkpoint: [compatibility and read-only production review](READINESS_REVIEW.md).
+That follow-up obtained live ERP metadata without changing production. The
+inventory/preparation gates below are updated; activation gates remain open.
 Local follow-up implementation is described in FOLLOWUP_VERIFICATION.md.
-This run did not query or modify production, publish Git changes, merge, configure
-cron, or send real email. F09 is not closed.
+The initial implementation run did not query production. The later readiness
+review was read-only. Neither published Git changes, merged, changed production,
+configured cron or sent real email. F09 is not closed.
 
 ## Release gates and evidence still required
 
@@ -14,14 +18,17 @@ cron, or send real email. F09 is not closed.
 | Browser queue/schedule journeys | Local synthetic journeys passed with noted UI gaps | F05 integration acceptance, including scoped company selection |
 | Deno | Type and six actual-handler health/auth tests passed | Real Edge runtime deployment and no-work readiness under release approval |
 | Verified report delivery | Analytical adapter tested with mocks | F08 template/provenance/recipient and real final-output acceptance |
-| Live trigger/host/provider inventory | NOT VERIFIED | Named owner, endpoint, schedule/timezone, timeout, last success and secret presence |
-| Existing backlog disposition | NOT APPROVED | Exact IDs/classification and owner decision; no bulk unpause |
+| Live trigger/host/provider inventory | READ-ONLY SNAPSHOT CAPTURED | Runtime owner, finite shared-provider budgets, explicit request deadlines and secret lifecycle approval still required |
+| Existing backlog disposition | INVENTORIED; CATCH-UP POLICY APPROVED; CUTOVER RECHECK REQUIRED | Preserve terminal history; hold unsupported overdue schedule; owner chose skip-missed-after-current; no bulk unpause |
 | Public publication / GitHub CI | NOT PERFORMED | Reviewed source-only manifest and explicit public-repository approval |
 | Merge / deployment / live canary | NOT PERFORMED | Separate approval, migration/app match, one-recipient controlled receipt |
 | Ongoing monitoring | NOT STARTED | Agreed owner, alerts, reconciliation and rollback drill |
 
-No connected cloud-specific tools were available in this run. Source inspection
-does not establish the configuration currently running on Railway or Supabase.
+The initial implementation run had no connected cloud-specific tools. The later
+readiness review used existing authenticated CLIs, restricted to the ERP project,
+to verify deployment, migration history, backup, provider-reference and worker
+metadata. Source-only claims have not been substituted for live receipt,
+restoration, complete schema-equivalence or final integrated acceptance.
 
 ## Read-only inventory to gather first
 
@@ -72,8 +79,10 @@ policies for drift first; local replay is not proof of an unchanged live schema.
   reconcile via provider trace. No automatic retry.
 - Old pending/processing/failed rows: held by the integration migration. Review
   exact IDs, source validity, recipient authority, age and business value.
-- Stale schedules: explicit owner decision between one-slot-at-a-time and
-  skip-missed-after-current. Never choose silently.
+- Stale schedules: owner approved skip-missed-after-current on 30 September
+  2026: skip missed dates and allow at most one current report after approved
+  activation. Keep unsupported schedules held until F08 eligibility acceptance.
+  The policy decision did not change live schedules or enable a worker.
 - Cancelled/deleted/exhausted/permanent items: terminal, not a retry backlog.
 - AI jobs: separate system. Do not replay or activate them in this release.
 - Any approved replacement request must have a new deliberate identity and an

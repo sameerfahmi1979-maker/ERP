@@ -3,11 +3,14 @@
 Date: 30 September 2026. Isolated branch: `codex/f09-backend-foundation`.
 This is a coordination handoff, not a claim that the other phase branches have
 adopted it. No messages were sent to other chats and their files were not changed.
+Latest checkpoint: [readiness review](READINESS_REVIEW.md). The current F05
+snapshot has no direct file or migration-name collision, but shared dependencies
+have changed and UI-03 adoption remains open. This is not merge acceptance.
 
 ## Ownership and merge rules
 
 F09 owns queue leases, admission, attempts, retry/cancel semantics, machine routes,
-schedule execution and the two new migrations. F05 owns the shared layout, global
+schedule execution and the five F09 migrations. F05 owns the shared layout, global
 list/form conventions, navigation, accessible controls, validation, draft behavior
 and the final operations screens. F06 owns provider credentials, configuration
 governance and all outbound paths outside this queue. F08 owns approved document

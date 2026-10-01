@@ -1,44 +1,107 @@
+/**
+ * OUTPUT.7 (WP11) — Protected internal schedules worker route.
+ *
+ * POST /api/internal/report-schedules/process
+ *
+ * Security rules (mirrors /api/internal/dms-ai-jobs/process):
+ *   - Requires Authorization: Bearer ${WORKER_SECRET}; 401 otherwise.
+ *   - Machine-to-machine only — no user session accepted.
+ *   - OUTPUT_SCHEDULES_WORKER_ENABLED must be true to process anything.
+ *   - Responses contain operational counts only — no report data, recipient
+ *     lists, attachment contents, or secrets.
+ *   - GET returns health/queue status only.
+ *
+ * Trigger options: Vercel/Railway cron, external cron, or manual POST.
+ */
+
 import { NextRequest, NextResponse } from "next/server";
-import { randomUUID } from "node:crypto";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { processDueSchedules } from "@/lib/report-center/schedule-worker";
 import { isSchedulesWorkerEnabled } from "@/lib/output/feature-flags";
-import { emailWorkerEnabled } from "@/lib/email/queue/service";
-import { authorizeWorker } from "@/lib/email/queue/worker-auth";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { z } from "zod";
-import { boundedQuery, InvalidWorkerInput, readWorkerInput } from "@/lib/email/queue/runtime-limits";
+import { logger } from "@/lib/logger";
+
 export const runtime = "nodejs";
-function authorized(r: NextRequest) { return authorizeWorker(r.headers.get("authorization"), process.env.WORKER_SECRET); }
-export async function GET(request: NextRequest) {
-    if (!authorized(request))
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    try {
-        const db = createAdminClient();
-        const result = await boundedQuery(db.from("erp_report_schedules").select("id", { count: "exact", head: true })
-            .eq("is_active", true).is("deleted_at", null).lte("next_run_at", new Date().toISOString()));
-        if (result.error)
-            throw new Error("Health read failed");
-        return NextResponse.json({ status: "ok", workerEnabled: isSchedulesWorkerEnabled() && emailWorkerEnabled(),
-            dueSchedules: result.count, deliveryOwner: "email_queue", catchupPolicyConfigured: ["one-slot-at-a-time", "skip-missed-after-current"].includes(process.env.F09_SCHEDULE_CATCHUP_POLICY ?? "") });
-    }
-    catch {
-        return NextResponse.json({ status: "error", error: "Health check unavailable" }, { status: 503 });
-    }
+
+function verifyWorkerSecret(request: NextRequest): boolean {
+  const workerSecret = process.env.WORKER_SECRET;
+  if (!workerSecret || workerSecret.trim().length < 32) {
+    // Missing or weak secret — block all processing (secret gate).
+    return false;
+  }
+  const authHeader = request.headers.get("authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return false;
+  return authHeader.slice("Bearer ".length).trim() === workerSecret;
 }
-export async function POST(request: NextRequest) {
-    if (!authorized(request))
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    if (!isSchedulesWorkerEnabled() || !emailWorkerEnabled())
-        return NextResponse.json({ paused: true, claimed: 0, queued: 0, succeeded: 0 });
-    try {
-        const parsed = z.object({ limit: z.number().int().min(1).max(25).optional() }).strict().safeParse(await readWorkerInput(request));
-        if (!parsed.success)
-            return NextResponse.json({ error: "Invalid request" }, { status: 400 });
-        return NextResponse.json(await processDueSchedules({ workerId: randomUUID(), limit: parsed.data.limit }));
+
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  if (!verifyWorkerSecret(request)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    const db = createAdminClient();
+    const nowIso = new Date().toISOString();
+
+    const [dueCount, retryableCount, terminalCount, lastRun] = await Promise.all([
+      db.from("erp_report_schedules")
+        .select("id", { count: "exact", head: true })
+        .eq("is_active", true).is("deleted_at", null)
+        .not("next_run_at", "is", null).lte("next_run_at", nowIso),
+      db.from("erp_report_schedule_runs")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "failed_retryable"),
+      db.from("erp_report_schedule_runs")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "failed_terminal"),
+      db.from("erp_report_schedule_runs")
+        .select("finished_at").not("finished_at", "is", null)
+        .order("finished_at", { ascending: false }).limit(1).maybeSingle(),
+    ]);
+
+    return NextResponse.json({
+      status: "ok",
+      workerEnabled: isSchedulesWorkerEnabled(),
+      dueSchedules: (dueCount as { count?: number | null }).count ?? 0,
+      retryableRuns: (retryableCount as { count?: number | null }).count ?? 0,
+      terminalRuns: (terminalCount as { count?: number | null }).count ?? 0,
+      lastRunFinishedAt: (lastRun.data as { finished_at?: string } | null)?.finished_at ?? null,
+      timestamp: nowIso,
+    });
+  } catch (err) {
+    logger.error("[schedule-worker-route] GET health check failed", { error: String(err) });
+    return NextResponse.json({ status: "error", error: "Health check failed." }, { status: 500 });
+  }
+}
+
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  if (!verifyWorkerSecret(request)) {
+    logger.warn("[schedule-worker-route] unauthorized request");
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (!isSchedulesWorkerEnabled()) {
+    return NextResponse.json({
+      claimed: 0, succeeded: 0, skipped: 0, retryScheduled: 0, terminal: 0,
+      leasesReaped: 0, durationMs: 0,
+      message: "Schedules worker is disabled. Set OUTPUT_SCHEDULES_WORKER_ENABLED=true to enable.",
+    });
+  }
+
+  let limit = 10;
+  let workerId = `schedule-worker-${Date.now()}`;
+  try {
+    const body = (await request.json()) as { limit?: number; workerId?: string };
+    if (typeof body.limit === "number" && body.limit > 0 && body.limit <= 25) limit = body.limit;
+    if (typeof body.workerId === "string" && body.workerId.trim()) {
+      workerId = body.workerId.trim().slice(0, 64);
     }
-    catch (error) {
-        if (error instanceof InvalidWorkerInput)
-            return NextResponse.json({ error: "Invalid request" }, { status: 400 });
-        return NextResponse.json({ error: "Schedule processing unavailable; inspect durable intents before retry." }, { status: 503 });
-    }
+  } catch {
+    // Body optional.
+  }
+
+  logger.info("[schedule-worker-route] processing", { limit, workerId });
+  const result = await processDueSchedules({ workerId, limit });
+  logger.info("[schedule-worker-route] complete", { ...result });
+
+  return NextResponse.json(result);
 }

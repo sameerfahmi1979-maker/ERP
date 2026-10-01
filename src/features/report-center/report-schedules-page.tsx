@@ -25,29 +25,25 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ReportScheduleForm } from "./report-schedule-form";
-import { AlgtDialog } from "@/components/design-system/algt-dialog";
-import { canEditSchedule, type ScheduleUiAccess } from "@/lib/report-center/schedule-ui-access";
 
 const STATUS_CONFIG = {
-  success: { label: "Generation succeeded", icon: CheckCircle2, color: "text-emerald-700 dark:text-emerald-300" },
+  success: { label: "Success", icon: CheckCircle2, color: "text-emerald-600" },
   failed: { label: "Failed", icon: XCircle, color: "text-red-600" },
   skipped: { label: "Skipped", icon: AlertCircle, color: "text-amber-600" },
   cancelled: { label: "Cancelled", icon: AlertCircle, color: "text-slate-500" },
 };
 
-export function ReportSchedulesPage({ access }: { access: ScheduleUiAccess }) {
+export function ReportSchedulesPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<ReportSchedule | null>(null);
   const [runningId, setRunningId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<ReportSchedule | null>(null);
-  const deleting = useRef(false);
 
   const { data: schedules = [], isFetching: isLoading, refetch, error } = useQuery({
-    queryKey: ["report-schedules", access.profileId],
+    queryKey: ["report-schedules"],
     queryFn: async () => {
       const result = await listReportSchedules();
       if (!result.success || !result.data) throw new Error(result.error ?? "Failed to load schedules.");
@@ -56,47 +52,28 @@ export function ReportSchedulesPage({ access }: { access: ScheduleUiAccess }) {
     retry: false, gcTime: 0, refetchOnWindowFocus: false,
   });
   const load = () => refetch();
-  useEffect(() => { if (error) toast.error("Schedules could not be refreshed. Actions are disabled until a successful refresh."); }, [error]);
+  useEffect(() => { if (error) toast.error(error.message); }, [error]);
 
-  const requestKeys = useRef(new Map<number, string>());
-  const runningRequests = useRef(new Set<number>());
   const handleRunNow = async (id: number) => {
-    const row = schedules.find(row => row.id === id);
-    if (error || isLoading || !row || !canEditSchedule(access, row) || runningRequests.current.has(id)) return;
-    runningRequests.current.add(id);
-    const requestKey = requestKeys.current.get(id) ?? crypto.randomUUID();
-    requestKeys.current.set(id, requestKey);
     setRunningId(id);
     try {
-      const result = await runReportScheduleNow(id, requestKey);
-      if (result.success) {
-        requestKeys.current.delete(id);
-        toast.success("Report queued. Delivery permissions will be checked before sending.");
-      }
+      const result = await runReportScheduleNow(id);
+      if (result.success) toast.success("Schedule ran successfully. Email delivered.");
       else toast.error(result.error ?? "Run failed.");
-    } catch {
-      toast.error("Queue response unavailable. Retry this run to check the same request; do not create a duplicate.");
     } finally {
-      runningRequests.current.delete(id);
       setRunningId(null);
       load();
     }
   };
 
   const handleDelete = async (id: number) => {
-    const row = schedules.find(row => row.id === id);
-    if (deleting.current || error || isLoading || !row || !canEditSchedule(access, row)) return;
-    deleting.current = true;
     setDeletingId(id);
     try {
       const result = await deleteReportSchedule(id);
-      if (result.success) { setDeleteTarget(null); toast.success("Schedule removed. Delivery history is retained."); load(); }
+      if (result.success) { toast.success("Schedule deleted."); load(); }
       else toast.error(result.error ?? "Delete failed.");
-    } catch {
-      toast.error("Deletion could not be confirmed. Refresh before retrying.");
     } finally {
       setDeletingId(null);
-      deleting.current = false;
     }
   };
 
@@ -234,7 +211,6 @@ export function ReportSchedulesPage({ access }: { access: ScheduleUiAccess }) {
       enableHiding: false,
       cell: ({ row }) => {
         const sched = row.original;
-        if (!canEditSchedule(access, sched)) return <span className="text-xs text-muted-foreground">View only</span>;
         return (
           <div className="flex items-center gap-1">
             <Button
@@ -242,9 +218,8 @@ export function ReportSchedulesPage({ access }: { access: ScheduleUiAccess }) {
               size="icon"
               className="h-7 w-7"
               onClick={() => handleRunNow(sched.id)}
-              disabled={!!error || isLoading || runningId !== null || deletingId !== null}
+              disabled={runningId === sched.id}
               title="Run Now"
-              aria-label={`Queue ${sched.schedule_name} now`}
             >
               {runningId === sched.id ? (
                 <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -258,8 +233,6 @@ export function ReportSchedulesPage({ access }: { access: ScheduleUiAccess }) {
               className="h-7 w-7"
               onClick={() => { setEditingSchedule(sched); setShowForm(true); }}
               title="Edit"
-              aria-label={`Edit ${sched.schedule_name}`}
-              disabled={!!error || isLoading || deletingId !== null || runningId !== null}
             >
               <Pencil className="h-3.5 w-3.5" />
             </Button>
@@ -267,10 +240,9 @@ export function ReportSchedulesPage({ access }: { access: ScheduleUiAccess }) {
               variant="ghost"
               size="icon"
               className="h-7 w-7 text-destructive hover:text-destructive"
-              onClick={() => setDeleteTarget(sched)}
-              disabled={!!error || isLoading || deletingId !== null || runningId !== null}
+              onClick={() => handleDelete(sched.id)}
+              disabled={deletingId === sched.id}
               title="Delete"
-              aria-label={`Remove ${sched.schedule_name}`}
             >
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
@@ -294,25 +266,23 @@ export function ReportSchedulesPage({ access }: { access: ScheduleUiAccess }) {
         ]}
         actions={
           <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="text-xs">{schedules.length} loaded</Badge>
+            <Badge variant="secondary" className="text-xs">{schedules.length}</Badge>
             <Button variant="outline" size="sm" onClick={load} disabled={isLoading}>
               <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", isLoading && "animate-spin")} />
               Refresh
             </Button>
-            {(access.globalDelivery || access.deliveryCompanyIds.length > 0) && <Button size="sm" disabled={!!error || isLoading} onClick={() => { setEditingSchedule(null); setShowForm(true); }}>
+            <Button size="sm" onClick={() => { setEditingSchedule(null); setShowForm(true); }}>
               <Plus className="h-3.5 w-3.5 mr-1.5" />
               New Schedule
-            </Button>}
+            </Button>
           </div>
         }
       />
 
       <div className="text-xs text-muted-foreground bg-muted/30 rounded-lg px-3 py-2 border border-border">
-        Run now queues a request; it does not confirm inbox delivery. Automatic delivery requires the enabled backend service.
-        Times in the list use your browser timezone; each schedule retains its configured timezone.
-        Search and filters apply to the loaded records, not an unlimited system-wide search.
+        Scheduled reports require a cron trigger (Supabase Edge Function or pg_cron) to run automatically.
+        Use <strong>Run Now</strong> to trigger manually for testing.
       </div>
-      {error && <div role="alert" className="border border-destructive rounded-sm p-3 text-sm">Schedules could not be refreshed. Previously loaded records may be outdated. Use Refresh before taking an action.</div>}
 
       <div className="rounded-md border border-border overflow-hidden">
         <ERPDataTable
@@ -338,11 +308,6 @@ export function ReportSchedulesPage({ access }: { access: ScheduleUiAccess }) {
         editing={editingSchedule}
         onSaved={load}
       />
-      <AlgtDialog open={!!deleteTarget} onOpenChange={open => { if (!open && !deleting.current) setDeleteTarget(null); }} title="Remove schedule?"
-        actions={<><Button variant="outline" disabled={deletingId !== null} onClick={() => setDeleteTarget(null)}>Keep schedule</Button>
-          <Button variant="destructive" disabled={deletingId !== null || !!error || isLoading} onClick={() => { if (deleteTarget) void handleDelete(deleteTarget.id); }}>Remove schedule</Button></>}>
-        <p>Remove “{deleteTarget?.schedule_name}” from active schedules? Its delivery history will remain. This does not recall messages already sent or accepted by the provider.</p>
-      </AlgtDialog>
     </>
   );
 }

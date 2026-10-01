@@ -1,5 +1,19 @@
 # F05 — Fluent UI adoption candidate
 
+## Current release candidate — 1 October 2026
+
+This section supersedes the integrated-F09 release instructions and counts below. The owner approved the reviewed desktop and phone-width appearance and explicitly deferred the coupled **Email Queue and Report Schedules redesign with F09 until after F08**. The release branch is `codex/f05-release-without-f09`; the complete earlier integrated source remains at `6b47aeb1bdb587f3b5503d2ad5407e30cd462a3c` on `codex/f05-fluent-ui`.
+
+The active queue, expiry bridge and schedule backend paths and their two coupled screens match the current main baseline `d9de058abbc410006c0233bac3e69e06e1faccde`. F09 worker implementations and five F09 migrations are excluded from this candidate. This preserves existing delivery behavior; it does not claim to fix the legacy delivery defects. Twelve F05 cases tied to that future implementation and the 180-case F09 suite are deferred, not passed. See [F09 resumption instructions](../F09/DEFERRED_RELEASE.md).
+
+Login and logout now use bounded same-origin JSON endpoints and wait for complete responses before replacing the browser document. Existing F03 login validation, durable rate limits, cookie handling and local-session logout remain in use. Login-help links disable speculative prefetch. This addresses the reproduced Firefox/WebKit response-stream warnings without hiding console errors or weakening authentication.
+
+Final local checks: **464 unit + 827 remediation = 1,291 distinct passing cases**, build/types pass, lint has zero errors and 134 existing warnings with no new warnings. The focused 51 auth cases are included, not additional. The final build passed **57 screen/form/accessibility journeys and 15 repeated login/logout/help-navigation checks** across Chromium, Firefox and WebKit with zero page errors or external requests. Owner appearance approval is viewport-based, not physical-device or screen-reader certification.
+
+Both retained F05 DMS migrations were rehearsed with an exact rollback/reapply inside one local rolled-back transaction. The full function, policy, grant and trigger catalog was unchanged afterward; legacy rollback restores only observed prior grants, never TRUNCATE. Application-only rollback is unsafe because the new approval rules prevent legacy direct writes. Release still requires exact GitHub checks, migration dry-run, held maintenance, matching schema/application deployment and live acceptance. **Publication alone is not deployment or blanket closure.**
+
+For this branch, run the ordinary unit/remediation/build/types/lint/security commands below, but **do not run the deferred F09 suite against intentionally absent F09 runtime files**. Its dedicated CI step is removed with the implementation; existing active checks remain blocking.
+
 This is an application implementation and scoped automated-acceptance record, not a claim that every actor, record state, physical device or business workflow has passed. The selected direction is ALGT-branded Fluent/Dynamics-inspired UI; this is not Microsoft Dynamics software.
 
 ## Delivered sequence

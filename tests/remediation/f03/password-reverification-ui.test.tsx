@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 const m=vi.hoisted(()=>({signOut:vi.fn(),navigate:vi.fn(),change:vi.fn(),required:vi.fn(),recovery:vi.fn()}));
-vi.mock('@/features/auth/actions',()=>({signOut:m.signOut}));
+vi.mock('@/lib/auth/logout-client',()=>({signOut:m.signOut}));
 vi.mock('@/lib/auth/client-session',()=>({navigateAfterIdentityChange:m.navigate}));
 vi.mock('@/server/actions/users/account-security',()=>({changeOwnPassword:m.change,completeRequiredPasswordChange:m.required,recordPasswordResetCompleted:m.recovery}));
 vi.mock('sonner',()=>({toast:{error:vi.fn(),success:vi.fn()}}));

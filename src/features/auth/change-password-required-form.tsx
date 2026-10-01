@@ -19,7 +19,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { ShieldAlert } from "lucide-react";
-import { signOut } from "@/features/auth/actions";
+import { signOut } from "@/lib/auth/logout-client";
 import { navigateAfterIdentityChange } from "@/lib/auth/client-session";
 import { PasswordReverification } from "./password-reverification";
 

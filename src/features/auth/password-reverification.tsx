@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ShieldCheck } from "lucide-react";
-import { signOut } from "@/features/auth/actions";
+import { signOut } from "@/lib/auth/logout-client";
 import { navigateAfterIdentityChange } from "@/lib/auth/client-session";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";

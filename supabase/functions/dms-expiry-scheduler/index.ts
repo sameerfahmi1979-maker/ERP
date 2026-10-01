@@ -251,10 +251,10 @@ Deno.serve(async (req: Request) => {
         const severity = r.notification_type === "document_expired" ? "urgent" : "warning";
         const docId = r.document_id as number | null;
 
-        let { data: notifRow, error: notifError } = await supabase
+        const { data: notifRow } = await supabase
           .from("erp_notifications")
           .insert({
-            notification_code: `DMS_BRIDGE_${dmsId}`,
+            notification_code: `DMS_SCHEDULER_${dmsId}_${runId.slice(0, 8)}`,
             source_module: "DMS",
             source_entity_type: "dms_documents",
             source_entity_id: docId,
@@ -265,7 +265,7 @@ Deno.serve(async (req: Request) => {
             recipient_user_id: r.recipient_user_id as number | null,
             recipient_email: r.recipient_email as string | null,
             channel_in_app: true,
-            channel_email: false, // Queue creation, not a supplied address, sets this marker.
+            channel_email: !!(r.recipient_email),
             scheduled_for: r.scheduled_for as string ?? new Date().toISOString(),
             action_url: docId ? `/dms/documents/record/${docId}` : null,
             action_label: "View Document",
@@ -276,13 +276,7 @@ Deno.serve(async (req: Request) => {
           .select("id")
           .single();
 
-        if (notifError?.code === "23505") {
-          const existing = await supabase.from("erp_notifications").select("id")
-            .eq("notification_code", `DMS_BRIDGE_${dmsId}`).maybeSingle();
-          notifRow = existing.data;
-          notifError = existing.error;
-        }
-        if (notifRow && !notifError) {
+        if (notifRow) {
           const globalId = (notifRow as Record<string, unknown>).id as number;
           await supabase.from("dms_notification_queue").update({
             global_notification_id: globalId,
@@ -314,7 +308,7 @@ Deno.serve(async (req: Request) => {
       // Fetch erp_notifications from DMS that haven't been emailed yet
       const { data: pendingEmailNotifs } = await supabase
         .from("erp_notifications")
-        .select("id, recipient_user_id, title, message, action_url, scheduled_for")
+        .select("id, recipient_user_id, title, message, action_url")
         .eq("source_module", "DMS")
         .eq("channel_email", false)
         .not("recipient_user_id", "is", null)
@@ -343,8 +337,7 @@ Deno.serve(async (req: Request) => {
 
         const actionUrl = n.action_url as string | null;
         const absoluteActionUrl = actionUrl ? `${APP_URL}${actionUrl}` : null;
-        const { error: emailErr } = await supabase.from("erp_email_queue").upsert({
-          intent_key: `notification-${n.id}`,
+        const { error: emailErr } = await supabase.from("erp_email_queue").insert({
           source_module: "DMS",
           source_entity_type: "dms_notification",
           source_entity_id: n.id as number,
@@ -356,10 +349,10 @@ Deno.serve(async (req: Request) => {
           html_body: `<p>${n.message as string}</p>${absoluteActionUrl ? `<p><a href="${absoluteActionUrl}">View Document</a></p>` : ""}`,
           text_body: `${n.message as string}${absoluteActionUrl ? `\n\nView: ${absoluteActionUrl}` : ""}`,
           template_code: "DMS_EXPIRY_NOTIFICATION",
-          scheduled_for: n.scheduled_for as string ?? new Date().toISOString(),
+          scheduled_for: new Date().toISOString(),
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-        }, {onConflict: "intent_key", ignoreDuplicates: true});
+        });
 
         if (!emailErr) {
           // Mark channel_email = true so we don't re-queue on next run
@@ -377,12 +370,12 @@ Deno.serve(async (req: Request) => {
       record(`Step 3 done: queued=${emailsQueued}, failed=${emailsFailed}`);
 
       // ── Step 4: Trigger the Railway app to process (send) the queued emails ──
-      if (Deno.env.get("F09_EMAIL_TRIGGER_ENABLED") === "true") {
+      if (emailsQueued > 0) {
         record("Step 4: Triggering email queue processor on app server...");
         const appUrl = Deno.env.get("APP_URL") ?? "https://erp.algt.net";
         const internalSecret = Deno.env.get("INTERNAL_API_SECRET");
 
-        if (!internalSecret || internalSecret.length < 32) {
+        if (!internalSecret) {
           record("Step 4: SKIPPED — INTERNAL_API_SECRET not set on Edge Function.");
           result.steps.step4_send = { skipped: true, reason: "INTERNAL_API_SECRET not configured" };
         } else {
@@ -393,11 +386,7 @@ Deno.serve(async (req: Request) => {
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${internalSecret}`,
               },
-              body: JSON.stringify({ module: "DMS", limit: 20 }),
-      // F09 queue budget is <75s; leave transport headroom. Configure pg_net
-      // and the ERP host separately at cutover; a timeout never proves no send.
-      signal: AbortSignal.timeout(120000),
-              redirect: "error",
+              body: JSON.stringify({ module: "DMS", limit: 200 }),
             });
             if (sendResp.ok) {
               const sendData = await sendResp.json() as Record<string, unknown>;

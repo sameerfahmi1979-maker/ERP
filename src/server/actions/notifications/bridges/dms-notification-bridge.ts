@@ -80,7 +80,7 @@ export async function bridgeDmsNotificationToGlobalNotification(
     }
 
     // Create global notification
-    let notifResult = await createNotification({
+    const notifResult = await createNotification({
       source_module: "DMS",
       source_entity_type: "dms_documents",
       source_entity_id: row.document_id as number,
@@ -96,11 +96,6 @@ export async function bridgeDmsNotificationToGlobalNotification(
       metadata_json: { dms_notification_id: dmsNotificationId },
     });
 
-    if (!notifResult.success) {
-      const existing = await supabase.from("erp_notifications").select("id")
-        .eq("notification_code", `DMS_BRIDGE_${dmsNotificationId}`).is("deleted_at",null).maybeSingle();
-      if (!existing.error && existing.data) notifResult = {success:true,data:{id:existing.data.id}};
-    }
     if (!notifResult.success || !notifResult.data) {
       return { success: false, error: `Failed to create global notification: ${notifResult.error}` };
     }

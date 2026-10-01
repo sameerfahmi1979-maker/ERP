@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { signOut } from "./actions";
+import { signOut } from "@/lib/auth/logout-client";
 import { navigateAfterIdentityChange } from "@/lib/auth/client-session";
 export function SignOutButton() {
   const [error, setError] = useState("");

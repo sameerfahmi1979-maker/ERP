@@ -64,7 +64,7 @@ export function ForgotPasswordForm() {
         </CardHeader>
         <CardContent />
         <CardFooter className="justify-center">
-          <Link href="/login" className="text-sm text-primary hover:underline">
+          <Link href="/login" prefetch={false} className="text-sm text-primary hover:underline">
             Back to sign in
           </Link>
         </CardFooter>
@@ -90,7 +90,7 @@ export function ForgotPasswordForm() {
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Sending..." : "Send reset link"}
           </Button>
-          <Link href="/login" className="text-sm text-primary hover:underline">
+          <Link href="/login" prefetch={false} className="text-sm text-primary hover:underline">
             Back to sign in
           </Link>
         </CardFooter>

@@ -8,7 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Navigation20Regular, Search20Regular } from "@fluentui/react-icons";
 import { User, Settings, LogOut } from "lucide-react";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
-import { signOut } from "@/features/auth/actions";
+import { signOut } from "@/lib/auth/logout-client";
 import { NotificationBell } from "@/components/erp/notification-bell";
 import { toast } from "sonner";
 import { navigateAfterIdentityChange } from "@/lib/auth/client-session";

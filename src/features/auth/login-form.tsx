@@ -7,7 +7,6 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { Button } from "@fluentui/react-components";
-import { signIn } from "@/features/auth/login-action";
 import { broadcastIdentityChange } from "@/lib/auth/client-session";
 import { loginSchema, type LoginInput } from "@/lib/validation/auth";
 import { Input } from "@/components/ui/input";
@@ -31,8 +30,13 @@ export function LoginForm({ branding }: { branding: RuntimeAppBranding }) {
     pending.current = true;
     setLoading(true); setServiceError(null);
     try {
-      const result = await signIn({ email: values.email, password: values.password });
-      if (!result.success) {
+      const response = await fetch("/api/auth/login", {
+        method: "POST", credentials: "same-origin", cache: "no-store", redirect: "error",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: values.email, password: values.password }),
+      });
+      const result: unknown = await response.json();
+      if (!response.ok || !result || typeof result !== "object" || !("success" in result) || result.success !== true) {
         setServiceError("Unable to sign in. Check your email and password, or try again later.");
         return;
       }
@@ -70,8 +74,8 @@ export function LoginForm({ branding }: { branding: RuntimeAppBranding }) {
         </div>
         <Button appearance="primary" type="submit" disabled={loading} className="w-full">{loading ? "Signing in…" : "Sign in"}</Button>
         <div className="flex flex-wrap justify-between gap-3 text-sm">
-          <Link href="/forgot-password" className="text-primary underline underline-offset-4">Forgot password?</Link>
-          {signupEnabled && <Link href="/signup" className="text-primary underline underline-offset-4">Create account</Link>}
+          <Link href="/forgot-password" prefetch={false} className="text-primary underline underline-offset-4">Forgot password?</Link>
+          {signupEnabled && <Link href="/signup" prefetch={false} className="text-primary underline underline-offset-4">Create account</Link>}
         </div>
       </form>
     </CardContent>

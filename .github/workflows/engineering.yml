@@ -28,8 +28,6 @@ jobs:
       - run: npm run security:secrets
       - run: npm test
       - run: npm run test:remediation
-      - name: F09 offline worker, permission and queue UI safety checks
-        run: node node_modules/vitest/vitest.mjs run --config tests/remediation/f09/vitest.config.mts
       - run: npm run typecheck:e2e
       - run: npm run test:e2e -- --list
       - run: npm run build

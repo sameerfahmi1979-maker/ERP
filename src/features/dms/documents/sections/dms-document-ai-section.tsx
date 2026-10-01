@@ -305,11 +305,11 @@ export function DmsDocumentAiSection({
 
 function AiStatusBadge({ status }: { status: string | undefined }) {
   const styles: Record<string, string> = {
-    not_required: "bg-slate-100 text-slate-500 border-slate-200",
-    pending:      "bg-amber-100 text-amber-700 border-amber-200",
-    processing:   "bg-blue-100 text-blue-700 border-blue-200",
-    completed:    "bg-green-100 text-green-700 border-green-200",
-    failed:       "bg-red-100 text-red-700 border-red-200",
+    not_required: "bg-muted text-muted-foreground border-border",
+    pending:      "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800",
+    processing:   "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-200 dark:border-blue-800",
+    completed:    "bg-green-100 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-200 dark:border-green-800",
+    failed:       "bg-red-100 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-200 dark:border-red-800",
   };
   const labels: Record<string, string> = {
     not_required: "Not Run",
@@ -328,10 +328,10 @@ function AiStatusBadge({ status }: { status: string | undefined }) {
 
 function AiResultStatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    pending_review: "bg-amber-100 text-amber-700 border-amber-200",
-    accepted:       "bg-green-100 text-green-700 border-green-200",
-    rejected:       "bg-red-100 text-red-700 border-red-200",
-    superseded:     "bg-gray-100 text-gray-500 border-gray-200",
+    pending_review: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800",
+    accepted:       "bg-green-100 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-200 dark:border-green-800",
+    rejected:       "bg-red-100 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-200 dark:border-red-800",
+    superseded:     "bg-muted text-gray-500 border-border",
   };
   const labels: Record<string, string> = {
     pending_review: "Pending Review",
@@ -350,13 +350,13 @@ function AiResultStatusBadge({ status }: { status: string }) {
 
 function DiffStateBadge({ state }: { state: MetadataDiffState }) {
   const configs: Record<MetadataDiffState, { label: string; className: string }> = {
-    new:             { label: "New",           className: "bg-green-100 text-green-700 border-green-200" },
-    same:            { label: "Unchanged",     className: "bg-slate-100 text-slate-500 border-slate-200" },
-    changed:         { label: "Replace",       className: "bg-amber-100 text-amber-700 border-amber-200" },
-    conflict:        { label: "Invalid",       className: "bg-red-100 text-red-700 border-red-200" },
-    low_confidence:  { label: "Low Conf",      className: "bg-orange-100 text-orange-700 border-orange-200" },
-    no_ai_value:     { label: "No Suggestion", className: "bg-slate-100 text-slate-400 border-slate-200" },
-    not_extractable: { label: "N/A",           className: "bg-slate-100 text-slate-400 border-slate-200" },
+    new:             { label: "New",           className: "bg-green-100 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-200 dark:border-green-800" },
+    same:            { label: "Unchanged",     className: "bg-muted text-muted-foreground border-border" },
+    changed:         { label: "Replace",       className: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800" },
+    conflict:        { label: "Invalid",       className: "bg-red-100 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-200 dark:border-red-800" },
+    low_confidence:  { label: "Low Conf",      className: "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-200 dark:border-orange-800" },
+    no_ai_value:     { label: "No Suggestion", className: "bg-muted text-muted-foreground border-border" },
+    not_extractable: { label: "N/A",           className: "bg-muted text-muted-foreground border-border" },
   };
   const cfg = configs[state] ?? configs.no_ai_value;
   return (
@@ -730,7 +730,7 @@ function AiMetadataDiffSection({ documentId, documentTypeId, result, onApplied }
       {/* Section header */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Wand2 className="h-3.5 w-3.5 text-purple-500" />
+          <Wand2 className="h-3.5 w-3.5 text-purple-500 dark:text-purple-300" />
           <p className="text-xs font-semibold text-foreground">Apply to Metadata</p>
           <span className="text-[10px] text-muted-foreground">
             ({applicableRows.length} field{applicableRows.length !== 1 ? "s" : ""} available)
@@ -740,7 +740,7 @@ function AiMetadataDiffSection({ documentId, documentTypeId, result, onApplied }
           <button
             type="button"
             onClick={handleSelectAll}
-            className="text-[10px] text-blue-600 hover:underline"
+            className="text-[10px] text-blue-600 hover:underline dark:text-blue-300"
           >
             All
           </button>
@@ -748,7 +748,7 @@ function AiMetadataDiffSection({ documentId, documentTypeId, result, onApplied }
           <button
             type="button"
             onClick={handleSelectNone}
-            className="text-[10px] text-blue-600 hover:underline"
+            className="text-[10px] text-blue-600 hover:underline dark:text-blue-300"
           >
             None
           </button>
@@ -775,10 +775,10 @@ return <><div className="font-medium text-foreground">{row.fieldLabelEn}</div>{r
                         <div className="text-[9px] text-muted-foreground">{row.fieldGroup}</div>
                       )}</>;}},{id:"currentValueRaw",header:"Current",accessorFn:item=>loadedListValue(item,"currentValueRaw"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
 
-return <>{row.currentValueRaw ?? <span className="text-slate-400 italic">—</span>}</>;}},{id:"aiValueRaw",header:"Suggestion",accessorFn:item=>loadedListValue(item,"aiValueRaw"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+return <>{row.currentValueRaw ?? <span className="text-muted-foreground italic">—</span>}</>;}},{id:"aiValueRaw",header:"Suggestion",accessorFn:item=>loadedListValue(item,"aiValueRaw"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
 
 return <>{row.aiValueRaw ?? "—"}{row.validationError && (
-                        <p className="text-[9px] text-red-600 mt-0.5">{row.validationError}</p>
+                        <p className="text-[9px] text-red-600 mt-0.5 dark:text-red-300">{row.validationError}</p>
                       )}</>;}},{id:"confidenceScore",header:"Confidence",accessorFn:item=>loadedListValue(item,"confidenceScore"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
 
 return <>{row.confidenceScore !== null ? (
@@ -825,17 +825,17 @@ return <><DiffStateBadge state={row.diffState} /></>;}}]} enableRowSelection={fa
                 </p>
 
                 {hasReplacements && (
-                  <div className="flex items-start gap-2 rounded-md bg-amber-50 border border-amber-200 p-2">
-                    <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-                    <p className="text-sm text-amber-800">
+                  <div className="flex items-start gap-2 rounded-md bg-amber-50 border border-amber-200 p-2 dark:bg-amber-950 dark:border-amber-800">
+                    <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0 dark:text-amber-300" />
+                    <p className="text-sm text-amber-800 dark:text-amber-200">
                       {selectedRows.filter((r) => r.diffState === "changed").length} field{selectedRows.filter((r) => r.diffState === "changed").length !== 1 ? "s" : ""} will <strong>replace existing approved values</strong>.
                     </p>
                   </div>
                 )}
                 {hasLowConf && (
-                  <div className="flex items-start gap-2 rounded-md bg-orange-50 border border-orange-200 p-2">
-                    <AlertTriangle className="h-4 w-4 text-orange-600 mt-0.5 shrink-0" />
-                    <p className="text-sm text-orange-800">
+                  <div className="flex items-start gap-2 rounded-md bg-orange-50 border border-orange-200 p-2 dark:bg-orange-950 dark:border-orange-800">
+                    <AlertTriangle className="h-4 w-4 text-orange-600 mt-0.5 shrink-0 dark:text-orange-300" />
+                    <p className="text-sm text-orange-800 dark:text-orange-200">
                       {selectedRows.filter((r) => r.diffState === "low_confidence").length} field{selectedRows.filter((r) => r.diffState === "low_confidence").length !== 1 ? "s" : ""} have <strong>low confidence scores</strong>.
                     </p>
                   </div>
@@ -941,7 +941,7 @@ function ApplyHistoryPanel({ documentId, aiResultId }: ApplyHistoryPanelProps) {
           )}
 
           {error && (
-            <div className="flex items-center gap-2 text-xs text-red-600 py-2">
+            <div className="flex items-center gap-2 text-xs text-red-600 py-2 dark:text-red-300">
               <AlertCircle className="h-3.5 w-3.5" />
               Failed to load history
             </div>
@@ -977,10 +977,10 @@ function ApplyHistoryRunRow({
   onToggle: () => void;
 }) {
   const statusColors: Record<string, string> = {
-    completed: "text-green-600 border-green-200 bg-green-50",
-    partial:   "text-amber-600 border-amber-200 bg-amber-50",
-    failed:    "text-red-600 border-red-200 bg-red-50",
-    started:   "text-blue-600 border-blue-200 bg-blue-50",
+    completed: "text-green-600 border-green-200 bg-green-50 dark:text-green-300 dark:border-green-800 dark:bg-green-950",
+    partial:   "text-amber-600 border-amber-200 bg-amber-50 dark:text-amber-300 dark:border-amber-800 dark:bg-amber-950",
+    failed:    "text-red-600 border-red-200 bg-red-50 dark:text-red-300 dark:border-red-800 dark:bg-red-950",
+    started:   "text-blue-600 border-blue-200 bg-blue-50 dark:text-blue-300 dark:border-blue-800 dark:bg-blue-950",
   };
   const statusColor = statusColors[run.applyStatus] ?? statusColors.partial;
 
@@ -1004,7 +1004,7 @@ function ApplyHistoryRunRow({
           </span>
         </div>
         <div className="flex items-center gap-3 shrink-0 ml-2">
-          <span className="text-green-600 font-medium">{run.appliedCount} applied</span>
+          <span className="text-green-600 font-medium dark:text-green-300">{run.appliedCount} applied</span>
           {run.skippedCount > 0 && (
             <span className="text-muted-foreground">{run.skippedCount} skipped</span>
           )}
@@ -1020,13 +1020,13 @@ function ApplyHistoryRunRow({
           ) : (
             <ERPDataTable tableId={`special.ai-apply-history.${run.id}`} data={run.items} columns={[{id:"result",header:"Result",accessorKey:"itemStatus",meta:{filter:{type:"text"}},enableHiding:false,size:220,cell:({row:{original:item}})=>{
 return <>{item.itemStatus === "applied" ? (
-                        <span>Applied <CheckCircle2 className="inline h-3 w-3 text-green-600" aria-hidden /></span>
+                        <span>Applied <CheckCircle2 className="inline h-3 w-3 text-green-600 dark:text-green-300" aria-hidden /></span>
                       ) : (
                         <span>{item.itemStatus} <XCircle className="inline h-3 w-3 text-muted-foreground" aria-hidden /></span>
                       )}</>;}},{id:"fieldCode",header:"Field",accessorFn:item=>loadedListValue(item,"fieldCode"),meta:{filter:{type:"text"}},enableHiding:false,size:180,cell:({row:{original:item}})=>{
 return <>{item.fieldCode}</>;}},{id:"oldValueSummary",header:"Before",accessorFn:item=>loadedListValue(item,"oldValueSummary"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:item}})=>{
-return <>{item.oldValueSummary ?? <span className="italic text-slate-400">—</span>}</>;}},{id:"newValueSummary",header:"After",accessorFn:item=>loadedListValue(item,"newValueSummary"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:item}})=>{
-return <>{item.newValueSummary ?? <span className="italic text-slate-400">—</span>}</>;}},{id:"confidenceScore",header:"Confidence",accessorFn:item=>loadedListValue(item,"confidenceScore"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:item}})=>{
+return <>{item.oldValueSummary ?? <span className="italic text-muted-foreground">—</span>}</>;}},{id:"newValueSummary",header:"After",accessorFn:item=>loadedListValue(item,"newValueSummary"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:item}})=>{
+return <>{item.newValueSummary ?? <span className="italic text-muted-foreground">—</span>}</>;}},{id:"confidenceScore",header:"Confidence",accessorFn:item=>loadedListValue(item,"confidenceScore"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:item}})=>{
 return <>{item.confidenceScore !== null ? (
                         <DmsAiConfidenceBadge
                           label={item.confidenceLabel ?? "low"}

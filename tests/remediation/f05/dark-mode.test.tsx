@@ -8,6 +8,7 @@ import { ThemeProvider } from '@/components/layout/theme-provider';
 import { AlgtFluentProvider } from '@/components/design-system/fluent-provider';
 import { EditFilters } from '@/components/erp/table/list-controls';
 import { SearchResultCard } from '@/features/ai/common/search/search-result-card';
+import { PermissionReviewSaveDialog } from '@/features/permissions/permission-review-save-dialog';
 
 afterEach(() => { cleanup(); document.documentElement.classList.remove('dark', 'light'); localStorage.clear(); });
 const css = readFileSync('src/components/design-system/algt-foundation.css', 'utf8');
@@ -55,4 +56,25 @@ it('renders search controls with paired semantic surfaces rather than a fixed wh
   expect(link.classList.contains('text-foreground')).toBe(true);
   expect(link.classList.contains('bg-white')).toBe(false);
   expect(screen.getByText('Synthetic organization').classList.contains('text-foreground')).toBe(true);
+});
+it('keeps populated permission warnings and grant badges theme-paired in the body-mounted review dialog', () => {
+  render(<PermissionReviewSaveDialog open onOpenChange={() => {}} isSaving={false} failedKeys={new Set()} onConfirm={async () => {}} changes={[{ permissionId: 1, permissionCode: 'synthetic.view', permissionName: 'Synthetic permission', roleId: 1, roleCode: 'synthetic', roleName: 'Synthetic role', action: 'grant', originalAssigned: false, roleIsSystem: true, permissionIsSystem: false }]}/>);
+  const warning = screen.getByText('Warning:').closest('p')!;
+  expect(warning.classList.contains('dark:text-amber-200')).toBe(true);
+  expect(warning.parentElement!.classList.contains('dark:bg-amber-950')).toBe(true);
+  const badge = screen.getByText('1 grant');
+  expect(badge.classList.contains('dark:bg-emerald-950')).toBe(true);
+  expect(badge.classList.contains('dark:text-emerald-200')).toBe(true);
+});
+it('uses semantic recruitment headings and paired warning surfaces in the final HR and assistant cohorts', () => {
+  const conversion = readFileSync('src/features/hr/recruitment/tabs/candidate-conversion-tab.tsx', 'utf8');
+  expect(conversion).toContain('text-sm font-semibold text-foreground uppercase');
+  expect(conversion).toContain('dark:bg-green-950');
+  const compliance = readFileSync('src/features/hr/ai/hr-ai-compliance-panel.tsx', 'utf8');
+  expect(compliance).toContain('dark:border-red-800 dark:bg-red-950');
+  expect(compliance).toContain('text-red-700 dark:text-red-200');
+  expect(compliance).toContain('dark:border-amber-800 dark:bg-amber-950');
+  const assistant = readFileSync('src/app/(protected)/assistant/page.tsx', 'utf8');
+  expect(assistant).toContain('dark:bg-amber-950');
+  expect(assistant).toContain('dark:text-amber-200');
 });

@@ -81,13 +81,13 @@ export function PermissionReviewSaveDialog({
                   {changes.length} pending change{changes.length !== 1 ? "s" : ""}
                 </span>
                 {grantCount > 0 && (
-                  <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-xs">
+                  <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-xs dark:bg-emerald-950 dark:text-emerald-200 dark:border-emerald-800">
                     <Check className="h-3 w-3 mr-1" />
                     {grantCount} grant{grantCount !== 1 ? "s" : ""}
                   </Badge>
                 )}
                 {revokeCount > 0 && (
-                  <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-xs">
+                  <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-xs dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800">
                     <X className="h-3 w-3 mr-1" />
                     {revokeCount} revoke{revokeCount !== 1 ? "s" : ""}
                   </Badge>
@@ -96,9 +96,9 @@ export function PermissionReviewSaveDialog({
 
               {/* Warnings */}
               {(hasSystemRoleChanges || hasSystemPermChanges) && (
-                <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2">
-                  <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-                  <p className="text-xs text-amber-800">
+                <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 dark:border-amber-800 dark:bg-amber-950">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0 dark:text-amber-300" />
+                  <p className="text-xs text-amber-800 dark:text-amber-200">
                     <strong>Warning:</strong> These changes include{" "}
                     {hasSystemRoleChanges && "system roles"}
                     {hasSystemRoleChanges && hasSystemPermChanges && " and "}
@@ -135,10 +135,10 @@ export function PermissionReviewSaveDialog({
                       const failed = failedKeys.has(key);
                       return (
                         <div key={c.roleId} className={cn("flex items-center gap-2 text-sm", failed && "text-destructive")}>
-                          <Check className={cn("h-3 w-3", failed ? "text-destructive" : "text-emerald-600")} />
+                          <Check className={cn("h-3 w-3", failed ? "text-destructive" : "text-emerald-600 dark:text-emerald-300")} />
                           <span>{c.roleName}</span>
                           {c.roleIsSystem && (
-                            <Badge variant="outline" className="text-[10px] h-4 px-1 border-blue-300 text-blue-700">
+                            <Badge variant="outline" className="text-[10px] h-4 px-1 border-blue-300 text-blue-700 dark:border-blue-800 dark:text-blue-200">
                               System
                             </Badge>
                           )}
@@ -157,10 +157,10 @@ export function PermissionReviewSaveDialog({
                       const failed = failedKeys.has(key);
                       return (
                         <div key={c.roleId} className={cn("flex items-center gap-2 text-sm", failed && "text-destructive")}>
-                          <X className={cn("h-3 w-3", failed ? "text-destructive" : "text-amber-500")} />
+                          <X className={cn("h-3 w-3", failed ? "text-destructive" : "text-amber-500 dark:text-amber-300")} />
                           <span>{c.roleName}</span>
                           {c.roleIsSystem && (
-                            <Badge variant="outline" className="text-[10px] h-4 px-1 border-blue-300 text-blue-700">
+                            <Badge variant="outline" className="text-[10px] h-4 px-1 border-blue-300 text-blue-700 dark:border-blue-800 dark:text-blue-200">
                               System
                             </Badge>
                           )}

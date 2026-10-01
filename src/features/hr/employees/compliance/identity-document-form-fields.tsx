@@ -43,7 +43,7 @@ function lowConfidence(confidence: Record<string, number> | undefined, field: st
 function FieldHint({ field, confidence }: { field: string; confidence?: Record<string, number> }) {
   if (!lowConfidence(confidence, field)) return null;
   return (
-    <p className="text-[11px] text-amber-600 mt-0.5 flex items-center gap-1">
+    <p className="text-[11px] text-amber-600 mt-0.5 flex items-center gap-1 dark:text-amber-300">
       <AlertTriangle className="h-3 w-3 shrink-0" />
       AI confidence low — please verify
     </p>
@@ -60,17 +60,17 @@ export function IdentityDocumentFormFields({
   return (
     <div className="space-y-4">
       {prefillBanner && (
-        <div className="rounded-lg border border-violet-200 bg-violet-50/80 px-4 py-3 text-sm">
+        <div className="rounded-lg border border-violet-200 bg-violet-50/80 px-4 py-3 text-sm dark:border-violet-800 dark:bg-violet-950/80">
           <div className="flex items-start gap-2">
-            <Sparkles className="h-4 w-4 text-violet-600 mt-0.5 shrink-0" />
+            <Sparkles className="h-4 w-4 text-violet-600 mt-0.5 shrink-0 dark:text-violet-300" />
             <div className="min-w-0">
-              <p className="font-medium text-violet-900">Review AI-prefilled fields before saving</p>
-              <p className="text-violet-800/80 mt-0.5">
+              <p className="font-medium text-violet-900 dark:text-violet-200">Review AI-prefilled fields before saving</p>
+              <p className="text-violet-800/80 mt-0.5 dark:text-violet-200/80">
                 Source: {prefillBanner.documentTitle || prefillBanner.documentNo}
                 {prefillBanner.documentNo && prefillBanner.documentTitle ? ` (${prefillBanner.documentNo})` : ""}
               </p>
               {prefillBanner.warning && (
-                <p className="text-amber-700 mt-1 flex items-start gap-1">
+                <p className="text-amber-700 mt-1 flex items-start gap-1 dark:text-amber-200">
                   <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                   {prefillBanner.warning}
                 </p>
@@ -97,7 +97,7 @@ export function IdentityDocumentFormFields({
             value={form.document_number}
             onChange={(e) => setForm((p) => ({ ...p, document_number: e.target.value }))}
             placeholder="Document number"
-            className={cn(lowConfidence(fieldConfidence, "document_number") && "border-amber-400")}
+            className={cn(lowConfidence(fieldConfidence, "document_number") && "border-amber-400 dark:border-amber-800")}
           />
           <FieldHint field="document_number" confidence={fieldConfidence} />
         </div>
@@ -107,7 +107,7 @@ export function IdentityDocumentFormFields({
             type="date"
             value={form.issue_date}
             onChange={(e) => setForm((p) => ({ ...p, issue_date: e.target.value }))}
-            className={cn(lowConfidence(fieldConfidence, "issue_date") && "border-amber-400")}
+            className={cn(lowConfidence(fieldConfidence, "issue_date") && "border-amber-400 dark:border-amber-800")}
           />
           <FieldHint field="issue_date" confidence={fieldConfidence} />
         </div>
@@ -117,7 +117,7 @@ export function IdentityDocumentFormFields({
             type="date"
             value={form.expiry_date}
             onChange={(e) => setForm((p) => ({ ...p, expiry_date: e.target.value }))}
-            className={cn(lowConfidence(fieldConfidence, "expiry_date") && "border-amber-400")}
+            className={cn(lowConfidence(fieldConfidence, "expiry_date") && "border-amber-400 dark:border-amber-800")}
           />
           <FieldHint field="expiry_date" confidence={fieldConfidence} />
         </div>

@@ -155,15 +155,15 @@ export function CandidateConversionTab({ candidate, canManage, canCreateEmployee
   return (
     <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="p-6 space-y-6">
       <div>
-        <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-4">Candidate Conversion</h3>
+        <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide mb-4">Candidate Conversion</h3>
 
         {alreadyConverted ? (
-          <Card className="shadow-none border border-green-200 bg-green-50">
+          <Card className="shadow-none border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
             <CardContent className="p-4 flex items-start gap-3">
-              <CheckCircle className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
+              <CheckCircle className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0 dark:text-green-300" />
               <div>
-                <p className="text-sm font-medium text-green-800">Candidate has been converted to an employee.</p>
-                <p className="text-xs text-green-700 mt-0.5">This candidate has already been converted. To view the employee profile, search for this candidate&apos;s name in the Employees module.</p>
+                <p className="text-sm font-medium text-green-800 dark:text-green-200">Candidate has been converted to an employee.</p>
+                <p className="text-xs text-green-700 mt-0.5 dark:text-green-200">This candidate has already been converted. To view the employee profile, search for this candidate&apos;s name in the Employees module.</p>
               </div>
             </CardContent>
           </Card>
@@ -172,7 +172,7 @@ export function CandidateConversionTab({ candidate, canManage, canCreateEmployee
             <Card className="shadow-none border">
               <CardContent className="p-4">
                 <div className="flex items-start gap-3">
-                  <AlertTriangle className="h-5 w-5 text-amber-500 mt-0.5 flex-shrink-0" />
+                  <AlertTriangle className="h-5 w-5 text-amber-500 mt-0.5 flex-shrink-0 dark:text-amber-300" />
                   <div className="flex-1">
                     <p className="text-sm font-medium">Convert Candidate to Employee</p>
                     <p className="text-xs text-muted-foreground mt-1">
@@ -196,7 +196,7 @@ export function CandidateConversionTab({ candidate, canManage, canCreateEmployee
                         Convert to Employee
                       </Button>
                     ) : (
-                      <p className="mt-3 text-xs text-amber-700 font-medium">
+                      <p className="mt-3 text-xs text-amber-700 font-medium dark:text-amber-200">
                         Requires both <code>hr.recruitment.manage</code> and <code>hr.employees.create</code> permissions.
                       </p>
                     )}
@@ -208,13 +208,13 @@ export function CandidateConversionTab({ candidate, canManage, canCreateEmployee
         )}
 
         {conversionResult && (
-          <Card className="shadow-none border border-blue-200 bg-blue-50 mt-4">
+          <Card className="shadow-none border border-blue-200 bg-blue-50 mt-4 dark:border-blue-800 dark:bg-blue-950">
             <CardContent className="p-4 flex items-center gap-3">
-              <CheckCircle className="h-5 w-5 text-blue-600 flex-shrink-0" />
+              <CheckCircle className="h-5 w-5 text-blue-600 flex-shrink-0 dark:text-blue-300" />
               <div className="flex-1">
-                <p className="text-sm font-medium text-blue-800">Employee created: {conversionResult.employee_code}</p>
+                <p className="text-sm font-medium text-blue-800 dark:text-blue-200">Employee created: {conversionResult.employee_code}</p>
               </div>
-              <Link href={`/admin/hr/employees/record/${conversionResult.employee_id}`} className="text-blue-600 hover:underline text-sm flex items-center gap-1">
+              <Link href={`/admin/hr/employees/record/${conversionResult.employee_id}`} className="text-blue-600 hover:underline text-sm flex items-center gap-1 dark:text-blue-300">
                 View Employee <ExternalLink className="h-3.5 w-3.5" />
               </Link>
             </CardContent>
@@ -236,7 +236,7 @@ export function CandidateConversionTab({ candidate, canManage, canCreateEmployee
       >
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
-            <div className="bg-amber-50 border border-amber-200 rounded p-3 text-sm text-amber-800">
+            <div className="bg-amber-50 border border-amber-200 rounded p-3 text-sm text-amber-800 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-200">
               <strong>Review carefully.</strong> A new employee record will be created from <strong>{candidate.full_name_en}</strong>. You must provide owner company and joining date.
             </div>
           </div>

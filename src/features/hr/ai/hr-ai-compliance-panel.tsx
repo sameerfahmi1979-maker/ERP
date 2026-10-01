@@ -15,9 +15,9 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 const COMPLIANCE_COLORS = {
-  compliant:      "text-emerald-600",
-  partial:        "text-amber-600",
-  non_compliant:  "text-red-600",
+  compliant:      "text-emerald-600 dark:text-emerald-300",
+  partial:        "text-amber-600 dark:text-amber-300",
+  non_compliant:  "text-red-600 dark:text-red-300",
   unknown:        "text-muted-foreground",
 };
 
@@ -91,9 +91,9 @@ export function HrAiCompliancePanel({ employeeId, canUse }: Props) {
               <p className="text-xs font-semibold mb-1.5">Blocking Issues</p>
               <div className="space-y-1">
                 {result.blockingItems.map((item, i) => (
-                  <div key={i} className="text-xs border border-red-200 bg-red-50 rounded p-2">
-                    <span className="font-medium text-red-700">{item.item}</span>
-                    {item.reason && <span className="text-red-500 ml-1">— {item.reason}</span>}
+                  <div key={i} className="text-xs border border-red-200 bg-red-50 rounded p-2 dark:border-red-800 dark:bg-red-950">
+                    <span className="font-medium text-red-700 dark:text-red-200">{item.item}</span>
+                    {item.reason && <span className="text-red-500 ml-1 dark:text-red-300">— {item.reason}</span>}
                   </div>
                 ))}
               </div>
@@ -105,9 +105,9 @@ export function HrAiCompliancePanel({ employeeId, canUse }: Props) {
               <p className="text-xs font-semibold mb-1.5">Warnings</p>
               <div className="space-y-1">
                 {result.warningItems.map((item, i) => (
-                  <div key={i} className="text-xs border border-amber-200 bg-amber-50 rounded p-2">
-                    <span className="font-medium text-amber-700">{item.item}</span>
-                    {item.reason && <span className="text-amber-600 ml-1">— {item.reason}</span>}
+                  <div key={i} className="text-xs border border-amber-200 bg-amber-50 rounded p-2 dark:border-amber-800 dark:bg-amber-950">
+                    <span className="font-medium text-amber-700 dark:text-amber-200">{item.item}</span>
+                    {item.reason && <span className="text-amber-600 ml-1 dark:text-amber-300">— {item.reason}</span>}
                   </div>
                 ))}
               </div>

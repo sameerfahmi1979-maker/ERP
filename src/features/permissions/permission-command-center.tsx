@@ -65,10 +65,10 @@ function getStatus(
 
 function StatusBadge({ status }: { status: AssignmentStatus }) {
   const configs: Record<AssignmentStatus, { label: string; className: string }> = {
-    assigned: { label: "Assigned", className: "bg-emerald-100 text-emerald-800 border-emerald-300" },
-    not_assigned: { label: "Not Assigned", className: "bg-gray-100 text-gray-600 border-gray-300" },
-    pending_grant: { label: "Pending Grant", className: "bg-blue-100 text-blue-800 border-blue-300" },
-    pending_revoke: { label: "Pending Revoke", className: "bg-amber-100 text-amber-800 border-amber-300" },
+    assigned: { label: "Assigned", className: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-200 dark:border-emerald-800" },
+    not_assigned: { label: "Not Assigned", className: "bg-muted text-muted-foreground border-gray-300" },
+    pending_grant: { label: "Pending Grant", className: "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950 dark:text-blue-200 dark:border-blue-800" },
+    pending_revoke: { label: "Pending Revoke", className: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800" },
   };
   const c = configs[status];
   return (
@@ -145,7 +145,7 @@ function PermissionSummaryCard({ permission }: PermissionSummaryCardProps) {
               {permission.display_name ?? permission.permission_name}
             </h3>
             {permission.is_system_permission && (
-              <Badge variant="outline" className="text-[10px] border-blue-300 text-blue-700 bg-blue-50">
+              <Badge variant="outline" className="text-[10px] border-blue-300 text-blue-700 bg-blue-50 dark:border-blue-800 dark:text-blue-200 dark:bg-blue-950">
                 <Lock className="h-2.5 w-2.5 mr-1" />
                 System Permission
               </Badge>
@@ -242,7 +242,7 @@ function RoleAssignmentPanel({
                         <div className="flex items-center gap-1.5">
                           <span className="font-medium text-sm">{role.display_name ?? role.role_name}</span>
                           {role.is_system_role && (
-                            <Badge variant="outline" className="text-[10px] h-4 px-1 border-blue-300 text-blue-700">
+                            <Badge variant="outline" className="text-[10px] h-4 px-1 border-blue-300 text-blue-700 dark:border-blue-800 dark:text-blue-200">
                               System
                             </Badge>
                           )}
@@ -257,8 +257,8 @@ function RoleAssignmentPanel({
                         className={cn(
                           "text-[10px]",
                           role.is_system_role
-                            ? "border-blue-300 text-blue-700"
-                            : "border-emerald-300 text-emerald-700",
+                            ? "border-blue-300 text-blue-700 dark:border-blue-800 dark:text-blue-200"
+                            : "border-emerald-300 text-emerald-700 dark:border-emerald-800 dark:text-emerald-200",
                         )}
                       >
                         {role.is_system_role ? "System" : "Custom"}
@@ -367,9 +367,9 @@ return (<>
 
       {/* System permission warning */}
       {selectedPermission.is_system_permission && (
-        <div className="flex items-start gap-2 px-4 py-2.5 bg-amber-50 border-b border-amber-200">
-          <AlertTriangle className="h-3.5 w-3.5 text-amber-600 mt-0.5 shrink-0" />
-          <p className="text-xs text-amber-800">
+        <div className="flex items-start gap-2 px-4 py-2.5 bg-amber-50 border-b border-amber-200 dark:bg-amber-950 dark:border-amber-800">
+          <AlertTriangle className="h-3.5 w-3.5 text-amber-600 mt-0.5 shrink-0 dark:text-amber-300" />
+          <p className="text-xs text-amber-800 dark:text-amber-200">
             This is a system permission. Changes may affect all users with the modified roles.
             System roles additionally require global admin access.
           </p>
@@ -423,13 +423,13 @@ function PendingChangesBar({ draftChanges, onDiscard, onReviewSave }: PendingBar
           </span>
           <Separator orientation="vertical" className="h-4 hidden sm:block" />
           {grantCount > 0 && (
-            <span className="flex items-center gap-1 text-emerald-700">
+            <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-200">
               <Check className="h-3.5 w-3.5" />
               <span>{grantCount} grant{grantCount !== 1 ? "s" : ""}</span>
             </span>
           )}
           {revokeCount > 0 && (
-            <span className="flex items-center gap-1 text-amber-700">
+            <span className="flex items-center gap-1 text-amber-700 dark:text-amber-200">
               <X className="h-3.5 w-3.5" />
               <span>{revokeCount} revoke{revokeCount !== 1 ? "s" : ""}</span>
             </span>
@@ -628,11 +628,11 @@ export function PermissionCommandCenter({
 
       {/* Not-manage view-only banner */}
       {!canManage && (
-        <div className="flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-4 py-2.5">
-          <Lock className="h-4 w-4 text-amber-600 shrink-0" />
-          <p className="text-sm text-amber-800">
+        <div className="flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-4 py-2.5 dark:border-amber-800 dark:bg-amber-950">
+          <Lock className="h-4 w-4 text-amber-600 shrink-0 dark:text-amber-300" />
+          <p className="text-sm text-amber-800 dark:text-amber-200">
             You have view-only access to this screen. Permission assignment requires the{" "}
-            <span className="font-mono text-xs bg-amber-100 px-1 rounded">roles.manage</span> permission.
+            <span className="font-mono text-xs bg-amber-100 px-1 rounded dark:bg-amber-950">roles.manage</span> permission.
           </p>
         </div>
       )}
@@ -661,7 +661,7 @@ export function PermissionCommandCenter({
           <div className="px-4 py-3 border-b bg-muted/30 flex items-center justify-between gap-3">
             <h2 className="text-sm font-semibold">2. Assign to Roles</h2>
             {hasDraft && (
-              <Badge className="bg-blue-100 text-blue-800 border-blue-300 text-xs">
+              <Badge className="bg-blue-100 text-blue-800 border-blue-300 text-xs dark:bg-blue-950 dark:text-blue-200 dark:border-blue-800">
                 {changesList.length} pending
               </Badge>
             )}

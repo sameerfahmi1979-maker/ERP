@@ -45,20 +45,20 @@ export function RiskScoreAlert({ entityType, entityId }: RiskScoreAlertProps) {
     <QueryReadBoundary queries={[uiRead1]}><Alert
       className={
         isCritical
-          ? "border-red-300 bg-red-50 mb-4"
+          ? "border-red-300 bg-red-50 mb-4 dark:border-red-800 dark:bg-red-950"
           : isHigh
-            ? "border-orange-300 bg-orange-50 mb-4"
-            : "border-amber-300 bg-amber-50 mb-4"
+            ? "border-orange-300 bg-orange-50 mb-4 dark:border-orange-800 dark:bg-orange-950"
+            : "border-amber-300 bg-amber-50 mb-4 dark:border-amber-800 dark:bg-amber-950"
       }
     >
       {isCritical ? (
-        <ShieldAlert className="h-4 w-4 text-red-600" />
+        <ShieldAlert className="h-4 w-4 text-red-600 dark:text-red-300" />
       ) : (
-        <AlertTriangle className="h-4 w-4 text-amber-600" />
+        <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-300" />
       )}
       <AlertDescription
         className={
-          isCritical ? "text-red-900 text-sm" : "text-amber-900 text-sm"
+          isCritical ? "text-red-900 text-sm dark:text-red-200" : "text-amber-900 text-sm dark:text-amber-200"
         }
       >
         Entity risk score requires review:{" "}

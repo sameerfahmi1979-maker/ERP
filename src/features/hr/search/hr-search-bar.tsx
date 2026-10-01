@@ -1,4 +1,5 @@
 "use client";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { useRef, useState, useEffect } from "react";
 import { Search, X, Loader2 } from "lucide-react";
@@ -23,12 +24,13 @@ export function HrSearchBar({ value, onChange, onSearch, isSearching }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const { data: suggestions } = useQuery<HrSearchSuggestion[]>({
+  const uiRead1 = useQuery<HrSearchSuggestion[]>({
     queryKey: ["hr", "search", "suggestions", value],
     queryFn: () => getHrSearchSuggestions(value),
     enabled: value.length >= 2,
     staleTime: 10_000,
   });
+ const { data: suggestions } = uiRead1;
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -51,7 +53,7 @@ export function HrSearchBar({ value, onChange, onSearch, isSearching }: Props) {
   };
 
   return (
-    <div ref={containerRef} className="relative w-full">
+    <QueryReadBoundary queries={[uiRead1]}><div ref={containerRef} className="relative w-full">
       <div className="relative flex items-center">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
         <Input
@@ -122,6 +124,6 @@ export function HrSearchBar({ value, onChange, onSearch, isSearching }: Props) {
           ))}
         </div>
       )}
-    </div>
+    </div></QueryReadBoundary>
   );
 }

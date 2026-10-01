@@ -1,4 +1,8 @@
 "use client";
+import { useReasonDialog } from "@/hooks/use-reason-dialog";
+import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
+import { RecordCollection } from "@/components/erp/table/record-collection";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 /**
  * ERP HR.4 — Employee Time Tab
@@ -80,7 +84,7 @@ import {
   Timer,
   XCircle,
 } from "lucide-react";
-import { useCallback, useState, useTransition } from "react";
+import { useCallback, useState} from "react";
 import { toast } from "sonner";
 
 // ── Props ──────────────────────────────────────────────────────────────────────
@@ -176,6 +180,7 @@ function AttendanceSection({
   const qc = useQueryClient();
   const [isPending, startTransition] = useTransition();
   const [showPunches, setShowPunches] = useState(false);
+  const { askReason, reasonDialog } = useReasonDialog();
   const [showCorrections, setShowCorrections] = useState<number | null>(null);
 
   // Add/Edit Summary dialog
@@ -210,32 +215,35 @@ function AttendanceSection({
     onChildOpen?.(open);
   }, [onChildOpen]);
 
-  const { data: summaryData, isLoading: summaryLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.time.attendanceSummary(employeeId),
     queryFn: async () => {
       const r = await listEmployeeAttendanceDailySummary(employeeId, { page_size: 30 });
-      return r.success ? r.data : null;
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data : null;
     },
   });
+  const { data: summaryData, isLoading: summaryLoading } = uiRead1;
 
-  const { data: punchData } = useQuery({
+  const uiRead2 = useQuery({
     queryKey: queryKeys.hr.time.attendancePunches(employeeId),
     enabled: showPunches,
     queryFn: async () => {
       const r = await listEmployeeAttendancePunches(employeeId, { page_size: 50 });
-      return r.success ? r.data : null;
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data : null;
     },
   });
+  const { data: punchData } = uiRead2;
 
-  const { data: correctionData } = useQuery({
+  const uiRead3 = useQuery({
     queryKey: showCorrections != null ? queryKeys.hr.time.attendanceCorrections(showCorrections) : ["__disabled__"],
     enabled: showCorrections != null,
     queryFn: async () => {
       if (showCorrections == null) return null;
       const r = await listAttendanceCorrections(showCorrections);
-      return r.success ? r.data : null;
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data : null;
     },
   });
+  const { data: correctionData } = uiRead3;
 
   function resetSummaryForm(row?: AttendanceDailySummaryRow) {
     setSummaryForm({
@@ -260,8 +268,8 @@ function AttendanceSection({
     });
   }
 
-  function handleQuery(id: number) {
-    const reason = prompt("Enter query reason:");
+  async function handleQuery(id: number) {
+    const reason = await askReason("Query attendance record");
     if (!reason) return;
     startTransition(async () => {
       const r = await queryAttendanceDailySummary(id, reason);
@@ -334,7 +342,7 @@ function AttendanceSection({
   const corrections = correctionData?.data ?? [];
 
   return (
-    <section>
+    <QueryReadBoundary queries={[uiRead1,uiRead2,uiRead3]}><section>{reasonDialog}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Clock className="h-5 w-5 text-primary" />
@@ -366,7 +374,7 @@ function AttendanceSection({
         <div className="text-sm text-muted-foreground py-6 text-center border rounded-md">No attendance records yet.</div>
       ) : (
         <div className="border rounded-md divide-y">
-          {summaries.map((row) => {
+          <RecordCollection id="hr.employee-time-tab.AttendanceSection.summaries" rows={summaries} fields={[{"id":"attendance_date","path":"attendance_date","label":"Attendance Date"},{"id":"approval_status","path":"approval_status","label":"Approval Status"}]} renderRecord={(row) => {
             const badge = getAttendanceStatusBadge(row.approval_status);
             return (
               <div key={row.id} className="px-4 py-2.5 flex items-center gap-3 text-sm">
@@ -399,7 +407,7 @@ function AttendanceSection({
                     {showCorrections === row.id ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                   </Button>
                   {canManage && (
-                    <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => {
+                    <Button aria-label="Edit record" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => {
                       resetSummaryForm(row);
                       setEditSummary(row);
                       openDialog(true, setSummaryDialog);
@@ -410,7 +418,7 @@ function AttendanceSection({
                 </div>
               </div>
             );
-          })}
+          }} />
         </div>
       )}
 
@@ -418,12 +426,12 @@ function AttendanceSection({
       {showCorrections != null && corrections.length > 0 && (
         <div className="mt-2 border rounded-md bg-muted/30 p-3 text-xs space-y-1">
           <p className="font-medium text-muted-foreground mb-2">Correction History</p>
-          {corrections.map((c) => (
+          <RecordCollection id="hr.employee-time-tab.AttendanceSection.corrections" rows={corrections} fields={[{"id":"created_at","path":"created_at","label":"Created At"}]} renderRecord={(c) => (
             <div key={c.id} className="flex gap-2 text-muted-foreground">
               <span className="shrink-0">{fmtDatetime(c.created_at)}</span>
               <span>{c.correction_reason}</span>
             </div>
-          ))}
+          )} />
         </div>
       )}
 
@@ -434,13 +442,13 @@ function AttendanceSection({
         </Button>
         {showPunches && punches.length > 0 && (
           <div className="mt-2 border rounded-md divide-y text-xs">
-            {punches.map((p) => (
+            <RecordCollection id="hr.employee-time-tab.AttendanceSection.punches" rows={punches} fields={[{"id":"punch_datetime","path":"punch_datetime","label":"Punch Datetime"},{"id":"punch_type","path":"punch_type","label":"Punch Type"}]} renderRecord={(p) => (
               <div key={p.id} className="px-3 py-2 flex gap-3 text-muted-foreground">
                 <span>{fmtDatetime(p.punch_datetime)}</span>
                 <span className="font-medium">{getPunchTypeLabel(p.punch_type)}</span>
                 <span>{getPunchSourceLabel(p.punch_source)}</span>
               </div>
-            ))}
+            )} />
           </div>
         )}
       </div>
@@ -460,11 +468,11 @@ function AttendanceSection({
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-6">
             <Label>Date <span className="text-destructive">*</span></Label>
-            <Input type="date" value={summaryForm.attendance_date} onChange={(e) => setSummaryForm(f => ({ ...f, attendance_date: e.target.value }))} />
+            <Input aria-label="Date" required type="date" value={summaryForm.attendance_date} onChange={(e) => setSummaryForm(f => ({ ...f, attendance_date: e.target.value }))} />
           </div>
           <div className="col-span-6">
             <Label>Attendance Type <span className="text-destructive">*</span></Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Attendance Type" required
               value={summaryForm.attendance_type}
               onValueChange={(v) => setSummaryForm(f => ({ ...f, attendance_type: v as typeof f.attendance_type }))}
               options={[
@@ -482,15 +490,15 @@ function AttendanceSection({
           </div>
           <div className="col-span-4">
             <Label>Total Hours</Label>
-            <Input type="number" step="0.25" min="0" max="24" value={summaryForm.total_hours} onChange={(e) => setSummaryForm(f => ({ ...f, total_hours: e.target.value }))} placeholder="0.00" />
+            <Input aria-label="Total Hours" type="number" step="0.25" min="0" max="24" value={summaryForm.total_hours} onChange={(e) => setSummaryForm(f => ({ ...f, total_hours: e.target.value }))} placeholder="0.00" />
           </div>
           <div className="col-span-4">
             <Label>Overtime Hours</Label>
-            <Input type="number" step="0.25" min="0" max="24" value={summaryForm.overtime_hours} onChange={(e) => setSummaryForm(f => ({ ...f, overtime_hours: e.target.value }))} />
+            <Input aria-label="Overtime Hours" type="number" step="0.25" min="0" max="24" value={summaryForm.overtime_hours} onChange={(e) => setSummaryForm(f => ({ ...f, overtime_hours: e.target.value }))} />
           </div>
           <div className="col-span-4">
             <Label>Late (min)</Label>
-            <Input type="number" min="0" value={summaryForm.late_minutes} onChange={(e) => setSummaryForm(f => ({ ...f, late_minutes: e.target.value }))} />
+            <Input aria-label="Late (min)" type="number" min="0" value={summaryForm.late_minutes} onChange={(e) => setSummaryForm(f => ({ ...f, late_minutes: e.target.value }))} />
           </div>
           <div className="col-span-6 flex items-center gap-2 mt-1">
             <Switch checked={summaryForm.is_missing_punch} onCheckedChange={(v) => setSummaryForm(f => ({ ...f, is_missing_punch: v }))} id="missing-punch" />
@@ -498,7 +506,7 @@ function AttendanceSection({
           </div>
           <div className="col-span-12">
             <Label>Notes</Label>
-            <Textarea value={summaryForm.notes} onChange={(e) => setSummaryForm(f => ({ ...f, notes: e.target.value }))} rows={2} />
+            <Textarea aria-label="Notes" value={summaryForm.notes} onChange={(e) => setSummaryForm(f => ({ ...f, notes: e.target.value }))} rows={2} />
           </div>
         </div>
       </ERPChildDialogForm>
@@ -518,11 +526,11 @@ function AttendanceSection({
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <Label>Punch Date/Time <span className="text-destructive">*</span></Label>
-            <Input type="datetime-local" value={punchForm.punch_datetime} onChange={(e) => setPunchForm(f => ({ ...f, punch_datetime: e.target.value }))} />
+            <Input aria-label="Punch Date/Time" required type="datetime-local" value={punchForm.punch_datetime} onChange={(e) => setPunchForm(f => ({ ...f, punch_datetime: e.target.value }))} />
           </div>
           <div className="col-span-6">
             <Label>Punch Type <span className="text-destructive">*</span></Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Punch Type" required
               value={punchForm.punch_type}
               onValueChange={(v) => setPunchForm(f => ({ ...f, punch_type: v as typeof f.punch_type }))}
               options={[
@@ -536,7 +544,7 @@ function AttendanceSection({
           </div>
           <div className="col-span-6">
             <Label>Source</Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Source"
               value={punchForm.punch_source}
               onValueChange={(v) => setPunchForm(f => ({ ...f, punch_source: v as typeof f.punch_source }))}
               options={[
@@ -550,7 +558,7 @@ function AttendanceSection({
           </div>
           <div className="col-span-12">
             <Label>Notes</Label>
-            <Input value={punchForm.notes} onChange={(e) => setPunchForm(f => ({ ...f, notes: e.target.value }))} />
+            <Input aria-label="Notes" value={punchForm.notes} onChange={(e) => setPunchForm(f => ({ ...f, notes: e.target.value }))} />
           </div>
         </div>
       </ERPChildDialogForm>
@@ -574,16 +582,16 @@ function AttendanceSection({
           <div className="grid grid-cols-12 gap-4">
             <div className="col-span-12">
               <Label>Correction Reason <span className="text-destructive">*</span></Label>
-              <Textarea value={correctForm.correction_reason} onChange={(e) => setCorrectForm(f => ({ ...f, correction_reason: e.target.value }))} rows={3} placeholder="Describe the correction..." />
+              <Textarea aria-label="Correction Reason" required value={correctForm.correction_reason} onChange={(e) => setCorrectForm(f => ({ ...f, correction_reason: e.target.value }))} rows={3} placeholder="Describe the correction..." />
             </div>
             <div className="col-span-12">
               <Label>Notes</Label>
-              <Input value={correctForm.notes} onChange={(e) => setCorrectForm(f => ({ ...f, notes: e.target.value }))} />
+              <Input aria-label="Notes" value={correctForm.notes} onChange={(e) => setCorrectForm(f => ({ ...f, notes: e.target.value }))} />
             </div>
           </div>
         </ERPChildDialogForm>
       )}
-    </section>
+    </section></QueryReadBoundary>
   );
 }
 
@@ -618,32 +626,35 @@ function ShiftCalendarSection({
     onChildOpen?.(open);
   }, [onChildOpen]);
 
-  const { data, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.time.shiftAssignments(employeeId),
     queryFn: async () => {
       const r = await listEmployeeShiftAssignments(employeeId);
-      return r.success ? r.data?.data ?? [] : [];
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data?.data ?? [] : [];
     },
   });
+  const { data, isLoading } = uiRead1;
 
-  const { data: calendarOptions } = useQuery({
+  const uiRead2 = useQuery({
     queryKey: ["common", "work-calendars-options"],
     queryFn: async () => {
       const r = await getWorkCalendarComboboxOptions();
-      return r.success ? r.data ?? [] : [];
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? [] : [];
     },
     staleTime: 5 * 60 * 1000,
   });
+  const { data: calendarOptions } = uiRead2;
 
-  const { data: shiftOptions } = useQuery({
+  const uiRead3 = useQuery({
     queryKey: ["common", "work-shifts-options", form.work_calendar_id],
     queryFn: async () => {
       const calId = form.work_calendar_id ? parseInt(form.work_calendar_id) : undefined;
       const r = await listWorkShiftsForTimeTab(calId);
-      return r.success ? (r.data ?? []).map(s => ({ value: String(s.id), label: `${s.shift_name} (${s.shift_code})` })) : [];
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? (r.data ?? []).map(s => ({ value: String(s.id), label: `${s.shift_name} (${s.shift_code})` })) : [];
     },
     staleTime: 2 * 60 * 1000,
   });
+  const { data: shiftOptions } = uiRead3;
 
   function resetForm(row?: ShiftAssignmentRow) {
     setForm({
@@ -700,7 +711,7 @@ function ShiftCalendarSection({
   const assignments = data ?? [];
 
   return (
-    <section>
+    <QueryReadBoundary queries={[uiRead1,uiRead2,uiRead3]}><section>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Calendar className="h-5 w-5 text-primary" />
@@ -723,7 +734,7 @@ function ShiftCalendarSection({
         <div className="text-sm text-muted-foreground py-6 text-center border rounded-md">No shift assignments yet.</div>
       ) : (
         <div className="border rounded-md divide-y">
-          {assignments.map((row) => (
+          <RecordCollection id="hr.employee-time-tab.ShiftCalendarSection.assignments" rows={assignments} fields={[{"id":"effective_from","path":"effective_from","label":"Effective From"},{"id":"effective_to","path":"effective_to","label":"Effective To"}]} renderRecord={(row) => (
             <div key={row.id} className="px-4 py-2.5 flex items-center gap-3 text-sm">
               <div className="flex-1 min-w-0">
                 <p className="font-medium">{row.work_shift?.shift_name ?? "—"}</p>
@@ -733,20 +744,20 @@ function ShiftCalendarSection({
               {!row.attendance_required && <Badge variant="outline" className="text-xs">No Att. Req.</Badge>}
               {canManage && (
                 <div className="flex gap-1 shrink-0">
-                  <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => {
+                  <Button aria-label="Edit record" size="sm" variant="ghost" className="h-7 px-2" onClick={() => {
                     resetForm(row);
                     setEditing(row);
                     openDialog(true);
                   }}>
                     <Edit2 className="h-3.5 w-3.5" />
                   </Button>
-                  <Button size="sm" variant="ghost" className="h-7 px-2 text-destructive" onClick={() => handleArchive(row.id)} disabled={isPending}>
+                  <Button aria-label="Archive record" size="sm" variant="ghost" className="h-7 px-2 text-destructive" onClick={() => handleArchive(row.id)} disabled={isPending}>
                     <Archive className="h-3.5 w-3.5" />
                   </Button>
                 </div>
               )}
             </div>
-          ))}
+          )} />
         </div>
       )}
 
@@ -764,7 +775,7 @@ function ShiftCalendarSection({
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-6">
             <Label>Work Calendar</Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Work Calendar"
               value={form.work_calendar_id}
               onValueChange={(v) => setForm(f => ({ ...f, work_calendar_id: String(v ?? ""), work_shift_id: "" }))}
               options={calendarOptions ?? []}
@@ -773,7 +784,7 @@ function ShiftCalendarSection({
           </div>
           <div className="col-span-6">
             <Label>Work Shift</Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Work Shift"
               value={form.work_shift_id}
               onValueChange={(v) => setForm(f => ({ ...f, work_shift_id: String(v ?? "") }))}
               options={shiftOptions ?? []}
@@ -782,11 +793,11 @@ function ShiftCalendarSection({
           </div>
           <div className="col-span-6">
             <Label>Effective From <span className="text-destructive">*</span></Label>
-            <Input type="date" value={form.effective_from} onChange={(e) => setForm(f => ({ ...f, effective_from: e.target.value }))} />
+            <Input aria-label="Effective From" required type="date" value={form.effective_from} onChange={(e) => setForm(f => ({ ...f, effective_from: e.target.value }))} />
           </div>
           <div className="col-span-6">
             <Label>Effective To</Label>
-            <Input type="date" value={form.effective_to} onChange={(e) => setForm(f => ({ ...f, effective_to: e.target.value }))} />
+            <Input aria-label="Effective To" type="date" value={form.effective_to} onChange={(e) => setForm(f => ({ ...f, effective_to: e.target.value }))} />
           </div>
           <div className="col-span-6 flex items-center gap-2 mt-1">
             <Switch checked={form.overtime_eligible} onCheckedChange={(v) => setForm(f => ({ ...f, overtime_eligible: v }))} id="ot-eligible" />
@@ -798,11 +809,11 @@ function ShiftCalendarSection({
           </div>
           <div className="col-span-12">
             <Label>Notes</Label>
-            <Textarea value={form.notes} onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} />
+            <Textarea aria-label="Notes" value={form.notes} onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} />
           </div>
         </div>
       </ERPChildDialogForm>
-    </section>
+    </section></QueryReadBoundary>
   );
 }
 
@@ -844,7 +855,7 @@ function LeaveSection({
     onChildOpen?.(open);
   }, [onChildOpen]);
 
-  const { data: leaveData, isLoading: leaveLoading, isError: leaveError, error: leaveQueryError } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.time.leaveRequests(employeeId),
     queryFn: async () => {
       const r = await listEmployeeLeaveRequests(employeeId, { page_size: 30 });
@@ -853,23 +864,26 @@ function LeaveSection({
     },
     refetchOnMount: "always",
   });
+  const { data: leaveData, isLoading: leaveLoading, isError: leaveError, error: leaveQueryError } = uiRead1;
 
-  const { data: balData } = useQuery({
+  const uiRead2 = useQuery({
     queryKey: queryKeys.hr.time.leaveBalances(employeeId),
     queryFn: async () => {
       const r = await listEmployeeLeaveBalances(employeeId);
-      return r.success ? r.data?.data ?? [] : [];
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data?.data ?? [] : [];
     },
   });
+  const { data: balData } = uiRead2;
 
-  const { data: leaveTypeOptions, refetch: refetchLeaveTypes } = useQuery({
+  const uiRead3 = useQuery({
     queryKey: queryKeys.hr.time.activeLeaveTypes(),
     queryFn: async () => {
       const r = await listActiveLeaveTypesForForm();
-      return r.success ? (r.data?.data ?? []).map((lt) => ({ value: String(lt.id), label: lt.name_en })) : [];
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? (r.data?.data ?? []).map((lt) => ({ value: String(lt.id), label: lt.name_en })) : [];
     },
     enabled: canManage,
   });
+  const { data: leaveTypeOptions, refetch: refetchLeaveTypes } = uiRead3;
 
   const totalDays = form.start_date && form.end_date ? calculateLeaveDays(form.start_date, form.end_date) : 0;
 
@@ -941,7 +955,7 @@ function LeaveSection({
   const balances = balData ?? [];
 
   return (
-    <section>
+    <QueryReadBoundary queries={[uiRead1,uiRead2,uiRead3]}><section>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Plane className="h-5 w-5 text-primary" />
@@ -991,7 +1005,7 @@ function LeaveSection({
         <div className="text-sm text-muted-foreground py-6 text-center border rounded-md">No leave requests yet.</div>
       ) : (
         <div className="border rounded-md divide-y">
-          {leaves.map((row) => {
+          <RecordCollection id="hr.employee-time-tab.LeaveSection.leaves" rows={leaves} fields={[{"id":"start_date","path":"start_date","label":"Start Date"},{"id":"end_date","path":"end_date","label":"End Date"},{"id":"approval_status","path":"approval_status","label":"Approval Status"}]} renderRecord={(row) => {
             const badge = getLeaveApprovalStatusBadge(row.approval_status);
             return (
               <div key={row.id} className="px-4 py-2.5 flex items-center gap-3 text-sm">
@@ -1029,7 +1043,7 @@ function LeaveSection({
                 )}
               </div>
             );
-          })}
+          }} />
         </div>
       )}
 
@@ -1048,7 +1062,7 @@ function LeaveSection({
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <Label>Leave Type <span className="text-destructive">*</span></Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Leave Type" required
               value={form.leave_type_id}
               onValueChange={(v) => setForm(f => ({ ...f, leave_type_id: String(v ?? "") }))}
               options={leaveTypeOptions ?? []}
@@ -1057,18 +1071,18 @@ function LeaveSection({
           </div>
           <div className="col-span-6">
             <Label>Start Date <span className="text-destructive">*</span></Label>
-            <Input type="date" value={form.start_date} onChange={(e) => setForm(f => ({ ...f, start_date: e.target.value }))} />
+            <Input aria-label="Start Date" required type="date" value={form.start_date} onChange={(e) => setForm(f => ({ ...f, start_date: e.target.value }))} />
           </div>
           <div className="col-span-6">
             <Label>End Date <span className="text-destructive">*</span></Label>
-            <Input type="date" value={form.end_date} onChange={(e) => setForm(f => ({ ...f, end_date: e.target.value }))} />
+            <Input aria-label="End Date" required type="date" value={form.end_date} onChange={(e) => setForm(f => ({ ...f, end_date: e.target.value }))} />
           </div>
           <div className="col-span-12 text-xs text-muted-foreground">
             Duration: <span className="font-medium text-foreground">{totalDays} day(s)</span>
           </div>
           <div className="col-span-12">
             <Label>Reason</Label>
-            <Textarea value={form.reason} onChange={(e) => setForm(f => ({ ...f, reason: e.target.value }))} rows={2} />
+            <Textarea aria-label="Reason" value={form.reason} onChange={(e) => setForm(f => ({ ...f, reason: e.target.value }))} rows={2} />
           </div>
         </div>
       </ERPChildDialogForm>
@@ -1088,7 +1102,7 @@ function LeaveSection({
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <Label>Leave Type <span className="text-destructive">*</span></Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Leave Type" required
               value={balForm.leave_type_id}
               onValueChange={(v) => setBalForm(f => ({ ...f, leave_type_id: String(v ?? "") }))}
               options={leaveTypeOptions ?? []}
@@ -1097,19 +1111,19 @@ function LeaveSection({
           </div>
           <div className="col-span-6">
             <Label>Year <span className="text-destructive">*</span></Label>
-            <Input type="number" value={balForm.leave_year} onChange={(e) => setBalForm(f => ({ ...f, leave_year: e.target.value }))} min={2020} max={2100} />
+            <Input aria-label="Year" required type="number" value={balForm.leave_year} onChange={(e) => setBalForm(f => ({ ...f, leave_year: e.target.value }))} min={2020} max={2100} />
           </div>
           <div className="col-span-6">
             <Label>Entitled Days <span className="text-destructive">*</span></Label>
-            <Input type="number" step="0.5" min="0" value={balForm.entitled_days} onChange={(e) => setBalForm(f => ({ ...f, entitled_days: e.target.value }))} />
+            <Input aria-label="Entitled Days" required type="number" step="0.5" min="0" value={balForm.entitled_days} onChange={(e) => setBalForm(f => ({ ...f, entitled_days: e.target.value }))} />
           </div>
           <div className="col-span-6">
             <Label>Used Days</Label>
-            <Input type="number" step="0.5" min="0" value={balForm.used_days} onChange={(e) => setBalForm(f => ({ ...f, used_days: e.target.value }))} />
+            <Input aria-label="Used Days" type="number" step="0.5" min="0" value={balForm.used_days} onChange={(e) => setBalForm(f => ({ ...f, used_days: e.target.value }))} />
           </div>
           <div className="col-span-6">
             <Label>Carry Forward</Label>
-            <Input type="number" step="0.5" min="0" value={balForm.carry_forward} onChange={(e) => setBalForm(f => ({ ...f, carry_forward: e.target.value }))} />
+            <Input aria-label="Carry Forward" type="number" step="0.5" min="0" value={balForm.carry_forward} onChange={(e) => setBalForm(f => ({ ...f, carry_forward: e.target.value }))} />
           </div>
         </div>
       </ERPChildDialogForm>
@@ -1133,12 +1147,12 @@ function LeaveSection({
           <div className="grid grid-cols-12 gap-4">
             <div className="col-span-12">
               <Label>Reason</Label>
-              <Textarea value={decisionReason} onChange={(e) => setDecisionReason(e.target.value)} rows={3} placeholder="Optional reason..." />
+              <Textarea aria-label="Reason" value={decisionReason} onChange={(e) => setDecisionReason(e.target.value)} rows={3} placeholder="Optional reason..." />
             </div>
           </div>
         </ERPChildDialogForm>
       )}
-    </section>
+    </section></QueryReadBoundary>
   );
 }
 
@@ -1171,13 +1185,14 @@ function OvertimeSection({
     onChildOpen?.(open);
   }, [onChildOpen]);
 
-  const { data, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.time.overtimeRecords(employeeId),
     queryFn: async () => {
       const r = await listEmployeeOvertimeRecords(employeeId, { page_size: 30 });
-      return r.success ? r.data : null;
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data : null;
     },
   });
+  const { data, isLoading } = uiRead1;
 
   function resetForm(row?: OvertimeRecordRow) {
     setForm({
@@ -1250,7 +1265,7 @@ function OvertimeSection({
   const totalApprovedHours = records.filter(r => r.approval_status === "approved").reduce((s, r) => s + Number(r.hours), 0);
 
   return (
-    <section>
+    <QueryReadBoundary queries={[uiRead1]}><section>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Timer className="h-5 w-5 text-primary" />
@@ -1276,7 +1291,7 @@ function OvertimeSection({
         <div className="text-sm text-muted-foreground py-6 text-center border rounded-md">No overtime records yet.</div>
       ) : (
         <div className="border rounded-md divide-y">
-          {records.map((row) => {
+          <RecordCollection id="hr.employee-time-tab.OvertimeSection.records" rows={records} fields={[{"id":"overtime_date","path":"overtime_date","label":"Overtime Date"},{"id":"approval_status","path":"approval_status","label":"Approval Status"}]} renderRecord={(row) => {
             const badge = getOvertimeApprovalStatusBadge(row.approval_status);
             return (
               <div key={row.id} className="px-4 py-2.5 flex items-center gap-3 text-sm">
@@ -1298,7 +1313,7 @@ function OvertimeSection({
                         }}>
                           <XCircle className="h-3.5 w-3.5 mr-1" /> Reject
                         </Button>
-                        <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => {
+                        <Button aria-label="Edit record" size="sm" variant="ghost" className="h-7 px-2" onClick={() => {
                           resetForm(row);
                           setEditing(row);
                           openDialog(true);
@@ -1307,14 +1322,14 @@ function OvertimeSection({
                         </Button>
                       </>
                     )}
-                    <Button size="sm" variant="ghost" className="h-7 px-2 text-destructive" onClick={() => handleArchive(row.id)} disabled={isPending}>
+                    <Button aria-label="Archive record" size="sm" variant="ghost" className="h-7 px-2 text-destructive" onClick={() => handleArchive(row.id)} disabled={isPending}>
                       <Archive className="h-3.5 w-3.5" />
                     </Button>
                   </div>
                 )}
               </div>
             );
-          })}
+          }} />
         </div>
       )}
 
@@ -1332,19 +1347,19 @@ function OvertimeSection({
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-6">
             <Label>Date <span className="text-destructive">*</span></Label>
-            <Input type="date" value={form.overtime_date} onChange={(e) => setForm(f => ({ ...f, overtime_date: e.target.value }))} />
+            <Input aria-label="Date" required type="date" value={form.overtime_date} onChange={(e) => setForm(f => ({ ...f, overtime_date: e.target.value }))} />
           </div>
           <div className="col-span-6">
             <Label>Hours <span className="text-destructive">*</span></Label>
-            <Input type="number" step="0.5" min="0" max="24" value={form.hours} onChange={(e) => setForm(f => ({ ...f, hours: e.target.value }))} placeholder="0.0" />
+            <Input aria-label="Hours" required type="number" step="0.5" min="0" max="24" value={form.hours} onChange={(e) => setForm(f => ({ ...f, hours: e.target.value }))} placeholder="0.0" />
           </div>
           <div className="col-span-12">
             <Label>Reason</Label>
-            <Textarea value={form.reason} onChange={(e) => setForm(f => ({ ...f, reason: e.target.value }))} rows={2} />
+            <Textarea aria-label="Reason" value={form.reason} onChange={(e) => setForm(f => ({ ...f, reason: e.target.value }))} rows={2} />
           </div>
           <div className="col-span-12">
             <Label>Notes</Label>
-            <Input value={form.notes} onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))} />
+            <Input aria-label="Notes" value={form.notes} onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))} />
           </div>
         </div>
       </ERPChildDialogForm>
@@ -1367,11 +1382,11 @@ function OvertimeSection({
           <div className="grid grid-cols-12 gap-4">
             <div className="col-span-12">
               <Label>Reason</Label>
-              <Textarea value={decisionReason} onChange={(e) => setDecisionReason(e.target.value)} rows={3} placeholder="Optional reason..." />
+              <Textarea aria-label="Reason" value={decisionReason} onChange={(e) => setDecisionReason(e.target.value)} rows={3} placeholder="Optional reason..." />
             </div>
           </div>
         </ERPChildDialogForm>
       )}
-    </section>
+    </section></QueryReadBoundary>
   );
 }

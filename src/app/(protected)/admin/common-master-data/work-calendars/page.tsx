@@ -1,50 +1,22 @@
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { ERPPageHeader } from "@/components/erp/page-header";
-import { ERPEmptyState } from "@/components/erp/empty-state";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Calendar, Plus } from "lucide-react";
+import { LoadError } from "@/components/erp/load-error";
+import { CommonMasterList } from "@/features/common-master-data/common-master-list";
+import { buttonVariants } from "@/components/ui/button";
 import { listWorkCalendars } from "@/server/actions/common-master-data/work-calendars";
 import Link from "next/link";
 
+const BASE = "/admin/common-master-data/work-calendars";
 export default async function WorkCalendarsPage() {
   const ctx = await getAuthContext();
   const canManage = hasPermission(ctx, "common_md.manage") || hasPermission(ctx, "common_md.work_calendars.manage");
   const result = await listWorkCalendars({});
-  const calendars = result.data ?? [];
-
-  return (
-    <div className="p-6 space-y-4">
-      <ERPPageHeader
-        title="Work Calendars"
-        description="Work schedules, shifts, and operating days"
-        breadcrumbs={[
-          { label: "Dashboard", href: "/dashboard" },
-          { label: "Common Master Data", href: "/admin/common-master-data" },
-          { label: "Work Calendars" },
-        ]}
-        actions={canManage ? <Link href="/admin/common-master-data/work-calendars/record/new"><Button size="sm"><Plus className="h-4 w-4 mr-1" />Add Calendar</Button></Link> : null}
-      />
-      {calendars.length === 0 ? <ERPEmptyState icon={Calendar} title="No work calendars yet" description="Create your first work calendar." /> : (
-        <div className="rounded-md border overflow-hidden">
-          <div className="divide-y">
-            {calendars.map(c => (
-              <Link key={c.id} href={`/admin/common-master-data/work-calendars/record/${c.id}`} className="flex items-center justify-between px-4 py-3 hover:bg-muted/40 transition-colors">
-                <div>
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    {c.calendar_name}
-                    <span className="text-xs text-muted-foreground">({c.calendar_code})</span>
-                    <Badge variant="outline" className="text-[10px]">{c.calendar_type}</Badge>
-                    {!c.is_active && <Badge variant="destructive" className="text-[10px]">Inactive</Badge>}
-                  </div>
-                  <p className="text-xs text-muted-foreground">Working days: {c.working_days?.join(", ")}</p>
-                </div>
-                <span className="text-xs text-muted-foreground">→</span>
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  return <div className="p-4 md:p-6 space-y-4">
+    <ERPPageHeader title="Work calendars" description="Work schedules, shifts, and operating days"
+      breadcrumbs={[{label:"Common master data",href:"/admin/common-master-data"},{label:"Work calendars"}]}
+      actions={canManage ? <Link className={buttonVariants({size:"sm"})} href={BASE + "/record/new"}>Add calendar</Link> : null} />
+    {!result.success ? <LoadError title="Work calendars" retryHref={BASE} /> :
+      <CommonMasterList title="Work calendars" basePath={BASE} fields={[{ key:"type", label:"Type" }, { key:"days", label:"Working days" }, { key:"active", label:"Active", type:"select", options:[{value:"true",label:"Yes"},{value:"false",label:"No"}] }]}
+        rows={(result.data ?? []).map(r=>({ id:r.id, name:r.calendar_name, code:r.calendar_code, type:r.calendar_type, days:r.working_days?.join(", ") ?? "", active:r.is_active }))} />}
+  </div>;
 }

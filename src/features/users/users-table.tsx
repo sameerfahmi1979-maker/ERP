@@ -201,7 +201,7 @@ export function UsersTable({
       cell: ({ row }) => {
         const userRoles = row.original.roles ?? [];
         if (userRoles.length === 0) {
-          return <span className="text-xs text-amber-600 font-medium">No role</span>;
+          return <span className="text-xs text-amber-800 dark:text-amber-300 font-medium">No role</span>;
         }
         return (
           <div className="flex flex-wrap gap-1 max-w-[220px]">
@@ -245,7 +245,7 @@ export function UsersTable({
         <div className="flex flex-col gap-0.5">
           <StatusBadge status={row.original.status} />
           {row.original.must_change_password && (
-            <span className="text-[10px] text-amber-600 font-medium">⚠ Must change pwd</span>
+            <span className="text-[10px] text-amber-800 dark:text-amber-300 font-medium">⚠ Must change pwd</span>
           )}
         </div>
       ),
@@ -335,7 +335,7 @@ export function UsersTable({
   return (
     <>
       <UsersListToolbar
-        totalCount={noRoleFilter ? displayData.length : totalCount}
+        totalCount={totalCount}
         page={page}
         pageSize={pageSize}
         search={search}
@@ -350,8 +350,11 @@ export function UsersTable({
         branches={branches}
       />
 
+      {noRoleFilter && <p role="status" className="text-sm text-muted-foreground">No role filters the current page only: {displayData.length} of {data.length} users on this page. Use the page controls to check other results.</p>}
       <ERPDataTable
         tableId="admin.users"
+        serverPaged
+        resultsLabel="Users on this page"
         columns={columns}
         data={displayData}
         userProfileId={userProfileId}

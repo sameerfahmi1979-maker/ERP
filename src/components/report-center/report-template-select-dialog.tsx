@@ -83,7 +83,7 @@ function ReportTemplateSelection({
   });
 
   const handleConfirm = () => {
-    if (!selectedId) return;
+    if (!selectedId || error || isLoading) return;
     const template = templates.find((t) => t.id === selectedId);
     if (!template) return;
     onSelect(selectedId, template);
@@ -186,7 +186,7 @@ function ReportTemplateSelection({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleConfirm} disabled={!selectedId || isLoading}>
+          <Button onClick={handleConfirm} disabled={!selectedId || isLoading || !!error}>
             Use Template
           </Button>
         </DialogFooter>

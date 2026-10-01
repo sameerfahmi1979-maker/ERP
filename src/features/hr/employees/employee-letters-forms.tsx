@@ -1,4 +1,7 @@
 "use client";
+import { RecordCollection } from "@/components/erp/table/record-collection";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import { loadedListValue } from "@/components/erp/table/loaded-list-view";
 
 /**
  * OUTPUT.4 — Employee "Letters & Forms" experience.
@@ -20,11 +23,6 @@ import {
   BadgeCheck,
   CheckCircle2,
   CheckSquare,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  ChevronUp,
-  ChevronsUpDown,
   ClipboardList,
   CreditCard,
   Download,
@@ -141,6 +139,10 @@ function formatDate(value: string | null): string {
 }
 
 export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLettersFormsProps) {
+  return <EmployeeLettersFormsSession key={employeeId} employeeId={employeeId} employeeName={employeeName} />;
+}
+function EmployeeLettersFormsSession({ employeeId, employeeName }: EmployeeLettersFormsProps) {
+  const [historyError, setHistoryError] = useState(false);
   const [catalog, setCatalog] = useState<EmployeeOutputCatalogItem[]>([]);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [history, setHistory] = useState<IssuanceHistoryItem[]>([]);
@@ -152,10 +154,8 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
 
   // History table state
   const [histSearch, setHistSearch] = useState("");
-  const [sortCol, setSortCol] = useState<"file_name" | "status" | "issued_at" | "serial_no">("issued_at");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [histPage, setHistPage] = useState(1);
-  const HIST_PAGE_SIZE = 10;
+
+
 
   const [preview, setPreview] = useState<{ outputCode: string; label: string } | null>(null);
   const [issuingCode, setIssuingCode] = useState<string | null>(null);
@@ -198,17 +198,21 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
   }, [catalog]);
 
   const refreshHistory = useCallback(async () => {
+    try {
     const res = await listRecordIssuances({ sourceRecordType: "employee", recordId: employeeId });
     if (res.success && res.data) {
+      setHistoryError(false);
       setHistory(res.data.items);
       setCanRevoke(res.data.canRevoke);
       setCanReissue(res.data.canReissue);
       setCanDelete(res.data.canDelete);
-    }
+    } else setHistoryError(true);
+    } catch { setHistoryError(true); }
   }, [employeeId]);
 
   useEffect(() => {
     startLoading(async () => {
+      try {
       const [catRes] = await Promise.all([listEmployeeOutputCatalog(), refreshHistory()]);
       if (catRes.success && catRes.data) {
         setCatalog(catRes.data);
@@ -216,6 +220,7 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
       } else {
         setCatalogError(catRes.error ?? "Failed to load the document catalog.");
       }
+      } catch { setCatalogError("The document catalog could not be loaded. Reload this section to try again."); }
     });
   }, [employeeId, refreshHistory]);
 
@@ -416,17 +421,6 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
 
   const previewItem = preview ? catalog.find((c) => c.outputCode === preview.outputCode) : null;
 
-  const toggleSort = (col: typeof sortCol) => {
-    if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else { setSortCol(col); setSortDir("asc"); }
-    setHistPage(1);
-  };
-
-  const renderSortIcon = (col: typeof sortCol) => {
-    if (sortCol !== col) return <ChevronsUpDown className="h-3 w-3 opacity-40" />;
-    return sortDir === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />;
-  };
-
   const filteredHistory = useMemo(() => {
     const q = histSearch.trim().toLowerCase();
     const rows = q
@@ -440,18 +434,10 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
       : history;
 
     return [...rows].sort((a, b) => {
-      let av = "";
-      let bv = "";
-      if (sortCol === "file_name") { av = a.file_name; bv = b.file_name; }
-      else if (sortCol === "status") { av = a.status; bv = b.status; }
-      else if (sortCol === "issued_at") { av = a.issued_at ?? a.generated_at ?? ""; bv = b.issued_at ?? b.generated_at ?? ""; }
-      else if (sortCol === "serial_no") { av = a.serial_no ?? ""; bv = b.serial_no ?? ""; }
-      return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+      return (b.issued_at ?? b.generated_at ?? "").localeCompare(a.issued_at ?? a.generated_at ?? "");
     });
-  }, [history, histSearch, sortCol, sortDir]);
+  }, [history, histSearch]);
 
-  const totalHistPages = Math.max(1, Math.ceil(filteredHistory.length / HIST_PAGE_SIZE));
-  const pagedHistory = filteredHistory.slice((histPage - 1) * HIST_PAGE_SIZE, histPage * HIST_PAGE_SIZE);
 
   return (
     <div className="space-y-5">
@@ -466,7 +452,7 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
         {catalog.length > 6 && (
           <div className="relative shrink-0 w-56">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
+            <Input aria-label="Search documents…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search documents…"
@@ -572,8 +558,8 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
             <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {GROUP_LABELS[group]}
             </h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {items.map((item) => (
+            <div className="min-w-0">
+              {<RecordCollection id={`employee-output-catalog-${group}`} rows={items} fields={[{"id":"name","label":"Name","path":"name"},{"id":"category","label":"Category","path":"category"},{"id":"outputCode","label":"Output code","path":"outputCode"}]} renderRecord={(item) => (
                 <div
                   key={item.outputCode}
                   className={`rounded-lg border p-3 transition-colors ${
@@ -680,7 +666,7 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
                     </div>
                   )}
                 </div>
-              ))}
+              )} />}
             </div>
           </div>
         );
@@ -711,9 +697,9 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
             {history.length > 0 && (
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                <Input
+                <Input aria-label="Search history…"
                   value={histSearch}
-                  onChange={(e) => { setHistSearch(e.target.value); setHistPage(1); }}
+                  onChange={(e) => { setHistSearch(e.target.value);  }}
                   placeholder="Search history…"
                   className="h-7 pl-7 text-xs w-44"
                 />
@@ -725,7 +711,7 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
           </div>
         </div>
 
-        {history.length === 0 ? (
+        {historyError ? <div role="alert" className="border border-destructive p-3 text-sm">Issuance history could not be loaded. This is not an empty history. <Button type="button" variant="outline" onClick={() => void refreshHistory()}>Retry history</Button></div> : history.length === 0 ? (
           <p className="text-xs text-muted-foreground border rounded-lg p-3 bg-muted/20">
             No officially issued documents yet for this employee.
           </p>
@@ -735,70 +721,21 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
           </p>
         ) : (
           <div className="rounded-lg border overflow-hidden">
-            <table className="w-full text-xs table-fixed">
-              <colgroup>
-                <col className="w-[28%]" />
-                <col className="w-[90px]" />
-                <col className="w-[88px]" />
-                <col className="hidden md:table-column w-[150px]" />
-                <col className="w-[100px]" />
-              </colgroup>
-              <thead className="bg-muted/40 text-muted-foreground">
-                <tr>
-                  <th className="text-left font-medium px-3 py-2">
-                    <button className="flex items-center gap-1 hover:text-foreground" onClick={() => toggleSort("file_name")}>
-                      Document {renderSortIcon("file_name")}
-                    </button>
-                  </th>
-                  <th className="text-left font-medium px-3 py-2">
-                    <button className="flex items-center gap-1 hover:text-foreground" onClick={() => toggleSort("status")}>
-                      Status {renderSortIcon("status")}
-                    </button>
-                  </th>
-                  <th className="text-left font-medium px-3 py-2">
-                    <button className="flex items-center gap-1 hover:text-foreground" onClick={() => toggleSort("issued_at")}>
-                      Issued {renderSortIcon("issued_at")}
-                    </button>
-                  </th>
-                  <th className="text-left font-medium px-3 py-2 hidden md:table-cell">
-                    <button className="flex items-center gap-1 hover:text-foreground" onClick={() => toggleSort("serial_no")}>
-                      Serial {renderSortIcon("serial_no")}
-                    </button>
-                  </th>
-                  <th className="text-right font-medium px-3 py-2">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagedHistory.map((item) => (
-                  <tr key={item.id} className="border-t hover:bg-muted/20 transition-colors">
-                    <td className="px-3 py-2 min-w-0">
-                      <div className="font-medium text-foreground truncate" title={item.file_name.replace(/\.pdf$/i, "").replace(/_/g, " ")}>
+            {/* UI04 explicit table: loaded authorized rows only */}<ERPDataTable tableId="hr.employees.employee-letters-forms" data={filteredHistory} columns={[{id:"file_name",header:"Document",accessorFn:item=>loadedListValue(item,"file_name"),enableHiding:false,size:240,cell:({row:{original:item}})=><><div className="font-medium text-foreground truncate" title={item.file_name.replace(/\.pdf$/i, "").replace(/_/g, " ")}>
                         {item.file_name.replace(/\.pdf$/i, "").replace(/_/g, " ")}
-                      </div>
-                      {item.status === "revoked" && item.revoke_reason && (
+                      </div>{item.status === "revoked" && item.revoke_reason && (
                         <div className="text-[11px] text-muted-foreground truncate">
                           Reason: {item.revoke_reason}
                         </div>
-                      )}
-                      {item.status === "failed" && item.failure_reason && (
+                      )}{item.status === "failed" && item.failure_reason && (
                         <div className="text-[11px] text-destructive truncate">
                           {item.failure_reason}
                         </div>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">{statusBadge(item)}</td>
-                    <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">
-                      {formatDate(item.issued_at ?? item.generated_at)}
-                    </td>
-                    <td className="px-3 py-2 hidden md:table-cell">
-                      <span className="block truncate font-mono text-[10px] text-muted-foreground" title={item.serial_no ?? ""}>
+                      )}</>},{id:"serial_no",header:"Serial",accessorFn:item=>loadedListValue(item,"serial_no"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{statusBadge(item)}</>},{id:"status",header:"Status",accessorFn:item=>loadedListValue(item,"status"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{formatDate(item.issued_at ?? item.generated_at)}</>},{id:"issued_at",header:"Issued",accessorFn:item=>loadedListValue(item,"issued_at"),enableHiding:true,size:160,cell:({row:{original:item}})=><><span className="block truncate font-mono text-[10px] text-muted-foreground" title={item.serial_no ?? ""}>
                         {item.serial_no ?? "—"}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center gap-0.5 justify-end flex-nowrap">
+                      </span></>},{id:"actions",header:"Actions",enableHiding:true,size:200,enableSorting:false,meta:{exportable:false},cell:({row:{original:item}})=><><div className="flex items-center gap-0.5 justify-end flex-nowrap">
                         {/* Download — any status with a stored file */}
-                        <Button
+                        <Button aria-label="Download / Reprint Original PDF"
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7"
@@ -822,7 +759,7 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
                             return catItem?.canGenerate && catItem?.generatable &&
                               (item.status === "issued" || item.status === "revoked" || item.status === "superseded");
                           })() && (
-                          <Button
+                          <Button aria-label="Generate New — create a fresh independent issuance with current ERP data"
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/30"
@@ -840,7 +777,7 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
 
                         {/* Reissue — formally supersedes the original and links both records */}
                         {item.status === "issued" && canReissue && (
-                          <Button
+                          <Button aria-label="Reissue / Supersede (formal linked replacement)"
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7"
@@ -853,7 +790,7 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
 
                         {/* Revoke */}
                         {item.status === "issued" && canRevoke && (
-                          <Button
+                          <Button aria-label="Revoke document"
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/30"
@@ -866,7 +803,7 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
 
                         {/* Remove failed artifact — system admin only, never for issued/revoked/superseded */}
                         {canDelete && (item.status === "failed" || item.status === "cancelled") && (
-                          <Button
+                          <Button aria-label="Remove failed generation artifact"
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
@@ -876,42 +813,10 @@ export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLette
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      </div></>}]} enableRowSelection={false} initialPageSize={10} searchPlaceholder="Search loaded records…"/>
 
             {/* Pagination */}
-            {totalHistPages > 1 && (
-              <div className="flex items-center justify-between px-3 py-2 border-t bg-muted/20 text-xs text-muted-foreground">
-                <span>
-                  {(histPage - 1) * HIST_PAGE_SIZE + 1}–{Math.min(histPage * HIST_PAGE_SIZE, filteredHistory.length)} of {filteredHistory.length}
-                </span>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6"
-                    disabled={histPage === 1}
-                    onClick={() => setHistPage((p) => p - 1)}
-                  >
-                    <ChevronLeft className="h-3.5 w-3.5" />
-                  </Button>
-                  <span>Page {histPage} / {totalHistPages}</span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6"
-                    disabled={histPage === totalHistPages}
-                    onClick={() => setHistPage((p) => p + 1)}
-                  >
-                    <ChevronRight className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
-            )}
+
           </div>
         )}
       </div>

@@ -3,6 +3,7 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { getHrDocBrowserEmployees } from "@/server/actions/hr/doc-browser";
 import { HrDocBrowserPageClient } from "@/features/hr/document-browser/hr-doc-browser-page-client";
 import { ERPPageHeader } from "@/components/erp/page-header";
+import { LoadError } from "@/components/erp/load-error";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -29,6 +30,7 @@ export default async function HrDocumentBrowserPage() {
   }
 
   const result = await getHrDocBrowserEmployees();
+  if (!result.success) return <LoadError title="Employee document browser" retryHref="/admin/hr/document-browser" />;
   const employees = result.success && result.data ? result.data : [];
 
   return (

@@ -1,4 +1,7 @@
 "use client";
+import { RecordCollection } from "@/components/erp/table/record-collection";
+import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 /**
  * HR.14B — Document-to-Record Wizard
@@ -57,7 +60,7 @@ import {
   ShieldAlert,
   Users
 } from "lucide-react";
-import { useCallback, useState, useTransition } from "react";
+import { useCallback, useState} from "react";
 import { toast } from "sonner";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -126,27 +129,28 @@ function PickerStep({
   const [search, setSearch] = useState("");
   const [accessError, setAccessError] = useState<string | null>(null);
 
-  const { data: docs = [], isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: ["hr14b", "dms-docs-for-record", employeeId, targetType, search],
     queryFn: async () => {
       const r = await getDmsDocumentsForEmployeeRecord(employeeId, { search, targetType, limit: 60 });
       if (!r.success) {
-        setAccessError(r.error ?? "Failed to load documents");
-        return [];
+        setAccessError("Documents could not be loaded. Retry or check your access.");
+        throw new Error("Document read failed");
       }
       setAccessError(null);
       return r.data ?? [];
     },
     staleTime: 30_000,
   });
+  const { data: docs = [], isLoading } = uiRead1;
 
   const allowMultiple = targetType === "dependent";
 
   return (
-    <div className="space-y-4">
+    <QueryReadBoundary queries={[uiRead1]}><div className="space-y-4">
       <div className="relative">
         <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-        <Input
+        <Input aria-label="Search documents by title"
           className="pl-8 h-8 text-sm"
           placeholder="Search documents by title..."
           value={search}
@@ -177,12 +181,13 @@ function PickerStep({
 
       {!isLoading && !accessError && docs.length > 0 && (
         <div className="space-y-1.5 max-h-[340px] overflow-y-auto pr-1">
-          {docs.map((doc) => {
+          {<RecordCollection id="employee-record-document-picker" rows={docs} fields={[{"id":"title","label":"Title","path":"title"},{"id":"document_no","label":"Document number","path":"document_no"},{"id":"document_type_name","label":"Document type","path":"document_type_name"}]} renderRecord={(doc) => {
             const selected = selectedIds.includes(doc.id);
             return (
               <button
                 key={doc.id}
                 type="button"
+                aria-pressed={selected}
                 onClick={() => onToggle(doc)}
                 className={cn(
                   "w-full flex items-start gap-3 p-2.5 rounded-lg border text-left transition-colors",
@@ -238,7 +243,7 @@ function PickerStep({
                 </div>
               </button>
             );
-          })}
+          }} />}
         </div>
       )}
 
@@ -251,7 +256,7 @@ function PickerStep({
           {isAggregating ? "Loading..." : "Review Draft"}
         </Button>
       </div>
-    </div>
+    </div></QueryReadBoundary>
   );
 }
 
@@ -272,20 +277,21 @@ function IdentityDocReview({
 }) {
   const [form, setForm] = useState<HrIdentityDocDraft>({ ...draft });
 
-  const { data: docTypes } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.identityDocumentTypes(),
     queryFn: async () => {
       const r = await listHrIdentityDocumentTypes({ is_active: true, page: 1, page_size: 100 });
-      return r.success && r.data ? (r.data.data as HrIdentityDocTypeRow[]) : [];
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success && r.data ? (r.data.data as HrIdentityDocTypeRow[]) : [];
     },
   });
+  const { data: docTypes } = uiRead1;
 
   const docTypeOptions = (docTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }));
 
   const isValid = !!form.document_type_id && form.document_number.trim().length > 0;
 
   return (
-    <div className="space-y-4">
+    <QueryReadBoundary queries={[uiRead1]}><div className="space-y-4">
       <div className="rounded-lg bg-muted/30 border px-3 py-2">
         <p className="text-[11px] text-muted-foreground">
           Source: <span className="font-medium text-foreground">{draft.documentTitle}</span>
@@ -302,7 +308,7 @@ function IdentityDocReview({
           <Label className="text-xs font-medium mb-1 block">
             Document Type <span className="text-destructive">*</span>
           </Label>
-          <ERPCombobox
+          <ERPCombobox ariaLabel="Document Type"
             value={form.document_type_id}
             onValueChange={(v) => setForm((p) => ({ ...p, document_type_id: v == null ? null : Number(v) }))}
             options={docTypeOptions}
@@ -314,7 +320,7 @@ function IdentityDocReview({
           <Label className="text-xs font-medium mb-1 block">
             Document Number <span className="text-destructive">*</span>
           </Label>
-          <Input
+          <Input aria-label="Document Number" required
             value={form.document_number}
             onChange={(e) => setForm((p) => ({ ...p, document_number: e.target.value }))}
             className="h-8 text-sm"
@@ -323,7 +329,7 @@ function IdentityDocReview({
         </div>
         <div className="col-span-4">
           <Label className="text-xs font-medium mb-1 block">Issue Date</Label>
-          <Input
+          <Input aria-label="Issue Date"
             type="date"
             value={form.issue_date}
             onChange={(e) => setForm((p) => ({ ...p, issue_date: e.target.value }))}
@@ -332,7 +338,7 @@ function IdentityDocReview({
         </div>
         <div className="col-span-4">
           <Label className="text-xs font-medium mb-1 block">Expiry Date</Label>
-          <Input
+          <Input aria-label="Expiry Date"
             type="date"
             value={form.expiry_date}
             onChange={(e) => setForm((p) => ({ ...p, expiry_date: e.target.value }))}
@@ -348,7 +354,7 @@ function IdentityDocReview({
         </div>
         <div className="col-span-6">
           <Label className="text-xs font-medium mb-1 block">Issuing Authority</Label>
-          <Input
+          <Input aria-label="Issuing Authority"
             value={form.issuing_authority}
             onChange={(e) => setForm((p) => ({ ...p, issuing_authority: e.target.value }))}
             className="h-8 text-sm"
@@ -356,7 +362,7 @@ function IdentityDocReview({
         </div>
         <div className="col-span-6">
           <Label className="text-xs font-medium mb-1 block">Profession on Document</Label>
-          <Input
+          <Input aria-label="Profession on Document"
             value={form.profession_on_document}
             onChange={(e) => setForm((p) => ({ ...p, profession_on_document: e.target.value }))}
             className="h-8 text-sm"
@@ -367,35 +373,35 @@ function IdentityDocReview({
           <>
             <div className="col-span-6">
               <Label className="text-xs font-medium mb-1 block">UID Number</Label>
-              <Input value={form.uid_number} onChange={(e) => setForm((p) => ({ ...p, uid_number: e.target.value }))} className="h-8 text-sm" />
+              <Input aria-label="UID Number" value={form.uid_number} onChange={(e) => setForm((p) => ({ ...p, uid_number: e.target.value }))} className="h-8 text-sm" />
             </div>
             <div className="col-span-6">
               <Label className="text-xs font-medium mb-1 block">EID Application No.</Label>
-              <Input value={form.emirates_id_application_no} onChange={(e) => setForm((p) => ({ ...p, emirates_id_application_no: e.target.value }))} className="h-8 text-sm" />
+              <Input aria-label="EID Application No." value={form.emirates_id_application_no} onChange={(e) => setForm((p) => ({ ...p, emirates_id_application_no: e.target.value }))} className="h-8 text-sm" />
             </div>
           </>
         )}
         {(form.visa_file_number || form.document_type_code === "RESIDENCE_VISA") && (
           <div className="col-span-6">
             <Label className="text-xs font-medium mb-1 block">Visa File Number</Label>
-            <Input value={form.visa_file_number} onChange={(e) => setForm((p) => ({ ...p, visa_file_number: e.target.value }))} className="h-8 text-sm" />
+            <Input aria-label="Visa File Number" value={form.visa_file_number} onChange={(e) => setForm((p) => ({ ...p, visa_file_number: e.target.value }))} className="h-8 text-sm" />
           </div>
         )}
         {(form.labour_card_number || form.work_permit_number) && (
           <>
             <div className="col-span-6">
               <Label className="text-xs font-medium mb-1 block">Labour Card Number</Label>
-              <Input value={form.labour_card_number} onChange={(e) => setForm((p) => ({ ...p, labour_card_number: e.target.value }))} className="h-8 text-sm" />
+              <Input aria-label="Labour Card Number" value={form.labour_card_number} onChange={(e) => setForm((p) => ({ ...p, labour_card_number: e.target.value }))} className="h-8 text-sm" />
             </div>
             <div className="col-span-6">
               <Label className="text-xs font-medium mb-1 block">Work Permit Number</Label>
-              <Input value={form.work_permit_number} onChange={(e) => setForm((p) => ({ ...p, work_permit_number: e.target.value }))} className="h-8 text-sm" />
+              <Input aria-label="Work Permit Number" value={form.work_permit_number} onChange={(e) => setForm((p) => ({ ...p, work_permit_number: e.target.value }))} className="h-8 text-sm" />
             </div>
           </>
         )}
         <div className="col-span-12">
           <Label className="text-xs font-medium mb-1 block">Notes</Label>
-          <Input value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="h-8 text-sm" />
+          <Input aria-label="Notes" value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="h-8 text-sm" />
         </div>
       </div>
 
@@ -405,7 +411,7 @@ function IdentityDocReview({
           {isSubmitting ? "Saving..." : "Save Identity Document"}
         </Button>
       </div>
-    </div>
+    </div></QueryReadBoundary>
   );
 }
 
@@ -440,35 +446,35 @@ function InsuranceReview({
           <Label className="text-xs font-medium mb-1 block">
             Insurance Provider <span className="text-destructive">*</span>
           </Label>
-          <Input value={form.insurance_provider} onChange={(e) => setForm((p) => ({ ...p, insurance_provider: e.target.value }))} className="h-8 text-sm" />
+          <Input aria-label="Insurance Provider" required value={form.insurance_provider} onChange={(e) => setForm((p) => ({ ...p, insurance_provider: e.target.value }))} className="h-8 text-sm" />
         </div>
         <div className="col-span-6">
           <Label className="text-xs font-medium mb-1 block">TPA</Label>
-          <Input value={form.tpa} onChange={(e) => setForm((p) => ({ ...p, tpa: e.target.value }))} className="h-8 text-sm" />
+          <Input aria-label="TPA" value={form.tpa} onChange={(e) => setForm((p) => ({ ...p, tpa: e.target.value }))} className="h-8 text-sm" />
         </div>
         <div className="col-span-6">
           <Label className="text-xs font-medium mb-1 block">
             Policy Number <span className="text-destructive">*</span>
           </Label>
-          <Input value={form.policy_number} onChange={(e) => setForm((p) => ({ ...p, policy_number: e.target.value }))} className="h-8 text-sm" />
+          <Input aria-label="Policy Number" required value={form.policy_number} onChange={(e) => setForm((p) => ({ ...p, policy_number: e.target.value }))} className="h-8 text-sm" />
         </div>
         <div className="col-span-6">
           <Label className="text-xs font-medium mb-1 block">Insurance Card Number</Label>
-          <Input value={form.insurance_card_number} onChange={(e) => setForm((p) => ({ ...p, insurance_card_number: e.target.value }))} className="h-8 text-sm" />
+          <Input aria-label="Insurance Card Number" value={form.insurance_card_number} onChange={(e) => setForm((p) => ({ ...p, insurance_card_number: e.target.value }))} className="h-8 text-sm" />
         </div>
         <div className="col-span-6">
           <Label className="text-xs font-medium mb-1 block">Network / Class</Label>
-          <Input value={form.network_class} onChange={(e) => setForm((p) => ({ ...p, network_class: e.target.value }))} className="h-8 text-sm" />
+          <Input aria-label="Network / Class" value={form.network_class} onChange={(e) => setForm((p) => ({ ...p, network_class: e.target.value }))} className="h-8 text-sm" />
         </div>
         <div className="col-span-3">
           <Label className="text-xs font-medium mb-1 block">Issue Date</Label>
-          <Input type="date" value={form.issue_date} onChange={(e) => setForm((p) => ({ ...p, issue_date: e.target.value }))} className="h-8 text-sm" />
+          <Input aria-label="Issue Date" type="date" value={form.issue_date} onChange={(e) => setForm((p) => ({ ...p, issue_date: e.target.value }))} className="h-8 text-sm" />
         </div>
         <div className="col-span-3">
           <Label className="text-xs font-medium mb-1 block">
             Expiry Date <span className="text-destructive">*</span>
           </Label>
-          <Input type="date" value={form.expiry_date} onChange={(e) => setForm((p) => ({ ...p, expiry_date: e.target.value }))} className="h-8 text-sm" />
+          <Input aria-label="Expiry Date" required type="date" value={form.expiry_date} onChange={(e) => setForm((p) => ({ ...p, expiry_date: e.target.value }))} className="h-8 text-sm" />
         </div>
         <div className="col-span-4 flex items-center gap-2 pt-5">
           <Switch checked={form.employee_covered} onCheckedChange={(v) => setForm((p) => ({ ...p, employee_covered: v }))} />
@@ -480,11 +486,11 @@ function InsuranceReview({
         </div>
         <div className="col-span-4">
           <Label className="text-xs font-medium mb-1 block">Dependents Covered</Label>
-          <Input type="number" min={0} value={form.dependent_count_covered ?? ""} onChange={(e) => setForm((p) => ({ ...p, dependent_count_covered: e.target.value ? parseInt(e.target.value) : null }))} className="h-8 text-sm" />
+          <Input aria-label="Dependents Covered" type="number" min={0} value={form.dependent_count_covered ?? ""} onChange={(e) => setForm((p) => ({ ...p, dependent_count_covered: e.target.value ? parseInt(e.target.value) : null }))} className="h-8 text-sm" />
         </div>
         <div className="col-span-12">
           <Label className="text-xs font-medium mb-1 block">Notes</Label>
-          <Input value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="h-8 text-sm" />
+          <Input aria-label="Notes" value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="h-8 text-sm" />
         </div>
       </div>
 
@@ -515,20 +521,21 @@ function DependentReview({
 }) {
   const [form, setForm] = useState<HrDependentDraft>({ ...draft });
 
-  const { data: relTypes } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.relationshipTypes(),
     queryFn: async () => {
       const r = await listHrRelationshipTypes({ is_active: true, page: 1, page_size: 100 });
-      return r.success && r.data ? (r.data.data as HrSettingsRow[]) : [];
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success && r.data ? (r.data.data as HrSettingsRow[]) : [];
     },
   });
+  const { data: relTypes } = uiRead1;
 
   const relTypeOptions = (relTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }));
 
   const isValid = form.dependent_name_en.trim().length > 0 && !!form.relationship_type_id;
 
   return (
-    <div className="space-y-4">
+    <QueryReadBoundary queries={[uiRead1]}><div className="space-y-4">
       <div className="rounded-lg bg-muted/30 border px-3 py-2">
         <p className="text-[11px] text-muted-foreground">
           Sources: <span className="font-medium text-foreground">{draft.documentTitles.join(", ")}</span>
@@ -540,17 +547,17 @@ function DependentReview({
           <Label className="text-xs font-medium mb-1 block">
             Name (English) <span className="text-destructive">*</span>
           </Label>
-          <Input value={form.dependent_name_en} onChange={(e) => setForm((p) => ({ ...p, dependent_name_en: e.target.value }))} className="h-8 text-sm" />
+          <Input aria-label="Name (English)" required value={form.dependent_name_en} onChange={(e) => setForm((p) => ({ ...p, dependent_name_en: e.target.value }))} className="h-8 text-sm" />
         </div>
         <div className="col-span-6">
           <Label className="text-xs font-medium mb-1 block">Name (Arabic)</Label>
-          <Input value={form.dependent_name_ar} onChange={(e) => setForm((p) => ({ ...p, dependent_name_ar: e.target.value }))} className="h-8 text-sm" dir="rtl" />
+          <Input aria-label="Name (Arabic)" value={form.dependent_name_ar} onChange={(e) => setForm((p) => ({ ...p, dependent_name_ar: e.target.value }))} className="h-8 text-sm" dir="rtl" />
         </div>
         <div className="col-span-6">
           <Label className="text-xs font-medium mb-1 block">
             Relationship <span className="text-destructive">*</span>
           </Label>
-          <ERPCombobox
+          <ERPCombobox ariaLabel="Relationship"
             value={form.relationship_type_id}
             onValueChange={(v) => setForm((p) => ({ ...p, relationship_type_id: v == null ? null : Number(v) }))}
             options={relTypeOptions}
@@ -560,7 +567,7 @@ function DependentReview({
         </div>
         <div className="col-span-6">
           <Label className="text-xs font-medium mb-1 block">Date of Birth</Label>
-          <Input type="date" value={form.date_of_birth} onChange={(e) => setForm((p) => ({ ...p, date_of_birth: e.target.value }))} className="h-8 text-sm" />
+          <Input aria-label="Date of Birth" type="date" value={form.date_of_birth} onChange={(e) => setForm((p) => ({ ...p, date_of_birth: e.target.value }))} className="h-8 text-sm" />
         </div>
         <div className="col-span-6">
           <Label className="text-xs font-medium mb-1 block">Nationality</Label>
@@ -568,31 +575,31 @@ function DependentReview({
         </div>
         <div className="col-span-6">
           <Label className="text-xs font-medium mb-1 block">Passport Number</Label>
-          <Input value={form.passport_number} onChange={(e) => setForm((p) => ({ ...p, passport_number: e.target.value }))} className="h-8 text-sm" />
+          <Input aria-label="Passport Number" value={form.passport_number} onChange={(e) => setForm((p) => ({ ...p, passport_number: e.target.value }))} className="h-8 text-sm" />
         </div>
         <div className="col-span-6">
           <Label className="text-xs font-medium mb-1 block">Passport Expiry</Label>
-          <Input type="date" value={form.passport_expiry} onChange={(e) => setForm((p) => ({ ...p, passport_expiry: e.target.value }))} className="h-8 text-sm" />
+          <Input aria-label="Passport Expiry" type="date" value={form.passport_expiry} onChange={(e) => setForm((p) => ({ ...p, passport_expiry: e.target.value }))} className="h-8 text-sm" />
         </div>
         <div className="col-span-6">
           <Label className="text-xs font-medium mb-1 block">Emirates ID</Label>
-          <Input value={form.emirates_id_number} onChange={(e) => setForm((p) => ({ ...p, emirates_id_number: e.target.value }))} className="h-8 text-sm" />
+          <Input aria-label="Emirates ID" value={form.emirates_id_number} onChange={(e) => setForm((p) => ({ ...p, emirates_id_number: e.target.value }))} className="h-8 text-sm" />
         </div>
         <div className="col-span-6">
           <Label className="text-xs font-medium mb-1 block">EID Expiry</Label>
-          <Input type="date" value={form.emirates_id_expiry} onChange={(e) => setForm((p) => ({ ...p, emirates_id_expiry: e.target.value }))} className="h-8 text-sm" />
+          <Input aria-label="EID Expiry" type="date" value={form.emirates_id_expiry} onChange={(e) => setForm((p) => ({ ...p, emirates_id_expiry: e.target.value }))} className="h-8 text-sm" />
         </div>
         <div className="col-span-6">
           <Label className="text-xs font-medium mb-1 block">Residence Visa No.</Label>
-          <Input value={form.residence_visa_number} onChange={(e) => setForm((p) => ({ ...p, residence_visa_number: e.target.value }))} className="h-8 text-sm" />
+          <Input aria-label="Residence Visa No." value={form.residence_visa_number} onChange={(e) => setForm((p) => ({ ...p, residence_visa_number: e.target.value }))} className="h-8 text-sm" />
         </div>
         <div className="col-span-6">
           <Label className="text-xs font-medium mb-1 block">Visa Expiry</Label>
-          <Input type="date" value={form.residence_visa_expiry} onChange={(e) => setForm((p) => ({ ...p, residence_visa_expiry: e.target.value }))} className="h-8 text-sm" />
+          <Input aria-label="Visa Expiry" type="date" value={form.residence_visa_expiry} onChange={(e) => setForm((p) => ({ ...p, residence_visa_expiry: e.target.value }))} className="h-8 text-sm" />
         </div>
         <div className="col-span-12">
           <Label className="text-xs font-medium mb-1 block">Notes</Label>
-          <Input value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="h-8 text-sm" />
+          <Input aria-label="Notes" value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="h-8 text-sm" />
         </div>
       </div>
 
@@ -602,7 +609,7 @@ function DependentReview({
           {isSubmitting ? "Saving..." : "Save Dependent"}
         </Button>
       </div>
-    </div>
+    </div></QueryReadBoundary>
   );
 }
 

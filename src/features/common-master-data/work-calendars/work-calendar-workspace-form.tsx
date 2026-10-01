@@ -1,6 +1,9 @@
 "use client";
+import { ValidatedTaskForm } from "@/components/workspace/validated-task-form";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import type { ColumnDef } from "@tanstack/react-table";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -8,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Calendar, Clock, PlusCircle, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+
 import type { AuthContext } from "@/lib/rbac/check";
 import { useWorkspaceFormNavigation as useWorkspace } from "@/hooks/use-workspace-form-navigation";
 import { useWorkspaceFormSection } from "@/hooks/use-workspace-form-section";
@@ -19,7 +22,7 @@ import { RequiredLabel } from "@/components/erp/required-label";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/query-keys";
 import type { WorkCalendarRow } from "@/server/actions/common-master-data/work-calendars";
-import { createWorkCalendar, updateWorkCalendar, createWorkShift, updateWorkShift, softDeleteWorkShift } from "@/server/actions/common-master-data/work-calendars";
+import { createWorkCalendar, updateWorkCalendar, createWorkShift, updateWorkShift, softDeleteWorkShift, getWorkCalendarById } from "@/server/actions/common-master-data/work-calendars";
 
 const DAYS = ['mon','tue','wed','thu','fri','sat','sun'];
 const CAL_TYPES = ['standard','ramadan','summer','project','custom'];
@@ -44,6 +47,9 @@ export function WorkCalendarWorkspaceForm({ calendar, mode, companies = [] }: Pr
   const [workingDays, setWorkingDays] = useState<string[]>(calendar?.working_days ?? ['mon','tue','wed','thu','fri']);
   const [shiftDialog, setShiftDialog] = useState<{ open: boolean; editing: Record<string, unknown> | null }>({ open: false, editing: null });
   const [shiftSaving, setShiftSaving] = useState(false);
+  const [shiftError, setShiftError] = useState<string | null>(null);
+  const [removingShift, setRemovingShift] = useState(false);
+  const removeFlight = useRef(false);
   const isEditing = mode === "edit";
   const isViewing = mode === "view";
   const disabled = isViewing;
@@ -54,14 +60,16 @@ export function WorkCalendarWorkspaceForm({ calendar, mode, companies = [] }: Pr
   const { getDraftDefault, syncDraft, clearDraft } = useWorkspaceFormDraft({ formId: FORM_ID, enabled: !isViewing });
   const queryClient = useQueryClient();
 
-  const { data: shifts } = useQuery({
+  const { data: shifts, error: shiftsLoadError, isFetching: shiftsLoading, refetch: reloadShifts } = useQuery({
     queryKey: queryKeys.commonMd.workShifts(calendarId),
     queryFn: async () => {
-      if (!calendarId) return calendar?.shifts ?? [];
-      return calendar?.shifts ?? [];
+      if (!calendarId) return [];
+      const result = await getWorkCalendarById(calendarId);
+      if (!result.success || !result.data) throw new Error("Work shifts could not be loaded.");
+      return result.data.shifts ?? [];
     },
     enabled: !!calendarId && activeSection === "shifts",
-    initialData: calendar?.shifts ?? [],
+    initialData: calendar?.shifts,
   });
 
 
@@ -99,7 +107,8 @@ export function WorkCalendarWorkspaceForm({ calendar, mode, companies = [] }: Pr
   const handleSaveAndClose = async () => { const ok = await handleSave(); if (ok) forceCloseActiveTab(); };
 
   const handleSaveShift = async (fd: FormData) => {
-    if (!calendarId) { toast.error("Save calendar first"); return; }
+    if (!calendarId || isViewing) throw new Error("Shift changes are unavailable.");
+    setShiftError(null);
     setShiftSaving(true);
     try {
       const data = {
@@ -117,12 +126,29 @@ export function WorkCalendarWorkspaceForm({ calendar, mode, companies = [] }: Pr
       const result = shiftDialog.editing
         ? await updateWorkShift({ ...data, id: Number(shiftDialog.editing.id) })
         : await createWorkShift(data);
-      if (!result.success) { toast.error(result.error ?? "Failed to save shift"); return; }
+      if (!result.success) throw new Error("The shift was not saved. Check your entries and access, then try again.");
       toast.success("Shift saved");
       setShiftDialog({ open: false, editing: null });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.commonMd.workShifts(calendarId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.commonMd.workShifts(calendarId) });
     } finally { setShiftSaving(false); }
   };
+
+  const handleRemoveShift = async (id: number) => {
+    if (isViewing || removeFlight.current || !confirm("Remove shift?")) return;
+    removeFlight.current = true;
+    setRemovingShift(true);
+    setShiftError(null);
+    try {
+      const result = await softDeleteWorkShift(id, calendarId);
+      if (!result.success) { setShiftError("The shift was not removed. Check your access and try again."); return; }
+      await queryClient.invalidateQueries({ queryKey: queryKeys.commonMd.workShifts(calendarId) });
+    } catch { setShiftError("Removal could not be confirmed. Refresh the shift list before retrying."); }
+    finally { removeFlight.current = false; setRemovingShift(false); }
+  };
+
+  const shiftColumns: ColumnDef<NonNullable<WorkCalendarRow["shifts"]>[number]>[] = [
+{accessorKey:"shift_name",header:"Shift"},{accessorKey:"shift_code",header:"Code"}, {accessorKey:"shift_start_time",header:"Start"}, {accessorKey:"shift_end_time",header:"End"}, {accessorKey:"is_overnight",header:"Overnight"}, {accessorKey:"is_active",header:"Active"},
+{id:"actions",header:"Actions",enableSorting:false,enableHiding:false,cell:({row})=>disabled?null:<div className="flex"><Button type="button" disabled={removingShift || shiftSaving} aria-label="Edit shift" variant="ghost" onClick={()=>setShiftDialog({open:true,editing:row.original as unknown as Record<string,unknown>})}><Pencil className="h-4 w-4"/></Button><Button type="button" disabled={removingShift || shiftSaving} aria-label="Remove shift" variant="ghost" onClick={()=>void handleRemoveShift(row.original.id)}><Trash2 className="h-4 w-4"/></Button></div>}];
 
   const toggleDay = (day: string) => {
     setWorkingDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]);
@@ -171,7 +197,7 @@ export function WorkCalendarWorkspaceForm({ calendar, mode, companies = [] }: Pr
               <Label className="text-muted-foreground text-xs">Working Days</Label>
               <div className="flex gap-2 flex-wrap">
                 {DAYS.map(day => (
-                  <button key={day} type="button" onClick={() => !disabled && toggleDay(day)}
+                  <button key={day} type="button" aria-pressed={workingDays.includes(day)} disabled={disabled} onClick={() => !disabled && toggleDay(day)}
                     className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${workingDays.includes(day) ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground border-input"} ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}>
                     {day.toUpperCase()}
                   </button>
@@ -218,32 +244,11 @@ export function WorkCalendarWorkspaceForm({ calendar, mode, companies = [] }: Pr
                 </Button>
               </div>
             )}
-            {(shifts ?? []).filter(s => !s.deleted_at).length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">No shifts defined yet.</p>
-            ) : (
-              <div className="divide-y border rounded-md">
-                {(shifts ?? []).filter(s => !s.deleted_at).map(s => (
-                  <div key={s.id} className="flex items-center justify-between px-4 py-3">
-                    <div>
-                      <div className="flex items-center gap-2 text-sm font-medium">
-                        {s.shift_name}
-                        <Badge variant="outline" className="text-[10px]">{s.shift_code}</Badge>
-                        {!s.is_active && <Badge variant="destructive" className="text-[10px]">Inactive</Badge>}
-                      </div>
-                      <p className="text-xs text-muted-foreground">{s.shift_start_time} — {s.shift_end_time}{s.is_overnight ? " (Overnight)" : ""}</p>
-                    </div>
-                    {!disabled && (
-                      <div className="flex gap-1">
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setShiftDialog({ open: true, editing: s as unknown as Record<string, unknown> })}><Pencil className="h-3.5 w-3.5" /></Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={async () => { if (!confirm("Remove shift?")) return; await softDeleteWorkShift(s.id, calendarId); queryClient.invalidateQueries({ queryKey: queryKeys.commonMd.workShifts(calendarId) }); }}><Trash2 className="h-3.5 w-3.5" /></Button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+            {shiftsLoadError && <div role="alert" className="text-sm text-destructive">Work shifts could not be refreshed. Previously loaded rows may be out of date. <Button type="button" variant="outline" size="sm" disabled={shiftsLoading} onClick={()=>void reloadShifts()}>Retry shifts</Button></div>}
+            {shiftError && <p role="alert" className="text-sm text-destructive">{shiftError}</p>}
+            <ERPDataTable tableId={`calendar.shifts:${calendarId}`} resultsLabel="Work shifts" data={(shifts ?? []).filter(s=>!s.deleted_at)} columns={shiftColumns} enableRowSelection={false}/>
             {shiftDialog.open && (
-              <form onSubmit={async (e) => { e.preventDefault(); await handleSaveShift(new FormData(e.currentTarget)); }} className="mt-4 border rounded-md p-4 space-y-3 bg-muted/30">
+              <ValidatedTaskForm key={String(shiftDialog.editing?.id ?? "new")} onSubmit={handleSaveShift} className="mt-4 border rounded-md p-4 space-y-3 bg-muted/30">
                 <p className="text-sm font-medium">{shiftDialog.editing ? "Edit Shift" : "Add Shift"}</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1"><Label htmlFor="s_code" className="text-xs">Shift Code *</Label><Input id="s_code" name="shift_code" defaultValue={(shiftDialog.editing?.shift_code as string) ?? ""} required /></div>
@@ -259,7 +264,7 @@ export function WorkCalendarWorkspaceForm({ calendar, mode, companies = [] }: Pr
                   <Button type="button" size="sm" variant="ghost" onClick={() => setShiftDialog({ open: false, editing: null })}>Cancel</Button>
                   <Button type="submit" size="sm" disabled={shiftSaving}>{shiftSaving ? "Saving..." : "Save Shift"}</Button>
                 </div>
-              </form>
+              </ValidatedTaskForm>
             )}
           </div>
         )}

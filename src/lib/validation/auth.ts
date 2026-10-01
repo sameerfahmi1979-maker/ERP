@@ -30,7 +30,7 @@ export const signupSchema = z.object({
 export const changePasswordSchema = z
   .object({
     password: passwordPolicySchema,
-    confirmPassword: z.string(),
+    confirmPassword: z.string().min(1, "Confirm your new password"),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords do not match",

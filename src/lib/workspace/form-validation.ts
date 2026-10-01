@@ -22,7 +22,7 @@ export function resolveWorkspaceFieldIssues(form: HTMLFormElement, errors: Recor
 /** Read validity without reportValidity(): hidden section fields must be revealed first. */
 export function collectWorkspaceFieldIssues(form: HTMLFormElement | HTMLElement): WorkspaceFieldIssue[] {
   const controls = form instanceof HTMLFormElement ? form.elements : form.querySelectorAll("input,select,textarea");
-  return Array.from(controls).flatMap(control => {
+  const nativeIssues: WorkspaceFieldIssue[] = Array.from(controls).flatMap(control => {
     if (!(control instanceof HTMLInputElement || control instanceof HTMLSelectElement || control instanceof HTMLTextAreaElement)) return [];
     if (!control.willValidate || control.validity.valid) return [];
     const label = control.labels?.[0]?.textContent?.replace(/\s*\*\s*$/, "").trim()
@@ -40,4 +40,9 @@ export function collectWorkspaceFieldIssues(form: HTMLFormElement | HTMLElement)
     return [{ control, label, message,
       section: control.closest<HTMLElement>("[data-workspace-section]")?.dataset.workspaceSection ?? null }];
   });
+  const customIssues: WorkspaceFieldIssue[] = Array.from(form.querySelectorAll<HTMLElement>('[data-workspace-required="true"][data-workspace-empty="true"]'))
+    .filter(control => control.getAttribute("aria-disabled") !== "true" && !control.matches(":disabled"))
+    .map(control => ({control, label:control.getAttribute("aria-label") || control.dataset.workspaceField?.replaceAll("_", " ") || "Field",
+      message:"This field is required.", section:control.closest<HTMLElement>("[data-workspace-section]")?.dataset.workspaceSection ?? null}));
+  return [...nativeIssues, ...customIssues].sort((a,b) => !a.control || !b.control ? 0 : a.control.compareDocumentPosition(b.control) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
 }

@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
@@ -47,7 +48,8 @@ export type DmsMetadataValueRow = {
 
 export async function getMetadataDefinitionsForType(
   documentTypeId: number,
-  context: "all" | "intake" = "intake"
+  context: "all" | "intake" | "detail" = "intake",
+  documentId?: number,
 ): Promise<ActionResult<DmsMetadataDefinitionRow[]>> {
   try {
     const ctx = await getAuthContext();
@@ -56,7 +58,17 @@ export async function getMetadataDefinitionsForType(
     }
 
     const supabase = await createClient();
-    const { data, error } = await supabase
+    // Type configuration has global-admin policies. An existing authorized
+    // document may hydrate its own definitions without granting catalog access.
+    let reader = supabase;
+    if (documentId !== undefined) {
+      if (!Number.isSafeInteger(documentId) || documentId <= 0) return { success: false, error: "Document unavailable" };
+      const { data: document, error: documentError } = await supabase.from("dms_documents")
+        .select("id,document_type_id").eq("id", documentId).is("deleted_at", null).maybeSingle();
+      if (documentError || !document || document.document_type_id !== documentTypeId) return { success: false, error: "Document unavailable" };
+      reader = createAdminClient();
+    }
+    const { data, error } = await reader
       .from("dms_metadata_definitions")
       .select(DMS_METADATA_DEFINITION_SELECT)
       .eq("document_type_id", documentTypeId)
@@ -69,7 +81,7 @@ export async function getMetadataDefinitionsForType(
     const mapped = (data ?? []).map((row) =>
       mapMetadataDefinitionRow(row as Record<string, unknown>)
     );
-    const filtered = filterMetadataDefinitionsByContext(mapped, context === "intake" ? "intake" : "all");
+    const filtered = context === "detail" ? mapped.filter(row => row.show_in_detail) : filterMetadataDefinitionsByContext(mapped, context === "intake" ? "intake" : "all");
 
     return { success: true, data: filtered };
   } catch (err) {

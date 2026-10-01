@@ -48,7 +48,7 @@ export function DataQualitySummaryCards({ summary }: Props) {
           key={card.label}
           className={`rounded-lg border p-4 ${card.bg}`}
         >
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-sm text-muted-foreground">{card.label}</span>
             {card.icon}
           </div>

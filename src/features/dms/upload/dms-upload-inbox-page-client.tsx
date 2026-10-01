@@ -605,7 +605,7 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
               <Bot className="h-3.5 w-3.5 mr-1.5" />
               Upload &amp; AI Fill
             </Button>
-            <Button
+            <Button aria-label="Run &quot;Upload & AI Fill&quot; first — attaching as a version now requires AI review"
               variant="outline"
               size="sm"
               disabled

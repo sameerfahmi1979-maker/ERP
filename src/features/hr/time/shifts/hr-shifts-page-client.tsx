@@ -1,4 +1,6 @@
 "use client";
+import { RecordCollection } from "@/components/erp/table/record-collection";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,22 +31,23 @@ export function HrShiftsPageClient({ initialRows, initialCount, authContext: _au
 
   const params = { page, page_size: pageSize };
 
-  const { data, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.time.globalShiftAssignments(params),
     queryFn: async () => {
       const r = await listGlobalShiftAssignments(params);
-      return r.success && r.data ? r.data : { data: initialRows, count: initialCount };
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success && r.data ? r.data : { data: initialRows, count: initialCount };
     },
     initialData: { data: initialRows, count: initialCount },
     staleTime: 30_000,
   });
+  const { data, isLoading } = uiRead1;
 
   const rows = data?.data ?? [];
   const totalCount = data?.count ?? 0;
   const totalPages = Math.ceil(totalCount / pageSize);
 
   return (
-    <div className="space-y-4">
+    <QueryReadBoundary queries={[uiRead1]}><div className="space-y-4">
       <p className="text-xs text-muted-foreground">{totalCount} assignments</p>
 
       {isLoading ? (
@@ -61,7 +64,7 @@ export function HrShiftsPageClient({ initialRows, initialCount, authContext: _au
             <span className="col-span-1">OT</span>
             <span className="col-span-1 text-right">Link</span>
           </div>
-          {rows.map((row) => (
+          <RecordCollection id="hr.hr-shifts-page-client.HrShiftsPageClient.rows" rows={rows} fields={[{"id":"work_shift_shift_name","path":"work_shift.shift_name","label":"Shift Name"},{"id":"effective_from","path":"effective_from","label":"Effective From"},{"id":"effective_to","path":"effective_to","label":"Effective To"}]} renderRecord={(row) => (
             <div key={row.id} className="px-4 py-2.5 grid grid-cols-12 items-center text-sm gap-2">
               <span className="col-span-2 text-xs text-muted-foreground">EMP-{row.employee_id}</span>
               <span className="col-span-3 font-medium">{row.work_shift?.shift_name ?? "—"}</span>
@@ -72,13 +75,13 @@ export function HrShiftsPageClient({ initialRows, initialCount, authContext: _au
               </span>
               <div className="col-span-1 flex justify-end">
                 <Link href={`/admin/hr/employees/record/${row.employee_id}?section=time`}>
-                  <Button size="sm" variant="ghost" className="h-7 px-2">
+                  <Button aria-label="Open record" size="sm" variant="ghost" className="h-7 px-2">
                     <ExternalLink className="h-3.5 w-3.5" />
                   </Button>
                 </Link>
               </div>
             </div>
-          ))}
+          )} />
         </div>
       )}
 
@@ -89,6 +92,6 @@ export function HrShiftsPageClient({ initialRows, initialCount, authContext: _au
           <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Next</Button>
         </div>
       )}
-    </div>
+    </div></QueryReadBoundary>
   );
 }

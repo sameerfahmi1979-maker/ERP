@@ -48,7 +48,7 @@ export type DmsUploadSessionRow = {
   ai_result_id: number | null;
   // joined
   duplicate_document?: { id: number; document_no: string; title: string } | null;
-  uploader?: { full_name: string | null; email: string | null } | null;
+  uploader?: { full_name: string | null } | null;
 };
 
 export type DmsUploadSessionFilters = {
@@ -100,7 +100,7 @@ export async function getDmsUploadSessions(
          temp_cleaned_at, cleanup_error_message, intake_status, ai_result_id,
          created_at, updated_at, deleted_at,
          duplicate_document:dms_documents!duplicate_document_id(id, document_no, title),
-         uploader:user_profiles!uploaded_by(full_name, email)`
+         uploader:user_profiles!uploaded_by(full_name)`
       )
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
@@ -145,7 +145,7 @@ export async function getDmsUploadSession(
          intake_status, ai_result_id,
          created_at, updated_at, deleted_at,
          duplicate_document:dms_documents!duplicate_document_id(id, document_no, title),
-         uploader:user_profiles!uploaded_by(full_name, email)`
+         uploader:user_profiles!uploaded_by(full_name)`
       )
       .eq("id", id)
       .is("deleted_at", null)

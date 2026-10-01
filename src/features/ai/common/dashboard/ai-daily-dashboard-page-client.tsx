@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { RefreshCw, LayoutDashboard, ShieldAlert } from "lucide-react";
 import type { DailyDashboardScope, DailyDashboardSummary } from "@/lib/ai/common/dashboard/types";
 import { getAiDailyDashboard } from "@/server/actions/ai/common/dashboard";
@@ -20,21 +20,25 @@ export function AiDailyDashboardPageClient({ initialData }: Props) {
   const [data, setData] = useState<DailyDashboardSummary | null>(initialData);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const latest = useRef(0);
 
   const load = useCallback(async (newScope: DailyDashboardScope) => {
+    const request = ++latest.current;
     setLoading(true);
     setError(null);
+    setData(null);
     try {
       const result = await getAiDailyDashboard({ scope: newScope });
+      if (request !== latest.current) return;
       if (result.success && result.data) {
         setData(result.data);
       } else {
-        setError(result.error ?? "Failed to load dashboard.");
+        setError("Dashboard could not be loaded. Use Refresh to try again.");
       }
-    } catch (err) {
-      setError(String(err));
+    } catch {
+      if (request === latest.current) setError("Dashboard could not be loaded. Use Refresh to try again.");
     } finally {
-      setLoading(false);
+      if (request === latest.current) setLoading(false);
     }
   }, []);
 
@@ -95,7 +99,7 @@ export function AiDailyDashboardPageClient({ initialData }: Props) {
 
       {/* Error */}
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-800 p-3 text-sm text-red-700 dark:text-red-400">
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-800 p-3 text-sm text-red-700 dark:text-red-400">
           {error}
         </div>
       )}

@@ -977,7 +977,7 @@ export async function listEmployeeApprovalRequests(
   const supabase = await createClient();
   let query = supabase
     .from("employee_approval_requests")
-    .select("*, approval_role:approval_roles(name), requested_by_profile:user_profiles!requested_by(display_name)")
+    .select("*, approval_role:approval_roles(name:role_name), requested_by_profile:user_profiles!requested_by(display_name)")
     .eq("employee_id", employeeId)
     .is("deleted_at", null)
     .order("requested_at", { ascending: false });
@@ -993,7 +993,7 @@ export async function listGlobalApprovalRequests(params?: Record<string, unknown
   const admin = await createClient();
   let query = admin
     .from("employee_approval_requests")
-    .select("*, approval_role:approval_roles(name), requested_by_profile:user_profiles!requested_by(display_name)")
+    .select("*, approval_role:approval_roles(name:role_name), requested_by_profile:user_profiles!requested_by(display_name)")
     .is("deleted_at", null)
     .order("requested_at", { ascending: false });
   if (params?.status) query = query.eq("request_status", params.status as string);

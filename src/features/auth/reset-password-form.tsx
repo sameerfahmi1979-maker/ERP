@@ -9,6 +9,7 @@ import { resetPasswordSchema } from "@/lib/validation/auth";
 import { recordPasswordResetCompleted } from "@/server/actions/users/account-security";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ControlledFormFeedback } from "@/components/workspace/controlled-form-feedback";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { PasswordReverification } from "./password-reverification";
 import {
@@ -23,6 +24,8 @@ type ResetInput = { password: string; confirmPassword: string };
 
 export function ResetPasswordForm({ flow = "recovery" }: { flow?: "invite" | "recovery" }) {
   const invitation = flow === "invite";
+  const flight = useRef(false);
+  const [serviceError, setServiceError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [needsVerification, setNeedsVerification] = useState(false);
   const operationId = useRef<string | null>(null);
@@ -34,6 +37,9 @@ export function ResetPasswordForm({ flow = "recovery" }: { flow?: "invite" | "re
   } = useForm<ResetInput>({ resolver: zodResolver(resetPasswordSchema) });
 
   const onSubmit = async (values: ResetInput) => {
+    if (flight.current) return;
+    flight.current = true;
+    setServiceError(null);
     setLoading(true);
     try {
       operationId.current ??= crypto.randomUUID();
@@ -41,14 +47,17 @@ export function ResetPasswordForm({ flow = "recovery" }: { flow?: "invite" | "re
       if (!result.success) {
         if (result.canStartNewAttempt) operationId.current = null;
         if (result.requiresFreshSignIn) { reset(); setNeedsVerification(true); return; }
+        setServiceError(result.error ?? "Password change could not complete.");
         toast.error(result.error ?? "Password change could not complete.");
         return;
       }
       toast.success(invitation ? "Password created. Your account setup is complete." : "Password updated");
       navigateAfterIdentityChange("/dashboard");
     } catch {
-      toast.error("The request was interrupted. Please sign in again before trying another password change.");
+      setServiceError("The request was interrupted. Please sign in again before trying another password change.");
+        toast.error("The request was interrupted. Please sign in again before trying another password change.");
     } finally {
+      flight.current = false;
       setLoading(false);
     }
   };
@@ -65,7 +74,8 @@ export function ResetPasswordForm({ flow = "recovery" }: { flow?: "invite" | "re
           {" Common or previously exposed passwords may be rejected. Finish in this browser within 15 minutes of verification."}
         </CardDescription>
       </CardHeader>
-      <form onSubmit={(event) => void handleSubmit(onSubmit)(event)}>
+      <form noValidate onSubmit={(event) => void handleSubmit(onSubmit)(event)}>
+        <div className="px-6"><ControlledFormFeedback errors={errors} labels={{ password: "New password", confirmPassword: "Confirm password" }} action="continuing" />{serviceError && <p role="alert" className="mb-4 text-sm text-destructive">{serviceError}</p>}</div>
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <RequiredLabel htmlFor="password" required>New password</RequiredLabel>
@@ -76,9 +86,6 @@ export function ResetPasswordForm({ flow = "recovery" }: { flow?: "invite" | "re
               required
               {...register("password")}
             />
-            {errors.password ? (
-              <p className="text-sm text-destructive">{errors.password.message}</p>
-            ) : null}
           </div>
           <div className="flex flex-col gap-2">
             <RequiredLabel htmlFor="confirmPassword" required>Confirm password</RequiredLabel>
@@ -89,9 +96,6 @@ export function ResetPasswordForm({ flow = "recovery" }: { flow?: "invite" | "re
               required
               {...register("confirmPassword")}
             />
-            {errors.confirmPassword ? (
-              <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>
-            ) : null}
           </div>
           <Button type="submit" disabled={loading}>
             {loading ? (invitation ? "Creating..." : "Updating...") : invitation ? "Create password" : "Update password"}

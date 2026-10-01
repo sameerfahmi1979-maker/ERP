@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { LoadError } from "@/components/erp/load-error";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { getAiDailyDashboard, isAiDailyDashboardEnabled } from "@/server/actions/ai/common/dashboard";
 import { AiDailyDashboardPageClient } from "@/features/ai/common/dashboard";
@@ -36,6 +37,7 @@ export default async function AiDailyDashboardPage() {
   }
 
   const result = await getAiDailyDashboard({ scope: "today" });
+  if (!result.success || !result.data) return <LoadError title="AI dashboard" retryHref="/admin/ai/dashboard" />;
   const initialData = result.success && result.data ? result.data : null;
 
   return <AiDailyDashboardPageClient initialData={initialData} />;

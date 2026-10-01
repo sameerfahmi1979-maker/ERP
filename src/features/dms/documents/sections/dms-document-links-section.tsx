@@ -1,6 +1,10 @@
 "use client";
 
+import { DmsListTools, useDmsListView, type DmsListField } from "@/features/dms/dms-list-view";
+import { ConfiguredRow } from "@/components/erp/table/list-controls";
+
 import { useState } from "react";
+import { DmsLoadError } from "@/features/dms/dms-load-error";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { format, parseISO } from "date-fns";
@@ -39,6 +43,61 @@ interface DmsDocumentLinksSectionProps {
   isViewing: boolean;
 }
 
+const DMS_FIELDS: DmsListField[] = [
+  {
+    "id": "type",
+    "label": "Entity type",
+    "path": "entity_type_label",
+    "type": "text",
+    "width": 160
+  },
+  {
+    "id": "entity",
+    "label": "Entity",
+    "path": "entity_display_name",
+    "type": "text",
+    "width": 240,
+    "required": true
+  },
+  {
+    "id": "role",
+    "label": "Role",
+    "path": "link_role",
+    "type": "text",
+    "width": 160
+  },
+  {
+    "id": "primary",
+    "label": "Primary",
+    "path": "is_primary",
+    "type": "select",
+    "width": 160,
+    "options": [
+      {
+        "value": "true",
+        "label": "Yes"
+      },
+      {
+        "value": "false",
+        "label": "No"
+      }
+    ]
+  },
+  {
+    "id": "linked",
+    "label": "Linked",
+    "path": "linked_at",
+    "type": "date",
+    "width": 160
+  },
+  {
+    "id": "actions",
+    "label": "Actions",
+    "type": "text",
+    "width": 160
+  }
+];
+
 export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLinksSectionProps) {
   const qc = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
@@ -56,12 +115,14 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
   const [editEntityId, setEditEntityId] = useState<number | null>(null);
   const [editLinkRole, setEditLinkRole] = useState("");
   const [editIsPrimary, setEditIsPrimary] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const { data: links = [], isLoading } = useQuery({
+  const { data: links = [], isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: queryKeys.dms.documentLinks(documentId ?? 0),
     queryFn: async () => {
       if (!documentId) return [];
       const r = await getDmsDocumentLinks(documentId);
+      if (!r.success) throw new Error("Could not load document links");
       return r.data ?? [];
     },
     enabled: !!documentId,
@@ -79,6 +140,7 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
     staleTime: 30 * 1000,
   });
 
+  const listView = useDmsListView(`document-links:${documentId}`, links, DMS_FIELDS.filter(field => field.id !== "actions" || !isViewing));
   const pendingLinkSuggestions = linkSuggestions.filter((s) => s.status === "pending");
 
   async function handleSuggestLinks() {
@@ -136,8 +198,9 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
 
   async function handleAdd() {
     if (!documentId) return;
+    setActionError(null);
     if (!entityId || entityId <= 0) {
-      toast.error("Please select an entity");
+      setActionError("Please select an entity before adding the link.");
       return;
     }
     setAdding(true);
@@ -156,8 +219,10 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
         setIsPrimary(false);
         qc.invalidateQueries({ queryKey: queryKeys.dms.documentLinks(documentId) });
       } else {
-        toast.error(result.error ?? "Failed to add link");
+        setActionError("The link was not added. Check the selected entity and your access.");
       }
+    } catch {
+      setActionError("The save could not be confirmed. Your entries remain here. Check the links before retrying.");
     } finally {
       setAdding(false);
     }
@@ -191,6 +256,7 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
 
   async function handleSaveEdit() {
     if (!documentId || !editingLink) return;
+    setActionError(null);
     if (!editEntityId || editEntityId <= 0) {
       toast.error("Please select an entity");
       return;
@@ -208,8 +274,10 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
         closeEditLink();
         qc.invalidateQueries({ queryKey: queryKeys.dms.documentLinks(documentId) });
       } else {
-        toast.error(result.error ?? "Failed to update link");
+        setActionError("The link was not updated. Check the selected entity and your access.");
       }
+    } catch {
+      setActionError("The save could not be confirmed. Your entries remain here. Check the links before retrying.");
     } finally {
       setEditSaving(false);
     }
@@ -223,6 +291,7 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
     );
   }
 
+  if (isError) return <DmsLoadError subject="document links" retry={() => refetch()} pending={isFetching} />;
   if (isLoading) {
     return (
       <div className="flex items-center gap-2 py-4 text-muted-foreground text-sm">
@@ -233,43 +302,45 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
 
   return (
     <div className="space-y-3">
-      {links.length === 0 ? (
+      {actionError && !editingLink && !showAdd && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
+      <DmsListTools view={listView} search />
+      {listView.rows.length === 0 ? (
         <div className="flex flex-col items-center gap-2 py-6 text-muted-foreground">
           <Link2 className="h-6 w-6 opacity-40" />
-          <p className="text-sm">No entity links yet</p>
+          <p className="text-sm">{links.length ? "No links match your filters." : "No entity links yet"}</p>
         </div>
       ) : (
         <div className="rounded-md border border-border overflow-hidden">
-          <table className="w-full text-xs">
+          <div role="region" aria-label="document-links table" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{ minWidth: listView.visible.reduce((sum, column) => sum + column.width, 0) }}><colgroup>{listView.visible.map(column => <col key={column.id} style={{ width: column.width }} />)}</colgroup>
             <thead>
-              <tr className="border-b border-border bg-muted/20">
-                <th className="text-left px-3 py-2 font-medium text-muted-foreground">Entity Type</th>
-                <th className="text-left px-3 py-2 font-medium text-muted-foreground">Entity</th>
-                <th className="text-left px-3 py-2 font-medium text-muted-foreground">Role</th>
-                <th className="text-left px-3 py-2 font-medium text-muted-foreground">Primary</th>
-                <th className="text-left px-3 py-2 font-medium text-muted-foreground">Linked</th>
-                {!isViewing && <th className="px-3 py-2 w-[80px]" />}
-              </tr>
+              <ConfiguredRow columns={listView.columns} className="border-b border-border bg-muted/20">
+                <th data-column="type" className="text-left px-3 py-2 font-medium text-muted-foreground">Entity Type</th>
+                <th data-column="entity" className="text-left px-3 py-2 font-medium text-muted-foreground">Entity</th>
+                <th data-column="role" className="text-left px-3 py-2 font-medium text-muted-foreground">Role</th>
+                <th data-column="primary" className="text-left px-3 py-2 font-medium text-muted-foreground">Primary</th>
+                <th data-column="linked" className="text-left px-3 py-2 font-medium text-muted-foreground">Linked</th>
+                {!isViewing && <th data-column="actions" className="px-3 py-2 w-[80px]" />}
+              </ConfiguredRow>
             </thead>
             <tbody>
-              {links.map((link) => (
-                <tr key={link.id} className="border-b border-border last:border-0">
-                  <td className="px-3 py-2 font-medium">
+              {listView.rows.map((link) => (
+                <ConfiguredRow columns={listView.columns} key={link.id} className="border-b border-border last:border-0">
+                  <td data-column="type" className="px-3 py-2 font-medium">
                     {link.entity_type_label}
                   </td>
-                  <td className="px-3 py-2">
+                  <td data-column="entity" className="px-3 py-2">
                     <div className="font-medium">{link.entity_display_name}</div>
                     <div className="text-[10px] text-muted-foreground font-mono">ID {link.entity_id}</div>
                   </td>
-                  <td className="px-3 py-2 text-muted-foreground">{link.link_role ?? "—"}</td>
-                  <td className="px-3 py-2">{link.is_primary ? "✓" : "—"}</td>
-                  <td className="px-3 py-2 text-muted-foreground">
+                  <td data-column="role" className="px-3 py-2 text-muted-foreground">{link.link_role ?? "—"}</td>
+                  <td data-column="primary" className="px-3 py-2">{link.is_primary ? "✓" : "—"}</td>
+                  <td data-column="linked" className="px-3 py-2 text-muted-foreground">
                     {format(parseISO(link.linked_at), "dd MMM yyyy")}
                   </td>
                   {!isViewing && (
-                    <td className="px-3 py-2">
+                    <td data-column="actions" className="px-3 py-2">
                       <div className="flex items-center gap-0.5">
-                        <Button
+                        <Button aria-label="Edit link"
                           size="icon"
                           variant="ghost"
                           className="h-6 w-6"
@@ -278,7 +349,7 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
                         >
                           <Pencil className="h-3 w-3" />
                         </Button>
-                        <Button
+                        <Button aria-label="Remove link"
                           size="icon"
                           variant="ghost"
                           className="h-6 w-6 text-destructive hover:text-destructive"
@@ -290,15 +361,15 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
                       </div>
                     </td>
                   )}
-                </tr>
+                </ConfiguredRow>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
 
       {!isViewing && !showAdd && (
-        <Button size="sm" variant="outline" onClick={() => setShowAdd(true)} className="gap-1.5">
+        <Button size="sm" variant="outline" onClick={() => { setActionError(null); setShowAdd(true); }} className="gap-1.5">
           <Plus className="h-3.5 w-3.5" /> Add Link
         </Button>
       )}
@@ -360,7 +431,7 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
                   )}
                   <div className="flex gap-1 shrink-0">
                     {s.entityId !== null && (
-                      <Button
+                      <Button aria-label="Accept"
                         size="icon"
                         variant="ghost"
                         className="h-6 w-6 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
@@ -375,7 +446,7 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
                         )}
                       </Button>
                     )}
-                    <Button
+                    <Button aria-label="Reject"
                       size="icon"
                       variant="ghost"
                       className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
@@ -398,13 +469,16 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
       )}
 
       {!isViewing && showAdd && (
-        <div className="rounded-md border border-border p-4 space-y-3 bg-muted/10">
-          <p className="text-xs font-medium">Add Entity Link</p>
-          <div className="grid grid-cols-2 gap-3">
+        <ERPChildDialogForm open={showAdd} onOpenChange={(open) => {
+          setShowAdd(open);
+          if (!open) { setEntityType("employee"); setEntityId(null); setLinkRole(""); setIsPrimary(false); setActionError(null); }
+        }} title="Add Entity Link" mode="add" size="md" isSubmitting={adding} onSubmit={handleAdd} submitLabel="Add">
+          {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label className="text-xs">Entity Type</Label>
               <div className="mt-1">
-                <ERPCombobox
+                <ERPCombobox ariaLabel="Entity type" name="entity_type"
                   value={entityType}
                   onValueChange={(v) => {
                     setEntityType((v as string) ?? "employee");
@@ -429,7 +503,7 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
             </div>
             <div>
               <Label className="text-xs">Role (optional)</Label>
-              <Input
+              <Input aria-label="Role (optional)"
                 className="mt-1 h-8 text-xs"
                 value={linkRole}
                 onChange={(e) => setLinkRole(e.target.value)}
@@ -447,16 +521,7 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
               </label>
             </div>
           </div>
-          <div className="flex items-center gap-2 pt-1">
-            <Button size="sm" onClick={handleAdd} disabled={adding} className="gap-1.5">
-              {adding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-              Add
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setShowAdd(false)} disabled={adding}>
-              Cancel
-            </Button>
-          </div>
-        </div>
+        </ERPChildDialogForm>
       )}
 
       <ERPChildDialogForm
@@ -473,11 +538,12 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
         onSubmit={handleSaveEdit}
         submitLabel="Save"
       >
+        {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
         <div className="grid grid-cols-12 gap-4">
-          <div className="col-span-6">
+          <div className="col-span-12 sm:col-span-6">
             <Label className="text-xs">Entity Type</Label>
             <div className="mt-1">
-              <ERPCombobox
+              <ERPCombobox ariaLabel="Entity type" name="entity_type"
                 value={editEntityType}
                 onValueChange={(v) => {
                   setEditEntityType((v as string) ?? "employee");
@@ -489,7 +555,7 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
               />
             </div>
           </div>
-          <div className="col-span-6">
+          <div className="col-span-12 sm:col-span-6">
             <Label className="text-xs">Entity</Label>
             <div className="mt-1">
               <DmsLinkEntitySelect
@@ -510,16 +576,16 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
               />
             </div>
           </div>
-          <div className="col-span-6">
+          <div className="col-span-12 sm:col-span-6">
             <Label className="text-xs">Role (optional)</Label>
-            <Input
+            <Input aria-label="Role (optional)"
               className="mt-1 h-8 text-xs"
               value={editLinkRole}
               onChange={(e) => setEditLinkRole(e.target.value)}
               placeholder="e.g. primary, supporting"
             />
           </div>
-          <div className="col-span-6 flex items-end">
+          <div className="col-span-12 sm:col-span-6 flex items-end">
             <label className="flex items-center gap-1.5 text-xs pb-2">
               <input
                 type="checkbox"

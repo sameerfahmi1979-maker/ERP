@@ -1,3 +1,4 @@
+import { LoadError } from "@/components/erp/load-error";
 import { redirect } from "next/navigation";
 import { getAuthContext } from "@/lib/rbac/check";
 import { canBrowseEmployees } from "@/lib/rbac/employee-access";
@@ -20,6 +21,7 @@ export default async function EmployeesPage() {
   }
 
   const result = await listEmployees({ page: 1, pageSize: 25 });
+  if (!result.success) return <LoadError title="HR records" retryHref="/admin/hr/employees" />;
   const rows = result.success && result.data ? result.data.rows : [];
   const totalCount = result.success && result.data ? result.data.totalCount : 0;
 

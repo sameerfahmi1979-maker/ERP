@@ -328,7 +328,7 @@ export function DmsDocumentTagsSection({ documentId, isViewing }: DmsDocumentTag
                       </Badge>
                     )}
                     <div className="flex gap-1 shrink-0">
-                      <Button
+                      <Button aria-label={s.tagId === null ? "Create tag and apply" : "Accept"}
                         size="icon"
                         variant="ghost"
                         className="h-6 w-6 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
@@ -342,7 +342,7 @@ export function DmsDocumentTagsSection({ documentId, isViewing }: DmsDocumentTag
                           <Check className="h-3 w-3" />
                         )}
                       </Button>
-                      <Button
+                      <Button aria-label="Reject"
                         size="icon"
                         variant="ghost"
                         className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"

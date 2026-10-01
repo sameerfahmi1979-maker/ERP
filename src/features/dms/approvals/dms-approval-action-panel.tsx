@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { DmsLoadError } from "@/features/dms/dms-load-error";
 import { DmsApprovalStatusBadge } from "./dms-approval-status-badge";
 import { DmsApprovalHistorySection } from "./dms-approval-history-section";
 import {
@@ -40,8 +41,10 @@ export function DmsApprovalActionPanel({ documentId }: DmsApprovalActionPanelPro
 
   const historyQuery = useQuery({
     queryKey: ["dms", "approval-history", documentId] as const,
+    enabled: stateQuery.data?.canViewHistory === true,
     queryFn: async () => {
       const r = await getDocumentApprovalHistory(documentId);
+      if (!r.success) throw new Error("Approval history is unavailable");
       return r.data ?? [];
     },
     staleTime: 15_000,
@@ -67,9 +70,7 @@ export function DmsApprovalActionPanel({ documentId }: DmsApprovalActionPanelPro
       <div className="flex flex-col items-center gap-3 py-6 text-muted-foreground">
         <AlertCircle className="h-6 w-6 opacity-40" />
         <p className="text-sm text-center">
-          {stateQuery.error instanceof Error
-            ? stateQuery.error.message
-            : "Failed to load approval state."}
+          Approval details could not be loaded. Check your connection and access, then retry.
         </p>
         <Button size="sm" variant="outline" className="gap-1.5" onClick={() => stateQuery.refetch()}>
           <RefreshCw className="h-3.5 w-3.5" />
@@ -105,7 +106,7 @@ export function DmsApprovalActionPanel({ documentId }: DmsApprovalActionPanelPro
             <DmsApprovalStatusBadge status={state.approvalStatus as Parameters<typeof DmsApprovalStatusBadge>[0]["status"]} />
           </div>
 
-          <Button
+          <Button aria-label="Refresh"
             size="sm"
             variant="ghost"
             className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
@@ -154,6 +155,7 @@ export function DmsApprovalActionPanel({ documentId }: DmsApprovalActionPanelPro
         )}
 
         {/* Action buttons */}
+        {state.actionUnavailableReason && <p role="status" className="text-sm text-muted-foreground">{state.actionUnavailableReason}</p>}
         <div className="flex flex-wrap gap-2 pt-1">
           {state.canSubmit && (
             <Button
@@ -223,7 +225,7 @@ export function DmsApprovalActionPanel({ documentId }: DmsApprovalActionPanelPro
                 <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading history...
               </div>
             ) : (
-              <DmsApprovalHistorySection rows={history} />
+              historyQuery.isError ? <DmsLoadError subject="approval history" retry={() => historyQuery.refetch()} pending={historyQuery.isFetching} /> : <DmsApprovalHistorySection rows={history} />
             )}
           </div>
         </>

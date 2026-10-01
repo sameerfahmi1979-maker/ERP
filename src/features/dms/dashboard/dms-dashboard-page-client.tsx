@@ -1,4 +1,5 @@
 "use client";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { useState, useTransition } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -39,7 +40,7 @@ export function DmsDashboardPageClient({ initialStats }: Props) {
   const [rangeDays, setRangeDays] = useState<RangeDays>(30);
   const [, startTransition] = useTransition();
 
-  const { data: stats, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.dms.dashboard(rangeDays),
     queryFn: async () => {
       const res = await getDmsDashboardStats(rangeDays);
@@ -49,6 +50,7 @@ export function DmsDashboardPageClient({ initialStats }: Props) {
     initialData: rangeDays === 30 ? initialStats : undefined,
     staleTime: 60_000,
   });
+ const { data: stats, isLoading } = uiRead1;
 
   // ERP REALTIME.1D — auto-refresh dashboard when DMS data changes
   useRealtimeSync({
@@ -89,7 +91,7 @@ export function DmsDashboardPageClient({ initialStats }: Props) {
   const attentionCount = s.inbox_items.length + s.expiring_items.length + s.renewal_items.length;
 
   return (
-    <div className="space-y-6">
+    <QueryReadBoundary queries={[uiRead1]}><div className="space-y-6">
       {/* Header row */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
@@ -265,6 +267,6 @@ export function DmsDashboardPageClient({ initialStats }: Props) {
         <DmsExpiringPanel items={s.expiring_items} />
         <DmsRenewalsPanel items={s.renewal_items} />
       </div>
-    </div>
+    </div></QueryReadBoundary>
   );
 }

@@ -23,7 +23,7 @@ export default async function DeliveryLogsPage() {
 
   return (
     <div className="p-6 space-y-4">
-      <DeliveryLogsPageClient initialLogs={logs} />
+      <DeliveryLogsPageClient initialLogs={logs} initialError={!result.success} />
     </div>
   );
 }

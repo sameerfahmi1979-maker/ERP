@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -27,7 +27,7 @@ export function ERPPageHeader({ title, description, breadcrumbs, actions }: ERPP
         <Breadcrumb>
           <BreadcrumbList>
             {breadcrumbs.map((item, index) => (
-              <span key={index} className="flex items-center gap-1.5">
+              <Fragment key={index}>
                 {index > 0 && <BreadcrumbSeparator />}
                 <BreadcrumbItem>
                   {item.href ? (
@@ -36,19 +36,19 @@ export function ERPPageHeader({ title, description, breadcrumbs, actions }: ERPP
                     <BreadcrumbPage>{item.label}</BreadcrumbPage>
                   )}
                 </BreadcrumbItem>
-              </span>
+              </Fragment>
             ))}
           </BreadcrumbList>
         </Breadcrumb>
       )}
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-wrap gap-3 items-center justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
           {description && (
             <p className="text-sm text-muted-foreground mt-1">{description}</p>
           )}
         </div>
-        {actions && <div className="flex items-center gap-2">{actions}</div>}
+        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
     </div>
   );

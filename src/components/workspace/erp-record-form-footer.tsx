@@ -3,7 +3,7 @@
 /**
  * ERP GLOBAL UI.4C — ERPRecordFormFooter
  *
- * Sticky bottom footer for ERPRecordWorkspaceForm.
+ * Shared record command bar (placed above the form in UI-00) for ERPRecordWorkspaceForm.
  * Visually matches ERPFormFooter, adapted for full-page workspace forms.
  *
  * Add/Edit mode: Cancel · Save · Save & Close
@@ -54,20 +54,20 @@ export function ERPRecordFormFooter({
   return (
     <div
       className={cn(
-        "shrink-0 px-6 py-4 border-t border-border bg-card flex items-center justify-between shadow-xs",
+        "shrink-0 px-4 md:px-6 py-2 border-b border-border bg-card flex flex-wrap gap-3 items-center justify-between",
         className
       )}
     >
       {/* Left: status indicators */}
       <div className="flex items-center gap-3">
         {hasUnsavedChanges && !isViewMode && (
-          <span className="flex items-center gap-1.5 text-xs text-amber-500 font-semibold">
-            <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+          <span className="flex items-center gap-1.5 text-sm text-amber-800 dark:text-amber-300 font-semibold">
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
             Unsaved Changes
           </span>
         )}
         {validationErrorsCount > 0 && !isViewMode && (
-          <span className="flex items-center gap-1.5 text-xs text-red-500 font-semibold">
+          <span className="flex items-center gap-1.5 text-sm text-red-700 dark:text-red-300 font-semibold">
             <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
             {validationErrorsCount}{" "}
             {validationErrorsCount === 1 ? "error" : "errors"} to fix
@@ -81,7 +81,7 @@ export function ERPRecordFormFooter({
           <Button
             type="button"
             onClick={onCancel}
-            className="bg-indigo-600 hover:bg-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-400 text-white font-semibold h-9 px-4 text-xs shadow-xs focus:ring-1 focus:ring-ring"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold h-11 sm:h-9 px-4 text-sm shadow-xs focus:ring-1 focus:ring-ring"
           >
             Close
           </Button>
@@ -92,7 +92,7 @@ export function ERPRecordFormFooter({
               variant="outline"
               onClick={onCancel}
               disabled={isSubmitting}
-              className="border-border text-foreground hover:bg-muted h-9 px-4 text-xs font-semibold"
+              className="border-border text-foreground hover:bg-muted h-11 sm:h-9 px-4 text-sm font-semibold"
             >
               Cancel
             </Button>
@@ -103,7 +103,7 @@ export function ERPRecordFormFooter({
                 onClick={onSave}
                 disabled={isSubmitting}
                 variant="outline"
-                className="border-border text-foreground hover:bg-muted bg-background h-9 px-4 text-xs font-semibold"
+                className="border-border text-foreground hover:bg-muted bg-background h-11 sm:h-9 px-4 text-sm font-semibold"
               >
                 {isSubmitting && activeSubmitAction === "save" ? "Saving…" : "Save"}
               </Button>
@@ -114,7 +114,7 @@ export function ERPRecordFormFooter({
                 type="button"
                 onClick={onSaveAndClose}
                 disabled={isSubmitting}
-                className="bg-indigo-600 hover:bg-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-400 text-white font-semibold h-9 px-4 text-xs shadow-xs focus:ring-1 focus:ring-ring"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold h-11 sm:h-9 px-4 text-sm shadow-xs focus:ring-1 focus:ring-ring"
               >
                 {isSubmitting && activeSubmitAction === "saveAndClose"
                   ? "Saving…"

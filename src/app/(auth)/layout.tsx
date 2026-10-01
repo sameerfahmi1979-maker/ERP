@@ -1,6 +1,5 @@
 import { loadRuntimeAppBranding } from "@/lib/branding/load-runtime-app-branding";
-import { AuthAtmosphere } from "@/features/auth/auth-atmosphere";
-import { authFontVariables } from "./fonts";
+import Image from "next/image";
 
 export const dynamic = "force-dynamic";
 
@@ -9,25 +8,19 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
   const loginBg = branding.assets.login_background?.publicUrl ?? null;
 
   return (
-    <div
-      className={`dark ${authFontVariables} relative flex h-screen w-screen overflow-hidden items-center justify-center p-4 [font-family:var(--font-auth-body)]`}
-    >
-      {/* Background layer — fixed to viewport so it always fills the screen exactly.
-          Admin-uploaded login background (if set) always wins over the signature
-          atmosphere backdrop below. */}
-      {loginBg ? (
-        <>
-          <div
-            className="fixed inset-0 -z-10 bg-cover bg-center bg-no-repeat"
-            style={{ backgroundImage: `url(${loginBg})` }}
-            aria-hidden
-          />
-          <div className="fixed inset-0 -z-10 bg-[#070c14]/70 backdrop-blur-[2px]" aria-hidden />
-        </>
-      ) : (
-        <AuthAtmosphere />
-      )}
-      <div className="relative z-10 w-full flex justify-center">{children}</div>
-    </div>
+    <main className="algt-auth">
+      <aside className="algt-auth-identity" aria-label={branding.appName}>
+        {loginBg && <div className="algt-auth-image" style={{ backgroundImage: `url(${loginBg})` }} aria-hidden="true" />}
+        <div className="algt-auth-brand">
+          {branding.assets.app_logo?.publicUrl
+            ? <Image src={branding.assets.app_logo.publicUrl} alt={branding.appName} width={180} height={64} unoptimized priority className="algt-auth-logo" />
+            : <span className="algt-auth-monogram">{branding.initials}</span>}
+          <p className="algt-auth-company">{branding.appName}</p>
+          {branding.tagline && <p>{branding.tagline}</p>}
+        </div>
+        <p className="algt-auth-caption">Your work. One connected workspace.</p>
+      </aside>
+      <div className="algt-auth-task">{children}</div>
+    </main>
   );
 }

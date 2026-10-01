@@ -84,7 +84,7 @@ export function HrDashboardSectionCard({
         <span className={cn("absolute inset-x-0 top-0 h-1", SEVERITY_BAR[severity])} />
       )}
       <CardHeader className="pb-2 px-4 pt-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <div className={cn("p-1.5 rounded-md bg-muted/50", iconColor)}>
               <Icon className="h-4 w-4" />

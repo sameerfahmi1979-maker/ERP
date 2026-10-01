@@ -1,6 +1,7 @@
 "use client";
+import { RecordCollection } from "@/components/erp/table/record-collection";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { History, ChevronDown, ChevronRight, RefreshCw, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DmsApplyRunStatusBadge, DmsApplyItemStatusBadge } from "./dms-apply-status-badge";
@@ -24,10 +25,17 @@ interface Props {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function DmsApplyToErpRunHistory({ documentId, className, correctionEnabled }: Props) {
+export function DmsApplyToErpRunHistory(props: Props) {
+  return <RunHistorySession key={props.documentId ?? "all"} {...props} />;
+}
+
+function RunHistorySession({ documentId, className, correctionEnabled }: Props) {
   const [runs, setRuns] = useState<DmsErpApplyRun[]>([]);
   const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const latest = useRef(0);
+  const latestDetail = useRef(0);
   const [expandedRunId, setExpandedRunId] = useState<number | null>(null);
   const [expandedRun, setExpandedRun] = useState<DmsErpApplyRun | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -36,19 +44,27 @@ export function DmsApplyToErpRunHistory({ documentId, className, correctionEnabl
   const [correctionItemId, setCorrectionItemId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
+    const request = ++latest.current;
     setLoading(true);
-    const result = await listDmsApplyToErpRuns({ documentId, pageSize: 20 });
-    if (result.success && result.data) {
+    setFailed(false);
+    try {
+      const result = await listDmsApplyToErpRuns({ documentId, pageSize: 20 });
+      if (request !== latest.current) return;
+      if (!result.success || !result.data) throw new Error("Read unavailable");
       setRuns(result.data.runs);
       setTotal(result.data.total);
+    } catch {
+      if (request === latest.current) { setRuns([]); setFailed(true); }
+    } finally {
+      if (request === latest.current) setLoading(false);
     }
-    setLoading(false);
   }, [documentId]);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { const requests = latest, details = latestDetail; void load(); return () => { requests.current++; details.current++; }; }, [load]);
 
   const handleExpand = async (runId: number) => {
+    const request = ++latestDetail.current;
     if (expandedRunId === runId) {
       setExpandedRunId(null);
       setExpandedRun(null);
@@ -57,14 +73,21 @@ export function DmsApplyToErpRunHistory({ documentId, className, correctionEnabl
     setExpandedRunId(runId);
     setExpandedRun(null);
     setLoadingDetail(true);
-    const result = await getDmsApplyToErpRun(runId);
-    if (result.success && result.data) {
+    try {
+      const result = await getDmsApplyToErpRun(runId);
+      if (request !== latestDetail.current) return;
+      if (!result.success || !result.data) throw new Error("Read unavailable");
       setExpandedRun(result.data);
+    } catch {
+      if (request === latestDetail.current) setExpandedRun(null);
+    } finally {
+      if (request === latestDetail.current) setLoadingDetail(false);
     }
-    setLoadingDetail(false);
   };
 
-  if (!loading && runs.length === 0) {
+  if (failed) return <div className={className} role="alert"><p>Apply history could not be loaded. This is not an empty result.</p><Button onClick={load}>Retry history</Button></div>;
+  if (loading) return <p role="status" className={className}>Loading apply history…</p>;
+  if (runs.length === 0) {
     return (
       <div className={className}>
         <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
@@ -107,12 +130,13 @@ export function DmsApplyToErpRunHistory({ documentId, className, correctionEnabl
       )}
 
       <div className="space-y-2">
-        {runs.map((run) => (
+        {<RecordCollection id="special.dms-apply-to-erp-run-history" rows={runs} fields={[{"id":"id","path":"id","label":"Run"},{"id":"status","path":"status","label":"Status"},{"id":"createdAt","path":"createdAt","label":"Created"}]} renderRecord={(run) => (
           <div key={run.id} className="rounded-md border bg-card overflow-hidden">
             <button
               type="button"
               className="w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-muted/40 transition-colors"
               onClick={() => handleExpand(run.id)}
+              aria-expanded={expandedRunId === run.id}
             >
               <div className="flex items-center gap-3 min-w-0">
                 {expandedRunId === run.id
@@ -142,7 +166,7 @@ export function DmsApplyToErpRunHistory({ documentId, className, correctionEnabl
                   <p className="text-xs text-muted-foreground">Loading…</p>
                 ) : expandedRun ? (
                   <div className="space-y-2">
-                    <div className="grid grid-cols-4 gap-2 text-xs text-muted-foreground">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-muted-foreground">
                       <div>Applied: <span className="text-green-700 font-medium">{expandedRun.items.filter(i => i.status === "applied").length}</span></div>
                       <div>Skipped: <span className="font-medium">{expandedRun.items.filter(i => i.status === "skipped").length}</span></div>
                       <div>Conflict: <span className="text-amber-700 font-medium">{expandedRun.items.filter(i => i.status === "conflict").length}</span></div>
@@ -150,24 +174,24 @@ export function DmsApplyToErpRunHistory({ documentId, className, correctionEnabl
                     </div>
                     {expandedRun.items.length > 0 && (
                       <div className="space-y-1">
-                        {expandedRun.items.map((item) => (
+                        {<RecordCollection id={`special.apply-items.${run.id}`} rows={expandedRun.items} fields={[{id:"field",path:"targetDisplayLabel",label:"Field"},{id:"status",path:"status",label:"Status"}]} renderRecord={(item) => (
                           <ApplyItemRow
                             key={item.id}
                             item={item}
                             correctionEnabled={correctionEnabled}
                             onProposeCorrection={(itemId) => setCorrectionItemId(itemId)}
                           />
-                        ))}
+                        )} />}
                       </div>
                     )}
                   </div>
                 ) : (
-                  <p className="text-xs text-muted-foreground">Failed to load run details.</p>
+                  <p role="alert" className="text-xs text-muted-foreground">Run details could not be loaded. Collapse and expand this run to retry.</p>
                 )}
               </div>
             )}
           </div>
-        ))}
+        )} />}
       </div>
     </div>
   );

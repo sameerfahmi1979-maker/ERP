@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useTransition, useCallback } from "react";
+import { useState, useTransition, useCallback, useRef } from "react";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
+import { invalidateMyNotifications } from "@/lib/query/invalidation";
 import { Bell, CheckCheck, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -9,6 +11,7 @@ import { MyNotificationsTable } from "./my-notifications-table";
 import type { NotificationRow } from "@/server/actions/notifications/notifications";
 import {
   getMyNotifications,
+  getUnreadNotificationCount,
   markAllMyNotificationsRead,
 } from "@/server/actions/notifications/notifications";
 
@@ -43,36 +46,50 @@ const TABS: { id: Tab; label: string }[] = [
 interface NotificationsPageClientProps {
   initialNotifications: NotificationRow[];
   unreadCount: number;
+  initialError?: boolean;
 }
 
 export function NotificationsPageClient({
   initialNotifications,
   unreadCount: initialUnreadCount,
+  initialError = false,
 }: NotificationsPageClientProps) {
   const [notifications, setNotifications] = useState(initialNotifications);
+  const queryClient = useQueryClient();
   const [unreadCount, setUnreadCount] = useState(initialUnreadCount);
   const [activeTab, setActiveTab] = useState<Tab>("all");
   const [loading, startTransition] = useTransition();
+  const [failed, setFailed] = useState(initialError);
+  const latest = useRef(0);
+  const marking = useRef(false);
 
   const refresh = useCallback(() => {
+    const request = ++latest.current;
     startTransition(async () => {
-      const result = await getMyNotifications({ limit: 200 });
-      if (result.success && result.data) {
-        setNotifications(result.data);
-        setUnreadCount(result.data.filter((n) => n.status === "unread").length);
-      }
+      try {
+        const [result, count] = await Promise.all([getMyNotifications({ limit: 200 }), getUnreadNotificationCount()]);
+        if (request !== latest.current) return;
+        if (!result.success || !result.data || !count.success || !count.data) { setFailed(true); return; }
+        setNotifications(result.data); setUnreadCount(count.data.count); setFailed(false);
+      } catch { if (request === latest.current) setFailed(true); }
     });
   }, []);
 
   const handleMarkAllRead = () => {
+    if (marking.current || failed || loading) return;
+    marking.current = true;
     startTransition(async () => {
+      try {
       const result = await markAllMyNotificationsRead();
       if (result.success) {
         toast.success(`${result.data?.count ?? 0} notifications marked as read`);
+        invalidateMyNotifications(queryClient);
         refresh();
       } else {
         toast.error(result.error ?? "Failed");
       }
+      } catch { toast.error("The change could not be confirmed. Refresh notifications before retrying."); }
+      finally { marking.current = false; }
     });
   };
 
@@ -85,7 +102,7 @@ export function NotificationsPageClient({
   // Tab filter
   const counts: Record<Tab, number> = {
     all: notifications.length,
-    unread: unreadCount,
+    unread: notifications.filter(n => n.status === "unread").length,
     dismissed: notifications.filter((n) => n.status === "dismissed").length,
   };
 
@@ -101,7 +118,7 @@ export function NotificationsPageClient({
   );
 
   return (
-    <div className="flex flex-col gap-6 max-w-2xl">
+    <div className="flex min-w-0 flex-col gap-6" aria-busy={loading}>
 
       {/* ── Header ── */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -146,7 +163,7 @@ export function NotificationsPageClient({
               size="sm"
               className="h-8 text-xs gap-1.5"
               onClick={handleMarkAllRead}
-              disabled={loading}
+              disabled={loading || failed}
             >
               <CheckCheck className="h-3.5 w-3.5" />
               Mark all read
@@ -159,11 +176,14 @@ export function NotificationsPageClient({
             onClick={refresh}
             disabled={loading}
             title="Refresh"
+            aria-label="Refresh notifications"
           >
             <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
           </Button>
         </div>
       </div>
+      {failed && <p role="alert" className="rounded-sm border border-destructive p-3 text-sm">Notifications or unread counts could not be refreshed. Displayed information may be outdated. Use Refresh to retry; actions are disabled.</p>}
+      <p className="text-xs text-muted-foreground">Showing up to 200 recent notifications. List counts and filters cover these loaded items; the unread total in the heading covers your account. Mark all read applies to all your unread notifications, including those not loaded here. Reading or dismissing an alert does not complete its business task.</p>
 
       {/* ── Severity stats strip ── */}
       {notifications.length > 0 && (
@@ -181,7 +201,7 @@ export function NotificationsPageClient({
             </span>
           ))}
           <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold bg-muted text-muted-foreground">
-            {notifications.length} total
+            {notifications.length} loaded
           </span>
         </div>
       )}
@@ -191,6 +211,8 @@ export function NotificationsPageClient({
         {TABS.map((tab) => (
           <button
             key={tab.id}
+            type="button"
+            aria-pressed={activeTab === tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={cn(
               "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
@@ -219,6 +241,7 @@ export function NotificationsPageClient({
         notifications={filtered}
         onRefresh={refresh}
         activeTab={activeTab}
+        disabled={loading || failed}
       />
     </div>
   );

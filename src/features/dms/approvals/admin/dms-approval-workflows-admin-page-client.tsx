@@ -1,6 +1,10 @@
 "use client";
 
-import { useState, useCallback, useTransition, useEffect } from "react";
+import { DmsListTools, useDmsListView, type DmsListField } from "@/features/dms/dms-list-view";
+import { ConfiguredRow } from "@/components/erp/table/list-controls";
+
+import { useState, useCallback, useTransition, useRef } from "react";
+import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
 import { useQueryClient } from "@tanstack/react-query";
 import { PlusCircle, RefreshCw, Pencil, Power, ArrowUp, ArrowDown, ArrowUpDown, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -30,7 +34,7 @@ import {
   type WorkflowRow,
   type WorkflowWithSteps,
 } from "@/server/actions/dms/document-approvals";
-import type { DmsDocumentTypeRow } from "@/server/actions/dms/document-types";
+import { getDmsDocumentTypes, type DmsDocumentTypeRow } from "@/server/actions/dms/document-types";
 import { queryKeys } from "@/lib/query/query-keys";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -83,17 +87,17 @@ function SortHeader({ field, label, sortKey, sortDir, onSort, className }: {
   const active = sortKey === field;
   return (
     <th
-      onClick={() => onSort(field)}
+      aria-sort={active ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
       className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 cursor-pointer select-none hover:text-slate-800 transition-colors whitespace-nowrap ${className ?? ""}`}
     >
-      <span className="inline-flex items-center gap-1">
+      <button type="button" onClick={() => onSort(field)} className="inline-flex items-center gap-1 text-foreground focus-visible:outline-2 focus-visible:outline-primary">
         {label}
         {active ? (
           sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
         ) : (
           <ArrowUpDown className="h-3 w-3 opacity-35" />
         )}
-      </span>
+      </button>
     </th>
   );
 }
@@ -111,20 +115,87 @@ function ActiveBadge({ active }: { active: boolean }) {
 interface Props {
   initialWorkflows: WorkflowRow[];
   documentTypes: DmsDocumentTypeRow[];
+  initialLoadFailed?: boolean;
+  initialTypesFailed?: boolean;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function DmsApprovalWorkflowsAdminPageClient({ initialWorkflows, documentTypes }: Props) {
+const DMS_FIELDS: DmsListField[] = [
+  {
+    "id": "workflowCode",
+    "label": "Code",
+    "path": "workflowCode",
+    "type": "text",
+    "width": 160,
+    "required": true
+  },
+  {
+    "id": "nameEn",
+    "label": "Name",
+    "path": "nameEn",
+    "type": "text",
+    "width": 160
+  },
+  {
+    "id": "types",
+    "label": "Document types",
+    "type": "text",
+    "width": 160
+  },
+  {
+    "id": "stepCount",
+    "label": "Steps",
+    "path": "stepCount",
+    "type": "number",
+    "width": 160
+  },
+  {
+    "id": "isActive",
+    "label": "Active",
+    "path": "isActive",
+    "type": "select",
+    "width": 160,
+    "options": [
+      {
+        "value": "true",
+        "label": "Active"
+      },
+      {
+        "value": "false",
+        "label": "Inactive"
+      }
+    ]
+  },
+  {
+    "id": "updatedAt",
+    "label": "Updated",
+    "path": "updatedAt",
+    "type": "date",
+    "width": 160
+  },
+  {
+    "id": "actions",
+    "label": "Actions",
+    "type": "text",
+    "width": 160
+  }
+];
+
+export function DmsApprovalWorkflowsAdminPageClient({ initialWorkflows, documentTypes: initialDocumentTypes, initialLoadFailed = false, initialTypesFailed = false }: Props) {
   const qc = useQueryClient();
   const [isPending, startTransition] = useTransition();
 
   const [workflows, setWorkflows] = useState<WorkflowRow[]>(initialWorkflows);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(initialLoadFailed ? "Could not load approval workflows. Retry when connected." : null);
+  const [documentTypes, setDocumentTypes] = useState(initialDocumentTypes);
+  const [typesFailed, setTypesFailed] = useState(initialTypesFailed);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const readSequence = useRef(0);
 
   // Filters
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("active");
+  const [search, setSearch] = usePersistentUiState("dms:workflows:search", "");
+  const [statusFilter, setStatusFilter] = usePersistentUiState<"all" | "active" | "inactive">("dms:workflows:status", "active");
 
   // Dialogs
   const [formOpen, setFormOpen] = useState(false);
@@ -132,27 +203,30 @@ export function DmsApprovalWorkflowsAdminPageClient({ initialWorkflows, document
   const [deactivateTarget, setDeactivateTarget] = useState<WorkflowRow | null>(null);
   const [deactivating, setDeactivating] = useState(false);
 
+  const listView = useDmsListView("workflow-admin", workflows, DMS_FIELDS);
   // Sort + filter
-  const { sorted, sortKey, sortDir, toggle } = useSortFilter(workflows, search, statusFilter);
+  const { sorted, sortKey, sortDir, toggle } = useSortFilter(listView.rows, search, statusFilter);
 
   // ── Fetch ─────────────────────────────────────────────────────────────────
 
   const fetchWorkflows = useCallback(() => {
+    const sequence = ++readSequence.current;
     startTransition(async () => {
       setLoadError(null);
-      const result = await adminListApprovalWorkflows();
+      try {
+      const [result, types] = await Promise.all([adminListApprovalWorkflows(), getDmsDocumentTypes({ is_active: true })]);
+      if (sequence !== readSequence.current) return;
+      setTypesFailed(!types.success || !types.data);
+      if (types.success && types.data) setDocumentTypes(types.data);
       if (result.success && result.data) {
         setWorkflows(result.data);
       } else {
-        setLoadError(result.error ?? "Failed to load workflows.");
+        setLoadError("Could not load approval workflows. Check your connection and access, then retry.");
+      }
+      } catch {
+        if (sequence === readSequence.current) { setTypesFailed(true); setLoadError("Could not load approval workflows. This does not mean there are no workflows. Retry when connected."); }
       }
     });
-  }, []);
-
-  useEffect(() => {
-    // Only re-fetch on mount if initial data was empty (SSR already populated otherwise)
-    if (initialWorkflows.length === 0) fetchWorkflows();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
@@ -171,6 +245,7 @@ export function DmsApprovalWorkflowsAdminPageClient({ initialWorkflows, document
   };
 
   const handleEditWorkflow = async (row: WorkflowRow) => {
+    setActionError(null);
     setEditingId(row.id);
     startTransition(async () => {
       try {
@@ -181,6 +256,8 @@ export function DmsApprovalWorkflowsAdminPageClient({ initialWorkflows, document
         } else {
           toast.error(result.error ?? "Failed to load workflow details.");
         }
+      } catch {
+        setActionError("Could not load this workflow. Check your connection and access, then try again.");
       } finally {
         setEditingId(null);
       }
@@ -190,31 +267,37 @@ export function DmsApprovalWorkflowsAdminPageClient({ initialWorkflows, document
   const handleDeactivate = async () => {
     if (!deactivateTarget) return;
     setDeactivating(true);
+    setActionError(null);
     try {
-      const result = await adminDeactivateApprovalWorkflow(deactivateTarget.id);
+      const result = await adminDeactivateApprovalWorkflow(deactivateTarget.id, deactivateTarget.updatedAt);
       if (result.success) {
         toast.success(`Workflow "${deactivateTarget.nameEn}" deactivated.`);
         setDeactivateTarget(null);
         fetchWorkflows();
         qc.invalidateQueries({ queryKey: queryKeys.dms.approvalsQueue() });
       } else {
-        toast.error(result.error ?? "Failed to deactivate workflow.");
+        setActionError("The workflow was not deactivated. Check its current state and your access.");
       }
+    } catch {
+      setActionError("The change could not be confirmed. Refresh to check the workflow before retrying.");
     } finally {
       setDeactivating(false);
     }
   };
 
   const handleReactivate = async (row: WorkflowRow) => {
+    setActionError(null);
     startTransition(async () => {
-      const result = await adminUpdateApprovalWorkflow(row.id, { is_active: true });
+      try {
+      const result = await adminUpdateApprovalWorkflow(row.id, { is_active: true, expected_updated_at: row.updatedAt });
       if (result.success) {
         toast.success(`Workflow "${row.nameEn}" reactivated.`);
         fetchWorkflows();
         qc.invalidateQueries({ queryKey: queryKeys.dms.approvalsQueue() });
       } else {
-        toast.error(result.error ?? "Failed to reactivate workflow.");
+        setActionError("The workflow was not reactivated. Check its current state and your access.");
       }
+      } catch { setActionError("The change could not be confirmed. Refresh to check the workflow before retrying."); }
     });
   };
 
@@ -228,10 +311,12 @@ export function DmsApprovalWorkflowsAdminPageClient({ initialWorkflows, document
 
   return (
     <div className="space-y-4">
+      {typesFailed && <p role="alert" className="rounded border border-destructive/40 p-3 text-sm text-destructive">Document types could not be loaded. Refresh before creating or editing a workflow; unavailable choices are not an empty selection.</p>}
+      {actionError && <p role="alert" className="rounded border border-destructive/40 p-3 text-sm text-destructive">{actionError}</p>}
 
       {/* ── Toolbar ────────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3 flex-wrap">
-        <Input
+        <Input aria-label="Search workflows"
           placeholder="Search by code or name…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -241,6 +326,7 @@ export function DmsApprovalWorkflowsAdminPageClient({ initialWorkflows, document
         <div className="flex items-center gap-1 rounded-lg border border-border p-0.5 bg-muted/30">
           {(["all", "active", "inactive"] as const).map((v) => (
             <button
+              type="button" aria-pressed={statusFilter === v}
               key={v}
               onClick={() => setStatusFilter(v)}
               className={`px-3 py-1 text-xs rounded-md font-medium transition-colors capitalize ${
@@ -260,13 +346,14 @@ export function DmsApprovalWorkflowsAdminPageClient({ initialWorkflows, document
             <RefreshCw className={`h-3.5 w-3.5 ${isPending ? "animate-spin" : ""}`} />
             Refresh
           </Button>
-          <Button size="sm" onClick={handleNewWorkflow} disabled={isPending} className="h-8 gap-1.5">
+          <Button size="sm" onClick={handleNewWorkflow} disabled={isPending || typesFailed || !!loadError} className="h-8 gap-1.5">
             <PlusCircle className="h-3.5 w-3.5" />
             New Workflow
           </Button>
         </div>
       </div>
 
+      <DmsListTools view={listView} />
       {/* ── Table ──────────────────────────────────────────────────────────── */}
       <div className="rounded-lg border border-border bg-card overflow-hidden">
         {isPending && workflows.length === 0 ? (
@@ -283,7 +370,7 @@ export function DmsApprovalWorkflowsAdminPageClient({ initialWorkflows, document
           </div>
         ) : loadError ? (
           <div className="p-8 text-center space-y-3">
-            <p className="text-sm text-destructive">{loadError}</p>
+            <p role="alert" className="text-sm text-destructive">{loadError}</p>
             <Button variant="outline" size="sm" onClick={handleRefresh}>Retry</Button>
           </div>
         ) : sorted.length === 0 ? (
@@ -302,30 +389,30 @@ export function DmsApprovalWorkflowsAdminPageClient({ initialWorkflows, document
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <div role="region" aria-label="workflow-admin table" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{ minWidth: listView.visible.reduce((sum, column) => sum + column.width, 0) }}><colgroup>{listView.visible.map(column => <col key={column.id} style={{ width: column.width }} />)}</colgroup>
               <thead className="bg-muted/40 border-b border-border">
-                <tr>
-                  <SortHeader field="workflowCode" label="Code" sortKey={sortKey} sortDir={sortDir} onSort={toggle} />
-                  <SortHeader field="nameEn" label="Name" sortKey={sortKey} sortDir={sortDir} onSort={toggle} />
-                  <SortHeader field="documentTypeNames" label="Document Types" sortKey={sortKey} sortDir={sortDir} onSort={toggle} />
-                  <SortHeader field="stepCount" label="Steps" sortKey={sortKey} sortDir={sortDir} onSort={toggle} className="w-16" />
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Status</th>
-                  <SortHeader field="updatedAt" label="Updated" sortKey={sortKey} sortDir={sortDir} onSort={toggle} className="w-32" />
-                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Actions</th>
-                </tr>
+                <ConfiguredRow columns={listView.columns}>
+                  <SortHeader data-column="workflowCode" field="workflowCode" label="Code" sortKey={sortKey} sortDir={sortDir} onSort={toggle} />
+                  <SortHeader data-column="nameEn" field="nameEn" label="Name" sortKey={sortKey} sortDir={sortDir} onSort={toggle} />
+                  <SortHeader data-column="types" field="documentTypeNames" label="Document Types" sortKey={sortKey} sortDir={sortDir} onSort={toggle} />
+                  <SortHeader data-column="stepCount" field="stepCount" label="Steps" sortKey={sortKey} sortDir={sortDir} onSort={toggle} className="w-16" />
+                  <th data-column="isActive" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Status</th>
+                  <SortHeader data-column="updatedAt" field="updatedAt" label="Updated" sortKey={sortKey} sortDir={sortDir} onSort={toggle} className="w-32" />
+                  <th data-column="actions" className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Actions</th>
+                </ConfiguredRow>
               </thead>
               <tbody className="divide-y divide-border">
                 {sorted.map((row) => (
-                  <tr key={row.id} className="hover:bg-muted/30 transition-colors">
-                    <td className="px-4 py-3 whitespace-nowrap">
+                  <ConfiguredRow columns={listView.columns} key={row.id} className="hover:bg-muted/30 transition-colors">
+                    <td data-column="workflowCode" className="px-4 py-3 whitespace-nowrap">
                       <span className="font-mono text-xs font-semibold">{row.workflowCode}</span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td data-column="nameEn" className="px-4 py-3">
                       <div className="text-sm font-medium">{row.nameEn}</div>
                       {row.nameAr && <div className="text-xs text-muted-foreground" dir="rtl">{row.nameAr}</div>}
                       {row.description && <div className="text-xs text-muted-foreground/70 line-clamp-1 mt-0.5">{row.description}</div>}
                     </td>
-                    <td className="px-4 py-3">
+                    <td data-column="types" className="px-4 py-3">
                       {(row.documentTypeNames ?? []).length === 0 ? (
                         <span className="text-xs text-muted-foreground/50">—</span>
                       ) : (
@@ -343,25 +430,25 @@ export function DmsApprovalWorkflowsAdminPageClient({ initialWorkflows, document
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-center">
+                    <td data-column="stepCount" className="px-4 py-3 whitespace-nowrap text-center">
                       <Badge variant="outline" className="text-[10px] font-semibold">{row.stepCount}</Badge>
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
+                    <td data-column="isActive" className="px-4 py-3 whitespace-nowrap">
                       <ActiveBadge active={row.isActive} />
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
+                    <td data-column="updatedAt" className="px-4 py-3 whitespace-nowrap">
                       <span className="text-xs text-muted-foreground">
                         {new Date(row.updatedAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
                       </span>
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
+                    <td data-column="actions" className="px-4 py-3 whitespace-nowrap">
                       <div className="flex items-center justify-end gap-1">
                         <Button
                           variant="ghost"
                           size="sm"
                           className="h-7 px-2 gap-1 text-xs"
                           onClick={() => handleEditWorkflow(row)}
-                          disabled={isPending || editingId === row.id}
+                          disabled={isPending || typesFailed || editingId === row.id}
                         >
                           {editingId === row.id
                             ? <Loader2 className="h-3 w-3 animate-spin" />
@@ -393,10 +480,10 @@ export function DmsApprovalWorkflowsAdminPageClient({ initialWorkflows, document
                         )}
                       </div>
                     </td>
-                  </tr>
+                  </ConfiguredRow>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           </div>
         )}
       </div>

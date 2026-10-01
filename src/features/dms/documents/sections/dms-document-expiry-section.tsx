@@ -171,7 +171,7 @@ export function DmsDocumentExpirySection({
       )}
 
       {/* Date fields */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-1">
           <p className="text-xs font-medium text-muted-foreground">Issue Date</p>
           <p className="text-sm">
@@ -248,7 +248,7 @@ export function DmsDocumentExpirySection({
               </div>
             )}
           </div>
-          <DmsReminderScheduleTable documentId={documentId} />
+          <DmsReminderScheduleTable documentId={documentId} canManage={canManage} />
         </div>
       )}
 

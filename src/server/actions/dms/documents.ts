@@ -891,13 +891,18 @@ export async function unarchiveDmsDocument(id: number): Promise<ActionResult> {
     }
 
     const supabase = await createClient();
-    const { error } = await supabase
+    const { data: archived, error: readError } = await supabase.from("dms_documents")
+      .select("id,approval_status,updated_at").eq("id", id).eq("is_archived", true).is("deleted_at", null).maybeSingle();
+    if (readError || !archived) return { success: false, error: "The archived document is unavailable. Refresh and check your access." };
+    const restoredStatus = archived.approval_status === "approved" ? "approved" : "active";
+    const { data: restored, error } = await supabase
       .from("dms_documents")
-      .update({ is_archived: false, archived_at: null, status: "active", updated_by: ctx.profile?.id ?? null })
+      .update({ is_archived: false, archived_at: null, status: restoredStatus, updated_by: ctx.profile?.id ?? null })
       .eq("id", id)
-      .is("deleted_at", null);
+      .eq("updated_at", archived.updated_at)
+      .is("deleted_at", null).select("id").maybeSingle();
 
-    if (error) return { success: false, error: error.message };
+    if (error || !restored) return { success: false, error: "The document was not restored. It may have changed; refresh before trying again." };
 
     await insertDmsEvent(supabase, id, "unarchived", ctx.profile?.id ?? null, "Document unarchived");
     await logAudit({ module_code: "DMS", entity_name: "dms_documents", entity_id: id, entity_reference: String(id), action: "unarchive" });

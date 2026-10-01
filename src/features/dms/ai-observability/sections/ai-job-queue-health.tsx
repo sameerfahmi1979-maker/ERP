@@ -1,4 +1,7 @@
 "use client";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import { loadedListValue } from "@/components/erp/table/loaded-list-view";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { Badge } from "@/components/ui/badge";
 import { getDmsAiJobQueueObservability } from "@/server/actions/dms/ai-observability";
@@ -17,7 +20,7 @@ const STATUS_BADGE: Record<string, "default" | "secondary" | "destructive" | "ou
 };
 
 export function AiJobQueueHealth({ refreshKey }: Props) {
-  const { data, isPending: loading, error: queryError } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: ["dms-observability", "getDmsAiJobQueueObservability", refreshKey],
     queryFn: async () => {
       const result = await getDmsAiJobQueueObservability();
@@ -28,14 +31,15 @@ export function AiJobQueueHealth({ refreshKey }: Props) {
     gcTime: 0,
     refetchOnWindowFocus: false,
   });
+ const { data, isPending: loading, error: queryError } = uiRead1;
   const error = queryError?.message;
 
-  if (loading) return <div className="text-sm text-muted-foreground">Loading queue health...</div>;
-  if (error) return <div className="text-sm text-destructive">{error}</div>;
+  if (loading) return <QueryReadBoundary queries={[uiRead1]}><div className="text-sm text-muted-foreground">Loading queue health...</div></QueryReadBoundary>;
+  if (error) return <QueryReadBoundary queries={[uiRead1]}><div className="text-sm text-destructive">{error}</div></QueryReadBoundary>;
   if (!data) return null;
 
   return (
-    <div className="rounded-lg border overflow-hidden">
+    <QueryReadBoundary queries={[uiRead1]}><div className="rounded-lg border overflow-hidden">
       <div className="grid grid-cols-5 border-b">
         {[
           { label: "Queued", value: data.queuedCount, color: "text-blue-600" },
@@ -52,34 +56,16 @@ export function AiJobQueueHealth({ refreshKey }: Props) {
       </div>
       {data.recentJobs.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead className="border-b bg-muted/50">
-              <tr>
-                <th className="px-3 py-2 text-left font-medium text-muted-foreground">ID</th>
-                <th className="px-3 py-2 text-left font-medium text-muted-foreground">Type</th>
-                <th className="px-3 py-2 text-left font-medium text-muted-foreground">Status</th>
-                <th className="px-3 py-2 text-right font-medium text-muted-foreground">Attempts</th>
-                <th className="px-3 py-2 text-left font-medium text-muted-foreground">Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.recentJobs.slice(0, 10).map((j) => (
-                <tr key={j.id} className="border-b last:border-0 hover:bg-muted/30">
-                  <td className="px-3 py-1.5 font-mono">{j.id}</td>
-                  <td className="px-3 py-1.5">{j.jobType}</td>
-                  <td className="px-3 py-1.5">
-                    <Badge variant={STATUS_BADGE[j.jobStatus] ?? "outline"} className="text-xs">
+          {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable tableId="special.dms.ai-observability.sections.ai-job-queue-health" data={data.recentJobs.slice(0, 10)} columns={[{id:"id",header:"ID",accessorFn:j=>loadedListValue(j,"id"),meta:{filter:{type:"number"}},enableHiding:false,size:220,cell:({row:{original:j}})=>{
+return <>{j.id}</>;}},{id:"jobType",header:"Type",accessorFn:j=>loadedListValue(j,"jobType"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:j}})=>{
+return <>{j.jobType}</>;}},{id:"jobStatus",header:"Status",accessorFn:j=>loadedListValue(j,"jobStatus"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:j}})=>{
+return <><Badge variant={STATUS_BADGE[j.jobStatus] ?? "outline"} className="text-xs">
                       {j.jobStatus}
-                    </Badge>
-                  </td>
-                  <td className="px-3 py-1.5 text-right">{j.attemptCount}/{j.maxAttempts}</td>
-                  <td className="px-3 py-1.5 text-muted-foreground">{new Date(j.createdAt).toLocaleDateString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    </Badge></>;}},{id:"attemptCount",header:"Attempts",accessorFn:j=>loadedListValue(j,"attemptCount"),meta:{filter:{type:"number"}},enableHiding:true,size:180,cell:({row:{original:j}})=>{
+return <>{j.attemptCount}/{j.maxAttempts}</>;}},{id:"createdAt",header:"Created",accessorFn:j=>loadedListValue(j,"createdAt"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:j}})=>{
+return <>{new Date(j.createdAt).toLocaleDateString()}</>;}}]} enableRowSelection={false} searchPlaceholder="Search loaded records…" initialPageSize={10} />
         </div>
       )}
-    </div>
+    </div></QueryReadBoundary>
   );
 }

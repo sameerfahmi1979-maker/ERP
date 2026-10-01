@@ -97,7 +97,7 @@ export function CloneRoleDialog({ sourceRole, open, onOpenChange }: CloneRoleDia
 
       <div className="col-span-6 space-y-1.5">
         <RequiredLabel htmlFor="clone_role_code" required>New Role Code</RequiredLabel>
-        <Input
+        <Input required
           id="clone_role_code"
           value={form.role_code}
           onChange={(e) => setForm((f) => ({ ...f, role_code: e.target.value.toLowerCase().replace(/\s+/g, "_") }))}
@@ -108,7 +108,7 @@ export function CloneRoleDialog({ sourceRole, open, onOpenChange }: CloneRoleDia
 
       <div className="col-span-6 space-y-1.5">
         <RequiredLabel htmlFor="clone_role_name" required>New Role Name</RequiredLabel>
-        <Input
+        <Input required
           id="clone_role_name"
           value={form.role_name}
           onChange={(e) => setForm((f) => ({ ...f, role_name: e.target.value }))}

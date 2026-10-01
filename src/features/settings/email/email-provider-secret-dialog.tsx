@@ -17,7 +17,11 @@ interface EmailProviderSecretDialogProps {
   onSuccess?: () => void;
 }
 
-export function EmailProviderSecretDialog({
+export function EmailProviderSecretDialog(props: EmailProviderSecretDialogProps) {
+  return props.open ? <EmailProviderSecretSession key={props.providerId} {...props} /> : null;
+}
+
+function EmailProviderSecretSession({
   open,
   onOpenChange,
   providerId,
@@ -50,7 +54,7 @@ export function EmailProviderSecretDialog({
       if (result.success) {
         toast.success("Secret saved securely in Supabase Vault. You can now test the connection.");
         setSecretValue(""); // Always clear
-        handleClose(false);
+        onOpenChange(false);
         onSuccess?.();
       } else {
         toast.error((result as { error?: string }).error ?? "Failed to save secret");
@@ -98,6 +102,7 @@ export function EmailProviderSecretDialog({
           </Label>
           <div className="relative">
             <Input
+              required aria-label="Client secret"
               id="secret-value"
               type={showSecret ? "text" : "password"}
               value={secretValue}
@@ -115,6 +120,7 @@ export function EmailProviderSecretDialog({
               {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
+          <p className="text-xs text-muted-foreground mt-1">For privacy, this value is cleared after every attempt and when this dialog closes. If a save cannot be confirmed, verify the provider before entering it again.</p>
           <p className="text-xs text-muted-foreground mt-1">
             Found in Azure Portal → Microsoft Entra ID → App registrations → your app → Certificates &amp; secrets.
             The value is shown only once when created.

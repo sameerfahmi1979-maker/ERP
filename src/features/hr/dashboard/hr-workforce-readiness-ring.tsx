@@ -33,7 +33,7 @@ export function HrWorkforceReadinessRing({ ready, notReady, blocked, isLoading, 
         <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
           Workforce Readiness
         </p>
-        <p className="text-[11px] text-muted-foreground/80">Deployable right now</p>
+        <p className="text-[11px] text-muted-foreground">Deployable right now</p>
       </div>
 
       {!hasAccess ? (

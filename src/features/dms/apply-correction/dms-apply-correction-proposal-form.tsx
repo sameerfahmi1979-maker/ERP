@@ -132,7 +132,7 @@ export function DmsApplyCorrectionProposalForm({
           Correction Value
           <span className="ml-1 text-red-500">*</span>
         </Label>
-        <Input
+        <Input required
           id="correction-value"
           value={value}
           onChange={(e) => {

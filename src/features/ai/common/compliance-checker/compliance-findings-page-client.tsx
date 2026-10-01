@@ -1,4 +1,6 @@
 "use client";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
+import { RecordCollection } from "@/components/erp/table/record-collection";
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -89,7 +91,7 @@ export function ComplianceFindingsPageClient({
     limit: 100,
   };
 
-  const { data: listData, isLoading, refetch } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.ai.complianceFindings(listFilters),
     queryFn: async () => {
       const res = await getComplianceFindings(listFilters);
@@ -97,8 +99,9 @@ export function ComplianceFindingsPageClient({
       return res.data!;
     },
   });
+ const { data: listData, isLoading, refetch } = uiRead1;
 
-  const { data: detail } = useQuery({
+  const uiRead2 = useQuery({
     queryKey: queryKeys.ai.complianceFindingDetail(selectedId ?? 0),
     enabled: selectedId != null,
     queryFn: async () => {
@@ -107,6 +110,7 @@ export function ComplianceFindingsPageClient({
       return res.data!;
     },
   });
+ const { data: detail } = uiRead2;
 
   const handleScan = async () => {
     setIsScanning(true);
@@ -160,7 +164,7 @@ export function ComplianceFindingsPageClient({
   const rows = listData?.rows ?? [];
 
   return (
-    <div className="space-y-4">
+    <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="space-y-4">
       {!summary.featureEnabled && (
         <Alert className="border-amber-300 bg-amber-50">
           <AlertTriangle className="h-4 w-4 text-amber-600" />
@@ -290,11 +294,12 @@ export function ComplianceFindingsPageClient({
             ) : rows.length === 0 ? (
               <p className="p-4 text-sm text-muted-foreground">No findings match filters.</p>
             ) : (
-              rows.map((row) => (
+              <RecordCollection id="special.compliance-findings-page-client" rows={rows} fields={[{"id":"findingType","path":"findingType","label":"Finding type"},{"id":"entityType","path":"entityType","label":"Entity type"},{"id":"severity","path":"severity","label":"Severity"},{"id":"status","path":"status","label":"Status"}]} renderRecord={(row) => (
                 <button
                   key={row.id}
                   type="button"
                   onClick={() => setSelectedId(row.id)}
+                  aria-pressed={selectedId === row.id}
                   className={`w-full text-left px-4 py-3 border-b hover:bg-muted/50 transition-colors ${
                     selectedId === row.id ? "bg-muted" : ""
                   }`}
@@ -314,7 +319,7 @@ export function ComplianceFindingsPageClient({
                     </p>
                   )}
                 </button>
-              ))
+              )} />
             )}
           </CardContent>
         </Card>
@@ -336,7 +341,7 @@ export function ComplianceFindingsPageClient({
           </CardContent>
         </Card>
       </div>
-    </div>
+    </div></QueryReadBoundary>
   );
 }
 

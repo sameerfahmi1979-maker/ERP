@@ -1,4 +1,7 @@
 "use client";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import { loadedListValue } from "@/components/erp/table/loaded-list-view";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { Badge } from "@/components/ui/badge";
 import { getDmsAiRecentUsageEvents, type ObservabilityFilters } from "@/server/actions/dms/ai-observability";
@@ -16,7 +19,7 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "
 };
 
 export function AiRecentUsageEventsTable({ filters, refreshKey }: Props) {
-  const { data, isPending: loading, error: queryError } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: ["dms-observability", "getDmsAiRecentUsageEvents", filters, refreshKey],
     queryFn: async () => {
       const result = await getDmsAiRecentUsageEvents(filters);
@@ -27,55 +30,29 @@ export function AiRecentUsageEventsTable({ filters, refreshKey }: Props) {
     gcTime: 0,
     refetchOnWindowFocus: false,
   });
+ const { data, isPending: loading, error: queryError } = uiRead1;
   const error = queryError?.message;
 
-  if (loading) return <div className="text-sm text-muted-foreground">Loading recent events...</div>;
-  if (error) return <div className="text-sm text-destructive">{error}</div>;
-  if (!data || data.length === 0) return <div className="text-sm text-muted-foreground">No usage events found.</div>;
+  if (loading) return <QueryReadBoundary queries={[uiRead1]}><div className="text-sm text-muted-foreground">Loading recent events...</div></QueryReadBoundary>;
+  if (error) return <QueryReadBoundary queries={[uiRead1]}><div className="text-sm text-destructive">{error}</div></QueryReadBoundary>;
+  if (!data || data.length === 0) return <QueryReadBoundary queries={[uiRead1]}><div className="text-sm text-muted-foreground">No usage events found.</div></QueryReadBoundary>;
 
   return (
-    <div className="overflow-x-auto rounded-lg border">
-      <table className="w-full text-xs">
-        <thead className="border-b bg-muted/50">
-          <tr>
-            <th className="px-3 py-2 text-left font-medium text-muted-foreground">Time</th>
-            <th className="px-3 py-2 text-left font-medium text-muted-foreground">Feature</th>
-            <th className="px-3 py-2 text-left font-medium text-muted-foreground">Operation</th>
-            <th className="px-3 py-2 text-left font-medium text-muted-foreground">Model</th>
-            <th className="px-3 py-2 text-left font-medium text-muted-foreground">Status</th>
-            <th className="px-3 py-2 text-right font-medium text-muted-foreground">In Tok</th>
-            <th className="px-3 py-2 text-right font-medium text-muted-foreground">Out Tok</th>
-            <th className="px-3 py-2 text-right font-medium text-muted-foreground">Cost</th>
-            <th className="px-3 py-2 text-right font-medium text-muted-foreground">Doc</th>
-            <th className="px-3 py-2 text-right font-medium text-muted-foreground">ms</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.map((row) => (
-            <tr key={row.id} className="border-b last:border-0 hover:bg-muted/30">
-              <td className="px-3 py-1.5 text-muted-foreground whitespace-nowrap">
-                {new Date(row.createdAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-              </td>
-              <td className="px-3 py-1.5 font-mono">{row.featureArea}</td>
-              <td className="px-3 py-1.5 text-muted-foreground">{row.operationType}</td>
-              <td className="px-3 py-1.5 font-mono">{row.modelId ?? "—"}</td>
-              <td className="px-3 py-1.5">
-                <Badge variant={STATUS_VARIANT[row.status] ?? "outline"} className="text-xs">{row.status}</Badge>
-              </td>
-              <td className="px-3 py-1.5 text-right tabular-nums">{row.inputTokenCount ?? "—"}</td>
-              <td className="px-3 py-1.5 text-right tabular-nums">{row.outputTokenCount ?? "—"}</td>
-              <td className="px-3 py-1.5 text-right tabular-nums">
-                {row.estimatedCost !== null ? `$${row.estimatedCost.toFixed(5)}` : "—"}
-              </td>
-              <td className="px-3 py-1.5 text-right text-muted-foreground">{row.documentId ?? "—"}</td>
-              <td className="px-3 py-1.5 text-right text-muted-foreground">{row.durationMs ?? "—"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <QueryReadBoundary queries={[uiRead1]}><div className="overflow-x-auto rounded-lg border">
+      {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable tableId="special.dms.ai-observability.sections.ai-recent-usage-events-table" data={data} columns={[{id:"createdAt",header:"Time",accessorFn:row=>loadedListValue(row,"createdAt"),meta:{filter:{type:"text"}},enableHiding:false,size:220,cell:({row:{original:row}})=>{
+return <>{new Date(row.createdAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</>;}},{id:"featureArea",header:"Feature",accessorFn:row=>loadedListValue(row,"featureArea"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+return <>{row.featureArea}</>;}},{id:"operationType",header:"Operation",accessorFn:row=>loadedListValue(row,"operationType"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+return <>{row.operationType}</>;}},{id:"modelId",header:"Model",accessorFn:row=>loadedListValue(row,"modelId"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+return <>{row.modelId ?? "—"}</>;}},{id:"status",header:"Status",accessorFn:row=>loadedListValue(row,"status"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+return <><Badge variant={STATUS_VARIANT[row.status] ?? "outline"} className="text-xs">{row.status}</Badge></>;}},{id:"inputTokenCount",header:"Input tokens",accessorFn:row=>loadedListValue(row,"inputTokenCount"),meta:{filter:{type:"number"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+return <>{row.inputTokenCount ?? "—"}</>;}},{id:"outputTokenCount",header:"Output tokens",accessorFn:row=>loadedListValue(row,"outputTokenCount"),meta:{filter:{type:"number"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+return <>{row.outputTokenCount ?? "—"}</>;}},{id:"estimatedCost",header:"Cost",accessorFn:row=>loadedListValue(row,"estimatedCost"),meta:{filter:{type:"number"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+return <>{row.estimatedCost !== null ? `$${row.estimatedCost.toFixed(5)}` : "—"}</>;}},{id:"documentId",header:"Document",accessorFn:row=>loadedListValue(row,"documentId"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+return <>{row.documentId ?? "—"}</>;}},{id:"durationMs",header:"ms",accessorFn:row=>loadedListValue(row,"durationMs"),meta:{filter:{type:"number"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+return <>{row.durationMs ?? "—"}</>;}}]} enableRowSelection={false} searchPlaceholder="Search loaded records…" initialPageSize={10} />
       <p className="px-3 py-2 text-xs text-muted-foreground border-t bg-muted/20">
         Showing up to 100 recent events. No prompt, response, or content text is displayed.
       </p>
-    </div>
+    </div></QueryReadBoundary>
   );
 }

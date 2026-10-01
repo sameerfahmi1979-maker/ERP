@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useCallback, useTransition } from "react";
+import { useState, useCallback, useTransition, useRef } from "react";
+import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { DmsLoadError } from "@/features/dms/dms-load-error";
 import type { ReviewQueueItem, ReviewQueueCounts, ReviewQueueFilters } from "@/server/actions/dms/review-queue";
 import { getDmsReviewQueueItems, getDmsReviewQueueCounts, getDmsReviewQueueItem } from "@/server/actions/dms/review-queue";
 import { DmsReviewQueueDashboardCards } from "./dms-review-queue-dashboard-cards";
@@ -16,6 +18,7 @@ interface Props {
   initialItems:  ReviewQueueItem[];
   initialTotal:  number;
   initialCounts: ReviewQueueCounts | null;
+  initialLoadFailed?: boolean;
   canManage:     boolean;
   canAdmin:      boolean;
 }
@@ -26,6 +29,7 @@ export function DmsReviewQueuePageClient({
   initialItems,
   initialTotal,
   initialCounts,
+  initialLoadFailed = false,
   canManage,
 }: Props) {
   const [items, setItems]       = useState<ReviewQueueItem[]>(initialItems);
@@ -38,23 +42,38 @@ export function DmsReviewQueuePageClient({
 
   const [selectedItem, setSelectedItem] = useState<ReviewQueueItem | null>(null);
   const [drawerOpen, setDrawerOpen]     = useState(false);
+  const [loadFailed, setLoadFailed] = useState(initialLoadFailed);
+  const [countsFailed, setCountsFailed] = useState(initialCounts === null);
+  const [detailFailed, setDetailFailed] = useState(false);
+  const [detailPending, setDetailPending] = useState(false);
+  const [drawerDirty, setDrawerDirty] = useState(false);
+  const [drawerBusy, setDrawerBusy] = useState(false);
+  const listSequence = useRef(0);
+  const detailSequence = useRef(0);
+  const returnFocus = useRef<HTMLElement | null>(null);
 
   const refresh = useCallback((nextFilters?: ReviewQueueFilters, nextPage?: number) => {
     const f = nextFilters ?? filters;
     const p = nextPage ?? page;
+    const sequence = ++listSequence.current;
 
     startTransition(async () => {
+      setLoadFailed(false);
+      try {
       const [itemsResult, countsResult] = await Promise.all([
         getDmsReviewQueueItems({ ...f, page: p, pageSize }),
         getDmsReviewQueueCounts(),
       ]);
+      if (sequence !== listSequence.current) return;
       if (itemsResult.success && itemsResult.data) {
         setItems(itemsResult.data.items);
         setTotal(itemsResult.data.total);
-      }
+      } else { setLoadFailed(true); }
       if (countsResult.success && countsResult.data) {
         setCounts(countsResult.data);
       }
+      setCountsFailed(!countsResult.success || !countsResult.data);
+      } catch { if (sequence === listSequence.current) { setLoadFailed(true); setCountsFailed(true); } }
     });
   }, [filters, page, pageSize]);
 
@@ -69,36 +88,53 @@ export function DmsReviewQueuePageClient({
     refresh(filters, p);
   };
 
+  const loadDetail = useCallback(async (id: number) => {
+    const sequence = ++detailSequence.current;
+    setDetailPending(true); setDetailFailed(false);
+    try {
+      const result = await getDmsReviewQueueItem(id);
+      if (sequence !== detailSequence.current) return;
+      if (result.success && result.data) setSelectedItem(result.data);
+      else setDetailFailed(true);
+    } catch { if (sequence === detailSequence.current) setDetailFailed(true); }
+    finally { if (sequence === detailSequence.current) setDetailPending(false); }
+  }, []);
+
+  const closeDrawer = () => {
+    if (drawerBusy) return;
+    if (drawerDirty && !window.confirm("Discard the unsaved review entries?")) return;
+    ++detailSequence.current;
+    setDrawerOpen(false); setSelectedItem(null); setDrawerDirty(false);
+  };
+
   const handleViewItem = (item: ReviewQueueItem) => {
-    // Optimistically open with list data, then fetch full detail (includes Phase 13 finding/candidate)
+    returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setDrawerDirty(false);
     setSelectedItem(item);
     setDrawerOpen(true);
-    getDmsReviewQueueItem(item.id).then((result) => {
-      if (result.success && result.data) setSelectedItem(result.data);
-    }).catch(() => { /* non-fatal — keep list item */ });
+    void loadDetail(item.id);
   };
 
   const handleMutated = () => {
     setDrawerOpen(false);
     setSelectedItem(null);
+    setDrawerDirty(false); setDrawerBusy(false); ++detailSequence.current;
     refresh();
   };
 
   // Refresh the open drawer item in-place without closing it (used after Start Review)
   const handleItemRefreshed = useCallback(() => {
     if (!selectedItem) return;
-    getDmsReviewQueueItem(selectedItem.id).then((result) => {
-      if (result.success && result.data) setSelectedItem(result.data);
-    }).catch(() => { /* non-fatal */ });
+    void loadDetail(selectedItem.id);
     refresh();
-  }, [selectedItem, refresh]);
+  }, [selectedItem, refresh, loadDetail]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
     <div className="space-y-4">
       {/* Dashboard cards */}
-      <DmsReviewQueueDashboardCards counts={counts} />
+      {countsFailed ? <p role="status" className="text-sm text-muted-foreground">Review summary is unavailable. Refresh to retry; unavailable counts are not zero.</p> : <DmsReviewQueueDashboardCards counts={counts} />}
 
       {/* Filters */}
       <DmsReviewQueueFilters
@@ -109,8 +145,8 @@ export function DmsReviewQueuePageClient({
 
       {/* Toolbar */}
       <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-500">
-          {total} item{total !== 1 ? "s" : ""} found
+        <p className="text-sm text-muted-foreground">
+          {loadFailed ? "Review results unavailable" : `${total} item${total !== 1 ? "s" : ""} found`}
           {Object.keys(filters).length > 0 ? " (filtered)" : ""}
         </p>
         <Button
@@ -125,21 +161,22 @@ export function DmsReviewQueuePageClient({
       </div>
 
       {/* Table */}
-      <DmsReviewQueueTable
+      {loadFailed ? <DmsLoadError subject="review items" retry={() => refresh()} pending={isPending} /> : <DmsReviewQueueTable
         items={items}
         isLoading={isPending}
         onViewItem={handleViewItem}
         canManage={canManage}
-      />
+      />}
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between border-t border-slate-100 pt-3">
-          <p className="text-xs text-slate-500">
+      {!loadFailed && totalPages > 1 && (
+        <div className="flex items-center justify-between border-t border-border pt-3">
+          <p className="text-xs text-muted-foreground">
             Page {page} of {totalPages}
           </p>
           <div className="flex gap-1.5">
             <Button
+              aria-label="Previous page"
               variant="outline"
               size="sm"
               disabled={page <= 1 || isPending}
@@ -148,6 +185,7 @@ export function DmsReviewQueuePageClient({
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <Button
+              aria-label="Next page"
               variant="outline"
               size="sm"
               disabled={page >= totalPages || isPending}
@@ -160,25 +198,25 @@ export function DmsReviewQueuePageClient({
       )}
 
       {/* Item drawer */}
-      {drawerOpen && selectedItem && (
-        <>
-          {/* Overlay */}
-          <div
-            className="fixed inset-0 z-[100] bg-slate-950/60 backdrop-blur-[2px]"
-            onClick={() => setDrawerOpen(false)}
-          />
-          {/* Drawer */}
-          <div className="fixed right-0 top-0 z-[110] h-full w-full max-w-xl bg-white shadow-2xl flex flex-col">
+      <Sheet open={drawerOpen} onOpenChange={(open) => { if (!open) closeDrawer(); }}>
+        <SheetContent showCloseButton={false} finalFocus={returnFocus} className="data-[side=right]:w-full data-[side=right]:sm:max-w-xl gap-0" onChangeCapture={() => setDrawerDirty(true)}>
+          <SheetTitle className="sr-only">Review item {selectedItem?.id}</SheetTitle>
+          <SheetDescription className="sr-only">Review the source and choose an authorized action.</SheetDescription>
+          {detailPending && <p role="status" className="p-3">Loading review details…</p>}
+          {detailFailed && selectedItem && <DmsLoadError subject="review details" retry={() => loadDetail(selectedItem.id)} pending={detailPending} />}
+          {selectedItem && <div className="flex min-h-0 flex-1 flex-col">
             <DmsReviewQueueItemDrawer
+              key={selectedItem.id}
               item={selectedItem}
-              canManage={canManage}
-              onClose={() => { setDrawerOpen(false); setSelectedItem(null); }}
+              canManage={canManage && !detailFailed && !detailPending}
+              onClose={closeDrawer}
+              onBusyChange={setDrawerBusy}
               onMutated={handleMutated}
               onItemRefreshed={handleItemRefreshed}
             />
-          </div>
-        </>
-      )}
+          </div>}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

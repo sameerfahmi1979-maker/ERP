@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+import '../f05/setup';
+// This component test does not invoke export delivery (a Next server-action boundary).
+vi.mock('@/components/erp/export/erp-export-menu',()=>({ERPExportMenu:()=>null}));
 import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -33,7 +36,7 @@ describe('effective-access query lifecycle',()=>{
   calls.get.mockResolvedValue({success:false,error:'Synthetic denied result'});
   const client=new QueryClient({defaultOptions:{queries:{retry:false}}});
   const ui=render(<QueryClientProvider client={client}><UserEffectiveAccessSection userProfileId={90002} authContext={context(true)}/></QueryClientProvider>);
-  await waitFor(()=>expect(ui.getByText('Synthetic denied result')).toBeTruthy());
+  await waitFor(()=>expect(ui.getByRole('alert').textContent).toContain('Effective access could not be loaded'));
   expect(ui.queryByText('This user has no assigned permissions.')).toBeNull(); client.clear();
  });
 });

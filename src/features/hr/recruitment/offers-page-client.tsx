@@ -1,4 +1,6 @@
 "use client";
+import { RecordCollection } from "@/components/erp/table/record-collection";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -43,17 +45,18 @@ export function OffersPageClient({ authContext }: Props) {
   const canManage = canManagePermission(authContext);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
 
-  const { data: res, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.recruitment.globalOffers({ status: statusFilter }),
     queryFn: () => listGlobalOffers({ status: statusFilter ?? undefined, pageSize: 100 }),
     staleTime: 30_000,
   });
+  const { data: res, isLoading } = uiRead1;
 
   const rows = Array.isArray(res?.data?.rows) ? res.data.rows : [];
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-4">
-      <div className="flex items-center justify-between">
+    <QueryReadBoundary queries={[uiRead1]}><div className="p-6 max-w-5xl mx-auto space-y-4">
+      <div className="flex flex-wrap gap-2 items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Offers</h1>
           <p className="text-sm text-muted-foreground">{res?.data?.totalCount ?? 0} total</p>
@@ -61,7 +64,7 @@ export function OffersPageClient({ authContext }: Props) {
       </div>
 
       <div className="flex gap-2 flex-wrap">
-        <ERPCombobox
+        <ERPCombobox ariaLabel="Filter by status"
           value={statusFilter}
           onValueChange={(v) => setStatusFilter(v ? String(v) : null)}
           options={[{ value: "", label: "All Statuses" }, ...STATUS_OPTIONS]}
@@ -78,7 +81,7 @@ export function OffersPageClient({ authContext }: Props) {
         </div>
       ) : (
         <div className="border rounded-lg divide-y">
-          {rows.map((row) => (
+          <RecordCollection id="hr.offers-page-client.OffersPageClient.rows" rows={rows} fields={[{"id":"candidate_full_name_en","path":"candidate.full_name_en","label":"Full Name En"},{"id":"offer_status","path":"offer_status","label":"Offer Status"},{"id":"proposed_joining_date","path":"proposed_joining_date","label":"Proposed Joining Date"}]} renderRecord={(row) => (
             <div key={row.id} className="flex items-center gap-3 p-4">
               <Gift className="h-4 w-4 text-slate-400 flex-shrink-0" />
               <div className="flex-1 min-w-0">
@@ -100,9 +103,9 @@ export function OffersPageClient({ authContext }: Props) {
                 </Link>
               )}
             </div>
-          ))}
+          )} />
         </div>
       )}
-    </div>
+    </div></QueryReadBoundary>
   );
 }

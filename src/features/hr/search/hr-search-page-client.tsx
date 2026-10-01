@@ -1,4 +1,5 @@
 "use client";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { useState, useCallback, useTransition } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -50,12 +51,13 @@ export function HrSearchPageClient({ permissions }: Props) {
 
   const availableCategories = getAvailableCategories(permissions);
 
-  const { data, isFetching, refetch } = useQuery<HrSearchOutput>({
+  const uiRead1 = useQuery<HrSearchOutput>({
     queryKey: ["hr", "search", "results", committedInput],
     queryFn: () => searchHr(committedInput!),
     enabled: committedInput !== null,
     staleTime: 30_000,
   });
+ const { data, isFetching, refetch } = uiRead1;
 
   const handleSearch = useCallback(() => {
     startTransition(() => {
@@ -123,7 +125,7 @@ export function HrSearchPageClient({ permissions }: Props) {
   };
 
   return (
-    <div className="flex flex-col gap-6">
+    <QueryReadBoundary queries={[uiRead1]}><div className="flex flex-col gap-6">
       {/* AI Search Assist */}
       {permissions.canAiUse && (
         <HrAiSearchAssist
@@ -177,7 +179,7 @@ export function HrSearchPageClient({ permissions }: Props) {
 
       {/* Results summary */}
       {hasSearched && data && (
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm text-muted-foreground">
             {hasResults ? (
               <>
@@ -250,6 +252,6 @@ export function HrSearchPageClient({ permissions }: Props) {
       {!hasSearched && !isFetching && (
         <HrSearchEmptyState />
       )}
-    </div>
+    </div></QueryReadBoundary>
   );
 }

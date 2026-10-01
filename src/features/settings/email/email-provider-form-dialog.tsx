@@ -31,7 +31,11 @@ interface EmailProviderFormDialogProps {
   onSuccess?: () => void;
 }
 
-export function EmailProviderFormDialog({
+export function EmailProviderFormDialog(props: EmailProviderFormDialogProps) {
+  return props.open ? <EmailProviderFormSession key={props.initialData?.id ?? "new"} {...props} /> : null;
+}
+
+function EmailProviderFormSession({
   open,
   onOpenChange,
   mode,
@@ -90,7 +94,7 @@ export function EmailProviderFormDialog({
 
       if (result.success) {
         toast.success(mode === "add" ? "Email provider created" : "Email provider updated");
-        handleClose(false);
+        onOpenChange(false);
         onSuccess?.();
       } else {
         toast.error((result as { error?: string }).error ?? "Failed");
@@ -114,17 +118,17 @@ export function EmailProviderFormDialog({
     >
       <div className="space-y-5">
         {/* Basic */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {mode === "add" && (
             <div>
               <Label htmlFor="pcode" className="mb-1.5 block">Provider Code <span className="text-red-500">*</span></Label>
-              <Input id="pcode" value={form.provider_code} onChange={(e) => set("provider_code", e.target.value.toUpperCase())} placeholder="M365_DEFAULT" className="font-mono uppercase" />
+              <Input required id="pcode" value={form.provider_code} onChange={(e) => set("provider_code", e.target.value.toUpperCase())} placeholder="M365_DEFAULT" className="font-mono uppercase" />
               <p className="text-xs text-muted-foreground mt-1">Uppercase letters, numbers, underscores only.</p>
             </div>
           )}
           <div>
             <Label htmlFor="pname" className="mb-1.5 block">Provider Name <span className="text-red-500">*</span></Label>
-            <Input id="pname" value={form.provider_name} onChange={(e) => set("provider_name", e.target.value)} placeholder="Microsoft 365 (Production)" />
+            <Input required id="pname" value={form.provider_name} onChange={(e) => set("provider_name", e.target.value)} placeholder="Microsoft 365 (Production)" />
           </div>
           <div>
             <Label htmlFor="ptype" className="mb-1.5 block">Provider Type</Label>

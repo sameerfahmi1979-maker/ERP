@@ -1,4 +1,5 @@
 "use client";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 /**
  * ERP COMMON AI.1F — AI Field Suggestions Panel
@@ -75,7 +76,7 @@ export function AiFieldSuggestionsPanel({
   const [generateError, setGenerateError] = useState<string | null>(null);
 
   // ── Load suggestions ─────────────────────────────────────────────────────
-  const { data: suggestions, isLoading, error, refetch } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.ai.fieldSuggestions(entityType, entityId),
     queryFn: async () => {
       const result = await getAiFieldSuggestions({ entityType, entityId });
@@ -85,6 +86,7 @@ export function AiFieldSuggestionsPanel({
     enabled: !!entityId,
     staleTime: 30_000,
   });
+ const { data: suggestions, isLoading, error, refetch } = uiRead1;
 
   const pendingSuggestions = (suggestions ?? []).filter((s) => s.status === "pending");
   const activeSuggestions = (suggestions ?? []).filter(
@@ -241,7 +243,7 @@ export function AiFieldSuggestionsPanel({
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-4">
+    <QueryReadBoundary queries={[uiRead1]}><div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
@@ -386,7 +388,7 @@ export function AiFieldSuggestionsPanel({
           ))}
         </div>
       )}
-    </div>
+    </div></QueryReadBoundary>
   );
 }
 

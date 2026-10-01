@@ -92,7 +92,7 @@ export function ExecutiveLedgerPreviewDialog({
       />
 
       {/* Dialog panel */}
-      <div
+      <div role="button" tabIndex={0} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); event.currentTarget.click(); } }}
         className={`fixed ${insetClass} z-[110] flex flex-col bg-background rounded-xl shadow-2xl border overflow-hidden transition-all duration-200`}
         onClick={(e) => e.stopPropagation()}
       >

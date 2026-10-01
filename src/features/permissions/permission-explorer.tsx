@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useSyncExternalStore, useMemo } from "react";
+import { useState, useCallback, useMemo } from "react";
+import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,32 +14,6 @@ import { permissionModuleGroup, permissionModuleLabel } from "@/lib/rbac/permiss
 
 function humanizeModule(code: string): string {
   return permissionModuleLabel(code);
-}
-
-const LS_KEY = "erp_role_permission_center_expanded_modules:v1";
-
-const EXPANSION_EVENT = "erp-permission-expansion-changed";
-function readExpansionSnapshot(): string {
-  try { return localStorage.getItem(LS_KEY) ?? "[]"; } catch { return "[]"; }
-}
-function subscribeToExpansion(onChange: () => void): () => void {
-  window.addEventListener("storage", onChange);
-  window.addEventListener(EXPANSION_EVENT, onChange);
-  return () => { window.removeEventListener("storage", onChange); window.removeEventListener(EXPANSION_EVENT, onChange); };
-}
-function loadExpandedModules(raw: string): Set<string> {
-  try {
-    const value: unknown = JSON.parse(raw);
-    if (Array.isArray(value) && value.every((entry) => typeof entry === "string")) return new Set(value.map(permissionModuleGroup));
-  } catch {}
-  return new Set();
-}
-
-function saveExpandedModules(modules: Set<string>): void {
-  try {
-    localStorage.setItem(LS_KEY, JSON.stringify([...modules]));
-    window.dispatchEvent(new Event(EXPANSION_EVENT));
-  } catch {}
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -57,8 +32,8 @@ export function PermissionExplorer({
   onSelect,
 }: PermissionExplorerProps) {
   const [search, setSearch] = useState("");
-  const snapshot = useSyncExternalStore(subscribeToExpansion, readExpansionSnapshot, () => "[]");
-  const persistedModules = useMemo(() => loadExpandedModules(snapshot), [snapshot]);
+  const [savedModules, setSavedModules] = usePersistentUiState<string[]>("permission-explorer:expanded", []);
+  const persistedModules = useMemo(() => new Set(savedModules), [savedModules]);
   const [expansionChoice, setExpansionChoice] = useState<{ search: string; modules: Set<string> } | null>(null);
   const searchLower = search.toLowerCase().trim();
   // Search expansion is derived, so typing does not cause a second effect render.
@@ -80,9 +55,9 @@ export function PermissionExplorer({
           next.add(moduleCode);
         }
         setExpansionChoice({ search: searchLower, modules: next });
-        saveExpandedModules(next);
+        setSavedModules([...next]);
     },
-    [expandedModules, searchLower],
+    [expandedModules, searchLower, setSavedModules],
   );
 
   const filtered = useMemo(() => {
@@ -113,14 +88,14 @@ export function PermissionExplorer({
   const expandAll = useCallback(() => {
     const allModules = new Set(grouped.map(([mod]) => mod));
     setExpansionChoice({ search: searchLower, modules: allModules });
-    saveExpandedModules(allModules);
-  }, [grouped, searchLower]);
+    setSavedModules([...allModules]);
+  }, [grouped, searchLower, setSavedModules]);
 
   const collapseAll = useCallback(() => {
     const empty = new Set<string>();
     setExpansionChoice({ search: searchLower, modules: empty });
-    saveExpandedModules(empty);
-  }, [searchLower]);
+    setSavedModules([]);
+  }, [searchLower, setSavedModules]);
 
   const allExpanded = grouped.length > 0 && grouped.every(([mod]) => expandedModules.has(mod));
 

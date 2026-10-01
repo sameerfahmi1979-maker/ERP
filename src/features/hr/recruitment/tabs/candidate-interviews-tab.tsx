@@ -1,4 +1,7 @@
 "use client";
+import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
+import { RecordCollection } from "@/components/erp/table/record-collection";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { ERPCombobox } from "@/components/erp/combobox";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
@@ -13,7 +16,7 @@ import type { InterviewRow } from "@/server/actions/hr/recruitment";
 import { archiveInterview, createInterview, listCandidateInterviews, updateInterview } from "@/server/actions/hr/recruitment";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Calendar, Pencil, Plus, Trash2 } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useState} from "react";
 import { toast } from "sonner";
 
 type Props = {
@@ -90,11 +93,12 @@ export function CandidateInterviewsTab({ candidateId, canManage, onChildOpen }: 
   const [form, setForm] = useState<InterviewForm>(EMPTY_FORM);
   const [isPending, startTransition] = useTransition();
 
-  const { data: res, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.recruitment.candidateInterviews(candidateId),
     queryFn: () => listCandidateInterviews(candidateId),
     staleTime: 30_000,
   });
+  const { data: res, isLoading } = uiRead1;
   const interviews = Array.isArray(res?.data) ? res.data : [];
 
   function openAdd() {
@@ -167,7 +171,7 @@ export function CandidateInterviewsTab({ candidateId, canManage, onChildOpen }: 
   }
 
   return (
-    <div className="p-6">
+    <QueryReadBoundary queries={[uiRead1]}><div className="p-6">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Interviews</h3>
         {canManage && (
@@ -186,7 +190,7 @@ export function CandidateInterviewsTab({ candidateId, canManage, onChildOpen }: 
         </div>
       ) : (
         <div className="divide-y border rounded-lg">
-          {interviews.map((interview) => (
+          <RecordCollection id="hr.candidate-interviews-tab.CandidateInterviewsTab.interviews" rows={interviews} fields={[{"id":"interview_round","path":"interview_round","label":"Interview Round"},{"id":"interview_status","path":"interview_status","label":"Interview Status"},{"id":"interview_datetime","path":"interview_datetime","label":"Interview Datetime"}]} renderRecord={(interview) => (
             <div key={interview.id} className="flex items-center gap-3 p-3">
               <Calendar className="h-4 w-4 text-slate-400 flex-shrink-0" />
               <div className="flex-1 min-w-0">
@@ -209,12 +213,12 @@ export function CandidateInterviewsTab({ candidateId, canManage, onChildOpen }: 
               </div>
               {canManage && (
                 <div className="flex gap-1">
-                  <Button size="sm" variant="ghost" onClick={() => openEdit(interview)}><Pencil className="h-4 w-4" /></Button>
-                  <Button size="sm" variant="ghost" onClick={() => handleArchive(interview.id)} disabled={isPending}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                  <Button aria-label="Edit record" size="sm" variant="ghost" onClick={() => openEdit(interview)}><Pencil className="h-4 w-4" /></Button>
+                  <Button aria-label="Archive record" size="sm" variant="ghost" onClick={() => handleArchive(interview.id)} disabled={isPending}><Trash2 className="h-4 w-4 text-red-500" /></Button>
                 </div>
               )}
             </div>
-          ))}
+          )} />
         </div>
       )}
 
@@ -232,38 +236,38 @@ export function CandidateInterviewsTab({ candidateId, canManage, onChildOpen }: 
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12 md:col-span-6">
             <RequiredLabel required>Interview Round</RequiredLabel>
-            <ERPCombobox value={form.interview_round || null} onValueChange={(v) => set("interview_round", String(v ?? "first"))} options={ROUND_OPTIONS} placeholder="Select round" />
+            <ERPCombobox ariaLabel="Interview Round" required value={form.interview_round || null} onValueChange={(v) => set("interview_round", String(v ?? "first"))} options={ROUND_OPTIONS} placeholder="Select round" />
           </div>
           <div className="col-span-12 md:col-span-6">
             <Label>Status</Label>
-            <ERPCombobox value={form.interview_status || null} onValueChange={(v) => set("interview_status", String(v ?? "scheduled"))} options={STATUS_OPTIONS} placeholder="Select status" />
+            <ERPCombobox ariaLabel="Status" value={form.interview_status || null} onValueChange={(v) => set("interview_status", String(v ?? "scheduled"))} options={STATUS_OPTIONS} placeholder="Select status" />
           </div>
           <div className="col-span-12 md:col-span-6">
             <Label>Date & Time</Label>
-            <Input type="datetime-local" value={form.interview_datetime} onChange={(e) => set("interview_datetime", e.target.value)} />
+            <Input aria-label="Date & Time" type="datetime-local" value={form.interview_datetime} onChange={(e) => set("interview_datetime", e.target.value)} />
           </div>
           <div className="col-span-12 md:col-span-6">
             <Label>Location / Link</Label>
-            <Input value={form.interview_location} onChange={(e) => set("interview_location", e.target.value)} placeholder="Office / Video link" />
+            <Input aria-label="Location / Link" value={form.interview_location} onChange={(e) => set("interview_location", e.target.value)} placeholder="Office / Video link" />
           </div>
           <div className="col-span-12 md:col-span-6">
             <Label>Result</Label>
-            <ERPCombobox value={form.result || null} onValueChange={(v) => set("result", String(v ?? ""))} options={RESULT_OPTIONS} placeholder="Select result" />
+            <ERPCombobox ariaLabel="Result" value={form.result || null} onValueChange={(v) => set("result", String(v ?? ""))} options={RESULT_OPTIONS} placeholder="Select result" />
           </div>
           <div className="col-span-12 md:col-span-6">
             <Label>Score (0–100)</Label>
-            <Input type="number" min={0} max={100} value={form.score} onChange={(e) => set("score", e.target.value)} placeholder="e.g. 85" />
+            <Input aria-label="Score (0–100)" type="number" min={0} max={100} value={form.score} onChange={(e) => set("score", e.target.value)} placeholder="e.g. 85" />
           </div>
           <div className="col-span-12">
             <Label>Feedback</Label>
-            <Textarea value={form.feedback} onChange={(e) => set("feedback", e.target.value)} rows={3} placeholder="Interview feedback notes..." />
+            <Textarea aria-label="Feedback" value={form.feedback} onChange={(e) => set("feedback", e.target.value)} rows={3} placeholder="Interview feedback notes..." />
           </div>
           <div className="col-span-12">
             <Label>Next Step</Label>
-            <Input value={form.next_step} onChange={(e) => set("next_step", e.target.value)} placeholder="Next action or recommendation" />
+            <Input aria-label="Next Step" value={form.next_step} onChange={(e) => set("next_step", e.target.value)} placeholder="Next action or recommendation" />
           </div>
         </div>
       </ERPChildDialogForm>
-    </div>
+    </div></QueryReadBoundary>
   );
 }

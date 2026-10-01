@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+import '../f05/setup';
+// This component test does not invoke export delivery (a Next server-action boundary).
+vi.mock('@/components/erp/export/erp-export-menu',()=>({ERPExportMenu:()=>null}));
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 const ctx=vi.hoisted(()=>({save:vi.fn(),childOpen:vi.fn(),contacts:[] as unknown[]}));

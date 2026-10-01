@@ -27,6 +27,7 @@ import { DmsExpirySummaryCards } from "./dms-expiry-summary-cards";
 interface DmsExpiryDashboardPageClientProps {
   isAdmin: boolean;
   canBridge?: boolean;
+  canRenew?: boolean;
 }
 
 const EXPIRY_EXPORT_COLUMNS: ERPExportColumn<DmsExpiringDocumentRow>[] = [
@@ -47,12 +48,13 @@ const TAB_TITLES: Record<string, string> = {
   ignored: "Ignored Documents",
 };
 
-export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false }: DmsExpiryDashboardPageClientProps) {
+export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false, canRenew = false }: DmsExpiryDashboardPageClientProps) {
   const queryClient = useQueryClient();
   const [bulkGenerating, setBulkGenerating] = useState(false);
   const [notifyGenerating, setNotifyGenerating] = useState(false);
   const [bridging, setBridging] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const actionFlight = useRef(false);
   const [startRenewalDoc, setStartRenewalDoc] = useState<DmsExpiringDocumentRow | null>(null);
 
   // Active tab
@@ -87,6 +89,8 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false }: Dms
   const exportFilename = `${(TAB_TITLES[activeTab] ?? "documents").toLowerCase().replace(/\s+/g, "-")}-${format(new Date(), "yyyy-MM-dd")}`;
 
   const handleBulkGenerate = async () => {
+    if (!isAdmin || actionFlight.current) return;
+    actionFlight.current = true;
     setBulkGenerating(true);
     try {
       const result = await generateDmsExpiryRemindersBulk({ limit: 100 });
@@ -96,12 +100,15 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false }: Dms
       } else {
         toast.error(result.error ?? "Failed");
       }
-    } finally {
+    } catch { toast.error("Generation unconfirmed. Refresh before retrying."); } finally {
+      actionFlight.current = false;
       setBulkGenerating(false);
     }
   };
 
   const handleGenerateNotifications = async () => {
+    if (!isAdmin || actionFlight.current) return;
+    actionFlight.current = true;
     setNotifyGenerating(true);
     try {
       const result = await generateDmsExpiryNotifications({ limit: 100 });
@@ -111,12 +118,15 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false }: Dms
       } else {
         toast.error(result.error ?? "Failed");
       }
-    } finally {
+    } catch { toast.error("Generation unconfirmed. Refresh before retrying."); } finally {
+      actionFlight.current = false;
       setNotifyGenerating(false);
     }
   };
 
   const handleBridgeNotifications = async () => {
+    if (!canBridge || actionFlight.current) return;
+    actionFlight.current = true;
     setBridging(true);
     try {
       const result = await bridgeDueDmsNotificationsToGlobal({ limit: 50 });
@@ -127,23 +137,27 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false }: Dms
       } else {
         toast.error(result.error ?? "Bridge failed");
       }
-    } finally {
+    } catch { toast.error("Bridge response unavailable. Refresh before retrying."); } finally {
+      actionFlight.current = false;
       setBridging(false);
     }
   };
 
   const handleProcessEmailQueue = async () => {
+    if (!canBridge || actionFlight.current) return;
+    actionFlight.current = true;
     setProcessing(true);
     try {
       const result = await processDmsExpiryEmailQueue({ limit: 20 });
       if (result.success && result.data) {
-        toast.success(`Queue processed: ${result.data.sent} sent, ${result.data.failed} failed`);
+        toast.success(`Queue processed: ${result.data.sent} provider-accepted, ${result.data.failed} failed. Inbox delivery is not confirmed.`);
         invalidateEmailQueue(queryClient);
         invalidateDmsNotifications(queryClient);
       } else {
         toast.error(result.error ?? "Processing failed");
       }
-    } finally {
+    } catch { toast.error("Queue response unavailable. Refresh before retrying; do not resend blindly."); } finally {
+      actionFlight.current = false;
       setProcessing(false);
     }
   };
@@ -151,7 +165,7 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false }: Dms
   return (
     <div className="flex flex-col gap-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Expiry &amp; Renewals</h1>
           <p className="text-sm text-muted-foreground">
@@ -159,7 +173,7 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false }: Dms
           </p>
         </div>
         {isAdmin && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
               size="sm"
@@ -224,7 +238,7 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false }: Dms
         }}
       >
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <TabsList>
+          <TabsList className="h-auto flex-wrap justify-start">
             <TabsTrigger value="expired">Expired</TabsTrigger>
             <TabsTrigger value="expiring">Expiring Soon</TabsTrigger>
             <TabsTrigger value="missing">Missing Expiry</TabsTrigger>
@@ -263,24 +277,27 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false }: Dms
         <TabsContent value="expired" className="mt-4">
           <DmsExpiringDocumentsTable
             view="expired"
+            canManage={isAdmin}
             advancedFilter={advancedFilter}
             onRowsLoaded={handleRowsLoaded}
-            onStartRenewal={(doc) => setStartRenewalDoc(doc)}
+            onStartRenewal={canRenew ? (doc) => setStartRenewalDoc(doc) : undefined}
           />
         </TabsContent>
 
         <TabsContent value="expiring" className="mt-4">
           <DmsExpiringDocumentsTable
             view="expiring"
+            canManage={isAdmin}
             advancedFilter={advancedFilter}
             onRowsLoaded={handleRowsLoaded}
-            onStartRenewal={(doc) => setStartRenewalDoc(doc)}
+            onStartRenewal={canRenew ? (doc) => setStartRenewalDoc(doc) : undefined}
           />
         </TabsContent>
 
         <TabsContent value="missing" className="mt-4">
           <DmsExpiringDocumentsTable
             view="missing_expiry"
+            canManage={isAdmin}
             advancedFilter={advancedFilter}
             onRowsLoaded={handleRowsLoaded}
           />
@@ -297,6 +314,7 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false }: Dms
           </div>
           <DmsExpiringDocumentsTable
             view="ignored"
+            canManage={isAdmin}
             advancedFilter={advancedFilter}
             onRowsLoaded={handleRowsLoaded}
           />

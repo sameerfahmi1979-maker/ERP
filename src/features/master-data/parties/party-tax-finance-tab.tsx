@@ -1,6 +1,10 @@
 "use client";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import type { ColumnDef } from "@tanstack/react-table";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { FormErrorSummary, useInlineFieldFeedback } from "@/components/workspace/form-feedback";
+import { collectWorkspaceFieldIssues, type WorkspaceFieldIssue } from "@/lib/workspace/form-validation";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -52,7 +56,7 @@ const emptyTaxForm = {
 
 export function PartyTaxFinanceTab({ partyId, disabled, onChildOpen }: PartyTaxFinanceTabProps) {
   const queryClient = useQueryClient();
-  const { items: taxRegs, isLoading: taxLoading } = usePartyTaxRegistrationsQuery(partyId);
+  const { items: taxRegs, isLoading: taxLoading, error: taxError, refetch: refetchTax } = usePartyTaxRegistrationsQuery(partyId);
 
   // Finance profile state
   const [financeProfile, setFinanceProfile] = useState({
@@ -67,6 +71,11 @@ export function PartyTaxFinanceTab({ partyId, disabled, onChildOpen }: PartyTaxF
   });
   const [financeLoaded, setFinanceLoaded] = useState(false);
   const [isSavingFinance, setIsSavingFinance] = useState(false);
+  const financeRoot = useRef<HTMLDivElement>(null);
+  const financeFlight = useRef(false);
+  const [financeError, setFinanceError] = useState<string | null>(null);
+  const [financeIssues, setFinanceIssues] = useState<WorkspaceFieldIssue[]>([]);
+  useInlineFieldFeedback(financeIssues);
 
   // Tax dialog state
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -90,7 +99,10 @@ export function PartyTaxFinanceTab({ partyId, disabled, onChildOpen }: PartyTaxF
   // Load finance profile
   useEffect(() => {
     if (!partyId) return;
+    let cancelled = false;
     getPartyFinanceProfile(partyId).then((result) => {
+      if (cancelled) return;
+      if (!result.success) { setFinanceError("Finance details could not be loaded. Reload this record before making changes."); return; }
       if (result.success && result.data) {
         const p = result.data;
         setFinanceProfile({
@@ -105,10 +117,17 @@ export function PartyTaxFinanceTab({ partyId, disabled, onChildOpen }: PartyTaxF
         });
       }
       setFinanceLoaded(true);
-    });
+    }).catch(() => { if (!cancelled) setFinanceError("Finance details could not be loaded. Reload this record before making changes."); });
+    return () => { cancelled = true; };
   }, [partyId]);
 
   const handleSaveFinance = async () => {
+    if (disabled || !financeLoaded || financeFlight.current) return;
+    const issues = financeRoot.current ? collectWorkspaceFieldIssues(financeRoot.current) : [];
+    setFinanceIssues(issues);
+    if (issues.length) { issues[0].control?.focus(); return; }
+    financeFlight.current = true;
+    setFinanceError(null);
     setIsSavingFinance(true);
     try {
       const result = await upsertPartyFinanceProfile({
@@ -123,8 +142,11 @@ export function PartyTaxFinanceTab({ partyId, disabled, onChildOpen }: PartyTaxF
         finance_remarks: financeProfile.finance_remarks || null,
       });
       if (result.success) toast.success("Finance profile saved");
-      else toast.error(result.error ?? "Failed to save");
+      else setFinanceError("The finance profile was not saved. Your entries are still here.");
+    } catch {
+      setFinanceError("The save could not be confirmed. Your entries are still here. Check this record before retrying.");
     } finally {
+      financeFlight.current = false;
       setIsSavingFinance(false);
     }
   };
@@ -201,28 +223,8 @@ export function PartyTaxFinanceTab({ partyId, disabled, onChildOpen }: PartyTaxF
     }
   };
 
-  return (
-    <div className="space-y-8">
-      {/* Tax Registrations */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold">Tax Registrations</h3>
-          {!disabled && (
-            <Button type="button" size="sm" onClick={openAddTax} className="gap-2">
-              <Plus className="h-4 w-4" /> Add Tax Registration
-            </Button>
-          )}
-        </div>
-
-        {taxLoading ? (
-          <Skeleton className="h-20 w-full" />
-        ) : (taxRegs ?? []).length === 0 ? (
-          <p className="text-sm text-muted-foreground">No tax registrations added yet.</p>
-        ) : (
-          <div className="space-y-2">
-            {(taxRegs ?? []).map((tax) => (
-              <div key={tax.id} className="rounded-md border p-3 flex items-start justify-between gap-3">
-                <div className="space-y-1">
+  const taxColumns: ColumnDef<PartyTaxRegistration>[] = [
+{ id:"registration",header:"Tax registration",size:320,accessorFn:tax=>[tax.tax_registration_code,tax.tax_registration_number,tax.tax_type_name,tax.tax_status_name].filter(Boolean).join(" "),cell:({row})=>{const tax=row.original;return (<div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-xs text-muted-foreground">{tax.tax_registration_code}</span>
                     {tax.is_primary && <Badge className="text-xs">Primary</Badge>}
@@ -234,8 +236,9 @@ export function PartyTaxFinanceTab({ partyId, disabled, onChildOpen }: PartyTaxF
                     {tax.tax_type_name && <span>{tax.tax_type_name} · </span>}
                     {tax.tax_status_name && <span>{tax.tax_status_name}</span>}
                   </div>
-                </div>
-                <div className="flex gap-1 shrink-0">
+                </div>);}},
+{accessorKey:"tax_status_name",header:"Status"},
+{id:"actions",header:"Actions",enableSorting:false,enableHiding:false,cell:({row})=>{const tax=row.original;return (<div className="flex gap-1 shrink-0">
                   {tax.dms_certificate_document_id && (
                     <Button
                       type="button"
@@ -251,39 +254,54 @@ export function PartyTaxFinanceTab({ partyId, disabled, onChildOpen }: PartyTaxF
                   )}
                   {!disabled && (
                     <>
-                      <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditTax(tax)}>
+                      <Button type="button" variant="ghost" size="icon" aria-label="Edit registration" className="h-7 w-7" onClick={() => openEditTax(tax)}>
                         <Edit className="h-3.5 w-3.5" />
                       </Button>
-                      <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDeleteTax(tax.id)}>
+                      <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" aria-label="Delete registration" onClick={() => handleDeleteTax(tax.id)}>
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </>
                   )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+                </div>);}}];
+
+  return (
+    <div className="space-y-8">
+      {/* Tax Registrations */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold">Tax Registrations</h3>
+          {!disabled && (
+            <Button type="button" size="sm" onClick={openAddTax} className="gap-2">
+              <Plus className="h-4 w-4" /> Add Tax Registration
+            </Button>
+          )}
+        </div>
+
+        {taxLoading ? <Skeleton className="h-20 w-full" /> : taxError ? <div role="alert"><p>Tax registrations could not be loaded.</p><Button type="button" onClick={refetchTax}>Try again</Button></div> : <ERPDataTable tableId={`party.tax:${partyId}`} resultsLabel="Tax registrations" data={taxRegs ?? []} columns={taxColumns} enableRowSelection={false}/>}
+
       </div>
 
       {/* Finance Profile */}
       <div>
         <h3 className="text-sm font-semibold mb-3">Finance Profile</h3>
-        {!financeLoaded ? (
+        {financeError && <p role="alert" className="text-sm text-destructive">{financeError}</p>}
+        {!financeLoaded && !financeError ? (
           <Skeleton className="h-40 w-full" />
-        ) : (
-          <div className="grid grid-cols-12 gap-4">
+        ) : financeLoaded ? (
+          <div ref={financeRoot} aria-busy={isSavingFinance} onChangeCapture={() => { if (financeIssues.length && financeRoot.current) setFinanceIssues(collectWorkspaceFieldIssues(financeRoot.current)); }}>
+          <FormErrorSummary issues={financeIssues} onReveal={issue => issue.control?.focus()} />
+          <fieldset disabled={isSavingFinance} className="grid grid-cols-12 gap-4 min-w-0">
             <div className="col-span-6">
               <Label>Default Currency</Label>
-              <CurrencySelect value={financeProfile.default_currency_id} onValueChange={(v) => setFinanceProfile((f) => ({ ...f, default_currency_id: v }))} disabled={disabled} />
+              <CurrencySelect ariaLabel="Default Currency" value={financeProfile.default_currency_id} onValueChange={(v) => setFinanceProfile((f) => ({ ...f, default_currency_id: v }))} disabled={disabled} />
             </div>
             <div className="col-span-6">
               <Label>Default Payment Term</Label>
-              <PaymentTermSelect value={financeProfile.default_payment_term_id} onValueChange={(v) => setFinanceProfile((f) => ({ ...f, default_payment_term_id: v }))} disabled={disabled} />
+              <PaymentTermSelect ariaLabel="Default Payment Term" value={financeProfile.default_payment_term_id} onValueChange={(v) => setFinanceProfile((f) => ({ ...f, default_payment_term_id: v }))} disabled={disabled} />
             </div>
             <div className="col-span-6">
               <Label>Default Payment Method</Label>
-              <ERPCombobox
+              <ERPCombobox ariaLabel="Default Payment Method"
                 value={financeProfile.default_payment_method_id}
                 onValueChange={(v) => setFinanceProfile((f) => ({ ...f, default_payment_method_id: v !== null ? Number(v) : null }))}
                 options={(paymentMethods ?? []).map((m) => ({ value: m.id, label: m.name_en }))}
@@ -294,26 +312,26 @@ export function PartyTaxFinanceTab({ partyId, disabled, onChildOpen }: PartyTaxF
             </div>
             <div className="col-span-3">
               <Label>Credit Limit</Label>
-              <Input type="number" step="0.01" min="0" value={financeProfile.credit_limit} onChange={(e) => setFinanceProfile((f) => ({ ...f, credit_limit: e.target.value }))} disabled={disabled} />
+              <Input aria-label="Credit Limit" type="number" step="0.01" min="0" value={financeProfile.credit_limit} onChange={(e) => setFinanceProfile((f) => ({ ...f, credit_limit: e.target.value }))} disabled={disabled} />
             </div>
             <div className="col-span-3">
               <Label>Credit Currency</Label>
-              <CurrencySelect value={financeProfile.credit_currency_id} onValueChange={(v) => setFinanceProfile((f) => ({ ...f, credit_currency_id: v }))} disabled={disabled} />
+              <CurrencySelect ariaLabel="Credit Currency" value={financeProfile.credit_currency_id} onValueChange={(v) => setFinanceProfile((f) => ({ ...f, credit_currency_id: v }))} disabled={disabled} />
             </div>
             <div className="col-span-6 flex items-end gap-3 pb-1">
               <Label>Finance Hold</Label>
-              <Switch checked={financeProfile.finance_hold} onCheckedChange={(c) => setFinanceProfile((f) => ({ ...f, finance_hold: c }))} disabled={disabled} />
+              <Switch aria-label="Finance Hold" checked={financeProfile.finance_hold} onCheckedChange={(c) => setFinanceProfile((f) => ({ ...f, finance_hold: c }))} disabled={disabled} />
               <span className="text-sm text-muted-foreground">{financeProfile.finance_hold ? "Yes" : "No"}</span>
             </div>
             {financeProfile.finance_hold && (
               <div className="col-span-6">
                 <Label>Finance Hold Reason</Label>
-                <Input value={financeProfile.finance_hold_reason} onChange={(e) => setFinanceProfile((f) => ({ ...f, finance_hold_reason: e.target.value }))} disabled={disabled} required />
+                <Input aria-label="Finance Hold Reason" value={financeProfile.finance_hold_reason} onChange={(e) => setFinanceProfile((f) => ({ ...f, finance_hold_reason: e.target.value }))} disabled={disabled} required />
               </div>
             )}
             <div className="col-span-12">
               <Label>Finance Remarks</Label>
-              <Textarea value={financeProfile.finance_remarks} onChange={(e) => setFinanceProfile((f) => ({ ...f, finance_remarks: e.target.value }))} rows={2} disabled={disabled} />
+              <Textarea aria-label="Finance Remarks" value={financeProfile.finance_remarks} onChange={(e) => setFinanceProfile((f) => ({ ...f, finance_remarks: e.target.value }))} rows={2} disabled={disabled} />
             </div>
             {!disabled && (
               <div className="col-span-12 flex justify-end">
@@ -322,8 +340,8 @@ export function PartyTaxFinanceTab({ partyId, disabled, onChildOpen }: PartyTaxF
                 </Button>
               </div>
             )}
-          </div>
-        )}
+          </fieldset></div>
+        ) : null}
       </div>
 
       {/* Tax Dialog */}
@@ -342,6 +360,7 @@ export function PartyTaxFinanceTab({ partyId, disabled, onChildOpen }: PartyTaxF
           <div className="col-span-6">
             <RequiredLabel required>Tax Type</RequiredLabel>
             <TaxTypeSelect
+              name="tax_type_id" ariaLabel="Tax Type" required
               value={taxForm.tax_type_id}
               onValueChange={(v) => setTaxForm((f) => ({ ...f, tax_type_id: v }))}
               placeholder="Select tax type..."
@@ -349,11 +368,11 @@ export function PartyTaxFinanceTab({ partyId, disabled, onChildOpen }: PartyTaxF
           </div>
           <div className="col-span-6">
             <RequiredLabel required>Registration Number</RequiredLabel>
-            <Input value={taxForm.tax_registration_number} onChange={(e) => setTaxForm((f) => ({ ...f, tax_registration_number: e.target.value }))} />
+            <Input aria-label="Registration Number" required value={taxForm.tax_registration_number} onChange={(e) => setTaxForm((f) => ({ ...f, tax_registration_number: e.target.value }))} />
           </div>
           <div className="col-span-6">
             <RequiredLabel required>Tax Status</RequiredLabel>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Tax Status"
               value={taxForm.tax_status_id}
               onValueChange={(v) => setTaxForm((f) => ({ ...f, tax_status_id: v !== null ? Number(v) : null }))}
               options={(taxStatuses ?? []).map((s) => ({ value: s.id, label: s.name_en }))}
@@ -363,7 +382,7 @@ export function PartyTaxFinanceTab({ partyId, disabled, onChildOpen }: PartyTaxF
           </div>
           <div className="col-span-6">
             <Label>Effective From</Label>
-            <Input type="date" value={taxForm.effective_from} onChange={(e) => setTaxForm((f) => ({ ...f, effective_from: e.target.value }))} />
+            <Input aria-label="Effective From" type="date" value={taxForm.effective_from} onChange={(e) => setTaxForm((f) => ({ ...f, effective_from: e.target.value }))} />
           </div>
           <div className="col-span-12 flex items-center gap-6">
             <div className="flex items-center gap-2">
@@ -381,7 +400,7 @@ export function PartyTaxFinanceTab({ partyId, disabled, onChildOpen }: PartyTaxF
           </div>
           <div className="col-span-12">
             <Label>Remarks</Label>
-            <Textarea value={taxForm.remarks} onChange={(e) => setTaxForm((f) => ({ ...f, remarks: e.target.value }))} rows={2} />
+            <Textarea aria-label="Remarks" value={taxForm.remarks} onChange={(e) => setTaxForm((f) => ({ ...f, remarks: e.target.value }))} rows={2} />
           </div>
         </div>
       </ERPChildDialogForm>

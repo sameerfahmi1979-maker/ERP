@@ -33,6 +33,8 @@ type DraftRestoredNoticeProps = {
 
 export function DraftRestoredNotice({ visible, onDiscard, className }: DraftRestoredNoticeProps) {
   const [dismissed, setDismissed] = useState(false);
+  const [previousVisible, setPreviousVisible] = useState(visible);
+  if (previousVisible !== visible) { setPreviousVisible(visible); if (visible) setDismissed(false); }
 
   if (!visible || dismissed) return null;
 
@@ -60,9 +62,9 @@ export function DraftRestoredNotice({ visible, onDiscard, className }: DraftRest
       )}
       <button
         type="button"
-        aria-label="Dismiss"
+        aria-label="Dismiss draft-restored notice"
         onClick={() => setDismissed(true)}
-        className="shrink-0 h-4 w-4 rounded flex items-center justify-center hover:bg-amber-200/60 dark:hover:bg-amber-900/60"
+        className="shrink-0 h-11 w-11 sm:h-8 sm:w-8 rounded flex items-center justify-center hover:bg-amber-200/60 dark:hover:bg-amber-900/60"
       >
         <X className="h-3 w-3" />
       </button>

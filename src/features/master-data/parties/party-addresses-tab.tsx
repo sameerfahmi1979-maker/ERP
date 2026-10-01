@@ -1,5 +1,8 @@
 "use client";
 
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import type { ColumnDef } from "@tanstack/react-table";
+
 import { useState } from "react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -56,7 +59,7 @@ const emptyForm = {
 
 export function PartyAddressesTab({ partyId, disabled, onChildOpen }: PartyAddressesTabProps) {
   const queryClient = useQueryClient();
-  const { items: addresses, isLoading } = usePartyAddressesQuery(partyId);
+  const { items: addresses, isLoading, error: loadError, refetch } = usePartyAddressesQuery(partyId);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const setDialogOpen = (open: boolean) => { setIsDialogOpen(open); onChildOpen?.(open); };
   const [editing, setEditing] = useState<PartyAddress | null>(null);
@@ -173,25 +176,8 @@ export function PartyAddressesTab({ partyId, disabled, onChildOpen }: PartyAddre
     }
   };
 
-  if (isLoading) return <Skeleton className="h-32 w-full" />;
-
-  return (
-    <div className="space-y-4">
-      {!disabled && (
-        <div className="flex justify-end">
-          <Button type="button" size="sm" onClick={openAdd} className="gap-2">
-            <Plus className="h-4 w-4" /> Add Address
-          </Button>
-        </div>
-      )}
-
-      {(addresses ?? []).length === 0 ? (
-        <p className="text-sm text-muted-foreground">No addresses added yet.</p>
-      ) : (
-        <div className="space-y-2">
-          {(addresses ?? []).map((addr) => (
-            <div key={addr.id} className="rounded-md border p-3 flex items-start justify-between gap-3">
-              <div className="space-y-1">
+  const columns: ColumnDef<PartyAddress>[] = [
+    {id:"address_code",header:"Address",size:360,accessorFn:row=>[row.address_code,row.address_name,row.city_name,row.emirate_name,row.country_name].filter(Boolean).join(" "),enableHiding:false,cell:({row})=>{const addr=row.original;return (<div className="space-y-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-mono text-xs text-muted-foreground">{addr.address_code}</span>
                   {addr.is_primary && <Badge className="text-xs">Primary</Badge>}
@@ -205,21 +191,34 @@ export function PartyAddressesTab({ partyId, disabled, onChildOpen }: PartyAddre
                     {[addr.city_name, addr.emirate_name, addr.country_name].filter(Boolean).join(", ")}
                   </span>
                 </div>
-              </div>
-              {!disabled && (
+              </div>);}},
+    {accessorKey:"is_billing_address",header:"Billing",},
+    {id:"actions",header:"Actions",size:180,enableSorting:false,enableHiding:false,cell:({row})=>{const addr=row.original;return (<>{!disabled && (
                 <div className="flex gap-1 shrink-0">
-                  <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(addr)}>
+                  <Button aria-label="Edit record" type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(addr)}>
                     <Edit className="h-3.5 w-3.5" />
                   </Button>
-                  <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(addr.id)}>
+                  <Button aria-label="Delete record" type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(addr.id)}>
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>
-              )}
-            </div>
-          ))}
+              )}</>);}},
+  ];
+
+  if (isLoading) return <Skeleton className="h-32 w-full" />;
+
+  return (
+    <div className="space-y-4">
+      {!disabled && (
+        <div className="flex justify-end">
+          <Button type="button" size="sm" onClick={openAdd} className="gap-2">
+            <Plus className="h-4 w-4" /> Add Address
+          </Button>
         </div>
       )}
+
+      {loadError ? <div role="alert" className="rounded border p-4"><p>Address records could not be loaded.</p><Button type="button" variant="outline" onClick={refetch}>Try again</Button></div> :
+        <ERPDataTable tableId={`party.addresses:${partyId}`} resultsLabel="Address" data={addresses ?? []} columns={columns} enableRowSelection={false} />}
 
       <ERPChildDialogForm
         open={isDialogOpen}
@@ -235,7 +234,7 @@ export function PartyAddressesTab({ partyId, disabled, onChildOpen }: PartyAddre
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-6">
             <RequiredLabel required>Address Type</RequiredLabel>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Address Type"
               value={form.address_type_id}
               onValueChange={(v) => setForm((f) => ({ ...f, address_type_id: v !== null ? Number(v) : null }))}
               options={(addressTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }))}
@@ -245,7 +244,7 @@ export function PartyAddressesTab({ partyId, disabled, onChildOpen }: PartyAddre
           </div>
           <div className="col-span-6">
             <Label>Address Name / Label</Label>
-            <Input value={form.address_name} onChange={(e) => setForm((f) => ({ ...f, address_name: e.target.value }))} />
+            <Input aria-label="Address Name / Label" value={form.address_name} onChange={(e) => setForm((f) => ({ ...f, address_name: e.target.value }))} />
           </div>
           <div className="col-span-6">
             <RequiredLabel required>Country</RequiredLabel>
@@ -265,15 +264,15 @@ export function PartyAddressesTab({ partyId, disabled, onChildOpen }: PartyAddre
           </div>
           <div className="col-span-6">
             <Label>Street</Label>
-            <Input value={form.street} onChange={(e) => setForm((f) => ({ ...f, street: e.target.value }))} />
+            <Input aria-label="Street" value={form.street} onChange={(e) => setForm((f) => ({ ...f, street: e.target.value }))} />
           </div>
           <div className="col-span-3">
             <Label>Building</Label>
-            <Input value={form.building} onChange={(e) => setForm((f) => ({ ...f, building: e.target.value }))} />
+            <Input aria-label="Building" value={form.building} onChange={(e) => setForm((f) => ({ ...f, building: e.target.value }))} />
           </div>
           <div className="col-span-3">
             <Label>PO Box</Label>
-            <Input value={form.po_box} onChange={(e) => setForm((f) => ({ ...f, po_box: e.target.value }))} />
+            <Input aria-label="PO Box" value={form.po_box} onChange={(e) => setForm((f) => ({ ...f, po_box: e.target.value }))} />
           </div>
           <div className="col-span-12 grid grid-cols-4 gap-3">
             {[
@@ -290,7 +289,7 @@ export function PartyAddressesTab({ partyId, disabled, onChildOpen }: PartyAddre
           </div>
           <div className="col-span-12">
             <Label>Notes</Label>
-            <Textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} />
+            <Textarea aria-label="Notes" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} />
           </div>
         </div>
       </ERPChildDialogForm>

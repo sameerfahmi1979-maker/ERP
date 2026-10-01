@@ -38,7 +38,7 @@ export function DmsReviewQueueDashboardCards({ counts }: Props) {
   if (!counts) return null;
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
       <DashboardCard
         label="Open"
         value={counts.open}

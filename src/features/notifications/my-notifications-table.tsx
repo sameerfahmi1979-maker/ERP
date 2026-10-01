@@ -1,6 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useRef } from "react";
+import Link from "next/link";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import type { ColumnDef } from "@tanstack/react-table";
+import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
+import { isInternalActionUrlAllowed } from "@/lib/security/action-url";
+import { useQueryClient } from "@tanstack/react-query";
+import { invalidateMyNotifications } from "@/lib/query/invalidation";
 import { toast } from "sonner";
 import {
   Bell, Check, X, Archive, ArrowRight,
@@ -138,7 +145,6 @@ const GROUP_ORDER = ["Today", "Yesterday", "This Week", "This Month", "Earlier"]
 function NotificationCard({
   n,
   onAction,
-  actingId,
   isPending,
   spotlight = false,
 }: {
@@ -150,7 +156,7 @@ function NotificationCard({
 }) {
   const isUnread = n.status === "unread";
   const s = sev(n.severity);
-  const isBusy = isPending && actingId === n.id;
+  const isBusy = isPending;
   const ts = n.createdAt ?? n.scheduledFor;
 
   return (
@@ -207,15 +213,15 @@ function NotificationCard({
             <span className="text-[10px] text-muted-foreground/60 capitalize">
               {n.notificationType.replace(/_/g, " ")}
             </span>
-            {n.actionUrl && (
+            {isInternalActionUrlAllowed(n.actionUrl) && (
               <>
                 <span className="text-muted-foreground/40 text-[10px]">·</span>
-                <a
+                <Link
                   href={n.actionUrl}
                   className="inline-flex items-center gap-0.5 text-[11px] text-primary font-medium hover:underline"
                 >
                   {n.actionLabel ?? "View"} <ArrowRight className="h-3 w-3" />
-                </a>
+                </Link>
               </>
             )}
           </div>
@@ -224,7 +230,7 @@ function NotificationCard({
         {/* Action buttons — always visible for primary action on unread, hover-only otherwise */}
         <div className={cn(
           "flex flex-col items-center gap-0.5 shrink-0 self-start pt-0.5 transition-opacity duration-150",
-          isUnread ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
+          "opacity-100",
           isBusy && "opacity-100"
         )}>
           {isUnread && (
@@ -234,6 +240,7 @@ function NotificationCard({
               className="h-7 w-7 text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
               disabled={isBusy}
               title="Mark as read"
+              aria-label={`Mark notification ${n.id} as read`}
               onClick={() => onAction(n.id, () => markNotificationRead(n.id), "Marked as read")}
             >
               <Check className="h-3.5 w-3.5" />
@@ -246,6 +253,7 @@ function NotificationCard({
               className="h-7 w-7 text-muted-foreground hover:text-foreground"
               disabled={isBusy}
               title="Dismiss"
+              aria-label={`Dismiss notification ${n.id}`}
               onClick={() => onAction(n.id, () => dismissNotification(n.id), "Dismissed")}
             >
               <X className="h-3.5 w-3.5" />
@@ -257,6 +265,7 @@ function NotificationCard({
             className="h-7 w-7 text-muted-foreground hover:text-foreground"
             disabled={isBusy}
             title="Archive"
+            aria-label={`Archive notification ${n.id}`}
             onClick={() => onAction(n.id, () => archiveNotification(n.id), "Archived")}
           >
             <Archive className="h-3.5 w-3.5" />
@@ -350,29 +359,53 @@ interface MyNotificationsTableProps {
   notifications: NotificationRowData[];
   onRefresh: () => void;
   activeTab: string;
+  disabled?: boolean;
 }
 
-export function MyNotificationsTable({ notifications, onRefresh, activeTab }: MyNotificationsTableProps) {
+export function MyNotificationsTable({ notifications, onRefresh, activeTab, disabled = false }: MyNotificationsTableProps) {
   const [isPending, startTransition] = useTransition();
   const [actingId, setActingId] = useState<number | null>(null);
+  const flight = useRef(false);
+  const queryClient = useQueryClient();
+  const [view, setView] = usePersistentUiState<"list" | "cards">("notifications:view", "list");
 
   const handleAction = (id: number, fn: () => Promise<{ success: boolean; error?: string }>, label: string) => {
+    if (flight.current || disabled) return;
+    flight.current = true;
     setActingId(id);
     startTransition(async () => {
+      try {
       const result = await fn();
       if (result.success) {
         toast.success(label);
+        invalidateMyNotifications(queryClient);
         onRefresh();
       } else {
         toast.error(result.error ?? "Action failed");
       }
-      setActingId(null);
+      } catch { toast.error("The change could not be confirmed. Refresh notifications before retrying."); }
+      finally { setActingId(null); flight.current = false; }
     });
   };
 
-  if (notifications.length === 0) {
-    return <EmptyState tab={activeTab} />;
-  }
+  const columns: ColumnDef<NotificationRowData>[] = [
+    {accessorKey:"title",header:"Notification",size:300,cell:({row})=><div><p className="font-medium break-words">{row.original.title}</p><p className="text-xs text-muted-foreground break-words">{row.original.message}</p></div>},
+    {accessorKey:"severity",header:"Severity",size:110},
+    {accessorKey:"sourceModule",header:"Module",size:110},
+    {accessorKey:"status",header:"Status",size:110},
+    {accessorKey:"createdAt",header:"Created",size:180,cell:({getValue})=>new Date(String(getValue())).toLocaleString()},
+    {id:"actions",header:"Actions",size:260,enableSorting:false,enableHiding:false,meta:{exportable:false},cell:({row})=>{
+      const n=row.original; return <div className="flex flex-wrap gap-1">
+        {isInternalActionUrlAllowed(n.actionUrl) && <Link href={n.actionUrl} className="text-primary underline p-2">{n.actionLabel??"Open record"}</Link>}
+        {n.status==="unread" && <Button size="sm" variant="ghost" disabled={disabled||isPending} aria-label={`Mark notification ${n.id} as read`} onClick={()=>handleAction(n.id,()=>markNotificationRead(n.id),"Marked as read")}>Read</Button>}
+        {!["dismissed","archived"].includes(n.status) && <Button size="sm" variant="ghost" disabled={disabled||isPending} aria-label={`Dismiss notification ${n.id}`} onClick={()=>handleAction(n.id,()=>dismissNotification(n.id),"Dismissed")}>Dismiss</Button>}
+        <Button size="sm" variant="ghost" disabled={disabled||isPending} aria-label={`Archive notification ${n.id}`} onClick={()=>handleAction(n.id,()=>archiveNotification(n.id),"Archived")}>Archive</Button>
+      </div>;
+    }},
+  ];
+  const viewControls=<div className="flex flex-wrap items-center gap-2"><Button variant={view==="list"?"default":"outline"} aria-pressed={view==="list"} onClick={()=>setView("list")}>List</Button><Button variant={view==="cards"?"default":"outline"} aria-pressed={view==="cards"} onClick={()=>setView("cards")}>Cards</Button><span className="text-xs text-muted-foreground">Use List to search, edit columns and filter loaded notifications.</span></div>;
+  if(view==="list")return <div className="space-y-3">{viewControls}<ERPDataTable tableId="notifications.my" data={notifications} columns={columns} enableRowSelection={false} searchPlaceholder="Search loaded notifications…" emptyMessage="No loaded notifications match this view."/></div>;
+  if (notifications.length === 0) return <div className="space-y-3">{viewControls}<EmptyState tab={activeTab}/></div>;
 
   // Pull critical/urgent unread items out as spotlight
   const spotlightItems =
@@ -395,12 +428,13 @@ export function MyNotificationsTable({ notifications, onRefresh, activeTab }: My
 
   return (
     <div className="space-y-4">
+      {viewControls}
       {/* Spotlight zone for critical/urgent */}
       <SpotlightZone
         items={spotlightItems}
         onAction={handleAction}
         actingId={actingId}
-        isPending={isPending}
+        isPending={isPending || disabled}
       />
 
       {/* Main feed */}
@@ -420,7 +454,7 @@ export function MyNotificationsTable({ notifications, onRefresh, activeTab }: My
                 n={n}
                 onAction={handleAction}
                 actingId={actingId}
-                isPending={isPending}
+                isPending={isPending || disabled}
               />
             ))}
           </div>

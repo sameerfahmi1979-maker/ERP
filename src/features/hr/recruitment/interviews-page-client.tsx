@@ -1,4 +1,6 @@
 "use client";
+import { RecordCollection } from "@/components/erp/table/record-collection";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { ERPCombobox } from "@/components/erp/combobox";
 import { Button } from "@/components/ui/button";
@@ -39,17 +41,18 @@ const RESULT_COLORS: Record<string, string> = {
 export function InterviewsPageClient({ authContext }: Props) {
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
 
-  const { data: res, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.recruitment.globalInterviews({ status: statusFilter }),
     queryFn: () => listGlobalInterviews({ status: statusFilter ?? undefined, pageSize: 100 }),
     staleTime: 30_000,
   });
+  const { data: res, isLoading } = uiRead1;
 
   const rows = Array.isArray(res?.data?.rows) ? res.data.rows : [];
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-4">
-      <div className="flex items-center justify-between">
+    <QueryReadBoundary queries={[uiRead1]}><div className="p-6 max-w-5xl mx-auto space-y-4">
+      <div className="flex flex-wrap gap-2 items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Interviews</h1>
           <p className="text-sm text-muted-foreground">{res?.data?.totalCount ?? 0} total</p>
@@ -57,7 +60,7 @@ export function InterviewsPageClient({ authContext }: Props) {
       </div>
 
       <div className="flex gap-2 flex-wrap">
-        <ERPCombobox
+        <ERPCombobox ariaLabel="Filter by status"
           value={statusFilter}
           onValueChange={(v) => setStatusFilter(v ? String(v) : null)}
           options={[{ value: "", label: "All Statuses" }, ...STATUS_OPTIONS]}
@@ -74,7 +77,7 @@ export function InterviewsPageClient({ authContext }: Props) {
         </div>
       ) : (
         <div className="border rounded-lg divide-y">
-          {rows.map((row) => (
+          <RecordCollection id="hr.interviews-page-client.InterviewsPageClient.rows" rows={rows} fields={[{"id":"candidate_full_name_en","path":"candidate.full_name_en","label":"Full Name En"},{"id":"interview_round","path":"interview_round","label":"Interview Round"},{"id":"interview_status","path":"interview_status","label":"Interview Status"}]} renderRecord={(row) => (
             <div key={row.id} className="flex items-center gap-3 p-4">
               <Calendar className="h-4 w-4 text-slate-400 flex-shrink-0" />
               <div className="flex-1 min-w-0">
@@ -97,9 +100,9 @@ export function InterviewsPageClient({ authContext }: Props) {
                 </Link>
               )}
             </div>
-          ))}
+          )} />
         </div>
       )}
-    </div>
+    </div></QueryReadBoundary>
   );
 }

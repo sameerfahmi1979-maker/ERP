@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
 import { CalendarX, AlertTriangle, Clock, HelpCircle, Bell, RefreshCw, CheckCircle2, EyeOff } from "lucide-react";
 import { queryKeys } from "@/lib/query/query-keys";
 import { getDmsExpiryDashboardStats } from "@/server/actions/dms/expiry-reminders";
@@ -28,7 +29,7 @@ function StatCard({ label, count, icon: Icon, iconClass, cardClass }: CardProps)
 }
 
 export function DmsExpirySummaryCards() {
-  const { data: stats, isLoading } = useQuery({
+  const { data: stats, isLoading, isError, refetch } = useQuery({
     queryKey: queryKeys.dms.expiryDashboardStats(),
     queryFn: async () => {
       const result = await getDmsExpiryDashboardStats();
@@ -48,6 +49,7 @@ export function DmsExpirySummaryCards() {
     );
   }
 
+  if (isError) return <div role="alert">Expiry totals are unavailable, not zero. <Button onClick={() => void refetch()}>Retry expiry totals</Button></div>;
   const s = stats ?? {
     expired: 0, expiring_7: 0, expiring_30: 0, expiring_60: 0, expiring_90: 0,
     missing_expiry: 0, pending_reminders: 0, dismissed_reminders: 0, open_renewals: 0,

@@ -1,4 +1,5 @@
 "use client";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import { reportWorkspaceFieldErrors } from "@/lib/workspace/field-errors";
 import {useWorkspaceSaveSession} from "@/hooks/use-workspace-save-session";
 
@@ -148,8 +149,9 @@ function CandidateWorkspaceFormInstance({ candidate, mode, authContext }: Props)
   });
   const canView = checkPermission(authContext, "hr.recruitment.view") || canManage;
   const canCreateEmployee = checkPermission(authContext, "hr.employees.create");
-  const {data:salaryAccess}=useQuery({queryKey:['security','recruitment-salary',form.requisition_id],
+  const uiRead1=useQuery({queryKey:['security','recruitment-salary',form.requisition_id],
     queryFn:()=>getRecruitmentSalaryAccess(form.requisition_id),retry:false,staleTime:0,gcTime:0});
+  const {data:salaryAccess} = uiRead1;
   const canManageSalary=salaryAccess?.success===true&&salaryAccess.data?.canManage===true;
 
   const isNew = mode === "add";
@@ -221,7 +223,7 @@ function CandidateWorkspaceFormInstance({ candidate, mode, authContext }: Props)
   }
 
   return (
-    <ERPRecordWorkspaceForm
+    <QueryReadBoundary queries={[uiRead1]}><ERPRecordWorkspaceForm
       isDirty={isDirty}
       title={title}
       subtitle={subtitle}
@@ -325,6 +327,6 @@ function CandidateWorkspaceFormInstance({ candidate, mode, authContext }: Props)
           <div className="p-6 text-muted-foreground text-sm">Save candidate first to manage conversion.</div>
         )}
       </ERPRecordSectionPanel>
-    </ERPRecordWorkspaceForm>
+    </ERPRecordWorkspaceForm></QueryReadBoundary>
   );
 }

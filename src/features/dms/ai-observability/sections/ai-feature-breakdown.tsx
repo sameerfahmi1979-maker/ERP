@@ -1,4 +1,7 @@
 "use client";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import { loadedListValue } from "@/components/erp/table/loaded-list-view";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { getDmsAiFeatureBreakdown, type ObservabilityFilters } from "@/server/actions/dms/ai-observability";
 import { useQuery } from "@tanstack/react-query";
@@ -15,7 +18,7 @@ function fmt(n: number) {
 }
 
 export function AiFeatureBreakdown({ filters, refreshKey }: Props) {
-  const { data, isPending: loading, error: queryError } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: ["dms-observability", "getDmsAiFeatureBreakdown", filters, refreshKey],
     queryFn: async () => {
       const result = await getDmsAiFeatureBreakdown(filters);
@@ -26,40 +29,22 @@ export function AiFeatureBreakdown({ filters, refreshKey }: Props) {
     gcTime: 0,
     refetchOnWindowFocus: false,
   });
+ const { data, isPending: loading, error: queryError } = uiRead1;
   const error = queryError?.message;
 
-  if (loading) return <div className="text-sm text-muted-foreground">Loading...</div>;
-  if (error) return <div className="text-sm text-destructive">{error}</div>;
-  if (!data || data.length === 0) return <div className="text-sm text-muted-foreground">No data.</div>;
+  if (loading) return <QueryReadBoundary queries={[uiRead1]}><div className="text-sm text-muted-foreground">Loading...</div></QueryReadBoundary>;
+  if (error) return <QueryReadBoundary queries={[uiRead1]}><div className="text-sm text-destructive">{error}</div></QueryReadBoundary>;
+  if (!data || data.length === 0) return <QueryReadBoundary queries={[uiRead1]}><div className="text-sm text-muted-foreground">No data.</div></QueryReadBoundary>;
 
   return (
-    <div className="overflow-x-auto rounded-lg border">
-      <table className="w-full text-sm">
-        <thead className="border-b bg-muted/50">
-          <tr>
-            <th className="px-3 py-2 text-left font-medium text-muted-foreground">Feature</th>
-            <th className="px-3 py-2 text-left font-medium text-muted-foreground">Operation</th>
-            <th className="px-3 py-2 text-right font-medium text-muted-foreground">Calls</th>
-            <th className="px-3 py-2 text-right font-medium text-muted-foreground">Failed</th>
-            <th className="px-3 py-2 text-right font-medium text-muted-foreground">In Tokens</th>
-            <th className="px-3 py-2 text-right font-medium text-muted-foreground">Avg ms</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.map((row, i) => (
-            <tr key={i} className="border-b last:border-0 hover:bg-muted/30">
-              <td className="px-3 py-2 font-mono text-xs">{row.featureArea}</td>
-              <td className="px-3 py-2 text-xs text-muted-foreground">{row.operationType}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{row.totalCalls}</td>
-              <td className="px-3 py-2 text-right tabular-nums text-destructive">{row.failedCalls || "—"}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{fmt(row.totalInputTokens)}</td>
-              <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
-                {row.avgDurationMs !== null ? `${row.avgDurationMs}ms` : "—"}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <QueryReadBoundary queries={[uiRead1]}><div className="overflow-x-auto rounded-lg border">
+      {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable tableId="special.dms.ai-observability.sections.ai-feature-breakdown" data={data} columns={[{id:"featureArea",header:"Feature",accessorFn:row=>loadedListValue(row,"featureArea"),meta:{filter:{type:"text"}},enableHiding:false,size:220,cell:({row:{original:row}})=>{
+return <>{row.featureArea}</>;}},{id:"operationType",header:"Operation",accessorFn:row=>loadedListValue(row,"operationType"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+return <>{row.operationType}</>;}},{id:"totalCalls",header:"Calls",accessorFn:row=>loadedListValue(row,"totalCalls"),meta:{filter:{type:"number"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+return <>{row.totalCalls}</>;}},{id:"failedCalls",header:"Failed",accessorFn:row=>loadedListValue(row,"failedCalls"),meta:{filter:{type:"number"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+return <>{row.failedCalls || "—"}</>;}},{id:"totalInputTokens",header:"Input tokens",accessorFn:row=>loadedListValue(row,"totalInputTokens"),meta:{filter:{type:"number"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+return <>{fmt(row.totalInputTokens)}</>;}},{id:"avgDurationMs",header:"Average ms",accessorFn:row=>loadedListValue(row,"avgDurationMs"),meta:{filter:{type:"number"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+return <>{row.avgDurationMs !== null ? `${row.avgDurationMs}ms` : "—"}</>;}}]} enableRowSelection={false} searchPlaceholder="Search loaded records…" initialPageSize={10} />
+    </div></QueryReadBoundary>
   );
 }

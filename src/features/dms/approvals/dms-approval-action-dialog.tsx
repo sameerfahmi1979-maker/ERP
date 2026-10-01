@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Loader2, CheckCircle2, XCircle, Send, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
@@ -33,7 +33,7 @@ const DIALOG_META: Record<ApprovalDialogMode, { title: string; subtitle: string;
   },
   approve: {
     title: "Approve Document",
-    subtitle: "Confirm approval of this document. You may add an optional comment.",
+    subtitle: "Approve the current workflow step. The document is final only after its last required step. You may add an optional comment.",
     submitLabel: "Approve",
     icon: <CheckCircle2 className="h-5 w-5" />,
   },
@@ -60,6 +60,7 @@ export function DmsApprovalActionDialog({
   onSuccess,
 }: DmsApprovalActionDialogProps) {
   const [reason, setReason] = useState("");
+  const fieldId = useId();
   const [comment, setComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -85,7 +86,7 @@ export function DmsApprovalActionDialog({
 
     setSubmitting(true);
     try {
-      let result: { success: boolean; error?: string };
+      let result: { success: boolean; error?: string; data?: unknown };
 
       if (mode === "submit") {
         result = await submitDocumentForApproval(documentId, { comment: comment.trim() || undefined });
@@ -103,7 +104,7 @@ export function DmsApprovalActionDialog({
       if (result.success) {
         toast.success(
           mode === "submit" ? "Document submitted for approval." :
-          mode === "approve" ? "Document approved." :
+          mode === "approve" ? (result.data && typeof result.data === "object" && "pending" in result.data && result.data.pending ? "Step approved. Awaiting the next approval step." : "Document approved.") :
           mode === "reject" ? "Document rejected." :
           "Approval request withdrawn.",
         );
@@ -112,8 +113,10 @@ export function DmsApprovalActionDialog({
         onOpenChange(false);
         onSuccess();
       } else {
-        toast.error(result.error ?? "Action failed. Please try again.");
+        setValidationError("The action was not completed. Your entries are retained. Refresh the document status and check your access before retrying.");
       }
+    } catch {
+      setValidationError("The result could not be confirmed. Your entries are retained. Check the document status before retrying to avoid repeating an approval action.");
     } finally {
       setSubmitting(false);
     }
@@ -139,10 +142,11 @@ export function DmsApprovalActionDialog({
       <div className="grid grid-cols-12 gap-4">
         {hasCommentField && (
           <div className="col-span-12">
-            <Label className="text-xs text-muted-foreground mb-1 block">
+            <Label htmlFor={`${fieldId}-comment`} className="text-xs text-muted-foreground mb-1 block">
               Comment <span className="text-muted-foreground/60">(optional)</span>
             </Label>
             <Textarea
+              id={`${fieldId}-comment`} name="comment"
               placeholder="Add an optional comment..."
               value={comment}
               onChange={(e) => setComment(e.target.value)}
@@ -156,7 +160,7 @@ export function DmsApprovalActionDialog({
         {hasReasonField && (
           <>
             <div className="col-span-12">
-              <Label className="text-xs text-muted-foreground mb-1 block">
+              <Label htmlFor={`${fieldId}-reason`} className="text-xs text-muted-foreground mb-1 block">
                 {needsReason ? (
                   <span>Reason <span className="text-destructive">*</span></span>
                 ) : (
@@ -164,6 +168,7 @@ export function DmsApprovalActionDialog({
                 )}
               </Label>
               <Textarea
+                id={`${fieldId}-reason`} name="reason" required={needsReason} minLength={needsReason ? 5 : undefined}
                 placeholder={needsReason ? "Enter a reason (required, min 5 characters)..." : "Enter a reason (optional)..."}
                 value={reason}
                 onChange={(e) => { setReason(e.target.value); setValidationError(null); }}
@@ -177,7 +182,7 @@ export function DmsApprovalActionDialog({
 
         {validationError && (
           <div className="col-span-12">
-            <p className="text-xs text-destructive">{validationError}</p>
+            <p role="alert" className="text-xs text-destructive">{validationError}</p>
           </div>
         )}
 

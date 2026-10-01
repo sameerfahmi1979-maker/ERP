@@ -1,4 +1,6 @@
 "use client";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
+import { RecordCollection } from "@/components/erp/table/record-collection";
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -99,7 +101,7 @@ export function RiskScoresPageClient({
     limit: 100,
   };
 
-  const { data: listData, isLoading, refetch } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.ai.riskScores(listFilters),
     queryFn: async () => {
       const res = await getRiskScores(listFilters);
@@ -107,8 +109,9 @@ export function RiskScoresPageClient({
       return res.data!;
     },
   });
+ const { data: listData, isLoading, refetch } = uiRead1;
 
-  const { data: detail } = useQuery({
+  const uiRead2 = useQuery({
     queryKey: queryKeys.ai.riskScoreDetail(selectedId ?? 0),
     enabled: selectedId != null,
     queryFn: async () => {
@@ -117,6 +120,7 @@ export function RiskScoresPageClient({
       return res.data!;
     },
   });
+ const { data: detail } = uiRead2;
 
   const handleCalculate = async () => {
     setIsCalculating(true);
@@ -192,7 +196,7 @@ export function RiskScoresPageClient({
   const rows = listData?.rows ?? [];
 
   return (
-    <div className="space-y-4">
+    <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="space-y-4">
       {!summary.featureEnabled && (
         <Alert className="border-amber-300 bg-amber-50">
           <AlertTriangle className="h-4 w-4 text-amber-600" />
@@ -254,7 +258,7 @@ export function RiskScoresPageClient({
           <div className="flex flex-wrap items-end gap-3">
             <div className="space-y-1">
               <Label className="text-xs">Entity types (comma-separated)</Label>
-              <input
+              <input aria-label="Entity types (comma-separated)"
                 className="flex h-9 w-64 rounded-md border border-input bg-background px-3 py-1 text-sm"
                 value={batchEntityTypes}
                 onChange={(e) => setBatchEntityTypes(e.target.value)}
@@ -338,15 +342,16 @@ export function RiskScoresPageClient({
             ) : rows.length === 0 ? (
               <p className="p-4 text-sm text-muted-foreground">No risk scores yet.</p>
             ) : (
-              <ul className="divide-y">
-                {rows.map((row: RiskScoreRow) => (
-                  <li key={row.id}>
+              <div className="divide-y">
+                {<RecordCollection id="special.risk-scores-page-client" rows={rows} fields={[{"id":"entityLabel","path":"entityLabel","label":"Entity"},{"id":"entityType","path":"entityType","label":"Type"},{"id":"riskScore","path":"riskScore","label":"Risk score"},{"id":"riskLevel","path":"riskLevel","label":"Risk level"},{"id":"status","path":"status","label":"Status"}]} renderRecord={(row: RiskScoreRow) => (
+                  <div key={row.id}>
                     <button
                       type="button"
                       className={`w-full text-left px-4 py-3 hover:bg-muted/50 ${
                         selectedId === row.id ? "bg-muted" : ""
                       }`}
                       onClick={() => setSelectedId(row.id)}
+                      aria-pressed={selectedId === row.id}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div>
@@ -361,9 +366,9 @@ export function RiskScoresPageClient({
                         <RiskLevelBadge level={row.riskLevel} score={row.riskScore} />
                       </div>
                     </button>
-                  </li>
-                ))}
-              </ul>
+                  </div>
+                )} />}
+              </div>
             )}
           </CardContent>
         </Card>
@@ -481,6 +486,6 @@ export function RiskScoresPageClient({
           </CardContent>
         </Card>
       </div>
-    </div>
+    </div></QueryReadBoundary>
   );
 }

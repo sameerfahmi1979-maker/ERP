@@ -1,4 +1,7 @@
 "use client";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import { loadedListValue } from "@/components/erp/table/loaded-list-view";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { queryKeys } from "@/lib/query/query-keys";
@@ -22,13 +25,14 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function HrProProcessesPageClient({ authContext }: Props) {
-  const { data: items = [], isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.actions.globalProProcesses(),
     queryFn: () => listGlobalProProcesses(),
   });
+  const { data: items = [], isLoading } = uiRead1;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-4">
+    <QueryReadBoundary queries={[uiRead1]}><div className="p-6 max-w-7xl mx-auto space-y-4">
       <div className="flex items-center gap-3">
         <Globe className="h-6 w-6 text-primary" />
         <div>
@@ -43,34 +47,11 @@ export function HrProProcessesPageClient({ authContext }: Props) {
         <div className="text-center py-16 text-muted-foreground">No PRO processes found.</div>
       ) : (
         <div className="rounded-lg border overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50">
-              <tr>
-                <th className="text-left p-3 font-medium">Process</th>
-                <th className="text-left p-3 font-medium">Status</th>
-                <th className="text-left p-3 font-medium">Priority</th>
-                <th className="text-left p-3 font-medium">Request Date</th>
-                <th className="text-left p-3 font-medium">Target Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map(item => (
-                <tr key={item.id} className="border-t hover:bg-muted/30 transition-colors">
-                  <td className="p-3 font-medium">{item.process_title}</td>
-                  <td className="p-3">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[item.process_status] ?? "bg-slate-100 text-slate-600"}`}>
+          {/* UI04 explicit table: loaded authorized rows only */}<ERPDataTable tableId="hr.actions.hr-pro-processes-page-client" data={items} columns={[{id:"process_title",header:"Process",accessorFn:item=>loadedListValue(item,"process_title"),enableHiding:false,size:240,cell:({row:{original:item}})=><>{item.process_title}</>},{id:"process_status",header:"Status",accessorFn:item=>loadedListValue(item,"process_status"),enableHiding:true,size:160,cell:({row:{original:item}})=><><span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[item.process_status] ?? "bg-slate-100 text-slate-600"}`}>
                       {item.process_status.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
-                    </span>
-                  </td>
-                  <td className="p-3 capitalize">{item.priority}</td>
-                  <td className="p-3 text-muted-foreground">{item.request_date}</td>
-                  <td className="p-3 text-muted-foreground">{item.target_date ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    </span></>},{id:"priority",header:"Priority",accessorFn:item=>loadedListValue(item,"priority"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{item.priority}</>},{id:"request_date",header:"Request Date",accessorFn:item=>loadedListValue(item,"request_date"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{item.request_date}</>},{id:"target_date",header:"Target Date",accessorFn:item=>loadedListValue(item,"target_date"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{item.target_date ?? "—"}</>}]} enableRowSelection={false} initialPageSize={25} searchPlaceholder="Search loaded records…"/>
         </div>
       )}
-    </div>
+    </div></QueryReadBoundary>
   );
 }

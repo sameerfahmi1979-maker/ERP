@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useTransition } from "react";
+import { useState, useCallback, useTransition, useRef } from "react";
 import { AlertTriangle, Info } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -35,12 +35,17 @@ export function SearchPageClient({
   const [hasSearched, setHasSearched] = useState(false);
   const [recent, setRecent] = useState<ErpRecentSearch[]>(initialRecent);
   const [isPending, startTransition] = useTransition();
+  const latest = useRef(0);
+  const changeQuery = (value:string) => { latest.current++; setQuery(value); setResponse(null); setError(null); setHasSearched(false); };
+  const changeMode = (value:ErpSearchMode) => { latest.current++; setMode(value); setResponse(null); setError(null); setHasSearched(false); };
 
   const handleSearch = useCallback(() => {
     if (!query.trim()) return;
     setError(null);
+    const request = ++latest.current;
 
     startTransition(async () => {
+      try {
       const result = await searchAcrossErp({
         query: query.trim(),
         mode,
@@ -48,20 +53,22 @@ export function SearchPageClient({
         includeAiSignals: true,
       });
 
+      if (request !== latest.current) return;
       setHasSearched(true);
 
       if (!result.success || !result.data) {
-        setError(result.error ?? "Search failed. Please try again.");
+        setError("Search could not be completed. Your search text is retained; try Search again.");
         setResponse(null);
         return;
       }
 
       setResponse(result.data);
+      } catch { if (request === latest.current) { setError("Search could not be completed. Your search text is retained; try Search again."); setResponse(null); } }
     });
   }, [query, mode]);
 
   function handleRecentSelect(text: string) {
-    setQuery(text);
+    changeQuery(text);
   }
 
   function handleRecentClear() {
@@ -82,17 +89,17 @@ export function SearchPageClient({
       {/* Search bar */}
       <SearchBar
         value={query}
-        onChange={setQuery}
+        onChange={changeQuery}
         onSearch={handleSearch}
         isSearching={isPending}
       />
 
       {/* Mode selector */}
       <div className="flex items-center gap-3">
-        <span className="text-xs text-slate-500 font-medium whitespace-nowrap">Search mode:</span>
+        <span className="text-xs text-muted-foreground font-medium whitespace-nowrap">Search mode:</span>
         <SearchModeSelector
           value={mode}
-          onChange={setMode}
+          onChange={changeMode}
           aiSearchEnabled={aiSearchEnabled}
           semanticEnabled={semanticEnabled}
         />
@@ -181,7 +188,7 @@ export function SearchPageClient({
       )}
 
       {/* Empty state (initial) */}
-      {!isPending && !response && !showRecent && (
+      {!isPending && !error && !response && !showRecent && (
         <SearchEmptyState hasSearched={hasSearched} />
       )}
     </div>

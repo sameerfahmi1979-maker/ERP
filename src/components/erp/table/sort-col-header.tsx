@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import type { SortDir } from "@/hooks/use-sort-paginate";
 
 interface SortColHeaderProps {
+  "data-column"?: string;
   field: string;
   sortKey: string | null;
   sortDir: SortDir;
@@ -20,6 +21,7 @@ interface SortColHeaderProps {
 }
 
 export function SortColHeader({
+  "data-column": columnId,
   field,
   sortKey,
   sortDir,
@@ -34,7 +36,8 @@ export function SortColHeader({
 
   return (
     <th
-      onClick={() => onSort(field)}
+      data-column={columnId}
+      aria-sort={active ? sortDir === "asc" ? "ascending" : "descending" : "none"}
       style={width != null ? { width } : undefined}
       className={cn(
         "relative cursor-pointer select-none transition-colors hover:text-foreground",
@@ -45,7 +48,7 @@ export function SortColHeader({
         className
       )}
     >
-      <span className="inline-flex items-center gap-1">
+      <button type="button" onClick={() => onSort(field)} className="inline-flex min-h-8 items-center gap-1 text-left focus-visible:outline-2">
         {children}
         {active ? (
           sortDir === "asc" ? (
@@ -56,7 +59,7 @@ export function SortColHeader({
         ) : (
           <ArrowUpDown className="h-3 w-3 shrink-0 opacity-35" />
         )}
-      </span>
+      </button>
       {onResizeStart && (
         <div
           onClick={(e) => e.stopPropagation()}

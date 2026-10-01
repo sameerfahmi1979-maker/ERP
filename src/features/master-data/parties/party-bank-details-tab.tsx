@@ -1,5 +1,8 @@
 "use client";
 
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import type { ColumnDef } from "@tanstack/react-table";
+
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -63,7 +66,7 @@ export function PartyBankDetailsTab({ partyId, disabled, authContext, onChildOpe
   // Finance Banks lookup for the bank selector
   const { options: bankOptions } = useBanksQuery();
 
-  const { items: bankDetails, isLoading } = usePartyBankDetailsQuery(canView ? partyId : null);
+  const { items: bankDetails, isLoading, error: loadError, refetch } = usePartyBankDetailsQuery(canView ? partyId : null);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const setDialogOpen = (open: boolean) => { setIsDialogOpen(open); onChildOpen?.(open); };
@@ -197,6 +200,41 @@ export function PartyBankDetailsTab({ partyId, disabled, authContext, onChildOpe
     }
   };
 
+  const columns: ColumnDef<PartyBankDetail>[] = [
+    {id:"bank_detail_code",header:"Bank details",size:360,accessorFn:row=>[row.bank_detail_code,row.account_holder_name,row.bank_name,row.bank_name_text,row.iban,row.currency_code].filter(Boolean).join(" "),enableHiding:false,cell:({row})=>{const bank=row.original;return (<div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-mono text-xs text-muted-foreground">{bank.bank_detail_code}</span>
+                  {bank.is_primary && <Badge className="text-xs">Primary</Badge>}
+                  {bank.is_verified && <Badge variant="outline" className="text-xs text-green-700 border-green-400">Verified</Badge>}
+                  {!bank.is_active && <Badge variant="secondary" className="text-xs">Inactive</Badge>}
+                </div>
+                <div className="font-medium text-sm">{bank.account_holder_name}</div>
+                <div className="text-xs text-muted-foreground">
+                  {(bank.bank_name ?? bank.bank_name_text) && `${bank.bank_name ?? bank.bank_name_text} · `}
+                  {bank.iban && <span>IBAN: {bank.iban}</span>}
+                  {bank.currency_code && <span> · {bank.currency_code}</span>}
+                </div>
+              </div>);}},
+    {accessorKey:"is_verified",header:"Verified",},
+    {id:"actions",header:"Actions",size:180,enableSorting:false,enableHiding:false,cell:({row})=>{const bank=row.original;return (<><div className="flex gap-1 shrink-0">
+                {canVerify && !bank.is_verified && (
+                  <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-green-600" title="Verify" aria-label="Verify bank details" onClick={() => handleVerify(bank.id)}>
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+                {!disabled && canManage && (
+                  <>
+                    <Button aria-label="Edit record" type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(bank)}>
+                      <Edit className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button aria-label="Delete record" type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(bank.id)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </>
+                )}
+              </div></>);}},
+  ];
+
   if (isLoading) return <Skeleton className="h-32 w-full" />;
 
   return (
@@ -213,47 +251,8 @@ export function PartyBankDetailsTab({ partyId, disabled, authContext, onChildOpe
         )}
       </div>
 
-      {(bankDetails ?? []).length === 0 ? (
-        <p className="text-sm text-muted-foreground">No bank details added yet.</p>
-      ) : (
-        <div className="space-y-2">
-          {(bankDetails ?? []).map((bank) => (
-            <div key={bank.id} className="rounded-md border p-3 flex items-start justify-between gap-3">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-mono text-xs text-muted-foreground">{bank.bank_detail_code}</span>
-                  {bank.is_primary && <Badge className="text-xs">Primary</Badge>}
-                  {bank.is_verified && <Badge variant="outline" className="text-xs text-green-700 border-green-400">Verified</Badge>}
-                  {!bank.is_active && <Badge variant="secondary" className="text-xs">Inactive</Badge>}
-                </div>
-                <div className="font-medium text-sm">{bank.account_holder_name}</div>
-                <div className="text-xs text-muted-foreground">
-                  {(bank.bank_name ?? bank.bank_name_text) && `${bank.bank_name ?? bank.bank_name_text} · `}
-                  {bank.iban && <span>IBAN: {bank.iban}</span>}
-                  {bank.currency_code && <span> · {bank.currency_code}</span>}
-                </div>
-              </div>
-              <div className="flex gap-1 shrink-0">
-                {canVerify && !bank.is_verified && (
-                  <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-green-600" title="Verify" onClick={() => handleVerify(bank.id)}>
-                    <ShieldCheck className="h-3.5 w-3.5" />
-                  </Button>
-                )}
-                {!disabled && canManage && (
-                  <>
-                    <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(bank)}>
-                      <Edit className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(bank.id)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      {loadError ? <div role="alert" className="rounded border p-4"><p>Bank details records could not be loaded.</p><Button type="button" variant="outline" onClick={refetch}>Try again</Button></div> :
+        <ERPDataTable tableId={`party.bank-details:${partyId}`} resultsLabel="Bank details" data={bankDetails ?? []} columns={columns} enableRowSelection={false} />}
 
       <ERPChildDialogForm
         open={isDialogOpen}
@@ -324,21 +323,21 @@ export function PartyBankDetailsTab({ partyId, disabled, authContext, onChildOpe
           {!form.bank_id && (
             <div className="col-span-12">
               <Label className="text-muted-foreground text-xs">Or enter bank name manually (if not in Finance Banks)</Label>
-              <Input value={form.bank_name_text} onChange={(e) => setForm((f) => ({ ...f, bank_name_text: e.target.value }))} placeholder="Enter bank name" />
+              <Input aria-label="Or enter bank name manually (if not in Finance Banks)" value={form.bank_name_text} onChange={(e) => setForm((f) => ({ ...f, bank_name_text: e.target.value }))} placeholder="Enter bank name" />
             </div>
           )}
 
           <div className="col-span-12">
             <RequiredLabel required>Account Holder Name</RequiredLabel>
-            <Input value={form.account_holder_name} onChange={(e) => setForm((f) => ({ ...f, account_holder_name: e.target.value }))} />
+            <Input aria-label="Account Holder Name" required value={form.account_holder_name} onChange={(e) => setForm((f) => ({ ...f, account_holder_name: e.target.value }))} />
           </div>
           <div className="col-span-6">
             <Label>Account Number</Label>
-            <Input value={form.account_number} onChange={(e) => setForm((f) => ({ ...f, account_number: e.target.value }))} />
+            <Input aria-label="Account Number" value={form.account_number} onChange={(e) => setForm((f) => ({ ...f, account_number: e.target.value }))} />
           </div>
           <div className="col-span-6">
             <Label>IBAN</Label>
-            <Input
+            <Input aria-label="IBAN"
               value={form.iban}
               onChange={(e) => handleIbanChange(e.target.value)}
               className="font-mono"
@@ -351,11 +350,11 @@ export function PartyBankDetailsTab({ partyId, disabled, authContext, onChildOpe
           </div>
           <div className="col-span-6">
             <Label>SWIFT Code</Label>
-            <Input value={form.swift_code} onChange={(e) => setForm((f) => ({ ...f, swift_code: e.target.value }))} className="font-mono" />
+            <Input aria-label="SWIFT Code" value={form.swift_code} onChange={(e) => setForm((f) => ({ ...f, swift_code: e.target.value }))} className="font-mono" />
           </div>
           <div className="col-span-6">
             <Label>Branch Name</Label>
-            <Input value={form.branch_name} onChange={(e) => setForm((f) => ({ ...f, branch_name: e.target.value }))} />
+            <Input aria-label="Branch Name" value={form.branch_name} onChange={(e) => setForm((f) => ({ ...f, branch_name: e.target.value }))} />
           </div>
           <div className="col-span-6">
             <Label>Currency</Label>
@@ -377,7 +376,7 @@ export function PartyBankDetailsTab({ partyId, disabled, authContext, onChildOpe
           </div>
           <div className="col-span-12">
             <Label>Remarks</Label>
-            <Textarea value={form.remarks} onChange={(e) => setForm((f) => ({ ...f, remarks: e.target.value }))} rows={2} />
+            <Textarea aria-label="Remarks" value={form.remarks} onChange={(e) => setForm((f) => ({ ...f, remarks: e.target.value }))} rows={2} />
           </div>
         </div>
       </ERPChildDialogForm>

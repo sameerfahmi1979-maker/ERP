@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Search, RotateCcw } from "lucide-react";
 import { ERPCombobox } from "@/components/erp/combobox";
 import type { ERPComboboxOption } from "@/components/erp/combobox";
+import { ValidatedTaskForm } from "@/components/workspace/validated-task-form";
 
 export interface FilterLookupOption {
   value: number;
@@ -81,13 +82,15 @@ export function ReportFilterPanel({
   lookupsLoading = false,
 }: ReportFilterPanelProps) {
   return (
-    <div className="border rounded-lg bg-card p-4">
+    <ValidatedTaskForm className="border rounded-sm bg-card p-4" onSubmit={async()=>{ if(!isLoading&&!lookupsLoading) onRun(); }}>
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-foreground">Filters</h3>
         <Button
           variant="ghost"
           size="sm"
           onClick={onReset}
+          type="button"
+          disabled={isLoading}
           className="h-7 text-xs gap-1 text-muted-foreground"
         >
           <RotateCcw className="h-3 w-3" />
@@ -95,7 +98,7 @@ export function ReportFilterPanel({
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-4">
         {fields.map((field) => {
           const lookupKey = LOOKUP_KEY_MAP[field.key];
           const lookupOptions = lookupKey ? (lookups?.[lookupKey] ?? null) : null;
@@ -115,6 +118,7 @@ export function ReportFilterPanel({
                   {field.label}
                 </Label>
                 <ERPCombobox
+                  ariaLabel={field.label}
                   value={filters[field.key] ? Number(filters[field.key]) : null}
                   onValueChange={(v) =>
                     onFilterChange(field.key, v !== null ? String(v) : "")
@@ -143,6 +147,7 @@ export function ReportFilterPanel({
                   )}
                 </Label>
                 <Input
+                  aria-label={field.label}
                   type="text"
                   value={filters[field.key] ?? ""}
                   onChange={(e) => onFilterChange(field.key, e.target.value)}
@@ -162,6 +167,7 @@ export function ReportFilterPanel({
                   {field.label}
                 </Label>
                 <select
+                  aria-label={field.label}
                   value={filters[field.key] ?? ""}
                   onChange={(e) => onFilterChange(field.key, e.target.value)}
                   className="flex h-8 w-full rounded-md border border-input bg-background text-foreground px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
@@ -184,6 +190,9 @@ export function ReportFilterPanel({
                 {field.label}
               </Label>
               <Input
+                aria-label={field.label}
+                min={field.key === "date_to" ? filters.date_from || undefined : undefined}
+                max={field.key === "date_from" ? filters.date_to || undefined : undefined}
                 type={field.type === "date" ? "date" : "text"}
                 value={filters[field.key] ?? ""}
                 onChange={(e) => onFilterChange(field.key, e.target.value)}
@@ -199,10 +208,10 @@ export function ReportFilterPanel({
         })}
       </div>
 
-      <Button size="sm" onClick={onRun} disabled={isLoading} className="gap-1.5">
+      <Button type="submit" size="sm" disabled={isLoading || lookupsLoading} className="gap-1.5">
         <Search className="h-3.5 w-3.5" />
         {isLoading ? "Running…" : "Run Report"}
       </Button>
-    </div>
+    </ValidatedTaskForm>
   );
 }

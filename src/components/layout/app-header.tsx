@@ -1,47 +1,36 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Search, User, Settings, LogOut } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Navigation20Regular, Search20Regular } from "@fluentui/react-icons";
+import { User, Settings, LogOut } from "lucide-react";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { signOut } from "@/features/auth/actions";
 import { NotificationBell } from "@/components/erp/notification-bell";
 import { toast } from "sonner";
 import { navigateAfterIdentityChange } from "@/lib/auth/client-session";
+import { OpenWorkspaces } from "@/components/workspace/open-workspaces";
+import { useWorkspaceContext } from "@/components/workspace/workspace-provider";
 
 type AppHeaderProps = {
   displayName?: string | null;
   email?: string | null;
+  appName?: string;
+  canSearch?: boolean;
+  onOpenNavigation?: () => void;
 };
 
-export function AppHeader({ displayName, email }: AppHeaderProps) {
-  const pathname = usePathname();
-
-  const getPageTitle = () => {
-    if (pathname === "/" || pathname === "/dashboard") return "Dashboard";
-    if (pathname === "/admin/users") return "User Management";
-    if (pathname === "/admin/organizations") return "Organizations";
-    if (pathname === "/admin/branches") return "Branches";
-    if (pathname === "/admin/roles") return "Roles & Permissions";
-    if (pathname === "/admin/permissions") return "Permissions";
-    if (pathname === "/admin/audit") return "Audit Logs";
-    if (pathname === "/profile") return "Profile";
-    if (pathname === "/settings") return "Settings";
-    return "ERP";
-  };
-
+export function AppHeader({ displayName, email, appName = "ALGT ERP", canSearch = false, onOpenNavigation }: AppHeaderProps) {
+  const workspace = useWorkspaceContext();
+  const activeTab = workspace?.state.tabs.find(tab => tab.id === workspace.state.activeTabId);
+  const isHydrated = workspace?.state.isHydrated ?? false;
+  useEffect(() => {
+    if (isHydrated && activeTab?.title) document.title = `${activeTab.title} | ${appName}`;
+  }, [activeTab?.title, appName, isHydrated]);
   const initials = (displayName ?? email ?? "U").slice(0, 2).toUpperCase();
-
   const handleSignOut = async () => {
     try {
       const result = await signOut();
@@ -49,68 +38,28 @@ export function AppHeader({ displayName, email }: AppHeaderProps) {
       else navigateAfterIdentityChange();
     } catch { toast.error("Sign out could not be confirmed. Please retry."); }
   };
-
-  return (
-    <header className="h-14 border-b border-border/40 bg-card px-4 flex items-center justify-between shrink-0">
-      {/* Left: Page title */}
-      <div className="flex items-center gap-4">
-        <h2 className="text-base font-semibold text-foreground">{getPageTitle()}</h2>
-      </div>
-
-      {/* Center: Search */}
-      <div className="hidden md:flex flex-1 max-w-md mx-8">
-        <div className="relative w-full">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search modules, users, records..."
-            className="pl-9 h-9 text-sm bg-muted/30 border-border/40 focus:bg-background"
-          />
-          <kbd className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded border border-border/60 font-mono">
-            ⌘K
-          </kbd>
-        </div>
-      </div>
-
-      {/* Right: Actions */}
-      <div className="flex items-center gap-1">
-        {/* Theme toggle */}
-        <ThemeToggle className="h-9 w-9 p-0 [&_svg]:h-4 [&_svg]:w-4" />
-
-        {/* Notifications */}
-        <NotificationBell />
-
-        {/* User menu */}
-        <DropdownMenu>
-          <DropdownMenuTrigger render={
-            <Button variant="ghost" size="sm" className="h-9 gap-2 px-2 ml-1">
-              <Avatar className="h-7 w-7">
-                <AvatarFallback className="text-[10px] font-semibold bg-primary/10 text-primary">
-                  {initials}
-                </AvatarFallback>
-              </Avatar>
-              <div className="hidden lg:flex flex-col items-start">
-                <span className="text-xs font-medium text-foreground">{displayName ?? email?.split('@')[0]}</span>
-                <span className="text-[10px] text-muted-foreground">Signed in</span>
-              </div>
-            </Button>
-          } />
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem render={<Link href="/profile" />}>
-              <User className="h-4 w-4 mr-2" />
-              Profile
-            </DropdownMenuItem>
-            <DropdownMenuItem render={<Link href="/settings" />}>
-              <Settings className="h-4 w-4 mr-2" />
-              Settings
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem render={<div onClick={handleSignOut} className="flex w-full items-center cursor-pointer" />} variant="destructive">
-              <LogOut className="h-4 w-4 mr-2" />
-              Logout
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+  return <>
+    <header className="algt-global-header">
+      {onOpenNavigation && <Button type="button" variant="ghost" size="icon" className="algt-mobile-menu" onClick={onOpenNavigation} aria-label="Open navigation"><Navigation20Regular /></Button>}
+      <span className="algt-shell-brand">{appName}</span>
+      <div className="flex-1" />
+      {canSearch && <Link href="/search" aria-label="Search ERP" className="inline-flex items-center gap-2 p-2 text-sm"><Search20Regular /><span className="hidden lg:inline">Search</span></Link>}
+      {workspace && <OpenWorkspaces />}
+      <ThemeToggle className="h-10 w-10 p-0 [&_svg]:h-4 [&_svg]:w-4" />
+      <NotificationBell />
+      <DropdownMenu>
+        <DropdownMenuTrigger render={<Button variant="ghost" size="sm" aria-label={`Account menu for ${displayName ?? email ?? "user"}`} className="h-10 px-2">
+          <Avatar className="h-7 w-7"><AvatarFallback className="text-xs font-semibold bg-white/15 text-white">{initials}</AvatarFallback></Avatar>
+          <span className="hidden xl:inline max-w-36 truncate">{displayName ?? email}</span>
+        </Button>} />
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuItem render={<Link href="/profile" />}><User className="mr-2 h-4 w-4" />Profile</DropdownMenuItem>
+          <DropdownMenuItem render={<Link href="/settings" />}><Settings className="mr-2 h-4 w-4" />Settings</DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={handleSignOut} variant="destructive"><LogOut className="mr-2 h-4 w-4" />Sign out</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </header>
-  );
+    <div className="algt-page-identity truncate" title={activeTab?.title}>{isHydrated ? activeTab?.title ?? appName : appName}</div>
+  </>;
 }

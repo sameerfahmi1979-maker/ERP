@@ -28,6 +28,7 @@ export default async function NotificationsPage() {
       <NotificationsPageClient
         initialNotifications={notifications}
         unreadCount={unreadCount}
+        initialError={!notifsResult.success || !countResult.success}
       />
     </div>
   );

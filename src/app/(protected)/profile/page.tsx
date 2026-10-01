@@ -1,3 +1,4 @@
+import { LoadError } from "@/components/erp/load-error";
 import { PageBreadcrumb } from "@/components/layout/page-breadcrumb";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +11,7 @@ export default async function ProfilePage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { data: profile } = await supabase
+  const { data: profile, error } = await supabase
     .from("user_profiles")
     .select("*")
     .eq("auth_user_id", user?.id ?? "")
@@ -20,11 +21,11 @@ export default async function ProfilePage() {
     <div className="flex flex-col gap-6">
       <PageBreadcrumb items={[{ label: "Profile" }]} />
       <h1 className="text-2xl font-semibold tracking-tight">Profile</h1>
-      <Card>
+      {error ? <LoadError title="Your profile" retryHref="/profile" /> : <Card>
         <CardHeader>
           <CardTitle>Your ERP profile</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-3 text-sm md:grid-cols-2">
+        <CardContent className="grid gap-3 text-sm md:grid-cols-2 break-words">
           <p>
             <span className="text-muted-foreground">Profile ID:</span> {profile?.id ?? "—"}
           </p>
@@ -45,7 +46,7 @@ export default async function ProfilePage() {
             {profile?.status ? <StatusBadge status={profile.status} /> : "—"}
           </p>
         </CardContent>
-      </Card>
+      </Card>}
 
       {/* USERS.2A — Account Security: self-service password change */}
       <ChangePasswordCard />

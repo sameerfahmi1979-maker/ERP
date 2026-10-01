@@ -1,11 +1,13 @@
 "use client";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import type { ColumnDef } from "@tanstack/react-table";
 
-import { useState, useMemo } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
+
+
 import { Skeleton } from "@/components/ui/skeleton";
-import { Lock, Shield, Search, AlertTriangle } from "lucide-react";
+import { Lock, Shield, AlertTriangle } from "lucide-react";
 import type { AuthContext } from "@/lib/rbac/check";
 import { getUserEffectiveAccess, type EffectivePermissionRow } from "@/server/actions/users/effective-access";
 import { permissionModuleGroup, permissionModuleLabel, permissionScopeLabel } from "@/lib/rbac/permission-taxonomy";
@@ -27,7 +29,7 @@ type Props = {
 const EMPTY_PERMISSIONS: EffectivePermissionRow[] = [];
 
 export function UserEffectiveAccessSection({ userProfileId, authContext }: Props) {
-  const [search, setSearch] = useState("");
+
   const allowed = canViewEffectiveAccess(authContext);
   const { data, isPending: loading, error: queryError } = useQuery({
     queryKey: ["user-effective-access", authContext.profile?.id, userProfileId],
@@ -46,37 +48,19 @@ export function UserEffectiveAccessSection({ userProfileId, authContext }: Props
 
   const isGlobalAdmin = data?.subject?.globalAdmin === true;
 
-  // Group by module
-  const filtered = useMemo(() => {
-    if (!search.trim()) return permissions;
-    const q = search.toLowerCase();
-    return permissions.filter(
-      (p) =>
-        p.permission_name?.toLowerCase().includes(q) ||
-        p.permission_code.toLowerCase().includes(q) ||
-        p.module_code?.toLowerCase().includes(q) ||
-        permissionModuleLabel(p.module_code ?? "other").toLowerCase().includes(q) ||
-        p.source_role_code.toLowerCase().includes(q),
-    );
-  }, [permissions, search]);
-
-  const grouped = useMemo(() => {
-    const map = new Map<string, EffectivePermissionRow[]>();
-    for (const p of filtered) {
-      const mod = permissionModuleGroup(p.module_code ?? "other");
-      if (!map.has(mod)) map.set(mod, []);
-      map.get(mod)!.push(p);
-    }
-    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [filtered]);
-
   const uniqueRoles = useMemo(
     () => [...new Set(permissions.map((p) => p.source_role_code))],
     [permissions],
   );
 
-  const moduleCount = grouped.length;
+  const moduleCount = new Set(permissions.map(p=>permissionModuleGroup(p.module_code ?? "other"))).size;
   const totalCount = permissions.length;
+
+  const columns: ColumnDef<EffectivePermissionRow>[] = [
+{id:"permission",header:"Permission",size:300,accessorFn:p=>[p.permission_name,p.permission_code].filter(Boolean).join(" "),cell:({row})=><div><p className="font-medium">{row.original.permission_name ?? row.original.permission_code}</p><p className="text-xs text-muted-foreground">{row.original.permission_code}</p></div>},
+{id:"module",header:"Module",accessorFn:p=>permissionModuleLabel(p.module_code ?? "other")},
+{id:"role",header:"Source role",accessorFn:p=>p.source_role_name ?? p.source_role_code},
+{id:"scope",header:"Scope",accessorFn:permissionScopeLabel}];
 
   if (!allowed) {
     return (
@@ -114,19 +98,6 @@ export function UserEffectiveAccessSection({ userProfileId, authContext }: Props
         </div>
       )}
 
-      {/* Search */}
-      {!loading && !error && totalCount > 0 && (
-        <div className="relative max-w-sm">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search permissions, modules, roles..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 h-9 text-sm"
-          />
-        </div>
-      )}
-
       {/* Loading */}
       {loading && (
         <div className="space-y-3">
@@ -142,67 +113,12 @@ export function UserEffectiveAccessSection({ userProfileId, authContext }: Props
 
       {/* Error */}
       {error && (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {error}
+        <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          Effective access could not be loaded. Reload this section to try again.
         </div>
       )}
 
-      {/* Empty */}
-      {!loading && !error && permissions.length === 0 && (
-        <p className="text-sm text-muted-foreground py-4">
-          This user has no assigned permissions.
-        </p>
-      )}
-
-      {/* Grouped permissions */}
-      {!loading && !error && grouped.length > 0 && (
-        <div className="space-y-4">
-          {grouped.map(([moduleGroup, perms]) => (
-            <div key={moduleGroup} className="rounded-md border border-border overflow-hidden">
-              <div className="flex items-center justify-between px-3 py-2 bg-muted/30 border-b border-border">
-                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {permissionModuleLabel(moduleGroup)}
-                </span>
-                <Badge variant="outline" className="text-[10px]">
-                  {perms.length}
-                </Badge>
-              </div>
-              <div className="divide-y divide-border">
-                {perms.map((p, i) => (
-                  <div key={`${p.permission_code}-${p.source_role_code}-${i}`} className="flex items-center justify-between px-3 py-2 text-xs gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium text-foreground truncate">
-                        {p.permission_name ?? p.permission_code}
-                      </p>
-                      <p className="text-muted-foreground font-mono text-[10px] truncate">
-                        {p.permission_code}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <Badge variant="secondary" className="text-[10px]">
-                        {p.source_role_name ?? p.source_role_code}
-                      </Badge>
-                      <Badge
-                        variant="outline"
-                        className="text-[10px] text-muted-foreground"
-                      >
-                        {permissionScopeLabel(p)}
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* No search results */}
-      {!loading && !error && permissions.length > 0 && filtered.length === 0 && (
-        <p className="text-sm text-muted-foreground">
-          No permissions match &quot;{search}&quot;.
-        </p>
-      )}
+      {!loading && !error && <ERPDataTable tableId={`user.access:${userProfileId}`} resultsLabel="Effective access" data={permissions} columns={columns} enableRowSelection={false}/>}
     </div>
   );
 }

@@ -1,6 +1,11 @@
 "use client";
+import { useReasonDialog } from "@/hooks/use-reason-dialog";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import { loadedListValue } from "@/components/erp/table/loaded-list-view";
+import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
-import { useTransition } from "react";
+import {} from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { queryKeys } from "@/lib/query/query-keys";
@@ -25,15 +30,17 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function HrApprovalsPageClient({ authContext }: Props) {
+  const { askReason, reasonDialog } = useReasonDialog();
   const qc = useQueryClient();
   const [isPending, startTransition] = useTransition();
   const canManage = authContext.permissionCodes.includes("hr.actions.manage") ||
     authContext.roleCodes.includes("system_admin") || authContext.roleCodes.includes("group_admin");
 
-  const { data: items = [], isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.actions.globalApprovals(),
     queryFn: () => listGlobalApprovalRequests(),
   });
+  const { data: items = [], isLoading } = uiRead1;
 
   const handleApprove = (id: number) => {
     startTransition(async () => {
@@ -43,8 +50,8 @@ export function HrApprovalsPageClient({ authContext }: Props) {
     });
   };
 
-  const handleReject = (id: number) => {
-    const reason = prompt("Rejection reason:");
+  const handleReject = async (id: number) => {
+    const reason = await askReason("Reject approval request");
     if (!reason) return;
     startTransition(async () => {
       const result = await rejectEmployeeApprovalRequest(id, reason);
@@ -54,7 +61,7 @@ export function HrApprovalsPageClient({ authContext }: Props) {
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-4">
+    <QueryReadBoundary queries={[uiRead1]}><div className="p-6 max-w-7xl mx-auto space-y-4">{reasonDialog}
       <div className="flex items-center gap-3">
         <CheckSquare className="h-6 w-6 text-primary" />
         <div>
@@ -69,30 +76,9 @@ export function HrApprovalsPageClient({ authContext }: Props) {
         <div className="text-center py-16 text-muted-foreground">No approval requests found.</div>
       ) : (
         <div className="rounded-lg border overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50">
-              <tr>
-                <th className="text-left p-3 font-medium">Request</th>
-                <th className="text-left p-3 font-medium">Type</th>
-                <th className="text-left p-3 font-medium">Status</th>
-                <th className="text-left p-3 font-medium">Requested</th>
-                {canManage && <th className="text-left p-3 font-medium">Actions</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {items.map(item => (
-                <tr key={item.id} className="border-t hover:bg-muted/30 transition-colors">
-                  <td className="p-3 font-medium">{item.request_title}</td>
-                  <td className="p-3 capitalize text-muted-foreground">{item.approval_type.replace(/_/g, " ")}</td>
-                  <td className="p-3">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[item.request_status] ?? "bg-slate-100 text-slate-600"}`}>
+          {/* UI04 explicit table: loaded authorized rows only */}<ERPDataTable tableId="hr.actions.hr-approvals-page-client" data={items} columns={[{id:"request_title",header:"Request",accessorFn:item=>loadedListValue(item,"request_title"),enableHiding:false,size:240,cell:({row:{original:item}}:{row:{original:(typeof items)[number]}})=><>{item.request_title}</>},{id:"approval_type",header:"Type",accessorFn:item=>loadedListValue(item,"approval_type"),enableHiding:true,size:160,cell:({row:{original:item}}:{row:{original:(typeof items)[number]}})=><>{item.approval_type.replace(/_/g, " ")}</>},{id:"request_status",header:"Status",accessorFn:item=>loadedListValue(item,"request_status"),enableHiding:true,size:160,cell:({row:{original:item}}:{row:{original:(typeof items)[number]}})=><><span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[item.request_status] ?? "bg-slate-100 text-slate-600"}`}>
                       {item.request_status.charAt(0).toUpperCase() + item.request_status.slice(1)}
-                    </span>
-                  </td>
-                  <td className="p-3 text-muted-foreground">{new Date(item.requested_at).toLocaleDateString()}</td>
-                  {canManage && (
-                    <td className="p-3">
-                      {item.request_status === "pending" && (
+                    </span></>},{id:"requested_at",header:"Requested",accessorFn:item=>loadedListValue(item,"requested_at"),enableHiding:true,size:160,cell:({row:{original:item}}:{row:{original:(typeof items)[number]}})=><>{new Date(item.requested_at).toLocaleDateString()}</>},...(canManage?[{id:"actions",header:"Actions",enableHiding:true,size:200,enableSorting:false,meta:{exportable:false},cell:({row:{original:item}}:{row:{original:(typeof items)[number]}})=><>{item.request_status === "pending" && (
                         <div className="flex gap-1">
                           <Button size="sm" variant="outline" className="h-7 text-xs text-green-700 border-green-300" disabled={isPending} onClick={() => handleApprove(item.id)}>
                             <CheckCircle className="h-3 w-3 mr-1" />Approve
@@ -101,15 +87,9 @@ export function HrApprovalsPageClient({ authContext }: Props) {
                             <XCircle className="h-3 w-3 mr-1" />Reject
                           </Button>
                         </div>
-                      )}
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                      )}</>}]:[])]} enableRowSelection={false} initialPageSize={25} searchPlaceholder="Search loaded records…"/>
         </div>
       )}
-    </div>
+    </div></QueryReadBoundary>
   );
 }

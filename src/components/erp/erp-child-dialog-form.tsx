@@ -2,6 +2,7 @@
 
 import { type ReactNode, useRef, useCallback, useState, useEffect } from "react";
 import { toast } from "sonner";
+import { FormErrorSummary, useInlineFieldFeedback } from "@/components/workspace/form-feedback";
 import { useWorkspaceNavigationLock } from "@/hooks/use-workspace-navigation-lock";
 import { collectWorkspaceFieldIssues, type WorkspaceFieldIssue } from "@/lib/workspace/form-validation";
 import { cn } from "@/lib/utils";
@@ -36,6 +37,8 @@ export type ERPChildDialogFormProps = {
   mode?: "add" | "edit" | "view";
   size?: keyof typeof SIZE_CLASSES;
   isSubmitting?: boolean;
+  /** Missing prerequisite data disables save, not Cancel or retry controls. */
+  submitDisabled?: boolean;
   onCancel?: () => void;
   onSubmit?: () => void | Promise<unknown>;
   /** Controlled/custom inputs should supply meaningful dirty state. Otherwise native edits are tracked conservatively. */
@@ -70,6 +73,7 @@ function ChildDialogSession({
   mode = "add",
   size = "lg",
   isSubmitting = false,
+  submitDisabled = false,
   isDirty,
   onCancel,
   onSubmit,
@@ -86,7 +90,19 @@ function ChildDialogSession({
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [issues, setIssues] = useState<WorkspaceFieldIssue[]>([]);
   const busy = isSubmitting || pending;
+  useInlineFieldFeedback(issues);
   useWorkspaceNavigationLock(mode !== "view");
+  useEffect(() => {
+    const element = body.current;
+    const customChange = (event: Event) => {
+      const target = event.target;
+      if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) return;
+      setEdited(true);
+      if (issues.length) queueMicrotask(() => { if (body.current) setIssues(collectWorkspaceFieldIssues(body.current)); });
+    };
+    element?.addEventListener("change", customChange);
+    return () => element?.removeEventListener("change", customChange);
+  }, [issues.length]);
 
   useEffect(() => {
     if (mode === "view") return;
@@ -111,7 +127,7 @@ function ChildDialogSession({
   }, [onCancel, closeDialog, isSubmitting, mode, isDirty, edited]);
 
   const submit = async () => {
-    if (flight.current || isSubmitting || !onSubmit) return;
+    if (flight.current || isSubmitting || submitDisabled || !onSubmit) return;
     const invalid = body.current ? collectWorkspaceFieldIssues(body.current) : [];
     setIssues(invalid);
     if (invalid.length) { invalid[0].control?.focus(); return; }
@@ -145,7 +161,7 @@ function ChildDialogSession({
         // z-[100] ensures the overlay is above the tab bar (z-[30]).
         overlayClassName="bg-slate-950/60 backdrop-blur-[2px] z-[100]"
         className={cn(
-          "flex flex-col p-0 gap-0 overflow-hidden",
+          "algt-form-surface flex flex-col p-0 gap-0 overflow-hidden",
           // UI.4G: content above overlay (z-[110]), combobox inside at z-[120].
           "z-[110]",
           "w-[calc(100vw-24px)]",
@@ -186,13 +202,17 @@ function ChildDialogSession({
 
         {/* ── Body (scrollable) ───────────────────────────────────────── */}
         <div ref={body} className="flex-1 overflow-y-auto p-6 min-h-0" inert={busy || undefined}
-          onChangeCapture={() => { setEdited(true); if (issues.length && body.current) setIssues(collectWorkspaceFieldIssues(body.current)); }}>
-          {issues.length > 0 && <div role="alert" className="mb-4 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm">
-            <p className="font-medium">Check these fields before saving</p>
-            <ul className="mt-2 space-y-1">{issues.map((issue, index) => <li key={index}>
-              <button type="button" className="text-left underline underline-offset-2" onClick={() => issue.control?.focus()}>{issue.label}: {issue.message}</button>
-            </li>)}</ul>
-          </div>}
+          onChangeCapture={event => {
+            setEdited(true);
+            if (!issues.length || !body.current) return;
+            const target = event.target;
+            if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) {
+              setIssues(collectWorkspaceFieldIssues(body.current));
+            } else {
+              queueMicrotask(() => { if (body.current) setIssues(collectWorkspaceFieldIssues(body.current)); });
+            }
+          }}>
+          <FormErrorSummary issues={issues} onReveal={issue => issue.control?.focus()} />
           {children}
         </div>
 
@@ -219,7 +239,7 @@ function ChildDialogSession({
             <Button
               type="button"
               onClick={submit}
-              disabled={busy || confirmDiscard}
+              disabled={busy || confirmDiscard || submitDisabled}
             >
               {busy && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

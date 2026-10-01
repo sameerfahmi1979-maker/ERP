@@ -1,6 +1,7 @@
 "use client";
+import { RecordCollection } from "@/components/erp/table/record-collection";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -56,41 +57,59 @@ const PROVIDER_LABELS: Record<string, string> = {
 };
 
 interface AiProviderConfigListProps {
+  canManage?: boolean;
+  canManageSecrets?: boolean;
+  canTest?: boolean;
   configs: AiProviderConfig[];
   onAdd: () => void;
 }
 
-export function AiProviderConfigList({ configs, onAdd }: AiProviderConfigListProps) {
+export function AiProviderConfigList({ configs, onAdd, canManage=false, canManageSecrets=false, canTest=false }: AiProviderConfigListProps) {
   const [editTarget, setEditTarget] = useState<AiProviderConfig | null>(null);
   const [secretTarget, setSecretTarget] = useState<AiProviderConfig | null>(null);
   const [testingId, setTestingId] = useState<number | null>(null);
   const [testResults, setTestResults] = useState<Record<number, { ok: boolean; message: string }>>({});
+  const flight = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [uncertain, setUncertain] = useState(false);
 
   const handleDelete = async (config: AiProviderConfig) => {
+    if (!canManage || flight.current || uncertain) return;
     if (!confirm(`Delete provider "${config.providerName}"? This cannot be undone.`)) return;
-    const result = await deleteAiProviderConfig(config.id);
-    if (result.success) {
-      toast.success("Provider deleted");
-    } else {
-      toast.error(result.error ?? "Failed to delete provider");
-    }
+    flight.current = true;
+    setBusy(true);
+    try {
+      const result = await deleteAiProviderConfig(config.id);
+      if (result.success) toast.success("Provider deleted");
+      else toast.error("Provider deletion was not accepted. Refresh and check your permissions.");
+    } catch {
+      setUncertain(true);
+    } finally { flight.current = false; setBusy(false); }
   };
 
   const handleTest = async (config: AiProviderConfig) => {
+    if (!canTest || flight.current || uncertain) return;
+    flight.current = true;
+    setBusy(true);
     setTestingId(config.id);
     try {
       const result = await testAiProviderConnection(config.id);
       if (result.success && result.data) {
-        setTestResults((prev) => ({ ...prev, [config.id]: result.data! }));
+        const message = result.data.ok ? "Connection succeeded" : "Connection failed. Review the provider configuration.";
+        setTestResults((prev) => ({ ...prev, [config.id]: { ok: result.data!.ok, message } }));
         if (result.data.ok) {
-          toast.success(`Connected: ${result.data.message}`);
+          toast.success(message);
         } else {
-          toast.error(`Test failed: ${result.data.message}`);
+          toast.error(message);
         }
       } else {
-        toast.error(result.error ?? "Test failed");
+        toast.error("The connection test was not accepted.");
       }
+    } catch {
+      setUncertain(true);
     } finally {
+      flight.current = false;
+      setBusy(false);
       setTestingId(null);
     }
   };
@@ -101,10 +120,10 @@ export function AiProviderConfigList({ configs, onAdd }: AiProviderConfigListPro
         <CardContent className="flex flex-col items-center justify-center py-12 gap-3">
           <Zap className="h-8 w-8 text-muted-foreground opacity-50" />
           <p className="text-sm text-muted-foreground">No AI provider configurations yet.</p>
-          <Button onClick={onAdd} variant="outline" size="sm" className="gap-2">
+          {canManage && <Button onClick={onAdd} variant="outline" size="sm" className="gap-2">
             <Plus className="h-4 w-4" />
             Add First Provider
-          </Button>
+          </Button>}
         </CardContent>
       </Card>
     );
@@ -112,8 +131,9 @@ export function AiProviderConfigList({ configs, onAdd }: AiProviderConfigListPro
 
   return (
     <>
+      {uncertain && <div role="alert" className="border border-destructive p-3 text-sm">The operation could not be confirmed. Reload and check the provider status before trying again.</div>}
       <div className="grid gap-4">
-        {configs.map((config) => {
+        {<RecordCollection id="special.ai-provider-config-list" rows={configs} fields={[{"id":"providerName","path":"providerName","label":"Provider"},{"id":"configCode","path":"configCode","label":"Code"},{"id":"providerType","path":"providerType","label":"Type"},{"id":"purpose","path":"purpose","label":"Purpose"}]} renderRecord={(config) => {
           const liveResult = testResults[config.id];
           const isTestingThis = testingId === config.id;
 
@@ -154,36 +174,36 @@ export function AiProviderConfigList({ configs, onAdd }: AiProviderConfigListPro
                     </div>
                   </div>
 
-                  <DropdownMenu>
-                    <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" />}>
+                  {(canManage || canManageSecrets || canTest) && <DropdownMenu>
+                    <DropdownMenuTrigger render={<Button aria-label={`Actions for ${config.providerName}`} disabled={busy || uncertain} variant="ghost" size="icon" className="h-8 w-8 shrink-0" />}>
                       <MoreHorizontal className="h-4 w-4" />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => setEditTarget(config)}>
+                      {canManage && <DropdownMenuItem onClick={() => setEditTarget(config)}>
                         <Pencil className="mr-2 h-4 w-4" />
                         Edit Configuration
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setSecretTarget(config)}>
+                      </DropdownMenuItem>}
+                      {canManageSecrets && <DropdownMenuItem onClick={() => setSecretTarget(config)}>
                         <Key className="mr-2 h-4 w-4" />
                         Update API Key
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
+                      </DropdownMenuItem>}
+                      {canTest && <DropdownMenuItem
                         onClick={() => handleTest(config)}
-                        disabled={isTestingThis}
+                        disabled={busy || uncertain}
                       >
                         <Wifi className="mr-2 h-4 w-4" />
                         {isTestingThis ? "Testing..." : "Test Connection"}
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
+                      </DropdownMenuItem>}
+                      {canManage && <DropdownMenuSeparator />}
+                      {canManage && <DropdownMenuItem
                         className="text-destructive focus:text-destructive"
                         onClick={() => handleDelete(config)}
                       >
                         <Trash2 className="mr-2 h-4 w-4" />
                         Delete
-                      </DropdownMenuItem>
+                      </DropdownMenuItem>}
                     </DropdownMenuContent>
-                  </DropdownMenu>
+                  </DropdownMenu>}
                 </div>
               </CardHeader>
 
@@ -199,21 +219,20 @@ export function AiProviderConfigList({ configs, onAdd }: AiProviderConfigListPro
                     ) : config.secretRef ? (
                       <span className="text-muted-foreground">env: {config.secretRef}</span>
                     ) : (
-                      <span className="text-amber-600">No key configured</span>
+                      <span className="text-amber-800 dark:text-amber-300">No key configured</span>
                     )}
                   </div>
 
                   {/* Test status */}
                   <TestStatusBadge
                     status={liveResult?.ok === true ? "success" : liveResult?.ok === false ? "failed" : config.lastTestStatus}
-                    message={liveResult?.message ?? config.lastTestMessage}
                     lastTestAt={config.lastTestAt}
                     isTesting={isTestingThis}
                   />
 
                   {/* Human review */}
                   {config.requiresHumanReview && (
-                    <Badge variant="outline" className="text-xs text-amber-700 border-amber-200 bg-amber-50 dark:bg-amber-950/20">
+                    <Badge variant="outline" className="text-xs text-amber-800 border-amber-200 bg-amber-50 dark:text-amber-300 dark:border-amber-700 dark:bg-amber-950/20">
                       Human Review Required
                     </Badge>
                   )}
@@ -233,36 +252,38 @@ export function AiProviderConfigList({ configs, onAdd }: AiProviderConfigListPro
 
                 {/* Test button inline */}
                 <div className="mt-3 flex gap-2">
-                  <Button
+                  {canTest && <Button
                     variant="outline"
                     size="sm"
                     className="h-7 gap-1.5 text-xs"
                     onClick={() => handleTest(config)}
-                    disabled={isTestingThis}
+                    disabled={busy || uncertain}
                   >
                     <Wifi className="h-3.5 w-3.5" />
                     {isTestingThis ? "Testing..." : "Test Connection"}
-                  </Button>
-                  <Button
+                  </Button>}
+                  {canManageSecrets && <Button
                     variant="outline"
                     size="sm"
                     className="h-7 gap-1.5 text-xs"
                     onClick={() => setSecretTarget(config)}
+                    disabled={busy || uncertain}
                   >
                     <Key className="h-3.5 w-3.5" />
                     Update API Key
-                  </Button>
+                  </Button>}
                 </div>
               </CardContent>
             </Card>
           );
-        })}
+        }} />}
       </div>
 
-      {editTarget && (
+      {editTarget && canManage && (
         <AiProviderFormDialog
           open={!!editTarget}
           config={editTarget}
+          canManageSecrets={canManageSecrets}
           onClose={() => setEditTarget(null)}
           onSaved={() => {
             toast.success("Provider updated");
@@ -271,7 +292,7 @@ export function AiProviderConfigList({ configs, onAdd }: AiProviderConfigListPro
         />
       )}
 
-      {secretTarget && (
+      {secretTarget && canManageSecrets && (
         <AiProviderSecretDialog
           open={!!secretTarget}
           config={secretTarget}
@@ -288,12 +309,10 @@ export function AiProviderConfigList({ configs, onAdd }: AiProviderConfigListPro
 
 function TestStatusBadge({
   status,
-  message,
   lastTestAt,
   isTesting,
 }: {
   status: string | null | undefined;
-  message: string | null | undefined;
   lastTestAt: string | null | undefined;
   isTesting: boolean;
 }) {
@@ -324,7 +343,7 @@ function TestStatusBadge({
   return (
     <span className="flex items-center gap-1 text-destructive">
       <XCircle className="h-3.5 w-3.5" />
-      {message ? message.substring(0, 60) : "Test failed"}
+      Test failed. Review the provider configuration.
     </span>
   );
 }

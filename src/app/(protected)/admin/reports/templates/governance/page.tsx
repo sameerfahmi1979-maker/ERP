@@ -4,6 +4,7 @@
  */
 
 import { redirect } from "next/navigation";
+import { LoadError } from "@/components/erp/load-error";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { getGovernanceSummary } from "@/server/actions/reports/template-governance";
 import { GovernanceDashboardClient } from "./governance-dashboard-client";
@@ -21,6 +22,7 @@ export default async function TemplateGovernancePage() {
   }
 
   const summary = await getGovernanceSummary();
+  if (!summary.success) return <LoadError title="Template governance" retryHref="/admin/reports/templates/governance" />;
 
   const canApprove = hasPermission(ctx, "reports.template.approve");
   const canPublish = hasPermission(ctx, "reports.publish") || canApprove;

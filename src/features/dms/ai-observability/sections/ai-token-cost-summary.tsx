@@ -1,4 +1,7 @@
 "use client";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import { loadedListValue } from "@/components/erp/table/loaded-list-view";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { Badge } from "@/components/ui/badge";
 import { getDmsAiCostBreakdown, type ObservabilityFilters } from "@/server/actions/dms/ai-observability";
@@ -16,7 +19,7 @@ function fmt(n: number) {
 }
 
 export function AiTokenCostSummary({ filters, refreshKey }: Props) {
-  const { data, isPending: loading, error: queryError } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: ["dms-observability", "getDmsAiCostBreakdown", filters, refreshKey],
     queryFn: async () => {
       const result = await getDmsAiCostBreakdown(filters);
@@ -27,46 +30,26 @@ export function AiTokenCostSummary({ filters, refreshKey }: Props) {
     gcTime: 0,
     refetchOnWindowFocus: false,
   });
+ const { data, isPending: loading, error: queryError } = uiRead1;
   const error = queryError?.message;
 
-  if (loading) return <div className="text-sm text-muted-foreground">Loading cost summary...</div>;
-  if (error) return <div className="text-sm text-destructive">{error}</div>;
-  if (!data || data.length === 0) return <div className="text-sm text-muted-foreground">No usage data available for selected filters.</div>;
+  if (loading) return <QueryReadBoundary queries={[uiRead1]}><div className="text-sm text-muted-foreground">Loading cost summary...</div></QueryReadBoundary>;
+  if (error) return <QueryReadBoundary queries={[uiRead1]}><div className="text-sm text-destructive">{error}</div></QueryReadBoundary>;
+  if (!data || data.length === 0) return <QueryReadBoundary queries={[uiRead1]}><div className="text-sm text-muted-foreground">No usage data available for selected filters.</div></QueryReadBoundary>;
 
   return (
-    <div className="overflow-x-auto rounded-lg border">
-      <table className="w-full text-sm">
-        <thead className="border-b bg-muted/50">
-          <tr>
-            <th className="px-3 py-2 text-left font-medium text-muted-foreground">Feature</th>
-            <th className="px-3 py-2 text-left font-medium text-muted-foreground">Operation</th>
-            <th className="px-3 py-2 text-right font-medium text-muted-foreground">Calls</th>
-            <th className="px-3 py-2 text-right font-medium text-muted-foreground">Success</th>
-            <th className="px-3 py-2 text-right font-medium text-muted-foreground">Failed</th>
-            <th className="px-3 py-2 text-right font-medium text-muted-foreground">In Tokens</th>
-            <th className="px-3 py-2 text-right font-medium text-muted-foreground">Out Tokens</th>
-            <th className="px-3 py-2 text-right font-medium text-muted-foreground">Est. Cost</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.map((row, i) => (
-            <tr key={i} className="border-b last:border-0 hover:bg-muted/30">
-              <td className="px-3 py-2 font-mono text-xs">{row.featureArea}</td>
-              <td className="px-3 py-2 text-xs text-muted-foreground">{row.operationType}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{row.totalCalls}</td>
-              <td className="px-3 py-2 text-right tabular-nums text-green-700">{row.successCalls}</td>
-              <td className="px-3 py-2 text-right tabular-nums text-destructive">{row.failedCalls}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{fmt(row.totalInputTokens)}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{fmt(row.totalOutputTokens)}</td>
-              <td className="px-3 py-2 text-right tabular-nums">
-                {row.estimatedCost !== null
+    <QueryReadBoundary queries={[uiRead1]}><div className="overflow-x-auto rounded-lg border">
+      {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable tableId="special.dms.ai-observability.sections.ai-token-cost-summary" data={data} columns={[{id:"featureArea",header:"Feature",accessorFn:row=>loadedListValue(row,"featureArea"),meta:{filter:{type:"text"}},enableHiding:false,size:220,cell:({row:{original:row}})=>{
+return <>{row.featureArea}</>;}},{id:"operationType",header:"Operation",accessorFn:row=>loadedListValue(row,"operationType"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+return <>{row.operationType}</>;}},{id:"totalCalls",header:"Calls",accessorFn:row=>loadedListValue(row,"totalCalls"),meta:{filter:{type:"number"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+return <>{row.totalCalls}</>;}},{id:"successCalls",header:"Success",accessorFn:row=>loadedListValue(row,"successCalls"),meta:{filter:{type:"number"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+return <>{row.successCalls}</>;}},{id:"failedCalls",header:"Failed",accessorFn:row=>loadedListValue(row,"failedCalls"),meta:{filter:{type:"number"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+return <>{row.failedCalls}</>;}},{id:"totalInputTokens",header:"Input tokens",accessorFn:row=>loadedListValue(row,"totalInputTokens"),meta:{filter:{type:"number"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+return <>{fmt(row.totalInputTokens)}</>;}},{id:"totalOutputTokens",header:"Output tokens",accessorFn:row=>loadedListValue(row,"totalOutputTokens"),meta:{filter:{type:"number"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+return <>{fmt(row.totalOutputTokens)}</>;}},{id:"estimatedCost",header:"Estimated cost",accessorFn:row=>loadedListValue(row,"estimatedCost"),meta:{filter:{type:"number"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+return <>{row.estimatedCost !== null
                   ? `$${row.estimatedCost.toFixed(4)}`
-                  : <Badge variant="outline" className="text-xs">Unconfirmed</Badge>}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+                  : <Badge variant="outline" className="text-xs">Unconfirmed</Badge>}</>;}}]} enableRowSelection={false} searchPlaceholder="Search loaded records…" initialPageSize={10} />
+    </div></QueryReadBoundary>
   );
 }

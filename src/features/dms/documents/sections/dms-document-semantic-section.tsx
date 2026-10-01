@@ -1,4 +1,5 @@
 "use client";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 /**
  * DMS 12.5 — DmsDocumentSemanticSection
@@ -85,12 +86,7 @@ export function DmsDocumentSemanticSection({
   const [similar, setSimilar] = useState<DmsSemanticSearchResult[] | null>(null);
   const [similarError, setSimilarError] = useState<string | null>(null);
 
-  const {
-    data: row,
-    isLoading,
-    error: queryError,
-    refetch,
-  } = useQuery<DmsDocumentEmbeddingStatusRow | null>({
+  const uiRead1 = useQuery<DmsDocumentEmbeddingStatusRow | null>({
     queryKey: queryKeys.dms.documentEmbedding(documentId),
     queryFn: async () => {
       const r = await getDmsDocumentEmbeddingStatus(documentId);
@@ -100,20 +96,27 @@ export function DmsDocumentSemanticSection({
     staleTime: 30_000,
     retry: false,
   });
+ const {
+    data: row,
+    isLoading,
+    error: queryError,
+    refetch,
+  } = uiRead1;
 
   // Phase 11 — semantic chunk index status
-  const {
-    data: chunkStatus,
-    refetch: refetchChunks,
-  } = useQuery({
+  const uiRead2 = useQuery({
     queryKey: ["dms", "documents", documentId, "chunk-index"] as const,
     queryFn: async () => {
       const r = await getDmsDocumentSemanticIndexStatus(documentId);
-      return r.success ? (r.data ?? null) : null;
+      if (!r.success) throw new Error("Records could not be loaded."); return r.success ? (r.data ?? null) : null;
     },
     staleTime: 30_000,
     retry: false,
   });
+ const {
+    data: chunkStatus,
+    refetch: refetchChunks,
+  } = uiRead2;
 
   async function handleGenerate(regenerate: boolean) {
     setWorking(true);
@@ -183,41 +186,41 @@ export function DmsDocumentSemanticSection({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
+      <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
         <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
         Loading embedding status…
-      </div>
+      </div></QueryReadBoundary>
     );
   }
 
   if (queryError) {
     return (
-      <div className="flex flex-col items-center gap-3 py-12 text-center">
+      <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="flex flex-col items-center gap-3 py-12 text-center">
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
           <AlertCircle className="h-5 w-5 text-muted-foreground" />
         </div>
         <p className="text-sm text-muted-foreground">
           {queryError instanceof Error ? queryError.message : "Failed to load embedding status"}
         </p>
-      </div>
+      </div></QueryReadBoundary>
     );
   }
 
   if (!row) {
     return (
-      <div className="flex flex-col items-center gap-3 py-12 text-center">
+      <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="flex flex-col items-center gap-3 py-12 text-center">
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
           <Compass className="h-5 w-5 text-muted-foreground" />
         </div>
         <p className="text-sm text-muted-foreground">Embedding data unavailable.</p>
-      </div>
+      </div></QueryReadBoundary>
     );
   }
 
   const hasEmbedding = row.hasEmbedding && row.status === "complete";
 
   return (
-    <div className="space-y-4 p-1">
+    <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="space-y-4 p-1">
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
@@ -324,7 +327,7 @@ export function DmsDocumentSemanticSection({
               ) : (
                 <div className="space-y-2">
                   {similar.map((r) => (
-                    <div
+                    <div role="button" tabIndex={0} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); event.currentTarget.click(); } }}
                       key={r.documentId}
                       className="rounded-md border border-border bg-card hover:bg-muted/20 transition-colors p-3 cursor-pointer"
                       onClick={() => openDocument(r.documentId)}
@@ -359,7 +362,7 @@ export function DmsDocumentSemanticSection({
       {/* Phase 11 — Semantic Chunk Index Status */}
       {chunkStatus !== null && chunkStatus !== undefined && (
         <div className="rounded-md border border-border/60 bg-muted/30 p-3 space-y-2">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <Sparkles className="h-3.5 w-3.5 text-violet-500" />
               <span className="text-xs font-semibold text-foreground">Semantic Chunk Index</span>
@@ -412,6 +415,6 @@ export function DmsDocumentSemanticSection({
           They never expose raw content, and the original document remains the source of truth.
         </span>
       </div>
-    </div>
+    </div></QueryReadBoundary>
   );
 }

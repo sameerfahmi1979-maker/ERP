@@ -18,7 +18,6 @@ import {
   Loader2,
   ChevronDown,
   ChevronUp,
-  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,7 +27,6 @@ import {
   AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
   AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ERPCombobox } from "@/components/erp/combobox";
 import type { ERPComboboxOption } from "@/components/erp/combobox";
 import { Badge } from "@/components/ui/badge";
 import { useWorkspace } from "@/hooks/use-workspace";
@@ -43,8 +41,9 @@ import type { DmsAiSearchResult, DmsSearchIntent, DmsSemanticSearchResult } from
 import { SortColHeader } from "@/components/erp/table/sort-col-header";
 import { TablePagination } from "@/components/erp/table/table-pagination";
 import { useSortPaginate } from "@/hooks/use-sort-paginate";
-import { useResizableColumns } from "@/components/erp/table/use-resizable-columns";
+import { ConfiguredRow, EditColumns, EditFilters, useListColumns, type ListColumn } from "@/components/erp/table/list-controls";
 import { useRealtimeSync } from "@/hooks/realtime/use-realtime-sync";
+import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
 
 type DocColKey =
   | "docNo"
@@ -62,6 +61,8 @@ const DEFAULT_DOC_COL_WIDTHS: Record<DocColKey, number> = {
   expiry: 130,
   tags: 100,
 };
+
+const DOC_COLUMNS: ListColumn[] = Object.entries(DEFAULT_DOC_COL_WIDTHS).map(([id,width])=>({id,width,label:({docNo:"Document number",title:"Title",type:"Type",status:"Status",expiry:"Expiry",tags:"Tags"} as Record<string,string>)[id],visible:true,required:id==="docNo" || id==="title"}));
 
 type SearchMode = "auto" | "quick" | "safe" | "content" | "ai" | "semantic";
 
@@ -123,12 +124,12 @@ export function DmsDocumentsTable({
     },
   });
 
-  const [search, setSearch] = useState("");
-  const [filterType, setFilterType] = useState<number | null>(null);
-  const [filterCategory, setFilterCategory] = useState<number | null>(null);
-  const [filterStatus, setFilterStatus] = useState<string | null>(null);
-  const [filterConfidentiality, setFilterConfidentiality] = useState<string | null>(null);
-  const [filterExpiry, setFilterExpiry] = useState<string | null>(null);
+  const [search, setSearch] = usePersistentUiState("dms-documents:search", "");
+  const [filterType, setFilterType] = usePersistentUiState<number | null>("dms-documents:type", null);
+  const [filterCategory, setFilterCategory] = usePersistentUiState<number | null>("dms-documents:category", null);
+  const [filterStatus, setFilterStatus] = usePersistentUiState<string | null>("dms-documents:status", null);
+  const [filterConfidentiality, setFilterConfidentiality] = usePersistentUiState<string | null>("dms-documents:confidentiality", null);
+  const [filterExpiry, setFilterExpiry] = usePersistentUiState<string | null>("dms-documents:expiry", null);
 
   // AI Search state
   const [searchMode, setSearchMode] = useState<SearchMode>("auto");
@@ -222,6 +223,7 @@ export function DmsDocumentsTable({
   }), [initialDocuments, search, filterType, filterCategory, filterStatus, filterConfidentiality, filterExpiry]);
 
   const table = useSortPaginate(filtered, {
+    memoryKey: "dms-documents:table",
     defaultSortKey: "created_at",
     defaultSortDir: "desc",
     defaultPageSize: 25,
@@ -231,11 +233,8 @@ export function DmsDocumentsTable({
     },
   });
 
-  // Column adjustment — drag a header's right edge to resize; widths persist per-browser.
-  const { widths: colWidths, startResize } = useResizableColumns<DocColKey>(DEFAULT_DOC_COL_WIDTHS, {
-    minWidth: 60,
-    storageKey: "dms-documents-table-col-widths-v2",
-  });
+  const columnState = useListColumns("dms-documents", DOC_COLUMNS);
+  const colWidths = Object.fromEntries(columnState.columns.map(column=>[column.id,column.width])) as Record<DocColKey,number>;
 
   function openDocument(id: number, mode: "edit" | "view" = "edit") {
     const route = `/dms/documents/record/${id}?mode=${mode}`;
@@ -297,39 +296,6 @@ export function DmsDocumentsTable({
     []
   );
 
-  // ── Active filter chips ───────────────────────────────────────────────────
-  const activeFilterChips = useMemo(() => {
-    const chips: { key: string; label: string; onRemove: () => void }[] = [];
-    if (filterType != null) {
-      const opt = typeOptions.find((o) => o.value === filterType);
-      chips.push({ key: "type", label: `Type: ${opt?.label ?? filterType}`, onRemove: () => setFilterType(null) });
-    }
-    if (filterCategory != null) {
-      const opt = categoryOptions.find((o) => o.value === filterCategory);
-      chips.push({ key: "category", label: `Category: ${opt?.label ?? filterCategory}`, onRemove: () => setFilterCategory(null) });
-    }
-    if (filterStatus != null) {
-      chips.push({ key: "status", label: `Status: ${dmsStatusFilterLabel(filterStatus)}`, onRemove: () => setFilterStatus(null) });
-    }
-    if (filterConfidentiality != null) {
-      const label = filterConfidentiality.charAt(0).toUpperCase() + filterConfidentiality.slice(1);
-      chips.push({ key: "confidentiality", label: `Confidentiality: ${label}`, onRemove: () => setFilterConfidentiality(null) });
-    }
-    if (filterExpiry != null) {
-      const opt = DMS_EXPIRY_FILTER_OPTIONS.find((o) => o.value === filterExpiry);
-      chips.push({ key: "expiry", label: `Expiry: ${opt?.label ?? filterExpiry}`, onRemove: () => setFilterExpiry(null) });
-    }
-    return chips;
-  }, [filterType, filterCategory, filterStatus, filterConfidentiality, filterExpiry, typeOptions, categoryOptions]);
-
-  const clearAllFilters = () => {
-    setFilterType(null);
-    setFilterCategory(null);
-    setFilterStatus(null);
-    setFilterConfidentiality(null);
-    setFilterExpiry(null);
-  };
-
   return (
     <div className="space-y-4">
       {/* Row 1: Search */}
@@ -342,7 +308,7 @@ export function DmsDocumentsTable({
           setSemanticResults(null);
           setSemanticError(null);
         }}>
-          <SelectTrigger className="h-8 w-[160px] text-xs gap-1 shrink-0">
+          <SelectTrigger aria-label="Document search mode" className="h-8 w-[160px] text-xs gap-1 shrink-0">
             {searchMode === "ai" && <Sparkles className="h-3 w-3 text-purple-500" />}
             {searchMode === "semantic" && <Compass className="h-3 w-3 text-sky-500" />}
             <SelectValue />
@@ -418,15 +384,16 @@ export function DmsDocumentsTable({
             <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
             <Input
               placeholder="Search by number, title, description..."
+              aria-label="Search documents"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => { setSearch(e.target.value); table.setPage(1); }}
               className="pl-8 h-8 text-sm"
             />
           </div>
         )}
 
         <div className="ml-auto flex items-center gap-2 shrink-0">
-          <Button variant="outline" size="sm" onClick={() => router.refresh()} disabled={isPending}>
+          <Button variant="outline" size="sm" aria-label="Refresh documents" onClick={() => router.refresh()} disabled={isPending}>
             <RefreshCw className="h-3.5 w-3.5" />
           </Button>
           <Button size="sm" onClick={openNewDocument} className="gap-1.5">
@@ -436,117 +403,19 @@ export function DmsDocumentsTable({
         </div>
       </div>
 
-      {/* Row 2: Labeled, searchable filters */}
-      {searchMode !== "ai" && searchMode !== "semantic" && (
-        <div className="rounded-lg border border-border bg-muted/10 p-3">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-            <div>
-              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Type
-              </label>
-              <ERPCombobox
-                value={filterType}
-                onValueChange={(v) => setFilterType(v == null ? null : Number(v))}
-                options={typeOptions}
-                placeholder="All Types"
-                searchPlaceholder="Search document types..."
-                allowClear
-                triggerClassName="h-8 text-xs"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Category
-              </label>
-              <ERPCombobox
-                value={filterCategory}
-                onValueChange={(v) => setFilterCategory(v == null ? null : Number(v))}
-                options={categoryOptions}
-                placeholder="All Categories"
-                searchPlaceholder="Search categories..."
-                allowClear
-                triggerClassName="h-8 text-xs"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Status
-              </label>
-              <ERPCombobox
-                value={filterStatus}
-                onValueChange={(v) => setFilterStatus(v == null ? null : String(v))}
-                options={statusOptions}
-                placeholder="All Statuses"
-                searchPlaceholder="Search statuses..."
-                allowClear
-                triggerClassName="h-8 text-xs"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Confidentiality
-              </label>
-              <ERPCombobox
-                value={filterConfidentiality}
-                onValueChange={(v) => setFilterConfidentiality(v == null ? null : String(v))}
-                options={confidentialityOptions}
-                placeholder="All Levels"
-                searchPlaceholder="Search levels..."
-                allowClear
-                triggerClassName="h-8 text-xs"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Expiry
-              </label>
-              <ERPCombobox
-                value={filterExpiry}
-                onValueChange={(v) => setFilterExpiry(v == null ? null : String(v))}
-                options={DMS_EXPIRY_FILTER_OPTIONS}
-                placeholder="All Expiry"
-                searchPlaceholder="Search expiry..."
-                allowClear
-                triggerClassName="h-8 text-xs"
-              />
-            </div>
-          </div>
-
-          {/* Active filter chips */}
-          {activeFilterChips.length > 0 && (
-            <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border/60 pt-3">
-              {activeFilterChips.map((chip) => (
-                <Badge
-                  key={chip.key}
-                  variant="secondary"
-                  className="gap-1 pr-1 text-[11px] font-normal"
-                >
-                  {chip.label}
-                  <button
-                    type="button"
-                    onClick={chip.onRemove}
-                    className="ml-0.5 rounded-full p-0.5 hover:bg-muted-foreground/20"
-                    aria-label={`Remove ${chip.label} filter`}
-                  >
-                    <X className="h-2.5 w-2.5" />
-                  </button>
-                </Badge>
-              ))}
-              <button
-                type="button"
-                onClick={clearAllFilters}
-                className="text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-              >
-                Clear all
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+      {searchMode !== "ai" && searchMode !== "semantic" && <div className="flex flex-wrap gap-2 items-center">
+        <EditColumns columns={columnState.columns} defaults={DOC_COLUMNS} onApply={columnState.setColumns} />
+        <EditFilters scopeLabel="Filters apply to the permitted documents loaded into this list, not AI or semantic search results."
+          definitions={[
+            {id:"type",label:"Type",type:"select",options:typeOptions.map(o=>({value:String(o.value),label:o.label}))},
+            {id:"category",label:"Category",type:"select",options:categoryOptions.map(o=>({value:String(o.value),label:o.label}))},
+            {id:"status",label:"Status",type:"select",options:statusOptions.map(o=>({value:String(o.value),label:o.label}))},
+            {id:"confidentiality",label:"Confidentiality",type:"select",options:confidentialityOptions.map(o=>({value:String(o.value),label:o.label}))},
+            {id:"expiry",label:"Expiry",type:"select",options:DMS_EXPIRY_FILTER_OPTIONS.map(o=>({value:String(o.value),label:o.label}))}
+          ]}
+          values={{type:filterType == null ? "" : String(filterType),category:filterCategory == null ? "" : String(filterCategory),status:filterStatus ?? "",confidentiality:filterConfidentiality ?? "",expiry:filterExpiry ?? ""}}
+          onApply={values=>{setFilterType(values.type ? Number(values.type):null);setFilterCategory(values.category ? Number(values.category):null);setFilterStatus(values.status || null);setFilterConfidentiality(values.confidentiality || null);setFilterExpiry(values.expiry || null);table.setPage(1);}} />
+      </div>}
 
       {/* Search mode helper text */}
       {searchMode !== "auto" && (
@@ -696,7 +565,7 @@ export function DmsDocumentsTable({
                         <Button
                           size="icon"
                           variant="ghost"
-                          className="h-6 w-6 shrink-0"
+                          className="h-11 w-11 sm:h-8 sm:w-8 shrink-0"
                           onClick={(e) => { e.stopPropagation(); openDocument(r.documentId); }}
                         >
                           <ExternalLink className="h-3 w-3" />
@@ -792,7 +661,7 @@ export function DmsDocumentsTable({
                         <Button
                           size="icon"
                           variant="ghost"
-                          className="h-6 w-6 shrink-0"
+                          className="h-11 w-11 sm:h-8 sm:w-8 shrink-0"
                           onClick={(e) => { e.stopPropagation(); openDocument(r.documentId); }}
                         >
                           <ExternalLink className="h-3 w-3" />
@@ -816,23 +685,23 @@ export function DmsDocumentsTable({
 
       {/* Table */}
       {searchMode !== "ai" && searchMode !== "semantic" && (
-      <div className="rounded-md border border-border overflow-x-auto">
-        <table className="w-full text-xs table-fixed">
+      <div role="region" aria-label="Scrollable documents" tabIndex={0} className="rounded-md border border-border overflow-x-auto">
+        <table aria-label="Documents" className="w-full text-sm table-fixed" style={{minWidth:columnState.visible.reduce((sum,col)=>sum+col.width,104)}}>
           <thead>
-            <tr className="border-b border-border bg-muted/30">
-              <SortColHeader field="document_no" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 text-muted-foreground font-medium" width={colWidths.docNo} onResizeStart={(e) => startResize("docNo", e)}>Doc No</SortColHeader>
-              <SortColHeader field="title" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 text-muted-foreground font-medium" width={colWidths.title} onResizeStart={(e) => startResize("title", e)}>Title</SortColHeader>
-              <SortColHeader field="document_type" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 text-muted-foreground font-medium" width={colWidths.type} onResizeStart={(e) => startResize("type", e)}>Type</SortColHeader>
-              <SortColHeader field="status" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 text-muted-foreground font-medium" width={colWidths.status} onResizeStart={(e) => startResize("status", e)}>Status</SortColHeader>
-              <SortColHeader field="expiry_date" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 text-muted-foreground font-medium" width={colWidths.expiry} onResizeStart={(e) => startResize("expiry", e)}>Expiry</SortColHeader>
-              <SortColHeader field="tags" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 text-muted-foreground font-medium" width={colWidths.tags} onResizeStart={(e) => startResize("tags", e)}>Tags</SortColHeader>
+            <ConfiguredRow columns={columnState.columns} className="border-b border-border bg-muted/30">
+              <SortColHeader data-column="docNo" field="document_no" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 text-muted-foreground font-medium" width={colWidths.docNo}>Doc No</SortColHeader>
+              <SortColHeader data-column="title" field="title" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 text-muted-foreground font-medium" width={colWidths.title}>Title</SortColHeader>
+              <SortColHeader data-column="type" field="document_type" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 text-muted-foreground font-medium" width={colWidths.type}>Type</SortColHeader>
+              <SortColHeader data-column="status" field="status" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 text-muted-foreground font-medium" width={colWidths.status}>Status</SortColHeader>
+              <SortColHeader data-column="expiry" field="expiry_date" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 text-muted-foreground font-medium" width={colWidths.expiry}>Expiry</SortColHeader>
+              <SortColHeader data-column="tags" field="tags" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 text-muted-foreground font-medium" width={colWidths.tags}>Tags</SortColHeader>
               <th className="px-3 py-2" style={{ width: 104 }} />
-            </tr>
+            </ConfiguredRow>
           </thead>
           <tbody>
             {table.rows.length === 0 ? (
               <tr>
-                <td colSpan={7} className="text-center py-10 text-muted-foreground">
+                <td colSpan={columnState.visible.length + 1} className="text-center py-10 text-muted-foreground">
                   <div className="flex flex-col items-center gap-2">
                     <FileText className="h-8 w-8 opacity-30" />
                     <p className="text-sm">No documents found</p>
@@ -844,8 +713,8 @@ export function DmsDocumentsTable({
               </tr>
             ) : (
               table.rows.map((doc) => (
-                <tr key={doc.id} className="border-b border-border hover:bg-muted/20 transition-colors">
-                  <td className="px-3 py-2 font-mono font-medium text-primary overflow-hidden">
+                <ConfiguredRow columns={columnState.columns} key={doc.id} className="border-b border-border hover:bg-muted/20 transition-colors">
+                  <td data-column="docNo" className="px-3 py-2 font-mono font-medium text-primary overflow-hidden">
                     <button
                       type="button"
                       onClick={() => openDocument(doc.id)}
@@ -854,7 +723,7 @@ export function DmsDocumentsTable({
                       {doc.document_no}
                     </button>
                   </td>
-                  <td className="px-3 py-2 overflow-hidden">
+                  <td data-column="title" className="px-3 py-2 overflow-hidden">
                     <div className="flex items-center gap-1.5 min-w-0">
                       <span className="truncate min-w-0 flex-1 font-medium">{doc.title}</span>
                       {doc.is_archived && (
@@ -876,13 +745,13 @@ export function DmsDocumentsTable({
                       <p className="text-muted-foreground truncate mt-0.5">{doc.description}</p>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-muted-foreground truncate">
+                  <td data-column="type" className="px-3 py-2 text-muted-foreground truncate">
                     {doc.document_type?.name_en ?? "—"}
                   </td>
-                  <td className="px-3 py-2">
+                  <td data-column="status" className="px-3 py-2">
                     <DmsDocumentStatusBadge status={doc.status} />
                   </td>
-                  <td className="px-3 py-2">
+                  <td data-column="expiry" className="px-3 py-2">
                     {doc.expiry_date ? (
                       <div className="space-y-0.5">
                         <DmsExpiryBadge expiryDate={doc.expiry_date} />
@@ -894,7 +763,7 @@ export function DmsDocumentsTable({
                       <span className="text-muted-foreground">—</span>
                     )}
                   </td>
-                  <td className="px-3 py-2">
+                  <td data-column="tags" className="px-3 py-2">
                     {doc.tags && doc.tags.length > 0 ? (
                       <div className="flex flex-wrap gap-0.5">
                         {doc.tags.slice(0, 2).map((t) => (
@@ -917,19 +786,19 @@ export function DmsDocumentsTable({
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1 justify-end">
-                      <Button
+                      <Button aria-label="Open"
                         size="icon"
                         variant="ghost"
-                        className="h-6 w-6"
+                        className="h-11 w-11 sm:h-8 sm:w-8"
                         onClick={() => openDocument(doc.id, "edit")}
                         title="Open"
                       >
                         <ExternalLink className="h-3 w-3" />
                       </Button>
-                      <Button
+                      <Button aria-label={doc.is_archived ? "Unarchive" : "Archive"}
                         size="icon"
                         variant="ghost"
-                        className="h-6 w-6"
+                        className="h-11 w-11 sm:h-8 sm:w-8"
                         onClick={() => handleArchive(doc)}
                         disabled={isPending}
                         title={doc.is_archived ? "Unarchive" : "Archive"}
@@ -941,10 +810,10 @@ export function DmsDocumentsTable({
                         )}
                       </Button>
                       {canHardDelete && (
-                        <Button
+                        <Button aria-label="Permanently Delete (system admin only)"
                           size="icon"
                           variant="ghost"
-                          className="h-6 w-6 text-destructive hover:text-destructive"
+                          className="h-11 w-11 sm:h-8 sm:w-8 text-destructive hover:text-destructive"
                           onClick={() => handleDelete(doc)}
                           disabled={isPending}
                           title="Permanently Delete (system admin only)"
@@ -953,7 +822,7 @@ export function DmsDocumentsTable({
                         </Button>
                       )}                    </div>
                   </td>
-                </tr>
+                </ConfiguredRow>
               ))
             )}
           </tbody>

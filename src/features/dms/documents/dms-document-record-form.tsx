@@ -18,6 +18,7 @@ import { useWorkspaceScrollState } from "@/hooks/use-workspace-scroll-state";
 import { useWorkspaceSectionState } from "@/hooks/use-workspace-section-state";
 import { useWorkspaceTabDirty } from "@/hooks/use-workspace-tab-dirty";
 import type { AuthContext } from "@/lib/rbac/check";
+import { hasPermission } from "@/lib/rbac/scope";
 import type { DmsDocumentRecordData } from "@/server/actions/dms/documents";
 import { createDmsDocument, updateDmsDocument } from "@/server/actions/dms/documents";
 import { linkDmsDocumentToEntity } from "@/server/actions/dms/entity-documents";
@@ -112,6 +113,9 @@ function DmsDocumentRecordFormInner({
 
   const [currentMode, setCurrentMode] = useState<"add" | "edit" | "view">(mode);
   const isViewing = currentMode === "view";
+  // UI capabilities mirror the server action; the file endpoint still checks row scope/confidentiality.
+  const canPreviewFiles = hasPermission(authContext, "dms.documents.preview") || hasPermission(authContext, "dms.admin");
+  const canDownloadFiles = hasPermission(authContext, "dms.documents.download") || hasPermission(authContext, "dms.admin");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSubmitAction, setActiveSubmitAction] = useState<"save" | "saveAndClose" | null>(null);
@@ -416,6 +420,8 @@ function DmsDocumentRecordFormInner({
           {effectiveDocId ? (
             <DmsDocumentVersionsSection
               documentId={effectiveDocId}
+              canPreview={canPreviewFiles}
+              canDownload={canDownloadFiles}
               documentNo={doc?.document_no ?? ""}
               canUpload={!isViewing}
               canEdit={!isViewing}
@@ -432,6 +438,8 @@ function DmsDocumentRecordFormInner({
           {effectiveDocId ? (
             <DmsDocumentFilesSection
               documentId={effectiveDocId}
+              canPreview={canPreviewFiles}
+              canDownload={canDownloadFiles}
               canTriggerOcr={
                 authContext.permissionCodes.includes("dms.documents.ocr.trigger") ||
                 authContext.permissionCodes.includes("dms.documents.edit") ||

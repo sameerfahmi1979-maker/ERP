@@ -3,10 +3,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, getAuthContextForProfileId, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
+import { eligibleApprovalRecipient } from "@/lib/dms/approval-notification-recipient";
+import { hasGlobalPermission } from "@/lib/rbac/scope";
 import { assertInternalActionUrl } from "@/lib/security/action-url";
 
 // ── Result type (matches project pattern) ─────────────────────────────────────
@@ -74,6 +76,7 @@ const workflowCreateSchema = z.object({
 });
 
 const workflowUpdateSchema = workflowCreateSchema.partial().extend({
+  expected_updated_at: z.string().datetime({ offset: true }).optional(),
   is_active: z.boolean().optional(),
 });
 
@@ -90,6 +93,7 @@ function canSubmit(ctx: AuthCtx) {
 function canAct(ctx: AuthCtx) {
   return hasPermission(ctx, "dms.approvals.act") ||
     hasPermission(ctx, "dms.documents.approve") ||
+    hasPermission(ctx, "dms.approvals.admin") ||
     hasPermission(ctx, "dms.admin");
 }
 
@@ -100,6 +104,7 @@ function canWithdraw(ctx: AuthCtx) {
 
 function canViewApprovals(ctx: AuthCtx) {
   return hasPermission(ctx, "dms.approvals.view") ||
+    hasPermission(ctx, "dms.approvals.admin") ||
     hasPermission(ctx, "dms.approvals.history.view") ||
     hasPermission(ctx, "dms.approvals.act") ||
     hasPermission(ctx, "dms.documents.approve") ||
@@ -112,30 +117,6 @@ function isDmsAdmin(ctx: AuthCtx) {
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
-
-/**
- * Insert a document event (non-fatal: failure is logged but does not abort workflow).
- */
-async function addDocumentEvent(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  documentId: number,
-  eventType: string,
-  description: string,
-  performedBy: number | null,
-  metadata?: Record<string, unknown>,
-): Promise<void> {
-  try {
-    await supabase.from("dms_document_events").insert({
-      document_id: documentId,
-      event_type: eventType,
-      description,
-      performed_by: performedBy,
-      metadata_json: metadata ?? null,
-    });
-  } catch (err) {
-    logger.error(`addDocumentEvent(${eventType}) failed — non-fatal`, err);
-  }
-}
 
 /**
  * Insert an in-app notification directly into erp_notifications.
@@ -158,20 +139,18 @@ async function sendApprovalNotification(opts: {
 }): Promise<void> {
   try {
     const admin = createAdminClient();
+    const {data: subject,error: subjectError} = await admin.from("dms_documents").select("owning_company_id,owning_branch_id,confidentiality_level").eq("id",opts.documentId).is("deleted_at",null).maybeSingle();
+    if (subjectError || !subject || !eligibleApprovalRecipient(await getAuthContextForProfileId(opts.recipientUserId), subject, null, false)) return;
     const now = new Date().toISOString();
     const actionUrl = assertInternalActionUrl(PATHS.docRecord(opts.documentId), PATHS.dmsApprovals);
-    const actionDate = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    // Email/in-app previews deliberately contain no document title, number,
+    // employee details, comments or reasons. Linked-subject access can change
+    // before delivery; the protected ERP destination is authoritative.
+    const message = opts.notificationCode === "DMS_APPROVAL_REQUESTED"
+      ? {title:"Document approval requires review",body:"An approval step may require your review. Open the ERP approval queue to see documents currently available to you."}
+      : {title:"Document approval updated",body:"A document approval has been updated. Open the ERP to see its current status, subject to your current access."};
 
-    const message = buildNotificationMessage(opts.notificationCode, {
-      document_no: opts.documentNo,
-      title: opts.title,
-      document_type: opts.documentType,
-      actor_name: opts.actorName,
-      action_date: actionDate,
-      comments_or_reason: opts.commentsOrReason ?? "",
-    });
-
-    await admin.from("erp_notifications").insert({
+    const { error: notificationError } = await admin.from("erp_notifications").insert({
       notification_code: opts.notificationCode,
       source_module: "DMS",
       source_entity_type: "dms_documents",
@@ -191,90 +170,32 @@ async function sendApprovalNotification(opts: {
       created_at: now,
       updated_at: now,
     });
+    if (notificationError) logger.error("Approval notification was not queued", { code: notificationError.code });
   } catch (err) {
     logger.error("sendApprovalNotification failed — non-fatal", err);
   }
 }
 
-function buildNotificationMessage(
-  code: string,
-  vars: { document_no: string; title: string; document_type: string; actor_name: string; action_date: string; comments_or_reason?: string },
-): { title: string; body: string } {
-  switch (code) {
-    case "DMS_APPROVAL_REQUESTED":
-      return {
-        title: `Approval Required: ${vars.document_no} — ${vars.title}`,
-        body: `Document ${vars.document_no} (${vars.title}) was submitted for approval by ${vars.actor_name} on ${vars.action_date}. Document type: ${vars.document_type}.`,
-      };
-    case "DMS_APPROVED":
-      return {
-        title: `Document Approved: ${vars.document_no} — ${vars.title}`,
-        body: `Document ${vars.document_no} (${vars.title}) has been approved by ${vars.actor_name} on ${vars.action_date}.`,
-      };
-    case "DMS_REJECTED":
-      return {
-        title: `Document Rejected: ${vars.document_no} — ${vars.title}`,
-        body: `Document ${vars.document_no} (${vars.title}) was rejected by ${vars.actor_name} on ${vars.action_date}. Reason: ${vars.comments_or_reason ?? "—"}`,
-      };
-    case "DMS_APPROVAL_WITHDRAWN":
-      return {
-        title: `Approval Withdrawn: ${vars.document_no} — ${vars.title}`,
-        body: `The approval request for ${vars.document_no} (${vars.title}) was withdrawn by ${vars.actor_name} on ${vars.action_date}.`,
-      };
-    default:
-      return { title: `DMS notification for ${vars.document_no}`, body: "" };
+async function resolveApproverUserIds(admin: Awaited<ReturnType<typeof createAdminClient>>, documentId:number, requiresRole:string|null):Promise<number[]> {
+  const {data:doc,error} = await admin.from("dms_documents").select("owning_company_id,owning_branch_id,confidentiality_level").eq("id",documentId).is("deleted_at",null).maybeSingle();
+  if(error || !doc) return [];
+  const {data:assignments,error:assignmentError} = await admin.from("user_roles").select("user_profile_id").eq("is_active",true)
+    .or(doc.owning_company_id === null ? "and(owner_company_id.is.null,branch_id.is.null)" : "and(owner_company_id.is.null,branch_id.is.null),owner_company_id.eq."+doc.owning_company_id);
+  if(assignmentError) return [];
+  const eligible:number[]=[];
+  for(const id of new Set((assignments??[]).map(row=>row.user_profile_id).filter((id):id is number=>typeof id==="number"))) {
+    try { if(eligibleApprovalRecipient(await getAuthContextForProfileId(id),doc,requiresRole,true)) eligible.push(id); }
+    catch { /* A disabled/removed recipient must not fail an already committed decision. */ }
   }
+  return eligible;
 }
 
-/**
- * Resolve eligible approver user IDs — users who have dms.approvals.act or dms.documents.approve.
- * For workflow steps with requires_role, also include users with that role.
- */
-async function resolveApproverUserIds(
-  supabase: Awaited<ReturnType<typeof createAdminClient>>,
-  requiresRole?: string | null,
-): Promise<number[]> {
-  try {
-    // Users with direct act/approve permissions via role assignments
-    const { data: permRows } = await supabase
-      .from("user_roles")
-      .select("user_profile_id, roles!inner(role_permissions!inner(permissions!inner(permission_code)))")
-      .not("user_profile_id", "is", null);
-
-    const ids = new Set<number>();
-
-    if (permRows) {
-      for (const ur of permRows as unknown as Array<{
-        user_profile_id: number;
-        roles: { role_permissions: { permissions: { permission_code: string } }[] };
-      }>) {
-        const perms = ur.roles?.role_permissions?.map((rp) => rp.permissions?.permission_code) ?? [];
-        if (perms.includes("dms.approvals.act") || perms.includes("dms.documents.approve") || perms.includes("dms.admin")) {
-          if (ur.user_profile_id) ids.add(ur.user_profile_id);
-        }
-      }
-    }
-
-    if (requiresRole) {
-      const { data: roleUsers } = await supabase
-        .from("user_roles")
-        .select("user_profile_id, roles!inner(role_code)")
-        .not("user_profile_id", "is", null);
-
-      if (roleUsers) {
-        for (const ur of roleUsers as unknown as Array<{ user_profile_id: number; roles: { role_code: string } }>) {
-          if (ur.roles?.role_code === requiresRole && ur.user_profile_id) {
-            ids.add(ur.user_profile_id);
-          }
-        }
-      }
-    }
-
-    return Array.from(ids);
-  } catch (err) {
-    logger.error("resolveApproverUserIds failed", err);
-    return [];
-  }
+type ApprovalTransition = { approvalId: number; approvalStatus: string; pending: boolean; requiresRole: string | null };
+async function transitionApproval(documentId:number, approvalId:number|null, operation:string, comment?:string, reason?:string):Promise<ActionResult<ApprovalTransition>> {
+  const supabase = await createClient();
+  const {data,error} = await supabase.rpc("f05_transition_document_approval", {document_id:documentId,approval_id:approvalId,operation,comment_text:comment??null,reason_text:reason??null});
+  if (error) return {success:false,error:error.code==="PT409" ? "The approval changed. Refresh before taking another action." : error.code==="55000" ? "The workflow needs administrator review before this action can continue." : "The approval action was not completed. Check your access and refresh the document."};
+  return {success:true,data:data as ApprovalTransition};
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -301,6 +222,7 @@ export type ApprovalState = {
   canViewHistory: boolean;
   selfApprovalBlocked: boolean;
   selfApprovalBlockReason: string | null;
+  actionUnavailableReason?: string | null;
   latestComments: string | null;
   latestReason: string | null;
 };
@@ -411,7 +333,7 @@ export async function getDocumentApprovalState(
     };
 
     // Get current approval row
-    const { data: currentApproval } = await supabase
+    const { data: currentApproval, error: approvalReadError } = await supabase
       .from("dms_document_approvals")
       .select("id, action, workflow_id, step_id, reason, comments")
       .eq("document_id", documentId)
@@ -425,6 +347,9 @@ export async function getDocumentApprovalState(
 
     const profileId = ctx.profile.id;
     const isSelfApproval = d.submitted_by !== null && d.submitted_by === profileId && !isDmsAdmin(ctx);
+    const actionable = !approvalReadError && !!ca?.id && ca.action === "submitted";
+    const stepCapability = actionable ? await supabase.rpc("f05_can_act_document_approval", { document_id: documentId, step_id: ca?.step_id ?? null }) : null;
+    const canActOnStep = !stepCapability?.error && stepCapability?.data === true;
 
     const state: ApprovalState = {
       documentId: d.id,
@@ -442,9 +367,10 @@ export async function getDocumentApprovalState(
       currentWorkflowId: ca?.workflow_id ?? null,
       currentStepId: ca?.step_id ?? null,
       canSubmit: canSubmit(ctx) && ["draft", "rejected", "withdrawn", null].includes(d.approval_status) && !["archived", "deleted"].includes(d.status),
-      canApprove: canAct(ctx) && d.approval_status === "pending_approval" && !isSelfApproval,
-      canReject: canAct(ctx) && d.approval_status === "pending_approval" && !isSelfApproval,
-      canWithdraw: d.approval_status === "pending_approval" && (canWithdraw(ctx) || d.submitted_by === profileId),
+      canApprove: actionable && canActOnStep && d.approval_status === "pending_approval" && !isSelfApproval,
+      canReject: actionable && canActOnStep && d.approval_status === "pending_approval" && !isSelfApproval,
+      canWithdraw: actionable && d.approval_status === "pending_approval" && (canWithdraw(ctx) || d.submitted_by === profileId),
+      actionUnavailableReason: d.approval_status === "pending_approval" && !actionable ? "The current approval request is unavailable. Refresh or ask your administrator to check approval access before taking action." : null,
       canViewHistory: canViewApprovals(ctx),
       selfApprovalBlocked: isSelfApproval && d.approval_status === "pending_approval",
       selfApprovalBlockReason: isSelfApproval ? "You submitted this document for approval and cannot act on it." : null,
@@ -479,7 +405,6 @@ export async function submitDocumentForApproval(
     if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "Validation failed" };
 
     const supabase = await createClient();
-    const now = new Date().toISOString();
     const profileId = ctx.profile.id;
 
     // Fetch document
@@ -506,72 +431,17 @@ export async function submitDocumentForApproval(
       return { success: false, error: "Approval request already pending for this document" };
     }
 
-    // Resolve workflow for this document type
-    const workflow = d.document_type_id ? await resolveWorkflow(supabase, d.document_type_id) : null;
+    const transition = await transitionApproval(documentId, null, "submit", parsed.data.comment, undefined);
+    if (!transition.success || !transition.data) return { success: false, error: transition.error };
+    const outcome = transition.data;
+    const ap = { id: outcome.approvalId };
 
-    const initialStep = workflow?.steps.find((s) => s.isInitial) ?? workflow?.steps[0] ?? null;
-
-    // Step 1: Invalidate old current rows
-    await supabase
-      .from("dms_document_approvals")
-      .update({ is_current: false, updated_at: now, updated_by: profileId })
-      .eq("document_id", documentId)
-      .eq("is_current", true);
-
-    // Step 2: Insert new submitted row
-    const { data: approvalRow, error: approvalErr } = await supabase
-      .from("dms_document_approvals")
-      .insert({
-        document_id: documentId,
-        workflow_id: workflow?.id ?? null,
-        step_id: initialStep?.id ?? null,
-        action: "submitted",
-        submitted_by: profileId,
-        submitted_at: now,
-        actioned_by: profileId,
-        actioned_at: now,
-        comments: parsed.data.comment ?? null,
-        is_current: true,
-        created_at: now,
-        updated_at: now,
-        updated_by: profileId,
-      })
-      .select("id")
-      .single();
-
-    if (approvalErr || !approvalRow) {
-      return { success: false, error: approvalErr?.message ?? "Failed to create approval record" };
-    }
-    const ap = approvalRow as { id: number };
-
-    // Step 3: Update document
-    const { error: docUpdateErr } = await supabase
-      .from("dms_documents")
-      .update({
-        approval_status: "pending_approval",
-        submitted_by: profileId,
-        submitted_at: now,
-        status: "pending_review",
-        updated_by: profileId,
-        updated_at: now,
-      })
-      .eq("id", documentId);
-
-    if (docUpdateErr) {
-      logger.error("submitDocumentForApproval: document update failed", docUpdateErr);
-    }
-
-    // Step 4: Document event (non-fatal)
-    await addDocumentEvent(supabase, documentId, "approval_submitted", "Document submitted for approval", profileId, {
-      approval_id: ap.id,
-      workflow_id: workflow?.id ?? null,
-    });
 
     // Step 5: Notify eligible approvers
     const actorName = ctx.profile.display_name ?? ctx.profile.full_name ?? "User";
     const docTypeName = d.document_type?.name_en ?? "Document";
     const admin = createAdminClient();
-    const approverIds = await resolveApproverUserIds(admin, initialStep?.requiresRole ?? null);
+    const approverIds = await resolveApproverUserIds(admin, documentId, outcome.requiresRole);
     for (const uid of approverIds) {
       if (uid === profileId) continue; // Don't notify self
       await sendApprovalNotification({
@@ -615,7 +485,7 @@ export async function approveDocument(
   documentId: number,
   approvalId: number,
   input: { comment?: string },
-): Promise<ActionResult> {
+): Promise<ActionResult<ApprovalTransition>> {
   try {
     const validDoc = positiveInt.safeParse(documentId);
     const validAp = positiveInt.safeParse(approvalId);
@@ -629,7 +499,6 @@ export async function approveDocument(
     if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "Validation failed" };
 
     const supabase = await createClient();
-    const now = new Date().toISOString();
     const profileId = ctx.profile.id;
 
     // Fetch document + current approval in one go
@@ -661,46 +530,21 @@ export async function approveDocument(
     }
 
     // Verify approvalId is the current row
-    const { data: apRow, error: apErr } = await supabase
-      .from("dms_document_approvals")
-      .select("id, is_current")
-      .eq("id", approvalId)
-      .eq("document_id", documentId)
-      .eq("is_current", true)
-      .maybeSingle();
+    const transition = await transitionApproval(documentId, approvalId, "approve", parsed.data.comment, undefined);
+    if (!transition.success || !transition.data) return { success: false, error: transition.error };
+    const outcome = transition.data;
 
-    if (apErr || !apRow) return { success: false, error: "Approval request is no longer current or not found" };
+    if (outcome.pending) {
+      // A completed review step is not a final document approval.
+      const admin=createAdminClient();
+      for(const uid of await resolveApproverUserIds(admin,documentId,outcome.requiresRole)) {
+        if(uid===profileId || uid===d.submitted_by) continue;
+        await sendApprovalNotification({documentId,documentNo:d.document_no,title:d.title,documentType:d.document_type?.name_en??"Document",actorName:"Reviewer",notificationType:"approval_requested",notificationCode:"DMS_APPROVAL_REQUESTED",severity:"info",channelEmail:true,recipientUserId:uid,actionLabel:"Review Document",createdBy:profileId});
+      }
 
-    // Step 2: Update approval row
-    const { error: updateApErr } = await supabase
-      .from("dms_document_approvals")
-      .update({
-        action: "approved",
-        actioned_by: profileId,
-        actioned_at: now,
-        comments: parsed.data.comment ?? null,
-        is_current: false,
-        updated_at: now,
-        updated_by: profileId,
-      })
-      .eq("id", approvalId)
-      .eq("is_current", true);
-
-    if (updateApErr) return { success: false, error: updateApErr.message };
-
-    // Step 3: Update document
-    await supabase.from("dms_documents").update({
-      approval_status: "approved",
-      status: "approved",
-      updated_by: profileId,
-      updated_at: now,
-    }).eq("id", documentId);
-
-    // Step 4: Document event
-    await addDocumentEvent(supabase, documentId, "approval_approved", "Document approved", profileId, {
-      approval_id: approvalId,
-      comment: parsed.data.comment,
-    });
+      revalidatePath(PATHS.docRecord(documentId)); revalidatePath(PATHS.dmsDocuments); revalidatePath(PATHS.dmsApprovals);
+      return { success: true, data: outcome };
+    }
 
     // Step 5: Notify submitter and owner/creator
     const actorName = ctx.profile.display_name ?? ctx.profile.full_name ?? "User";
@@ -737,7 +581,7 @@ export async function approveDocument(
     revalidatePath(PATHS.dmsApprovals);
     revalidatePath(PATHS.notifications);
 
-    return { success: true };
+    return { success: true, data: outcome };
   } catch (err) {
     logger.error("approveDocument error", err);
     return { success: false, error: "Failed to approve document" };
@@ -766,7 +610,6 @@ export async function rejectDocument(
     if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "Rejection reason is required" };
 
     const supabase = await createClient();
-    const now = new Date().toISOString();
     const profileId = ctx.profile.id;
 
     const { data: doc, error: docErr } = await supabase
@@ -795,47 +638,10 @@ export async function rejectDocument(
       return { success: false, error: "Self-approval is not allowed. You submitted this document for approval." };
     }
 
-    const { data: apRow, error: apErr } = await supabase
-      .from("dms_document_approvals")
-      .select("id, is_current")
-      .eq("id", approvalId)
-      .eq("document_id", documentId)
-      .eq("is_current", true)
-      .maybeSingle();
+    const transition = await transitionApproval(documentId, approvalId, "reject", parsed.data.comment, parsed.data.reason);
+    if (!transition.success || !transition.data) return { success: false, error: transition.error };
 
-    if (apErr || !apRow) return { success: false, error: "Approval request is no longer current or not found" };
 
-    // Step 2: Update approval row
-    const { error: updateErr } = await supabase
-      .from("dms_document_approvals")
-      .update({
-        action: "rejected",
-        actioned_by: profileId,
-        actioned_at: now,
-        reason: parsed.data.reason,
-        comments: parsed.data.comment ?? parsed.data.reason,
-        is_current: false,
-        updated_at: now,
-        updated_by: profileId,
-      })
-      .eq("id", approvalId)
-      .eq("is_current", true);
-
-    if (updateErr) return { success: false, error: updateErr.message };
-
-    // Step 3: Update document
-    await supabase.from("dms_documents").update({
-      approval_status: "rejected",
-      status: "rejected",
-      updated_by: profileId,
-      updated_at: now,
-    }).eq("id", documentId);
-
-    // Step 4: Document event
-    await addDocumentEvent(supabase, documentId, "approval_rejected", `Document rejected: ${parsed.data.reason}`, profileId, {
-      approval_id: approvalId,
-      reason: parsed.data.reason,
-    });
 
     // Step 5: Notify submitter and owner/creator
     const actorName = ctx.profile.display_name ?? ctx.profile.full_name ?? "User";
@@ -901,7 +707,6 @@ export async function withdrawDocumentApproval(
     if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "Validation failed" };
 
     const supabase = await createClient();
-    const now = new Date().toISOString();
     const profileId = ctx.profile.id;
 
     const { data: doc, error: docErr } = await supabase
@@ -930,52 +735,16 @@ export async function withdrawDocumentApproval(
       return { success: false, error: "Only the submitter or an admin can withdraw this approval request" };
     }
 
-    const { data: apRow, error: apErr } = await supabase
-      .from("dms_document_approvals")
-      .select("id, is_current")
-      .eq("id", approvalId)
-      .eq("document_id", documentId)
-      .eq("is_current", true)
-      .maybeSingle();
+    const transition = await transitionApproval(documentId, approvalId, "withdraw", undefined, parsed.data.reason);
+    if (!transition.success || !transition.data) return { success: false, error: transition.error };
 
-    if (apErr || !apRow) return { success: false, error: "Approval request is no longer current or not found" };
 
-    // Step 2: Update approval row
-    const { error: updateErr } = await supabase
-      .from("dms_document_approvals")
-      .update({
-        action: "withdrawn",
-        actioned_by: profileId,
-        actioned_at: now,
-        reason: parsed.data.reason ?? null,
-        is_current: false,
-        updated_at: now,
-        updated_by: profileId,
-      })
-      .eq("id", approvalId)
-      .eq("is_current", true);
-
-    if (updateErr) return { success: false, error: updateErr.message };
-
-    // Step 3: Return document to draft
-    await supabase.from("dms_documents").update({
-      approval_status: "withdrawn",
-      status: "draft",
-      updated_by: profileId,
-      updated_at: now,
-    }).eq("id", documentId);
-
-    // Step 4: Document event
-    await addDocumentEvent(supabase, documentId, "approval_withdrawn", "Approval request withdrawn", profileId, {
-      approval_id: approvalId,
-      reason: parsed.data.reason,
-    });
 
     // Step 5: Notify eligible approvers
     const actorName = ctx.profile.display_name ?? ctx.profile.full_name ?? "User";
     const docTypeName = d.document_type?.name_en ?? "Document";
     const admin = createAdminClient();
-    const approverIds = await resolveApproverUserIds(admin, null);
+    const approverIds = await resolveApproverUserIds(admin, documentId, null);
     for (const uid of approverIds) {
       if (uid === profileId) continue;
       await sendApprovalNotification({
@@ -1132,38 +901,39 @@ export async function listPendingDocumentApprovalsForCurrentUser(
         document_type:dms_document_types!document_type_id(name_en),
         submitter:user_profiles!submitted_by(display_name),
         owner:user_profiles!owner_user_id(display_name),
-        current_approval:dms_document_approvals!inner(id, is_current)
+        current_approval:dms_document_approvals(id, is_current)
       `, { count: "exact" })
       .is("deleted_at", null)
-      .eq("dms_document_approvals.is_current", true);
+      .eq("current_approval.is_current", true)
+      .not("approval_status", "is", null);
 
     // Status filter
     const statusFilter = f.status && f.status !== "all" ? f.status : null;
     if (statusFilter) {
       query = query.eq("approval_status", statusFilter);
-    } else {
-      // Default: show pending + submitted (for own submissions) + approved/rejected for admins
-      if (!isDmsAdmin(ctx)) {
-        // Non-admin: see pending_approval docs they can act on OR their own submissions
-        query = query.not("approval_status", "is", null);
-      }
     }
 
     if (f.documentTypeId) query = query.eq("document_type_id", f.documentTypeId);
     if (f.search) {
       const q = f.search.trim();
-      query = query.or(`title.ilike.%${q}%,document_no.ilike.%${q}%`);
+      // Quote PostgREST values so punctuation cannot become filter syntax.
+      const pattern = `"%${q.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("%", "\\%").replaceAll("_", "\\_")}%"`;
+      query = query.or(`title.ilike.${pattern},document_no.ilike.${pattern}`);
     }
 
     // Sort
     const sortCol = f.sortBy === "document_no" ? "document_no"
       : f.sortBy === "title" ? "title"
         : "submitted_at";
-    query = query.order(sortCol, { ascending: f.sortDirection === "asc" }).range(offset, offset + f.pageSize - 1);
+    query = query.order(sortCol, { ascending: f.sortDirection === "asc" }).order("id").range(offset, offset + f.pageSize - 1);
 
     const { data, error, count } = await query;
     if (error) return { success: false, error: error.message };
 
+    const ids = (data ?? []).map(row => row.id as number);
+    const capabilities = ids.length ? await supabase.rpc("f05_document_approval_capabilities", {document_ids:ids}) : {data:[],error:null};
+    if (capabilities.error) return {success:false,error:"Approval access could not be verified. Refresh and try again."};
+    const allowed = new Map<number,{can_act:boolean;can_withdraw:boolean}>((capabilities.data as Array<{document_id:number;can_act:boolean;can_withdraw:boolean}>).map(row=>[row.document_id,row]));
     const rows: ApprovalQueueRow[] = (data ?? []).map((d) => {
       const doc = d as unknown as {
         id: number; document_no: string; title: string; approval_status: string | null;
@@ -1204,8 +974,8 @@ export async function listPendingDocumentApprovalsForCurrentUser(
         approvalStatus: doc.approval_status,
         currentApprovalId: doc.current_approval?.[0]?.id ?? null,
         daysPending,
-        canAct: canAct(ctx) && doc.approval_status === "pending_approval" && !isOwnSubmission,
-        canWithdraw: doc.approval_status === "pending_approval" && (canWithdraw(ctx) || isOwnSubmission),
+        canAct: allowed.get(doc.id)?.can_act === true,
+        canWithdraw: allowed.get(doc.id)?.can_withdraw === true,
         isRedacted: !canSeeSensitiveDetails,
       };
     });
@@ -1317,6 +1087,19 @@ export async function getApprovalWorkflowForDocumentType(
 // ─────────────────────────────────────────────────────────────────────────────
 // 9. adminListApprovalWorkflows
 // ─────────────────────────────────────────────────────────────────────────────
+
+export async function adminListApprovalRoleOptions(): Promise<ActionResult<Array<{ code: string; name: string }>>> {
+  try {
+    const ctx = await getAuthContext();
+    if (!hasGlobalPermission(ctx, "dms.admin") && !hasGlobalPermission(ctx, "dms.approvals.admin")) return { success: false, error: "Permission denied" };
+    // Configuration is global. This does not grant document access or expose role members.
+    const { data, error } = await createAdminClient().from("roles").select("role_code,role_name").eq("is_active", true).order("role_name").limit(1000);
+    if (error) return { success: false, error: "Could not load approval roles" };
+    return { success: true, data: (data ?? []).map(r => ({ code: r.role_code, name: r.role_name })) };
+  } catch {
+    return { success: false, error: "Could not load approval roles" };
+  }
+}
 
 export async function adminListApprovalWorkflows(): Promise<ActionResult<WorkflowRow[]>> {
   try {
@@ -1455,209 +1238,47 @@ export async function adminGetApprovalWorkflow(id: number): Promise<ActionResult
 export async function adminCreateApprovalWorkflow(
   input: z.infer<typeof workflowCreateSchema>,
 ): Promise<ActionResult<{ id: number }>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!isDmsAdmin(ctx)) return { success: false, error: "Permission denied" };
-
-    const parsed = workflowCreateSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "Validation failed" };
-
-    const supabase = await createClient();
-    const now = new Date().toISOString();
-    const profileId = ctx.profile.id;
-
-    // Check unique code
-    const { data: existing } = await supabase
-      .from("dms_document_workflows")
-      .select("id")
-      .eq("workflow_code", parsed.data.workflow_code)
-      .is("deleted_at", null)
-      .maybeSingle();
-
-    if (existing) return { success: false, error: `Workflow code '${parsed.data.workflow_code}' already exists` };
-
-    const { data: wf, error: wfErr } = await supabase
-      .from("dms_document_workflows")
-      .insert({
-        workflow_code: parsed.data.workflow_code,
-        name_en: parsed.data.name_en,
-        name_ar: parsed.data.name_ar ?? null,
-        description: parsed.data.description ?? null,
-        is_active: true,
-        created_by: profileId,
-        created_at: now,
-        updated_by: profileId,
-        updated_at: now,
-      })
-      .select("id")
-      .single();
-
-    if (wfErr || !wf) return { success: false, error: wfErr?.message ?? "Failed to create workflow" };
-
-    const wfRow = wf as { id: number };
-
-    // Insert document type assignments into junction table
-    const docTypeIds = parsed.data.document_type_ids ?? [];
-    if (docTypeIds.length > 0) {
-      await supabase.from("dms_workflow_document_types").insert(
-        docTypeIds.map((dtId) => ({ workflow_id: wfRow.id, document_type_id: dtId })),
-      );
-    }
-
-    // Insert steps if provided
-    if (parsed.data.steps?.length) {
-      const steps = parsed.data.steps.map((s, i) => ({
-        workflow_id: wfRow.id,
-        step_code: s.step_code,
-        step_name: s.step_name,
-        is_initial: s.is_initial,
-        is_final: s.is_final,
-        requires_role: s.requires_role ?? null,
-        sort_order: s.sort_order ?? i,
-        is_active: true,
-        created_at: now,
-      }));
-      await supabase.from("dms_document_workflow_steps").insert(steps);
-    }
-
-    // No document_id for workflow events — skip document event insertion
-    await logAudit({
-      module_code: "DMS",
-      entity_name: "dms_document_workflows",
-      entity_id: wfRow.id,
-      entity_reference: parsed.data.workflow_code,
-      action: "create",
-    });
-    revalidatePath(PATHS.dmsApprovals);
-
-    return { success: true, data: { id: wfRow.id } };
-  } catch (err) {
-    logger.error("adminCreateApprovalWorkflow error", err);
-    return { success: false, error: "Failed to create workflow" };
-  }
+  const parsed = workflowCreateSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "Validation failed" };
+  return saveWorkflowConfiguration(null, null, parsed.data);
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 11. adminUpdateApprovalWorkflow
-// ─────────────────────────────────────────────────────────────────────────────
 
 export async function adminUpdateApprovalWorkflow(
-  id: number,
-  input: z.infer<typeof workflowUpdateSchema>,
+  id: number, input: z.infer<typeof workflowUpdateSchema>,
 ): Promise<ActionResult> {
-  try {
-    const validId = positiveInt.safeParse(id);
-    if (!validId.success) return { success: false, error: "Invalid workflow ID" };
-
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!isDmsAdmin(ctx)) return { success: false, error: "Permission denied" };
-
-    const parsed = workflowUpdateSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "Validation failed" };
-
-    const supabase = await createClient();
-    const now = new Date().toISOString();
-    const profileId = ctx.profile.id;
-
-    const { steps, document_type_ids, ...wfFields } = parsed.data;
-
-    // Update workflow record (exclude document_type_ids — managed via junction table)
-    const updatePayload: Record<string, unknown> = { ...wfFields, updated_by: profileId, updated_at: now };
-    const { error: wfErr } = await supabase
-      .from("dms_document_workflows")
-      .update(updatePayload)
-      .eq("id", id)
-      .is("deleted_at", null);
-
-    if (wfErr) return { success: false, error: wfErr.message };
-
-    // Replace document type assignments if provided
-    if (document_type_ids !== undefined) {
-      await supabase.from("dms_workflow_document_types").delete().eq("workflow_id", id);
-      if (document_type_ids.length > 0) {
-        await supabase.from("dms_workflow_document_types").insert(
-          document_type_ids.map((dtId) => ({ workflow_id: id, document_type_id: dtId })),
-        );
-      }
-    }
-
-    // Deactivate old steps and insert new ones if provided
-    if (steps?.length) {
-      await supabase.from("dms_document_workflow_steps")
-        .update({ is_active: false })
-        .eq("workflow_id", id)
-        .eq("is_active", true);
-
-      const newSteps = steps.map((s, i) => ({
-        workflow_id: id,
-        step_code: s.step_code,
-        step_name: s.step_name,
-        is_initial: s.is_initial,
-        is_final: s.is_final,
-        requires_role: s.requires_role ?? null,
-        sort_order: s.sort_order ?? i,
-        is_active: true,
-        created_at: now,
-      }));
-      await supabase.from("dms_document_workflow_steps").insert(newSteps);
-    }
-
-    await logAudit({
-      module_code: "DMS",
-      entity_name: "dms_document_workflows",
-      entity_id: id,
-      entity_reference: String(id),
-      action: "update",
-    });
-    revalidatePath(PATHS.dmsApprovals);
-
-    return { success: true };
-  } catch (err) {
-    logger.error("adminUpdateApprovalWorkflow error", err);
-    return { success: false, error: "Failed to update workflow" };
-  }
+  if (!positiveInt.safeParse(id).success) return { success: false, error: "Invalid workflow ID" };
+  const parsed = workflowUpdateSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "Validation failed" };
+  const { expected_updated_at, ...fields } = parsed.data;
+  return saveWorkflowConfiguration(id, expected_updated_at ?? null, fields);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 12. adminDeactivateApprovalWorkflow
-// ─────────────────────────────────────────────────────────────────────────────
+export async function adminDeactivateApprovalWorkflow(id: number, expectedUpdatedAt?: string): Promise<ActionResult> {
+  return adminUpdateApprovalWorkflow(id, { is_active: false, expected_updated_at: expectedUpdatedAt });
+}
 
-export async function adminDeactivateApprovalWorkflow(id: number): Promise<ActionResult> {
+async function saveWorkflowConfiguration(id: number | null, expected: string | null, input: Record<string, unknown>): Promise<ActionResult<{ id: number }>> {
   try {
-    const validId = positiveInt.safeParse(id);
-    if (!validId.success) return { success: false, error: "Invalid workflow ID" };
-
     const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!isDmsAdmin(ctx)) return { success: false, error: "Permission denied" };
-
+    if (!ctx.profile || !isDmsAdmin(ctx)) return { success: false, error: "Permission denied" };
     const supabase = await createClient();
-    const now = new Date().toISOString();
-    const profileId = ctx.profile.id;
-
-    const { error } = await supabase
-      .from("dms_document_workflows")
-      .update({ is_active: false, updated_by: profileId, updated_at: now })
-      .eq("id", id)
-      .is("deleted_at", null);
-
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({
-      module_code: "DMS",
-      entity_name: "dms_document_workflows",
-      entity_id: id,
-      entity_reference: String(id),
-      action: "update",
-      new_values: { is_active: false },
-    });
+    const result = await supabase.rpc("f05_save_dms_workflow", { p_id: id, p_expected_updated_at: expected, p_input: input });
+    if (result.error || !result.data) {
+      const code = result.error?.code;
+      return { success: false, error: code === "PT409" ? "This workflow changed. Refresh and review it before saving again."
+        : code === "55000" ? "This workflow has a pending approval. Complete or withdraw it before changing the steps or assignments."
+        : code === "23505" ? "Check duplicate workflow or step codes and existing document-type assignments."
+        : code === "22023" ? "Check workflow names, step order, required roles and document-type selections."
+        : "The workflow was not saved. Check your access and entries, then refresh before retrying." };
+    }
+    const saved = result.data as { id: number };
+    await logAudit({ module_code: "DMS", entity_name: "dms_document_workflows", entity_id: saved.id,
+      entity_reference: String(saved.id), action: id === null ? "create" : "update" });
     revalidatePath(PATHS.dmsApprovals);
-
-    return { success: true };
+    revalidatePath("/admin/dms/approval-workflows");
+    return { success: true, data: saved };
   } catch (err) {
-    logger.error("adminDeactivateApprovalWorkflow error", err);
-    return { success: false, error: "Failed to deactivate workflow" };
+    logger.error("saveWorkflowConfiguration failed", err);
+    return { success: false, error: "The save could not be confirmed. Refresh the workflow before retrying." };
   }
 }

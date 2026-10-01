@@ -1,4 +1,5 @@
 "use client";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -91,11 +92,12 @@ const RATING_OPTIONS = [
 export function CandidateProfileTab({ form, setForm, mode, canManage, canManageSalary }: Props) {
   const isView = mode === "view" || !canManage;
 
-  const { data: reqRes } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.recruitment.requisitions(),
     queryFn: () => listJobRequisitions({ pageSize: 200 }),
     staleTime: 60_000,
   });
+  const { data: reqRes } = uiRead1;
   const requisitions = Array.isArray(reqRes?.data?.rows) ? reqRes.data.rows : [];
 
   const set = (key: keyof FormState, value: string | number | null) => {
@@ -103,7 +105,7 @@ export function CandidateProfileTab({ form, setForm, mode, canManage, canManageS
   };
 
   return (
-    <div className="p-6 space-y-8">
+    <QueryReadBoundary queries={[uiRead1]}><div className="p-6 space-y-8">
       {/* Personal */}
       <section>
         <h3 className="text-sm font-semibold text-slate-700 mb-4 uppercase tracking-wide">Personal Information</h3>
@@ -251,6 +253,6 @@ export function CandidateProfileTab({ form, setForm, mode, canManage, canManageS
           </div>
         </div>
       </section>
-    </div>
+    </div></QueryReadBoundary>
   );
 }

@@ -8,6 +8,7 @@ import { changePasswordSchema } from "@/lib/validation/auth";
 import { completeRequiredPasswordChange } from "@/server/actions/users/account-security";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ControlledFormFeedback } from "@/components/workspace/controlled-form-feedback";
 import { RequiredLabel } from "@/components/erp/required-label";
 import {
   Card,
@@ -29,6 +30,8 @@ type Props = {
 };
 
 export function ChangePasswordRequiredForm({ reason }: Props) {
+  const flight = useRef(false);
+  const [serviceError, setServiceError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [needsVerification, setNeedsVerification] = useState(false);
   const operationId = useRef<string | null>(null);
@@ -40,6 +43,9 @@ export function ChangePasswordRequiredForm({ reason }: Props) {
   } = useForm<FormInput>({ resolver: zodResolver(changePasswordSchema) });
 
   const onSubmit = async (values: FormInput) => {
+    if (flight.current) return;
+    flight.current = true;
+    setServiceError(null);
     setLoading(true);
     try {
       operationId.current ??= crypto.randomUUID();
@@ -47,14 +53,17 @@ export function ChangePasswordRequiredForm({ reason }: Props) {
       if (!result.success) {
         if (result.canStartNewAttempt) operationId.current = null;
         if (result.requiresFreshSignIn) { reset(); setNeedsVerification(true); return; }
+        setServiceError(result.error ?? "Password change could not complete.");
         toast.error(result.error ?? "Password change could not complete.");
         return;
       }
       toast.success("Password changed successfully. Welcome to ALGT ERP.");
       navigateAfterIdentityChange("/dashboard");
     } catch {
-      toast.error("The request was interrupted. Please sign in again before trying another password change.");
+      setServiceError("The request was interrupted. Please sign in again before trying another password change.");
+        toast.error("The request was interrupted. Please sign in again before trying another password change.");
     } finally {
+      flight.current = false;
       setLoading(false);
     }
   };
@@ -67,7 +76,7 @@ export function ChangePasswordRequiredForm({ reason }: Props) {
         <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-warning/10 text-warning">
           <ShieldAlert className="h-6 w-6" />
         </div>
-        <CardTitle>Password change required</CardTitle>
+        <CardTitle><h1>Password change required</h1></CardTitle>
         <CardDescription>
           You must set a new password before continuing.
         </CardDescription>
@@ -77,7 +86,8 @@ export function ChangePasswordRequiredForm({ reason }: Props) {
           </p>
         ) : null}
       </CardHeader>
-      <form onSubmit={(event) => void handleSubmit(onSubmit)(event)}>
+      <form noValidate onSubmit={(event) => void handleSubmit(onSubmit)(event)}>
+        <div className="px-6"><ControlledFormFeedback errors={errors} labels={{ password: "New password", confirmPassword: "Confirm new password" }} action="continuing" />{serviceError && <p role="alert" className="mb-4 text-sm text-destructive">{serviceError}</p>}</div>
         <CardContent className="flex flex-col gap-4">
           <p className="text-xs text-muted-foreground">
             Password must be at least 10 characters and include at least one uppercase letter, one lowercase letter, and one digit.
@@ -91,9 +101,6 @@ export function ChangePasswordRequiredForm({ reason }: Props) {
               required
               {...register("password")}
             />
-            {errors.password ? (
-              <p className="text-sm text-destructive">{errors.password.message}</p>
-            ) : null}
           </div>
           <div className="flex flex-col gap-2">
             <RequiredLabel htmlFor="confirmPassword" required>Confirm new password</RequiredLabel>
@@ -104,9 +111,6 @@ export function ChangePasswordRequiredForm({ reason }: Props) {
               required
               {...register("confirmPassword")}
             />
-            {errors.confirmPassword ? (
-              <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>
-            ) : null}
           </div>
         </CardContent>
         <CardFooter className="flex flex-col gap-3">

@@ -7,6 +7,7 @@
  */
 
 import { redirect } from "next/navigation";
+import { LoadError } from "@/components/erp/load-error";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { ReportTemplatesPageClient } from "@/features/report-center/report-templates-page-client";
 import { listBrandingProfiles, listReportTemplates } from "@/server/actions/reports/templates";
@@ -23,6 +24,7 @@ export default async function ReportTemplatesPage() {
   ]);
 
   const canManage = hasPermission(ctx, "reports.manage");
+  if (!profilesResult.success || !templatesResult.success) return <LoadError title="Templates and branding" retryHref="/admin/reports/templates" />;
   const canUpload =
     canManage && hasPermission(ctx, "branding.assets.upload");
   const canApprove = hasPermission(ctx, "reports.template.approve");

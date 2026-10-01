@@ -1,4 +1,7 @@
 "use client";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import { loadedListValue } from "@/components/erp/table/loaded-list-view";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 /**
  * ERP DMS AI Phase 8 — ERP Mapping Preview Panel
@@ -122,7 +125,7 @@ interface ErpMappingPreviewPanelProps {
 export function ErpMappingPreviewPanel({ documentId }: ErpMappingPreviewPanelProps) {
   const [expanded, setExpanded] = useState(false);
 
-  const { data: rows, isLoading, error } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.dms.erpMappingPreview(documentId),
     queryFn: async () => {
       const r = await getDmsErpMappingPreview(documentId);
@@ -132,6 +135,7 @@ export function ErpMappingPreviewPanel({ documentId }: ErpMappingPreviewPanelPro
     staleTime: 60_000,
     enabled: expanded,
   });
+ const { data: rows, isLoading, error } = uiRead1;
 
   const previewRows = rows ?? [];
 
@@ -142,7 +146,7 @@ export function ErpMappingPreviewPanel({ documentId }: ErpMappingPreviewPanelPro
   const changeCount = previewRows.filter((r) => r.diffStatus === "changed").length;
 
   return (
-    <div className="border-t border-border/50 pt-4">
+    <QueryReadBoundary queries={[uiRead1]}><div className="border-t border-border/50 pt-4">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
@@ -194,55 +198,20 @@ export function ErpMappingPreviewPanel({ documentId }: ErpMappingPreviewPanelPro
           {/* Preview table */}
           {!isLoading && !error && previewRows.length > 0 && (
             <div className="rounded-md border border-border overflow-hidden">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b border-border bg-muted/20">
-                    <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">DMS Field</th>
-                    <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">DMS Value</th>
-                    <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">Module</th>
-                    <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">ERP Target Field</th>
-                    <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">Current ERP Value</th>
-                    <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">Status</th>
-                    <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">Permission</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/50">
-                  {previewRows.map((row) => (
-                    <tr key={row.mappingId} className="hover:bg-muted/10">
-                      {/* DMS Field */}
-                      <td className="px-2 py-1.5">
-                        <div className="font-medium text-foreground">{row.fieldLabelEn}</div>
-                        <div className="text-[9px] text-muted-foreground font-mono">{row.fieldCode}</div>
-                      </td>
-
-                      {/* DMS Value */}
-                      <td className="px-2 py-1.5">
-                        {row.dmsValue ? (
+              {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable tableId="special.dms.documents.sections.dms-erp-mapping-preview-panel" data={previewRows} columns={[{id:"fieldLabelEn",header:"DMS field",accessorFn:row=>loadedListValue(row,"fieldLabelEn"),meta:{filter:{type:"text"}},enableHiding:false,size:220,cell:({row:{original:row}})=>{
+return <><div className="font-medium text-foreground">{row.fieldLabelEn}</div><div className="text-[9px] text-muted-foreground font-mono">{row.fieldCode}</div></>;}},{id:"dmsValue",header:"DMS value",accessorFn:row=>loadedListValue(row,"dmsValue"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+return <>{row.dmsValue ? (
                           <span className="text-foreground">{row.dmsValue}</span>
                         ) : (
                           <span className="text-slate-400 italic text-[10px]">not set</span>
-                        )}
-                      </td>
-
-                      {/* Module */}
-                      <td className="px-2 py-1.5">
-                        <ModuleBadge module={row.targetModule} />
-                        <div className="text-[9px] text-muted-foreground mt-0.5">{row.targetTable}</div>
-                      </td>
-
-                      {/* ERP Target Field */}
-                      <td className="px-2 py-1.5">
-                        <div className="font-medium text-foreground">{row.targetFieldLabel}</div>
-                        {row.targetRecordLabel && (
+                        )}</>;}},{id:"targetModule",header:"Module",accessorFn:row=>loadedListValue(row,"targetModule"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+return <><ModuleBadge module={row.targetModule} /><div className="text-[9px] text-muted-foreground mt-0.5">{row.targetTable}</div></>;}},{id:"targetFieldLabel",header:"ERP target field",accessorFn:row=>loadedListValue(row,"targetFieldLabel"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+return <><div className="font-medium text-foreground">{row.targetFieldLabel}</div>{row.targetRecordLabel && (
                           <div className="text-[9px] text-muted-foreground">
                             Record: {row.targetRecordLabel}
                           </div>
-                        )}
-                      </td>
-
-                      {/* Current ERP Value */}
-                      <td className="px-2 py-1.5">
-                        {row.diffStatus === "no_link" || row.diffStatus === "no_target" || row.diffStatus === "ambiguous" ? (
+                        )}</>;}},{id:"targetValue",header:"Current ERP value",accessorFn:row=>loadedListValue(row,"targetValue"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+return <>{row.diffStatus === "no_link" || row.diffStatus === "no_target" || row.diffStatus === "ambiguous" ? (
                           <span className="text-xs text-muted-foreground italic">
                             {row.warning ?? "—"}
                           </span>
@@ -250,27 +219,14 @@ export function ErpMappingPreviewPanel({ documentId }: ErpMappingPreviewPanelPro
                           <span className="text-foreground">{row.targetValue}</span>
                         ) : (
                           <span className="text-slate-400 italic text-[10px]">empty</span>
-                        )}
-                      </td>
-
-                      {/* Status */}
-                      <td className="px-2 py-1.5">
-                        <DiffStatusBadge status={row.diffStatus} />
-                      </td>
-
-                      {/* Required Permission */}
-                      <td className="px-2 py-1.5">
-                        <div className="flex items-center gap-1">
+                        )}</>;}},{id:"diffStatus",header:"Status",accessorFn:row=>loadedListValue(row,"diffStatus"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+return <><DiffStatusBadge status={row.diffStatus} /></>;}},{id:"requiredPermission",header:"Permission",accessorFn:row=>loadedListValue(row,"requiredPermission"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+return <><div className="flex items-center gap-1">
                           <ShieldCheck className="h-3 w-3 text-muted-foreground shrink-0" />
                           <span className="text-[9px] text-muted-foreground font-mono truncate max-w-[140px]">
                             {row.requiredPermission}
                           </span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                        </div></>;}}]} enableRowSelection={false} searchPlaceholder="Search loaded records…" initialPageSize={10} />
             </div>
           )}
 
@@ -287,6 +243,6 @@ export function ErpMappingPreviewPanel({ documentId }: ErpMappingPreviewPanelPro
           )}
         </div>
       )}
-    </div>
+    </div></QueryReadBoundary>
   );
 }

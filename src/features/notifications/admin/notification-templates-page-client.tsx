@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useCallback } from "react";
+import { useRefreshableRows } from "@/hooks/use-refreshable-rows";
 import { FileText, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NotificationTemplatesTable } from "./notification-templates-table";
@@ -10,22 +10,15 @@ import { getNotificationTemplates } from "@/server/actions/notifications/templat
 interface NotificationTemplatesPageClientProps {
   initialTemplates: NotificationTemplateRow[];
   canManage: boolean;
+  initialError?: boolean;
 }
 
-export function NotificationTemplatesPageClient({ initialTemplates, canManage }: NotificationTemplatesPageClientProps) {
-  const [templates, setTemplates] = useState(initialTemplates);
-  const [loading, startTransition] = useTransition();
-
-  const refresh = useCallback(() => {
-    startTransition(async () => {
-      const result = await getNotificationTemplates();
-      if (result.success && result.data) setTemplates(result.data);
-    });
-  }, []);
+export function NotificationTemplatesPageClient({ initialTemplates, canManage, initialError = false }: NotificationTemplatesPageClientProps) {
+  const {rows:templates,failed,loading,refresh}=useRefreshableRows(initialTemplates,initialError,getNotificationTemplates);
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap gap-3 items-center justify-between">
         <div className="flex items-center gap-3">
           <FileText className="h-6 w-6 text-primary" />
           <div>
@@ -35,12 +28,13 @@ export function NotificationTemplatesPageClient({ initialTemplates, canManage }:
             </p>
           </div>
         </div>
-        <Button variant="ghost" size="icon" onClick={refresh} disabled={loading} title="Refresh">
+        <Button variant="ghost" size="icon" onClick={refresh} disabled={loading} title="Refresh" aria-label="Refresh templates">
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
         </Button>
       </div>
 
-      <NotificationTemplatesTable templates={templates} onRefresh={refresh} canManage={canManage} />
+      {failed && <p role="alert">Templates could not be refreshed. Use Refresh to retry. Changes are disabled until the list is current.</p>}
+      <NotificationTemplatesTable templates={templates} onRefresh={refresh} canManage={canManage && !failed && !loading} />
     </div>
   );
 }

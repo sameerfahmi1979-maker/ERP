@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { History, RefreshCw, ShieldAlert, Sparkles } from "lucide-react";
 import type { AuditExplainerScope, AuditTimelineItem, AuditExplanationSummary } from "@/lib/ai/common/audit-explainer/types";
 import {
@@ -31,22 +31,28 @@ export function AuditExplainerPageClient({ initialTimeline, canUseAi, isEnabled 
   const [explaining, setExplaining] = useState(false);
   const [groupExplanation, setGroupExplanation] = useState<AuditExplanationSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const latest = useRef(0);
+  const explanationFlight = useRef(false);
+  useEffect(() => () => { latest.current++; }, []);
 
   const loadOverview = useCallback(async (s: AuditExplainerScope, et?: string, eid?: number) => {
+    const request = ++latest.current;
     setLoading(true);
+    setTimeline([]);
     setError(null);
     setGroupExplanation(null);
     try {
       const result = await getAuditExplainerOverview({ scope: s, entityType: et, entityId: eid });
+      if (request !== latest.current) return;
       if (result.success && result.data) {
         setTimeline(result.data.timeline);
       } else {
-        setError(result.error ?? "Failed to load.");
+        setError("Audit events could not be loaded. Use Refresh to retry.");
       }
-    } catch (err) {
-      setError(String(err));
+    } catch {
+      if (request === latest.current) setError("Audit events could not be loaded. Use Refresh to retry.");
     } finally {
-      setLoading(false);
+      if (request === latest.current) setLoading(false);
     }
   }, []);
 
@@ -64,18 +70,23 @@ export function AuditExplainerPageClient({ initialTimeline, canUseAi, isEnabled 
   const handleRefresh = () => void loadOverview(scope, entityType, entityId);
 
   const handleExplainGroup = async () => {
-    if (!canUseAi || !isEnabled) return;
+    if (!canUseAi || !isEnabled || loading || explanationFlight.current) return;
+    explanationFlight.current = true;
+    const request = latest.current;
     setExplaining(true);
     setGroupExplanation(null);
     try {
-      const result = entityType
-        ? await explainEntityAuditTimeline({ entityType, entityId: entityId ?? 0, scope })
+      const result = entityType && entityId && entityId > 0
+        ? await explainEntityAuditTimeline({ entityType, entityId, scope })
         : await explainAiEventGroup({ scope, entityType, entityId });
-
+      if (request !== latest.current) return;
       if (result.success && result.data) {
         setGroupExplanation(result.data);
-      }
+      } else setError("The explanation was not available. No records were changed.");
+    } catch {
+      if (request === latest.current) setError("The explanation could not be confirmed. No automatic retry was made.");
     } finally {
+      explanationFlight.current = false;
       setExplaining(false);
     }
   };
@@ -125,7 +136,7 @@ export function AuditExplainerPageClient({ initialTimeline, canUseAi, isEnabled 
 
       {/* Error */}
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/20 p-3 text-sm text-red-700 dark:text-red-400">
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/20 p-3 text-sm text-red-700 dark:text-red-400">
           {error}
         </div>
       )}

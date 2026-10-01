@@ -1,4 +1,5 @@
 "use client";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 /**
  * HR.DOCLINK.1A — "Link to ERP Records" panel on the AI Intake Review screen.
@@ -60,15 +61,16 @@ export function DmsIntakeLinkPanel({
   const [manualId, setManualId] = useState<number | null>(null);
   const [manualLabel, setManualLabel] = useState<string>("");
 
-  const { data: suggestions = [], isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: ["dms", "intake-link-suggestions", sessionCode],
     queryFn: async () => {
       const r = await suggestIntakeEntityLinks(sessionCode);
-      return r.success ? r.data ?? [] : [];
+      if (!r.success) throw new Error("Records could not be loaded."); return r.success ? r.data ?? [] : [];
     },
     enabled: aiReady,
     staleTime: 60_000,
   });
+ const { data: suggestions = [], isLoading } = uiRead1;
 
   // D2 — pre-tick exact identity-number matches ONCE when suggestions arrive.
   // If the reviewer unticks them afterwards, we never re-add.
@@ -134,7 +136,7 @@ export function DmsIntakeLinkPanel({
   );
 
   return (
-    <div className="rounded-lg border bg-card p-4 space-y-3">
+    <QueryReadBoundary queries={[uiRead1]}><div className="rounded-lg border bg-card p-4 space-y-3">
       <div className="flex items-center gap-2">
         <LinkIcon className="h-4 w-4 text-blue-500 shrink-0" />
         <span className="text-sm font-medium">Link to ERP Records</span>
@@ -220,7 +222,7 @@ export function DmsIntakeLinkPanel({
       <div className="grid grid-cols-12 gap-2 items-end">
         <div className="col-span-4">
           <Label className="text-[10px] text-muted-foreground">Entity Type</Label>
-          <ERPCombobox
+          <ERPCombobox ariaLabel="Entity Type"
             value={manualType}
             onValueChange={(v) => {
               setManualType(String(v ?? "employee"));
@@ -257,6 +259,6 @@ export function DmsIntakeLinkPanel({
           </Button>
         </div>
       </div>
-    </div>
+    </div></QueryReadBoundary>
   );
 }

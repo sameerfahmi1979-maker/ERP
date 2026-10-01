@@ -11,6 +11,7 @@
  */
 
 import type { WorkspaceTabKind, WorkspaceTab } from "./workspace-types";
+import { additionalWorkspaceRoutes } from "./workspace-additional-routes";
 
 export type WorkspaceRouteConfig = {
   route: string;
@@ -29,6 +30,7 @@ export type WorkspaceRouteConfig = {
 };
 
 const REGISTRY: WorkspaceRouteConfig[] = [
+  ...additionalWorkspaceRoutes,
   // ── Dashboard ──────────────────────────────────────────────────────────────
   {
     route: "/dashboard",
@@ -732,6 +734,7 @@ const REGISTRY: WorkspaceRouteConfig[] = [
 ];
 
 REGISTRY.push(
+  { route: "/admin/common-master-data/departments", title: "Departments", icon: "Building2", tabKind: "list", closable: true, singleton: true, moduleCode: "DEPARTMENTS" },
   { route: "/admin/common-master-data/departments/record/new", title: "New Department", icon: "FileText", tabKind: "record", closable: true, singleton: false, moduleCode: "DEPARTMENTS", entityType: "department" },
   { route: "/admin/common-master-data/departments/record/", title: "Department Record", icon: "FileText", tabKind: "record", closable: true, singleton: false, moduleCode: "DEPARTMENTS", entityType: "department", pattern: /^\/admin\/common-master-data\/departments\/record\/\d+$/ },
 );
@@ -747,7 +750,7 @@ export function getWorkspaceRouteConfig(
   route: string
 ): WorkspaceRouteConfig | null {
   // Strip query string for matching
-  const pathname = route.split("?")[0];
+  const pathname = route.split(/[?#]/)[0];
 
   // 1. Exact match
   const exact = REGISTRY.find((r) => r.route === pathname);
@@ -804,7 +807,7 @@ export function createTabFromRoute(route: string): WorkspaceTab {
 
 /** Derive a readable title from a route path as a last resort */
 function routeToTitle(route: string): string {
-  const segments = route.split("/").filter(Boolean);
+  const segments = route.split(/[?#]/)[0].split("/").filter(Boolean);
   const last = segments[segments.length - 1];
   if (!last) return "Page";
   return last

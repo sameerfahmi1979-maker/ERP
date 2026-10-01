@@ -1,4 +1,7 @@
 "use client";
+import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
+import { RecordCollection } from "@/components/erp/table/record-collection";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { ERPCombobox } from "@/components/erp/combobox";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
@@ -13,7 +16,7 @@ import type { OnboardingTaskRow } from "@/server/actions/hr/recruitment";
 import { archiveOnboardingTask, completeOnboardingTask, createOnboardingTask, listCandidateOnboardingTasks, updateOnboardingTask } from "@/server/actions/hr/recruitment";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle, CheckSquare, Pencil, Plus, Trash2 } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useState} from "react";
 import { toast } from "sonner";
 
 type Props = {
@@ -70,11 +73,12 @@ export function CandidateOnboardingTab({ candidateId, canManage, onChildOpen }: 
   const [form, setForm] = useState<TaskForm>(EMPTY_FORM);
   const [isPending, startTransition] = useTransition();
 
-  const { data: res, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.recruitment.candidateOnboarding(candidateId),
     queryFn: () => listCandidateOnboardingTasks(candidateId),
     staleTime: 30_000,
   });
+  const { data: res, isLoading } = uiRead1;
   const tasks = Array.isArray(res?.data) ? res.data : [];
 
   function openAdd() {
@@ -157,7 +161,7 @@ export function CandidateOnboardingTab({ candidateId, canManage, onChildOpen }: 
   const completedCount = tasks.filter((t) => t.task_status === "completed").length;
 
   return (
-    <div className="p-6">
+    <QueryReadBoundary queries={[uiRead1]}><div className="p-6">
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Onboarding Tasks</h3>
@@ -181,7 +185,7 @@ export function CandidateOnboardingTab({ candidateId, canManage, onChildOpen }: 
         </div>
       ) : (
         <div className="divide-y border rounded-lg">
-          {tasks.map((task) => (
+          <RecordCollection id="hr.candidate-onboarding-tab.CandidateOnboardingTab.tasks" rows={tasks} fields={[{"id":"task_title","path":"task_title","label":"Task Title"},{"id":"task_status","path":"task_status","label":"Task Status"},{"id":"due_date","path":"due_date","label":"Due Date"}]} renderRecord={(task) => (
             <div key={task.id} className="flex items-center gap-3 p-3">
               <CheckSquare className={`h-4 w-4 flex-shrink-0 ${task.task_status === "completed" ? "text-green-500" : "text-slate-400"}`} />
               <div className="flex-1 min-w-0">
@@ -199,16 +203,16 @@ export function CandidateOnboardingTab({ candidateId, canManage, onChildOpen }: 
               {canManage && (
                 <div className="flex gap-1">
                   {task.task_status !== "completed" && task.task_status !== "not_applicable" && (
-                    <Button size="sm" variant="ghost" onClick={() => handleComplete(task.id)} disabled={isPending} title="Mark complete">
+                    <Button aria-label="Mark complete" size="sm" variant="ghost" onClick={() => handleComplete(task.id)} disabled={isPending} title="Mark complete">
                       <CheckCircle className="h-4 w-4 text-green-600" />
                     </Button>
                   )}
-                  <Button size="sm" variant="ghost" onClick={() => openEdit(task)}><Pencil className="h-4 w-4" /></Button>
-                  <Button size="sm" variant="ghost" onClick={() => handleArchive(task.id)} disabled={isPending}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                  <Button aria-label="Edit record" size="sm" variant="ghost" onClick={() => openEdit(task)}><Pencil className="h-4 w-4" /></Button>
+                  <Button aria-label="Archive record" size="sm" variant="ghost" onClick={() => handleArchive(task.id)} disabled={isPending}><Trash2 className="h-4 w-4 text-red-500" /></Button>
                 </div>
               )}
             </div>
-          ))}
+          )} />
         </div>
       )}
 
@@ -226,26 +230,26 @@ export function CandidateOnboardingTab({ candidateId, canManage, onChildOpen }: 
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <RequiredLabel required>Task Title</RequiredLabel>
-            <Input value={form.task_title} onChange={(e) => set("task_title", e.target.value)} placeholder="e.g. Collect passport copy" />
+            <Input aria-label="Task Title" required value={form.task_title} onChange={(e) => set("task_title", e.target.value)} placeholder="e.g. Collect passport copy" />
           </div>
           <div className="col-span-12 md:col-span-6">
             <Label>Category</Label>
-            <ERPCombobox value={form.task_category || null} onValueChange={(v) => set("task_category", String(v ?? ""))} options={CATEGORY_OPTIONS} placeholder="Select category" />
+            <ERPCombobox ariaLabel="Category" value={form.task_category || null} onValueChange={(v) => set("task_category", String(v ?? ""))} options={CATEGORY_OPTIONS} placeholder="Select category" />
           </div>
           <div className="col-span-12 md:col-span-6">
             <Label>Status</Label>
-            <ERPCombobox value={form.task_status || null} onValueChange={(v) => set("task_status", String(v ?? "pending"))} options={STATUS_OPTIONS} placeholder="Select status" />
+            <ERPCombobox ariaLabel="Status" value={form.task_status || null} onValueChange={(v) => set("task_status", String(v ?? "pending"))} options={STATUS_OPTIONS} placeholder="Select status" />
           </div>
           <div className="col-span-12 md:col-span-6">
             <Label>Due Date</Label>
-            <Input type="date" value={form.due_date} onChange={(e) => set("due_date", e.target.value)} />
+            <Input aria-label="Due Date" type="date" value={form.due_date} onChange={(e) => set("due_date", e.target.value)} />
           </div>
           <div className="col-span-12">
             <Label>Notes</Label>
-            <Textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} rows={2} placeholder="Additional notes..." />
+            <Textarea aria-label="Notes" value={form.notes} onChange={(e) => set("notes", e.target.value)} rows={2} placeholder="Additional notes..." />
           </div>
         </div>
       </ERPChildDialogForm>
-    </div>
+    </div></QueryReadBoundary>
   );
 }

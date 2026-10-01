@@ -1,3 +1,4 @@
+import { LoadError } from "@/components/erp/load-error";
 import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { listLeaveRequests } from "@/server/actions/hr/time";
@@ -19,6 +20,7 @@ export default async function GlobalLeavePage() {
   }
 
   const result = await listLeaveRequests({ page: 1, page_size: 50, approval_status: "pending" });
+  if (!result.success) return <LoadError title="HR records" retryHref="/admin/hr/time/leave" />;
   const rows = result.success && result.data ? result.data.data : [];
   const count = result.success && result.data ? result.data.count : 0;
 

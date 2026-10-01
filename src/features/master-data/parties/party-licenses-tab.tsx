@@ -1,5 +1,8 @@
 "use client";
 
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import type { ColumnDef } from "@tanstack/react-table";
+
 import { ERPCombobox } from "@/components/erp/combobox";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { CountrySelect, EmirateSelect } from "@/components/erp/geography";
@@ -56,7 +59,7 @@ const emptyForm = {
 
 export function PartyLicensesTab({ partyId, disabled, onChildOpen }: PartyLicensesTabProps) {
   const queryClient = useQueryClient();
-  const { items: licenses, isLoading } = usePartyLicensesQuery(partyId);
+  const { items: licenses, isLoading, error: loadError, refetch } = usePartyLicensesQuery(partyId);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const setDialogOpen = (open: boolean) => { setIsDialogOpen(open); onChildOpen?.(open); };
   const [editing, setEditing] = useState<PartyLicense | null>(null);
@@ -168,25 +171,8 @@ export function PartyLicensesTab({ partyId, disabled, onChildOpen }: PartyLicens
     return null;
   };
 
-  if (isLoading) return <Skeleton className="h-32 w-full" />;
-
-  return (
-    <div className="space-y-4">
-      {!disabled && (
-        <div className="flex justify-end">
-          <Button type="button" size="sm" onClick={openAdd} className="gap-2">
-            <Plus className="h-4 w-4" /> Add License
-          </Button>
-        </div>
-      )}
-
-      {(licenses ?? []).length === 0 ? (
-        <p className="text-sm text-muted-foreground">No licenses added yet.</p>
-      ) : (
-        <div className="space-y-2">
-          {(licenses ?? []).map((lic) => (
-            <div key={lic.id} className="rounded-md border p-3 flex items-start justify-between gap-3">
-              <div className="space-y-1">
+  const columns: ColumnDef<PartyLicense>[] = [
+    {id:"license_code",header:"License",size:360,accessorFn:row=>[row.license_code,row.license_number,row.license_type_name,row.expiry_date].filter(Boolean).join(" "),enableHiding:false,cell:({row})=>{const lic=row.original;return (<div className="space-y-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-mono text-xs text-muted-foreground">{lic.license_code}</span>
                   {lic.is_primary && <Badge className="text-xs">Primary</Badge>}
@@ -198,8 +184,9 @@ export function PartyLicensesTab({ partyId, disabled, onChildOpen }: PartyLicens
                   {lic.license_type_name && <span>{lic.license_type_name} · </span>}
                   {lic.expiry_date && <span>Expires: {format(new Date(lic.expiry_date), "dd MMM yyyy")}</span>}
                 </div>
-              </div>
-              <div className="flex gap-1 shrink-0">
+              </div>);}},
+    {accessorKey:"expiry_date",header:"Expiry date",meta:{filter:{type:"date"}},},
+    {id:"actions",header:"Actions",size:180,enableSorting:false,enableHiding:false,cell:({row})=>{const lic=row.original;return (<><div className="flex gap-1 shrink-0">
                 {lic.dms_license_document_id && (
                   <Button
                     type="button"
@@ -215,19 +202,31 @@ export function PartyLicensesTab({ partyId, disabled, onChildOpen }: PartyLicens
                 )}
                 {!disabled && (
                   <>
-                    <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(lic)}>
+                    <Button aria-label="Edit record" type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(lic)}>
                       <Edit className="h-3.5 w-3.5" />
                     </Button>
-                    <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(lic.id)}>
+                    <Button aria-label="Delete record" type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(lic.id)}>
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </>
                 )}
-              </div>
-            </div>
-          ))}
+              </div></>);}},
+  ];
+
+  if (isLoading) return <Skeleton className="h-32 w-full" />;
+
+  return (
+    <div className="space-y-4">
+      {!disabled && (
+        <div className="flex justify-end">
+          <Button type="button" size="sm" onClick={openAdd} className="gap-2">
+            <Plus className="h-4 w-4" /> Add License
+          </Button>
         </div>
       )}
+
+      {loadError ? <div role="alert" className="rounded border p-4"><p>License records could not be loaded.</p><Button type="button" variant="outline" onClick={refetch}>Try again</Button></div> :
+        <ERPDataTable tableId={`party.licenses:${partyId}`} resultsLabel="License" data={licenses ?? []} columns={columns} enableRowSelection={false} />}
 
       <ERPChildDialogForm
         open={isDialogOpen}
@@ -243,7 +242,7 @@ export function PartyLicensesTab({ partyId, disabled, onChildOpen }: PartyLicens
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-6">
             <RequiredLabel htmlFor="lic_type" required>License Type</RequiredLabel>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="License Type"
               value={form.license_type_id}
               onValueChange={(v) => setForm((f) => ({ ...f, license_type_id: v !== null ? Number(v) : null }))}
               options={(licenseTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }))}
@@ -253,11 +252,11 @@ export function PartyLicensesTab({ partyId, disabled, onChildOpen }: PartyLicens
           </div>
           <div className="col-span-6">
             <RequiredLabel htmlFor="lic_number" required>License Number</RequiredLabel>
-            <Input id="lic_number" value={form.license_number} onChange={(e) => setForm((f) => ({ ...f, license_number: e.target.value }))} />
+            <Input required id="lic_number" value={form.license_number} onChange={(e) => setForm((f) => ({ ...f, license_number: e.target.value }))} />
           </div>
           <div className="col-span-12">
             <Label>License Name</Label>
-            <Input value={form.license_name} onChange={(e) => setForm((f) => ({ ...f, license_name: e.target.value }))} />
+            <Input aria-label="License Name" value={form.license_name} onChange={(e) => setForm((f) => ({ ...f, license_name: e.target.value }))} />
           </div>
           <div className="col-span-12">
             <Label>Issuing Authority</Label>
@@ -279,15 +278,15 @@ export function PartyLicensesTab({ partyId, disabled, onChildOpen }: PartyLicens
           </div>
           <div className="col-span-6">
             <Label>Issue Date</Label>
-            <Input type="date" value={form.issue_date} onChange={(e) => setForm((f) => ({ ...f, issue_date: e.target.value }))} />
+            <Input aria-label="Issue Date" type="date" value={form.issue_date} onChange={(e) => setForm((f) => ({ ...f, issue_date: e.target.value }))} />
           </div>
           <div className="col-span-6">
             <Label>Expiry Date</Label>
-            <Input type="date" value={form.expiry_date} onChange={(e) => setForm((f) => ({ ...f, expiry_date: e.target.value }))} />
+            <Input aria-label="Expiry Date" type="date" value={form.expiry_date} onChange={(e) => setForm((f) => ({ ...f, expiry_date: e.target.value }))} />
           </div>
           <div className="col-span-6">
             <RequiredLabel htmlFor="lic_status" required>Status</RequiredLabel>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Status"
               value={form.license_status_id}
               onValueChange={(v) => setForm((f) => ({ ...f, license_status_id: v !== null ? Number(v) : null }))}
               options={(licenseStatuses ?? []).map((s) => ({ value: s.id, label: s.name_en }))}
@@ -307,11 +306,11 @@ export function PartyLicensesTab({ partyId, disabled, onChildOpen }: PartyLicens
           </div>
           <div className="col-span-12">
             <Label>Activity Text</Label>
-            <Textarea value={form.license_activity_text} onChange={(e) => setForm((f) => ({ ...f, license_activity_text: e.target.value }))} rows={2} />
+            <Textarea aria-label="Activity Text" value={form.license_activity_text} onChange={(e) => setForm((f) => ({ ...f, license_activity_text: e.target.value }))} rows={2} />
           </div>
           <div className="col-span-12">
             <Label>Remarks</Label>
-            <Textarea value={form.remarks} onChange={(e) => setForm((f) => ({ ...f, remarks: e.target.value }))} rows={2} />
+            <Textarea aria-label="Remarks" value={form.remarks} onChange={(e) => setForm((f) => ({ ...f, remarks: e.target.value }))} rows={2} />
           </div>
         </div>
       </ERPChildDialogForm>

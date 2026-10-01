@@ -1,4 +1,7 @@
 "use client";
+import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
+import { RecordCollection } from "@/components/erp/table/record-collection";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { ERPCombobox } from "@/components/erp/combobox";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
@@ -13,7 +16,7 @@ import { queryKeys } from "@/lib/query/query-keys";
 import { archiveCandidateDocument, linkCandidateDmsDocument, listCandidateDocuments, verifyCandidateDocument } from "@/server/actions/hr/recruitment";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle, FileText, Link2, Trash2 } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useState} from "react";
 import { toast } from "sonner";
 
 type Props = {
@@ -46,11 +49,12 @@ export function CandidateDocumentsTab({ candidateId, canManage, onChildOpen }: P
   const [purpose, setPurpose] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
 
-  const { data: docsRes, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.recruitment.candidateDocuments(candidateId),
     queryFn: () => listCandidateDocuments(candidateId),
     staleTime: 30_000,
   });
+  const { data: docsRes, isLoading } = uiRead1;
   const docs = Array.isArray(docsRes?.data) ? docsRes.data : [];
 
   function openDialog() {
@@ -110,7 +114,7 @@ export function CandidateDocumentsTab({ candidateId, canManage, onChildOpen }: P
   }
 
   return (
-    <div className="p-6">
+    <QueryReadBoundary queries={[uiRead1]}><div className="p-6">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Documents</h3>
         {canManage && (
@@ -131,7 +135,7 @@ export function CandidateDocumentsTab({ candidateId, canManage, onChildOpen }: P
         </div>
       ) : (
         <div className="divide-y border rounded-lg">
-          {docs.map((doc) => (
+          <RecordCollection id="hr.candidate-documents-tab.CandidateDocumentsTab.docs" rows={docs} fields={[{"id":"dms_document_document_title","path":"dms_document.document_title","label":"Document Title"},{"id":"document_purpose","path":"document_purpose","label":"Document Purpose"}]} renderRecord={(doc) => (
             <div key={doc.id} className="flex items-center gap-3 p-3">
               <FileText className="h-4 w-4 text-slate-400 flex-shrink-0" />
               <div className="flex-1 min-w-0">
@@ -148,17 +152,17 @@ export function CandidateDocumentsTab({ candidateId, canManage, onChildOpen }: P
               {canManage && (
                 <div className="flex items-center gap-1">
                   {doc.verification_status !== "verified" && (
-                    <Button size="sm" variant="ghost" onClick={() => handleVerify(doc.id)} disabled={isPending} title="Mark verified">
+                    <Button aria-label="Mark verified" size="sm" variant="ghost" onClick={() => handleVerify(doc.id)} disabled={isPending} title="Mark verified">
                       <CheckCircle className="h-4 w-4 text-green-600" />
                     </Button>
                   )}
-                  <Button size="sm" variant="ghost" onClick={() => handleArchive(doc.id)} disabled={isPending} title="Remove link">
+                  <Button aria-label="Remove link" size="sm" variant="ghost" onClick={() => handleArchive(doc.id)} disabled={isPending} title="Remove link">
                     <Trash2 className="h-4 w-4 text-red-500" />
                   </Button>
                 </div>
               )}
             </div>
-          ))}
+          )} />
         </div>
       )}
 
@@ -177,7 +181,7 @@ export function CandidateDocumentsTab({ candidateId, canManage, onChildOpen }: P
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <RequiredLabel required>DMS Document ID</RequiredLabel>
-            <Input
+            <Input aria-label="DMS Document ID" required
               type="number"
               value={dmsDocId}
               onChange={(e) => setDmsDocId(e.target.value)}
@@ -187,7 +191,7 @@ export function CandidateDocumentsTab({ candidateId, canManage, onChildOpen }: P
           </div>
           <div className="col-span-12">
             <Label>Document Purpose</Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Document Purpose"
               value={purpose}
               onValueChange={(v) => setPurpose(v ? String(v) : null)}
               options={PURPOSE_OPTIONS}
@@ -196,10 +200,10 @@ export function CandidateDocumentsTab({ candidateId, canManage, onChildOpen }: P
           </div>
           <div className="col-span-12">
             <Label>Notes</Label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Optional notes..." />
+            <Textarea aria-label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Optional notes..." />
           </div>
         </div>
       </ERPChildDialogForm>
-    </div>
+    </div></QueryReadBoundary>
   );
 }

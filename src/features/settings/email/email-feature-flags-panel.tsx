@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -11,16 +11,19 @@ import { updateEmailFeatureFlag } from "@/server/actions/settings/email-settings
 interface EmailFeatureFlagsPanelProps {
   flags: EmailFeatureFlag[];
   onRefresh: () => void;
+  canManage?: boolean;
 }
 
-export function EmailFeatureFlagsPanel({ flags, onRefresh }: EmailFeatureFlagsPanelProps) {
+export function EmailFeatureFlagsPanel({ flags, onRefresh, canManage = false }: EmailFeatureFlagsPanelProps) {
   const [updating, setUpdating] = useState<string | null>(null);
+  const flight = useRef(false);
 
   const handleToggle = async (flag: EmailFeatureFlag) => {
+    if (!canManage || flight.current) return;
     if (flag.requiresApproval && !flag.isEnabled) {
       if (!confirm(`Enable "${flag.featureName}"? This will allow emails to be sent for this feature.`)) return;
     }
-    setUpdating(flag.featureCode);
+    flight.current = true; setUpdating(flag.featureCode);
     try {
       const result = await updateEmailFeatureFlag(flag.featureCode, { is_enabled: !flag.isEnabled });
       if (result.success) {
@@ -29,7 +32,8 @@ export function EmailFeatureFlagsPanel({ flags, onRefresh }: EmailFeatureFlagsPa
       } else {
         toast.error(result.error ?? "Failed");
       }
-    } finally {
+    } catch { toast.error("Change unconfirmed. Refresh before retrying."); } finally {
+      flight.current = false;
       setUpdating(null);
     }
   };
@@ -51,7 +55,8 @@ export function EmailFeatureFlagsPanel({ flags, onRefresh }: EmailFeatureFlagsPa
           </div>
           <Switch
             checked={flag.isEnabled}
-            disabled={updating === flag.featureCode}
+            aria-label={`Enable ${flag.featureName}`}
+            disabled={!canManage || updating !== null}
             onCheckedChange={() => handleToggle(flag)}
           />
         </div>

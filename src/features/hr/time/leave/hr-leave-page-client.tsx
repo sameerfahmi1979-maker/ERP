@@ -1,4 +1,8 @@
 "use client";
+import { useReasonDialog } from "@/hooks/use-reason-dialog";
+import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
+import { RecordCollection } from "@/components/erp/table/record-collection";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,7 +23,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { CheckCircle, ExternalLink, XCircle } from "lucide-react";
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useState} from "react";
 import { toast } from "sonner";
 
 type Props = {
@@ -42,6 +46,7 @@ function fmtDate(d: string | null | undefined): string {
 }
 
 export function HrLeavePageClient({ initialRows, initialCount, authContext }: Props) {
+  const { askReason, reasonDialog } = useReasonDialog();
   const qc = useQueryClient();
   const [isPending, startTransition] = useTransition();
   const [statusFilter, setStatusFilter] = useState("pending");
@@ -60,7 +65,7 @@ export function HrLeavePageClient({ initialRows, initialCount, authContext }: Pr
     ...(dateTo ? { date_to: dateTo } : {}),
   };
 
-  const { data, isLoading, isError, error } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.time.globalLeaveRequests(params),
     queryFn: async () => {
       const r = await listLeaveRequests(params);
@@ -69,6 +74,7 @@ export function HrLeavePageClient({ initialRows, initialCount, authContext }: Pr
     },
     refetchOnMount: "always",
   });
+  const { data, isLoading, isError, error } = uiRead1;
 
   // ERP REALTIME.1C — live leave requests list sync.
   useRealtimeSync({
@@ -90,8 +96,8 @@ export function HrLeavePageClient({ initialRows, initialCount, authContext }: Pr
     });
   }
 
-  function handleReject(id: number) {
-    const reason = prompt("Enter rejection reason (optional):");
+  async function handleReject(id: number) {
+    const reason = await askReason("Reject leave request", false);
     if (reason === null) return;
     startTransition(async () => {
       const r = await rejectLeaveRequest(id, reason || undefined);
@@ -107,7 +113,7 @@ export function HrLeavePageClient({ initialRows, initialCount, authContext }: Pr
   const totalPages = Math.ceil(totalCount / pageSize);
 
   return (
-    <div className="space-y-4">
+    <QueryReadBoundary queries={[uiRead1]}><div className="space-y-4">{reasonDialog}
       {/* Filters */}
       <div className="flex gap-3 flex-wrap">
         <select
@@ -121,8 +127,8 @@ export function HrLeavePageClient({ initialRows, initialCount, authContext }: Pr
           <option value="rejected">Rejected</option>
           <option value="cancelled">Cancelled</option>
         </select>
-        <Input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1); }} className="w-40" placeholder="From" />
-        <Input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1); }} className="w-40" placeholder="To" />
+        <Input aria-label="From" type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1); }} className="w-40" placeholder="From" />
+        <Input aria-label="To" type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1); }} className="w-40" placeholder="To" />
         {(statusFilter || dateFrom || dateTo) && (
           <Button variant="ghost" size="sm" onClick={() => { setStatusFilter(""); setDateFrom(""); setDateTo(""); setPage(1); }}>
             Clear
@@ -151,7 +157,7 @@ export function HrLeavePageClient({ initialRows, initialCount, authContext }: Pr
             <span className="col-span-2">Status</span>
             <span className="col-span-1 text-right">Actions</span>
           </div>
-          {rows.map((row) => {
+          <RecordCollection id="hr.hr-leave-page-client.HrLeavePageClient.rows" rows={rows} fields={[{"id":"employee_full_name_en","path":"employee.full_name_en","label":"Full Name En"},{"id":"start_date","path":"start_date","label":"Start Date"},{"id":"end_date","path":"end_date","label":"End Date"},{"id":"approval_status","path":"approval_status","label":"Approval Status"}]} renderRecord={(row) => {
             const badge = getLeaveApprovalStatusBadge(row.approval_status);
             return (
               <div key={row.id} className="px-4 py-2.5 grid grid-cols-12 items-center text-sm gap-2">
@@ -169,23 +175,23 @@ export function HrLeavePageClient({ initialRows, initialCount, authContext }: Pr
                 <div className="col-span-1 flex justify-end gap-1">
                   {canManage && row.approval_status === "pending" && (
                     <>
-                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => handleApprove(row.id)} disabled={isPending} title="Approve">
+                      <Button aria-label="Approve" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => handleApprove(row.id)} disabled={isPending} title="Approve">
                         <CheckCircle className="h-3.5 w-3.5" />
                       </Button>
-                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-destructive" onClick={() => handleReject(row.id)} disabled={isPending} title="Reject">
+                      <Button aria-label="Reject" size="sm" variant="ghost" className="h-7 px-2 text-xs text-destructive" onClick={() => handleReject(row.id)} disabled={isPending} title="Reject">
                         <XCircle className="h-3.5 w-3.5" />
                       </Button>
                     </>
                   )}
                   <Link href={`/admin/hr/employees/record/${row.employee_id}?section=time`}>
-                    <Button size="sm" variant="ghost" className="h-7 px-2">
+                    <Button aria-label="Open record" size="sm" variant="ghost" className="h-7 px-2">
                       <ExternalLink className="h-3.5 w-3.5" />
                     </Button>
                   </Link>
                 </div>
               </div>
             );
-          })}
+          }} />
         </div>
       )}
 
@@ -196,6 +202,6 @@ export function HrLeavePageClient({ initialRows, initialCount, authContext }: Pr
           <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Next</Button>
         </div>
       )}
-    </div>
+    </div></QueryReadBoundary>
   );
 }

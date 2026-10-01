@@ -1,6 +1,8 @@
 "use client";
+import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
+import { RecordCollection } from "@/components/erp/table/record-collection";
 
-import { useState, useCallback, useTransition } from "react";
+import { useState, useCallback, useRef } from "react";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { ERPSectionCard } from "@/components/erp/section-card";
 import { ERPEmptyState } from "@/components/erp/empty-state";
@@ -61,12 +63,20 @@ export function HrSettingsLookupPage({
   const [form, setForm] = useState<FormState>(blank);
   const [isPending, startTransition] = useTransition();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [readFailed, setReadFailed] = useState(false);
+  const [saveFailure, setSaveFailure] = useState<string | null>(null);
+  const latestRead = useRef(0), mutation = useRef(false);
 
   const refresh = useCallback((s?: string) => {
+    const request = ++latestRead.current;
     startTransition(async () => {
       const searchTerm = s !== undefined ? s : search;
+      try {
       const res = await onList({ search: searchTerm || undefined });
-      if (res.success && res.data) setRows(res.data.data);
+      if (request !== latestRead.current) return;
+      if (res.success && res.data) { setRows(res.data.data); setReadFailed(false); }
+      else setReadFailed(true);
+      } catch { if (request === latestRead.current) setReadFailed(true); }
     });
   }, [onList, search]);
 
@@ -76,12 +86,14 @@ export function HrSettingsLookupPage({
   };
 
   const openAdd = () => {
+    setSaveFailure(null);
     setEditing(null);
     setForm(blank);
     setDialogOpen(true);
   };
 
   const openEdit = (row: LookupRecord) => {
+    setSaveFailure(null);
     setEditing(row);
     setForm({
       code: row.code,
@@ -95,9 +107,12 @@ export function HrSettingsLookupPage({
   };
 
   const handleSubmit = async () => {
+    if (!canManage || readFailed || mutation.current) return;
     if (!form.name_en.trim()) { toast.error("Name (English) is required"); return; }
     if (!form.code.trim()) { toast.error("Code is required"); return; }
     setIsSubmitting(true);
+    setSaveFailure(null);
+    mutation.current = true;
     try {
       const payload = {
         code: form.code.trim().toUpperCase(),
@@ -116,15 +131,20 @@ export function HrSettingsLookupPage({
         refresh();
         onAfterMutate?.();
       } else {
-        toast.error(res.error ?? "An error occurred");
+        setSaveFailure("The record was not saved. Check your permissions and the entered values, then try again. Your entries are retained.");
       }
-    } finally {
+    } catch { setSaveFailure("The save could not be confirmed. Check records before retrying; your entries are retained."); }
+    finally {
       setIsSubmitting(false);
+      mutation.current = false;
     }
   };
 
   const handleToggle = async (row: LookupRecord) => {
-    if (!onToggle) return;
+    if (!onToggle || !canManage || readFailed || mutation.current) return;
+    mutation.current = true;
+    setIsSubmitting(true);
+    try {
     const res = await onToggle(row.id, !row.is_active);
     if (res.success) {
       toast.success(!row.is_active ? "Activated" : "Deactivated");
@@ -133,6 +153,8 @@ export function HrSettingsLookupPage({
     } else {
       toast.error(res.error ?? "Failed to toggle status");
     }
+    } catch { toast.error("The status change could not be confirmed. Refresh records before retrying."); }
+    finally { mutation.current = false; setIsSubmitting(false); }
   };
 
   const f = (k: keyof FormState, v: string | boolean) => setForm(prev => ({ ...prev, [k]: v }));
@@ -150,14 +172,15 @@ export function HrSettingsLookupPage({
         ) : null}
       />
 
-      <ERPSectionCard
+      {readFailed && <div role="alert" className="border border-destructive rounded-sm p-3 text-sm">Records could not be refreshed. Previous rows are retained; changes are paused. <Button type="button" variant="outline" onClick={() => refresh()}>Retry loading</Button></div>}
+      <div inert={readFailed || isSubmitting || undefined}><ERPSectionCard
         title="Records"
         description={`${rows.length} item${rows.length !== 1 ? "s" : ""}`}
         noPadding
         actions={
           <div className="relative w-48">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
+            <Input aria-label="Search"
               value={search}
               onChange={e => handleSearch(e.target.value)}
               placeholder="Search..."
@@ -170,7 +193,7 @@ export function HrSettingsLookupPage({
           <ERPEmptyState icon={Settings2} title={`No ${title.toLowerCase()} yet`} description={canManage ? "Click Add to create the first entry." : "No records found."} />
         ) : (
           <div className="divide-y">
-            {rows.map(row => (
+            <RecordCollection id="hr.hr-settings-lookup-page.HrSettingsLookupPage.rows" rows={rows} fields={[{"id":"code","path":"code","label":"Code"},{"id":"name_en","path":"name_en","label":"Name En"},{"id":"is_active","path":"is_active","label":"Is Active"}]} renderRecord={row => (
               <div key={row.id} className="flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
@@ -189,16 +212,16 @@ export function HrSettingsLookupPage({
                         {row.is_active ? "Deactivate" : "Activate"}
                       </Button>
                     )}
-                    <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => openEdit(row)}>
+                    <Button aria-label="Edit record" variant="ghost" size="sm" className="h-7 px-2" onClick={() => openEdit(row)}>
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
                   </div>
                 )}
               </div>
-            ))}
+            )} />
           </div>
         )}
-      </ERPSectionCard>
+      </ERPSectionCard></div>
 
       {isPending && <p className="text-xs text-muted-foreground text-center">Loading...</p>}
 
@@ -211,12 +234,14 @@ export function HrSettingsLookupPage({
           mode={editing ? "edit" : "add"}
           size="md"
           isSubmitting={isSubmitting}
+          submitDisabled={readFailed}
           onSubmit={handleSubmit}
         >
+          {saveFailure && <div role="alert" className="rounded-sm border border-destructive p-3 text-sm text-destructive">{saveFailure}</div>}
           <div className="grid grid-cols-12 gap-4">
             <div className="col-span-4">
               <Label className="text-xs font-medium mb-1 block">Code <span className="text-destructive">*</span></Label>
-              <Input
+              <Input aria-label="Code" required
                 value={form.code}
                 onChange={e => f("code", e.target.value.toUpperCase())}
                 placeholder="e.g. STAFF"
@@ -226,19 +251,19 @@ export function HrSettingsLookupPage({
             </div>
             <div className="col-span-8">
               <Label className="text-xs font-medium mb-1 block">Name (English) <span className="text-destructive">*</span></Label>
-              <Input value={form.name_en} onChange={e => f("name_en", e.target.value)} placeholder="Enter English name" maxLength={200} />
+              <Input aria-label="Name (English)" required value={form.name_en} onChange={e => f("name_en", e.target.value)} placeholder="Enter English name" maxLength={200} />
             </div>
             <div className="col-span-12">
               <Label className="text-xs font-medium mb-1 block">Name (Arabic)</Label>
-              <Input value={form.name_ar} onChange={e => f("name_ar", e.target.value)} placeholder="Enter Arabic name" dir="rtl" maxLength={200} />
+              <Input aria-label="Name (Arabic)" value={form.name_ar} onChange={e => f("name_ar", e.target.value)} placeholder="Enter Arabic name" dir="rtl" maxLength={200} />
             </div>
             <div className="col-span-9">
               <Label className="text-xs font-medium mb-1 block">Description</Label>
-              <Input value={form.description} onChange={e => f("description", e.target.value)} placeholder="Optional description" maxLength={1000} />
+              <Input aria-label="Description" value={form.description} onChange={e => f("description", e.target.value)} placeholder="Optional description" maxLength={1000} />
             </div>
             <div className="col-span-3">
               <Label className="text-xs font-medium mb-1 block">Sort Order</Label>
-              <Input type="number" value={form.sort_order} onChange={e => f("sort_order", e.target.value)} min={0} max={9999} />
+              <Input aria-label="Sort Order" type="number" value={form.sort_order} onChange={e => f("sort_order", e.target.value)} min={0} max={9999} />
             </div>
             <div className="col-span-12 flex items-center gap-3">
               <Switch id="is_active" checked={form.is_active} onCheckedChange={v => f("is_active", v)} />

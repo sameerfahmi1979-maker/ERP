@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+import '../f05/setup';
+// This component test does not invoke export delivery (a Next server-action boundary).
+vi.mock('@/components/erp/export/erp-export-menu',()=>({ERPExportMenu:()=>null}));
 import { cleanup,fireEvent,render } from '@testing-library/react';
 import { afterEach,beforeEach,expect,it,vi } from 'vitest';
 import { createWorkspaceDraftStore } from '@/lib/workspace/workspace-draft-store';

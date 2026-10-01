@@ -11,6 +11,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import type { ColumnDef } from "@tanstack/react-table";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,6 +36,8 @@ interface Props {
 export function DepartmentsListClient({ departments: initial, canManage }: Props) {
   const router = useRouter();
   const [departments, setDepartments] = useState(initial);
+  const [snapshot, setSnapshot] = useState(initial);
+  if (snapshot !== initial) { setSnapshot(initial); setDepartments(initial); }
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DepartmentRow | null>(null);
 
@@ -73,36 +77,17 @@ export function DepartmentsListClient({ departments: initial, canManage }: Props
     }
   };
 
-  return (
-    <>
-      <div className="divide-y">
-        {departments.map((d) => (
-          <div key={d.id} className="flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors">
-            {/* Row content — click navigates to view */}
-            <Link
-              href={`/admin/common-master-data/departments/record/${d.id}`}
-              className="flex-1 min-w-0 mr-3"
-            >
-              <div className="flex items-center gap-2 text-sm font-medium flex-wrap">
-                {d.department_name_en}
-                <span className="text-xs text-muted-foreground">({d.department_code})</span>
-                {!d.is_active && (
-                  <Badge variant="destructive" className="text-[10px]">Inactive</Badge>
-                )}
-              </div>
-              {d.owner_company && (
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {(d.owner_company as { legal_name_en: string }).legal_name_en}
-                </p>
-              )}
-            </Link>
-
-            {/* Actions */}
-            {canManage ? (
+  const columns: ColumnDef<DepartmentRow, unknown>[] = [
+    {accessorKey:"department_code",header:"Code",size:140},
+    {accessorKey:"department_name_en",header:"Department",size:280,enableHiding:false,cell:({row})=><Link className="text-primary underline underline-offset-2" href={`/admin/common-master-data/departments/record/${row.original.id}`}>{row.original.department_name_en}</Link>},
+    {id:"company",header:"Company",size:240,accessorFn:row=>row.owner_company?.legal_name_en ?? ""},
+    {id:"status",header:"Status",size:130,accessorFn:row=>row.is_active ? "Active":"Inactive",cell:({row})=><Badge variant={row.original.is_active ? "outline":"secondary"}>{row.original.is_active ? "Active":"Inactive"}</Badge>},
+    {id:"actions",header:"Actions",size:100,enableSorting:false,enableHiding:false,cell:({row})=>{ const d = row.original; return (canManage ? (
               <DropdownMenu>
                 <DropdownMenuTrigger
                   disabled={pendingId === d.id}
-                  className="h-8 w-8 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 transition-colors shrink-0"
+                  aria-label={`Actions for ${d.department_code}`}
+                  className="h-11 w-11 sm:h-8 sm:w-8 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 transition-colors shrink-0"
                 >
                   <MoreHorizontal className="h-4 w-4" />
                   <span className="sr-only">Actions</span>
@@ -143,14 +128,17 @@ export function DepartmentsListClient({ departments: initial, canManage }: Props
             ) : (
               <Link
                 href={`/admin/common-master-data/departments/record/${d.id}`}
+                aria-label={`Open ${d.department_code}`}
                 className="text-xs text-muted-foreground shrink-0"
               >
                 →
               </Link>
-            )}
-          </div>
-        ))}
-      </div>
+            )); }}
+  ];
+
+  return (
+    <>
+      <ERPDataTable tableId="departments" data={departments} columns={columns} enableRowSelection={false} searchPlaceholder="Search departments" />
 
       {/* Delete confirmation */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>

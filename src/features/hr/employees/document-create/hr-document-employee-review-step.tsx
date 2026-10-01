@@ -1,4 +1,5 @@
 "use client";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { ERPCombobox } from "@/components/erp/combobox";
 import { Button } from "@/components/ui/button";
@@ -116,7 +117,7 @@ export function HrDocumentEmployeeReviewStep({
   });
 
   // Department
-  const { data: departmentOptions } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: ["departments", "list"],
     queryFn: async () => {
       const r = await listDepartments({ is_active: true });
@@ -127,9 +128,10 @@ export function HrDocumentEmployeeReviewStep({
       }));
     },
   });
+  const { data: departmentOptions } = uiRead1;
 
   // Designation
-  const { data: designationOptions } = useQuery({
+  const uiRead2 = useQuery({
     queryKey: ["designations", "list"],
     queryFn: async () => {
       const r = await listDesignations({ is_active: true });
@@ -140,9 +142,10 @@ export function HrDocumentEmployeeReviewStep({
       }));
     },
   });
+  const { data: designationOptions } = uiRead2;
 
   // Employee Category
-  const { data: categoryOptions } = useQuery({
+  const uiRead3 = useQuery({
     queryKey: ["hr", "settings", "employee-categories"],
     queryFn: async () => {
       const r = await listHrEmployeeCategories({ is_active: true });
@@ -154,9 +157,10 @@ export function HrDocumentEmployeeReviewStep({
       }));
     },
   });
+  const { data: categoryOptions } = uiRead3;
 
   // Employment Type
-  const { data: employmentTypeOptions } = useQuery({
+  const uiRead4 = useQuery({
     queryKey: ["hr", "settings", "employment-types"],
     queryFn: async () => {
       const r = await listHrEmploymentTypes({ is_active: true });
@@ -168,6 +172,7 @@ export function HrDocumentEmployeeReviewStep({
       }));
     },
   });
+  const { data: employmentTypeOptions } = uiRead4;
 
   const hasBlockingIdentityDuplicates = identityDocDuplicates.some(
     (d) => d.severity === "block"
@@ -187,7 +192,7 @@ export function HrDocumentEmployeeReviewStep({
   const unresolvedConflicts = conflicts.filter((c) => !c.resolvedValue);
 
   return (
-    <div className="space-y-5">
+    <QueryReadBoundary queries={[uiRead1,uiRead2,uiRead3,uiRead4]}><div className="space-y-5">
       <div>
         <div className="flex items-center gap-2">
           <User className="h-4 w-4 text-muted-foreground" />
@@ -321,7 +326,7 @@ export function HrDocumentEmployeeReviewStep({
           </div>
           <div className="col-span-4">
             <Label className="text-xs font-medium mb-1 block">Nationality</Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Nationality"
               value={form.nationality_id}
               onValueChange={(v) => setForm({ nationality_id: v == null ? null : Number(v) })}
               options={countryOptions}
@@ -367,7 +372,7 @@ export function HrDocumentEmployeeReviewStep({
             <Label className="text-xs font-medium mb-1 block">
               Employer Company <span className="text-destructive">*</span>
             </Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Employer Company"
               value={form.owner_company_id}
               onValueChange={(v) => {
                 setForm({
@@ -385,7 +390,7 @@ export function HrDocumentEmployeeReviewStep({
             <Label className="text-xs font-medium mb-1 block">
               Joining Date <span className="text-destructive">*</span>
             </Label>
-            <Input
+            <Input aria-label="Joining Date" required
               type="date"
               value={form.joining_date}
               onChange={(e) => setForm({ joining_date: e.target.value })}
@@ -394,7 +399,7 @@ export function HrDocumentEmployeeReviewStep({
           </div>
           <div className="col-span-6">
             <Label className="text-xs font-medium mb-1 block">Branch</Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Branch"
               value={form.branch_id}
               onValueChange={(v) => setForm({ branch_id: v == null ? null : Number(v) })}
               options={branchOptions}
@@ -406,7 +411,7 @@ export function HrDocumentEmployeeReviewStep({
           </div>
           <div className="col-span-6">
             <Label className="text-xs font-medium mb-1 block">Department</Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Department"
               value={form.department_id}
               onValueChange={(v) => setForm({ department_id: v == null ? null : Number(v) })}
               options={departmentOptions ?? []}
@@ -417,7 +422,7 @@ export function HrDocumentEmployeeReviewStep({
           </div>
           <div className="col-span-6">
             <Label className="text-xs font-medium mb-1 block">Designation</Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Designation"
               value={form.designation_id}
               onValueChange={(v) => setForm({ designation_id: v == null ? null : Number(v) })}
               options={designationOptions ?? []}
@@ -428,7 +433,7 @@ export function HrDocumentEmployeeReviewStep({
           </div>
           <div className="col-span-6">
             <Label className="text-xs font-medium mb-1 block">Employee Category</Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Employee Category"
               value={form.employee_category_id}
               onValueChange={(v) => setForm({ employee_category_id: v == null ? null : Number(v) })}
               options={categoryOptions ?? []}
@@ -439,7 +444,7 @@ export function HrDocumentEmployeeReviewStep({
           </div>
           <div className="col-span-6">
             <Label className="text-xs font-medium mb-1 block">Employment Type</Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Employment Type"
               value={form.employment_type_id}
               onValueChange={(v) => setForm({ employment_type_id: v == null ? null : Number(v) })}
               options={employmentTypeOptions ?? []}
@@ -461,7 +466,7 @@ export function HrDocumentEmployeeReviewStep({
             <Label className="text-xs font-medium mb-1 block">
               Contact Name <span className="text-destructive">*</span>
             </Label>
-            <Input
+            <Input aria-label="Contact Name" required
               value={form.emergency_contact_name}
               onChange={(e) => setForm({ emergency_contact_name: e.target.value })}
               className="h-8 text-sm"
@@ -472,7 +477,7 @@ export function HrDocumentEmployeeReviewStep({
             <Label className="text-xs font-medium mb-1 block">
               Contact Mobile <span className="text-destructive">*</span>
             </Label>
-            <Input
+            <Input aria-label="Contact Mobile" required
               value={form.emergency_contact_mobile}
               onChange={(e) => setForm({ emergency_contact_mobile: e.target.value })}
               className="h-8 text-sm"
@@ -490,7 +495,7 @@ export function HrDocumentEmployeeReviewStep({
           Review Compliance Records
         </Button>
       </div>
-    </div>
+    </div></QueryReadBoundary>
   );
 }
 

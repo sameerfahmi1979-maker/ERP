@@ -23,7 +23,7 @@ export default async function AdminNotificationsPage() {
 
   return (
     <div className="p-6 space-y-4">
-      <AdminNotificationsPageClient initialNotifications={notifications} />
+      <AdminNotificationsPageClient initialNotifications={notifications} initialError={!result.success} />
     </div>
   );
 }

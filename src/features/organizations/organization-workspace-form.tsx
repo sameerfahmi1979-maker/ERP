@@ -1,4 +1,7 @@
 ﻿"use client";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import type { ColumnDef } from "@tanstack/react-table";
+import type { OwnerCompanySignatoryRow } from "@/server/actions/common-master-data/owner-company-signatories";
 
 import { CurrencySelect } from "@/components/erp/finance-basics/currency-select";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
@@ -7,7 +10,7 @@ import { CitySelect } from "@/components/erp/geography/city-select";
 import { CountrySelect } from "@/components/erp/geography/country-select";
 import { EmirateSelect } from "@/components/erp/geography/emirate-select";
 import { RequiredLabel } from "@/components/erp/required-label";
-import { Badge } from "@/components/ui/badge";
+
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -98,6 +101,7 @@ export function OrganizationWorkspaceForm({ organization, mode, authContext }: O
   const [officeCityId, setOfficeCityId] = useState(() => getDraftNullableId("office_city_id", (organization as Record<string, unknown>)?.office_city_id as number | null));
   const [currencyId, setCurrencyId] = useState(() => getDraftNullableId("currency_id"));
   const [currencyLoading, setCurrencyLoading] = useState(false);
+  const [currencyLookupMessage, setCurrencyLookupMessage] = useState<string | null>(null);
   const currencyEdited = useRef(hasDraftField("currency_id"));
   const saving = useRef(false);
 
@@ -109,10 +113,15 @@ export function OrganizationWorkspaceForm({ organization, mode, authContext }: O
       const code = organization?.default_currency ?? "AED";
       const supabase = createClient();
       setCurrencyLoading(true);
+      setCurrencyLookupMessage(null);
       try {
-        const { data, error } = await supabase.from("currencies").select("id, currency_code").eq("currency_code", code).eq("is_active", true).single();
-        if (!cancelled && !currencyEdited.current && !error && data) setCurrencyId(data.id);
-      } catch { /* Save revalidates the selected currency. */ }
+        const { data, error } = await supabase.from("currencies").select("id, currency_code").eq("currency_code", code).eq("is_active", true).maybeSingle();
+        if (!cancelled && !currencyEdited.current) {
+          if (error) setCurrencyLookupMessage("The default currency could not be loaded. Choose an available currency or reload this record.");
+          else if (data) setCurrencyId(data.id);
+          else setCurrencyLookupMessage("The default currency is unavailable. Choose an active currency before saving.");
+        }
+      } catch { if (!cancelled && !currencyEdited.current) setCurrencyLookupMessage("The default currency could not be loaded. Choose an available currency or reload this record."); }
       finally { if (!cancelled) setCurrencyLoading(false); }
     }
     void loadCurrency();
@@ -129,16 +138,18 @@ export function OrganizationWorkspaceForm({ organization, mode, authContext }: O
 
   const handleCurrencyChange = (id: number | null) => {
     currencyEdited.current = true;
+    setCurrencyLookupMessage(null);
     setCurrencyId(id); writeDraftField("currency_id", id ?? "");
   };
 
 
   const companyId = organization?.id ?? 0;
-  const { data: signatories, refetch: refetchSignatories } = useQuery({
+  const { data: signatories, refetch: refetchSignatories, error: signatoryError } = useQuery({
     queryKey: queryKeys.commonMd.companySignatories(companyId),
     queryFn: async () => {
       if (!companyId) return [];
       const res = await listCompanySignatories(companyId);
+      if (!res.success) throw new Error("Signatories could not be loaded.");
       return res.data ?? [];
     },
     enabled: !!companyId && activeSection === "signatories",
@@ -280,6 +291,10 @@ export function OrganizationWorkspaceForm({ organization, mode, authContext }: O
 
   const disabled = isViewing;
 
+  const signatoryColumns: ColumnDef<OwnerCompanySignatoryRow>[] = [
+{accessorKey:"full_name",header:"Signatory"},{accessorKey:"designation",header:"Designation"},{accessorKey:"signature_scope",header:"Signature scope"},{accessorKey:"is_primary",header:"Primary"},{accessorKey:"is_active",header:"Active"},
+{id:"actions",header:"Actions",enableHiding:false,enableSorting:false,cell:({row})=>disabled?null:<div className="flex"><Button type="button" aria-label="Edit signatory" variant="ghost" onClick={()=>setSignatoryDialog({open:true,editing:row.original as unknown as Record<string,unknown>})}><Pencil className="h-4 w-4"/></Button><Button type="button" aria-label="Remove signatory" variant="ghost" onClick={()=>handleDeleteSignatory(row.original.id)}><Trash2 className="h-4 w-4"/></Button></div>}];
+
   return (
     <ERPRecordWorkspaceForm
       mode={mode}
@@ -330,6 +345,7 @@ export function OrganizationWorkspaceForm({ organization, mode, authContext }: O
             <div className="col-span-6 space-y-1.5">
               <Label className="text-muted-foreground text-xs">Default Currency</Label>
               <CurrencySelect value={currencyId} onValueChange={handleCurrencyChange} placeholder="Select currency..." showCode disabled={disabled || currencyLoading} />
+              {currencyLookupMessage && <p role="status" className="text-sm text-muted-foreground">{currencyLookupMessage}</p>}
               {organization?.default_currency && !currencyId && !currencyLoading && (
                 <p className="text-[9px] text-amber-600">Legacy Currency: {organization.default_currency}</p>
               )}
@@ -548,31 +564,7 @@ export function OrganizationWorkspaceForm({ organization, mode, authContext }: O
                 </Button>
               </div>
             )}
-            {(signatories ?? []).length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">No signatories added yet.</p>
-            ) : (
-              <div className="divide-y border rounded-md">
-                {(signatories ?? []).map((s) => (
-                  <div key={s.id} className="flex items-center justify-between px-4 py-3">
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-2 text-sm font-medium">
-                        {s.full_name}
-                        {s.is_primary && <Badge variant="secondary" className="text-[10px]">Primary</Badge>}
-                        {!s.is_active && <Badge variant="destructive" className="text-[10px]">Inactive</Badge>}
-                      </div>
-                      {s.designation && <p className="text-xs text-muted-foreground">{s.designation}</p>}
-                      {s.signature_scope && <p className="text-xs text-muted-foreground">{s.signature_scope}</p>}
-                    </div>
-                    {!disabled && (
-                      <div className="flex gap-1">
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setSignatoryDialog({ open: true, editing: s as unknown as Record<string, unknown> })}><Pencil className="h-3.5 w-3.5" /></Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleDeleteSignatory(s.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+            {signatoryError ? <div role="alert"><p>Signatories could not be loaded.</p><Button type="button" onClick={()=>void refetchSignatories()}>Try again</Button></div> : <ERPDataTable tableId={`company.signatories:${companyId}`} resultsLabel="Signatories" data={signatories ?? []} columns={signatoryColumns} enableRowSelection={false}/>}
           </div>
         )}
         {signatoryDialog.open && (

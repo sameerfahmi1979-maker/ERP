@@ -1,4 +1,6 @@
 "use client";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
+import { RecordCollection } from "@/components/erp/table/record-collection";
 
 /**
  * DMS Apply Correction — History
@@ -32,7 +34,7 @@ export function DmsApplyCorrectionHistory({ documentId, targetTable, targetRecor
   const [confirmingProposal, setConfirmingProposal] = useState<CorrectionProposalRow | null>(null);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
 
-  const { data: proposals = [], isLoading, error } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.dms.applyCorrectionProposals({ documentId, targetTable, targetRecordId }),
     queryFn: async () => {
       const result = await listApplyCorrectionProposals({
@@ -46,6 +48,7 @@ export function DmsApplyCorrectionHistory({ documentId, targetTable, targetRecor
     enabled: !!(documentId || (targetTable && targetRecordId)),
     staleTime: 30_000,
   });
+ const { data: proposals = [], isLoading, error } = uiRead1;
 
   const handleCancel = async (proposalId: number) => {
     setCancellingId(proposalId);
@@ -63,32 +66,32 @@ export function DmsApplyCorrectionHistory({ documentId, targetTable, targetRecor
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 py-4 text-sm text-slate-500">
+      <QueryReadBoundary queries={[uiRead1]}><div className="flex items-center gap-2 py-4 text-sm text-slate-500">
         <Loader2 className="h-4 w-4 animate-spin" />
         Loading correction history…
-      </div>
+      </div></QueryReadBoundary>
     );
   }
 
   if (error) {
     return (
-      <div className="flex items-center gap-2 text-sm text-red-600 py-2">
+      <QueryReadBoundary queries={[uiRead1]}><div className="flex items-center gap-2 text-sm text-red-600 py-2">
         <AlertTriangle className="h-4 w-4" />
         Failed to load correction history.
-      </div>
+      </div></QueryReadBoundary>
     );
   }
 
   if (proposals.length === 0) {
     return (
-      <p className="text-sm text-slate-500 py-2">No correction proposals for this item.</p>
+      <QueryReadBoundary queries={[uiRead1]}><p className="text-sm text-slate-500 py-2">No correction proposals for this item.</p></QueryReadBoundary>
     );
   }
 
   return (
-    <>
+    <QueryReadBoundary queries={[uiRead1]}><>
       <div className="space-y-3">
-        {proposals.map((proposal) => (
+        {<RecordCollection id="special.dms-apply-correction-history" rows={proposals} fields={[{"id":"id","path":"id","label":"Proposal"},{"id":"status","path":"status","label":"Status"},{"id":"created_at","path":"created_at","label":"Created"}]} renderRecord={(proposal) => (
           <CorrectionHistoryRow
             key={proposal.id}
             proposal={proposal}
@@ -96,7 +99,7 @@ export function DmsApplyCorrectionHistory({ documentId, targetTable, targetRecor
             onCancel={() => handleCancel(proposal.id)}
             isCancelling={cancellingId === proposal.id}
           />
-        ))}
+        )} />}
       </div>
 
       {/* Apply confirmation dialog */}
@@ -113,7 +116,7 @@ export function DmsApplyCorrectionHistory({ documentId, targetTable, targetRecor
           }}
         />
       )}
-    </>
+    </></QueryReadBoundary>
   );
 }
 

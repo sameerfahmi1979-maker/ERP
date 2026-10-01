@@ -8,6 +8,7 @@ import { changePasswordSchema } from "@/lib/validation/auth";
 import { changeOwnPassword } from "@/server/actions/users/account-security";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ControlledFormFeedback } from "@/components/workspace/controlled-form-feedback";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { KeyRound } from "lucide-react";
@@ -16,6 +17,8 @@ import { PasswordReverification } from "@/features/auth/password-reverification"
 type FormInput = { password: string; confirmPassword: string };
 
 export function ChangePasswordCard() {
+  const flight = useRef(false);
+  const [serviceError, setServiceError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [needsVerification, setNeedsVerification] = useState(false);
   const operationId = useRef<string | null>(null);
@@ -27,6 +30,9 @@ export function ChangePasswordCard() {
   } = useForm<FormInput>({ resolver: zodResolver(changePasswordSchema) });
 
   const onSubmit = async (values: FormInput) => {
+    if (flight.current) return;
+    flight.current = true;
+    setServiceError(null);
     setLoading(true);
     try {
       operationId.current ??= crypto.randomUUID();
@@ -34,6 +40,7 @@ export function ChangePasswordCard() {
       if (!result.success) {
         if (result.canStartNewAttempt) operationId.current = null;
         if (result.requiresFreshSignIn) { reset(); setNeedsVerification(true); return; }
+        setServiceError(result.error ?? "Password change could not complete.");
         toast.error(result.error ?? "Password change could not complete.");
         return;
       }
@@ -41,8 +48,10 @@ export function ChangePasswordCard() {
       reset();
       operationId.current = null;
     } catch {
-      toast.error("The request was interrupted. Please sign in again before trying another password change.");
+      setServiceError("The request was interrupted. Please sign in again before trying another password change.");
+        toast.error("The request was interrupted. Please sign in again before trying another password change.");
     } finally {
+      flight.current = false;
       setLoading(false);
     }
   };
@@ -62,7 +71,8 @@ export function ChangePasswordCard() {
           </CardDescription>
         </div>
       </CardHeader>
-      <form onSubmit={(event) => void handleSubmit(onSubmit)(event)}>
+      <form noValidate onSubmit={(event) => void handleSubmit(onSubmit)(event)}>
+        <div className="px-6"><ControlledFormFeedback errors={errors} labels={{ password: "New password", confirmPassword: "Confirm new password" }} action="saving" />{serviceError && <p role="alert" className="mb-4 text-sm text-destructive">{serviceError}</p>}</div>
         <CardContent className="grid gap-4 md:grid-cols-2">
           <div className="flex flex-col gap-2">
             <RequiredLabel htmlFor="profile-password" required>New password</RequiredLabel>
@@ -73,9 +83,6 @@ export function ChangePasswordCard() {
               required
               {...register("password")}
             />
-            {errors.password ? (
-              <p className="text-sm text-destructive">{errors.password.message}</p>
-            ) : null}
           </div>
           <div className="flex flex-col gap-2">
             <RequiredLabel htmlFor="profile-confirmPassword" required>Confirm new password</RequiredLabel>
@@ -86,9 +93,6 @@ export function ChangePasswordCard() {
               required
               {...register("confirmPassword")}
             />
-            {errors.confirmPassword ? (
-              <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>
-            ) : null}
           </div>
           <div className="md:col-span-2 flex justify-end">
             <Button type="submit" disabled={loading}>

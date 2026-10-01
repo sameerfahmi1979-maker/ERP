@@ -1,5 +1,8 @@
 "use client";
 
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import type { ColumnDef } from "@tanstack/react-table";
+
 import { useState, useId } from "react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -55,7 +58,7 @@ const emptyForm = {
 
 export function PartyContactsTab({ partyId, disabled, onChildOpen }: PartyContactsTabProps) {
   const queryClient = useQueryClient();
-  const { items: contacts, isLoading } = usePartyContactsQuery(partyId);
+  const { items: contacts, isLoading, error: loadError, refetch } = usePartyContactsQuery(partyId);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const setDialogOpen = (open: boolean) => { setIsDialogOpen(open); onChildOpen?.(open); };
   const [editing, setEditing] = useState<PartyContact | null>(null);
@@ -175,25 +178,8 @@ export function PartyContactsTab({ partyId, disabled, onChildOpen }: PartyContac
     }
   };
 
-  if (isLoading) return <Skeleton className="h-32 w-full" />;
-
-  return (
-    <div className="space-y-4">
-      {!disabled && (
-        <div className="flex justify-end">
-          <Button type="button" size="sm" onClick={openAdd} className="gap-2">
-            <Plus className="h-4 w-4" /> Add Contact
-          </Button>
-        </div>
-      )}
-
-      {(contacts ?? []).length === 0 ? (
-        <p className="text-sm text-muted-foreground">No contacts added yet.</p>
-      ) : (
-        <div className="space-y-2">
-          {(contacts ?? []).map((contact) => (
-            <div key={contact.id} className="rounded-md border p-3 flex items-start justify-between gap-3">
-              <div className="space-y-1">
+  const columns: ColumnDef<PartyContact>[] = [
+    {id:"full_name",header:"Contact",size:360,accessorFn:row=>[row.full_name,row.designation,row.email,row.mobile,row.phone].filter(Boolean).join(" "),enableHiding:false,cell:({row})=>{const contact=row.original;return (<div className="space-y-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium text-sm">{contact.full_name}</span>
                   {contact.is_primary && <Badge className="text-xs">Primary</Badge>}
@@ -209,21 +195,34 @@ export function PartyContactsTab({ partyId, disabled, onChildOpen }: PartyContac
                   {contact.is_operations_contact && <Badge variant="outline" className="text-xs">Operations</Badge>}
                   {contact.is_hse_contact && <Badge variant="outline" className="text-xs">HSE</Badge>}
                 </div>
-              </div>
-              {!disabled && (
+              </div>);}},
+    {accessorKey:"is_primary",header:"Primary",},
+    {id:"actions",header:"Actions",size:180,enableSorting:false,enableHiding:false,cell:({row})=>{const contact=row.original;return (<>{!disabled && (
                 <div className="flex gap-1 shrink-0">
-                  <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(contact)}>
+                  <Button aria-label="Edit record" type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(contact)}>
                     <Edit className="h-3.5 w-3.5" />
                   </Button>
-                  <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(contact.id)}>
+                  <Button aria-label="Delete record" type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(contact.id)}>
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>
-              )}
-            </div>
-          ))}
+              )}</>);}},
+  ];
+
+  if (isLoading) return <Skeleton className="h-32 w-full" />;
+
+  return (
+    <div className="space-y-4">
+      {!disabled && (
+        <div className="flex justify-end">
+          <Button type="button" size="sm" onClick={openAdd} className="gap-2">
+            <Plus className="h-4 w-4" /> Add Contact
+          </Button>
         </div>
       )}
+
+      {loadError ? <div role="alert" className="rounded border p-4"><p>Contact records could not be loaded.</p><Button type="button" variant="outline" onClick={refetch}>Try again</Button></div> :
+        <ERPDataTable tableId={`party.contacts:${partyId}`} resultsLabel="Contact" data={contacts ?? []} columns={columns} enableRowSelection={false} />}
 
       <ERPChildDialogForm
         open={isDialogOpen}
@@ -244,11 +243,11 @@ export function PartyContactsTab({ partyId, disabled, onChildOpen }: PartyContac
           </div>
           <div className="col-span-6">
             <Label>Designation</Label>
-            <Input value={form.designation} onChange={(e) => setForm((f) => ({ ...f, designation: e.target.value }))} />
+            <Input aria-label="Designation" value={form.designation} onChange={(e) => setForm((f) => ({ ...f, designation: e.target.value }))} />
           </div>
           <div className="col-span-6">
             <Label>Department</Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Department"
               value={form.department_id}
               onValueChange={(v) => setForm((f) => ({ ...f, department_id: v !== null ? Number(v) : null }))}
               options={(departments ?? []).map((d) => ({ value: d.id, label: d.name_en }))}
@@ -258,7 +257,7 @@ export function PartyContactsTab({ partyId, disabled, onChildOpen }: PartyContac
           </div>
           <div className="col-span-6">
             <Label>Contact Role</Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Contact Role"
               value={form.contact_role_id}
               onValueChange={(v) => setForm((f) => ({ ...f, contact_role_id: v !== null ? Number(v) : null }))}
               options={(roles ?? []).map((r) => ({ value: r.id, label: r.name_en }))}
@@ -272,15 +271,15 @@ export function PartyContactsTab({ partyId, disabled, onChildOpen }: PartyContac
           </div>
           <div className="col-span-4">
             <Label>Phone</Label>
-            <Input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} />
+            <Input aria-label="Phone" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} />
           </div>
           <div className="col-span-4">
             <Label>Mobile</Label>
-            <Input value={form.mobile} onChange={(e) => setForm((f) => ({ ...f, mobile: e.target.value }))} />
+            <Input aria-label="Mobile" value={form.mobile} onChange={(e) => setForm((f) => ({ ...f, mobile: e.target.value }))} />
           </div>
           <div className="col-span-4">
             <Label>WhatsApp</Label>
-            <Input value={form.whatsapp} onChange={(e) => setForm((f) => ({ ...f, whatsapp: e.target.value }))} />
+            <Input aria-label="WhatsApp" value={form.whatsapp} onChange={(e) => setForm((f) => ({ ...f, whatsapp: e.target.value }))} />
           </div>
           <div className="col-span-12 grid grid-cols-3 gap-3">
             {[
@@ -303,7 +302,7 @@ export function PartyContactsTab({ partyId, disabled, onChildOpen }: PartyContac
           </div>
           <div className="col-span-12">
             <Label>Notes</Label>
-            <Textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} />
+            <Textarea aria-label="Notes" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} />
           </div>
         </div>
       </ERPChildDialogForm>

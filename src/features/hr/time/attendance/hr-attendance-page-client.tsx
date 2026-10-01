@@ -1,4 +1,7 @@
 "use client";
+import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
+import { RecordCollection } from "@/components/erp/table/record-collection";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,7 +22,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { CheckCircle, ExternalLink } from "lucide-react";
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useState} from "react";
 import { toast } from "sonner";
 
 type Props = {
@@ -58,15 +61,16 @@ export function HrAttendancePageClient({ initialRows, initialCount, authContext 
     ...(statusFilter ? { approval_status: statusFilter } : {}),
   };
 
-  const { data, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.time.dailyAttendance(params),
     queryFn: async () => {
       const r = await listDailyAttendance(params);
-      return r.success && r.data ? r.data : { data: initialRows, count: initialCount };
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success && r.data ? r.data : { data: initialRows, count: initialCount };
     },
     initialData: { data: initialRows, count: initialCount },
     staleTime: 30_000,
   });
+  const { data, isLoading } = uiRead1;
 
   // ERP REALTIME.1C — live daily attendance list sync.
   useRealtimeSync({
@@ -93,10 +97,10 @@ export function HrAttendancePageClient({ initialRows, initialCount, authContext 
   const totalPages = Math.ceil(totalCount / pageSize);
 
   return (
-    <div className="space-y-4">
+    <QueryReadBoundary queries={[uiRead1]}><div className="space-y-4">
       {/* Filters */}
       <div className="flex gap-3 flex-wrap">
-        <Input
+        <Input aria-label="Date"
           type="date"
           value={dateFilter}
           onChange={(e) => { setDateFilter(e.target.value); setPage(1); }}
@@ -140,7 +144,7 @@ export function HrAttendancePageClient({ initialRows, initialCount, authContext 
             <span className="col-span-2">Status</span>
             <span className="col-span-2 text-right">Actions</span>
           </div>
-          {rows.map((row) => {
+          <RecordCollection id="hr.hr-attendance-page-client.HrAttendancePageClient.rows" rows={rows} fields={[{"id":"employee_id","path":"employee_id","label":"Employee ID"},{"id":"attendance_date","path":"attendance_date","label":"Attendance Date"},{"id":"approval_status","path":"approval_status","label":"Approval Status"}]} renderRecord={(row) => {
             const badge = getAttendanceStatusBadge(row.approval_status);
             return (
               <div key={row.id} className="px-4 py-2.5 grid grid-cols-12 items-center text-sm gap-2">
@@ -161,14 +165,14 @@ export function HrAttendancePageClient({ initialRows, initialCount, authContext 
                     </Button>
                   )}
                   <Link href={`/admin/hr/employees/record/${row.employee_id}?section=time`}>
-                    <Button size="sm" variant="ghost" className="h-7 px-2">
+                    <Button aria-label="Open record" size="sm" variant="ghost" className="h-7 px-2">
                       <ExternalLink className="h-3.5 w-3.5" />
                     </Button>
                   </Link>
                 </div>
               </div>
             );
-          })}
+          }} />
         </div>
       )}
 
@@ -180,6 +184,6 @@ export function HrAttendancePageClient({ initialRows, initialCount, authContext 
           <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Next</Button>
         </div>
       )}
-    </div>
+    </div></QueryReadBoundary>
   );
 }

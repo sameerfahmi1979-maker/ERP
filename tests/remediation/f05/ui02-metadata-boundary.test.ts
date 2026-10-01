@@ -1,0 +1,14 @@
+import { beforeEach, expect, it, vi } from 'vitest';
+const mocks=vi.hoisted(()=>({context:vi.fn(),permission:vi.fn(),document:vi.fn(),catalog:vi.fn(),admin:vi.fn()}));
+vi.mock('@/lib/rbac/check',()=>({getAuthContext:mocks.context,hasPermission:mocks.permission}));
+vi.mock('@/lib/supabase/server',()=>({createClient:async()=>({from:()=>{const q={select:()=>q,eq:()=>q,is:()=>q,maybeSingle:mocks.document,order:mocks.catalog};return q;}})}));
+vi.mock('@/lib/supabase/admin',()=>({createAdminClient:mocks.admin}));
+vi.mock('@/server/actions/audit',()=>({logAudit:vi.fn()}));
+vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
+import { getMetadataDefinitionsForType } from '@/server/actions/dms/document-metadata-values';
+beforeEach(()=>{vi.resetAllMocks();mocks.context.mockResolvedValue({profile:{id:3}});mocks.permission.mockReturnValue(true);mocks.document.mockResolvedValue({data:{id:10,document_type_id:20},error:null});mocks.catalog.mockResolvedValue({data:[{id:1,document_type_id:20,field_label_en:'Visible',show_in_detail:true},{id:2,document_type_id:20,field_label_en:'Hidden',show_in_detail:false}],error:null});mocks.admin.mockImplementation(()=>({from:()=>{const q={select:()=>q,eq:()=>q,is:()=>q,order:mocks.catalog};return q;}}));});
+it('authorized existing document hydrates only its requested visible detail definitions',async()=>{const result=await getMetadataDefinitionsForType(20,'detail',10);expect(result.success).toBe(true);expect(result.data?.map(x=>x.field_label_en)).toEqual(['Visible']);expect(mocks.admin).toHaveBeenCalledOnce();});
+it.each([null,{id:10,document_type_id:21}])('unreadable or mismatched document cannot use privileged definition hydration',async(data)=>{mocks.document.mockResolvedValue({data,error:null});expect((await getMetadataDefinitionsForType(20,'detail',10)).success).toBe(false);expect(mocks.admin).not.toHaveBeenCalled();});
+it('document read failure never falls back to global catalog access',async()=>{mocks.document.mockResolvedValue({data:null,error:{message:'private'}});expect((await getMetadataDefinitionsForType(20,'detail',10)).error).toBe('Document unavailable');expect(mocks.admin).not.toHaveBeenCalled();});
+it('new-document lookup keeps the ordinary session catalog rules',async()=>{await getMetadataDefinitionsForType(20);expect(mocks.admin).not.toHaveBeenCalled();});
+it('missing capability and malformed identity fail before catalog access',async()=>{mocks.permission.mockReturnValue(false);expect((await getMetadataDefinitionsForType(20,'detail',10)).success).toBe(false);mocks.permission.mockReturnValue(true);expect((await getMetadataDefinitionsForType(20,'detail',-1)).success).toBe(false);expect(mocks.admin).not.toHaveBeenCalled();});

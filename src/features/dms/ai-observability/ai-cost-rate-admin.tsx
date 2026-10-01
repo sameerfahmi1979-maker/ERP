@@ -1,4 +1,7 @@
 "use client";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import { loadedListValue } from "@/components/erp/table/loaded-list-view";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import { useQuery } from "@tanstack/react-query";
 
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
@@ -41,7 +44,7 @@ export function AiCostRateAdmin({ refreshKey }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const { data: rates, isFetching: loading, error: queryError, refetch } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: ["ai-model-cost-rates", refreshKey],
     queryFn: async () => {
       const result = await getAiModelCostRates();
@@ -50,6 +53,7 @@ export function AiCostRateAdmin({ refreshKey }: Props) {
     },
     retry: false, gcTime: 0, refetchOnWindowFocus: false,
   });
+ const { data: rates, isFetching: loading, error: queryError, refetch } = uiRead1;
   const error = queryError?.message;
   const loadRates = () => refetch();
 
@@ -77,12 +81,12 @@ export function AiCostRateAdmin({ refreshKey }: Props) {
     loadRates();
   };
 
-  if (loading) return <div className="text-sm text-muted-foreground">Loading cost rates...</div>;
-  if (error) return <div className="text-sm text-destructive">{error}</div>;
+  if (loading) return <QueryReadBoundary queries={[uiRead1]}><div className="text-sm text-muted-foreground">Loading cost rates...</div></QueryReadBoundary>;
+  if (error) return <QueryReadBoundary queries={[uiRead1]}><div className="text-sm text-destructive">{error}</div></QueryReadBoundary>;
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
+    <QueryReadBoundary queries={[uiRead1]}><div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
           Configure AI model cost rates. Rates must be confirmed by admin before cost estimation is active.
         </p>
@@ -93,40 +97,17 @@ export function AiCostRateAdmin({ refreshKey }: Props) {
       </div>
 
       <div className="overflow-x-auto rounded-lg border">
-        <table className="w-full text-xs">
-          <thead className="border-b bg-muted/50">
-            <tr>
-              <th className="px-3 py-2 text-left font-medium text-muted-foreground">Provider</th>
-              <th className="px-3 py-2 text-left font-medium text-muted-foreground">Model</th>
-              <th className="px-3 py-2 text-left font-medium text-muted-foreground">Type</th>
-              <th className="px-3 py-2 text-right font-medium text-muted-foreground">In $/1M</th>
-              <th className="px-3 py-2 text-right font-medium text-muted-foreground">Out $/1M</th>
-              <th className="px-3 py-2 text-left font-medium text-muted-foreground">Effective</th>
-              <th className="px-3 py-2 text-left font-medium text-muted-foreground">Status</th>
-              <th className="px-3 py-2 text-left font-medium text-muted-foreground">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(rates ?? []).map((r) => (
-              <tr key={r.id} className={`border-b last:border-0 hover:bg-muted/30 ${!r.isActive ? "opacity-50" : ""}`}>
-                <td className="px-3 py-2 font-mono">{r.providerType}</td>
-                <td className="px-3 py-2 font-mono">{r.modelId}</td>
-                <td className="px-3 py-2">{r.rateType}</td>
-                <td className="px-3 py-2 text-right tabular-nums">
-                  {r.inputCostPer1mTokens !== null ? `$${r.inputCostPer1mTokens}` : "—"}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">
-                  {r.outputCostPer1mTokens !== null ? `$${r.outputCostPer1mTokens}` : "—"}
-                </td>
-                <td className="px-3 py-2 text-muted-foreground">{r.effectiveFrom}</td>
-                <td className="px-3 py-2">
-                  {r.requiresConfirmation
+        {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable tableId="special.dms.ai-observability.ai-cost-rate-admin" data={(rates ?? [])} columns={[{id:"providerType",header:"Provider",accessorFn:r=>loadedListValue(r,"providerType"),meta:{filter:{type:"text"}},enableHiding:false,size:220,cell:({row:{original:r}})=>{
+return <>{r.providerType}</>;}},{id:"modelId",header:"Model",accessorFn:r=>loadedListValue(r,"modelId"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:r}})=>{
+return <>{r.modelId}</>;}},{id:"rateType",header:"Type",accessorFn:r=>loadedListValue(r,"rateType"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:r}})=>{
+return <>{r.rateType}</>;}},{id:"inputCostPer1mTokens",header:"Input cost per 1M",accessorFn:r=>loadedListValue(r,"inputCostPer1mTokens"),meta:{filter:{type:"number"}},enableHiding:true,size:180,cell:({row:{original:r}})=>{
+return <>{r.inputCostPer1mTokens !== null ? `$${r.inputCostPer1mTokens}` : "—"}</>;}},{id:"outputCostPer1mTokens",header:"Output cost per 1M",accessorFn:r=>loadedListValue(r,"outputCostPer1mTokens"),meta:{filter:{type:"number"}},enableHiding:true,size:180,cell:({row:{original:r}})=>{
+return <>{r.outputCostPer1mTokens !== null ? `$${r.outputCostPer1mTokens}` : "—"}</>;}},{id:"effectiveFrom",header:"Effective",accessorFn:r=>loadedListValue(r,"effectiveFrom"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:r}})=>{
+return <>{r.effectiveFrom}</>;}},{id:"isActive",header:"Active",accessorFn:r=>loadedListValue(r,"isActive"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:r}})=>{
+return <>{r.requiresConfirmation
                     ? <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">Unconfirmed</Badge>
-                    : <Badge variant="default" className="text-xs">Confirmed</Badge>}
-                  {!r.isActive && <Badge variant="secondary" className="text-xs ml-1">Archived</Badge>}
-                </td>
-                <td className="px-3 py-2">
-                  <div className="flex gap-1">
+                    : <Badge variant="default" className="text-xs">Confirmed</Badge>}{!r.isActive && <Badge variant="secondary" className="text-xs ml-1">Archived</Badge>}</>;}},{id:"actions",header:"Actions",enableSorting:false,meta:{exportable:false},enableHiding:true,size:180,cell:({row:{original:r}})=>{
+return <><div className="flex gap-1">
                     {r.requiresConfirmation && r.isActive && (
                       <button
                         onClick={() => handleConfirm(r)}
@@ -146,17 +127,7 @@ export function AiCostRateAdmin({ refreshKey }: Props) {
                         <Archive className="h-3 w-3" />
                       </button>
                     )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {(!rates || rates.length === 0) && (
-              <tr>
-                <td colSpan={8} className="px-3 py-4 text-center text-muted-foreground">No cost rates configured.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                  </div></>;}}]} enableRowSelection={false} searchPlaceholder="Search loaded records…" initialPageSize={10} />
       </div>
 
       <ERPChildDialogForm
@@ -176,19 +147,19 @@ export function AiCostRateAdmin({ refreshKey }: Props) {
           )}
           <div className="col-span-6">
             <Label className="text-xs">Provider Type <span className="text-destructive">*</span></Label>
-            <Input value={form.providerType} onChange={(e) => setForm((f) => ({ ...f, providerType: e.target.value }))} placeholder="openai" />
+            <Input aria-label="Provider Type" required value={form.providerType} onChange={(e) => setForm((f) => ({ ...f, providerType: e.target.value }))} placeholder="openai" />
           </div>
           <div className="col-span-6">
             <Label className="text-xs">Model ID <span className="text-destructive">*</span></Label>
-            <Input value={form.modelId} onChange={(e) => setForm((f) => ({ ...f, modelId: e.target.value }))} placeholder="gpt-4.1" />
+            <Input aria-label="Model ID" required value={form.modelId} onChange={(e) => setForm((f) => ({ ...f, modelId: e.target.value }))} placeholder="gpt-4.1" />
           </div>
           <div className="col-span-12">
             <Label className="text-xs">Display Name</Label>
-            <Input value={form.displayName ?? ""} onChange={(e) => setForm((f) => ({ ...f, displayName: e.target.value || null }))} placeholder="GPT-4.1" />
+            <Input aria-label="Display Name" value={form.displayName ?? ""} onChange={(e) => setForm((f) => ({ ...f, displayName: e.target.value || null }))} placeholder="GPT-4.1" />
           </div>
           <div className="col-span-4">
             <Label className="text-xs">Rate Type</Label>
-            <select
+            <select aria-label="Rate Type"
               value={form.rateType}
               onChange={(e) => setForm((f) => ({ ...f, rateType: e.target.value as CreateCostRateInput["rateType"] }))}
               className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
@@ -201,7 +172,7 @@ export function AiCostRateAdmin({ refreshKey }: Props) {
           </div>
           <div className="col-span-4">
             <Label className="text-xs">Input $/1M tokens</Label>
-            <Input
+            <Input aria-label="Input $/1M tokens"
               type="number"
               step="0.000001"
               placeholder="e.g. 2.00"
@@ -211,7 +182,7 @@ export function AiCostRateAdmin({ refreshKey }: Props) {
           </div>
           <div className="col-span-4">
             <Label className="text-xs">Output $/1M tokens</Label>
-            <Input
+            <Input aria-label="Output $/1M tokens"
               type="number"
               step="0.000001"
               placeholder="e.g. 8.00"
@@ -221,11 +192,11 @@ export function AiCostRateAdmin({ refreshKey }: Props) {
           </div>
           <div className="col-span-4">
             <Label className="text-xs">Effective From <span className="text-destructive">*</span></Label>
-            <Input type="date" value={form.effectiveFrom} onChange={(e) => setForm((f) => ({ ...f, effectiveFrom: e.target.value }))} />
+            <Input aria-label="Effective From" required type="date" value={form.effectiveFrom} onChange={(e) => setForm((f) => ({ ...f, effectiveFrom: e.target.value }))} />
           </div>
           <div className="col-span-4">
             <Label className="text-xs">Currency</Label>
-            <Input value={form.currencyCode ?? "USD"} onChange={(e) => setForm((f) => ({ ...f, currencyCode: e.target.value }))} placeholder="USD" />
+            <Input aria-label="Currency" value={form.currencyCode ?? "USD"} onChange={(e) => setForm((f) => ({ ...f, currencyCode: e.target.value }))} placeholder="USD" />
           </div>
           <div className="col-span-4 flex items-end gap-2">
             <label className="flex items-center gap-2 text-sm cursor-pointer">
@@ -239,7 +210,7 @@ export function AiCostRateAdmin({ refreshKey }: Props) {
           </div>
           <div className="col-span-12">
             <Label className="text-xs">Source Note</Label>
-            <Input
+            <Input aria-label="Source Note"
               value={form.sourceNote ?? ""}
               onChange={(e) => setForm((f) => ({ ...f, sourceNote: e.target.value || null }))}
               placeholder="Source of rate information"
@@ -247,6 +218,6 @@ export function AiCostRateAdmin({ refreshKey }: Props) {
           </div>
         </div>
       </ERPChildDialogForm>
-    </div>
+    </div></QueryReadBoundary>
   );
 }

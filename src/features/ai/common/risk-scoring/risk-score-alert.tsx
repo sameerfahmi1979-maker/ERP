@@ -1,4 +1,5 @@
 "use client";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
@@ -14,7 +15,7 @@ interface RiskScoreAlertProps {
 }
 
 export function RiskScoreAlert({ entityType, entityId }: RiskScoreAlertProps) {
-  const { data } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.ai.riskScoreCountForEntity(entityType, entityId),
     queryFn: async () => {
       const res = await getRiskScoreCountForEntity({ entityType, entityId });
@@ -32,6 +33,7 @@ export function RiskScoreAlert({ entityType, entityId }: RiskScoreAlertProps) {
     enabled: entityId > 0,
     staleTime: 60_000,
   });
+ const { data } = uiRead1;
 
   if (!data?.hasScore || !data.needsReview) return null;
 
@@ -40,7 +42,7 @@ export function RiskScoreAlert({ entityType, entityId }: RiskScoreAlertProps) {
   const href = `/admin/ai/risk?entityType=${entityType}&entityId=${entityId}`;
 
   return (
-    <Alert
+    <QueryReadBoundary queries={[uiRead1]}><Alert
       className={
         isCritical
           ? "border-red-300 bg-red-50 mb-4"
@@ -71,6 +73,6 @@ export function RiskScoreAlert({ entityType, entityId }: RiskScoreAlertProps) {
           Review in AI Risk
         </Link>
       </AlertDescription>
-    </Alert>
+    </Alert></QueryReadBoundary>
   );
 }

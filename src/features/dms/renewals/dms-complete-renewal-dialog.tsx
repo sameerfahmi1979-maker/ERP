@@ -159,7 +159,7 @@ export function DmsCompleteRenewalDialog({
           <RequiredLabel required className="mb-1.5 block">
             Replacement Document
           </RequiredLabel>
-          <ERPCombobox
+          <ERPCombobox ariaLabel="Replacement Document"
             value={replacementDocumentId}
             onValueChange={handleReplacementChange}
             options={options}

@@ -1,3 +1,4 @@
+import { LoadError } from "@/components/erp/load-error";
 ﻿import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { listGlobalSalaryProfiles } from "@/server/actions/hr/payroll";
@@ -14,7 +15,8 @@ export default async function HrSalariesPage() {
 
   if (!canView) redirect("/access-denied");
 
-  const result = await listGlobalSalaryProfiles({ page: 1, page_size: 50 });
+  const result = await listGlobalSalaryProfiles({ page: 1, page_size: 50 })
+  if (!result.success) return <LoadError title="HR records" retryHref="/admin/hr/payroll/salaries" />;;
   const initialData = result.success && result.data
     ? result.data
     : { data: [], count: 0 };

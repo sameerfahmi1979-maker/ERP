@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useId, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -9,314 +9,133 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, Settings2 } from "lucide-react";
-import { getMetadataDefinitionsForType, getDmsDocumentMetadataValues, saveDmsDocumentMetadataValues } from "@/server/actions/dms/document-metadata-values";
-import type { DmsMetadataDefinitionRow, DmsMetadataValueRow } from "@/server/actions/dms/document-metadata-values";
+import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
+import { FormErrorSummary, useInlineFieldFeedback } from "@/components/workspace/form-feedback";
+import { DmsLoadError } from "@/features/dms/dms-load-error";
+import type { WorkspaceFieldIssue } from "@/lib/workspace/form-validation";
+import { getMetadataDefinitionsForType, getDmsDocumentMetadataValues, saveDmsDocumentMetadataValues,
+  type DmsMetadataDefinitionRow, type DmsMetadataValueRow, type DmsMetadataValueInput } from "@/server/actions/dms/document-metadata-values";
 import { queryKeys } from "@/lib/query/query-keys";
 
-interface DmsDocumentMetadataSectionProps {
-  documentId: number | null;
-  documentTypeId: number | null;
-  isViewing: boolean;
+type Props = { documentId: number | null; documentTypeId: number | null; isViewing: boolean };
+type EditSnapshot = { definitions: DmsMetadataDefinitionRow[]; values: DmsMetadataValueRow[] };
+
+/** Parent identity changes cannot carry a metadata draft into another document. */
+export function DmsDocumentMetadataSection(props: Props) {
+  return <MetadataSection key={`${props.documentId}:${props.documentTypeId}:${props.isViewing}`} {...props} />;
 }
 
-export function DmsDocumentMetadataSection({
-  documentId,
-  documentTypeId,
-  isViewing,
-}: DmsDocumentMetadataSectionProps) {
-  const [saving, setSaving] = useState(false);
-  const [localValues, setLocalValues] = useState<Record<number, string>>({});
-  // Tracks a serialized snapshot of the last initialised data so the effect
-  // doesn't re-run (and call setLocalValues) when React Query returns a new
-  // array reference for the same underlying data — which would cause an
-  // infinite setState loop.
-  const lastInitKeyRef = useRef<string | null>(null);
-
-  const { data: defs = [], isLoading: loadingDefs } = useQuery({
-    queryKey: queryKeys.dms.documentMetadataDefs(documentTypeId ?? 0),
+function MetadataSection({ documentId, documentTypeId, isViewing }: Props) {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState<EditSnapshot | null>(null);
+  const definitions = useQuery({
+    queryKey: [...queryKeys.dms.documentMetadataDefs(documentTypeId ?? 0), "detail", documentId],
     queryFn: async () => {
-      if (!documentTypeId) return [];
-      const r = await getMetadataDefinitionsForType(documentTypeId);
-      return r.data ?? [];
-    },
-    enabled: !!documentTypeId,
-    staleTime: 5 * 60 * 1000,
+      const r = await getMetadataDefinitionsForType(documentTypeId!, "detail", documentId ?? undefined);
+      if (!r.success || !r.data) throw new Error("Metadata definitions unavailable");
+      return r.data;
+    }, enabled: !!documentTypeId, staleTime: 300_000,
   });
-
-  const { data: existingValues = [], isLoading: loadingValues } = useQuery({
+  const values = useQuery({
     queryKey: queryKeys.dms.documentMetadata(documentId ?? 0),
     queryFn: async () => {
-      if (!documentId) return [];
-      const r = await getDmsDocumentMetadataValues(documentId);
-      return r.data ?? [];
-    },
-    enabled: !!documentId,
-    staleTime: 30 * 1000,
+      const r = await getDmsDocumentMetadataValues(documentId!);
+      if (!r.success || !r.data) throw new Error("Metadata values unavailable");
+      return r.data;
+    }, enabled: !!documentId, staleTime: 30_000,
   });
-
-  useEffect(() => {
-    // Build a cheap stable key from the actual data content (not the array reference).
-    // If the key hasn't changed since last initialisation, skip setLocalValues to
-    // avoid the infinite setState → re-render → new reference → setState loop.
-    const initKey =
-      defs.map((d: DmsMetadataDefinitionRow) => d.id).join(",") +
-      "|" +
-      existingValues
-        .map((v: DmsMetadataValueRow) => {
-          const raw =
-            v.value_text ?? v.value_number ?? v.value_boolean ?? v.value_date ?? v.value_datetime ?? "";
-          return `${v.definition_id}:${raw}`;
-        })
-        .join(";");
-
-    if (lastInitKeyRef.current === initKey) return;
-    lastInitKeyRef.current = initKey;
-
-    const initial: Record<number, string> = {};
-    existingValues.forEach((v: DmsMetadataValueRow) => {
-      const def = defs.find((d: DmsMetadataDefinitionRow) => d.id === v.definition_id);
-      if (!def) return;
-      switch (def.field_type) {
-        case "boolean":
-          initial[v.definition_id] = v.value_boolean === true ? "true" : "false";
-          break;
-        case "number":
-        case "currency":
-          initial[v.definition_id] = v.value_number != null ? String(v.value_number) : "";
-          break;
-        case "date":
-          initial[v.definition_id] = v.value_date ?? "";
-          break;
-        case "datetime":
-          initial[v.definition_id] = v.value_datetime ?? "";
-          break;
-        case "json":
-          initial[v.definition_id] = v.value_json != null ? JSON.stringify(v.value_json, null, 2) : "";
-          break;
-        default:
-          initial[v.definition_id] = v.value_text ?? "";
-      }
-    });
-    setLocalValues(initial);
-  }, [existingValues, defs]);
-
-  async function handleSaveMetadata() {
-    if (!documentId) return;
-    setSaving(true);
-    try {
-      const values = defs.map((def: DmsMetadataDefinitionRow) => {
-        const raw = localValues[def.id] ?? "";
-        switch (def.field_type) {
-          case "boolean":
-            return { definition_id: def.id, value_boolean: raw === "true" };
-          case "number":
-          case "currency":
-            return { definition_id: def.id, value_number: raw ? parseFloat(raw) : null };
-          case "date":
-            return { definition_id: def.id, value_date: raw || null };
-          case "datetime":
-            return { definition_id: def.id, value_datetime: raw || null };
-          case "json":
-            try {
-              return { definition_id: def.id, value_json: raw ? JSON.parse(raw) : null };
-            } catch {
-              return { definition_id: def.id, value_text: raw };
-            }
-          default:
-            return { definition_id: def.id, value_text: raw || null };
-        }
-      });
-
-      const result = await saveDmsDocumentMetadataValues(documentId, values);
-      if (result.success) {
-        toast.success("Metadata saved");
-      } else {
-        toast.error(result.error ?? "Failed to save metadata");
-      }
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  if (!documentTypeId) {
-    return (
-      <div className="text-sm text-muted-foreground py-6 text-center">
-        Select a document type to see metadata fields.
-      </div>
-    );
-  }
-
-  if (loadingDefs || loadingValues) {
-    return (
-      <div className="flex items-center gap-2 py-6 text-muted-foreground text-sm">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        Loading metadata fields...
-      </div>
-    );
-  }
-
-  if (defs.length === 0) {
-    return (
-      <div className="flex flex-col items-center gap-3 py-10 text-center">
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
-          <Settings2 className="h-5 w-5 text-muted-foreground" />
-        </div>
-        <div>
-          <p className="text-sm font-medium text-foreground">No metadata fields defined</p>
-          <p className="mt-1 text-xs text-muted-foreground max-w-xs mx-auto">
-            This document type has no custom fields configured yet.
-            To add fields, go to{" "}
-            <span className="font-semibold text-foreground/80">DMS Admin → Metadata Definitions</span>{" "}
-            and create fields for this document type.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {defs.map((def: DmsMetadataDefinitionRow) => (
-        <MetadataField
-          key={def.id}
-          def={def}
-          value={localValues[def.id] ?? ""}
-          onChange={(v) => setLocalValues((prev) => ({ ...prev, [def.id]: v }))}
-          disabled={isViewing}
-        />
-      ))}
-
-      {!isViewing && documentId && (
-        <div className="pt-2 border-t border-border">
-          <Button size="sm" onClick={handleSaveMetadata} disabled={saving} className="gap-1.5">
-            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-            Save Metadata
-          </Button>
-        </div>
-      )}
-
-      {!documentId && (
-        <p className="text-xs text-amber-600">Save the document first to store metadata values.</p>
-      )}
-    </div>
-  );
+  if (!documentTypeId) return <p className="py-6 text-sm text-muted-foreground">Select a document type to see its metadata fields.</p>;
+  if (definitions.isLoading || values.isLoading) return <p role="status" className="py-6 text-sm text-muted-foreground">Loading metadata…</p>;
+  if (definitions.isError || values.isError) return <DmsLoadError subject="document metadata" pending={definitions.isFetching || values.isFetching} retry={() => Promise.all([definitions.refetch(), documentId ? values.refetch() : Promise.resolve()])} />;
+  const defs = definitions.data ?? [];
+  if (!defs.length) return <p className="py-6 text-sm text-muted-foreground">No metadata fields are configured for this document type.</p>;
+  const current = initialMetadata(defs, values.data ?? []);
+  return <div className="space-y-4">
+    <p className="text-sm text-muted-foreground">Metadata is saved separately from the document details. Dates with a time use this device’s timezone.</p>
+    <dl className="grid min-w-0 gap-4 sm:grid-cols-2">
+      {defs.map(def => <div key={def.id} className="min-w-0 border-b border-border pb-3">
+        <dt className="text-sm text-muted-foreground">{def.field_label_en}</dt>
+        <dd dir="auto" className="mt-1 whitespace-pre-wrap break-words text-sm">{def.field_type === "boolean" ? current[def.id] === "true" ? "Yes" : "No" : current[def.id] || "Not provided"}</dd>
+      </div>)}
+    </dl>
+    {!isViewing && documentId && <Button type="button" variant="outline" onClick={() => setEditing({ definitions: defs, values: values.data ?? [] })}>Edit metadata</Button>}
+    {!documentId && <p className="text-sm text-muted-foreground">Save the document first to add metadata.</p>}
+    {editing && documentId && <MetadataEditor documentId={documentId} snapshot={editing} onClose={() => setEditing(null)} onSaved={() => {
+      setEditing(null);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.dms.documentMetadata(documentId) });
+    }} />}
+  </div>;
 }
 
-function MetadataField({
-  def,
-  value,
-  onChange,
-  disabled,
-}: {
-  def: DmsMetadataDefinitionRow;
-  value: string;
-  onChange: (v: string) => void;
-  disabled: boolean;
-}) {
-  const options = def.options_json
-    ? ((def.options_json as { values?: string[] })?.values ?? [])
-    : [];
+function initialMetadata(defs: DmsMetadataDefinitionRow[], rows: DmsMetadataValueRow[]) {
+  return Object.fromEntries(defs.map(def => {
+    const row = rows.find(value => value.definition_id === def.id);
+    let value = row?.value_text ?? "";
+    if (def.field_type === "boolean") value = row?.value_boolean === true ? "true" : "false";
+    else if (def.field_type === "json") value = row?.value_json == null ? "" : JSON.stringify(row.value_json, null, 2);
+    else if (["number", "currency"].includes(def.field_type)) value = row?.value_number == null ? "" : String(row.value_number);
+    else if (def.field_type === "date") value = row?.value_date ?? "";
+    else if (def.field_type === "datetime" && row?.value_datetime) {
+      const d = new Date(row.value_datetime), pad = (n: number) => String(n).padStart(2, "0");
+      value = Number.isNaN(d.getTime()) ? "" : `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+    return [def.id, value];
+  }));
+}
 
-  return (
-    <div>
-      <Label className="text-xs font-medium">
-        {def.field_label_en}
-        {def.is_required && <span className="text-red-500 ml-1">*</span>}
-        {def.is_ai_extractable && (
-          <span className="ml-2 text-[10px] bg-violet-100 text-violet-600 px-1 rounded">AI</span>
-        )}
-      </Label>
-      {def.ai_field_hint && (
-        <p className="text-[10px] text-muted-foreground mb-1">{def.ai_field_hint}</p>
-      )}
-
-      {def.field_type === "boolean" ? (
-        <div className="flex items-center gap-2 mt-1">
-          <Switch
-            checked={value === "true"}
-            onCheckedChange={(c) => onChange(c ? "true" : "false")}
-            disabled={disabled}
-          />
-          <span className="text-xs text-muted-foreground">{value === "true" ? "Yes" : "No"}</span>
-        </div>
-      ) : def.field_type === "select" && options.length > 0 ? (
-        <Select value={value} onValueChange={(v) => onChange(v ?? "")} disabled={disabled}>
-          <SelectTrigger className="mt-1">
-            <SelectValue placeholder="Select..." />
-          </SelectTrigger>
-          <SelectContent>
-            {options.map((opt: string) => (
-              <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      ) : def.field_type === "multi_select" && options.length > 0 ? (
-        <div className="mt-1 space-y-1">
-          {options.map((opt: string) => {
-            const selected = value.split(",").filter(Boolean).includes(opt);
-            return (
-              <label key={opt} className="flex items-center gap-2 text-xs">
-                <input
-                  type="checkbox"
-                  checked={selected}
-                  onChange={(e) => {
-                    const parts = value.split(",").filter(Boolean);
-                    if (e.target.checked) {
-                      onChange([...parts, opt].join(","));
-                    } else {
-                      onChange(parts.filter((p) => p !== opt).join(","));
-                    }
-                  }}
-                  disabled={disabled}
-                />
-                {opt}
-              </label>
-            );
-          })}
-        </div>
-      ) : def.field_type === "textarea" ? (
-        <Textarea
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          disabled={disabled}
-          rows={3}
-          className="mt-1"
-          placeholder={def.field_label_en}
-          // Arabic/RTL content must render right-to-left with correctly ordered
-          // word arrangement. dir="auto" picks direction from the field's own
-          // current value (first strong-direction character) instead of
-          // inheriting the page's LTR direction.
-          dir="auto"
-        />
-      ) : def.field_type === "json" ? (
-        <Textarea
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          disabled={disabled}
-          rows={4}
-          className="mt-1 font-mono text-xs"
-          placeholder='{"key": "value"}'
-        />
-      ) : (
-        <Input
-          type={
-            def.field_type === "number" || def.field_type === "currency"
-              ? "number"
-              : def.field_type === "date"
-              ? "date"
-              : def.field_type === "datetime"
-              ? "datetime-local"
-              : "text"
-          }
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          disabled={disabled}
-          className="mt-1"
-          placeholder={def.field_label_en}
-          dir="auto"
-        />
-      )}
+function MetadataEditor({ documentId, snapshot, onClose, onSaved }: { documentId: number; snapshot: EditSnapshot; onClose: () => void; onSaved: () => void }) {
+  const prefix = useId(), body = useRef<HTMLDivElement>(null);
+  const [initial] = useState(() => initialMetadata(snapshot.definitions, snapshot.values));
+  const [values, setValues] = useState(initial);
+  const [issues, setIssues] = useState<WorkspaceFieldIssue[]>([]);
+  const [failure, setFailure] = useState<string | null>(null);
+  useInlineFieldFeedback(issues);
+  const isDirty = Object.keys(values).some(id => values[Number(id)] !== initial[Number(id)]);
+  const save = async () => {
+    const invalid: WorkspaceFieldIssue[] = [];
+    const payload: DmsMetadataValueInput[] = snapshot.definitions.map(def => {
+      const raw = values[def.id] ?? "", value: DmsMetadataValueInput = { definition_id: def.id };
+      if (def.field_type === "json") {
+        try { value.value_json = raw.trim() ? JSON.parse(raw) : null; }
+        catch { invalid.push({ label: def.field_label_en, message: def.is_required ? "Enter valid JSON." : "Enter valid JSON or clear this optional field.", section: null, control: body.current?.querySelector(`[data-metadata-id="${def.id}"]`) ?? null }); }
+      } else if (["number","currency"].includes(def.field_type)) value.value_number = raw.trim() ? Number(raw) : null;
+      else if (def.field_type === "boolean") value.value_boolean = raw === "true";
+      else if (def.field_type === "date") value.value_date = raw || null;
+      else if (def.field_type === "datetime") value.value_datetime = raw ? new Date(raw).toISOString() : null;
+      else value.value_text = raw || null;
+      return value;
+    });
+    setIssues(invalid); setFailure(null);
+    if (invalid.length) { invalid[0].control?.focus(); return; }
+    try {
+      const result = await saveDmsDocumentMetadataValues(documentId, payload);
+      if (!result.success) { setFailure("Metadata was not saved. Check your entries and document access, then try again."); return; }
+      toast.success("Metadata saved"); onSaved();
+    } catch { setFailure("The save could not be confirmed. Your entries are still here. Check the document before retrying."); }
+  };
+  return <ERPChildDialogForm open onOpenChange={open => { if (!open) onClose(); }} mode="edit" title="Edit document metadata" isDirty={isDirty} onSubmit={save}>
+    <div ref={body} className="space-y-4">
+      <FormErrorSummary issues={issues} onReveal={issue => issue.control?.focus()} />
+      {failure && <p role="alert" className="text-sm text-destructive">{failure}</p>}
+      {snapshot.definitions.map(def => <MetadataField key={def.id} id={`${prefix}-${def.id}`} def={def} value={values[def.id] ?? ""} onChange={value => {
+        setValues(previous => ({...previous,[def.id]:value}));
+        setIssues(previous => previous.filter(issue => issue.control?.getAttribute("data-metadata-id") !== String(def.id)));
+      }} />)}
     </div>
-  );
+  </ERPChildDialogForm>;
+}
+
+function MetadataField({ id, def, value, onChange }: { id: string; def: DmsMetadataDefinitionRow; value: string; onChange: (value: string) => void }) {
+  const rawOptions = (def.options_json as { values?: unknown })?.values;
+  const options = Array.isArray(rawOptions) ? [...new Set(rawOptions.filter((item): item is string => typeof item === "string" && !!item))] : [];
+  const native = { id, name: `metadata_${def.id}`, "data-metadata-id": def.id, required: def.is_required, "aria-label": def.field_label_en };
+  return <div className="space-y-1">
+    <Label htmlFor={id}>{def.field_label_en}{def.is_required && <span aria-hidden="true"> *</span>}</Label>
+    {def.help_text_en && <p className="text-sm text-muted-foreground">{def.help_text_en}</p>}
+    {def.field_type === "boolean" ? <div className="flex items-center gap-2"><Switch id={id} aria-label={def.field_label_en} checked={value === "true"} onCheckedChange={checked => onChange(checked ? "true" : "false")} /><span className="text-sm">{value === "true" ? "Yes" : "No"}</span></div>
+      : def.field_type === "select" && options.length ? <Select value={value} onValueChange={next => onChange(next ?? "")}><SelectTrigger id={id} aria-label={def.field_label_en} aria-required={def.is_required} data-workspace-field={`metadata_${def.id}`} data-workspace-required={def.is_required} data-workspace-empty={!value}><SelectValue placeholder="Select…" /></SelectTrigger><SelectContent>{options.map(option => <SelectItem key={option} value={option}>{option}</SelectItem>)}</SelectContent></Select>
+      : def.field_type === "multi_select" && options.length ? <select {...native} multiple value={value.split(",").filter(Boolean)} onChange={event => onChange(Array.from(event.target.selectedOptions, option=>option.value).join(","))} className="w-full min-h-24 rounded-sm border border-input bg-background p-2 text-sm focus-visible:outline-2 focus-visible:outline-primary">{options.map(option => <option key={option} value={option}>{option}</option>)}</select>
+      : ["textarea","json"].includes(def.field_type) ? <Textarea {...native} value={value} onChange={event => onChange(event.target.value)} rows={4} dir={def.field_type === "json" ? "ltr" : "auto"} />
+      : <Input {...native} type={["number","currency"].includes(def.field_type) ? "number" : def.field_type === "datetime" ? "datetime-local" : def.field_type === "date" ? "date" : "text"} step="any" value={value} onChange={event => onChange(event.target.value)} dir="auto" />}
+  </div>;
 }

@@ -1,4 +1,5 @@
 "use client";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,11 +37,12 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export function CandidateOverviewTab({ candidate, canManage }: Props) {
-  const { data: summaryRes, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.recruitment.candidate(candidate.id),
     queryFn: () => getCandidateSummary(candidate.id),
     staleTime: 30_000,
   });
+  const { data: summaryRes, isLoading } = uiRead1;
 
   const summary = summaryRes?.data;
 
@@ -52,7 +54,7 @@ export function CandidateOverviewTab({ candidate, canManage }: Props) {
   ];
 
   return (
-    <div className="p-6 space-y-6">
+    <QueryReadBoundary queries={[uiRead1]}><div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-start gap-4">
         <div className="flex-shrink-0 w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center">
@@ -135,7 +137,7 @@ export function CandidateOverviewTab({ candidate, canManage }: Props) {
           </CardContent>
         </Card>
       )}
-    </div>
+    </div></QueryReadBoundary>
   );
 }
 

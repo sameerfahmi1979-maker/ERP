@@ -126,7 +126,7 @@ export function DmsBrowserPreview({ document: doc }: DmsBrowserPreviewProps) {
       {doc.files.length > 1 && (
         <div className="flex gap-1.5 px-4 py-2 border-b border-border/60 overflow-x-auto shrink-0">
           {doc.files.map((f, i) => (
-            <button
+            <button aria-label={f.fileName}
               key={f.id}
               onClick={() => setActiveFileIndex(i)}
               className={cn(

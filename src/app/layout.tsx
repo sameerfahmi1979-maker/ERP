@@ -1,17 +1,11 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import { AppProviders } from "@/components/layout/app-providers";
 import { AppBrandingThemeStyle } from "@/components/branding/app-branding-theme-style";
 import { loadRuntimeAppBranding } from "@/lib/branding/load-runtime-app-branding";
 import "./globals.css";
+import "@/components/design-system/algt-foundation.css";
 
 export const dynamic = "force-dynamic";
-
-const inter = Inter({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-inter",
-});
 
 export async function generateMetadata(): Promise<Metadata> {
   const branding = await loadRuntimeAppBranding();
@@ -45,7 +39,7 @@ export default async function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${inter.variable} h-full antialiased`}
+      className="h-full antialiased"
     >
       <body className="min-h-full flex flex-col font-sans" suppressHydrationWarning>
         <AppBrandingThemeStyle branding={branding} />

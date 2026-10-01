@@ -1,4 +1,6 @@
 "use client";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import type { ColumnDef } from "@tanstack/react-table";
 
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { Badge } from "@/components/ui/badge";
@@ -108,7 +110,7 @@ export function PartyDmsDocumentsTab({
   const router = useRouter();
   const queryClient = useQueryClient();
 
-  const { data: documents, isLoading } = useQuery({
+  const { data: documents, isLoading, error: loadError, refetch } = useQuery({
     queryKey: queryKeys.dms.partyDmsDocuments(partyId),
     queryFn: async () => {
       const result = await getPartyDmsDocuments(partyId);
@@ -219,6 +221,64 @@ export function PartyDmsDocumentsTab({
     router.push(`/dms/documents/record/new?entity_type=party&entity_id=${partyId}`);
   }, [router, partyId]);
 
+  const columns: ColumnDef<DmsEntityDocumentRow>[] = [
+{ id:"document",header:"Document",size:400,accessorFn:doc=>[doc.document_no,doc.title,doc.document_type_name,doc.legacy_document_code].filter(Boolean).join(" "),cell:({row})=>{const doc=row.original;return (<div className="space-y-1.5 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge variant="outline" className="text-xs font-mono shrink-0">
+                    DMS
+                  </Badge>
+                  <span className="font-mono text-xs text-muted-foreground">{doc.document_no}</span>
+                  {doc.legacy_document_code && (
+                    <span className="text-xs text-muted-foreground">
+                      Legacy: {doc.legacy_document_code}
+                    </span>
+                  )}
+                  <DocumentStatusBadge status={doc.status} />
+                  <MigratedBadge migrated={!!doc.migrated_from_table} />
+                  <FileBadge hasFiles={doc.has_files} filesCount={doc.files_count} />
+                  <ExpiryBadge expiryDate={doc.expiry_date} />
+                </div>
+
+                <div className="font-medium text-sm truncate">{doc.title}</div>
+
+                <div className="text-xs text-muted-foreground flex flex-wrap gap-2">
+                  {doc.document_type_name && <span>{doc.document_type_name}</span>}
+                  {doc.issue_date && (
+                    <span>· Issued: {format(new Date(doc.issue_date), "dd MMM yyyy")}</span>
+                  )}
+                  {doc.expiry_date && (
+                    <span>· Expires: {format(new Date(doc.expiry_date), "dd MMM yyyy")}</span>
+                  )}
+                </div>
+              </div>);}},
+{accessorKey:"status",header:"Status"},
+{accessorKey:"expiry_date",header:"Expiry date",meta:{filter:{type:"date"}}},
+{id:"actions",header:"Actions",enableSorting:false,enableHiding:false,cell:({row})=>{const doc=row.original;return (<div className="flex gap-1 shrink-0">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs gap-1"
+                  onClick={() => handleOpenInDms(doc.document_id)}
+                  title="Open in DMS"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Open
+                </Button>
+                {!disabled && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-destructive hover:text-destructive"
+                    onClick={() => handleUnlink(doc)}
+                    title="Unlink from party" aria-label="Unlink from party"
+                  >
+                    <Unlink className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>);}}];
+
   if (isLoading) return <Skeleton className="h-32 w-full" />;
 
   return (
@@ -266,77 +326,7 @@ export function PartyDmsDocumentsTab({
       )}
 
       {/* Documents list */}
-      {(documents ?? []).length === 0 ? (
-        <div className="rounded-md border border-dashed border-muted-foreground/30 py-8 text-center text-sm text-muted-foreground">
-          <FileText className="mx-auto h-8 w-8 opacity-30 mb-2" />
-          No DMS documents linked to this party yet.
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {(documents ?? []).map((doc) => (
-            <div
-              key={doc.link_id}
-              className="rounded-md border p-3 flex items-start justify-between gap-3 hover:border-muted-foreground/50 transition-colors"
-            >
-              <div className="space-y-1.5 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Badge variant="outline" className="text-xs font-mono shrink-0">
-                    DMS
-                  </Badge>
-                  <span className="font-mono text-xs text-muted-foreground">{doc.document_no}</span>
-                  {doc.legacy_document_code && (
-                    <span className="text-xs text-muted-foreground">
-                      Legacy: {doc.legacy_document_code}
-                    </span>
-                  )}
-                  <DocumentStatusBadge status={doc.status} />
-                  <MigratedBadge migrated={!!doc.migrated_from_table} />
-                  <FileBadge hasFiles={doc.has_files} filesCount={doc.files_count} />
-                  <ExpiryBadge expiryDate={doc.expiry_date} />
-                </div>
-
-                <div className="font-medium text-sm truncate">{doc.title}</div>
-
-                <div className="text-xs text-muted-foreground flex flex-wrap gap-2">
-                  {doc.document_type_name && <span>{doc.document_type_name}</span>}
-                  {doc.issue_date && (
-                    <span>· Issued: {format(new Date(doc.issue_date), "dd MMM yyyy")}</span>
-                  )}
-                  {doc.expiry_date && (
-                    <span>· Expires: {format(new Date(doc.expiry_date), "dd MMM yyyy")}</span>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex gap-1 shrink-0">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs gap-1"
-                  onClick={() => handleOpenInDms(doc.document_id)}
-                  title="Open in DMS"
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  Open
-                </Button>
-                {!disabled && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-destructive hover:text-destructive"
-                    onClick={() => handleUnlink(doc)}
-                    title="Unlink from party"
-                  >
-                    <Unlink className="h-3.5 w-3.5" />
-                  </Button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      {loadError ? <div role="alert"><p>Linked documents could not be loaded.</p><Button type="button" onClick={()=>void refetch()}>Try again</Button></div> : <ERPDataTable tableId={`party.dms:${partyId}`} resultsLabel="Linked documents" data={documents ?? []} columns={columns} enableRowSelection={false}/>}
 
       {/* Attach existing DMS document dialog */}
       <ERPChildDialogForm

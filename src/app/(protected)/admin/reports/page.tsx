@@ -10,6 +10,7 @@ import { listReportRegistry } from "@/server/actions/reports/registry";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { ReportRegistryTable } from "@/features/report-center/report-registry-table";
 import { Settings } from "lucide-react";
+import { LoadError } from "@/components/erp/load-error";
 
 export default async function ReportCenterPage() {
   const ctx = await getAuthContext();
@@ -18,6 +19,7 @@ export default async function ReportCenterPage() {
   }
 
   const result = await listReportRegistry();
+  if (!result.success) return <LoadError title="Report catalogue" retryHref="/admin/reports" />;
   const entries = result.data ?? [];
 
   const canManage = hasPermission(ctx, "reports.manage");

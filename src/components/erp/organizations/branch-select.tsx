@@ -76,6 +76,7 @@ export function BranchSelect({
       noResultsText="No results found"
       className={className}
       name={name}
+      ariaLabel="Branch"
     />
   );
 }

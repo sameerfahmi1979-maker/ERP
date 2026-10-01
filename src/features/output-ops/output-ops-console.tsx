@@ -12,7 +12,8 @@
  * exclusively through `getIssuanceDownloadUrl`.
  */
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition, useRef } from "react";
+import { ConfiguredRow, EditColumns, EditFilters, useListColumns, type ListColumn } from "@/components/erp/table/list-controls";
 import {
   Activity,
   AlertTriangle,
@@ -74,6 +75,7 @@ const STATE_STYLES: Record<string, string> = {
 
 const CLASSES = ["A", "B", "C", "D", "E", "F", "G"] as const;
 const PAGE_SIZE = 25;
+const OPS_COLUMNS:ListColumn[]=[['id','ID'],['output','Output'],['class','Class'],['state','State'],['serial','Serial'],['qr','QR'],['generated','Generated'],['duration','Duration'],['actions','Actions']].map(([id,label])=>({id,label,width:['output','actions','serial'].includes(id)?220:150,visible:true,required:id==='id'||id==='actions'}));
 
 function StateChip({ state, revoked, superseded }: { state: string | null; revoked?: boolean; superseded?: boolean }) {
   if (revoked) {
@@ -100,6 +102,11 @@ function fmtDate(iso: string | null | undefined): string {
 }
 
 export function OutputOpsConsole() {
+  const columns=useListColumns('reports.output-ops:v1',OPS_COLUMNS);
+  const [loadFailed,setLoadFailed]=useState(false);
+  const latest=useRef(0);
+  const latestDetail=useRef(0);
+  const actionFlight=useRef(false);
   const [metrics, setMetrics] = useState<OpsMetrics | null>(null);
   const [rows, setRows] = useState<OpsIssuanceRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -121,7 +128,9 @@ export function OutputOpsConsole() {
   const [actionPending, setActionPending] = useState(false);
 
   const load = useCallback(() => {
+    const request=++latest.current;
     startLoading(async () => {
+      try {
       const [m, l] = await Promise.all([
         getOpsMetrics(),
         listOpsIssuances({
@@ -132,6 +141,8 @@ export function OutputOpsConsole() {
           search: search || undefined,
         }),
       ]);
+      if(request!==latest.current)return;
+      setLoadFailed(!m.success || !l.success);
       if (m.success && m.data) setMetrics(m.data);
       else if (m.error) toast.error("Metrics failed", { description: m.error });
       if (l.success && l.data) {
@@ -140,6 +151,7 @@ export function OutputOpsConsole() {
         setCanRetry(l.data.canRetry);
         setCanRevoke(l.data.canRevoke);
       } else if (l.error) toast.error("History failed", { description: l.error });
+      } catch { if(request===latest.current){setLoadFailed(true);setCanRetry(false);setCanRevoke(false);} }
     });
   }, [page, stateFilter, classFilter, search]);
 
@@ -148,23 +160,27 @@ export function OutputOpsConsole() {
   }, [load]);
 
   const openDetail = async (row: OpsIssuanceRow) => {
+    const request=++latestDetail.current;
     setDetailOpen(true);
     setDetail(null);
+    try {
     const res = await getOpsIssuanceDetail(row.id);
+    if(request!==latestDetail.current)return;
     if (res.success && res.data) setDetail(res.data);
     else {
       toast.error("Detail failed", { description: res.error });
       setDetailOpen(false);
     }
+    } catch { if(request===latestDetail.current){toast.error("Issuance details could not be loaded. Try opening the record again.");setDetailOpen(false);} }
   };
 
   const runAction = async () => {
-    if (!actionTarget) return;
+    if (!actionTarget || actionFlight.current || loadFailed || isLoading) return;
     if (actionReason.trim().length < 5) {
       toast.error("A reason of at least 5 characters is required.");
       return;
     }
-    setActionPending(true);
+    actionFlight.current=true;setActionPending(true);
     try {
       let ok = false;
       if (actionTarget.kind === "retry") {
@@ -191,7 +207,9 @@ export function OutputOpsConsole() {
         setActionReason("");
         load();
       }
-    } finally {
+    } catch { toast.error("The action could not be confirmed. Refresh this record before retrying."); }
+    finally {
+      actionFlight.current=false;
       setActionPending(false);
     }
   };
@@ -308,7 +326,7 @@ export function OutputOpsConsole() {
       <div className="flex flex-wrap items-end gap-2">
         <div className="w-52">
           <Label className="text-[11px] text-muted-foreground">Lifecycle state</Label>
-          <select
+          <select aria-label="Lifecycle state"
             className="mt-1 h-8 w-full rounded-md border bg-background px-2 text-xs"
             value={stateFilter}
             onChange={(e) => { setPage(0); setStateFilter(e.target.value); }}
@@ -321,7 +339,7 @@ export function OutputOpsConsole() {
         </div>
         <div className="w-36">
           <Label className="text-[11px] text-muted-foreground">Class</Label>
-          <select
+          <select aria-label="Class"
             className="mt-1 h-8 w-full rounded-md border bg-background px-2 text-xs"
             value={classFilter}
             onChange={(e) => { setPage(0); setClassFilter(e.target.value); }}
@@ -346,54 +364,62 @@ export function OutputOpsConsole() {
       </div>
 
       {/* ── History table ───────────────────────────────────────────────── */}
-      <div className="rounded-lg border overflow-x-auto">
-        <table className="w-full text-xs">
+      {loadFailed && <p role="alert" className="border border-destructive p-3 text-sm">Output operations could not be refreshed. Displayed records may be outdated. Refresh before taking action.</p>}
+      <div className="flex flex-wrap gap-2">
+        <EditColumns columns={columns.columns} defaults={OPS_COLUMNS} onApply={columns.setColumns}/>
+        <EditFilters definitions={[{id:'state',label:'Lifecycle state',type:'select',options:LIFECYCLE_STATES.map(value=>({value,label:value.replaceAll('_',' ')}))},{id:'class',label:'Document class',type:'select',options:CLASSES.map(value=>({value,label:'Class '+value}))},{id:'search',label:'Serial, file or output',type:'text'}]}
+          values={{state:stateFilter,class:classFilter,search}} scopeLabel="Filters are applied on the server across authorized issuance history, not just this page."
+          onApply={values=>{setPage(0);setStateFilter(values.state??'');setClassFilter(values.class??'');setSearch(values.search??'');}}/>
+      </div>
+      <div role="region" aria-label="Output issuance history" tabIndex={0} className="rounded-sm border overflow-x-auto">
+        <table className="w-full table-fixed text-sm" style={{minWidth:columns.visible.reduce((sum,c)=>sum+c.width,0)}}>
+          <colgroup>{columns.visible.map(c=><col key={c.id} style={{width:c.width}}/>)}</colgroup>
           <thead className="bg-muted/40 text-muted-foreground">
-            <tr>
-              <th className="px-3 py-2 text-left font-medium">ID</th>
-              <th className="px-3 py-2 text-left font-medium">Output</th>
-              <th className="px-3 py-2 text-left font-medium">Class</th>
-              <th className="px-3 py-2 text-left font-medium">State</th>
-              <th className="px-3 py-2 text-left font-medium">Serial</th>
-              <th className="px-3 py-2 text-left font-medium">QR</th>
-              <th className="px-3 py-2 text-left font-medium">Generated</th>
-              <th className="px-3 py-2 text-left font-medium">Duration</th>
-              <th className="px-3 py-2 text-right font-medium">Actions</th>
-            </tr>
+            <ConfiguredRow columns={columns.columns}>
+              <th data-column="id" className="px-3 py-2 text-left font-medium">ID</th>
+              <th data-column="output" className="px-3 py-2 text-left font-medium">Output</th>
+              <th data-column="class" className="px-3 py-2 text-left font-medium">Class</th>
+              <th data-column="state" className="px-3 py-2 text-left font-medium">State</th>
+              <th data-column="serial" className="px-3 py-2 text-left font-medium">Serial</th>
+              <th data-column="qr" className="px-3 py-2 text-left font-medium">QR</th>
+              <th data-column="generated" className="px-3 py-2 text-left font-medium">Generated</th>
+              <th data-column="duration" className="px-3 py-2 text-left font-medium">Duration</th>
+              <th data-column="actions" className="px-3 py-2 text-right font-medium">Actions</th>
+            </ConfiguredRow>
           </thead>
           <tbody>
             {rows.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">
+                <td colSpan={columns.visible.length} className="px-3 py-8 text-center text-muted-foreground">
                   {isLoading ? "Loading…" : "No issuances match the current filters."}
                 </td>
               </tr>
             )}
             {rows.map((r) => (
-              <tr key={r.id} className="border-t hover:bg-muted/20 cursor-pointer" onClick={() => openDetail(r)}>
-                <td className="px-3 py-2 font-mono">#{r.id}</td>
-                <td className="px-3 py-2">
+              <ConfiguredRow columns={columns.columns} key={r.id} className="border-t hover:bg-muted/20">
+                <td data-column="id" className="px-3 py-2 font-mono"><button type="button" className="text-primary underline p-2" onClick={()=>openDetail(r)} aria-label={`Open issuance ${r.id}`}>#{r.id}</button></td>
+                <td data-column="output" className="px-3 py-2">
                   <div className="font-medium">{r.output_code ?? r.template_key}</div>
                   <div className="text-muted-foreground">{r.source_record_type} #{r.source_record_id} · Co {r.owner_company_id}</div>
                 </td>
-                <td className="px-3 py-2">{r.document_class ?? "—"}</td>
-                <td className="px-3 py-2">
+                <td data-column="class" className="px-3 py-2">{r.document_class ?? "—"}</td>
+                <td data-column="state" className="px-3 py-2">
                   <StateChip state={r.lifecycle_state} revoked={!!r.revoked_at} superseded={r.superseded_by_id != null} />
                 </td>
-                <td className="px-3 py-2 font-mono text-[10px]">
+                <td data-column="serial" className="px-3 py-2 font-mono text-[10px]">
                   {r.serial_no ?? "—"}
                   {r.serial_status === "voided" && <span className="ml-1 text-red-500">(voided)</span>}
                 </td>
-                <td className="px-3 py-2">
+                <td data-column="qr" className="px-3 py-2">
                   {r.qr_status ? (
                     <span className="inline-flex items-center gap-1"><QrCode className="h-3 w-3" />{r.qr_status}</span>
                   ) : "—"}
                 </td>
-                <td className="px-3 py-2 whitespace-nowrap">{fmtDate(r.generated_at)}</td>
-                <td className="px-3 py-2">{fmtMs(r.total_duration_ms)}</td>
-                <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
+                <td data-column="generated" className="px-3 py-2 whitespace-nowrap">{fmtDate(r.generated_at)}</td>
+                <td data-column="duration" className="px-3 py-2">{fmtMs(r.total_duration_ms)}</td>
+                <td data-column="actions" className="px-3 py-2 text-right">
                   <div className="flex items-center gap-1 justify-end">
-                    {canRetry && (r.lifecycle_state === "failed_retryable" || r.lifecycle_state === "reconciliation_required") && (
+                    {canRetry && !loadFailed && !isLoading && (r.lifecycle_state === "failed_retryable" || r.lifecycle_state === "reconciliation_required") && (
                       <Button
                         variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1"
                         onClick={() => { setActionReason(""); setActionTarget({ kind: "retry", row: r }); }}
@@ -401,7 +427,7 @@ export function OutputOpsConsole() {
                         <RotateCcw className="h-3 w-3" /> Retry
                       </Button>
                     )}
-                    {canRetry && (r.lifecycle_state === "pending" || r.lifecycle_state === "failed_retryable" || r.lifecycle_state === "reconciliation_required") && (
+                    {canRetry && !loadFailed && !isLoading && (r.lifecycle_state === "pending" || r.lifecycle_state === "failed_retryable" || r.lifecycle_state === "reconciliation_required") && (
                       <Button
                         variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1"
                         onClick={() => { setActionReason(""); setActionTarget({ kind: "cancel", row: r }); }}
@@ -409,7 +435,7 @@ export function OutputOpsConsole() {
                         <Ban className="h-3 w-3" /> Cancel
                       </Button>
                     )}
-                    {canRevoke && r.lifecycle_state === "issued" && !r.revoked_at && (
+                    {canRevoke && !loadFailed && !isLoading && r.lifecycle_state === "issued" && !r.revoked_at && (
                       <Button
                         variant="outline" size="sm"
                         className="h-6 px-2 text-[10px] gap-1 text-red-600 hover:text-red-700"
@@ -420,7 +446,7 @@ export function OutputOpsConsole() {
                     )}
                   </div>
                 </td>
-              </tr>
+              </ConfiguredRow>
             ))}
           </tbody>
         </table>
@@ -430,10 +456,10 @@ export function OutputOpsConsole() {
       <div className="flex items-center justify-between text-xs text-muted-foreground">
         <span>Page {page + 1} of {pageCount}</span>
         <div className="flex gap-1">
-          <Button variant="outline" size="sm" className="h-7 px-2" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
+          <Button variant="outline" size="sm" className="h-7 px-2" aria-label="Previous issuance page" disabled={isLoading || page === 0} onClick={() => setPage((p) => p - 1)}>
             <ChevronLeft className="h-3.5 w-3.5" />
           </Button>
-          <Button variant="outline" size="sm" className="h-7 px-2" disabled={page + 1 >= pageCount} onClick={() => setPage((p) => p + 1)}>
+          <Button variant="outline" size="sm" className="h-7 px-2" aria-label="Next issuance page" disabled={isLoading || page + 1 >= pageCount} onClick={() => setPage((p) => p + 1)}>
             <ChevronRight className="h-3.5 w-3.5" />
           </Button>
         </div>
@@ -442,7 +468,7 @@ export function OutputOpsConsole() {
       {/* ── Detail dialog ───────────────────────────────────────────────── */}
       <ERPChildDialogForm
         open={detailOpen}
-        onOpenChange={setDetailOpen}
+        onOpenChange={open=>{if(!open)latestDetail.current++;setDetailOpen(open);}}
         title={detail ? `Issuance #${detail.id} — ${detail.output_code ?? detail.template_key}` : "Issuance detail"}
         subtitle="Operational metadata, lifecycle timings, QR links, and snapshots"
         icon={<Activity className="h-5 w-5" />}
@@ -575,7 +601,7 @@ export function OutputOpsConsole() {
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <Label className="text-xs">Reason *</Label>
-            <Textarea
+            <Textarea aria-label="Reason" required minLength={5}
               className="mt-1 text-sm"
               rows={3}
               placeholder="Why is this operational action required? (min 5 characters)"

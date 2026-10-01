@@ -1,6 +1,7 @@
 "use client";
+import { RecordCollection } from "@/components/erp/table/record-collection";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -10,13 +11,18 @@ import type { AiFeatureFlag } from "@/lib/ai/providers/types";
 import { updateAiFeatureFlag } from "@/server/actions/settings/ai-settings";
 
 interface AiFeatureFlagsPanelProps {
+  canManage?: boolean;
   flags: AiFeatureFlag[];
 }
 
-export function AiFeatureFlagsPanel({ flags }: AiFeatureFlagsPanelProps) {
+export function AiFeatureFlagsPanel({ flags, canManage=false }: AiFeatureFlagsPanelProps) {
   const [updating, setUpdating] = useState<string | null>(null);
+  const flight = useRef(false);
+  const [uncertain, setUncertain] = useState(false);
 
   const handleToggle = async (flag: AiFeatureFlag, enabled: boolean) => {
+    if (!canManage || flight.current || uncertain) return;
+    flight.current = true;
     setUpdating(flag.featureCode);
     try {
       const result = await updateAiFeatureFlag(flag.featureCode, { is_enabled: enabled });
@@ -27,18 +33,23 @@ export function AiFeatureFlagsPanel({ flags }: AiFeatureFlagsPanelProps) {
             : `${flag.featureName} disabled`
         );
       } else {
-        toast.error(result.error ?? "Failed to update feature flag");
+        toast.error("Feature change was not accepted. Check your permissions.");
       }
+    } catch {
+      setUncertain(true);
     } finally {
+      flight.current = false;
       setUpdating(null);
     }
   };
 
   const handleReviewToggle = async (flag: AiFeatureFlag, requiresReview: boolean) => {
+    if (!canManage || flight.current || uncertain) return;
     if (!requiresReview && !confirm(
       `Disabling human review for "${flag.featureName}" means AI results will be auto-accepted. Are you sure?`
     )) return;
 
+    flight.current = true;
     setUpdating(flag.featureCode);
     try {
       const result = await updateAiFeatureFlag(flag.featureCode, {
@@ -47,15 +58,19 @@ export function AiFeatureFlagsPanel({ flags }: AiFeatureFlagsPanelProps) {
       if (result.success) {
         toast.success(`Human review ${requiresReview ? "enabled" : "disabled"} for ${flag.featureName}`);
       } else {
-        toast.error(result.error ?? "Failed to update");
+        toast.error("Review setting change was not accepted. Check your permissions.");
       }
+    } catch {
+      setUncertain(true);
     } finally {
+      flight.current = false;
       setUpdating(null);
     }
   };
 
   return (
     <div className="space-y-4">
+      {uncertain && <div role="alert" className="border border-destructive p-3 text-sm">The setting change could not be confirmed. Reload and check its current state before retrying.</div>}
       <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/20 p-3">
         <div className="flex items-start gap-2 text-xs text-amber-800 dark:text-amber-200">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -68,8 +83,8 @@ export function AiFeatureFlagsPanel({ flags }: AiFeatureFlagsPanelProps) {
       </div>
 
       <div className="grid gap-3">
-        {flags.map((flag) => {
-          const isUpdating = updating === flag.featureCode;
+        {<RecordCollection id="special.ai-feature-flags-panel" rows={flags} fields={[{"id":"featureCode","path":"featureCode","label":"Feature"},{"id":"featureName","path":"featureName","label":"Name"},{"id":"isEnabled","path":"isEnabled","label":"Enabled"}]} renderRecord={(flag) => {
+          const isUpdating = !canManage || updating !== null || uncertain;
           return (
             <Card key={flag.featureCode}>
               <CardHeader className="pb-2 pt-4">
@@ -127,7 +142,7 @@ export function AiFeatureFlagsPanel({ flags }: AiFeatureFlagsPanelProps) {
               </CardContent>
             </Card>
           );
-        })}
+        }} />}
       </div>
     </div>
   );

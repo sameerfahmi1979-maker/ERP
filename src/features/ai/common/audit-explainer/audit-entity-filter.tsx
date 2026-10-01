@@ -38,7 +38,7 @@ export function AuditEntityFilter({ entityType, entityId, onFilterChange, disabl
     <div className="flex items-end gap-3 flex-wrap">
       <div className="flex flex-col gap-1">
         <Label className="text-xs text-slate-500">Entity Type</Label>
-        <select
+        <select aria-label="Entity Type"
           value={entityType ?? ""}
           onChange={(e) => handleTypeChange(e.target.value)}
           disabled={disabled}

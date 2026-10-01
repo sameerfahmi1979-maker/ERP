@@ -1,4 +1,5 @@
 "use client";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 /**
  * DMS 12.1 — DmsDocumentContentSection
@@ -67,7 +68,7 @@ export function DmsDocumentContentSection({
   const queryClient = useQueryClient();
   const [resyncing, setResyncing] = useState(false);
 
-  const { data: contentRow, isLoading, error: queryError } = useQuery<DocumentContentRow | null>({
+  const uiRead1 = useQuery<DocumentContentRow | null>({
     queryKey: queryKeys.dms.documentContent(documentId),
     queryFn: async () => {
       const r = await getDocumentContentText(documentId);
@@ -82,6 +83,7 @@ export function DmsDocumentContentSection({
     staleTime: 30_000,
     retry: false,
   });
+ const { data: contentRow, isLoading, error: queryError } = uiRead1;
 
   // ── Resync handler ───────────────────────────────────────────────────────────
 
@@ -112,10 +114,10 @@ export function DmsDocumentContentSection({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
+      <QueryReadBoundary queries={[uiRead1]}><div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
         <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
         Loading extracted text…
-      </div>
+      </div></QueryReadBoundary>
     );
   }
 
@@ -123,7 +125,7 @@ export function DmsDocumentContentSection({
   if (queryError || row === null) {
     const isAccessDenied = (queryError instanceof Error && queryError.message.includes("Access denied")) || row === null;
     return (
-      <div className="flex flex-col items-center gap-3 py-12 text-center">
+      <QueryReadBoundary queries={[uiRead1]}><div className="flex flex-col items-center gap-3 py-12 text-center">
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
           <Lock className="h-5 w-5 text-muted-foreground" />
         </div>
@@ -137,14 +139,14 @@ export function DmsDocumentContentSection({
               : (queryError instanceof Error ? queryError.message : "An error occurred.")}
           </p>
         </div>
-      </div>
+      </div></QueryReadBoundary>
     );
   }
 
   // No content yet (row is undefined or has no text)
   if (!row || !row.contentText) {
     return (
-      <div className="flex flex-col items-center gap-3 py-12 text-center">
+      <QueryReadBoundary queries={[uiRead1]}><div className="flex flex-col items-center gap-3 py-12 text-center">
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
           <FileText className="h-5 w-5 text-muted-foreground" />
         </div>
@@ -170,7 +172,7 @@ export function DmsDocumentContentSection({
             Resync Extracted Text
           </Button>
         )}
-      </div>
+      </div></QueryReadBoundary>
     );
   }
 
@@ -180,7 +182,7 @@ export function DmsDocumentContentSection({
   const badgeVariant = row.source ? (SOURCE_VARIANTS[row.source] ?? "outline") : "outline";
 
   return (
-    <div className="space-y-4 p-1">
+    <QueryReadBoundary queries={[uiRead1]}><div className="space-y-4 p-1">
       {/* Header row */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
@@ -244,6 +246,6 @@ export function DmsDocumentContentSection({
         className="min-h-[320px] font-mono text-xs leading-relaxed"
         aria-label="Extracted document text"
       />
-    </div>
+    </div></QueryReadBoundary>
   );
 }

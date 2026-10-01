@@ -1,3 +1,4 @@
+import { LoadError } from "@/components/erp/load-error";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { redirect } from "next/navigation";
 import {
@@ -19,6 +20,7 @@ export default async function HrMohreEstablishmentsRoute() {
 
   const canManage = hasPermission(ctx, "hr.settings.manage") || hasPermission(ctx, "hr.admin");
   const result = await listHrMohreEstablishments({});
+  if (!result.success) return <LoadError title="HR records" retryHref="/admin/hr/settings/mohre-establishments" />;
   const data = result.data?.data ?? [];
 
   async function create(input: Parameters<typeof createHrMohreEstablishment>[0]) {

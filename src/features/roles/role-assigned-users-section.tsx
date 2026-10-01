@@ -13,14 +13,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import type { ColumnDef } from "@tanstack/react-table";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { getRoleWithUsersAction, type AssignedUserRow } from "@/server/actions/roles";
 import { removeRoleFromUser } from "@/server/actions/users";
@@ -97,6 +91,69 @@ export function RoleAssignedUsersSection({ roleId, roleName, canManageUsers }: P
 
   const displayed = showInactive ? users : users.filter((u) => u.is_active);
 
+  const columns: ColumnDef<AssignedUserRow>[] = [
+    {id:"user",accessorFn:u=>[u.full_name,u.display_name,u.user_code].filter(Boolean).join(" "),header:"User",enableHiding:false,cell:({row})=>{const u=row.original;return (<>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-medium text-sm">{u.full_name ?? u.display_name ?? "—"}</span>
+                      {u.user_code && (
+                        <span className="text-xs font-mono text-muted-foreground">{u.user_code}</span>
+                      )}
+                    </div>
+                  </>);}},
+    {accessorKey:"email",header:"Email",cell:({row})=>{const u=row.original;return (<>
+                    {u.email ?? "—"}
+                  </>);}},
+    {accessorKey:"status",header:"Status",cell:({row})=>{const u=row.original;return (<>
+                    {u.status ? (
+                      <Badge
+                        variant={STATUS_VARIANT[u.status] ?? "secondary"}
+                        className="text-xs capitalize"
+                      >
+                        {u.status}
+                      </Badge>
+                    ) : "—"}
+                  </>);}},
+    {accessorKey:"scope_label",header:"Scope",cell:({row})=>{const u=row.original;return (<>
+                    <Badge variant="outline" className="text-xs">{u.scope_label}</Badge>
+                  </>);}},
+    {accessorKey:"assigned_at",header:"Assigned at",meta:{filter:{type:"date"}},cell:({row})=>{const u=row.original;return (<>
+                    {u.assigned_at
+                      ? new Date(u.assigned_at).toLocaleDateString("en-GB", {
+                          day: "2-digit", month: "short", year: "numeric",
+                        })
+                      : "—"}
+                  </>);}},
+    {accessorKey:"assigned_by_name",header:"Assigned by",cell:({row})=>{const u=row.original;return (<>
+                    {u.assigned_by_name ?? "—"}
+                  </>);}},
+    {id:"actions",header:"Actions",enableSorting:false,enableHiding:false,cell:({row})=>{const u=row.original;return (<>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0"
+                        onClick={() => handleOpenUser(u)}
+                        title="Open user record"
+                        aria-label="Open user record"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </Button>
+                      {canManageUsers && u.is_active && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                          onClick={() => setDeassignTarget(u)}
+                          title="Remove role from user"
+                          aria-label="Remove role from user"
+                        >
+                          <UserMinus className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  </>);}},
+  ];
+
   if (isLoading) {
     return (
       <div className="space-y-3 p-4">
@@ -126,98 +183,10 @@ export function RoleAssignedUsersSection({ roleId, roleName, canManageUsers }: P
         )}
       </div>
 
-      {displayed.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 py-12 text-muted-foreground">
-          <Users className="h-8 w-8 opacity-30" />
-          <p className="text-sm">
-            {users.length === 0
-              ? `No users are assigned the "${roleName}" role`
-              : "No active assignments to show"}
-          </p>
-        </div>
-      ) : (
-        <div className="rounded-md border overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>User</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Scope</TableHead>
-                <TableHead>Assigned At</TableHead>
-                <TableHead>Assigned By</TableHead>
-                <TableHead className="w-24" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {displayed.map((u) => (
-                <TableRow key={u.user_role_id} className={!u.is_active ? "opacity-60" : undefined}>
-                  <TableCell>
-                    <div className="flex flex-col gap-0.5">
-                      <span className="font-medium text-sm">{u.full_name ?? u.display_name ?? "—"}</span>
-                      {u.user_code && (
-                        <span className="text-xs font-mono text-muted-foreground">{u.user_code}</span>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {u.email ?? "—"}
-                  </TableCell>
-                  <TableCell>
-                    {u.status ? (
-                      <Badge
-                        variant={STATUS_VARIANT[u.status] ?? "secondary"}
-                        className="text-xs capitalize"
-                      >
-                        {u.status}
-                      </Badge>
-                    ) : "—"}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="text-xs">{u.scope_label}</Badge>
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                    {u.assigned_at
-                      ? new Date(u.assigned_at).toLocaleDateString("en-GB", {
-                          day: "2-digit", month: "short", year: "numeric",
-                        })
-                      : "—"}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {u.assigned_by_name ?? "—"}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0"
-                        onClick={() => handleOpenUser(u)}
-                        title="Open user record"
-                        aria-label="Open user record"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </Button>
-                      {canManageUsers && u.is_active && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 w-7 p-0 text-destructive hover:text-destructive"
-                          onClick={() => setDeassignTarget(u)}
-                          title="Remove role from user"
-                          aria-label="Remove role from user"
-                        >
-                          <UserMinus className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      {error ? <div role="alert" className="rounded border p-4"><p>Assigned users could not be loaded. No assignments have been changed.</p><Button variant="outline" onClick={()=>void load()}>Try again</Button></div> :
+        <ERPDataTable tableId={`role-users:${roleId}`} resultsLabel="Assigned users" data={displayed} columns={columns}
+          enableRowSelection={false} emptyMessage={`No matching assignments for ${roleName}.`} />}
+
 
       <AlertDialog open={!!deassignTarget} onOpenChange={(o) => !o && setDeassignTarget(null)}>
         <AlertDialogContent>

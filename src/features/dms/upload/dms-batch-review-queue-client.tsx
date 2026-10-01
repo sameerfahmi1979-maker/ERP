@@ -1,6 +1,8 @@
 "use client";
+import { DmsListTools, useDmsListView, type DmsListField } from "@/features/dms/dms-list-view";
+import { ConfiguredRow } from "@/components/erp/table/list-controls";
 
-import { useState, useTransition, useCallback, useRef, type MouseEvent as ReactMouseEvent } from "react";
+import { useState, useTransition, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/use-workspace";
@@ -63,16 +65,6 @@ function StatCard({ label, value, tone }: { label: string; value: number; tone?:
 // resizable and sortable. Checkbox / # / Actions stay fixed-width.
 type SortableColKey = "title" | "docNo" | "type" | "confidence" | "status";
 
-const DEFAULT_COL_WIDTHS: Record<SortableColKey, number> = {
-  title: 200,
-  docNo: 110,
-  type: 130,
-  confidence: 100,
-  status: 120,
-};
-
-const MIN_COL_WIDTH = 70;
-
 const CONFIDENCE_RANK: Record<string, number> = {
   needs_manual_review: 0,
   low: 1,
@@ -90,24 +82,21 @@ function draftStatusSortLabel(d: DmsBatchDraftRow): string {
 function SortableTh({
   label,
   colKey,
-  width,
   sortDir,
   onSort,
-  onResizeStart,
   align = "left",
+  "data-column": columnId,
 }: {
+  "data-column"?: string;
   label: string;
   colKey: SortableColKey;
-  width: number;
   sortDir: SortDir | null;
   onSort: (key: string) => void;
-  onResizeStart: (key: SortableColKey, e: ReactMouseEvent) => void;
   align?: "left" | "right";
 }) {
   return (
-    <th
+    <th data-column={columnId} aria-sort={sortDir === "asc" ? "ascending" : sortDir === "desc" ? "descending" : "none"}
       className="relative select-none px-3 py-2 font-medium"
-      style={{ width }}
     >
       <button
         type="button"
@@ -126,25 +115,26 @@ function SortableTh({
           <ArrowUpDown className="h-3 w-3 opacity-40" />
         )}
       </button>
-      <div
-        onMouseDown={(e) => onResizeStart(colKey, e)}
-        className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize touch-none hover:bg-primary/50"
-      />
     </th>
   );
 }
+
+const BATCH_FIELDS: DmsListField[] = [{"id":"selection","label":"Selection","required":true,"width":48},{"id":"index","label":"Row","width":48},{"id":"title","label":"File / AI title","path":"searchTitle","required":true,"width":260},{"id":"docNo","label":"Document number","path":"documentNo","width":160},{"id":"type","label":"Type","path":"documentTypeName","width":160},{"id":"confidence","label":"Confidence","path":"confidenceLabel","width":140},{"id":"status","label":"Status","path":"searchStatus","width":160},{"id":"actions","label":"Actions","required":true,"width":180}];
 
 export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
   const router = useRouter();
   const { openTab } = useWorkspace();
   const batchReviewRoute = `/dms/inbox/batch/${batch.batch_code}`;
-  const [drafts] = useState<DmsBatchDraftRow[]>(initialDrafts);
+  const drafts = initialDrafts;
+  const listView = useDmsListView(`batch-review:${batch.id}`, drafts.map(d => ({ ...d, searchTitle: `${d.aiTitle ?? ""} ${d.originalFilename}`, searchStatus: draftStatusSortLabel(d) })), BATCH_FIELDS);
   const [isPending, startTransition] = useTransition();
   const [busyId, setBusyId] = useState<number | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const flight = useRef(false);
+  const [failure, setFailure] = useState<string | null>(null);
 
   // ── Sorting (click column header) ──────────────────────────────────────
-  const draftsTable = useSortPaginate(drafts, {
+  const draftsTable = useSortPaginate(listView.rows, {
     defaultPageSize: 1000,
     comparators: {
       title: (a, b) => (a.aiTitle ?? a.originalFilename).localeCompare(b.aiTitle ?? b.originalFilename),
@@ -158,28 +148,7 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
   });
   const sortedDrafts = draftsTable.rows;
 
-  // ── Column width adjust (drag the right edge of a header) ───────────────
-  const [colWidths, setColWidths] = useState<Record<SortableColKey, number>>(DEFAULT_COL_WIDTHS);
-  const resizingCol = useRef<{ key: SortableColKey; startX: number; startWidth: number } | null>(null);
-
-  const handleResizeStart = useCallback((key: SortableColKey, e: ReactMouseEvent) => {
-    e.preventDefault();
-    resizingCol.current = { key, startX: e.clientX, startWidth: colWidths[key] };
-
-    const onMove = (ev: MouseEvent) => {
-      const active = resizingCol.current;
-      if (!active) return;
-      const nextWidth = Math.max(MIN_COL_WIDTH, active.startWidth + (ev.clientX - active.startX));
-      setColWidths((prev) => ({ ...prev, [active.key]: nextWidth }));
-    };
-    const onUp = () => {
-      resizingCol.current = null;
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }, [colWidths]);
+  // Width, visibility and ordering use the shared keyboard-accessible column editor.
 
   const pending = drafts.filter((d) => d.documentStatus === "pending_ai_review").length;
   const approved = drafts.filter((d) => d.documentStatus === "active").length;
@@ -192,9 +161,10 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
       d.intakeStatus !== "approved" && d.intakeStatus !== "discarded" && d.documentStatus !== "active",
     []
   );
-  const discardableIds = drafts.filter(isDiscardable).map((d) => d.sessionId);
+  const discardableIds = listView.rows.filter(isDiscardable).map((d) => d.sessionId);
   const allDiscardableSelected = discardableIds.length > 0 && discardableIds.every((id) => selected.has(id));
 
+  const selectedCount = discardableIds.filter(id => selected.has(id)).length;
   const [isOrchRunning, setIsOrchRunning] = useState(false);
 
   const refresh = useCallback(() => {
@@ -202,6 +172,8 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
   }, [router]);
 
   const handleRunBatchOrchestration = useCallback(async () => {
+    if (flight.current) return;
+    flight.current = true; setFailure(null);
     setIsOrchRunning(true);
     try {
       const result = await runDmsBatchOrchestration({ batchCode: batch.batch_code });
@@ -215,12 +187,13 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
       } else if (result.error?.includes("not enabled")) {
         toast.info("DMS AI Orchestration is not enabled. Contact your administrator.");
       } else {
-        toast.error(result.error ?? "Batch orchestration failed.");
+        setFailure("The AI pipeline did not complete. Refresh the batch before retrying.");
       }
     } catch {
-      toast.error("Batch AI pipeline failed.");
+      setFailure("The AI pipeline could not be confirmed. Refresh the batch before retrying.");
     } finally {
       setIsOrchRunning(false);
+      flight.current = false;
     }
   }, [batch.batch_code, refresh]);
 
@@ -241,12 +214,15 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
   );
 
   const handleBulkDiscard = useCallback(() => {
+    if (flight.current) return;
     const ids = Array.from(selected).filter((id) => discardableIds.includes(id));
     if (ids.length === 0) return;
     if (!window.confirm(`Discard ${ids.length} selected draft${ids.length === 1 ? "" : "s"}? This permanently removes the draft document(s) and uploaded file(s) and cannot be undone.`)) {
       return;
     }
     startTransition(async () => {
+      flight.current = true; setFailure(null);
+      try {
       const res = await discardDraftIntakeBulk({ uploadSessionIds: ids });
       if (res.success && res.data) {
         const { discarded: ok, failed: bad } = res.data;
@@ -255,8 +231,10 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
         setSelected(new Set());
         router.refresh();
       } else {
-        toast.error(res.error ?? "Failed to discard selected drafts");
+        setFailure("Selected drafts were not discarded. Refresh the batch and check your access.");
       }
+      } catch { setFailure("Discard could not be confirmed. Refresh the batch before retrying."); }
+      finally { flight.current = false; }
     });
   }, [selected, discardableIds, router]);
 
@@ -274,10 +252,12 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
   }, [openTab, batchReviewRoute]);
 
   const handleReviewNext = useCallback(() => {
+    if (flight.current) return;
+    flight.current = true; setFailure(null);
     setBusyId(-1);
     startTransition(async () => {
+      try {
       const res = await getNextPendingDraftInBatch(batch.id);
-      setBusyId(null);
       if (res.success && res.data) {
         openTab({
           route: `/dms/intake/${res.data.sessionCode}`,
@@ -289,41 +269,52 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
       } else if (res.success && !res.data) {
         toast.info("No pending drafts remaining in this batch.");
       } else {
-        toast.error(res.error ?? "Could not load the next draft");
+        setFailure("Could not load the next draft. Try refreshing the batch.");
       }
+      } catch { setFailure("Could not load the next draft. Try refreshing the batch."); }
+      finally { flight.current = false; setBusyId(null); }
     });
   }, [batch.id, openTab, batchReviewRoute]);
 
   const handleDiscard = useCallback((sessionId: number) => {
+    if (flight.current || !window.confirm("Discard this draft and its uploaded file? This cannot be undone.")) return;
+    flight.current = true; setFailure(null);
     setBusyId(sessionId);
     startTransition(async () => {
+      try {
       const res = await discardDraftIntake({ uploadSessionId: sessionId });
-      setBusyId(null);
       if (res.success) {
         toast.success("Draft discarded");
         router.refresh();
       } else {
-        toast.error(res.error ?? "Failed to discard draft");
+        setFailure("The draft was not discarded. Refresh the batch and check your access.");
       }
+      } catch { setFailure("Discard could not be confirmed. Refresh the batch before retrying."); }
+      finally { flight.current = false; setBusyId(null); }
     });
   }, [router]);
 
   const handleRerun = useCallback((sessionId: number) => {
+    if (flight.current) return;
+    flight.current = true; setFailure(null);
     setBusyId(sessionId);
     startTransition(async () => {
+      try {
       const res = await rerunBatchDraftAi(sessionId);
-      setBusyId(null);
       if (res.success) {
         toast.success("AI re-run started");
         router.refresh();
       } else {
-        toast.error(res.error ?? "Failed to re-run AI");
+        setFailure("AI could not be restarted. Refresh the batch and check your access.");
       }
+      } catch { setFailure("The AI request could not be confirmed. Refresh the batch before retrying."); }
+      finally { flight.current = false; setBusyId(null); }
     });
   }, [router]);
 
   return (
     <div className="space-y-5">
+      {failure && <p role="alert" className="rounded-sm border border-destructive p-3 text-sm text-destructive">{failure}</p>}
       {/* Header / counts */}
       <div className="rounded-xl border bg-card p-4 space-y-3">
         <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -339,7 +330,7 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
           </div>
           <div className="flex items-center gap-2">
             {/* AI Pipeline button (ORCH.1) — runs best-effort AI on all drafts */}
-            <Button
+            <Button aria-label="Run full AI pipeline (summary, intelligence, embedding, tags, links) on all pending drafts. One-by-one approval is still required."
               size="sm"
               variant="outline"
               onClick={handleRunBatchOrchestration}
@@ -354,7 +345,7 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
               {isOrchRunning ? "Running AI…" : "Run AI Pipeline"}
             </Button>
 
-            {selected.size > 0 && (
+            {selectedCount > 0 && (
               <Button
                 size="sm"
                 variant="outline"
@@ -363,7 +354,7 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
                 disabled={isPending}
               >
                 <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-                Discard Selected ({selected.size})
+                Discard Selected ({selectedCount})
               </Button>
             )}
             <Button size="sm" variant="outline" onClick={handleReviewNext} disabled={isPending || pending === 0}>
@@ -401,21 +392,13 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
       </div>
 
       {/* Drafts table */}
-      <div className="rounded-xl border bg-card overflow-hidden">
-        <table className="w-full text-sm table-fixed">
-          <colgroup>
-            <col className="w-8" />
-            <col className="w-8" />
-            <col style={{ width: colWidths.title }} />
-            <col style={{ width: colWidths.docNo }} />
-            <col style={{ width: colWidths.type }} />
-            <col style={{ width: colWidths.confidence }} />
-            <col style={{ width: colWidths.status }} />
-            <col className="w-[160px]" />
-          </colgroup>
+      <DmsListTools view={listView} search />
+      <div role="region" aria-label="Batch drafts" tabIndex={0} className="rounded-sm border bg-card max-w-full overflow-x-auto">
+        <table className="w-full text-sm table-fixed" style={{ minWidth: listView.visible.reduce((sum,c)=>sum+c.width,0) }}>
+          <colgroup>{listView.visible.map(c=><col key={c.id} style={{width:c.width}} />)}</colgroup>
           <thead className="bg-muted/40 text-xs text-muted-foreground">
-            <tr>
-              <th className="px-3 py-2">
+            <ConfiguredRow columns={listView.columns}>
+              <th data-column="selection" className="px-3 py-2">
                 <Checkbox
                   checked={allDiscardableSelected}
                   onCheckedChange={(checked) => toggleAll(checked === true)}
@@ -423,55 +406,45 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
                   aria-label="Select all discardable drafts"
                 />
               </th>
-              <th className="text-left font-medium px-3 py-2">#</th>
-              <SortableTh
+              <th data-column="index" className="text-left font-medium px-3 py-2">#</th>
+              <SortableTh data-column="title"
                 label="File / AI Title"
                 colKey="title"
-                width={colWidths.title}
                 sortDir={draftsTable.sortDirFor("title")}
                 onSort={draftsTable.toggleSort}
-                onResizeStart={handleResizeStart}
               />
-              <SortableTh
+              <SortableTh data-column="docNo"
                 label="Doc No."
                 colKey="docNo"
-                width={colWidths.docNo}
                 sortDir={draftsTable.sortDirFor("docNo")}
                 onSort={draftsTable.toggleSort}
-                onResizeStart={handleResizeStart}
               />
-              <SortableTh
+              <SortableTh data-column="type"
                 label="Type"
                 colKey="type"
-                width={colWidths.type}
                 sortDir={draftsTable.sortDirFor("type")}
                 onSort={draftsTable.toggleSort}
-                onResizeStart={handleResizeStart}
               />
-              <SortableTh
+              <SortableTh data-column="confidence"
                 label="Confidence"
                 colKey="confidence"
-                width={colWidths.confidence}
                 sortDir={draftsTable.sortDirFor("confidence")}
                 onSort={draftsTable.toggleSort}
-                onResizeStart={handleResizeStart}
               />
-              <SortableTh
+              <SortableTh data-column="status"
                 label="Status"
                 colKey="status"
-                width={colWidths.status}
                 sortDir={draftsTable.sortDirFor("status")}
                 onSort={draftsTable.toggleSort}
-                onResizeStart={handleResizeStart}
               />
-              <th className="text-right font-medium px-3 py-2">Actions</th>
-            </tr>
+              <th data-column="actions" className="text-right font-medium px-3 py-2">Actions</th>
+            </ConfiguredRow>
           </thead>
           <tbody>
             {sortedDrafts.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-3 py-8 text-center text-sm text-muted-foreground">
-                  No files in this batch.
+                <td colSpan={listView.visible.length} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                  {drafts.length ? "No loaded drafts match your filters." : "No files in this batch."}
                 </td>
               </tr>
             )}
@@ -482,8 +455,8 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
               const rowBusy = busyId === d.sessionId && isPending;
               const canDiscardRow = isDiscardable(d);
               return (
-                <tr key={d.sessionId} className="border-t hover:bg-muted/20">
-                  <td className="px-3 py-2">
+                <ConfiguredRow columns={listView.columns} key={d.sessionId} className="border-t hover:bg-muted/20">
+                  <td data-column="selection" className="px-3 py-2">
                     <Checkbox
                       checked={selected.has(d.sessionId)}
                       onCheckedChange={(checked) => toggleOne(d.sessionId, checked === true)}
@@ -491,8 +464,8 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
                       aria-label={`Select ${d.originalFilename}`}
                     />
                   </td>
-                  <td className="px-3 py-2 text-xs text-muted-foreground">{i + 1}</td>
-                  <td className="px-3 py-2 min-w-0">
+                  <td data-column="index" className="px-3 py-2 text-xs text-muted-foreground">{i + 1}</td>
+                  <td data-column="title" className="px-3 py-2 min-w-0">
                     <div className="flex items-center gap-1.5 min-w-0">
                       <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                       <div className="min-w-0 flex-1">
@@ -510,16 +483,16 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
                       )}
                     </div>
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs truncate" title={d.documentNo ?? ""}>{d.documentNo ?? "—"}</td>
-                  <td className="px-3 py-2 text-xs truncate" title={d.documentTypeName ?? ""}>{d.documentTypeName ?? "—"}</td>
-                  <td className="px-3 py-2">
+                  <td data-column="docNo" className="px-3 py-2 font-mono text-xs truncate" title={d.documentNo ?? ""}>{d.documentNo ?? "—"}</td>
+                  <td data-column="type" className="px-3 py-2 text-xs truncate" title={d.documentTypeName ?? ""}>{d.documentTypeName ?? "—"}</td>
+                  <td data-column="confidence" className="px-3 py-2">
                     {d.confidenceLabel ? (
                       <DmsAiConfidenceBadge label={d.confidenceLabel} score={null} />
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>
                     )}
                   </td>
-                  <td className="px-3 py-2">
+                  <td data-column="status" className="px-3 py-2">
                     {isFailed ? (
                       <Badge variant="outline" className="text-[10px] border-red-200 text-red-700 bg-red-50">Failed</Badge>
                     ) : isDiscarded ? (
@@ -530,10 +503,10 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
                       <Badge variant="outline" className="text-[10px]">Processing</Badge>
                     )}
                   </td>
-                  <td className="px-3 py-2">
+                  <td data-column="actions" className="px-3 py-2">
                     <div className="flex items-center justify-end gap-1">
                       {isPendingReview && (
-                        <Button
+                        <Button aria-label="Review & Approve this draft"
                           size="sm"
                           className="h-7 px-2 bg-green-600 hover:bg-green-700 text-white text-xs"
                           onClick={() => handleReview(d.sessionCode)}
@@ -545,7 +518,7 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
                         </Button>
                       )}
                       {(isPendingReview || isFailed) && (
-                        <Button
+                        <Button aria-label="Re-run AI for this draft"
                           size="sm"
                           variant="outline"
                           className="h-7 w-7 p-0"
@@ -557,7 +530,7 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
                         </Button>
                       )}
                       {!isDiscarded && d.documentStatus !== "active" && (
-                        <Button
+                        <Button aria-label="Discard this draft"
                           size="sm"
                           variant="ghost"
                           className="h-7 w-7 p-0 text-destructive hover:text-destructive"
@@ -586,7 +559,7 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
                       )}
                     </div>
                   </td>
-                </tr>
+                </ConfiguredRow>
               );
             })}
           </tbody>

@@ -1,3 +1,4 @@
+import { LoadError } from "@/components/erp/load-error";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { redirect } from "next/navigation";
 import { listHrLeaveTypes, createHrLeaveType, updateHrLeaveType, toggleHrSettingsRowActive } from "@/server/actions/hr/settings";
@@ -8,6 +9,7 @@ export default async function HrLeaveTypesPage() {
   if (!hasPermission(ctx, "hr.settings.view") && !hasPermission(ctx, "hr.settings.manage") && !hasPermission(ctx, "hr.admin")) redirect("/admin/hr/settings");
   const canManage = hasPermission(ctx, "hr.settings.manage") || hasPermission(ctx, "hr.admin");
   const result = await listHrLeaveTypes({});
+  if (!result.success) return <LoadError title="HR records" retryHref="/admin/hr/settings/leave-types" />;
   const data = result.data?.data ?? [];
 
   async function create(input: { code: string; name_en: string; name_ar?: string | null; description?: string | null; is_active: boolean; sort_order: number }) {

@@ -1,4 +1,7 @@
 "use client";
+import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
+import { RecordCollection } from "@/components/erp/table/record-collection";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 /**
  * ERP HR.3 — Employee Compliance Tab
@@ -112,7 +115,7 @@ import {
   Shield,
   Users
 } from "lucide-react";
-import { useCallback, useRef, useState, useTransition, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { toast } from "sonner";
 
 // ── Prop Types ────────────────────────────────────────────────────────────────
@@ -247,21 +250,23 @@ function IdentityDocumentsSection({ employeeId, canManageDoc, onChildOpen, docum
 
   const [form, setForm] = useState<IdentityDocumentFormState>(() => createEmptyIdentityDocumentForm());
 
-  const { data: docs, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.compliance.identityDocuments(employeeId),
     queryFn: async () => {
       const r = await listEmployeeIdentityDocuments(employeeId);
-      return r.success ? r.data ?? [] : [];
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? [] : [];
     },
   });
+  const { data: docs, isLoading } = uiRead1;
 
-  const { data: docTypes } = useQuery({
+  const uiRead2 = useQuery({
     queryKey: queryKeys.hr.identityDocumentTypes(),
     queryFn: async () => {
       const r = await listHrIdentityDocumentTypes({ is_active: true, page: 1, page_size: 100 });
-      return r.success && r.data ? r.data.data as HrIdentityDocTypeRow[] : [];
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success && r.data ? r.data.data as HrIdentityDocTypeRow[] : [];
     },
   });
+  const { data: docTypes } = uiRead2;
 
   const openAdd = () => {
     setAddDialogOpen(true);
@@ -339,14 +344,14 @@ function IdentityDocumentsSection({ employeeId, canManageDoc, onChildOpen, docum
   const docTypeOptions = (docTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }));
 
   return (
-    <div className="mb-8">
+    <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="mb-8">
       <SectionHeader icon={FileText} title="Legal Documents" count={docs?.length} onAdd={openAdd} canAdd={canManageDoc} onAddFromDocs={() => setDmsWizardOpen(true)} canAddFromDocs={canManageDoc && documentWizardEnabled} />
 
       {isLoading && <Skeleton className="h-20 w-full" />}
       {!isLoading && (!docs || docs.length === 0) && <EmptyState message="No identity documents added yet." />}
       {!isLoading && docs && docs.length > 0 && (
         <div className="space-y-2">
-          {docs.map((doc) => (
+          <RecordCollection id="hr.employee-compliance-tab.IdentityDocumentsSection.docs" rows={docs} fields={[{"id":"document_number","path":"document_number","label":"Document Number"},{"id":"expiry_date","path":"expiry_date","label":"Expiry Date"}]} renderRecord={(doc) => (
             <div key={doc.id} className="flex items-start justify-between p-3 border rounded-lg bg-card hover:bg-muted/30 transition-colors">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -373,20 +378,20 @@ function IdentityDocumentsSection({ employeeId, canManageDoc, onChildOpen, docum
               {canManageDoc && (
                 <div className="flex items-center gap-1 ml-2 flex-shrink-0">
                   {doc.verification_status === "unverified" && (
-                    <Button size="sm" variant="ghost" onClick={() => handleVerify(doc.id)} type="button" title="Verify">
+                    <Button aria-label="Verify" size="sm" variant="ghost" onClick={() => handleVerify(doc.id)} type="button" title="Verify">
                       <CheckCircle className="h-3.5 w-3.5" />
                     </Button>
                   )}
-                  <Button size="sm" variant="ghost" onClick={() => openEdit(doc)} type="button" title="Edit">
+                  <Button aria-label="Edit" size="sm" variant="ghost" onClick={() => openEdit(doc)} type="button" title="Edit">
                     <Edit2 className="h-3.5 w-3.5" />
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={() => handleArchive(doc.id)} type="button" title="Archive">
+                  <Button aria-label="Archive" size="sm" variant="ghost" onClick={() => handleArchive(doc.id)} type="button" title="Archive">
                     <Archive className="h-3.5 w-3.5" />
                   </Button>
                 </div>
               )}
             </div>
-          ))}
+          )} />
         </div>
       )}
 
@@ -424,7 +429,7 @@ function IdentityDocumentsSection({ employeeId, canManageDoc, onChildOpen, docum
         onSaved={() => void qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.identityDocuments(employeeId) })}
         onChildOpen={onChildOpen}
       />
-    </div>
+    </div></QueryReadBoundary>
   );
 }
 
@@ -488,13 +493,14 @@ function MedicalInsurancesSection({ employeeId, canManageDoc, onChildOpen, docum
 
   const [form, setForm] = useState(initialForm);
 
-  const { data: records, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.compliance.medicalInsurances(employeeId),
     queryFn: async () => {
       const r = await listEmployeeMedicalInsurances(employeeId);
-      return r.success ? r.data ?? [] : [];
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? [] : [];
     },
   });
+  const { data: records, isLoading } = uiRead1;
 
   const openAdd = () => setAddDialogOpen(true);
   const openEdit = (r: EmployeeMedicalInsuranceRow) => {
@@ -568,13 +574,13 @@ function MedicalInsurancesSection({ employeeId, canManageDoc, onChildOpen, docum
   };
 
   return (
-    <div className="mb-8">
+    <QueryReadBoundary queries={[uiRead1]}><div className="mb-8">
       <SectionHeader icon={Heart} title="Medical Insurance" count={records?.length} onAdd={openAdd} canAdd={canManageDoc} onAddFromDocs={() => setDmsWizardOpen(true)} canAddFromDocs={canManageDoc && documentWizardEnabled} />
       {isLoading && <Skeleton className="h-16 w-full" />}
       {!isLoading && (!records || records.length === 0) && <EmptyState message="No medical insurance records added yet." />}
       {!isLoading && records && records.length > 0 && (
         <div className="space-y-2">
-          {records.map((r) => (
+          <RecordCollection id="hr.employee-compliance-tab.MedicalInsurancesSection.records" rows={records} fields={[{"id":"policy_number","path":"policy_number","label":"Policy Number"},{"id":"expiry_date","path":"expiry_date","label":"Expiry Date"}]} renderRecord={(r) => (
             <div key={r.id} className="flex items-start justify-between p-3 border rounded-lg bg-card hover:bg-muted/30">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -587,13 +593,13 @@ function MedicalInsurancesSection({ employeeId, canManageDoc, onChildOpen, docum
               </div>
               {canManageDoc && (
                 <div className="flex items-center gap-1 ml-2 flex-shrink-0">
-                  {r.verification_status === "unverified" && <Button size="sm" variant="ghost" type="button" onClick={() => handleVerify(r.id)} title="Verify"><CheckCircle className="h-3.5 w-3.5" /></Button>}
-                  <Button size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
-                  <Button size="sm" variant="ghost" type="button" onClick={() => handleArchive(r.id)}><Archive className="h-3.5 w-3.5" /></Button>
+                  {r.verification_status === "unverified" && <Button aria-label="Verify" size="sm" variant="ghost" type="button" onClick={() => handleVerify(r.id)} title="Verify"><CheckCircle className="h-3.5 w-3.5" /></Button>}
+                  <Button aria-label="Edit record" size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
+                  <Button aria-label="Archive record" size="sm" variant="ghost" type="button" onClick={() => handleArchive(r.id)}><Archive className="h-3.5 w-3.5" /></Button>
                 </div>
               )}
             </div>
-          ))}
+          )} />
         </div>
       )}
 
@@ -612,40 +618,40 @@ function MedicalInsurancesSection({ employeeId, canManageDoc, onChildOpen, docum
         renderReview={({ form: addForm, setForm: setAddForm, prefillMeta }) => (
           <div className="grid grid-cols-12 gap-4">
             <ComplianceDmsPrefillBanner prefillMeta={prefillMeta} />
-            <div className="col-span-6"><Label>Insurance Provider <span className="text-destructive">*</span></Label><Input value={addForm.insurance_provider} onChange={(e) => setAddForm((p) => ({ ...p, insurance_provider: e.target.value }))} /></div>
-            <div className="col-span-6"><Label>TPA</Label><Input value={addForm.tpa} onChange={(e) => setAddForm((p) => ({ ...p, tpa: e.target.value }))} placeholder="Third-party administrator" /></div>
-            <div className="col-span-6"><Label>Policy Number <span className="text-destructive">*</span></Label><Input value={addForm.policy_number} onChange={(e) => setAddForm((p) => ({ ...p, policy_number: e.target.value }))} /></div>
-            <div className="col-span-6"><Label>Insurance Card Number</Label><Input value={addForm.insurance_card_number} onChange={(e) => setAddForm((p) => ({ ...p, insurance_card_number: e.target.value }))} /></div>
-            <div className="col-span-6"><Label>Network Class</Label><Input value={addForm.network_class} onChange={(e) => setAddForm((p) => ({ ...p, network_class: e.target.value }))} placeholder="e.g. Silver, Gold, Platinum" /></div>
-            <div className="col-span-3"><Label>Issue Date</Label><Input type="date" value={addForm.issue_date} onChange={(e) => setAddForm((p) => ({ ...p, issue_date: e.target.value }))} /></div>
-            <div className="col-span-3"><Label>Expiry Date <span className="text-destructive">*</span></Label><Input type="date" value={addForm.expiry_date} onChange={(e) => setAddForm((p) => ({ ...p, expiry_date: e.target.value }))} /></div>
-            <div className="col-span-4"><Label>Status</Label><ERPCombobox value={addForm.status} onValueChange={(v) => setAddForm((p) => ({ ...p, status: String(v) }))} options={DOC_STATUS_OPTIONS} placeholder="Status..." /></div>
-            <div className="col-span-4"><Label>Verification</Label><ERPCombobox value={addForm.verification_status} onValueChange={(v) => setAddForm((p) => ({ ...p, verification_status: String(v) }))} options={VERIFICATION_OPTIONS} placeholder="Verification..." /></div>
-            <div className="col-span-4"><Label>Renewal</Label><ERPCombobox value={addForm.renewal_status} onValueChange={(v) => setAddForm((p) => ({ ...p, renewal_status: String(v) }))} options={RENEWAL_STATUS_OPTIONS} placeholder="Renewal..." /></div>
+            <div className="col-span-6"><Label>Insurance Provider <span className="text-destructive">*</span></Label><Input aria-label="Insurance Provider" required value={addForm.insurance_provider} onChange={(e) => setAddForm((p) => ({ ...p, insurance_provider: e.target.value }))} /></div>
+            <div className="col-span-6"><Label>TPA</Label><Input aria-label="TPA" value={addForm.tpa} onChange={(e) => setAddForm((p) => ({ ...p, tpa: e.target.value }))} placeholder="Third-party administrator" /></div>
+            <div className="col-span-6"><Label>Policy Number <span className="text-destructive">*</span></Label><Input aria-label="Policy Number" required value={addForm.policy_number} onChange={(e) => setAddForm((p) => ({ ...p, policy_number: e.target.value }))} /></div>
+            <div className="col-span-6"><Label>Insurance Card Number</Label><Input aria-label="Insurance Card Number" value={addForm.insurance_card_number} onChange={(e) => setAddForm((p) => ({ ...p, insurance_card_number: e.target.value }))} /></div>
+            <div className="col-span-6"><Label>Network Class</Label><Input aria-label="Network Class" value={addForm.network_class} onChange={(e) => setAddForm((p) => ({ ...p, network_class: e.target.value }))} placeholder="e.g. Silver, Gold, Platinum" /></div>
+            <div className="col-span-3"><Label>Issue Date</Label><Input aria-label="Issue Date" type="date" value={addForm.issue_date} onChange={(e) => setAddForm((p) => ({ ...p, issue_date: e.target.value }))} /></div>
+            <div className="col-span-3"><Label>Expiry Date <span className="text-destructive">*</span></Label><Input aria-label="Expiry Date" required type="date" value={addForm.expiry_date} onChange={(e) => setAddForm((p) => ({ ...p, expiry_date: e.target.value }))} /></div>
+            <div className="col-span-4"><Label>Status</Label><ERPCombobox ariaLabel="Status" value={addForm.status} onValueChange={(v) => setAddForm((p) => ({ ...p, status: String(v) }))} options={DOC_STATUS_OPTIONS} placeholder="Status..." /></div>
+            <div className="col-span-4"><Label>Verification</Label><ERPCombobox ariaLabel="Verification" value={addForm.verification_status} onValueChange={(v) => setAddForm((p) => ({ ...p, verification_status: String(v) }))} options={VERIFICATION_OPTIONS} placeholder="Verification..." /></div>
+            <div className="col-span-4"><Label>Renewal</Label><ERPCombobox ariaLabel="Renewal" value={addForm.renewal_status} onValueChange={(v) => setAddForm((p) => ({ ...p, renewal_status: String(v) }))} options={RENEWAL_STATUS_OPTIONS} placeholder="Renewal..." /></div>
             <div className="col-span-4 flex items-center gap-2 pt-5"><Switch checked={addForm.employee_covered} onCheckedChange={(v) => setAddForm((p) => ({ ...p, employee_covered: v }))} /><Label>Employee Covered</Label></div>
             <div className="col-span-4 flex items-center gap-2 pt-5"><Switch checked={addForm.dependent_coverage_included} onCheckedChange={(v) => setAddForm((p) => ({ ...p, dependent_coverage_included: v }))} /><Label>Dependent Coverage</Label></div>
-            <div className="col-span-4"><Label>Dependents Covered</Label><Input type="number" min={0} value={addForm.dependent_count_covered ?? ""} onChange={(e) => setAddForm((p) => ({ ...p, dependent_count_covered: e.target.value ? parseInt(e.target.value) : null }))} /></div>
-            <div className="col-span-12"><Label>Notes</Label><Textarea value={addForm.notes} onChange={(e) => setAddForm((p) => ({ ...p, notes: e.target.value }))} rows={2} /></div>
+            <div className="col-span-4"><Label>Dependents Covered</Label><Input aria-label="Dependents Covered" type="number" min={0} value={addForm.dependent_count_covered ?? ""} onChange={(e) => setAddForm((p) => ({ ...p, dependent_count_covered: e.target.value ? parseInt(e.target.value) : null }))} /></div>
+            <div className="col-span-12"><Label>Notes</Label><Textarea aria-label="Notes" value={addForm.notes} onChange={(e) => setAddForm((p) => ({ ...p, notes: e.target.value }))} rows={2} /></div>
           </div>
         )}
       />
 
       <ERPChildDialogForm open={editDialogOpen} onOpenChange={setEditDialogOpen} title="Edit Medical Insurance" icon={<Heart className="h-5 w-5" />} mode="edit" size="lg" isSubmitting={isSubmitting} onSubmit={handleEditSubmit}>
         <div className="grid grid-cols-12 gap-4">
-          <div className="col-span-6"><Label>Insurance Provider <span className="text-destructive">*</span></Label><Input value={form.insurance_provider} onChange={(e) => setForm((p) => ({ ...p, insurance_provider: e.target.value }))} /></div>
-          <div className="col-span-6"><Label>TPA</Label><Input value={form.tpa} onChange={(e) => setForm((p) => ({ ...p, tpa: e.target.value }))} placeholder="Third-party administrator" /></div>
-          <div className="col-span-6"><Label>Policy Number <span className="text-destructive">*</span></Label><Input value={form.policy_number} onChange={(e) => setForm((p) => ({ ...p, policy_number: e.target.value }))} /></div>
-          <div className="col-span-6"><Label>Insurance Card Number</Label><Input value={form.insurance_card_number} onChange={(e) => setForm((p) => ({ ...p, insurance_card_number: e.target.value }))} /></div>
-          <div className="col-span-6"><Label>Network Class</Label><Input value={form.network_class} onChange={(e) => setForm((p) => ({ ...p, network_class: e.target.value }))} placeholder="e.g. Silver, Gold, Platinum" /></div>
-          <div className="col-span-3"><Label>Issue Date</Label><Input type="date" value={form.issue_date} onChange={(e) => setForm((p) => ({ ...p, issue_date: e.target.value }))} /></div>
-          <div className="col-span-3"><Label>Expiry Date <span className="text-destructive">*</span></Label><Input type="date" value={form.expiry_date} onChange={(e) => setForm((p) => ({ ...p, expiry_date: e.target.value }))} /></div>
-          <div className="col-span-4"><Label>Status</Label><ERPCombobox value={form.status} onValueChange={(v) => setForm((p) => ({ ...p, status: String(v) }))} options={DOC_STATUS_OPTIONS} placeholder="Status..." /></div>
-          <div className="col-span-4"><Label>Verification</Label><ERPCombobox value={form.verification_status} onValueChange={(v) => setForm((p) => ({ ...p, verification_status: String(v) }))} options={VERIFICATION_OPTIONS} placeholder="Verification..." /></div>
-          <div className="col-span-4"><Label>Renewal</Label><ERPCombobox value={form.renewal_status} onValueChange={(v) => setForm((p) => ({ ...p, renewal_status: String(v) }))} options={RENEWAL_STATUS_OPTIONS} placeholder="Renewal..." /></div>
+          <div className="col-span-6"><Label>Insurance Provider <span className="text-destructive">*</span></Label><Input aria-label="Insurance Provider" required value={form.insurance_provider} onChange={(e) => setForm((p) => ({ ...p, insurance_provider: e.target.value }))} /></div>
+          <div className="col-span-6"><Label>TPA</Label><Input aria-label="TPA" value={form.tpa} onChange={(e) => setForm((p) => ({ ...p, tpa: e.target.value }))} placeholder="Third-party administrator" /></div>
+          <div className="col-span-6"><Label>Policy Number <span className="text-destructive">*</span></Label><Input aria-label="Policy Number" required value={form.policy_number} onChange={(e) => setForm((p) => ({ ...p, policy_number: e.target.value }))} /></div>
+          <div className="col-span-6"><Label>Insurance Card Number</Label><Input aria-label="Insurance Card Number" value={form.insurance_card_number} onChange={(e) => setForm((p) => ({ ...p, insurance_card_number: e.target.value }))} /></div>
+          <div className="col-span-6"><Label>Network Class</Label><Input aria-label="Network Class" value={form.network_class} onChange={(e) => setForm((p) => ({ ...p, network_class: e.target.value }))} placeholder="e.g. Silver, Gold, Platinum" /></div>
+          <div className="col-span-3"><Label>Issue Date</Label><Input aria-label="Issue Date" type="date" value={form.issue_date} onChange={(e) => setForm((p) => ({ ...p, issue_date: e.target.value }))} /></div>
+          <div className="col-span-3"><Label>Expiry Date <span className="text-destructive">*</span></Label><Input aria-label="Expiry Date" required type="date" value={form.expiry_date} onChange={(e) => setForm((p) => ({ ...p, expiry_date: e.target.value }))} /></div>
+          <div className="col-span-4"><Label>Status</Label><ERPCombobox ariaLabel="Status" value={form.status} onValueChange={(v) => setForm((p) => ({ ...p, status: String(v) }))} options={DOC_STATUS_OPTIONS} placeholder="Status..." /></div>
+          <div className="col-span-4"><Label>Verification</Label><ERPCombobox ariaLabel="Verification" value={form.verification_status} onValueChange={(v) => setForm((p) => ({ ...p, verification_status: String(v) }))} options={VERIFICATION_OPTIONS} placeholder="Verification..." /></div>
+          <div className="col-span-4"><Label>Renewal</Label><ERPCombobox ariaLabel="Renewal" value={form.renewal_status} onValueChange={(v) => setForm((p) => ({ ...p, renewal_status: String(v) }))} options={RENEWAL_STATUS_OPTIONS} placeholder="Renewal..." /></div>
           <div className="col-span-4 flex items-center gap-2 pt-5"><Switch checked={form.employee_covered} onCheckedChange={(v) => setForm((p) => ({ ...p, employee_covered: v }))} /><Label>Employee Covered</Label></div>
           <div className="col-span-4 flex items-center gap-2 pt-5"><Switch checked={form.dependent_coverage_included} onCheckedChange={(v) => setForm((p) => ({ ...p, dependent_coverage_included: v }))} /><Label>Dependent Coverage</Label></div>
-          <div className="col-span-4"><Label>Dependents Covered</Label><Input type="number" min={0} value={form.dependent_count_covered ?? ""} onChange={(e) => setForm((p) => ({ ...p, dependent_count_covered: e.target.value ? parseInt(e.target.value) : null }))} /></div>
-          <div className="col-span-12"><Label>Notes</Label><Textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} rows={2} /></div>
+          <div className="col-span-4"><Label>Dependents Covered</Label><Input aria-label="Dependents Covered" type="number" min={0} value={form.dependent_count_covered ?? ""} onChange={(e) => setForm((p) => ({ ...p, dependent_count_covered: e.target.value ? parseInt(e.target.value) : null }))} /></div>
+          <div className="col-span-12"><Label>Notes</Label><Textarea aria-label="Notes" value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} rows={2} /></div>
         </div>
       </ERPChildDialogForm>
 
@@ -657,7 +663,7 @@ function MedicalInsurancesSection({ employeeId, canManageDoc, onChildOpen, docum
         onSaved={() => void qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.medicalInsurances(employeeId) })}
         onChildOpen={onChildOpen}
       />
-    </div>
+    </div></QueryReadBoundary>
   );
 }
 
@@ -689,18 +695,20 @@ function DependentsSection({ employeeId, canManageDoc, canManageMedical, onChild
 
   const [form, setForm] = useState(initialForm);
 
-  const { data: records, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.compliance.dependents(employeeId),
-    queryFn: async () => { const r = await listEmployeeDependents(employeeId); return r.success ? r.data ?? [] : []; },
+    queryFn: async () => { const r = await listEmployeeDependents(employeeId); if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? [] : []; },
   });
+  const { data: records, isLoading } = uiRead1;
 
-  const { data: relTypes } = useQuery({
+  const uiRead2 = useQuery({
     queryKey: queryKeys.hr.relationshipTypes(),
     queryFn: async () => {
       const r = await listHrRelationshipTypes({ is_active: true, page: 1, page_size: 100 });
-      return r.success && r.data ? r.data.data as HrSettingsRow[] : [];
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success && r.data ? r.data.data as HrSettingsRow[] : [];
     },
   });
+  const { data: relTypes } = uiRead2;
 
   const relTypeOptions = (relTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }));
 
@@ -734,31 +742,31 @@ function DependentsSection({ employeeId, canManageDoc, canManageMedical, onChild
   ) => (
     <div className="grid grid-cols-12 gap-4">
       <ComplianceDmsPrefillBanner prefillMeta={prefillMeta} />
-      <div className="col-span-6"><Label>Name (English) <span className="text-destructive">*</span></Label><Input value={f.dependent_name_en} onChange={(e) => setF((p) => ({ ...p, dependent_name_en: e.target.value }))} /></div>
-      <div className="col-span-6"><Label>Name (Arabic)</Label><Input value={f.dependent_name_ar} onChange={(e) => setF((p) => ({ ...p, dependent_name_ar: e.target.value }))} dir="rtl" /></div>
-      <div className="col-span-6"><Label>Relationship <span className="text-destructive">*</span></Label><ERPCombobox value={f.relationship_type_id} onValueChange={(v) => setF((p) => ({ ...p, relationship_type_id: Number(v) }))} options={relTypeOptions} placeholder="Select relationship..." required /></div>
-      <div className="col-span-3"><Label>Date of Birth</Label><Input type="date" value={f.date_of_birth} onChange={(e) => setF((p) => ({ ...p, date_of_birth: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Name (English) <span className="text-destructive">*</span></Label><Input aria-label="Name (English)" required value={f.dependent_name_en} onChange={(e) => setF((p) => ({ ...p, dependent_name_en: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Name (Arabic)</Label><Input aria-label="Name (Arabic)" value={f.dependent_name_ar} onChange={(e) => setF((p) => ({ ...p, dependent_name_ar: e.target.value }))} dir="rtl" /></div>
+      <div className="col-span-6"><Label>Relationship <span className="text-destructive">*</span></Label><ERPCombobox ariaLabel="Relationship" value={f.relationship_type_id} onValueChange={(v) => setF((p) => ({ ...p, relationship_type_id: Number(v) }))} options={relTypeOptions} placeholder="Select relationship..." required /></div>
+      <div className="col-span-3"><Label>Date of Birth</Label><Input aria-label="Date of Birth" type="date" value={f.date_of_birth} onChange={(e) => setF((p) => ({ ...p, date_of_birth: e.target.value }))} /></div>
       <div className="col-span-3"><Label>Nationality</Label><CountrySelect value={f.nationality_id} onValueChange={(v) => setF((p) => ({ ...p, nationality_id: v }))} /></div>
       <div className="col-span-12 border-t pt-3"><p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Document Details</p></div>
-      <div className="col-span-6"><Label>Passport Number</Label><Input value={f.passport_number} onChange={(e) => setF((p) => ({ ...p, passport_number: e.target.value }))} /></div>
-      <div className="col-span-6"><Label>Passport Expiry</Label><Input type="date" value={f.passport_expiry} onChange={(e) => setF((p) => ({ ...p, passport_expiry: e.target.value }))} /></div>
-      <div className="col-span-6"><Label>Emirates ID Number</Label><Input value={f.emirates_id_number} onChange={(e) => setF((p) => ({ ...p, emirates_id_number: e.target.value }))} /></div>
-      <div className="col-span-6"><Label>Emirates ID Expiry</Label><Input type="date" value={f.emirates_id_expiry} onChange={(e) => setF((p) => ({ ...p, emirates_id_expiry: e.target.value }))} /></div>
-      <div className="col-span-6"><Label>Residence Visa Number</Label><Input value={f.residence_visa_number} onChange={(e) => setF((p) => ({ ...p, residence_visa_number: e.target.value }))} /></div>
-      <div className="col-span-6"><Label>Residence Visa Expiry</Label><Input type="date" value={f.residence_visa_expiry} onChange={(e) => setF((p) => ({ ...p, residence_visa_expiry: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Passport Number</Label><Input aria-label="Passport Number" value={f.passport_number} onChange={(e) => setF((p) => ({ ...p, passport_number: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Passport Expiry</Label><Input aria-label="Passport Expiry" type="date" value={f.passport_expiry} onChange={(e) => setF((p) => ({ ...p, passport_expiry: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Emirates ID Number</Label><Input aria-label="Emirates ID Number" value={f.emirates_id_number} onChange={(e) => setF((p) => ({ ...p, emirates_id_number: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Emirates ID Expiry</Label><Input aria-label="Emirates ID Expiry" type="date" value={f.emirates_id_expiry} onChange={(e) => setF((p) => ({ ...p, emirates_id_expiry: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Residence Visa Number</Label><Input aria-label="Residence Visa Number" value={f.residence_visa_number} onChange={(e) => setF((p) => ({ ...p, residence_visa_number: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Residence Visa Expiry</Label><Input aria-label="Residence Visa Expiry" type="date" value={f.residence_visa_expiry} onChange={(e) => setF((p) => ({ ...p, residence_visa_expiry: e.target.value }))} /></div>
       {canManageMedical && <>
       <div className="col-span-12 border-t pt-3"><p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Medical Insurance</p></div>
       </>}
-      <div className="col-span-6"><Label>Insurance Provider</Label><Input value={f.medical_insurance_provider} onChange={(e) => setF((p) => ({ ...p, medical_insurance_provider: e.target.value }))} /></div>
-      <div className="col-span-6"><Label>Insurance Policy</Label><Input value={f.medical_insurance_policy} onChange={(e) => setF((p) => ({ ...p, medical_insurance_policy: e.target.value }))} /></div>
-      <div className="col-span-6"><Label>Insurance Card</Label><Input value={f.medical_insurance_card} onChange={(e) => setF((p) => ({ ...p, medical_insurance_card: e.target.value }))} /></div>
-      <div className="col-span-6"><Label>Insurance Expiry</Label><Input type="date" value={f.medical_insurance_expiry} onChange={(e) => setF((p) => ({ ...p, medical_insurance_expiry: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Insurance Provider</Label><Input aria-label="Insurance Provider" value={f.medical_insurance_provider} onChange={(e) => setF((p) => ({ ...p, medical_insurance_provider: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Insurance Policy</Label><Input aria-label="Insurance Policy" value={f.medical_insurance_policy} onChange={(e) => setF((p) => ({ ...p, medical_insurance_policy: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Insurance Card</Label><Input aria-label="Insurance Card" value={f.medical_insurance_card} onChange={(e) => setF((p) => ({ ...p, medical_insurance_card: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Insurance Expiry</Label><Input aria-label="Insurance Expiry" type="date" value={f.medical_insurance_expiry} onChange={(e) => setF((p) => ({ ...p, medical_insurance_expiry: e.target.value }))} /></div>
       <div className="col-span-6">
         <Label>Sponsored By</Label>
-        <ERPCombobox value={f.sponsored_by || null} onValueChange={(v) => setF((p) => ({ ...p, sponsored_by: v ? String(v) : "" }))} options={[{ value: "employee", label: "Employee" }, { value: "company", label: "Company" }]} placeholder="Select..." />
+        <ERPCombobox ariaLabel="Sponsored By" value={f.sponsored_by || null} onValueChange={(v) => setF((p) => ({ ...p, sponsored_by: v ? String(v) : "" }))} options={[{ value: "employee", label: "Employee" }, { value: "company", label: "Company" }]} placeholder="Select..." />
       </div>
       <div className="col-span-6 flex items-center gap-2 pt-5"><Switch checked={f.is_active} onCheckedChange={(v) => setF((p) => ({ ...p, is_active: v }))} /><Label>Active</Label></div>
-      <div className="col-span-12"><Label>Notes</Label><Textarea value={f.notes} onChange={(e) => setF((p) => ({ ...p, notes: e.target.value }))} rows={2} /></div>
+      <div className="col-span-12"><Label>Notes</Label><Textarea aria-label="Notes" value={f.notes} onChange={(e) => setF((p) => ({ ...p, notes: e.target.value }))} rows={2} /></div>
     </div>
   );
 
@@ -828,13 +836,13 @@ function DependentsSection({ employeeId, canManageDoc, canManageMedical, onChild
   };
 
   return (
-    <div className="mb-8">
+    <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="mb-8">
       <SectionHeader icon={Users} title="Dependents" count={records?.length} onAdd={openAdd} canAdd={canManageDoc} onAddFromDocs={() => setDmsWizardOpen(true)} canAddFromDocs={canManageDoc && documentWizardEnabled} />
       {isLoading && <Skeleton className="h-16 w-full" />}
       {!isLoading && (!records || records.length === 0) && <EmptyState message="No dependents added yet." />}
       {!isLoading && records && records.length > 0 && (
         <div className="space-y-2">
-          {records.map((r) => (
+          <RecordCollection id="hr.employee-compliance-tab.DependentsSection.records" rows={records} fields={[{"id":"dependent_name_en","path":"dependent_name_en","label":"Dependent Name En"}]} renderRecord={(r) => (
             <div key={r.id} className="flex items-start justify-between p-3 border rounded-lg bg-card hover:bg-muted/30">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -854,12 +862,12 @@ function DependentsSection({ employeeId, canManageDoc, canManageMedical, onChild
               </div>
               {canManageDoc && (
                 <div className="flex items-center gap-1 ml-2 flex-shrink-0">
-                  <Button size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
-                  <Button size="sm" variant="ghost" type="button" onClick={() => handleArchive(r.id)}><Archive className="h-3.5 w-3.5" /></Button>
+                  <Button aria-label="Edit record" size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
+                  <Button aria-label="Archive record" size="sm" variant="ghost" type="button" onClick={() => handleArchive(r.id)}><Archive className="h-3.5 w-3.5" /></Button>
                 </div>
               )}
             </div>
-          ))}
+          )} />
         </div>
       )}
 
@@ -911,7 +919,7 @@ function DependentsSection({ employeeId, canManageDoc, canManageMedical, onChild
         onSaved={() => void qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.dependents(employeeId) })}
         onChildOpen={onChildOpen}
       />
-    </div>
+    </div></QueryReadBoundary>
   );
 }
 
@@ -938,18 +946,20 @@ function AccessCardsSection({ employeeId, canManageDoc, onChildOpen }: { employe
 
   const [form, setForm] = useState(initialForm);
 
-  const { data: records, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.compliance.accessCards(employeeId),
-    queryFn: async () => { const r = await listEmployeeAccessCards(employeeId); return r.success ? r.data ?? [] : []; },
+    queryFn: async () => { const r = await listEmployeeAccessCards(employeeId); if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? [] : []; },
   });
+  const { data: records, isLoading } = uiRead1;
 
-  const { data: cardTypes } = useQuery({
+  const uiRead2 = useQuery({
     queryKey: queryKeys.hr.accessCardTypes(),
     queryFn: async () => {
       const r = await listHrAccessCardTypes({ is_active: true, page: 1, page_size: 100 });
-      return r.success && r.data ? r.data.data as HrAccessCardTypeRow[] : [];
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success && r.data ? r.data.data as HrAccessCardTypeRow[] : [];
     },
   });
+  const { data: cardTypes } = uiRead2;
 
   const cardTypeOptions = (cardTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }));
   const accessStatusOptions = [
@@ -981,15 +991,15 @@ function AccessCardsSection({ employeeId, canManageDoc, onChildOpen }: { employe
   ) => (
     <div className="grid grid-cols-12 gap-4">
       <ComplianceDmsPrefillBanner prefillMeta={prefillMeta} />
-      <div className="col-span-6"><Label>Access Type <span className="text-destructive">*</span></Label><ERPCombobox value={f.access_type_id} onValueChange={(v) => setF((p) => ({ ...p, access_type_id: Number(v) }))} options={cardTypeOptions} placeholder="Select type..." required /></div>
-      <div className="col-span-6"><Label>Client / Authority</Label><Input value={f.client_authority} onChange={(e) => setF((p) => ({ ...p, client_authority: e.target.value }))} placeholder="e.g. CICPA, ADNOC" /></div>
-      <div className="col-span-6"><Label>Card Number</Label><Input value={f.card_number} onChange={(e) => setF((p) => ({ ...p, card_number: e.target.value }))} /></div>
-      <div className="col-span-6"><Label>Application Reference</Label><Input value={f.application_reference} onChange={(e) => setF((p) => ({ ...p, application_reference: e.target.value }))} /></div>
-      <div className="col-span-6"><Label>Issue Date</Label><Input type="date" value={f.issue_date} onChange={(e) => setF((p) => ({ ...p, issue_date: e.target.value }))} /></div>
-      <div className="col-span-6"><Label>Expiry Date</Label><Input type="date" value={f.expiry_date} onChange={(e) => setF((p) => ({ ...p, expiry_date: e.target.value }))} /></div>
-      <div className="col-span-6"><Label>Status</Label><ERPCombobox value={f.status} onValueChange={(v) => setF((p) => ({ ...p, status: String(v) }))} options={accessStatusOptions} placeholder="Status..." /></div>
-      <div className="col-span-6"><Label>Renewal</Label><ERPCombobox value={f.renewal_status} onValueChange={(v) => setF((p) => ({ ...p, renewal_status: String(v) }))} options={RENEWAL_STATUS_OPTIONS} placeholder="Renewal..." /></div>
-      <div className="col-span-12"><Label>Notes</Label><Textarea value={f.notes} onChange={(e) => setF((p) => ({ ...p, notes: e.target.value }))} rows={2} /></div>
+      <div className="col-span-6"><Label>Access Type <span className="text-destructive">*</span></Label><ERPCombobox ariaLabel="Access Type" value={f.access_type_id} onValueChange={(v) => setF((p) => ({ ...p, access_type_id: Number(v) }))} options={cardTypeOptions} placeholder="Select type..." required /></div>
+      <div className="col-span-6"><Label>Client / Authority</Label><Input aria-label="Client / Authority" value={f.client_authority} onChange={(e) => setF((p) => ({ ...p, client_authority: e.target.value }))} placeholder="e.g. CICPA, ADNOC" /></div>
+      <div className="col-span-6"><Label>Card Number</Label><Input aria-label="Card Number" value={f.card_number} onChange={(e) => setF((p) => ({ ...p, card_number: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Application Reference</Label><Input aria-label="Application Reference" value={f.application_reference} onChange={(e) => setF((p) => ({ ...p, application_reference: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Issue Date</Label><Input aria-label="Issue Date" type="date" value={f.issue_date} onChange={(e) => setF((p) => ({ ...p, issue_date: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Expiry Date</Label><Input aria-label="Expiry Date" type="date" value={f.expiry_date} onChange={(e) => setF((p) => ({ ...p, expiry_date: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Status</Label><ERPCombobox ariaLabel="Status" value={f.status} onValueChange={(v) => setF((p) => ({ ...p, status: String(v) }))} options={accessStatusOptions} placeholder="Status..." /></div>
+      <div className="col-span-6"><Label>Renewal</Label><ERPCombobox ariaLabel="Renewal" value={f.renewal_status} onValueChange={(v) => setF((p) => ({ ...p, renewal_status: String(v) }))} options={RENEWAL_STATUS_OPTIONS} placeholder="Renewal..." /></div>
+      <div className="col-span-12"><Label>Notes</Label><Textarea aria-label="Notes" value={f.notes} onChange={(e) => setF((p) => ({ ...p, notes: e.target.value }))} rows={2} /></div>
     </div>
   );
 
@@ -1032,13 +1042,13 @@ function AccessCardsSection({ employeeId, canManageDoc, onChildOpen }: { employe
   };
 
   return (
-    <div className="mb-8">
+    <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="mb-8">
       <SectionHeader icon={CreditCard} title="Access Cards & Passes" count={records?.length} onAdd={openAdd} canAdd={canManageDoc} />
       {isLoading && <Skeleton className="h-16 w-full" />}
       {!isLoading && (!records || records.length === 0) && <EmptyState message="No access cards or passes added yet." />}
       {!isLoading && records && records.length > 0 && (
         <div className="space-y-2">
-          {records.map((r) => (
+          <RecordCollection id="hr.employee-compliance-tab.AccessCardsSection.records" rows={records} fields={[{"id":"card_number","path":"card_number","label":"Card Number"},{"id":"expiry_date","path":"expiry_date","label":"Expiry Date"}]} renderRecord={(r) => (
             <div key={r.id} className="flex items-start justify-between p-3 border rounded-lg bg-card hover:bg-muted/30">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -1054,12 +1064,12 @@ function AccessCardsSection({ employeeId, canManageDoc, onChildOpen }: { employe
               </div>
               {canManageDoc && (
                 <div className="flex items-center gap-1 ml-2 flex-shrink-0">
-                  <Button size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
-                  <Button size="sm" variant="ghost" type="button" onClick={() => handleArchive(r.id)}><Archive className="h-3.5 w-3.5" /></Button>
+                  <Button aria-label="Edit record" size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
+                  <Button aria-label="Archive record" size="sm" variant="ghost" type="button" onClick={() => handleArchive(r.id)}><Archive className="h-3.5 w-3.5" /></Button>
                 </div>
               )}
             </div>
-          ))}
+          )} />
         </div>
       )}
 
@@ -1081,7 +1091,7 @@ function AccessCardsSection({ employeeId, canManageDoc, onChildOpen }: { employe
       <ERPChildDialogForm open={editDialogOpen} onOpenChange={setEditDialogOpen} title="Edit Access Card" icon={<CreditCard className="h-5 w-5" />} mode="edit" size="lg" isSubmitting={isSubmitting} onSubmit={handleEditSubmit}>
         {renderAccessCardFields(form, setForm, null)}
       </ERPChildDialogForm>
-    </div>
+    </div></QueryReadBoundary>
   );
 }
 
@@ -1109,26 +1119,29 @@ function TrainingCertificatesSection({ employeeId, canManageDoc, onChildOpen }: 
 
   const [form, setForm] = useState(initialForm);
 
-  const { data: records, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.compliance.trainingCertificates(employeeId),
-    queryFn: async () => { const r = await listEmployeeTrainingCertificates(employeeId); return r.success ? r.data ?? [] : []; },
+    queryFn: async () => { const r = await listEmployeeTrainingCertificates(employeeId); if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? [] : []; },
   });
+  const { data: records, isLoading } = uiRead1;
 
-  const { data: trainCategories } = useQuery({
+  const uiRead2 = useQuery({
     queryKey: queryKeys.hr.trainingCategories(),
     queryFn: async () => {
       const r = await listHrTrainingCategories({ is_active: true, page: 1, page_size: 100 });
-      return r.success && r.data ? r.data.data as HrSettingsRow[] : [];
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success && r.data ? r.data.data as HrSettingsRow[] : [];
     },
   });
+  const { data: trainCategories } = uiRead2;
 
-  const { data: trainTypes } = useQuery({
+  const uiRead3 = useQuery({
     queryKey: queryKeys.hr.trainingTypes(),
     queryFn: async () => {
       const r = await listHrTrainingTypes({ is_active: true, page: 1, page_size: 100 });
-      return r.success && r.data ? r.data.data as HrTrainingTypeRow[] : [];
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success && r.data ? r.data.data as HrTrainingTypeRow[] : [];
     },
   });
+  const { data: trainTypes } = uiRead3;
 
   const catOptions = (trainCategories ?? []).map((t) => ({ value: t.id, label: t.name_en }));
   const typeOptions = (trainTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }));
@@ -1158,18 +1171,18 @@ function TrainingCertificatesSection({ employeeId, canManageDoc, onChildOpen }: 
   ) => (
     <div className="grid grid-cols-12 gap-4">
       <ComplianceDmsPrefillBanner prefillMeta={prefillMeta} />
-      <div className="col-span-6"><Label>Training Category</Label><ERPCombobox value={f.training_category_id} onValueChange={(v) => setF((p) => ({ ...p, training_category_id: Number(v) }))} options={catOptions} placeholder="Select category..." /></div>
-      <div className="col-span-6"><Label>Training Type <span className="text-destructive">*</span></Label><ERPCombobox value={f.training_type_id} onValueChange={(v) => setF((p) => ({ ...p, training_type_id: Number(v) }))} options={typeOptions} placeholder="Select type..." required /></div>
-      <div className="col-span-6"><Label>Provider</Label><Input value={f.provider} onChange={(e) => setF((p) => ({ ...p, provider: e.target.value }))} /></div>
-      <div className="col-span-6"><Label>Approval Body</Label><Input value={f.approval_body} onChange={(e) => setF((p) => ({ ...p, approval_body: e.target.value }))} /></div>
-      <div className="col-span-6"><Label>Certificate Number</Label><Input value={f.certificate_number} onChange={(e) => setF((p) => ({ ...p, certificate_number: e.target.value }))} /></div>
-      <div className="col-span-6"><Label>Completion Date</Label><Input type="date" value={f.completion_date} onChange={(e) => setF((p) => ({ ...p, completion_date: e.target.value }))} /></div>
-      <div className="col-span-6"><Label>Expiry Date</Label><Input type="date" value={f.expiry_date} onChange={(e) => setF((p) => ({ ...p, expiry_date: e.target.value }))} /></div>
-      <div className="col-span-6"><Label>Status</Label><ERPCombobox value={f.status} onValueChange={(v) => setF((p) => ({ ...p, status: String(v) }))} options={trainStatusOptions} placeholder="Status..." /></div>
-      <div className="col-span-6"><Label>Verification</Label><ERPCombobox value={f.verification_status} onValueChange={(v) => setF((p) => ({ ...p, verification_status: String(v) }))} options={VERIFICATION_OPTIONS} placeholder="Verification..." /></div>
+      <div className="col-span-6"><Label>Training Category</Label><ERPCombobox ariaLabel="Training Category" value={f.training_category_id} onValueChange={(v) => setF((p) => ({ ...p, training_category_id: Number(v) }))} options={catOptions} placeholder="Select category..." /></div>
+      <div className="col-span-6"><Label>Training Type <span className="text-destructive">*</span></Label><ERPCombobox ariaLabel="Training Type" value={f.training_type_id} onValueChange={(v) => setF((p) => ({ ...p, training_type_id: Number(v) }))} options={typeOptions} placeholder="Select type..." required /></div>
+      <div className="col-span-6"><Label>Provider</Label><Input aria-label="Provider" value={f.provider} onChange={(e) => setF((p) => ({ ...p, provider: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Approval Body</Label><Input aria-label="Approval Body" value={f.approval_body} onChange={(e) => setF((p) => ({ ...p, approval_body: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Certificate Number</Label><Input aria-label="Certificate Number" value={f.certificate_number} onChange={(e) => setF((p) => ({ ...p, certificate_number: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Completion Date</Label><Input aria-label="Completion Date" type="date" value={f.completion_date} onChange={(e) => setF((p) => ({ ...p, completion_date: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Expiry Date</Label><Input aria-label="Expiry Date" type="date" value={f.expiry_date} onChange={(e) => setF((p) => ({ ...p, expiry_date: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Status</Label><ERPCombobox ariaLabel="Status" value={f.status} onValueChange={(v) => setF((p) => ({ ...p, status: String(v) }))} options={trainStatusOptions} placeholder="Status..." /></div>
+      <div className="col-span-6"><Label>Verification</Label><ERPCombobox ariaLabel="Verification" value={f.verification_status} onValueChange={(v) => setF((p) => ({ ...p, verification_status: String(v) }))} options={VERIFICATION_OPTIONS} placeholder="Verification..." /></div>
       <div className="col-span-6 flex items-center gap-2 pt-5"><Switch checked={f.required_for_designation} onCheckedChange={(v) => setF((p) => ({ ...p, required_for_designation: v }))} /><Label>Required for Designation</Label></div>
       <div className="col-span-6 flex items-center gap-2 pt-5"><Switch checked={f.required_for_site} onCheckedChange={(v) => setF((p) => ({ ...p, required_for_site: v }))} /><Label>Required for Site</Label></div>
-      <div className="col-span-12"><Label>Notes</Label><Textarea value={f.notes} onChange={(e) => setF((p) => ({ ...p, notes: e.target.value }))} rows={2} /></div>
+      <div className="col-span-12"><Label>Notes</Label><Textarea aria-label="Notes" value={f.notes} onChange={(e) => setF((p) => ({ ...p, notes: e.target.value }))} rows={2} /></div>
     </div>
   );
 
@@ -1220,13 +1233,13 @@ function TrainingCertificatesSection({ employeeId, canManageDoc, onChildOpen }: 
   };
 
   return (
-    <div className="mb-8">
+    <QueryReadBoundary queries={[uiRead1,uiRead2,uiRead3]}><div className="mb-8">
       <SectionHeader icon={GraduationCap} title="Training & Certifications" count={records?.length} onAdd={openAdd} canAdd={canManageDoc} />
       {isLoading && <Skeleton className="h-16 w-full" />}
       {!isLoading && (!records || records.length === 0) && <EmptyState message="No training certificates added yet." />}
       {!isLoading && records && records.length > 0 && (
         <div className="space-y-2">
-          {records.map((r) => (
+          <RecordCollection id="hr.employee-compliance-tab.TrainingCertificatesSection.records" rows={records} fields={[{"id":"certificate_number","path":"certificate_number","label":"Certificate Number"},{"id":"expiry_date","path":"expiry_date","label":"Expiry Date"}]} renderRecord={(r) => (
             <div key={r.id} className="flex items-start justify-between p-3 border rounded-lg bg-card hover:bg-muted/30">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -1243,13 +1256,13 @@ function TrainingCertificatesSection({ employeeId, canManageDoc, onChildOpen }: 
               </div>
               {canManageDoc && (
                 <div className="flex items-center gap-1 ml-2 flex-shrink-0">
-                  {r.verification_status === "unverified" && <Button size="sm" variant="ghost" type="button" onClick={() => handleVerify(r.id)} title="Verify"><CheckCircle className="h-3.5 w-3.5" /></Button>}
-                  <Button size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
-                  <Button size="sm" variant="ghost" type="button" onClick={() => handleArchive(r.id)}><Archive className="h-3.5 w-3.5" /></Button>
+                  {r.verification_status === "unverified" && <Button aria-label="Verify" size="sm" variant="ghost" type="button" onClick={() => handleVerify(r.id)} title="Verify"><CheckCircle className="h-3.5 w-3.5" /></Button>}
+                  <Button aria-label="Edit record" size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
+                  <Button aria-label="Archive record" size="sm" variant="ghost" type="button" onClick={() => handleArchive(r.id)}><Archive className="h-3.5 w-3.5" /></Button>
                 </div>
               )}
             </div>
-          ))}
+          )} />
         </div>
       )}
 
@@ -1271,7 +1284,7 @@ function TrainingCertificatesSection({ employeeId, canManageDoc, onChildOpen }: 
       <ERPChildDialogForm open={editDialogOpen} onOpenChange={setEditDialogOpen} title="Edit Certificate" icon={<GraduationCap className="h-5 w-5" />} mode="edit" size="lg" isSubmitting={isSubmitting} onSubmit={handleEditSubmit}>
         {renderTrainingFields(form, setForm, null)}
       </ERPChildDialogForm>
-    </div>
+    </div></QueryReadBoundary>
   );
 }
 
@@ -1300,20 +1313,22 @@ function MedicalRecordsSection({ employeeId, canMedView, canMedManage, onChildOp
 
   const [form, setForm] = useState(initialForm);
 
-  const { data: records, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.compliance.medicalRecords(employeeId),
     enabled: canMedView,
-    queryFn: async () => { const r = await listEmployeeMedicalRecords(employeeId); return r.success ? r.data ?? [] : []; },
+    queryFn: async () => { const r = await listEmployeeMedicalRecords(employeeId); if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? [] : []; },
   });
+  const { data: records, isLoading } = uiRead1;
 
-  const { data: recTypes } = useQuery({
+  const uiRead2 = useQuery({
     queryKey: queryKeys.hr.medicalRecordTypes(),
     enabled: canMedView,
     queryFn: async () => {
       const r = await listHrMedicalRecordTypes({ is_active: true, page: 1, page_size: 100 });
-      return r.success && r.data ? r.data.data as HrMedicalRecordTypeRow[] : [];
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success && r.data ? r.data.data as HrMedicalRecordTypeRow[] : [];
     },
   });
+  const { data: recTypes } = uiRead2;
 
   if (!canMedView) {
     return (
@@ -1396,30 +1411,30 @@ function MedicalRecordsSection({ employeeId, canMedView, canMedManage, onChildOp
   ) => (
     <div className="grid grid-cols-12 gap-4">
       <ComplianceDmsPrefillBanner prefillMeta={prefillMeta} />
-      <div className="col-span-6"><Label>Medical Record Type <span className="text-destructive">*</span></Label><ERPCombobox value={f.medical_record_type_id} onValueChange={(v) => setF((p) => ({ ...p, medical_record_type_id: Number(v) }))} options={recTypeOptions} placeholder="Select type..." required /></div>
-      <div className="col-span-6"><Label>Medical Center</Label><Input value={f.medical_center} onChange={(e) => setF((p) => ({ ...p, medical_center: e.target.value }))} /></div>
-      <div className="col-span-6"><Label>Report Number</Label><Input value={f.report_number} onChange={(e) => setF((p) => ({ ...p, report_number: e.target.value }))} /></div>
-      <div className="col-span-6"><Label>Examination Date <span className="text-destructive">*</span></Label><Input type="date" value={f.examination_date} onChange={(e) => setF((p) => ({ ...p, examination_date: e.target.value }))} /></div>
-      <div className="col-span-6"><Label>Result <span className="text-destructive">*</span></Label><ERPCombobox value={f.result} onValueChange={(v) => setF((p) => ({ ...p, result: String(v) }))} options={resultOptions} placeholder="Result..." required /></div>
-      <div className="col-span-6"><Label>Next Examination Date</Label><Input type="date" value={f.next_examination_date} onChange={(e) => setF((p) => ({ ...p, next_examination_date: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Medical Record Type <span className="text-destructive">*</span></Label><ERPCombobox ariaLabel="Medical Record Type" value={f.medical_record_type_id} onValueChange={(v) => setF((p) => ({ ...p, medical_record_type_id: Number(v) }))} options={recTypeOptions} placeholder="Select type..." required /></div>
+      <div className="col-span-6"><Label>Medical Center</Label><Input aria-label="Medical Center" value={f.medical_center} onChange={(e) => setF((p) => ({ ...p, medical_center: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Report Number</Label><Input aria-label="Report Number" value={f.report_number} onChange={(e) => setF((p) => ({ ...p, report_number: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Examination Date <span className="text-destructive">*</span></Label><Input aria-label="Examination Date" required type="date" value={f.examination_date} onChange={(e) => setF((p) => ({ ...p, examination_date: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Result <span className="text-destructive">*</span></Label><ERPCombobox ariaLabel="Result" value={f.result} onValueChange={(v) => setF((p) => ({ ...p, result: String(v) }))} options={resultOptions} placeholder="Result..." required /></div>
+      <div className="col-span-6"><Label>Next Examination Date</Label><Input aria-label="Next Examination Date" type="date" value={f.next_examination_date} onChange={(e) => setF((p) => ({ ...p, next_examination_date: e.target.value }))} /></div>
       <div className="col-span-6 flex items-center gap-2 pt-5"><Switch checked={f.fit_for_work} onCheckedChange={(v) => setF((p) => ({ ...p, fit_for_work: v }))} /><Label>Fit for Work</Label></div>
       <div className="col-span-6 flex items-center gap-2 pt-5"><Switch checked={f.work_restrictions} onCheckedChange={(v) => setF((p) => ({ ...p, work_restrictions: v }))} /><Label>Work Restrictions</Label></div>
-      {f.work_restrictions && <div className="col-span-12"><Label>Restriction Details</Label><Textarea value={f.restriction_details} onChange={(e) => setF((p) => ({ ...p, restriction_details: e.target.value }))} rows={2} /></div>}
+      {f.work_restrictions && <div className="col-span-12"><Label>Restriction Details</Label><Textarea aria-label="Restriction Details" value={f.restriction_details} onChange={(e) => setF((p) => ({ ...p, restriction_details: e.target.value }))} rows={2} /></div>}
       <div className="col-span-4 flex items-center gap-2 pt-5"><Switch checked={f.required_for_visa} onCheckedChange={(v) => setF((p) => ({ ...p, required_for_visa: v }))} /><Label>Required for Visa</Label></div>
       <div className="col-span-4 flex items-center gap-2 pt-5"><Switch checked={f.required_for_site} onCheckedChange={(v) => setF((p) => ({ ...p, required_for_site: v }))} /><Label>Required for Site</Label></div>
       <div className="col-span-4 flex items-center gap-2 pt-5"><Switch checked={f.required_for_noc} onCheckedChange={(v) => setF((p) => ({ ...p, required_for_noc: v }))} /><Label>Required for NOC</Label></div>
-      <div className="col-span-12"><Label>Notes</Label><Textarea value={f.notes} onChange={(e) => setF((p) => ({ ...p, notes: e.target.value }))} rows={2} /></div>
+      <div className="col-span-12"><Label>Notes</Label><Textarea aria-label="Notes" value={f.notes} onChange={(e) => setF((p) => ({ ...p, notes: e.target.value }))} rows={2} /></div>
     </div>
   );
 
   return (
-    <div className="mb-8">
+    <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="mb-8">
       <SectionHeader icon={Activity} title="Medical & Health Records" count={records?.length} onAdd={canMedManage ? openAdd : undefined} canAdd={canMedManage} />
       {isLoading && <Skeleton className="h-16 w-full" />}
       {!isLoading && (!records || records.length === 0) && <EmptyState message="No medical records added yet." />}
       {!isLoading && records && records.length > 0 && (
         <div className="space-y-2">
-          {records.map((r) => {
+          <RecordCollection id="hr.employee-compliance-tab.MedicalRecordsSection.records" rows={records} fields={[{"id":"examination_date","path":"examination_date","label":"Examination Date"}]} renderRecord={(r) => {
             const resultCfg = getMedicalResultBadge(r.result);
             return (
               <div key={r.id} className="flex items-start justify-between p-3 border rounded-lg bg-card hover:bg-muted/30">
@@ -1437,13 +1452,13 @@ function MedicalRecordsSection({ employeeId, canMedView, canMedManage, onChildOp
                 </div>
                 {canMedManage && (
                   <div className="flex items-center gap-1 ml-2 flex-shrink-0">
-                    <Button size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
-                    <Button size="sm" variant="ghost" type="button" onClick={() => handleArchive(r.id)}><Archive className="h-3.5 w-3.5" /></Button>
+                    <Button aria-label="Edit record" size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
+                    <Button aria-label="Archive record" size="sm" variant="ghost" type="button" onClick={() => handleArchive(r.id)}><Archive className="h-3.5 w-3.5" /></Button>
                   </div>
                 )}
               </div>
             );
-          })}
+          }} />
         </div>
       )}
 
@@ -1469,7 +1484,7 @@ function MedicalRecordsSection({ employeeId, canMedView, canMedManage, onChildOp
           </ERPChildDialogForm>
         </>
       )}
-    </div>
+    </div></QueryReadBoundary>
   );
 }
 
@@ -1481,7 +1496,7 @@ export function EmployeeComplianceTab({ employeeId, authContext, onChildOpen }: 
   const medManage = canMedicalManage(authContext);
 
   // HR.14B — check if document-to-record wizard is enabled for this user
-  const { data: wizardStatus } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: ["hr14b", "wizard-enabled"],
     queryFn: async () => {
       const r = await checkHrDocumentToRecordEnabled();
@@ -1489,6 +1504,7 @@ export function EmployeeComplianceTab({ employeeId, authContext, onChildOpen }: 
     },
     staleTime: 60_000,
   });
+  const { data: wizardStatus } = uiRead1;
   const documentWizardEnabled = wizardStatus ?? false;
 
   if (!canView(authContext) && !medView) {
@@ -1503,7 +1519,7 @@ export function EmployeeComplianceTab({ employeeId, authContext, onChildOpen }: 
   }
 
   return (
-    <div className="space-y-2">
+    <QueryReadBoundary queries={[uiRead1]}><div className="space-y-2">
       <div className="flex items-center gap-2 mb-6">
         <Shield className="h-5 w-5 text-primary" />
         <h3 className="font-semibold">Compliance Records</h3>
@@ -1516,6 +1532,6 @@ export function EmployeeComplianceTab({ employeeId, authContext, onChildOpen }: 
       {canView(authContext) && <AccessCardsSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} />}
       {canView(authContext) && <TrainingCertificatesSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} />}
       <MedicalRecordsSection employeeId={employeeId} canMedView={medView} canMedManage={medManage} onChildOpen={onChildOpen} />
-    </div>
+    </div></QueryReadBoundary>
   );
 }

@@ -1,5 +1,8 @@
 "use client";
 
+import { DmsListTools, useDmsListView, type DmsListField } from "@/features/dms/dms-list-view";
+import { ConfiguredRow } from "@/components/erp/table/list-controls";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -80,6 +83,68 @@ function canManage(ctx: AuthContext) {
   );
 }
 
+const DMS_LIST_FIELDS: DmsListField[] = [
+  {
+    "id": "policy_code",
+    "label": "Code",
+    "path": "policy_code",
+    "type": "text",
+    "width": 160,
+    "required": true
+  },
+  {
+    "id": "name_en",
+    "label": "Name",
+    "path": "name_en",
+    "type": "text",
+    "width": 160
+  },
+  {
+    "id": "retain_for_days",
+    "label": "Retention days",
+    "path": "retain_for_days",
+    "type": "number",
+    "width": 160
+  },
+  {
+    "id": "action_on_expiry",
+    "label": "Expiry action",
+    "path": "action_on_expiry",
+    "type": "text",
+    "width": 160
+  },
+  {
+    "id": "is_active",
+    "label": "Active",
+    "path": "is_active",
+    "type": "select",
+    "width": 110,
+    "options": [
+      {
+        "value": "true",
+        "label": "Yes"
+      },
+      {
+        "value": "false",
+        "label": "No"
+      }
+    ]
+  },
+  {
+    "id": "updated_at",
+    "label": "Updated",
+    "path": "updated_at",
+    "type": "date",
+    "width": 160
+  },
+  {
+    "id": "actions",
+    "label": "Actions",
+    "type": "text",
+    "width": 160
+  }
+];
+
 export function DmsRetentionPoliciesTable({ rows, authContext }: Props) {
   const router = useRouter();
   const manage = canManage(authContext);
@@ -88,9 +153,12 @@ export function DmsRetentionPoliciesTable({ rows, authContext }: Props) {
   const [editing, setEditing] = useState<DmsRetentionPolicyRow | null>(null);
   const [form, setForm] = useState<FormState>({ ...emptyForm });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DmsRetentionPolicyRow | null>(null);
 
-  const table = useSortPaginate(rows, {
+  const listView = useDmsListView("retention-policies", rows, DMS_LIST_FIELDS.filter(field => field.id !== "actions" || (manage)));
+  const table = useSortPaginate(listView.rows, {
+    memoryKey: "dms:retention-policies",
     defaultSortKey: "name_en",
     defaultSortDir: "asc",
     defaultPageSize: 25,
@@ -103,6 +171,7 @@ export function DmsRetentionPoliciesTable({ rows, authContext }: Props) {
   const openAdd = () => {
     setEditing(null);
     setForm({ ...emptyForm });
+    setSaveError(null);
     setDialogOpen(true);
   };
 
@@ -117,6 +186,7 @@ export function DmsRetentionPoliciesTable({ rows, authContext }: Props) {
       action_on_expiry: row.action_on_expiry,
       is_active: row.is_active,
     });
+    setSaveError(null);
     setDialogOpen(true);
   };
 
@@ -131,6 +201,8 @@ export function DmsRetentionPoliciesTable({ rows, authContext }: Props) {
       return;
     }
     setIsSubmitting(true);
+    setSaveError(null);
+    try {
     const payload = {
       policy_code: form.policy_code.toUpperCase(),
       name_en: form.name_en,
@@ -144,11 +216,14 @@ export function DmsRetentionPoliciesTable({ rows, authContext }: Props) {
     const result = editing
       ? await updateDmsRetentionPolicy(editing.id, payload)
       : await createDmsRetentionPolicy(payload);
-    setIsSubmitting(false);
-    if (!result.success) { toast.error(result.error ?? "Failed to save"); return; }
+
+    if (!result.success) { setSaveError("The record was not saved. Check your access and whether this code or name is already in use. Your entries are retained."); return; }
     toast.success(editing ? "Retention policy updated" : "Retention policy created");
     setDialogOpen(false);
     router.refresh();
+  } catch {
+      setSaveError("The save could not be confirmed. Your entries are retained. Check the list before retrying to avoid duplicates.");
+    } finally { setIsSubmitting(false); }
   };
 
   const handleToggle = async (row: DmsRetentionPolicyRow) => {
@@ -175,7 +250,7 @@ export function DmsRetentionPoliciesTable({ rows, authContext }: Props) {
             ? `${table.total} of ${rows.length} ${rows.length === 1 ? "policy" : "policies"}`
             : `${rows.length} ${rows.length === 1 ? "policy" : "policies"}`}
         </p>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <TableSearchInput value={table.query} onChange={table.setQuery} placeholder="Search policies…" className="w-52" />
           {manage && (
             <Button onClick={openAdd} size="sm">
@@ -186,23 +261,24 @@ export function DmsRetentionPoliciesTable({ rows, authContext }: Props) {
         </div>
       </div>
 
-      <div className="rounded-md border overflow-hidden">
-        <table className="w-full text-sm">
+      <DmsListTools view={listView} />
+<div className="rounded-md border overflow-hidden">
+        <div role="region" aria-label="retention-policies table" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{ minWidth: listView.visible.reduce((sum, column) => sum + column.width, 0) }}><colgroup>{listView.visible.map(column => <col key={column.id} style={{ width: column.width }} />)}</colgroup>
           <thead className="bg-muted/50 border-b">
-            <tr>
-              <SortColHeader field="policy_code" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort}>Code</SortColHeader>
-              <SortColHeader field="name_en" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort}>Name</SortColHeader>
-              <SortColHeader field="retain_for_days" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">Retain (Days)</SortColHeader>
-              <SortColHeader field="action_on_expiry" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">Action on Expiry</SortColHeader>
-              <SortColHeader field="is_active" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">Status</SortColHeader>
-              <SortColHeader field="updated_at" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center" className="hidden md:table-cell">Updated</SortColHeader>
-              {manage && <th className="px-4 py-2.5 w-24" />}
-            </tr>
+            <ConfiguredRow columns={listView.columns}>
+              <SortColHeader data-column="policy_code" field="policy_code" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort}>Code</SortColHeader>
+              <SortColHeader data-column="name_en" field="name_en" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort}>Name</SortColHeader>
+              <SortColHeader data-column="retain_for_days" field="retain_for_days" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">Retain (Days)</SortColHeader>
+              <SortColHeader data-column="action_on_expiry" field="action_on_expiry" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">Action on Expiry</SortColHeader>
+              <SortColHeader data-column="is_active" field="is_active" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">Status</SortColHeader>
+              <SortColHeader data-column="updated_at" field="updated_at" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center" className="hidden md:table-cell">Updated</SortColHeader>
+              {manage && <th data-column="actions" className="px-4 py-2.5 w-24" />}
+            </ConfiguredRow>
           </thead>
           <tbody className="divide-y divide-border/50">
             {table.rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground text-sm">
+                <td colSpan={listView.visible.length} className="px-4 py-8 text-center text-muted-foreground text-sm">
                   {table.query ? "No policies match your search" : "No retention policies found"}
                 </td>
               </tr>
@@ -210,50 +286,50 @@ export function DmsRetentionPoliciesTable({ rows, authContext }: Props) {
             {table.rows.map((row) => {
               const action = ACTION_LABELS[row.action_on_expiry] ?? { label: row.action_on_expiry, color: "bg-gray-100 text-gray-600" };
               return (
-                <tr key={row.id} className="hover:bg-muted/25 transition-colors">
-                  <td className="px-4 py-2.5 font-mono text-xs font-medium">{row.policy_code}</td>
-                  <td className="px-4 py-2.5">
+                <ConfiguredRow columns={listView.columns} key={row.id} className="hover:bg-muted/25 transition-colors">
+                  <td data-column="policy_code" className="px-4 py-2.5 font-mono text-xs font-medium">{row.policy_code}</td>
+                  <td data-column="name_en" className="px-4 py-2.5">
                     <div className="font-medium text-sm">{row.name_en}</div>
                     {row.name_ar && <div className="text-xs text-muted-foreground" dir="rtl">{row.name_ar}</div>}
                   </td>
-                  <td className="px-4 py-2.5 text-center text-sm">
+                  <td data-column="retain_for_days" className="px-4 py-2.5 text-center text-sm">
                     {row.retain_for_days ? (
                       <span className="font-medium">{row.retain_for_days.toLocaleString()}</span>
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-2.5 text-center">
+                  <td data-column="action_on_expiry" className="px-4 py-2.5 text-center">
                     <Badge className={`text-[10px] px-1.5 py-0 ${action.color}`}>{action.label}</Badge>
                   </td>
-                  <td className="px-4 py-2.5 text-center">
+                  <td data-column="is_active" className="px-4 py-2.5 text-center">
                     <Badge className={`text-[10px] px-1.5 py-0 ${row.is_active ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"}`}>
                       {row.is_active ? "Active" : "Inactive"}
                     </Badge>
                   </td>
-                  <td className="px-4 py-2.5 text-center text-xs text-muted-foreground hidden md:table-cell">
+                  <td data-column="updated_at" className="px-4 py-2.5 text-center text-xs text-muted-foreground">
                     {format(new Date(row.updated_at), "dd MMM yyyy")}
                   </td>
                   {manage && (
-                    <td className="px-4 py-2.5">
+                    <td data-column="actions" className="px-4 py-2.5">
                       <div className="flex items-center gap-1 justify-end">
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(row)} title="Edit">
+                        <Button aria-label="Edit" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(row)} title="Edit">
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleToggle(row)} title={row.is_active ? "Deactivate" : "Activate"}>
+                        <Button aria-label={row.is_active ? "Deactivate" : "Activate"} size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleToggle(row)} title={row.is_active ? "Deactivate" : "Activate"}>
                           <Power className="h-3.5 w-3.5" />
                         </Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => setDeleteTarget(row)} title="Delete">
+                        <Button aria-label="Delete" size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => setDeleteTarget(row)} title="Delete">
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     </td>
                   )}
-                </tr>
+                </ConfiguredRow>
               );
             })}
           </tbody>
-        </table>
+        </table></div>
         <TablePagination
           page={table.page}
           totalPages={table.totalPages}
@@ -275,10 +351,11 @@ export function DmsRetentionPoliciesTable({ rows, authContext }: Props) {
         isSubmitting={isSubmitting}
         onSubmit={handleSubmit}
       >
+        {saveError && <p role="alert" className="mb-3 rounded-sm border border-destructive/40 p-3 text-sm">{saveError}</p>}
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-5">
             <RequiredLabel required>Policy Code</RequiredLabel>
-            <Input
+            <Input aria-label="Policy Code" required
               value={form.policy_code}
               onChange={(e) => setForm((f) => ({ ...f, policy_code: e.target.value.toUpperCase() }))}
               placeholder="e.g. STANDARD_7Y"
@@ -286,9 +363,9 @@ export function DmsRetentionPoliciesTable({ rows, authContext }: Props) {
               className="font-mono"
             />
           </div>
-          <div className="col-span-4">
+          <div className="col-span-12 sm:col-span-4">
             <Label>Retain For (Days)</Label>
-            <Input
+            <Input aria-label="Retain For (Days)"
               type="number"
               value={form.retain_for_days}
               onChange={(e) => setForm((f) => ({ ...f, retain_for_days: e.target.value }))}
@@ -297,7 +374,7 @@ export function DmsRetentionPoliciesTable({ rows, authContext }: Props) {
             />
             <p className="text-[10px] text-muted-foreground mt-1">Leave blank for indefinite</p>
           </div>
-          <div className="col-span-3">
+          <div className="col-span-12 sm:col-span-3">
             <RequiredLabel required>Action on Expiry</RequiredLabel>
             <Select value={form.action_on_expiry} onValueChange={(v) => setForm((f) => ({ ...f, action_on_expiry: v ?? "notify" }))}>
               <SelectTrigger>
@@ -318,17 +395,17 @@ export function DmsRetentionPoliciesTable({ rows, authContext }: Props) {
               </div>
             </div>
           )}
-          <div className="col-span-6">
+          <div className="col-span-12 sm:col-span-6">
             <RequiredLabel required>Name (English)</RequiredLabel>
-            <Input
+            <Input aria-label="Name (English)" required
               value={form.name_en}
               onChange={(e) => setForm((f) => ({ ...f, name_en: e.target.value }))}
               placeholder="e.g. Standard 7 Years"
             />
           </div>
-          <div className="col-span-6">
+          <div className="col-span-12 sm:col-span-6">
             <Label>Name (Arabic)</Label>
-            <Input
+            <Input aria-label="Name (Arabic)"
               value={form.name_ar}
               onChange={(e) => setForm((f) => ({ ...f, name_ar: e.target.value }))}
               placeholder="الاسم بالعربي"
@@ -337,7 +414,7 @@ export function DmsRetentionPoliciesTable({ rows, authContext }: Props) {
           </div>
           <div className="col-span-12">
             <Label>Description</Label>
-            <Textarea
+            <Textarea aria-label="Description"
               value={form.description}
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
               placeholder="Optional description"

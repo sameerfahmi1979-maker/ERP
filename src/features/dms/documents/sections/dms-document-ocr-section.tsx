@@ -1,4 +1,9 @@
 "use client";
+import { RecordCollection } from "@/components/erp/table/record-collection";
+import { useGuardedTransition } from "@/hooks/use-guarded-transition";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import { loadedListValue } from "@/components/erp/table/loaded-list-view";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 /**
  * DMS.9 — DmsDocumentOcrSection
@@ -39,13 +44,13 @@ export function DmsDocumentOcrSection({
   canViewText = true,
 }: DmsDocumentOcrSectionProps) {
   const queryClient = useQueryClient();
-  const [triggering, setTriggering] = useState(false);
+  const [triggering, triggerAction] = useGuardedTransition();
   const [selectedFileId, setSelectedFileId] = useState<number | null>(null);
   const [viewingText, setViewingText] = useState(false);
   const [copiedText, setCopiedText] = useState(false);
 
   // OCR status query
-  const { data: ocrStatus, isLoading: statusLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.dms.documentOcrStatus(documentId),
     queryFn: async () => {
       const r = await getDmsOcrStatus(documentId);
@@ -54,9 +59,10 @@ export function DmsDocumentOcrSection({
     },
     staleTime: 15_000,
   });
+ const { data: ocrStatus, isLoading: statusLoading } = uiRead1;
 
   // OCR jobs query (last 10)
-  const { data: ocrJobs = [] } = useQuery({
+  const uiRead2 = useQuery({
     queryKey: queryKeys.dms.ocrJobs({ documentId, limit: 10 }),
     queryFn: async () => {
       const r = await getDmsOcrJobs({ documentId, limit: 10, offset: 0 });
@@ -65,9 +71,10 @@ export function DmsDocumentOcrSection({
     },
     staleTime: 15_000,
   });
+ const { data: ocrJobs = [] } = uiRead2;
 
   // OCR text query (lazy — only when user clicks "View Text")
-  const { data: ocrTextData, isLoading: textLoading, refetch: refetchText } = useQuery({
+  const uiRead3 = useQuery({
     queryKey: queryKeys.dms.fileOcrText(selectedFileId ?? 0),
     queryFn: async () => {
       if (!selectedFileId) return null;
@@ -78,10 +85,10 @@ export function DmsDocumentOcrSection({
     enabled: !!selectedFileId && viewingText,
     staleTime: 60_000,
   });
+ const { data: ocrTextData, isLoading: textLoading, refetch: refetchText } = uiRead3;
 
-  const handleTriggerAll = async () => {
-    setTriggering(true);
-    try {
+  const handleTriggerAll = () => triggerAction(async () => {
+    if (!canTrigger) return;
       const result = await triggerDmsOcrForDocument(documentId, { forceRetry: false });
       if (result.success) {
         const triggered = result.data?.triggered ?? 0;
@@ -91,10 +98,7 @@ export function DmsDocumentOcrSection({
       }
       invalidateDmsOcr(queryClient, documentId);
       invalidateDmsDocumentFiles(queryClient, documentId);
-    } finally {
-      setTriggering(false);
-    }
-  };
+  });
 
   const handleViewText = useCallback((fileId: number) => {
     setSelectedFileId(fileId);
@@ -111,7 +115,8 @@ export function DmsDocumentOcrSection({
     });
   };
 
-  const handleRetry = async (jobId: number) => {
+  const handleRetry = (jobId: number) => triggerAction(async () => {
+    if (!canTrigger) return;
     const r = await retryDmsOcrJob(jobId);
     if (r.success) {
       toast.success(r.data?.message ?? "OCR retry triggered");
@@ -120,13 +125,13 @@ export function DmsDocumentOcrSection({
     }
     invalidateDmsOcr(queryClient, documentId);
     invalidateDmsDocumentFiles(queryClient, documentId);
-  };
+  });
 
   if (statusLoading) {
     return (
-      <div className="py-8 flex items-center justify-center text-sm text-muted-foreground">
+      <QueryReadBoundary queries={[uiRead1,uiRead2,uiRead3]}><div className="py-8 flex items-center justify-center text-sm text-muted-foreground">
         Loading OCR status…
-      </div>
+      </div></QueryReadBoundary>
     );
   }
 
@@ -138,9 +143,9 @@ export function DmsDocumentOcrSection({
   );
 
   return (
-    <div className="space-y-5">
+    <QueryReadBoundary queries={[uiRead1,uiRead2,uiRead3]}><div className="space-y-5">
       {/* ── Header bar ── */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-3">
           <div>
             <p className="text-xs text-muted-foreground">Document OCR Status</p>
@@ -196,31 +201,11 @@ export function DmsDocumentOcrSection({
         </div>
       ) : (
         <div className="rounded-md border border-border overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/20">
-                <th className="text-left px-3 py-2 font-medium text-xs text-muted-foreground uppercase tracking-wide">File</th>
-                <th className="text-left px-3 py-2 font-medium text-xs text-muted-foreground uppercase tracking-wide">Type</th>
-                <th className="text-left px-3 py-2 font-medium text-xs text-muted-foreground uppercase tracking-wide">OCR Status</th>
-                <th className="text-left px-3 py-2 font-medium text-xs text-muted-foreground uppercase tracking-wide">Provider</th>
-                <th className="text-left px-3 py-2 font-medium text-xs text-muted-foreground uppercase tracking-wide">Completed</th>
-                <th className="px-3 py-2 w-36" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/50">
-              {files.map((file: DmsOcrFileStatus) => (
-                <OcrFileRow
-                  key={file.file_id}
-                  file={file}
-                  canTrigger={canTrigger}
-                  canViewText={canViewText}
-                  documentId={documentId}
-                  onViewText={() => handleViewText(file.file_id)}
-                  queryClient={queryClient}
-                />
-              ))}
-            </tbody>
-          </table>
+          <RecordCollection id={`special.ocr-files.${documentId}`} rows={files}
+            fields={[{id:"file_name",path:"file_name",label:"File"},{id:"mime_type",path:"mime_type",label:"Type"},{id:"ocr_status",path:"ocr_status",label:"OCR status"},{id:"ocr_provider",path:"ocr_provider",label:"Provider"}]}
+            renderRecord={file => <OcrFileRow file={file} canTrigger={canTrigger} canViewText={canViewText}
+              documentId={documentId} onViewText={()=>handleViewText(file.file_id)} queryClient={queryClient}/>} />
+
         </div>
       )}
 
@@ -279,39 +264,16 @@ export function DmsDocumentOcrSection({
         <div className="space-y-1">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Recent OCR Jobs</p>
           <div className="rounded-md border border-border overflow-hidden">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-border bg-muted/20">
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">Job ID</th>
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">Provider</th>
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">Status</th>
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">Duration</th>
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">Started</th>
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">Error</th>
-                  <th className="px-3 py-2 w-16" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/50">
-                {ocrJobs.map((job) => (
-                  <tr key={job.id} className="hover:bg-muted/20">
-                    <td className="px-3 py-1.5 font-mono text-muted-foreground">#{job.id}</td>
-                    <td className="px-3 py-1.5 text-muted-foreground">{formatOcrProvider(job.provider)}</td>
-                    <td className="px-3 py-1.5">
-                      <DmsOcrStatusBadge status={job.status === "completed" ? "complete" : job.status} />
-                    </td>
-                    <td className="px-3 py-1.5 text-muted-foreground">
-                      {job.duration_ms ? `${(job.duration_ms / 1000).toFixed(1)}s` : "—"}
-                    </td>
-                    <td className="px-3 py-1.5 text-muted-foreground">
-                      {job.started_at ? format(parseISO(job.started_at), "dd MMM HH:mm") : "—"}
-                    </td>
-                    <td className="px-3 py-1.5 text-destructive max-w-[200px] truncate">
-                      {job.error_message ? (
+            {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable tableId="special.dms.documents.sections.dms-document-ocr-section" data={ocrJobs} columns={[{id:"id",header:"Job",accessorFn:job=>loadedListValue(job,"id"),meta:{filter:{type:"number"}},enableHiding:false,size:220,cell:({row:{original:job}})=>{
+return <>#{job.id}</>;}},{id:"provider",header:"Provider",accessorFn:job=>loadedListValue(job,"provider"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:job}})=>{
+return <>{formatOcrProvider(job.provider)}</>;}},{id:"status",header:"Status",accessorFn:job=>loadedListValue(job,"status"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:job}})=>{
+return <><DmsOcrStatusBadge status={job.status === "completed" ? "complete" : job.status} /></>;}},{id:"duration_ms",header:"Duration",accessorFn:job=>loadedListValue(job,"duration_ms"),meta:{filter:{type:"number"}},enableHiding:true,size:180,cell:({row:{original:job}})=>{
+return <>{job.duration_ms ? `${(job.duration_ms / 1000).toFixed(1)}s` : "—"}</>;}},{id:"started_at",header:"Started",accessorFn:job=>loadedListValue(job,"started_at"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:job}})=>{
+return <>{job.started_at ? format(parseISO(job.started_at), "dd MMM HH:mm") : "—"}</>;}},{id:"error_message",header:"Error",accessorFn:job=>loadedListValue(job,"error_message"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:job}})=>{
+return <>{job.error_message ? (
                         <span title={job.error_message}>{job.error_message.slice(0, 60)}</span>
-                      ) : "—"}
-                    </td>
-                    <td className="px-3 py-1.5">
-                      {canTrigger && job.status === "failed" && (
+                      ) : "—"}</>;}},{id:"actions",header:"Actions",enableSorting:false,meta:{exportable:false},enableHiding:true,size:180,cell:({row:{original:job}})=>{
+return <>{canTrigger && job.status === "failed" && (
                         <Button
                           size="sm"
                           variant="ghost"
@@ -322,12 +284,7 @@ export function DmsDocumentOcrSection({
                           <RotateCcw className="h-3 w-3" />
                           Retry
                         </Button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      )}</>;}}]} enableRowSelection={false} searchPlaceholder="Search loaded records…" initialPageSize={10} />
           </div>
         </div>
       )}
@@ -341,7 +298,7 @@ export function DmsDocumentOcrSection({
           Once OCR is complete, use the <strong>AI Analysis</strong> tab to classify and extract metadata.
         </p>
       </div>
-    </div>
+    </div></QueryReadBoundary>
   );
 }
 
@@ -375,11 +332,10 @@ interface OcrFileRowProps {
 }
 
 function OcrFileRow({ file, canTrigger, canViewText, documentId, onViewText, queryClient }: OcrFileRowProps) {
-  const [running, setRunning] = useState(false);
+  const [running, runAction] = useGuardedTransition();
 
-  const handleRun = async () => {
-    setRunning(true);
-    try {
+  const handleRun = () => runAction(async () => {
+    if (!canTrigger) return;
       const { triggerDmsOcrForFile } = await import("@/server/actions/dms/ocr");
       const result = await triggerDmsOcrForFile({ fileId: file.file_id, forceRetry: file.ocr_status === "complete" });
       if (result.success) {
@@ -389,36 +345,33 @@ function OcrFileRow({ file, canTrigger, canViewText, documentId, onViewText, que
       }
       invalidateDmsOcr(queryClient, documentId);
       invalidateDmsDocumentFiles(queryClient, documentId);
-    } finally {
-      setRunning(false);
-    }
-  };
+  });
 
   const isRunnable = file.ocr_status !== "processing";
 
   return (
-    <tr className="hover:bg-muted/20 transition-colors">
-      <td className="px-3 py-2">
+    <div className="grid gap-2 sm:grid-cols-2">
+      <div className="px-3 py-2">
         <p className="text-xs font-medium truncate max-w-[180px]">{file.file_name}</p>
         {file.ocr_error_message && file.ocr_status === "failed" && (
           <p className="text-[10px] text-destructive mt-0.5 truncate max-w-[180px]" title={file.ocr_error_message}>
             {file.ocr_error_message.slice(0, 60)}
           </p>
         )}
-      </td>
-      <td className="px-3 py-2">
+      </div>
+      <div className="px-3 py-2">
         <span className="text-xs text-muted-foreground">{file.mime_type.split("/")[1] ?? file.mime_type}</span>
-      </td>
-      <td className="px-3 py-2">
+      </div>
+      <div className="px-3 py-2">
         <DmsOcrStatusBadge status={file.ocr_status} />
-      </td>
-      <td className="px-3 py-2 text-xs text-muted-foreground">
+      </div>
+      <div className="px-3 py-2 text-xs text-muted-foreground">
         {formatOcrProvider(file.ocr_provider)}
-      </td>
-      <td className="px-3 py-2 text-xs text-muted-foreground">
+      </div>
+      <div className="px-3 py-2 text-xs text-muted-foreground">
         {file.ocr_completed_at ? format(parseISO(file.ocr_completed_at), "dd MMM HH:mm") : "—"}
-      </td>
-      <td className="px-3 py-2">
+      </div>
+      <div className="px-3 py-2">
         <div className="flex items-center gap-1">
           {canViewText && file.ocr_status === "complete" && file.has_text && (
             <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={onViewText}>
@@ -443,7 +396,7 @@ function OcrFileRow({ file, canTrigger, canViewText, documentId, onViewText, que
             </Button>
           )}
         </div>
-      </td>
-    </tr>
+      </div>
+    </div>
   );
 }

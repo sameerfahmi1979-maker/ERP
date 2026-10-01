@@ -201,11 +201,11 @@ export function PortWorkspaceForm({ port, mode }: PortWorkspaceFormProps) {
             <div className="grid grid-cols-12 gap-4">
               <div className="space-y-2 col-span-6">
                 <Label className="text-muted-foreground text-xs">Created At</Label>
-                <Input value={new Date(port.created_at).toLocaleString()} disabled className="text-xs" />
+                <Input aria-label="Created At" value={new Date(port.created_at).toLocaleString()} disabled className="text-xs" />
               </div>
               <div className="space-y-2 col-span-6">
                 <Label className="text-muted-foreground text-xs">Updated At</Label>
-                <Input value={new Date(port.updated_at).toLocaleString()} disabled className="text-xs" />
+                <Input aria-label="Updated At" value={new Date(port.updated_at).toLocaleString()} disabled className="text-xs" />
               </div>
             </div>
           ) : (

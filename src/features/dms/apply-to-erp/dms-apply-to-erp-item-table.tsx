@@ -1,115 +1,46 @@
 "use client";
 
 import { AlertTriangle } from "lucide-react";
+import type { ColumnDef } from "@tanstack/react-table";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
 import type { ApplyItemProposal } from "@/lib/dms/apply-to-erp/types";
-import { cn } from "@/lib/utils";
-
-// ── Props ─────────────────────────────────────────────────────────────────────
 
 interface Props {
-  items:              ApplyItemProposal[];
-  selectedIndices:    Set<number>;
-  onToggle:           (index: number) => void;
-  disabled?:          boolean;
+  items: ApplyItemProposal[];
+  selectedIndices: Set<number>;
+  onToggle: (index: number) => void;
+  disabled?: boolean;
 }
+type ItemRow = ApplyItemProposal & { selectionIndex: number };
 
-// ── Component ─────────────────────────────────────────────────────────────────
-
+/** Selection is tied to the proposal index, never the filtered/sorted row position. */
 export function DmsApplyToErpItemTable({ items, selectedIndices, onToggle, disabled }: Props) {
-  if (items.length === 0) {
-    return (
-      <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-        No apply items available.
-      </div>
-    );
-  }
-
-  return (
-    <div className="rounded-md border overflow-hidden">
-      <table className="w-full text-sm">
-        <thead className="bg-muted/50 border-b">
-          <tr>
-            <th className="w-8 px-3 py-2 text-left" />
-            <th className="px-3 py-2 text-left font-medium text-muted-foreground">Field</th>
-            <th className="px-3 py-2 text-left font-medium text-muted-foreground">Current Value</th>
-            <th className="px-3 py-2 text-left font-medium text-muted-foreground">Proposed Value</th>
-            <th className="px-3 py-2 text-left font-medium text-muted-foreground">Confidence</th>
-            <th className="px-3 py-2 text-left font-medium text-muted-foreground">Risk</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y">
-          {items.map((item, index) => {
-            const isSelected = selectedIndices.has(index);
-            const hasConflict = item.conflictRisk;
-            return (
-              <tr
-                key={index}
-                className={cn(
-                  "hover:bg-muted/30 cursor-pointer transition-colors",
-                  isSelected && "bg-blue-50/60",
-                  disabled && "opacity-60 cursor-not-allowed"
-                )}
-                onClick={() => !disabled && onToggle(index)}
-              >
-                <td className="px-3 py-2">
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={() => !disabled && onToggle(index)}
-                    disabled={disabled}
-                    className="h-4 w-4 rounded border-gray-300 text-primary"
-                    aria-label={`Select ${item.targetDisplayLabel}`}
-                  />
-                </td>
-                <td className="px-3 py-2">
-                  <div className="font-medium text-foreground">{item.targetDisplayLabel}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {item.targetTable}.{item.targetField}
-                  </div>
-                </td>
-                <td className="px-3 py-2">
-                  {item.currentValueSummary ? (
-                    <span className="text-muted-foreground">{item.currentValueSummary}</span>
-                  ) : (
-                    <span className="text-muted-foreground/50 italic">empty</span>
-                  )}
-                </td>
-                <td className="px-3 py-2">
-                  {item.proposedValueSummary ? (
-                    <span className="font-medium text-foreground">{item.proposedValueSummary}</span>
-                  ) : (
-                    <span className="text-muted-foreground/50 italic">—</span>
-                  )}
-                </td>
-                <td className="px-3 py-2">
-                  {item.confidence !== null && item.confidence !== undefined ? (
-                    <span className={cn(
-                      "text-xs font-medium",
-                      item.confidence >= 0.85 ? "text-green-700" :
-                      item.confidence >= 0.65 ? "text-amber-700" :
-                      "text-red-700"
-                    )}>
-                      {Math.round(item.confidence * 100)}%
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground/50">—</span>
-                  )}
-                </td>
-                <td className="px-3 py-2">
-                  {hasConflict ? (
-                    <span className="inline-flex items-center gap-1 text-xs text-amber-700">
-                      <AlertTriangle className="h-3 w-3" />
-                      Overwrites
-                    </span>
-                  ) : (
-                    <span className="text-xs text-muted-foreground/50">—</span>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
+  const columns: ColumnDef<ItemRow, unknown>[] = [
+    { id: "select", header: "Select", enableHiding: false, enableSorting: false,
+      meta: { exportable: false }, size: 80,
+      cell: ({ row }) => <input type="checkbox" className="h-4 w-4"
+        checked={selectedIndices.has(row.original.selectionIndex)}
+        onChange={() => { if (!disabled) onToggle(row.original.selectionIndex); }}
+        disabled={disabled} aria-label={`Select ${row.original.targetDisplayLabel}`} /> },
+    { id: "field", accessorKey: "targetDisplayLabel", header: "Field", enableHiding: false,
+      meta: { filter: { type: "text" } }, size: 240,
+      cell: ({ row }) => <div><div className="font-medium">{row.original.targetDisplayLabel}</div>
+        <div className="text-xs text-muted-foreground">{row.original.targetTable}.{row.original.targetField}</div></div> },
+    { id: "current", accessorKey: "currentValueSummary", header: "Current value", size: 220,
+      meta: { filter: { type: "text" } }, cell: ({ getValue }) => String(getValue() ?? "Empty") },
+    { id: "proposed", accessorKey: "proposedValueSummary", header: "Proposed value", size: 220,
+      meta: { filter: { type: "text" } }, cell: ({ getValue }) => String(getValue() ?? "Empty") },
+    { id: "confidence", accessorKey: "confidence", header: "Confidence", size: 140,
+      meta: { filter: { type: "number" } },
+      cell: ({ row }) => row.original.confidence == null ? "Not available" : `${Math.round(row.original.confidence * 100)}%` },
+    { id: "risk", accessorFn: row => row.conflictRisk ? "Overwrites" : "No overwrite detected",
+      header: "Risk", size: 210, meta: { filter: { type: "text" } },
+      cell: ({ row }) => row.original.conflictRisk
+        ? <span className="inline-flex items-center gap-1"><AlertTriangle className="h-4 w-4" aria-hidden />Overwrites</span>
+        : "No overwrite detected" },
+  ];
+  return <ERPDataTable tableId="special.apply-to-erp-proposals" columns={columns}
+    data={items.map((item, selectionIndex) => ({ ...item, selectionIndex }))}
+    resultsLabel="Loaded proposed field changes" emptyMessage="No apply items available."
+    initialPageSize={10} />;
 }

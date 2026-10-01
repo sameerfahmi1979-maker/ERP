@@ -20,6 +20,7 @@ interface OwnerCompanySelectProps {
   allowClear?: boolean;
   className?: string;
   name?: string;
+  ariaLabel?: string;
   error?: string;
 }
 
@@ -35,6 +36,7 @@ export function OwnerCompanySelect({
   allowClear = false,
   className,
   name,
+  ariaLabel = "Company",
   error,
 }: OwnerCompanySelectProps) {
   const { options, isLoading, error: fetchError } = useOwnerCompaniesQuery({ includeInactive });
@@ -68,6 +70,7 @@ export function OwnerCompanySelect({
       noResultsText="No results found"
       className={className}
       name={name}
+      ariaLabel={ariaLabel}
     />
   );
 }

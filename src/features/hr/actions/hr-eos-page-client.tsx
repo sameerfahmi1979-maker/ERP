@@ -1,4 +1,7 @@
 "use client";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import { loadedListValue } from "@/components/erp/table/loaded-list-view";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { queryKeys } from "@/lib/query/query-keys";
@@ -19,13 +22,14 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function HrEosPageClient({ authContext }: Props) {
-  const { data: items = [], isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.actions.globalEosCases(),
     queryFn: () => listGlobalEosCases(),
   });
+  const { data: items = [], isLoading } = uiRead1;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-4">
+    <QueryReadBoundary queries={[uiRead1]}><div className="p-6 max-w-7xl mx-auto space-y-4">
       <div className="flex items-center gap-3">
         <UserMinus className="h-6 w-6 text-primary" />
         <div>
@@ -40,36 +44,11 @@ export function HrEosPageClient({ authContext }: Props) {
         <div className="text-center py-16 text-muted-foreground">No EOS cases found.</div>
       ) : (
         <div className="rounded-lg border overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50">
-              <tr>
-                <th className="text-left p-3 font-medium">EOS Type</th>
-                <th className="text-left p-3 font-medium">Status</th>
-                <th className="text-left p-3 font-medium">Notice Date</th>
-                <th className="text-left p-3 font-medium">Last Working Date</th>
-                <th className="text-left p-3 font-medium">Settlement</th>
-                <th className="text-left p-3 font-medium">Clearance</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map(item => (
-                <tr key={item.id} className="border-t hover:bg-muted/30 transition-colors">
-                  <td className="p-3 font-medium capitalize">{item.eos_type.replace(/_/g, " ")}</td>
-                  <td className="p-3">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[item.case_status] ?? "bg-slate-100 text-slate-600"}`}>
+          {/* UI04 explicit table: loaded authorized rows only */}<ERPDataTable tableId="hr.actions.hr-eos-page-client" data={items} columns={[{id:"eos_type",header:"EOS Type",accessorFn:item=>loadedListValue(item,"eos_type"),enableHiding:false,size:240,cell:({row:{original:item}})=><>{item.eos_type.replace(/_/g, " ")}</>},{id:"case_status",header:"Status",accessorFn:item=>loadedListValue(item,"case_status"),enableHiding:true,size:160,cell:({row:{original:item}})=><><span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[item.case_status] ?? "bg-slate-100 text-slate-600"}`}>
                       {item.case_status.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
-                    </span>
-                  </td>
-                  <td className="p-3 text-muted-foreground">{item.notice_date ?? "—"}</td>
-                  <td className="p-3 text-muted-foreground">{item.last_working_date ?? "—"}</td>
-                  <td className="p-3 text-muted-foreground capitalize">{item.final_settlement_status.replace(/_/g, " ")}</td>
-                  <td className="p-3">{item.clearance_completed ? <span className="text-green-600 font-medium">Completed</span> : <span className="text-muted-foreground">Pending</span>}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    </span></>},{id:"notice_date",header:"Notice Date",accessorFn:item=>loadedListValue(item,"notice_date"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{item.notice_date ?? "—"}</>},{id:"last_working_date",header:"Last Working Date",accessorFn:item=>loadedListValue(item,"last_working_date"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{item.last_working_date ?? "—"}</>},{id:"final_settlement_status",header:"Settlement",accessorFn:item=>loadedListValue(item,"final_settlement_status"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{item.final_settlement_status.replace(/_/g, " ")}</>},{id:"clearance_completed",header:"Clearance",accessorFn:item=>loadedListValue(item,"clearance_completed"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{item.clearance_completed ? <span className="text-green-600 font-medium">Completed</span> : <span className="text-muted-foreground">Pending</span>}</>}]} enableRowSelection={false} initialPageSize={25} searchPlaceholder="Search loaded records…"/>
         </div>
       )}
-    </div>
+    </div></QueryReadBoundary>
   );
 }

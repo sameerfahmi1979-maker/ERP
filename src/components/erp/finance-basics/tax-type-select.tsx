@@ -24,6 +24,7 @@ export function TaxTypeSelect({
   allowClear = false,
   className,
   name,
+  ariaLabel = "Tax type",
   error,
 }: FinanceBasicsSelectProps) {
   const {
@@ -64,6 +65,7 @@ export function TaxTypeSelect({
 
   return (
     <ERPCombobox
+      ariaLabel={ariaLabel}
       value={value ?? null}
       onValueChange={handleValueChange}
       options={options}

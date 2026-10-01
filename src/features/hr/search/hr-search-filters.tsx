@@ -91,7 +91,7 @@ export function HrSearchFilters({ filters, onChange, availableCategories }: Prop
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-3 bg-muted/40 rounded-lg border">
           <div>
             <Label className="text-xs">Status</Label>
-            <Input
+            <Input aria-label="Status"
               value={filters.status ?? ""}
               onChange={(e) => onChange({ status: e.target.value || undefined })}
               placeholder="e.g. active"
@@ -100,7 +100,7 @@ export function HrSearchFilters({ filters, onChange, availableCategories }: Prop
           </div>
           <div>
             <Label className="text-xs">Date From</Label>
-            <Input
+            <Input aria-label="Date From"
               type="date"
               value={filters.dateFrom ?? ""}
               onChange={(e) => onChange({ dateFrom: e.target.value || undefined })}
@@ -109,7 +109,7 @@ export function HrSearchFilters({ filters, onChange, availableCategories }: Prop
           </div>
           <div>
             <Label className="text-xs">Date To</Label>
-            <Input
+            <Input aria-label="Date To"
               type="date"
               value={filters.dateTo ?? ""}
               onChange={(e) => onChange({ dateTo: e.target.value || undefined })}

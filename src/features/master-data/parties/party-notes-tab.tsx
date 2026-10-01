@@ -1,4 +1,6 @@
 "use client";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import type { ColumnDef } from "@tanstack/react-table";
 
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -10,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { ERPCombobox } from "@/components/erp/combobox";
-import { PlusCircle, Pencil, Trash2, AlertCircle, Lock, MessageSquare } from "lucide-react";
+import { PlusCircle, Pencil, Trash2, Lock, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import {
@@ -55,7 +57,7 @@ export function PartyNotesTab({ partyId, canManage, currentUserProfileId, onChil
   const [form, setForm] = useState<FormState>({ ...emptyForm });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { data: notes, isLoading } = useChildTableQuery({
+  const { data: notes, isLoading, error, refetch } = useChildTableQuery({
     tableName: "party_notes",
     parentId: partyId,
     fetcher: getPartyNotes,
@@ -132,6 +134,12 @@ export function PartyNotesTab({ partyId, canManage, currentUserProfileId, onChil
     void queryClient.invalidateQueries({ queryKey: ["child", "party_notes", partyId] });
   };
 
+  const columns: ColumnDef<PartyNote>[] = [
+{ id:"note",header:"Note",size:340,accessorFn:note=>[note.note_title,note.note_body].filter(Boolean).join(" "),cell:({row})=><div><p className="font-medium">{row.original.note_title || "Note"}</p><p className="whitespace-pre-wrap">{row.original.note_body}</p>{row.original.is_private&&<Badge variant="secondary"><Lock className="h-3 w-3"/>Private</Badge>}</div>},
+{accessorKey:"note_type_name",header:"Type"},
+{accessorKey:"created_at",header:"Created",meta:{filter:{type:"date"}},cell:({row})=>format(new Date(row.original.created_at),"dd MMM yyyy HH:mm")},
+{accessorKey:"follow_up_date",header:"Follow-up",meta:{filter:{type:"date"}}},
+{id:"actions",header:"Actions",enableHiding:false,enableSorting:false,cell:({row})=>canManage&&currentUserProfileId&&row.original.created_by===currentUserProfileId?<div className="flex"><Button type="button" aria-label="Edit note" variant="ghost" onClick={()=>openEdit(row.original)}><Pencil className="h-4 w-4"/></Button><Button type="button" aria-label="Delete note" variant="ghost" onClick={()=>handleDelete(row.original.id)}><Trash2 className="h-4 w-4"/></Button></div>:null}];
   if (isLoading) return <div className="flex items-center justify-center h-32 text-muted-foreground">Loading notes…</div>;
 
   return (
@@ -149,52 +157,7 @@ export function PartyNotesTab({ partyId, canManage, currentUserProfileId, onChil
         )}
       </div>
 
-      {(!notes || notes.length === 0) ? (
-        <div className="flex flex-col items-center justify-center h-24 border border-dashed rounded-md text-muted-foreground text-sm gap-2">
-          <AlertCircle className="h-4 w-4" />
-          No notes yet
-        </div>
-      ) : (
-        <div className="grid gap-3">
-          {(notes as PartyNote[]).map((note) => {
-            const isOwner = currentUserProfileId && note.created_by === currentUserProfileId;
-            return (
-              <div key={note.id} className="border rounded-md px-4 py-3 space-y-1">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-2">
-                    {note.is_private && (
-                      <Badge variant="secondary" className="text-xs gap-1">
-                        <Lock className="h-3 w-3" /> Private
-                      </Badge>
-                    )}
-                    {note.note_type_name && (
-                      <Badge variant="outline" className="text-xs">{note.note_type_name}</Badge>
-                    )}
-                    {note.note_title && <span className="font-medium text-sm">{note.note_title}</span>}
-                  </div>
-                  {(canManage && isOwner) && (
-                    <div className="flex gap-1">
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(note)}>
-                        <Pencil className="h-3 w-3" />
-                      </Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleDelete(note.id)}>
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  )}
-                </div>
-                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{note.note_body}</p>
-                <div className="flex items-center gap-4 text-xs text-muted-foreground mt-2">
-                  <span>{format(new Date(note.created_at), "dd MMM yyyy HH:mm")}</span>
-                  {note.follow_up_date && (
-                    <span className="text-amber-600">Follow-up: {format(new Date(note.follow_up_date), "dd MMM yyyy")}</span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      {error ? <div role="alert"><p>Notes could not be loaded.</p><Button type="button" onClick={refetch}>Try again</Button></div> : <ERPDataTable tableId={`party.notes:${partyId}`} resultsLabel="Notes" data={notes ?? []} columns={columns} enableRowSelection={false}/>}
 
       <ERPChildDialogForm
         open={isDialogOpen}
@@ -211,7 +174,7 @@ export function PartyNotesTab({ partyId, canManage, currentUserProfileId, onChil
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <Label>Note Type</Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Note Type"
               value={form.note_type_id}
               onValueChange={(v) => setForm((f) => ({ ...f, note_type_id: v !== null ? Number(v) : null }))}
               options={noteTypeOptions}
@@ -221,15 +184,15 @@ export function PartyNotesTab({ partyId, canManage, currentUserProfileId, onChil
           </div>
           <div className="col-span-12">
             <Label>Title</Label>
-            <Input value={form.note_title} onChange={(e) => setForm((f) => ({ ...f, note_title: e.target.value }))} placeholder="Optional title..." />
+            <Input aria-label="Title" value={form.note_title} onChange={(e) => setForm((f) => ({ ...f, note_title: e.target.value }))} placeholder="Optional title..." />
           </div>
           <div className="col-span-12">
             <Label>Note *</Label>
-            <Textarea value={form.note_body} onChange={(e) => setForm((f) => ({ ...f, note_body: e.target.value }))} rows={5} placeholder="Enter note..." />
+            <Textarea aria-label="Note" value={form.note_body} onChange={(e) => setForm((f) => ({ ...f, note_body: e.target.value }))} rows={5} placeholder="Enter note..." />
           </div>
           <div className="col-span-6">
             <Label>Follow-up Date</Label>
-            <Input type="date" value={form.follow_up_date} onChange={(e) => setForm((f) => ({ ...f, follow_up_date: e.target.value }))} />
+            <Input aria-label="Follow-up Date" type="date" value={form.follow_up_date} onChange={(e) => setForm((f) => ({ ...f, follow_up_date: e.target.value }))} />
           </div>
           <div className="col-span-6 flex items-end gap-3 pb-1">
             <Switch id="is_private" checked={form.is_private} onCheckedChange={(v) => setForm((f) => ({ ...f, is_private: v }))} />

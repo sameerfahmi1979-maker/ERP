@@ -34,6 +34,7 @@ export default async function PublicLinksAdminPage() {
       initialLinks={result.data?.links ?? []}
       totalLinks={result.data?.total ?? 0}
       canManage={canManage}
+      initialError={!result.success}
     />
   );
 }

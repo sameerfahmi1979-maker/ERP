@@ -1,4 +1,7 @@
 "use client";
+import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
+import { RecordCollection } from "@/components/erp/table/record-collection";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 /**
  * ERP HR.5 — Employee Payroll & WPS Tab
@@ -77,7 +80,7 @@ import {
   PauseCircle,
   Plus
 } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useState} from "react";
 import { toast } from "sonner";
 
 // ── Props ──────────────────────────────────────────────────────────────────────
@@ -166,20 +169,23 @@ function SalaryProfileSection({ employeeId, canManage, onChildOpen }: { employee
     notes: "",
   });
 
-  const { data: profile, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.payroll.profile(employeeId),
     queryFn: () => getEmployeePayrollProfile(employeeId),
   });
+  const { data: profile, isLoading } = uiRead1;
 
-  const { data: grossRes } = useQuery({
+  const uiRead2 = useQuery({
     queryKey: queryKeys.hr.payroll.grossSalary(employeeId),
     queryFn: () => calculateEmployeeGrossSalary(employeeId),
   });
+  const { data: grossRes } = uiRead2;
 
-  const { data: payrollGroups } = useQuery({
+  const uiRead3 = useQuery({
     queryKey: queryKeys.hr.payrollGroups(),
     queryFn: () => listHrPayrollGroupsForPayroll(),
   });
+  const { data: payrollGroups } = uiRead3;
 
   const profileData = profile?.data ?? null;
 
@@ -219,8 +225,8 @@ function SalaryProfileSection({ employeeId, canManage, onChildOpen }: { employee
   const groups = payrollGroups?.data ?? [];
 
   return (
-    <div className="rounded-xl border bg-card p-5 space-y-4">
-      <div className="flex items-center justify-between">
+    <QueryReadBoundary queries={[uiRead1,uiRead2,uiRead3]}><div className="rounded-xl border bg-card p-5 space-y-4">
+      <div className="flex flex-wrap gap-2 items-center justify-between">
         <div className="flex items-center gap-2">
           <DollarSign className="h-5 w-5 text-primary" />
           <h3 className="font-semibold text-base">Salary Profile</h3>
@@ -265,7 +271,7 @@ function SalaryProfileSection({ employeeId, canManage, onChildOpen }: { employee
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <Label>Payroll Group</Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Payroll Group"
               value={form.payroll_group_id ? Number(form.payroll_group_id) : null}
               onValueChange={(v) => setForm(f => ({ ...f, payroll_group_id: String(v ?? "") }))}
               options={groups.map(g => ({ value: g.id, label: g.name_en, code: g.code }))}
@@ -275,15 +281,15 @@ function SalaryProfileSection({ employeeId, canManage, onChildOpen }: { employee
           </div>
           <div className="col-span-6">
             <Label>Effective Date <span className="text-destructive">*</span></Label>
-            <Input type="date" value={form.effective_date} onChange={e => setForm(f => ({ ...f, effective_date: e.target.value }))} required />
+            <Input aria-label="Effective Date" type="date" value={form.effective_date} onChange={e => setForm(f => ({ ...f, effective_date: e.target.value }))} required />
           </div>
           <div className="col-span-6">
             <Label>Currency</Label>
-            <Input value={form.currency} onChange={e => setForm(f => ({ ...f, currency: e.target.value }))} maxLength={10} />
+            <Input aria-label="Currency" value={form.currency} onChange={e => setForm(f => ({ ...f, currency: e.target.value }))} maxLength={10} />
           </div>
           <div className="col-span-6">
             <Label>Payroll Status</Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Payroll Status"
               value={form.payroll_status}
               onValueChange={(v) => setForm(f => ({ ...f, payroll_status: String(v ?? "active") }))}
               options={[
@@ -296,11 +302,11 @@ function SalaryProfileSection({ employeeId, canManage, onChildOpen }: { employee
           </div>
           <div className="col-span-12">
             <Label>Notes</Label>
-            <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} maxLength={2000} />
+            <Textarea aria-label="Notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} maxLength={2000} />
           </div>
         </div>
       </ERPChildDialogForm>
-    </div>
+    </div></QueryReadBoundary>
   );
 }
 
@@ -337,15 +343,17 @@ function SalaryComponentsSection({ employeeId, canManage, onChildOpen }: { emplo
 
   const [form, setForm] = useState<SalaryComponentForm>(emptyForm);
 
-  const { data: compsRes, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.payroll.salaryComponents(employeeId),
     queryFn: () => listEmployeeSalaryComponents(employeeId),
   });
+  const { data: compsRes, isLoading } = uiRead1;
 
-  const { data: typesRes } = useQuery({
+  const uiRead2 = useQuery({
     queryKey: queryKeys.hr.salaryComponentTypes(),
     queryFn: () => listHrSalaryComponentTypesForPayroll(),
   });
+  const { data: typesRes } = uiRead2;
 
   const components = Array.isArray(compsRes?.data) ? compsRes.data : [];
   const types = Array.isArray(typesRes?.data) ? typesRes.data : [];
@@ -407,8 +415,8 @@ function SalaryComponentsSection({ employeeId, canManage, onChildOpen }: { emplo
   };
 
   return (
-    <div className="rounded-xl border bg-card p-5 space-y-4">
-      <div className="flex items-center justify-between">
+    <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="rounded-xl border bg-card p-5 space-y-4">
+      <div className="flex flex-wrap gap-2 items-center justify-between">
         <div className="flex items-center gap-2">
           <DollarSign className="h-5 w-5 text-primary" />
           <h3 className="font-semibold text-base">Salary Components</h3>
@@ -428,7 +436,7 @@ function SalaryComponentsSection({ employeeId, canManage, onChildOpen }: { emplo
         <p className="text-sm text-muted-foreground italic">No salary components configured.</p>
       ) : (
         <div className="divide-y text-sm">
-          {components.map((comp) => (
+          <RecordCollection id="hr.employee-payroll-tab.SalaryComponentsSection.components" rows={components} fields={[{"id":"component_type_name_en","path":"component_type.name_en","label":"Component"},{"id":"effective_from","path":"effective_from","label":"Effective From"},{"id":"effective_to","path":"effective_to","label":"Effective To"}]} renderRecord={(comp) => (
             <div key={comp.id} className="flex items-center justify-between py-2.5 gap-4">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -447,16 +455,16 @@ function SalaryComponentsSection({ employeeId, canManage, onChildOpen }: { emplo
               </div>
               {canManage && (
                 <div className="flex items-center gap-1 shrink-0">
-                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(comp)}>
+                  <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(comp)}>
                     <Edit2 className="h-3.5 w-3.5" />
                   </Button>
-                  <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleArchive(comp.id)}>
+                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleArchive(comp.id)}>
                     <Archive className="h-3.5 w-3.5" />
                   </Button>
                 </div>
               )}
             </div>
-          ))}
+          )} />
         </div>
       )}
 
@@ -473,7 +481,7 @@ function SalaryComponentsSection({ employeeId, canManage, onChildOpen }: { emplo
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <Label>Component Type <span className="text-destructive">*</span></Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Component Type"
               value={form.component_type_id ? Number(form.component_type_id) : null}
               onValueChange={(v) => setForm(f => ({ ...f, component_type_id: String(v ?? "") }))}
               options={types.map(t => ({ value: t.id, label: t.name_en, code: t.code, extra: t.component_kind }))}
@@ -483,7 +491,7 @@ function SalaryComponentsSection({ employeeId, canManage, onChildOpen }: { emplo
           </div>
           <div className="col-span-6">
             <Label>Amount (AED) <span className="text-destructive">*</span></Label>
-            <Input type="number" min={0} step={0.01} value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} required />
+            <Input aria-label="Amount (AED)" type="number" min={0} step={0.01} value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} required />
           </div>
           <div className="col-span-6">
             <Label>Active</Label>
@@ -494,19 +502,19 @@ function SalaryComponentsSection({ employeeId, canManage, onChildOpen }: { emplo
           </div>
           <div className="col-span-6">
             <Label>Effective From <span className="text-destructive">*</span></Label>
-            <Input type="date" value={form.effective_from} onChange={e => setForm(f => ({ ...f, effective_from: e.target.value }))} required />
+            <Input aria-label="Effective From" type="date" value={form.effective_from} onChange={e => setForm(f => ({ ...f, effective_from: e.target.value }))} required />
           </div>
           <div className="col-span-6">
             <Label>Effective To</Label>
-            <Input type="date" value={form.effective_to} onChange={e => setForm(f => ({ ...f, effective_to: e.target.value }))} />
+            <Input aria-label="Effective To" type="date" value={form.effective_to} onChange={e => setForm(f => ({ ...f, effective_to: e.target.value }))} />
           </div>
           <div className="col-span-12">
             <Label>Notes</Label>
-            <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} maxLength={1000} />
+            <Textarea aria-label="Notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} maxLength={1000} />
           </div>
         </div>
       </ERPChildDialogForm>
-    </div>
+    </div></QueryReadBoundary>
   );
 }
 
@@ -529,16 +537,18 @@ function SalaryRevisionSection({ employeeId, canManage, onChildOpen }: { employe
     apply_to_components: true,
   });
 
-  const { data: revisionsRes, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.payroll.salaryRevisions(employeeId),
     queryFn: () => listEmployeeSalaryRevisions(employeeId),
   });
+  const { data: revisionsRes, isLoading } = uiRead1;
 
-  const { data: basicRes, isLoading: isBasicLoading } = useQuery({
+  const uiRead2 = useQuery({
     queryKey: queryKeys.hr.payroll.basicSalary(employeeId),
     queryFn: () => calculateEmployeeBasicSalary(employeeId),
     enabled: dialogOpen,
   });
+  const { data: basicRes, isLoading: isBasicLoading } = uiRead2;
 
   const revisions = Array.isArray(revisionsRes?.data) ? revisionsRes.data : [];
   const currentBasic = basicRes?.success ? (basicRes.data?.basic ?? 0) : 0;
@@ -579,8 +589,8 @@ function SalaryRevisionSection({ employeeId, canManage, onChildOpen }: { employe
   };
 
   return (
-    <div className="rounded-xl border bg-card p-5 space-y-4">
-      <div className="flex items-center justify-between">
+    <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="rounded-xl border bg-card p-5 space-y-4">
+      <div className="flex flex-wrap gap-2 items-center justify-between">
         <div className="flex items-center gap-2">
           <History className="h-5 w-5 text-primary" />
           <h3 className="font-semibold text-base">Salary Revision History</h3>
@@ -604,7 +614,7 @@ function SalaryRevisionSection({ employeeId, canManage, onChildOpen }: { employe
         <p className="text-sm text-muted-foreground italic">No salary revisions recorded.</p>
       ) : (
         <div className="divide-y text-sm">
-          {revisions.map((rev) => (
+          <RecordCollection id="hr.employee-payroll-tab.SalaryRevisionSection.revisions" rows={revisions} fields={[{"id":"effective_date","path":"effective_date","label":"Effective Date"},{"id":"revision_reason","path":"revision_reason","label":"Revision Reason"}]} renderRecord={(rev) => (
             <div key={rev.id} className="py-2.5 grid grid-cols-4 gap-2">
               <div><span className="text-muted-foreground">Date:</span> <span className="font-medium">{fmtDate(rev.effective_date)}</span></div>
               <div><span className="text-muted-foreground">Old Basic:</span> <span>{fmtMoney(rev.old_gross)}</span></div>
@@ -612,7 +622,7 @@ function SalaryRevisionSection({ employeeId, canManage, onChildOpen }: { employe
               <div><span className="text-muted-foreground">By:</span> <span>{rev.creator?.display_name ?? rev.approver?.display_name ?? "—"}</span></div>
               {rev.revision_reason && <div className="col-span-4 text-muted-foreground">{rev.revision_reason}</div>}
             </div>
-          ))}
+          )} />
         </div>
       )}
 
@@ -630,11 +640,11 @@ function SalaryRevisionSection({ employeeId, canManage, onChildOpen }: { employe
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-6">
             <Label>Effective Date <span className="text-destructive">*</span></Label>
-            <Input type="date" value={form.effective_date} onChange={e => setForm(f => ({ ...f, effective_date: e.target.value }))} required />
+            <Input aria-label="Effective Date" type="date" value={form.effective_date} onChange={e => setForm(f => ({ ...f, effective_date: e.target.value }))} required />
           </div>
           <div className="col-span-6">
             <Label>Current Basic (AED)</Label>
-            <Input
+            <Input aria-label="Current Basic (AED)"
               type="text"
               readOnly
               disabled
@@ -651,7 +661,7 @@ function SalaryRevisionSection({ employeeId, canManage, onChildOpen }: { employe
           </div>
           <div className="col-span-6">
             <Label>New Basic (AED) <span className="text-destructive">*</span></Label>
-            <Input
+            <Input aria-label="New Basic (AED)"
               type="number"
               min={0}
               step={0.01}
@@ -663,7 +673,7 @@ function SalaryRevisionSection({ employeeId, canManage, onChildOpen }: { employe
           </div>
           <div className="col-span-12">
             <Label>Revision Reason</Label>
-            <Textarea value={form.revision_reason} onChange={e => setForm(f => ({ ...f, revision_reason: e.target.value }))} rows={2} maxLength={1000} placeholder="Reason for salary revision..." />
+            <Textarea aria-label="Revision Reason" value={form.revision_reason} onChange={e => setForm(f => ({ ...f, revision_reason: e.target.value }))} rows={2} maxLength={1000} placeholder="Reason for salary revision..." />
           </div>
           <div className="col-span-12 flex items-start gap-3 rounded-md border bg-muted/30 p-3">
             <Switch
@@ -682,7 +692,7 @@ function SalaryRevisionSection({ employeeId, canManage, onChildOpen }: { employe
           </div>
         </div>
       </ERPChildDialogForm>
-    </div>
+    </div></QueryReadBoundary>
   );
 }
 
@@ -713,20 +723,23 @@ function WpsSection({ employeeId, canManage, onChildOpen }: { employeeId: number
     salary_effective_date: "",
   });
 
-  const { data: wpsRes, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.payroll.wpsProfile(employeeId),
     queryFn: () => getEmployeeWpsProfile(employeeId),
   });
+  const { data: wpsRes, isLoading } = uiRead1;
 
-  const { data: readinessRes } = useQuery({
+  const uiRead2 = useQuery({
     queryKey: queryKeys.hr.payroll.wpsReadiness(employeeId),
     queryFn: () => getEmployeeWpsReadiness(employeeId),
   });
+  const { data: readinessRes } = uiRead2;
 
-  const { data: mohreRes } = useQuery({
+  const uiRead3 = useQuery({
     queryKey: queryKeys.hr.mohreEstablishments(),
     queryFn: () => listHrMohreEstablishmentsForPayroll(),
   });
+  const { data: mohreRes } = uiRead3;
 
   const wps = wpsRes?.data ?? null;
   const readiness = readinessRes?.data ?? null;
@@ -782,8 +795,8 @@ function WpsSection({ employeeId, canManage, onChildOpen }: { employeeId: number
   };
 
   return (
-    <div className="rounded-xl border bg-card p-5 space-y-4">
-      <div className="flex items-center justify-between">
+    <QueryReadBoundary queries={[uiRead1,uiRead2,uiRead3]}><div className="rounded-xl border bg-card p-5 space-y-4">
+      <div className="flex flex-wrap gap-2 items-center justify-between">
         <div className="flex items-center gap-2">
           <Landmark className="h-5 w-5 text-primary" />
           <h3 className="font-semibold text-base">WPS / Bank Details</h3>
@@ -858,7 +871,7 @@ function WpsSection({ employeeId, canManage, onChildOpen }: { employeeId: number
           </div>
           <div className="col-span-6">
             <Label>WPS Status</Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="WPS Status"
               value={form.wps_status}
               onValueChange={(v) => setForm(f => ({ ...f, wps_status: String(v ?? "active") }))}
               options={[
@@ -871,7 +884,7 @@ function WpsSection({ employeeId, canManage, onChildOpen }: { employeeId: number
           </div>
           <div className="col-span-6">
             <Label>Salary Payment Method</Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Salary Payment Method"
               value={form.salary_payment_method}
               onValueChange={(v) => setForm(f => ({ ...f, salary_payment_method: String(v ?? "bank_transfer") }))}
               options={[
@@ -891,7 +904,7 @@ function WpsSection({ employeeId, canManage, onChildOpen }: { employeeId: number
           </div>
           <div className="col-span-6">
             <Label>Account Holder Name</Label>
-            <Input value={form.account_holder_name} onChange={e => setForm(f => ({ ...f, account_holder_name: e.target.value }))} maxLength={200} />
+            <Input aria-label="Account Holder Name" value={form.account_holder_name} onChange={e => setForm(f => ({ ...f, account_holder_name: e.target.value }))} maxLength={200} />
           </div>
           <div className="col-span-6">
             <Label>
@@ -900,7 +913,7 @@ function WpsSection({ employeeId, canManage, onChildOpen }: { employeeId: number
                 <EyeOff className="h-3 w-3" /> Always masked in display
               </span>
             </Label>
-            <Input value={form.iban} onChange={e => setForm(f => ({ ...f, iban: e.target.value }))} maxLength={34} placeholder="AE..." />
+            <Input aria-label="IBAN Always masked in display" value={form.iban} onChange={e => setForm(f => ({ ...f, iban: e.target.value }))} maxLength={34} placeholder="AE..." />
           </div>
           <div className="col-span-6">
             <Label>
@@ -909,25 +922,25 @@ function WpsSection({ employeeId, canManage, onChildOpen }: { employeeId: number
                 <EyeOff className="h-3 w-3" /> Always masked in display
               </span>
             </Label>
-            <Input value={form.account_number} onChange={e => setForm(f => ({ ...f, account_number: e.target.value }))} maxLength={50} />
+            <Input aria-label="Account Number Always masked in display" value={form.account_number} onChange={e => setForm(f => ({ ...f, account_number: e.target.value }))} maxLength={50} />
           </div>
           {form.salary_payment_method === "exchange_house" && (
             <div className="col-span-6">
               <Label>Exchange House</Label>
-              <Input value={form.exchange_house} onChange={e => setForm(f => ({ ...f, exchange_house: e.target.value }))} maxLength={200} />
+              <Input aria-label="Exchange House" value={form.exchange_house} onChange={e => setForm(f => ({ ...f, exchange_house: e.target.value }))} maxLength={200} />
             </div>
           )}
           <div className="col-span-6">
             <Label>Labour Card Number</Label>
-            <Input value={form.labour_card_number} onChange={e => setForm(f => ({ ...f, labour_card_number: e.target.value }))} maxLength={100} />
+            <Input aria-label="Labour Card Number" value={form.labour_card_number} onChange={e => setForm(f => ({ ...f, labour_card_number: e.target.value }))} maxLength={100} />
           </div>
           <div className="col-span-6">
             <Label>MOHRE Person Code</Label>
-            <Input value={form.mohre_person_code} onChange={e => setForm(f => ({ ...f, mohre_person_code: e.target.value }))} maxLength={100} />
+            <Input aria-label="MOHRE Person Code" value={form.mohre_person_code} onChange={e => setForm(f => ({ ...f, mohre_person_code: e.target.value }))} maxLength={100} />
           </div>
           <div className="col-span-6">
             <Label>MOHRE Establishment</Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="MOHRE Establishment"
               value={form.mohre_establishment_id}
               onValueChange={(v) => setForm(f => ({ ...f, mohre_establishment_id: v ? Number(v) : null }))}
               options={mohreOptions.map(m => ({ value: m.id, label: m.establishment_name, code: m.establishment_number }))}
@@ -937,11 +950,11 @@ function WpsSection({ employeeId, canManage, onChildOpen }: { employeeId: number
           </div>
           <div className="col-span-6">
             <Label>Salary Effective Date</Label>
-            <Input type="date" value={form.salary_effective_date} onChange={e => setForm(f => ({ ...f, salary_effective_date: e.target.value }))} />
+            <Input aria-label="Salary Effective Date" type="date" value={form.salary_effective_date} onChange={e => setForm(f => ({ ...f, salary_effective_date: e.target.value }))} />
           </div>
         </div>
       </ERPChildDialogForm>
-    </div>
+    </div></QueryReadBoundary>
   );
 }
 
@@ -963,10 +976,11 @@ function PayrollHoldsSection({ employeeId, canManage, onChildOpen }: { employeeI
     notes: "",
   });
 
-  const { data: holdsRes, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.payroll.holds(employeeId),
     queryFn: () => listEmployeePayrollHolds(employeeId),
   });
+  const { data: holdsRes, isLoading } = uiRead1;
 
   const holds = Array.isArray(holdsRes?.data) ? holdsRes.data : [];
 
@@ -1016,8 +1030,8 @@ function PayrollHoldsSection({ employeeId, canManage, onChildOpen }: { employeeI
   const activeHolds = holds.filter(h => h.is_active);
 
   return (
-    <div className="rounded-xl border bg-card p-5 space-y-4">
-      <div className="flex items-center justify-between">
+    <QueryReadBoundary queries={[uiRead1]}><div className="rounded-xl border bg-card p-5 space-y-4">
+      <div className="flex flex-wrap gap-2 items-center justify-between">
         <div className="flex items-center gap-2">
           <PauseCircle className="h-5 w-5 text-primary" />
           <h3 className="font-semibold text-base">Payroll Holds</h3>
@@ -1039,7 +1053,7 @@ function PayrollHoldsSection({ employeeId, canManage, onChildOpen }: { employeeI
         <p className="text-sm text-muted-foreground italic">No payroll holds recorded.</p>
       ) : (
         <div className="divide-y text-sm">
-          {holds.map((hold) => (
+          <RecordCollection id="hr.employee-payroll-tab.PayrollHoldsSection.holds" rows={holds} fields={[{"id":"hold_reason","path":"hold_reason","label":"Hold Reason"},{"id":"is_active","path":"is_active","label":"Is Active"},{"id":"hold_date","path":"hold_date","label":"Hold Date"}]} renderRecord={(hold) => (
             <div key={hold.id} className="flex items-start justify-between py-2.5 gap-4">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -1063,14 +1077,14 @@ function PayrollHoldsSection({ employeeId, canManage, onChildOpen }: { employeeI
                     </Button>
                   )}
                   {!hold.is_active && (
-                    <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleArchive(hold.id)} disabled={isPending}>
+                    <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleArchive(hold.id)} disabled={isPending}>
                       <Archive className="h-3.5 w-3.5" />
                     </Button>
                   )}
                 </div>
               )}
             </div>
-          ))}
+          )} />
         </div>
       )}
 
@@ -1088,18 +1102,18 @@ function PayrollHoldsSection({ employeeId, canManage, onChildOpen }: { employeeI
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <Label>Hold Reason <span className="text-destructive">*</span></Label>
-            <Input value={form.hold_reason} onChange={e => setForm(f => ({ ...f, hold_reason: e.target.value }))} maxLength={500} required placeholder="Reason for payroll hold..." />
+            <Input aria-label="Hold Reason" value={form.hold_reason} onChange={e => setForm(f => ({ ...f, hold_reason: e.target.value }))} maxLength={500} required placeholder="Reason for payroll hold..." />
           </div>
           <div className="col-span-6">
             <Label>Hold Date</Label>
-            <Input type="date" value={form.hold_date} onChange={e => setForm(f => ({ ...f, hold_date: e.target.value }))} />
+            <Input aria-label="Hold Date" type="date" value={form.hold_date} onChange={e => setForm(f => ({ ...f, hold_date: e.target.value }))} />
           </div>
           <div className="col-span-12">
             <Label>Notes</Label>
-            <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} maxLength={1000} />
+            <Textarea aria-label="Notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} maxLength={1000} />
           </div>
         </div>
       </ERPChildDialogForm>
-    </div>
+    </div></QueryReadBoundary>
   );
 }

@@ -1,6 +1,8 @@
 "use client";
+import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
+import { RecordCollection } from "@/components/erp/table/record-collection";
 
-import { useState, useTransition } from "react";
+import { useState} from "react";
 import { useRouter } from "next/navigation";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { ERPSectionCard } from "@/components/erp/section-card";
@@ -178,7 +180,7 @@ export function HrMohreEstablishmentsPage({ initialData, canManage, onCreate, on
           />
         ) : (
           <div className="divide-y">
-            {rows.map((row) => (
+            <RecordCollection id="hr.hr-mohre-establishments-page.HrMohreEstablishmentsPage.rows" rows={rows} fields={[{"id":"establishment_name","path":"establishment_name","label":"Establishment Name"},{"id":"establishment_number","path":"establishment_number","label":"Establishment Number"}]} renderRecord={(row) => (
               <div key={row.id} className="flex items-center justify-between px-4 py-3">
                 <div className="flex flex-col gap-0.5">
                   <div className="flex items-center gap-2">
@@ -198,12 +200,12 @@ export function HrMohreEstablishmentsPage({ initialData, canManage, onCreate, on
                   </div>
                 </div>
                 {canManage && (
-                  <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEdit(row)}>
+                  <Button aria-label="Edit record" size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEdit(row)}>
                     <Pencil className="h-3.5 w-3.5" />
                   </Button>
                 )}
               </div>
-            ))}
+            )} />
           </div>
         )}
       </ERPSectionCard>
@@ -225,7 +227,7 @@ export function HrMohreEstablishmentsPage({ initialData, canManage, onCreate, on
           {/* Company — establishment name follows company legal name */}
           <div className="col-span-12">
             <Label>Company <span className="text-destructive">*</span></Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Company"
               value={form.owner_company_id}
               onValueChange={handleCompanyChange}
               options={companyOptions}
@@ -244,7 +246,7 @@ export function HrMohreEstablishmentsPage({ initialData, canManage, onCreate, on
           {/* Establishment Number */}
           <div className="col-span-6">
             <Label>MOHRE Establishment Number <span className="text-destructive">*</span></Label>
-            <Input
+            <Input aria-label="MOHRE Establishment Number" required
               value={form.establishment_number}
               onChange={(e) => setForm((f) => ({ ...f, establishment_number: e.target.value }))}
               placeholder="e.g. 12345678"
@@ -258,7 +260,7 @@ export function HrMohreEstablishmentsPage({ initialData, canManage, onCreate, on
           {/* Status */}
           <div className="col-span-6">
             <Label>Status</Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Status"
               value={form.status}
               onValueChange={(v) => setForm((f) => ({ ...f, status: (v as "active" | "inactive") || "active" }))}
               options={[
@@ -272,7 +274,7 @@ export function HrMohreEstablishmentsPage({ initialData, canManage, onCreate, on
           {/* Emirate */}
           <div className="col-span-12">
             <Label>Emirate (Optional)</Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Emirate (Optional)"
               value={form.emirate_id}
               onValueChange={(v) => setForm((f) => ({ ...f, emirate_id: v ? Number(v) : null }))}
               options={emirateOptions}

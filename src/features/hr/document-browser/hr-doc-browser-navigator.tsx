@@ -65,6 +65,7 @@ export function HrDocBrowserNavigator({
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
           <Input
+            aria-label="Search employees"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search employees…"
@@ -84,6 +85,8 @@ export function HrDocBrowserNavigator({
           {(["all", "active", "inactive"] as const).map((f) => (
             <button
               key={f}
+              type="button"
+              aria-pressed={statusFilter === f}
               onClick={() => setStatusFilter(f)}
               className={cn(
                 "flex-1 rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors",
@@ -140,6 +143,7 @@ export function HrDocBrowserNavigator({
                       hasDeps ? "hover:bg-muted" : "invisible"
                     )}
                     aria-label={isExpanded ? "Collapse dependents" : "Expand dependents"}
+                    aria-expanded={isExpanded}
                   >
                     {isExpanded ? (
                       <ChevronDown className="h-3.5 w-3.5" />
@@ -149,6 +153,8 @@ export function HrDocBrowserNavigator({
                   </button>
 
                   <button
+                    type="button"
+                    aria-pressed={empSelected}
                     onClick={() =>
                       onSelect({
                         type: "employee",
@@ -159,7 +165,7 @@ export function HrDocBrowserNavigator({
                     }
                     className={cn(
                       "flex items-center gap-2 flex-1 min-w-0 py-1.5 text-left",
-                      isInactive && "opacity-60"
+                      isInactive && "text-muted-foreground"
                     )}
                   >
                     <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -194,6 +200,8 @@ export function HrDocBrowserNavigator({
                     return (
                       <button
                         key={dep.id}
+                        type="button"
+                        aria-pressed={depSelected}
                         onClick={() =>
                           onSelect({
                             type: "employee_dependent",

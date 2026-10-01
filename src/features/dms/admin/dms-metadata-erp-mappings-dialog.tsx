@@ -1,4 +1,7 @@
 "use client";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import { loadedListValue } from "@/components/erp/table/loaded-list-view";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 /**
  * ERP DMS AI Phase 8 — DMS Admin ERP Mappings Dialog
@@ -108,20 +111,22 @@ export function DmsMetadataErpMappingsDialog({
   const [deleteTarget, setDeleteTarget] = useState<DmsErpMappingRow | null>(null);
 
   // Load existing mappings
-  const { data: mappingsResult, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.dms.erpMappingsForDefinition(definitionId),
     queryFn: () => getDmsErpMappingsForDefinition(definitionId),
     enabled: open,
   });
+ const { data: mappingsResult, isLoading } = uiRead1;
   const mappings = mappingsResult?.data ?? [];
 
   // Load target registry for dropdowns
-  const { data: registryResult } = useQuery({
+  const uiRead2 = useQuery({
     queryKey: queryKeys.dms.erpMappingTargets(),
     queryFn: () => getDmsErpMappingTargetRegistry(),
     enabled: open && manage,
     staleTime: 5 * 60 * 1000,
   });
+ const { data: registryResult } = uiRead2;
   const registry = registryResult?.data ?? [];
 
   // Build available tables filtered by selected module
@@ -243,7 +248,7 @@ export function DmsMetadataErpMappingsDialog({
   );
 
   return (
-    <>
+    <QueryReadBoundary queries={[uiRead1,uiRead2]}><>
       {/* Main list dialog */}
       <ERPChildDialogForm
         open={open}
@@ -271,44 +276,21 @@ export function DmsMetadataErpMappingsDialog({
           </div>
         ) : (
           <div className="rounded-md border overflow-hidden">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b bg-muted/20">
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">Module</th>
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">Target Table</th>
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">Target Field</th>
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">Strategy</th>
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">Priority</th>
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">Status</th>
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">Permission</th>
-                  {manage && <th className="w-16"></th>}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/50">
-                {mappings.map((m) => (
-                  <tr key={m.id} className="hover:bg-muted/10">
-                    <td className="px-3 py-2">
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 uppercase">
+            {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable tableId="special.dms.admin.dms-metadata-erp-mappings-dialog" data={mappings} columns={[{id:"target_module",header:"Module",accessorFn:m=>loadedListValue(m,"target_module"),meta:{filter:{type:"text"}},enableHiding:false,size:220,cell:({row:{original:m}})=>{
+return <><Badge variant="outline" className="text-[10px] px-1.5 py-0 uppercase">
                         {m.target_module}
-                      </Badge>
-                    </td>
-                    <td className="px-3 py-2 font-mono text-[10px] text-foreground">{m.target_table}</td>
-                    <td className="px-3 py-2 font-mono text-[10px] text-foreground">{m.target_field}</td>
-                    <td className="px-3 py-2 text-[10px] text-muted-foreground">{m.target_record_strategy}</td>
-                    <td className="px-3 py-2 text-[10px] text-muted-foreground tabular-nums">{m.mapping_priority}</td>
-                    <td className="px-3 py-2">
-                      <Badge
+                      </Badge></>;}},{id:"target_table",header:"Target table",accessorFn:m=>loadedListValue(m,"target_table"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:m}})=>{
+return <>{m.target_table}</>;}},{id:"target_field",header:"Target field",accessorFn:m=>loadedListValue(m,"target_field"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:m}})=>{
+return <>{m.target_field}</>;}},{id:"target_record_strategy",header:"Strategy",accessorFn:m=>loadedListValue(m,"target_record_strategy"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:m}})=>{
+return <>{m.target_record_strategy}</>;}},{id:"mapping_priority",header:"Priority",accessorFn:m=>loadedListValue(m,"mapping_priority"),meta:{filter:{type:"number"}},enableHiding:true,size:180,cell:({row:{original:m}})=>{
+return <>{m.mapping_priority}</>;}},{id:"is_active",header:"Active",accessorFn:m=>loadedListValue(m,"is_active"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:m}})=>{
+return <><Badge
                         className={`text-[10px] px-1.5 py-0 ${m.is_active ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400" : "bg-gray-100 text-gray-600"}`}
                       >
                         {m.is_active ? "Active" : "Inactive"}
-                      </Badge>
-                    </td>
-                    <td className="px-3 py-2 text-[10px] text-muted-foreground font-mono">
-                      {m.requires_target_permission}
-                    </td>
-                    {manage && (
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-1 justify-end">
+                      </Badge></>;}},{id:"requires_target_permission",header:"Permission",accessorFn:m=>loadedListValue(m,"requires_target_permission"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:m}})=>{
+return <>{m.requires_target_permission}</>;}},{id:"actions",header:"Actions",enableSorting:false,meta:{exportable:false},enableHiding:true,size:180,cell:({row:{original:m}})=>{
+return <><div className="flex items-center gap-1 justify-end">
                           <Button
                             size="icon"
                             variant="ghost"
@@ -327,13 +309,7 @@ export function DmsMetadataErpMappingsDialog({
                           >
                             <Trash2 className="h-3 w-3" />
                           </Button>
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                        </div></>;}}]} enableRowSelection={false} searchPlaceholder="Search loaded records…" initialPageSize={10} />
           </div>
         )}
 
@@ -472,7 +448,7 @@ export function DmsMetadataErpMappingsDialog({
             {/* Priority */}
             <div className="col-span-4">
               <label className="block text-xs font-medium text-foreground mb-1">Priority</label>
-              <input
+              <input aria-label="Priority"
                 type="number"
                 min={1}
                 max={999}
@@ -511,7 +487,7 @@ export function DmsMetadataErpMappingsDialog({
             {/* Notes */}
             <div className="col-span-12">
               <label className="block text-xs font-medium text-foreground mb-1">Notes</label>
-              <textarea
+              <textarea aria-label="Notes"
                 value={form.notes}
                 onChange={(e) => setFormField("notes", e.target.value)}
                 rows={2}
@@ -553,6 +529,6 @@ export function DmsMetadataErpMappingsDialog({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </></QueryReadBoundary>
   );
 }

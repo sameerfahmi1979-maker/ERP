@@ -8,6 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Lock, ShieldAlert, RefreshCw, ChevronDown } from "lucide-react";
 import type { AuditLog } from "@/types/domain";
 import type { AuthContext } from "@/lib/rbac/check";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import type { ColumnDef } from "@tanstack/react-table";
 
 // Humanized action labels
 const ACTION_LABELS: Record<string, string> = {
@@ -64,8 +66,6 @@ const USER_SECURITY_ACTIONS = new Set([
   "DEBUG_ROUTE_ACCESSED",
 ]);
 
-const INITIAL_DISPLAY = 20;
-
 type Props = {
   userProfileId: number;
   authContext: AuthContext;
@@ -115,7 +115,6 @@ function UserSecurityHistoryContent({ userProfileId, authContext }: Props) {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [displayCount, setDisplayCount] = useState(INITIAL_DISPLAY);
   const [expandedPayloads, setExpandedPayloads] = useState<Set<string>>(new Set());
 
   const load = useCallback(() => {
@@ -169,7 +168,17 @@ function UserSecurityHistoryContent({ userProfileId, authContext }: Props) {
   }
 
   const filtered = logs.filter((l) => USER_SECURITY_ACTIONS.has(l.action));
-  const visible = filtered.slice(0, displayCount);
+  const columns: ColumnDef<AuditLog>[] = [
+    { id: "event", header: "Event", size: 260, accessorFn: log => humanizeAction(log.action), cell: ({ row }) => <Badge variant={getActionBadgeVariant(row.original.action)}>{humanizeAction(row.original.action)}</Badge> },
+    { accessorKey: "created_at", header: "When", meta: { filter: { type: "date" } }, cell: ({ row }) => format(new Date(row.original.created_at), "MMM d yyyy HH:mm:ss") },
+    { id: "actor", header: "Actor", accessorFn: log => log.actor_user_profile_id ? `Admin #${log.actor_user_profile_id}` : "System" },
+    { accessorKey: "entity_reference", header: "Reference" },
+    { id: "actions", header: "Details", enableSorting: false, meta: { exportable: false }, cell: ({ row }) => {
+      const log = row.original, key = String(log.id), expanded = expandedPayloads.has(key);
+      if (!log.new_values || typeof log.new_values !== "object" || !Object.keys(log.new_values).length) return <span>—</span>;
+      return <div><Button type="button" variant="ghost" size="sm" aria-expanded={expanded} aria-label={`${expanded ? "Collapse" : "Expand"} details for ${humanizeAction(log.action)}`} onClick={() => togglePayload(key)}>Details <ChevronDown className="h-3 w-3"/></Button>{expanded && <SafePayloadDisplay payload={log.new_values}/>}</div>;
+    } },
+  ];
 
   return (
     <div className="space-y-3">
@@ -198,7 +207,7 @@ function UserSecurityHistoryContent({ userProfileId, authContext }: Props) {
 
       {/* Error state */}
       {!loading && error && (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 space-y-2">
+        <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 space-y-2">
           <p className="text-sm text-destructive">{error}</p>
           <Button type="button" variant="outline" size="sm" onClick={load}>
             <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
@@ -207,77 +216,7 @@ function UserSecurityHistoryContent({ userProfileId, authContext }: Props) {
         </div>
       )}
 
-      {/* Empty state */}
-      {!loading && !error && filtered.length === 0 && (
-        <p className="text-sm text-muted-foreground">No security events recorded for this user.</p>
-      )}
-
-      {/* Events list */}
-      {!loading && !error && visible.length > 0 && (
-        <>
-          <div className="space-y-2 max-h-[480px] overflow-y-auto pr-1">
-            {visible.map((log) => {
-              const isHighRisk = HIGH_RISK_ACTIONS.has(log.action);
-              const hasPayload = log.new_values && typeof log.new_values === "object" && Object.keys(log.new_values as object).length > 0;
-              const payloadKey = String(log.id);
-              const isExpanded = expandedPayloads.has(payloadKey);
-
-              return (
-                <div
-                  key={log.id}
-                  className={`flex flex-col gap-0.5 px-3 py-2 rounded-md border text-xs ${
-                    isHighRisk
-                      ? "border-destructive/30 bg-destructive/5"
-                      : "border-border bg-muted/20"
-                  }`}
-                >
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-muted-foreground whitespace-nowrap">
-                      {format(new Date(log.created_at), "MMM d yyyy HH:mm:ss")}
-                    </span>
-                    <Badge variant={getActionBadgeVariant(log.action)} className="text-[10px]">
-                      {humanizeAction(log.action)}
-                    </Badge>
-                    {log.actor_user_profile_id && (
-                      <span className="text-muted-foreground text-[10px]">
-                        by Admin #{log.actor_user_profile_id}
-                      </span>
-                    )}
-                    {hasPayload && (
-                      <button
-                        type="button"
-                        onClick={() => togglePayload(payloadKey)}
-                        className="text-muted-foreground hover:text-foreground inline-flex items-center gap-0.5 text-[10px] ml-auto"
-                        aria-label={isExpanded ? "Collapse details" : "Expand details"}
-                      >
-                        Details
-                        <ChevronDown className={`h-3 w-3 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
-                      </button>
-                    )}
-                  </div>
-                  {log.entity_reference && (
-                    <span className="text-muted-foreground text-[10px]">{log.entity_reference}</span>
-                  )}
-                  {isExpanded && log.new_values && (
-                    <SafePayloadDisplay payload={log.new_values} />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          {filtered.length > displayCount && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="text-xs w-full"
-              onClick={() => setDisplayCount((c) => c + INITIAL_DISPLAY)}
-            >
-              Load more ({filtered.length - displayCount} remaining)
-            </Button>
-          )}
-        </>
-      )}
+      {!loading && !error && <ERPDataTable tableId={`user.security-history:${userProfileId}`} resultsLabel="Loaded security events" data={filtered} columns={columns} enableRowSelection={false} initialPageSize={20} emptyMessage="No security events recorded for this user."/>}
     </div>
   );
 }

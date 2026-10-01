@@ -1,10 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
+import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
 
 export type SortDir = "asc" | "desc";
 
 export interface UseSortPaginateOptions<T> {
+  /** Opt in to principal-owned session memory; no browser-disk persistence. */
+  memoryKey?: string;
   /** Default number of rows per page. */
   defaultPageSize?: number;
   /** Initial sort key (string field name). */
@@ -56,6 +59,7 @@ export function useSortPaginate<T>(
   options: UseSortPaginateOptions<T> = {}
 ): UseSortPaginateReturn<T> {
   const {
+    memoryKey,
     defaultPageSize = 25,
     defaultSortKey = null,
     defaultSortDir = "asc",
@@ -63,11 +67,11 @@ export function useSortPaginate<T>(
     comparators = {},
   } = options;
 
-  const [page, setPageRaw] = useState(1);
-  const [pageSize, setPageSizeRaw] = useState(defaultPageSize);
-  const [sortKey, setSortKey] = useState<string | null>(defaultSortKey);
-  const [sortDir, setSortDir] = useState<SortDir>(defaultSortDir);
-  const [query, setQueryRaw] = useState("");
+  const [page, setPageRaw] = usePersistentUiState(memoryKey && `${memoryKey}:page`, 1);
+  const [pageSize, setPageSizeRaw] = usePersistentUiState(memoryKey && `${memoryKey}:size`, defaultPageSize);
+  const [sortKey, setSortKey] = usePersistentUiState<string | null>(memoryKey && `${memoryKey}:sort`, defaultSortKey);
+  const [sortDir, setSortDir] = usePersistentUiState<SortDir>(memoryKey && `${memoryKey}:direction`, defaultSortDir);
+  const [query, setQueryRaw] = usePersistentUiState(memoryKey && `${memoryKey}:query`, "");
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

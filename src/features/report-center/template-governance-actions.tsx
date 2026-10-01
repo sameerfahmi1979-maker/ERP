@@ -46,7 +46,9 @@ import {
   ShieldQuestion,
   XCircle,
 } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useState, useTransition, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -166,23 +168,15 @@ export function TemplateGovernanceHistoryDialog({
   open,
   onOpenChange,
 }: HistoryDialogProps) {
-  const [events, setEvents] = useState<ReportTemplateEvent[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const handleOpen = async (isOpen: boolean) => {
-    onOpenChange(isOpen);
-    if (isOpen && events.length === 0) {
-      setLoading(true);
-      const result = await getTemplateGovernanceHistory(template.id);
-      setLoading(false);
-      if (result.success) setEvents(result.data ?? []);
-    }
-  };
+  const {data:events=[],isLoading:loading,isError,refetch}=useQuery<ReportTemplateEvent[]>({
+    queryKey:["template-governance-history",template.id],enabled:open,gcTime:0,retry:false,
+    queryFn:async()=>{const r=await getTemplateGovernanceHistory(template.id);if(!r.success)throw Error("History unavailable");return r.data??[];},
+  });
 
   return (
     <ERPChildDialogForm
       open={open}
-      onOpenChange={handleOpen}
+      onOpenChange={onOpenChange}
       title="Governance History"
       subtitle={template.template_name}
       icon={<History className="h-5 w-5" />}
@@ -192,7 +186,7 @@ export function TemplateGovernanceHistoryDialog({
       onSubmit={() => onOpenChange(false)}
       cancelLabel=""
     >
-      {loading ? (
+      {isError ? <div role="alert">Governance history could not be loaded. <Button onClick={() => void refetch()}>Retry governance history</Button></div> : loading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
@@ -283,6 +277,7 @@ function ReasonDialog({
       <div className="col-span-12">
         <label className="text-sm font-medium block mb-1.5">{label}</label>
         <textarea
+          aria-label={label} required={required}
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[80px] resize-y focus:outline-none focus:ring-2 focus:ring-ring"
           value={reason}
           onChange={(e) => setReason(e.target.value)}
@@ -314,7 +309,17 @@ export function GovernanceActionsDropdown({
   onTemplateUpdated,
   onNewVersionCreated,
 }: GovernanceActionsProps) {
-  const [isPending, startTransition] = useTransition();
+  const [isPending, transition] = useTransition();
+  const flight = useRef(false);
+  const startTransition = (action: () => Promise<void>) => {
+    if (flight.current) return;
+    flight.current = true;
+    transition(async () => {
+      try { await action(); }
+      catch { toast.error("Change unconfirmed. Refresh templates before trying again; your reason is retained."); }
+      finally { flight.current = false; }
+    });
+  };
   const [historyOpen, setHistoryOpen] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
@@ -346,8 +351,8 @@ export function GovernanceActionsDropdown({
   const handleReject = (reason: string) =>
     startTransition(async () => {
       const res = await rejectTemplate({ templateId: template.id, reason });
-      setRejectDialogOpen(false);
       if (res.success) {
+        setRejectDialogOpen(false);
         toast.success("Template rejected.");
         onTemplateUpdated({ id: template.id, governance_status: "rejected", rejection_reason: reason });
       } else {
@@ -369,8 +374,8 @@ export function GovernanceActionsDropdown({
   const handleArchive = (reason: string) =>
     startTransition(async () => {
       const res = await archiveTemplate({ templateId: template.id, reason: reason || undefined });
-      setArchiveDialogOpen(false);
       if (res.success) {
+        setArchiveDialogOpen(false);
         toast.success("Template archived.");
         onTemplateUpdated({ id: template.id, governance_status: "archived", archive_reason: reason || null });
       } else {

@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import type { ColumnDef } from "@tanstack/react-table";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,28 +31,15 @@ import {
   Shield,
   Eye,
   Copy,
-  Search,
-  X,
-  RefreshCw,
 } from "lucide-react";
 import type { Role } from "@/types/domain";
 import { updateRoleStatus, deleteRole } from "@/server/actions/roles";
 import { CloneRoleDialog } from "@/features/roles/clone-role-dialog";
 import { toast } from "sonner";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
 const BASE = "/admin/roles";
 
-type StatusFilter = "all" | "active" | "inactive";
-type TypeFilter = "all" | "system" | "custom";
 
 type RolesTableProps = {
   data: Role[];
@@ -77,9 +64,6 @@ export function RolesTable({
   const [deleteTarget, setDeleteTarget] = useState<Role | null>(null);
   const [statusTarget, setStatusTarget] = useState<Role | null>(null);
   const [isProcessingStatus, setIsProcessingStatus] = useState(false);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
 
   const handleView = (role: Role) => router.push(`${BASE}/record/${role.id}`);
   const handleEdit = (role: Role) => router.push(`${BASE}/record/${role.id}?mode=edit`);
@@ -110,185 +94,8 @@ export function RolesTable({
     setDeleteTarget(null);
   };
 
-  const filtered = useMemo(() => {
-    let rows = data;
-    if (typeFilter === "system") rows = rows.filter((r) => r.is_system_role);
-    else if (typeFilter === "custom") rows = rows.filter((r) => !r.is_system_role);
-    if (statusFilter === "active") rows = rows.filter((r) => r.is_active);
-    else if (statusFilter === "inactive") rows = rows.filter((r) => !r.is_active);
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      rows = rows.filter(
-        (r) =>
-          r.role_name.toLowerCase().includes(q) ||
-          r.role_code.toLowerCase().includes(q) ||
-          (r.display_name ?? "").toLowerCase().includes(q) ||
-          (r.role_category ?? "").toLowerCase().includes(q),
-      );
-    }
-    return rows;
-  }, [data, statusFilter, typeFilter, search]);
-
-  const hasFilters = search.trim() || statusFilter !== "all" || typeFilter !== "all";
-
-  const clearFilters = () => {
-    setSearch("");
-    setStatusFilter("all");
-    setTypeFilter("all");
-  };
-
-  // Active chips
-  const activeChips: { label: string; onRemove: () => void }[] = [];
-  if (search.trim()) activeChips.push({ label: `Search: "${search}"`, onRemove: () => setSearch("") });
-  if (statusFilter !== "all") activeChips.push({ label: `Status: ${statusFilter}`, onRemove: () => setStatusFilter("all") });
-  if (typeFilter !== "all") activeChips.push({ label: `Type: ${typeFilter}`, onRemove: () => setTypeFilter("all") });
-
-  const selectClass =
-    "flex h-8 w-full rounded-md border border-input bg-background text-foreground px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring";
-
-  return (
-    <>
-      {/* Row 1 — Search + refresh */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input
-            placeholder="Search roles by name, code, or category..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-8 h-8 text-sm"
-          />
-          {search && (
-            <button
-              type="button"
-              onClick={() => setSearch("")}
-              className="absolute right-2.5 top-2 text-muted-foreground hover:text-foreground"
-              aria-label="Clear search"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
-        <div className="ml-auto flex items-center gap-2 shrink-0">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => router.refresh()}
-            aria-label="Refresh"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </div>
-
-      {/* Row 2 — Labeled filter panel */}
-      <div className="rounded-lg border border-border bg-muted/10 p-3">
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <div>
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Status
-            </label>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-              className={selectClass}
-              aria-label="Filter by status"
-            >
-              <option value="all">All statuses</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Type
-            </label>
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
-              className={selectClass}
-              aria-label="Filter by type"
-            >
-              <option value="all">All types</option>
-              <option value="system">System</option>
-              <option value="custom">Custom</option>
-            </select>
-          </div>
-
-          <div className="flex items-end">
-            <div className="text-xs text-muted-foreground pt-5">
-              {filtered.length} of {data.length} role{data.length !== 1 ? "s" : ""}
-            </div>
-          </div>
-        </div>
-
-        {/* Active filter chips */}
-        {activeChips.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border/60 pt-3">
-            {activeChips.map((chip) => (
-              <Badge key={chip.label} variant="secondary" className="gap-1 pr-1 text-[11px] font-normal">
-                {chip.label}
-                <button
-                  type="button"
-                  onClick={chip.onRemove}
-                  aria-label={`Remove ${chip.label} filter`}
-                  className="hover:text-destructive"
-                >
-                  <X className="h-2.5 w-2.5" />
-                </button>
-              </Badge>
-            ))}
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="text-[11px] text-muted-foreground hover:underline"
-            >
-              Clear all
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Table */}
-      <div className="rounded-md border border-border overflow-x-auto">
-        <Table className="w-full text-xs">
-          <TableHeader>
-            <TableRow className="border-b border-border bg-muted/30 hover:bg-muted/30">
-              <TableHead className="px-3 py-2 text-xs font-semibold">Role</TableHead>
-              <TableHead className="px-3 py-2 text-xs font-semibold">Category</TableHead>
-              <TableHead className="px-3 py-2 text-xs font-semibold">Level</TableHead>
-              <TableHead className="px-3 py-2 text-xs font-semibold">Type</TableHead>
-              <TableHead className="px-3 py-2 text-xs font-semibold">Assignable</TableHead>
-              <TableHead className="px-3 py-2 text-xs font-semibold">Status</TableHead>
-              <TableHead className="w-12 px-3 py-2" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
-                  <div className="flex flex-col items-center gap-2">
-                    <Shield className="h-8 w-8 opacity-30" />
-                    <p className="text-sm">
-                      {hasFilters ? "No roles match your filters." : "No roles found."}
-                    </p>
-                    {hasFilters && (
-                      <Button size="sm" variant="outline" className="mt-1 gap-1.5" onClick={clearFilters}>
-                        <X className="h-3.5 w-3.5" /> Clear filters
-                      </Button>
-                    )}
-                  </div>
-                </TableCell>
-              </TableRow>
-            ) : (
-              filtered.map((role) => (
-                <TableRow
-                  key={role.id}
-                  className="border-b border-border hover:bg-muted/20 transition-colors cursor-pointer"
-                  onClick={() => handleView(role)}
-                >
-                  <TableCell className="px-3 py-2">
+  const columns: ColumnDef<Role>[] = [
+    { id:"role",accessorFn:(row)=>[row.role_name,row.display_name,row.role_code].filter(Boolean).join(" "),header:"Role",size:270,enableHiding:false, cell:({row})=>{ const role=row.original; return (<button type="button" className="text-left hover:underline" onClick={()=>handleView(role)}>
                     <div className="flex items-start gap-3">
                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
                         <Shield className="h-3.5 w-3.5 text-muted-foreground" />
@@ -303,8 +110,8 @@ export function RolesTable({
                         <span className="text-[10px] text-muted-foreground font-mono">{role.role_code}</span>
                       </div>
                     </div>
-                  </TableCell>
-                  <TableCell className="px-3 py-2">
+                  </button>); } },
+    { accessorKey:"role_category",header:"Category", cell:({row})=>{ const role=row.original; return (<>
                     {role.role_category ? (
                       <Badge variant="outline" className="text-[10px] font-semibold px-1.5 py-0.5">
                         {role.role_category}
@@ -312,11 +119,11 @@ export function RolesTable({
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}
-                  </TableCell>
-                  <TableCell className="px-3 py-2 text-xs">
+                  </>); } },
+    { accessorKey:"role_level",header:"Level",meta:{filter:{type:"number"}}, cell:({row})=>{ const role=row.original; return (<>
                     {role.role_level ?? <span className="text-muted-foreground">—</span>}
-                  </TableCell>
-                  <TableCell className="px-3 py-2">
+                  </>); } },
+    { id:"type",accessorFn:row=>row.is_system_role ? "System" : "Custom",header:"Type",meta:{filter:{type:"select",options:[{value:"System",label:"System"},{value:"Custom",label:"Custom"}]}}, cell:({row})=>{ const role=row.original; return (<>
                     <Badge
                       variant="outline"
                       className={cn(
@@ -328,8 +135,8 @@ export function RolesTable({
                     >
                       {role.is_system_role ? "System" : "Custom"}
                     </Badge>
-                  </TableCell>
-                  <TableCell className="px-3 py-2">
+                  </>); } },
+    { id:"assignable",accessorFn:row=>row.is_assignable!==false,header:"Assignable", cell:({row})=>{ const role=row.original; return (<>
                     {role.is_assignable !== false ? (
                       <Badge
                         variant="outline"
@@ -345,8 +152,8 @@ export function RolesTable({
                         Not assignable
                       </Badge>
                     )}
-                  </TableCell>
-                  <TableCell className="px-3 py-2">
+                  </>); } },
+    { accessorKey:"is_active",header:"Status", cell:({row})=>{ const role=row.original; return (<>
                     <Badge
                       variant="outline"
                       className={cn(
@@ -358,8 +165,8 @@ export function RolesTable({
                     >
                       {role.is_active ? "Active" : "Inactive"}
                     </Badge>
-                  </TableCell>
-                  <TableCell className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                  </>); } },
+    { id:"actions",header:"Actions",enableSorting:false,enableHiding:false, cell:({row})=>{ const role=row.original; return (<>
                     <DropdownMenu>
                       <DropdownMenuTrigger
                         className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground"
@@ -412,13 +219,12 @@ export function RolesTable({
                         )}
                       </DropdownMenuContent>
                     </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+                  </>); } },
+  ];
+  return (
+    <>
+      <ERPDataTable tableId="admin.roles" resultsLabel="Roles" data={data} columns={columns}
+        enableRowSelection={false} searchPlaceholder="Search roles by name, code or category…" />
 
       {/* Clone Dialog */}
       {cloneSource && (

@@ -222,7 +222,7 @@ function BrandingProfileFormSession({
             <Label className="text-xs font-medium">
               Code <span className="text-destructive">*</span>
             </Label>
-            <Input
+            <Input aria-label="Code" required
               className="mt-1 h-9 text-sm uppercase"
               placeholder="COMPANY_1_DEFAULT"
               {...tf("profile_code")}
@@ -235,7 +235,7 @@ function BrandingProfileFormSession({
           <Label className="text-xs font-medium">
             Profile Name <span className="text-destructive">*</span>
           </Label>
-          <Input className="mt-1 h-9 text-sm" placeholder="Company Default" {...tf("profile_name")} />
+          <Input aria-label="Profile Name" required className="mt-1 h-9 text-sm" placeholder="Company Default" {...tf("profile_name")} />
         </div>
 
         <div className="col-span-4">
@@ -252,19 +252,19 @@ function BrandingProfileFormSession({
 
         <div className="col-span-6">
           <Label className="text-xs font-medium">Legal Name (EN)</Label>
-          <Input className="mt-1 h-9 text-sm" {...tf("legal_name_en")} />
+          <Input aria-label="Legal Name (EN)" className="mt-1 h-9 text-sm" {...tf("legal_name_en")} />
         </div>
         <div className="col-span-6">
           <Label className="text-xs font-medium">Legal Name (AR)</Label>
-          <Input className="mt-1 h-9 text-sm text-right" dir="rtl" {...tf("legal_name_ar")} />
+          <Input aria-label="Legal Name (AR)" className="mt-1 h-9 text-sm text-right" dir="rtl" {...tf("legal_name_ar")} />
         </div>
         <div className="col-span-6">
           <Label className="text-xs font-medium">Trade Name (EN)</Label>
-          <Input className="mt-1 h-9 text-sm" {...tf("trade_name_en")} />
+          <Input aria-label="Trade Name (EN)" className="mt-1 h-9 text-sm" {...tf("trade_name_en")} />
         </div>
         <div className="col-span-6">
           <Label className="text-xs font-medium">Trade Name (AR)</Label>
-          <Input className="mt-1 h-9 text-sm text-right" dir="rtl" {...tf("trade_name_ar")} />
+          <Input aria-label="Trade Name (AR)" className="mt-1 h-9 text-sm text-right" dir="rtl" {...tf("trade_name_ar")} />
         </div>
 
         {/* ── Contact & Address ───────────────────────────────────────────── */}
@@ -275,35 +275,35 @@ function BrandingProfileFormSession({
 
         <div className="col-span-12">
           <Label className="text-xs font-medium">Address (EN)</Label>
-          <Input className="mt-1 h-9 text-sm" placeholder="123 Business Bay, Dubai, UAE" {...tf("address_block_en")} />
+          <Input aria-label="Address (EN)" className="mt-1 h-9 text-sm" placeholder="123 Business Bay, Dubai, UAE" {...tf("address_block_en")} />
         </div>
         <div className="col-span-12">
           <Label className="text-xs font-medium">Address (AR)</Label>
-          <Input className="mt-1 h-9 text-sm text-right" dir="rtl" {...tf("address_block_ar")} />
+          <Input aria-label="Address (AR)" className="mt-1 h-9 text-sm text-right" dir="rtl" {...tf("address_block_ar")} />
         </div>
         <div className="col-span-4">
           <Label className="text-xs font-medium">Phone</Label>
-          <Input className="mt-1 h-9 text-sm" {...tf("phone")} />
+          <Input aria-label="Phone" className="mt-1 h-9 text-sm" {...tf("phone")} />
         </div>
         <div className="col-span-4">
           <Label className="text-xs font-medium">Email</Label>
-          <Input className="mt-1 h-9 text-sm" type="email" {...tf("email")} />
+          <Input aria-label="Email" className="mt-1 h-9 text-sm" type="email" {...tf("email")} />
         </div>
         <div className="col-span-4">
           <Label className="text-xs font-medium">Website</Label>
-          <Input className="mt-1 h-9 text-sm" {...tf("website")} />
+          <Input aria-label="Website" className="mt-1 h-9 text-sm" {...tf("website")} />
         </div>
         <div className="col-span-3">
           <Label className="text-xs font-medium">PO Box</Label>
-          <Input className="mt-1 h-9 text-sm" {...tf("po_box")} />
+          <Input aria-label="PO Box" className="mt-1 h-9 text-sm" {...tf("po_box")} />
         </div>
         <div className="col-span-4">
           <Label className="text-xs font-medium">TRN</Label>
-          <Input className="mt-1 h-9 text-sm font-mono" {...tf("trn")} />
+          <Input aria-label="TRN" className="mt-1 h-9 text-sm font-mono" {...tf("trn")} />
         </div>
         <div className="col-span-5">
           <Label className="text-xs font-medium">Trade License No.</Label>
-          <Input className="mt-1 h-9 text-sm font-mono" {...tf("trade_license_no")} />
+          <Input aria-label="Trade License No." className="mt-1 h-9 text-sm font-mono" {...tf("trade_license_no")} />
         </div>
 
         {/* ── Branding & Theme ─────────────────────────────────────────────── */}
@@ -353,23 +353,23 @@ function BrandingProfileFormSession({
 
         <div className="col-span-6">
           <Label className="text-xs font-medium">Footer Text (EN)</Label>
-          <Input className="mt-1 h-9 text-sm" placeholder="Confidential — For internal use only" {...tf("footer_text_en")} />
+          <Input aria-label="Footer Text (EN)" className="mt-1 h-9 text-sm" placeholder="Confidential — For internal use only" {...tf("footer_text_en")} />
         </div>
         <div className="col-span-6">
           <Label className="text-xs font-medium">Footer Text (AR)</Label>
-          <Input className="mt-1 h-9 text-sm text-right" dir="rtl" {...tf("footer_text_ar")} />
+          <Input aria-label="Footer Text (AR)" className="mt-1 h-9 text-sm text-right" dir="rtl" {...tf("footer_text_ar")} />
         </div>
         <div className="col-span-4">
           <Label className="text-xs font-medium">Signatory Name</Label>
-          <Input className="mt-1 h-9 text-sm" {...tf("signatory_name")} />
+          <Input aria-label="Signatory Name" className="mt-1 h-9 text-sm" {...tf("signatory_name")} />
         </div>
         <div className="col-span-4">
           <Label className="text-xs font-medium">Signatory Title (EN)</Label>
-          <Input className="mt-1 h-9 text-sm" {...tf("signatory_title_en")} />
+          <Input aria-label="Signatory Title (EN)" className="mt-1 h-9 text-sm" {...tf("signatory_title_en")} />
         </div>
         <div className="col-span-4">
           <Label className="text-xs font-medium">Watermark Text</Label>
-          <Input className="mt-1 h-9 text-sm" placeholder="CONFIDENTIAL" {...tf("watermark_text")} />
+          <Input aria-label="Watermark Text" className="mt-1 h-9 text-sm" placeholder="CONFIDENTIAL" {...tf("watermark_text")} />
         </div>
 
         {/* ── Flags ───────────────────────────────────────────────────────── */}

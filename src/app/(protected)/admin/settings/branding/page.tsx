@@ -4,6 +4,8 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { getActiveAppBrandingSettings } from "@/server/actions/branding/app-settings";
 import { loadRuntimeAppBranding } from "@/lib/branding/load-runtime-app-branding";
 import { AppBrandingSettingsPageClient } from "@/features/branding/app-branding-settings-page-client";
+import { ERPPageHeader } from "@/components/erp/page-header";
+import { LoadError } from "@/components/erp/load-error";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -32,10 +34,9 @@ export default async function AppBrandingSettingsPage() {
 
   if (!settingsResult.success || !settingsResult.data) {
     return (
-      <div className="p-6">
-        <p className="text-sm text-destructive">
-          {settingsResult.error ?? "Unable to load app branding settings."}
-        </p>
+      <div className="p-6 space-y-6">
+        <ERPPageHeader title="App Branding" description="Configure your application identity and assets." />
+        <LoadError title="App branding settings" retryHref="/admin/settings/branding" />
       </div>
     );
   }

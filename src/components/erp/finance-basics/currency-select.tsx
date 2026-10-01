@@ -26,6 +26,7 @@ export function CurrencySelect({
   allowClear = false,
   className,
   name,
+  ariaLabel = "Currency",
   error,
 }: FinanceBasicsSelectProps) {
   const {
@@ -62,6 +63,7 @@ export function CurrencySelect({
 
   return (
     <ERPCombobox
+      ariaLabel={ariaLabel}
       value={value ?? null}
       onValueChange={handleValueChange}
       options={options}

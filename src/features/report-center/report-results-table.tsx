@@ -4,6 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { ERPEmptyState } from "@/components/erp/empty-state";
 import { FileText } from "lucide-react";
 import type { ReportDataResult } from "@/lib/report-center/types";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import type { ColumnDef } from "@tanstack/react-table";
 
 interface ReportResultsTableProps {
   data: ReportDataResult | null;
@@ -39,7 +41,7 @@ const STATUS_COLUMNS = new Set(["status", "approval_status", "readiness_status",
 export function ReportResultsTable({ data, isLoading, error }: ReportResultsTableProps) {
   if (isLoading) {
     return (
-      <div className="border rounded-lg bg-card p-8 text-center text-sm text-muted-foreground">
+      <div role="status" className="border rounded-sm bg-card p-8 text-center text-sm text-muted-foreground">
         Loading report data...
       </div>
     );
@@ -47,7 +49,7 @@ export function ReportResultsTable({ data, isLoading, error }: ReportResultsTabl
 
   if (error) {
     return (
-      <div className="border rounded-lg bg-destructive/5 border-destructive/20 p-6 text-sm text-destructive">
+      <div role="alert" className="border rounded-sm bg-destructive/5 border-destructive/20 p-6 text-sm text-destructive">
         {error}
       </div>
     );
@@ -56,6 +58,14 @@ export function ReportResultsTable({ data, isLoading, error }: ReportResultsTabl
   if (!data) return null;
 
   const { columns, rows } = data;
+  const tableColumns: ColumnDef<Record<string, unknown>>[] = columns.map(col => ({
+    id: col, accessorFn: row => row[col], header: formatColumnHeader(col), size: 180,
+    cell: ({ getValue }) => {
+      const value = getValue();
+      return STATUS_COLUMNS.has(col) && value ? <Badge variant={statusVariant(String(value))} className="text-xs capitalize">{String(value).replace(/_/g," ")}</Badge>
+        : <span className="whitespace-normal break-words">{formatCellValue(value)}</span>;
+    },
+  }));
 
   if (rows.length === 0) {
     return (
@@ -69,47 +79,10 @@ export function ReportResultsTable({ data, isLoading, error }: ReportResultsTabl
 
   return (
     <div className="border rounded-lg overflow-hidden bg-card">
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="bg-muted/50 border-b">
-              {columns.map((col) => (
-                <th
-                  key={col}
-                  className="text-left px-3 py-2.5 font-semibold text-foreground whitespace-nowrap"
-                >
-                  {formatColumnHeader(col)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {rows.map((row, i) => (
-              <tr key={i} className="hover:bg-muted/30 transition-colors">
-                {columns.map((col) => {
-                  const value = row[col];
-                  const isStatus = STATUS_COLUMNS.has(col);
-                  return (
-                    <td key={col} className="px-3 py-2 whitespace-nowrap max-w-[200px] truncate">
-                      {isStatus && value ? (
-                        <Badge variant={statusVariant(String(value))} className="text-[10px] capitalize">
-                          {String(value).replace(/_/g, " ")}
-                        </Badge>
-                      ) : (
-                        <span className={col === "employee_code" || col === "candidate_code" ? "font-mono font-medium" : ""}>
-                          {formatCellValue(value)}
-                        </span>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <ERPDataTable key={columns.join("|")} tableId={`reports.results:${columns.join("|")}`} columns={tableColumns} data={rows}
+        enableRowSelection={false} searchPlaceholder="Search generated rows…" initialPageSize={25} />
       <div className="px-4 py-2 border-t bg-muted/20 text-xs text-muted-foreground">
-        {rows.length.toLocaleString()} row{rows.length !== 1 ? "s" : ""}
+        {rows.length.toLocaleString()} loaded row{rows.length !== 1 ? "s" : ""}. List filters affect these generated rows only, not the report definition or its exports.
         {data.meta?.total && Number(data.meta.total) !== rows.length ? ` (${Number(data.meta.total).toLocaleString()} total)` : null}
       </div>
     </div>

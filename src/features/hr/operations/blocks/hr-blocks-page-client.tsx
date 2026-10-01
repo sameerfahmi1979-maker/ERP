@@ -1,4 +1,6 @@
 "use client";
+import { RecordCollection } from "@/components/erp/table/record-collection";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,7 +25,7 @@ export function HrBlocksPageClient({ canManage }: Props) {
   const [statusFilter, setStatusFilter] = useState("active");
   const [page, setPage] = useState(0);
 
-  const { data, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.operations.globalBlocks({ status: statusFilter, page }),
     queryFn: () =>
       listGlobalOperationalBlocks({
@@ -32,6 +34,7 @@ export function HrBlocksPageClient({ canManage }: Props) {
         offset: page * PAGE_SIZE,
       }),
   });
+  const { data, isLoading } = uiRead1;
 
   const result = data?.success ? data.data : { data: [], count: 0 };
   const blocks = result.data as Record<string, unknown>[];
@@ -50,7 +53,7 @@ export function HrBlocksPageClient({ canManage }: Props) {
     : blocks;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <QueryReadBoundary queries={[uiRead1]}><div className="p-6 max-w-7xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
           <AlertOctagon className="h-6 w-6" />
@@ -59,10 +62,10 @@ export function HrBlocksPageClient({ canManage }: Props) {
         <p className="text-muted-foreground mt-1">All employee operational blocks</p>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-4">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
+          <Input aria-label="Search by name, code, or reason"
             placeholder="Search by name, code, or reason..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -93,7 +96,7 @@ export function HrBlocksPageClient({ canManage }: Props) {
         </div>
       ) : (
         <div className="rounded-lg border divide-y">
-          {filtered.map((b) => {
+          <RecordCollection id="hr.hr-blocks-page-client.HrBlocksPageClient.filtered" rows={filtered} fields={[{"id":"employees_full_name_en","path":"employees.full_name_en","label":"Full Name En"},{"id":"block_type","path":"block_type","label":"Block Type"},{"id":"block_status","path":"block_status","label":"Block Status"}]} renderRecord={(b) => {
             const emp = b.employees as Record<string, unknown> | null;
                     const badge = getBlockStatusBadge(b.block_status as BlockStatus);
             return (
@@ -114,18 +117,18 @@ export function HrBlocksPageClient({ canManage }: Props) {
                   <span className="text-xs text-muted-foreground">
                     {b.created_at ? format(new Date(b.created_at as string), "dd MMM yyyy") : "—"}
                   </span>
-                  <Link href={`/admin/hr/employees/${(emp as Record<string, unknown>)?.id}`}>
+                  <Link href={`/admin/hr/employees/record/${(emp as Record<string, unknown>)?.id}`}>
                     <Button size="sm" variant="ghost">View Employee</Button>
                   </Link>
                 </div>
               </div>
             );
-          })}
+          }} />
         </div>
       )}
 
       {totalPages > 1 && (
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap gap-2 items-center justify-between">
           <p className="text-sm text-muted-foreground">
             {count} total · Page {page + 1} of {totalPages}
           </p>
@@ -135,6 +138,6 @@ export function HrBlocksPageClient({ canManage }: Props) {
           </div>
         </div>
       )}
-    </div>
+    </div></QueryReadBoundary>
   );
 }

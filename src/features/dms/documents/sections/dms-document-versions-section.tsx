@@ -13,6 +13,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FileSize } from "@/features/dms/upload/dms-file-size";
+import { DmsLoadError } from "@/features/dms/dms-load-error";
 import { FileTypeIcon } from "@/features/dms/upload/dms-file-type-icon";
 import {
   invalidateDmsDocumentFiles,
@@ -41,6 +42,8 @@ interface DmsDocumentVersionsSectionProps {
   documentNo?: string;
   canUpload?: boolean;
   canEdit?: boolean;
+  canPreview?: boolean;
+  canDownload?: boolean;
 }
 
 export function DmsDocumentVersionsSection({
@@ -48,6 +51,8 @@ export function DmsDocumentVersionsSection({
   documentNo = "",
   canUpload = true,
   canEdit = false,
+  canPreview = false,
+  canDownload = false,
 }: DmsDocumentVersionsSectionProps) {
   const queryClient = useQueryClient();
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
@@ -55,7 +60,7 @@ export function DmsDocumentVersionsSection({
   const [unlinkTarget, setUnlinkTarget] = useState<DmsDocumentVersionRow | null>(null);
   const [isUnlinking, setIsUnlinking] = useState(false);
 
-  const { data: versions = [], isLoading: versionsLoading } = useQuery({
+  const { data: versions = [], isLoading: versionsLoading, isError: versionsError, refetch: retryVersions, isFetching: versionsFetching } = useQuery({
     queryKey: queryKeys.dms.documentVersions(documentId),
     queryFn: async () => {
       const result = await getDmsDocumentVersions(documentId);
@@ -65,7 +70,7 @@ export function DmsDocumentVersionsSection({
     staleTime: 30_000,
   });
 
-  const { data: files = [] } = useQuery({
+  const { data: files = [], isLoading: filesLoading, isError: filesError, refetch: retryFiles, isFetching: filesFetching } = useQuery({
     queryKey: queryKeys.dms.documentFiles(documentId),
     queryFn: async () => {
       const result = await getDmsDocumentFiles(documentId);
@@ -85,6 +90,7 @@ export function DmsDocumentVersionsSection({
   }
 
   const handlePreviewDownload = async (fileId: number, fileName: string, action: "preview" | "download") => {
+    if (action === "preview" ? !canPreview : !canDownload) return;
     const key = `${fileId}-${action}`;
     setLoadingAction(key);
     try {
@@ -146,13 +152,15 @@ export function DmsDocumentVersionsSection({
     }
   };
 
-  if (versionsLoading) {
+  if (versionsLoading || filesLoading) {
     return (
       <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
         Loading versions…
       </div>
     );
   }
+
+  if (versionsError || filesError) return <DmsLoadError subject="document versions and files" pending={versionsFetching || filesFetching} retry={() => Promise.all([retryVersions(), retryFiles()])} />;
 
   return (
     <div className="space-y-3">
@@ -227,7 +235,7 @@ export function DmsDocumentVersionsSection({
 
                   <div className="flex items-center gap-1 shrink-0">
                     {canEdit && !v.is_current && (
-                      <Button
+                      <Button aria-label="Set as current version"
                         type="button"
                         size="sm"
                         variant="ghost"
@@ -239,7 +247,7 @@ export function DmsDocumentVersionsSection({
                       </Button>
                     )}
                     {canEdit && (
-                      <Button
+                      <Button aria-label="Unlink this version"
                         type="button"
                         size="sm"
                         variant="ghost"
@@ -283,8 +291,8 @@ export function DmsDocumentVersionsSection({
                             </div>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
-                            {isPreviewable && (
-                              <Button
+                            {canPreview && isPreviewable && (
+                              <Button aria-label="Preview"
                                 type="button"
                                 size="icon"
                                 variant="ghost"
@@ -298,7 +306,7 @@ export function DmsDocumentVersionsSection({
                                   : <Eye className="h-3 w-3" />}
                               </Button>
                             )}
-                            <Button
+                            {canDownload && <Button aria-label="Download"
                               type="button"
                               size="icon"
                               variant="ghost"
@@ -310,7 +318,7 @@ export function DmsDocumentVersionsSection({
                               {loadingAction === downloadKey
                                 ? <div className="h-2.5 w-2.5 animate-spin rounded-full border border-current border-t-transparent" />
                                 : <Download className="h-3 w-3" />}
-                            </Button>
+                            </Button>}
                           </div>
                         </div>
                       );

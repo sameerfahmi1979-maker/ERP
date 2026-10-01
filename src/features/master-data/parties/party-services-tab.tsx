@@ -1,15 +1,17 @@
 "use client";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import type { ColumnDef } from "@tanstack/react-table";
 
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { ERPCombobox } from "@/components/erp/combobox";
-import { PlusCircle, Trash2, AlertCircle, Tags } from "lucide-react";
+import { PlusCircle, Trash2, Tags } from "lucide-react";
 import { toast } from "sonner";
 import {
   addPartyServiceCategory,
@@ -46,7 +48,7 @@ export function PartyServicesTab({ partyId, canManage, onChildOpen }: Props) {
   const [form, setForm] = useState<FormState>({ ...emptyForm });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { data: assignments, isLoading, error } = useChildTableQuery({
+  const { data: assignments, isLoading, error, refetch } = useChildTableQuery({
     tableName: "party_service_category_assignments",
     parentId: partyId,
     fetcher: getPartyServiceCategoryAssignments,
@@ -103,8 +105,11 @@ export function PartyServicesTab({ partyId, canManage, onChildOpen }: Props) {
     void queryClient.invalidateQueries({ queryKey: ["child", "party_service_category_assignments", partyId] });
   };
 
+  const columns: ColumnDef<PartyServiceCategoryAssignment>[] = [
+{accessorKey:"category_name_en",header:"Category"},{accessorKey:"category_code",header:"Code"},{accessorKey:"remarks",header:"Remarks"},{accessorKey:"is_primary",header:"Primary"},
+{id:"actions",header:"Actions",enableHiding:false,enableSorting:false,cell:({row})=>canManage?<Button type="button" aria-label="Remove category" variant="ghost" onClick={()=>handleRemove(row.original.id)}><Trash2 className="h-4 w-4"/></Button>:null}];
   if (isLoading) return <div className="flex items-center justify-center h-32 text-muted-foreground">Loading service categories…</div>;
-  if (error) return <div className="text-destructive p-4">{String(error)}</div>;
+  if (error) return <div role="alert" className="p-4"><p>Service categories could not be loaded.</p><Button type="button" onClick={refetch}>Try again</Button></div>;
 
   return (
     <div className="space-y-4">
@@ -121,32 +126,7 @@ export function PartyServicesTab({ partyId, canManage, onChildOpen }: Props) {
         )}
       </div>
 
-      {(!assignments || assignments.length === 0) ? (
-        <div className="flex flex-col items-center justify-center h-24 border border-dashed rounded-md text-muted-foreground text-sm gap-2">
-          <AlertCircle className="h-4 w-4" />
-          No service categories assigned
-        </div>
-      ) : (
-        <div className="grid gap-2">
-          {(assignments as PartyServiceCategoryAssignment[]).map((a) => (
-            <div key={a.id} className="flex items-center justify-between border rounded-md px-4 py-3">
-              <div className="flex items-center gap-3">
-                <div>
-                  <p className="font-medium text-sm">{a.category_name_en ?? `Category #${a.service_category_id}`}</p>
-                  {a.category_code && <p className="text-xs text-muted-foreground">{a.category_code}</p>}
-                  {a.remarks && <p className="text-xs text-muted-foreground mt-1">{a.remarks}</p>}
-                </div>
-                {a.is_primary && <Badge className="bg-blue-100 text-blue-800 text-xs">Primary</Badge>}
-              </div>
-              {canManage && (
-                <Button size="icon" variant="ghost" className="text-destructive" onClick={() => handleRemove(a.id)}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+      <ERPDataTable tableId={`party.services:${partyId}`} resultsLabel="Service categories" data={assignments ?? []} columns={columns} enableRowSelection={false}/>
 
       <ERPChildDialogForm
         open={isDialogOpen}
@@ -163,7 +143,7 @@ export function PartyServicesTab({ partyId, canManage, onChildOpen }: Props) {
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <Label>Service Category *</Label>
-            <ERPCombobox
+            <ERPCombobox required ariaLabel="Service Category"
               value={form.service_category_id}
               onValueChange={(v) => setForm((f) => ({ ...f, service_category_id: v !== null ? Number(v) : null }))}
               options={categoryOptions}
@@ -177,7 +157,7 @@ export function PartyServicesTab({ partyId, canManage, onChildOpen }: Props) {
           </div>
           <div className="col-span-12">
             <Label>Remarks</Label>
-            <Textarea value={form.remarks} onChange={(e) => setForm((f) => ({ ...f, remarks: e.target.value }))} rows={3} />
+            <Textarea aria-label="Remarks" value={form.remarks} onChange={(e) => setForm((f) => ({ ...f, remarks: e.target.value }))} rows={3} />
           </div>
         </div>
       </ERPChildDialogForm>

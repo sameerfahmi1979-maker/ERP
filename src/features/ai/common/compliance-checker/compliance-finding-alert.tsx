@@ -1,4 +1,5 @@
 "use client";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
@@ -13,7 +14,7 @@ interface ComplianceFindingAlertProps {
 }
 
 export function ComplianceFindingAlert({ entityType, entityId }: ComplianceFindingAlertProps) {
-  const { data } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.ai.complianceFindingCounts(entityType, entityId),
     queryFn: async () => {
       const res = await getComplianceFindingCountForEntity({ entityType, entityId });
@@ -23,6 +24,7 @@ export function ComplianceFindingAlert({ entityType, entityId }: ComplianceFindi
     enabled: entityId > 0,
     staleTime: 60_000,
   });
+ const { data } = uiRead1;
 
   const count = data?.openCount ?? 0;
   if (count <= 0) return null;
@@ -31,7 +33,7 @@ export function ComplianceFindingAlert({ entityType, entityId }: ComplianceFindi
   const href = `/admin/ai/compliance?entityType=${entityType === "company" ? "company" : entityType}&entityId=${entityId}`;
 
   return (
-    <Alert
+    <QueryReadBoundary queries={[uiRead1]}><Alert
       className={
         hasCritical
           ? "border-red-300 bg-red-50 mb-4"
@@ -57,6 +59,6 @@ export function ComplianceFindingAlert({ entityType, entityId }: ComplianceFindi
           Review in AI Compliance
         </Link>
       </AlertDescription>
-    </Alert>
+    </Alert></QueryReadBoundary>
   );
 }

@@ -1,4 +1,6 @@
 "use client";
+import { RecordCollection } from "@/components/erp/table/record-collection";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 /**
  * HR.DOCLINK.1B — Linked Documents section for the Add/Edit Dependent dialog.
@@ -60,17 +62,18 @@ export function DependentDocumentLinksSection({
   const deferredSearch = useDeferredValue(search);
 
   // Existing links (edit mode only)
-  const { data: existingLinks = [], isLoading: linksLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: ["hr", "dependent-doc-links", dependentId],
     queryFn: async () => {
       const r = await listEmployeeDependentDocumentLinks(dependentId!);
-      return r.success ? r.data ?? [] : [];
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? [] : [];
     },
     enabled: dependentId != null,
   });
+  const { data: existingLinks = [], isLoading: linksLoading } = uiRead1;
 
   // Available documents for the picker (already-linked docs excluded server-side)
-  const { data: availableDocs = [], isLoading: availableLoading } = useQuery({
+  const uiRead2 = useQuery({
     queryKey: ["hr", "dependent-doc-links-available", dependentId ?? 0, deferredSearch],
     queryFn: async () => {
       const r = await getAvailableDmsDocumentsForLink(
@@ -78,11 +81,12 @@ export function DependentDocumentLinksSection({
         dependentId ?? 0,
         deferredSearch
       );
-      return r.success ? r.data ?? [] : [];
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? [] : [];
     },
     enabled: pickerOpen,
     staleTime: 15_000,
   });
+  const { data: availableDocs = [], isLoading: availableLoading } = uiRead2;
 
   // Report staged changes upward whenever they mutate
   useEffect(() => {
@@ -124,7 +128,7 @@ export function DependentDocumentLinksSection({
     existingLinks.filter((l) => !stagedRemoveIds.has(l.document_id)).length + stagedAdds.length;
 
   return (
-    <div className="col-span-12 border-t pt-3">
+    <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="col-span-12 border-t pt-3">
       <div className="flex items-center justify-between mb-3">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
           <Link2 className="h-3.5 w-3.5" />
@@ -150,7 +154,7 @@ export function DependentDocumentLinksSection({
 
       {(existingLinks.length > 0 || stagedAdds.length > 0) && (
         <div className="space-y-1.5 mb-3">
-          {existingLinks.map((link) => (
+          {<RecordCollection id="dependent-existing-links" rows={existingLinks} fields={[{"id":"title","label":"Title","path":"title"},{"id":"document_no","label":"Document number","path":"document_no"},{"id":"document_type_name","label":"Document type","path":"document_type_name"}]} renderRecord={(link) => (
             <LinkedDocRow
               key={`existing-${link.link_id}`}
               title={link.title}
@@ -160,8 +164,8 @@ export function DependentDocumentLinksSection({
               pendingRemoval={stagedRemoveIds.has(link.document_id)}
               onToggle={() => toggleRemoval(link.document_id)}
             />
-          ))}
-          {stagedAdds.map((doc) => (
+          )} />}
+          {<RecordCollection id="dependent-pending-links" rows={stagedAdds} fields={[{"id":"title","label":"Title","path":"title"},{"id":"document_no","label":"Document number","path":"document_no"},{"id":"document_type_name","label":"Document type","path":"document_type_name"}]} renderRecord={(doc) => (
             <LinkedDocRow
               key={`staged-${doc.id}`}
               title={doc.title}
@@ -171,7 +175,7 @@ export function DependentDocumentLinksSection({
               isNew
               onToggle={() => togglePick(doc.id)}
             />
-          ))}
+          )} />}
         </div>
       )}
 
@@ -185,7 +189,7 @@ export function DependentDocumentLinksSection({
       {/* Inline multi-select picker */}
       {pickerOpen && (
         <div className="rounded-lg border bg-muted/10 p-3 space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap gap-2 items-center justify-between">
             <p className="text-xs font-medium">
               Select documents to link — tick as many as you need
             </p>
@@ -223,7 +227,7 @@ export function DependentDocumentLinksSection({
           {" when you save."}
         </p>
       )}
-    </div>
+    </div></QueryReadBoundary>
   );
 }
 

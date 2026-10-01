@@ -1,5 +1,8 @@
 "use client";
 
+import { DmsListTools, useDmsListView, type DmsListField } from "@/features/dms/dms-list-view";
+import { ConfiguredRow } from "@/components/erp/table/list-controls";
+
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -59,6 +62,50 @@ interface Props {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
+const DMS_LIST_FIELDS: DmsListField[] = [
+  {
+    "id": "document_no",
+    "label": "Document number",
+    "path": "document_no",
+    "type": "text",
+    "width": 160,
+    "required": true
+  },
+  {
+    "id": "title",
+    "label": "Title",
+    "path": "title",
+    "type": "text",
+    "width": 260
+  },
+  {
+    "id": "type",
+    "label": "Document type",
+    "path": "document_type.name_en",
+    "type": "text",
+    "width": 160
+  },
+  {
+    "id": "reason",
+    "label": "Reason",
+    "path": "reason",
+    "type": "text",
+    "width": 160
+  },
+  {
+    "id": "archived_at",
+    "label": "Archived",
+    "type": "text",
+    "width": 160
+  },
+  {
+    "id": "actions",
+    "label": "Actions",
+    "type": "text",
+    "width": 160
+  }
+];
+
 export function DmsArchiveTable({
   initialDocuments,
   categories,
@@ -116,7 +163,9 @@ export function DmsArchiveTable({
     });
   }, [initialDocuments, search, filterReason, filterType, filterCategory]);
 
-  const tbl = useSortPaginate(filtered, {
+  const listView = useDmsListView("archive", filtered, DMS_LIST_FIELDS);
+  const tbl = useSortPaginate(listView.rows, {
+    memoryKey: "dms:archive",
     defaultSortKey: "updated_at",
     defaultSortDir: "desc",
     defaultPageSize: 25,
@@ -293,11 +342,12 @@ export function DmsArchiveTable({
       </div>
 
       {/* Table */}
-      <div className="rounded-md border border-border overflow-hidden">
-        <table className="w-full text-sm">
+      <DmsListTools view={listView} />
+<div className="rounded-md border border-border overflow-hidden">
+        <div role="region" aria-label="archive table" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{ minWidth: listView.visible.reduce((sum, column) => sum + column.width, 0) }}><colgroup>{listView.visible.map(column => <col key={column.id} style={{ width: column.width }} />)}</colgroup>
           <thead>
-            <tr className="bg-muted/40 border-b border-border">
-              <SortColHeader
+            <ConfiguredRow columns={listView.columns} className="bg-muted/40 border-b border-border">
+              <SortColHeader data-column="document_no"
                 field="document_no"
                 sortKey={tbl.sortKey}
                 sortDir={tbl.sortDir}
@@ -306,7 +356,7 @@ export function DmsArchiveTable({
               >
                 Doc No
               </SortColHeader>
-              <SortColHeader
+              <SortColHeader data-column="title"
                 field="title"
                 sortKey={tbl.sortKey}
                 sortDir={tbl.sortDir}
@@ -315,7 +365,7 @@ export function DmsArchiveTable({
               >
                 Title
               </SortColHeader>
-              <SortColHeader
+              <SortColHeader data-column="type"
                 field="document_type"
                 sortKey={tbl.sortKey}
                 sortDir={tbl.sortDir}
@@ -324,10 +374,10 @@ export function DmsArchiveTable({
               >
                 Type
               </SortColHeader>
-              <th className="w-[120px] px-3 py-2.5 text-xs font-semibold text-left text-muted-foreground">
+              <th data-column="reason" className="w-[120px] px-3 py-2.5 text-xs font-semibold text-left text-muted-foreground">
                 Reason
               </th>
-              <SortColHeader
+              <SortColHeader data-column="archived_at"
                 field="updated_at"
                 sortKey={tbl.sortKey}
                 sortDir={tbl.sortDir}
@@ -336,16 +386,16 @@ export function DmsArchiveTable({
               >
                 Archived / Renewed
               </SortColHeader>
-              <th className="w-[80px] px-3 py-2.5 text-xs font-semibold text-right text-muted-foreground">
+              <th data-column="actions" className="w-[80px] px-3 py-2.5 text-xs font-semibold text-right text-muted-foreground">
                 Actions
               </th>
-            </tr>
+            </ConfiguredRow>
           </thead>
           <tbody>
             {tbl.rows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={listView.visible.length}
                   className="px-4 py-12 text-center text-sm text-muted-foreground"
                 >
                   {filtered.length === 0 && initialDocuments.length === 0
@@ -355,19 +405,19 @@ export function DmsArchiveTable({
               </tr>
             ) : (
               tbl.rows.map((doc) => (
-                <tr
+                <ConfiguredRow columns={listView.columns}
                   key={doc.id}
                   className="border-b border-border/50 hover:bg-muted/30 transition-colors"
                 >
                   {/* Doc No */}
-                  <td className="px-3 py-2.5">
+                  <td data-column="document_no" className="px-3 py-2.5">
                     <span className="font-mono text-xs text-muted-foreground">
                       {doc.document_no}
                     </span>
                   </td>
 
                   {/* Title */}
-                  <td className="px-3 py-2.5">
+                  <td data-column="title" className="px-3 py-2.5">
                     <button
                       onClick={() => handleOpen(doc)}
                       className="text-left font-medium hover:text-primary hover:underline truncate max-w-[320px] block"
@@ -387,19 +437,19 @@ export function DmsArchiveTable({
                   </td>
 
                   {/* Type */}
-                  <td className="px-3 py-2.5">
+                  <td data-column="type" className="px-3 py-2.5">
                     <span className="text-xs text-muted-foreground">
                       {doc.document_type?.name_en ?? "—"}
                     </span>
                   </td>
 
                   {/* Reason */}
-                  <td className="px-3 py-2.5">
+                  <td data-column="reason" className="px-3 py-2.5">
                     <ArchiveReasonBadge reason={doc.reason} />
                   </td>
 
                   {/* Archived / Renewed At */}
-                  <td className="px-3 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
+                  <td data-column="archived_at" className="px-3 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
                     {doc.archived_at
                       ? format(new Date(doc.archived_at as string), "dd MMM yyyy")
                       : doc.updated_at
@@ -408,10 +458,10 @@ export function DmsArchiveTable({
                   </td>
 
                   {/* Actions */}
-                  <td className="px-3 py-2.5">
+                  <td data-column="actions" className="px-3 py-2.5">
                     <div className="flex items-center justify-end gap-1">
                       {/* View archived doc */}
-                      <Button
+                      <Button aria-label="View document"
                         variant="ghost"
                         size="sm"
                         className="h-7 w-7 p-0"
@@ -423,7 +473,7 @@ export function DmsArchiveTable({
 
                       {/* Restore — only for manually archived docs, not renewed */}
                       {canUnarchive && doc.reason === "archived" && (
-                        <Button
+                        <Button aria-label="Restore to All Documents"
                           variant="ghost"
                           size="sm"
                           className="h-7 w-7 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
@@ -437,7 +487,7 @@ export function DmsArchiveTable({
 
                       {/* View replacement — for renewed docs */}
                       {doc.reason === "renewed" && doc.superseded_by && (
-                        <Button
+                        <Button aria-label={`View replacement: ${doc.superseded_by.document_no}`}
                           variant="ghost"
                           size="sm"
                           className="h-7 w-7 p-0 text-purple-600 hover:text-purple-700 hover:bg-purple-50"
@@ -449,11 +499,11 @@ export function DmsArchiveTable({
                       )}
                     </div>
                   </td>
-                </tr>
+                </ConfiguredRow>
               ))
             )}
           </tbody>
-        </table>
+        </table></div>
       </div>
 
       <TablePagination

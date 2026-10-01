@@ -1,4 +1,5 @@
 "use client";
+import { RecordCollection } from "@/components/erp/table/record-collection";
 
 import {
   Users, UserPlus, ShieldCheck, Clock, Wallet, Briefcase,
@@ -69,9 +70,9 @@ export function HrSearchResultGroup({ category, results, count, defaultExpanded 
 
       {expanded && (
         <div className="p-3 space-y-2">
-          {results.map((r) => (
+          {<RecordCollection id={`special.hr-search-result-group-${category}`} rows={results} fields={[{"id":"title","path":"title","label":"Title"},{"id":"subtitle","path":"subtitle","label":"Reference"},{"id":"status","path":"status","label":"Status"}]} renderRecord={(r) => (
             <HrSearchResultCard key={r.id} result={r} />
-          ))}
+          )} />}
         </div>
       )}
     </div>

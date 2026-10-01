@@ -1,4 +1,5 @@
 "use client";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 /**
  * DMS 12.2 — DmsDocumentAiSummarySection
@@ -59,12 +60,7 @@ export function DmsDocumentAiSummarySection({
   const queryClient = useQueryClient();
   const [generating, setGenerating] = useState(false);
 
-  const {
-    data: summaryRow,
-    isLoading,
-    error: queryError,
-    refetch,
-  } = useQuery<DocumentAiSummaryRow | null>({
+  const uiRead1 = useQuery<DocumentAiSummaryRow | null>({
     queryKey: queryKeys.dms.documentAiSummary(documentId),
     queryFn: async () => {
       const r = await getDmsAiSummaryStatus(documentId);
@@ -74,6 +70,12 @@ export function DmsDocumentAiSummarySection({
     staleTime: 30_000,
     retry: false,
   });
+ const {
+    data: summaryRow,
+    isLoading,
+    error: queryError,
+    refetch,
+  } = uiRead1;
 
   // ── Handlers ──────────────────────────────────────────────────────────────────
 
@@ -102,10 +104,10 @@ export function DmsDocumentAiSummarySection({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
+      <QueryReadBoundary queries={[uiRead1]}><div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
         <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
         Loading AI summary…
-      </div>
+      </div></QueryReadBoundary>
     );
   }
 
@@ -113,14 +115,14 @@ export function DmsDocumentAiSummarySection({
 
   if (queryError) {
     return (
-      <div className="flex flex-col items-center gap-3 py-12 text-center">
+      <QueryReadBoundary queries={[uiRead1]}><div className="flex flex-col items-center gap-3 py-12 text-center">
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
           <AlertCircle className="h-5 w-5 text-muted-foreground" />
         </div>
         <p className="text-sm text-muted-foreground">
           {queryError instanceof Error ? queryError.message : "Failed to load summary"}
         </p>
-      </div>
+      </div></QueryReadBoundary>
     );
   }
 
@@ -128,12 +130,12 @@ export function DmsDocumentAiSummarySection({
 
   if (!summaryRow) {
     return (
-      <div className="flex flex-col items-center gap-3 py-12 text-center">
+      <QueryReadBoundary queries={[uiRead1]}><div className="flex flex-col items-center gap-3 py-12 text-center">
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
           <Brain className="h-5 w-5 text-muted-foreground" />
         </div>
         <p className="text-sm text-muted-foreground">Summary data unavailable.</p>
-      </div>
+      </div></QueryReadBoundary>
     );
   }
 
@@ -147,7 +149,7 @@ export function DmsDocumentAiSummarySection({
   // ── Main view ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-4 p-1">
+    <QueryReadBoundary queries={[uiRead1]}><div className="space-y-4 p-1">
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
@@ -286,6 +288,6 @@ export function DmsDocumentAiSummarySection({
           The original document remains the source of truth.
         </span>
       </div>
-    </div>
+    </div></QueryReadBoundary>
   );
 }

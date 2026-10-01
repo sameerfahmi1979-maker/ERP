@@ -1,6 +1,10 @@
 "use client";
+import { RecordCollection } from "@/components/erp/table/record-collection";
+import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
-import { useState, useTransition, useCallback } from "react";
+import { useState, useCallback } from "react";
+import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { Search, FileText, CheckCircle2, AlertCircle, Clock, ShieldAlert } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -35,19 +39,20 @@ export function HrDocumentPickerStep({ selectedIds, onToggle, onNext }: Props) {
   const [isAggregating, startAggregate] = useTransition();
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  const { data: docs = [], isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: ["hr14a", "dms-docs-for-employee-create", search],
     queryFn: async () => {
       const result = await getDmsDocumentsForEmployeeCreate({ search, limit: 100 });
       if (!result.success) {
-        setFetchError(result.error ?? "Failed to load documents");
-        return [];
+        setFetchError("Documents could not be loaded. Retry or check your access.");
+        throw new Error("Document read failed");
       }
       setFetchError(null);
       return result.data ?? [];
     },
     staleTime: 30_000,
   });
+  const { data: docs = [], isLoading } = uiRead1;
 
   const handleNext = useCallback(() => {
     if (selectedIds.length === 0) return;
@@ -55,6 +60,8 @@ export function HrDocumentPickerStep({ selectedIds, onToggle, onNext }: Props) {
       const result = await aggregateEmployeeDraftFromDmsDocuments(selectedIds);
       if (result.success && result.data) {
         onNext(result.data);
+      } else {
+        toast.error("Document suggestions could not be prepared. Your selection is unchanged.");
       }
     });
   }, [selectedIds, onNext]);
@@ -72,7 +79,7 @@ export function HrDocumentPickerStep({ selectedIds, onToggle, onNext }: Props) {
   };
 
   return (
-    <div className="space-y-4">
+    <QueryReadBoundary queries={[uiRead1]}><div className="space-y-4">
       <div>
         <h3 className="text-sm font-semibold">Select DMS Documents</h3>
         <p className="text-xs text-muted-foreground mt-0.5">
@@ -83,7 +90,7 @@ export function HrDocumentPickerStep({ selectedIds, onToggle, onNext }: Props) {
 
       <div className="relative">
         <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-        <Input
+        <Input aria-label="Search by file name, document number"
           placeholder="Search by file name, document number..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -121,12 +128,13 @@ export function HrDocumentPickerStep({ selectedIds, onToggle, onNext }: Props) {
             </p>
           </div>
         ) : (
-          docs.map((doc) => {
+          <RecordCollection id="employee-document-create-picker" rows={docs} fields={[{"id":"title","label":"Title","path":"title"},{"id":"document_no","label":"Document number","path":"document_no"},{"id":"document_type_name","label":"Document type","path":"document_type_name"}]} renderRecord={(doc) => {
             const isSelected = selectedIds.includes(doc.id);
             return (
               <button
                 key={doc.id}
                 type="button"
+                aria-pressed={isSelected}
                 onClick={() => onToggle(doc)}
                 className={cn(
                   "w-full text-left px-3 py-2.5 flex items-start gap-3 transition-colors hover:bg-muted/40",
@@ -173,7 +181,7 @@ export function HrDocumentPickerStep({ selectedIds, onToggle, onNext }: Props) {
                 </div>
               </button>
             );
-          })
+          }} />
         )}
       </div>
 
@@ -197,6 +205,6 @@ export function HrDocumentPickerStep({ selectedIds, onToggle, onNext }: Props) {
           )}
         </Button>
       </div>
-    </div>
+    </div></QueryReadBoundary>
   );
 }

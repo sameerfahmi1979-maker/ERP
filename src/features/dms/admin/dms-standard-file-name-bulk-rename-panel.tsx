@@ -1,161 +1,66 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { toast } from "sonner";
-import { FileText, Play, Eye } from "lucide-react";
+import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  bulkRenameDocumentsToStandardFileNames,
-  type BulkRenameResult,
-} from "@/server/actions/dms/standard-file-name";
+import { ValidatedTaskForm } from "@/components/workspace/validated-task-form";
+import { ConfiguredRow } from "@/components/erp/table/list-controls";
+import { DmsListTools, useDmsListView, type DmsListField } from "@/features/dms/dms-list-view";
+import { bulkRenameDocumentsToStandardFileNames, type BulkRenameResult } from "@/server/actions/dms/standard-file-name";
+
+const FIELDS: DmsListField[] = [
+  {id:"document",label:"Document",path:"documentId",type:"number",required:true,width:120},
+  {id:"before",label:"Before",path:"oldName",width:260},
+  {id:"after",label:"Proposed name",path:"newName",width:260},
+  {id:"status",label:"Result",path:"resultLabel",width:200},
+];
 
 export function DmsStandardFileNameBulkRenamePanel() {
-  const [limit, setLimit] = useState(100);
-  const [lastResult, setLastResult] = useState<BulkRenameResult | null>(null);
-  const [isPending, startTransition] = useTransition();
-
-  const run = (dryRun: boolean) => {
-    startTransition(async () => {
-      const res = await bulkRenameDocumentsToStandardFileNames({ limit, dryRun });
-      if (!res.success || !res.data) {
-        toast.error(res.error ?? "Bulk rename failed");
-        return;
-      }
-      setLastResult(res.data);
-      toast.success(
-        dryRun
-          ? `Dry run: ${res.data.updated} would rename, ${res.data.skipped} skipped`
-          : `Renamed ${res.data.updated} files (${res.data.skipped} skipped)`
-      );
-    });
-  };
-
-  return (
-    <div className="rounded-lg border border-border/50 bg-card p-4 space-y-4">
-      <div className="flex items-start gap-3">
-        <div className="p-2 rounded-md text-indigo-600 bg-indigo-50 dark:bg-indigo-950/30">
-          <FileText className="h-4 w-4" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-semibold">Standard File Name — Bulk Rename</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Retroactively apply{" "}
-            <code className="text-[10px]">Document_type_Owner_DOC_NO_Expiry.ext</code> to existing
-            original files. Medical insurance uses card number as DOC_NO. Uses{" "}
-            <code className="text-[10px]">NoExpiry</code> when applicable.
-          </p>
-        </div>
-      </div>
-
+  const id = useId();
+  const [limit, setLimit] = useState("100");
+  const [result, setResult] = useState<{data:BulkRenameResult; dryRun:boolean; limit:number} | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+  const view = useDmsListView("bulk-rename-samples", (result?.data.samples ?? []).map(row=>({...row,
+    resultLabel:row.qualityIssue ? "Skipped: quality check" : result?.dryRun ? "Would rename" : "Processed — see run totals",
+  })), FIELDS);
+  const previewReady = result?.dryRun && result.limit === Number(limit) && result.data.updated > 0;
+  return <section aria-labelledby={`${id}-heading`} className="rounded-sm border bg-card p-4 space-y-4">
+    <h3 id={`${id}-heading`} className="text-base font-semibold">Standard file names</h3>
+    <p className="text-sm text-muted-foreground">Build file names from document type, owner, document number and expiry. Preview the proposed names before applying a batch. The operation rechecks records at execution time; filters below do not select which records will be renamed.</p>
+    <ValidatedTaskForm className="space-y-3" onSubmit={async data => {
+      const dryRun = data.get("operation") !== "rename";
+      if (!dryRun && (!previewReady || !window.confirm(`Apply standard names to up to ${Number(limit)} eligible documents? This may affect existing file names. The preview is not a locked selection.`))) return;
+      setFailure(null); setResult(null);
+      const response = await bulkRenameDocumentsToStandardFileNames({limit:Number(limit),dryRun});
+      if (!response.success || !response.data) { setFailure("The operation did not complete. Preview again and check your access before retrying."); return; }
+      setResult({data:response.data,dryRun,limit:Number(limit)});
+    }}>
       <div className="flex flex-wrap items-end gap-3">
-        <div className="space-y-1">
-          <label className="text-xs font-medium">Batch size</label>
-          <Input
-            type="number"
-            min={1}
-            max={500}
-            value={limit}
-            onChange={(e) => setLimit(Math.min(500, Math.max(1, parseInt(e.target.value, 10) || 100)))}
-            className="w-28 h-8 text-sm"
-          />
-        </div>
-        <Button variant="outline" size="sm" disabled={isPending} onClick={() => run(true)}>
-          <Eye className="h-3.5 w-3.5 mr-1.5" />
-          Dry Run
-        </Button>
-        <Button size="sm" disabled={isPending} onClick={() => run(false)}>
-          <Play className="h-3.5 w-3.5 mr-1.5" />
-          Run Rename
-        </Button>
+        <label htmlFor={`${id}-limit`} className="grid gap-1 text-sm">Batch size
+          <Input id={`${id}-limit`} name="batch_size" type="number" required min={1} max={500} step={1} value={limit} onChange={e=>setLimit(e.target.value)} className="w-28" />
+        </label>
+        <Button type="submit" name="operation" value="preview" variant="outline">Preview names</Button>
+        <Button type="submit" name="operation" value="rename" disabled={!previewReady}>Apply names</Button>
       </div>
-
-      {lastResult && (
-        <div className="text-xs space-y-3 border-t pt-3">
-          {/* Stats bar */}
-          <div className="flex flex-wrap gap-x-4 gap-y-1">
-            <span>Processed <strong>{lastResult.processed}</strong></span>
-            <span className="text-green-600 dark:text-green-400">
-              Updated <strong>{lastResult.updated}</strong>
-            </span>
-            <span className="text-muted-foreground">
-              Skipped <strong>{lastResult.skipped}</strong>
-            </span>
-            {lastResult.qualitySkipped > 0 && (
-              <span className="text-amber-600 dark:text-amber-400 font-medium">
-                ⚠ Quality-blocked <strong>{lastResult.qualitySkipped}</strong>
-                {" "}(rename would lose owner/doc-no — left unchanged)
-              </span>
-            )}
-            {lastResult.errors.length > 0 && (
-              <span className="text-destructive">
-                Errors <strong>{lastResult.errors.length}</strong>
-              </span>
-            )}
-          </div>
-
-          {/* Errors list */}
-          {lastResult.errors.length > 0 && (
-            <div className="rounded bg-destructive/10 p-2 space-y-0.5">
-              {lastResult.errors.slice(0, 5).map((e, i) => (
-                <p key={i} className="text-destructive font-mono">{e}</p>
-              ))}
-              {lastResult.errors.length > 5 && (
-                <p className="text-muted-foreground">…and {lastResult.errors.length - 5} more</p>
-              )}
-            </div>
-          )}
-
-          {/* Rename preview table */}
-          {lastResult.samples.length > 0 && (
-            <div className="overflow-auto max-h-80 rounded border border-border/40">
-              <table className="w-full text-[11px] min-w-[640px]">
-                <thead className="sticky top-0 bg-card">
-                  <tr className="text-left text-muted-foreground border-b border-border/40">
-                    <th className="px-2 py-1.5 whitespace-nowrap">Doc</th>
-                    <th className="px-2 py-1.5">Before</th>
-                    <th className="px-2 py-1.5">After</th>
-                    <th className="px-2 py-1.5 whitespace-nowrap">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lastResult.samples.map((s) => (
-                    <tr
-                      key={s.documentId}
-                      className={
-                        s.qualityIssue
-                          ? "border-t border-border/40 bg-amber-50/50 dark:bg-amber-950/20"
-                          : "border-t border-border/40"
-                      }
-                    >
-                      <td className="px-2 py-1 font-mono whitespace-nowrap">#{s.documentId}</td>
-                      <td className="px-2 py-1 max-w-[220px] truncate text-muted-foreground">
-                        {s.oldName}
-                      </td>
-                      <td className={`px-2 py-1 max-w-[260px] truncate font-medium ${
-                        s.qualityIssue
-                          ? "text-amber-700 dark:text-amber-400 line-through"
-                          : ""
-                      }`}>
-                        {s.newName}
-                      </td>
-                      <td className="px-2 py-1 whitespace-nowrap">
-                        {s.qualityIssue ? (
-                          <span className="text-amber-600 dark:text-amber-400">
-                            ⚠ Skipped ({s.qualityIssue})
-                          </span>
-                        ) : (
-                          <span className="text-green-600 dark:text-green-400">✓ Will rename</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
+    </ValidatedTaskForm>
+    {failure && <p role="alert" className="text-sm text-destructive">{failure}</p>}
+    {result && <div className="space-y-3 border-t pt-3">
+      <p role="status" className="text-sm">{result.dryRun ? "Preview" : "Last run"}: {result.data.processed} processed · {result.data.updated} {result.dryRun ? "would rename" : "renamed"} · {result.data.skipped} skipped · {result.data.errors.length} errors.</p>
+      {result.data.errors.length>0 && <p role="alert" className="text-sm text-destructive">Some records could not be processed. Their names may be unchanged. Preview again before retrying; contact your administrator if the problem continues.</p>}
+      <p className="text-xs text-muted-foreground">The server returns a sample, not a complete per-file execution log. A proposed name below does not prove that an individual file was renamed.</p>
+      <DmsListTools view={view} search />
+      <div role="region" aria-label="File name samples" tabIndex={0} className="max-w-full overflow-auto rounded-sm border">
+        <table className="w-full text-sm" style={{minWidth:view.visible.reduce((sum,c)=>sum+c.width,0)}}>
+          <colgroup>{view.visible.map(c=><col key={c.id} style={{width:c.width}} />)}</colgroup>
+          <thead><tr>{view.visible.map(c=><th key={c.id} className="text-left px-3 py-2 bg-muted/30">{c.label}</th>)}</tr></thead>
+          <tbody>{view.rows.map((row,i)=><ConfiguredRow columns={view.columns} key={`${row.documentId}:${i}`} className="border-t">
+            <td data-column="document" className="p-3">#{row.documentId}</td>
+            <td data-column="before" className="p-3 break-all">{row.oldName}</td>
+            <td data-column="after" className="p-3 break-all">{row.newName}</td>
+            <td data-column="status" className="p-3">{row.resultLabel}</td>
+          </ConfiguredRow>)}{!view.rows.length && <tr><td colSpan={view.visible.length} className="p-6 text-center text-muted-foreground">No sample rows match this view.</td></tr>}</tbody>
+        </table>
+      </div>
+    </div>}
+  </section>;
 }

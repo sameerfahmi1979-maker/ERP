@@ -83,7 +83,7 @@ export function IdentityDocumentFormFields({
       <div className="grid grid-cols-12 gap-4">
         <div className="col-span-6">
           <Label>Document Type <span className="text-destructive">*</span></Label>
-          <ERPCombobox
+          <ERPCombobox ariaLabel="Document Type"
             value={form.document_type_id}
             onValueChange={(v) => setForm((p) => ({ ...p, document_type_id: Number(v) }))}
             options={docTypeOptions}
@@ -93,7 +93,7 @@ export function IdentityDocumentFormFields({
         </div>
         <div className="col-span-6">
           <Label>Document Number <span className="text-destructive">*</span></Label>
-          <Input
+          <Input aria-label="Document Number" required
             value={form.document_number}
             onChange={(e) => setForm((p) => ({ ...p, document_number: e.target.value }))}
             placeholder="Document number"
@@ -103,7 +103,7 @@ export function IdentityDocumentFormFields({
         </div>
         <div className="col-span-6">
           <Label>Issue Date</Label>
-          <Input
+          <Input aria-label="Issue Date"
             type="date"
             value={form.issue_date}
             onChange={(e) => setForm((p) => ({ ...p, issue_date: e.target.value }))}
@@ -113,7 +113,7 @@ export function IdentityDocumentFormFields({
         </div>
         <div className="col-span-6">
           <Label>Expiry Date</Label>
-          <Input
+          <Input aria-label="Expiry Date"
             type="date"
             value={form.expiry_date}
             onChange={(e) => setForm((p) => ({ ...p, expiry_date: e.target.value }))}
@@ -172,7 +172,7 @@ export function IdentityDocumentFormFields({
         </div>
         <div className="col-span-4">
           <Label>Status</Label>
-          <ERPCombobox
+          <ERPCombobox ariaLabel="Status"
             value={form.status}
             onValueChange={(v) => setForm((p) => ({ ...p, status: String(v) }))}
             options={[...IDENTITY_DOC_STATUS_OPTIONS]}
@@ -181,7 +181,7 @@ export function IdentityDocumentFormFields({
         </div>
         <div className="col-span-4">
           <Label>Verification</Label>
-          <ERPCombobox
+          <ERPCombobox ariaLabel="Verification"
             value={form.verification_status}
             onValueChange={(v) => setForm((p) => ({ ...p, verification_status: String(v) }))}
             options={[...IDENTITY_VERIFICATION_OPTIONS]}
@@ -190,7 +190,7 @@ export function IdentityDocumentFormFields({
         </div>
         <div className="col-span-4">
           <Label>Renewal Status</Label>
-          <ERPCombobox
+          <ERPCombobox ariaLabel="Renewal Status"
             value={form.renewal_status}
             onValueChange={(v) => setForm((p) => ({ ...p, renewal_status: String(v) }))}
             options={[...IDENTITY_RENEWAL_STATUS_OPTIONS]}
@@ -202,31 +202,31 @@ export function IdentityDocumentFormFields({
         </div>
         <div className="col-span-6">
           <Label>Emirates ID Application No</Label>
-          <Input value={form.emirates_id_application_no} onChange={(e) => setForm((p) => ({ ...p, emirates_id_application_no: e.target.value }))} />
+          <Input aria-label="Emirates ID Application No" value={form.emirates_id_application_no} onChange={(e) => setForm((p) => ({ ...p, emirates_id_application_no: e.target.value }))} />
         </div>
         <div className="col-span-6">
           <Label>UID Number</Label>
-          <Input value={form.uid_number} onChange={(e) => setForm((p) => ({ ...p, uid_number: e.target.value }))} />
+          <Input aria-label="UID Number" value={form.uid_number} onChange={(e) => setForm((p) => ({ ...p, uid_number: e.target.value }))} />
         </div>
         <div className="col-span-6">
           <Label>Visa File Number</Label>
-          <Input value={form.visa_file_number} onChange={(e) => setForm((p) => ({ ...p, visa_file_number: e.target.value }))} />
+          <Input aria-label="Visa File Number" value={form.visa_file_number} onChange={(e) => setForm((p) => ({ ...p, visa_file_number: e.target.value }))} />
         </div>
         <div className="col-span-6">
           <Label>Labour Card Number</Label>
-          <Input value={form.labour_card_number} onChange={(e) => setForm((p) => ({ ...p, labour_card_number: e.target.value }))} />
+          <Input aria-label="Labour Card Number" value={form.labour_card_number} onChange={(e) => setForm((p) => ({ ...p, labour_card_number: e.target.value }))} />
         </div>
         <div className="col-span-6">
           <Label>Work Permit Number</Label>
-          <Input value={form.work_permit_number} onChange={(e) => setForm((p) => ({ ...p, work_permit_number: e.target.value }))} />
+          <Input aria-label="Work Permit Number" value={form.work_permit_number} onChange={(e) => setForm((p) => ({ ...p, work_permit_number: e.target.value }))} />
         </div>
         <div className="col-span-6">
           <Label>MOHRE Person Code</Label>
-          <Input value={form.mohre_person_code} onChange={(e) => setForm((p) => ({ ...p, mohre_person_code: e.target.value }))} />
+          <Input aria-label="MOHRE Person Code" value={form.mohre_person_code} onChange={(e) => setForm((p) => ({ ...p, mohre_person_code: e.target.value }))} />
         </div>
         <div className="col-span-6">
           <Label>Profession on Document</Label>
-          <Input value={form.profession_on_document} onChange={(e) => setForm((p) => ({ ...p, profession_on_document: e.target.value }))} />
+          <Input aria-label="Profession on Document" value={form.profession_on_document} onChange={(e) => setForm((p) => ({ ...p, profession_on_document: e.target.value }))} />
         </div>
         <div className="col-span-6">
           <Label>Sponsor Company</Label>
@@ -234,7 +234,7 @@ export function IdentityDocumentFormFields({
         </div>
         <div className="col-span-12">
           <Label>Notes</Label>
-          <Textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} rows={2} />
+          <Textarea aria-label="Notes" value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} rows={2} />
         </div>
       </div>
     </div>

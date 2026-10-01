@@ -1,4 +1,7 @@
 "use client";
+import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
+import { RecordCollection } from "@/components/erp/table/record-collection";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { ERPCombobox } from "@/components/erp/combobox";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
@@ -14,7 +17,7 @@ import type { JobRequisitionRow } from "@/server/actions/hr/recruitment";
 import { archiveJobRequisition, createJobRequisition, listJobRequisitions, updateJobRequisition } from "@/server/actions/hr/recruitment";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Briefcase, Pencil, Plus, Trash2 } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useState} from "react";
 import { toast } from "sonner";
 
 type Props = { authContext: AuthContext };
@@ -83,11 +86,12 @@ export function RequisitionsPageClient({ authContext }: Props) {
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const { data: res, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.recruitment.requisitions({ search, status: statusFilter }),
     queryFn: () => listJobRequisitions({ search: search || undefined, status: statusFilter ?? undefined, pageSize: 100 }),
     staleTime: 30_000,
   });
+  const { data: res, isLoading } = uiRead1;
   const rows = Array.isArray(res?.data?.rows) ? res.data.rows : [];
 
   const set = (key: keyof ReqForm, value: string) => setForm((p) => ({ ...p, [key]: value }));
@@ -153,8 +157,8 @@ export function RequisitionsPageClient({ authContext }: Props) {
   }
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-4">
-      <div className="flex items-center justify-between">
+    <QueryReadBoundary queries={[uiRead1]}><div className="p-6 max-w-6xl mx-auto space-y-4">
+      <div className="flex flex-wrap gap-2 items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Job Requisitions</h1>
           <p className="text-sm text-muted-foreground">{res?.data?.totalCount ?? 0} total</p>
@@ -168,8 +172,8 @@ export function RequisitionsPageClient({ authContext }: Props) {
 
       {/* Filters */}
       <div className="flex gap-2 flex-wrap">
-        <Input placeholder="Search requisitions..." value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
-        <ERPCombobox
+        <Input aria-label="Search requisitions" placeholder="Search requisitions..." value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
+        <ERPCombobox ariaLabel="Filter by status"
           value={statusFilter}
           onValueChange={(v) => setStatusFilter(v ? String(v) : null)}
           options={[{ value: "", label: "All Statuses" }, ...STATUS_OPTIONS]}
@@ -186,7 +190,7 @@ export function RequisitionsPageClient({ authContext }: Props) {
         </div>
       ) : (
         <div className="border rounded-lg divide-y">
-          {rows.map((row) => (
+          <RecordCollection id="hr.requisitions-page-client.RequisitionsPageClient.rows" rows={rows} fields={[{"id":"requisition_title","path":"requisition_title","label":"Requisition Title"},{"id":"requisition_status","path":"requisition_status","label":"Requisition Status"}]} renderRecord={(row) => (
             <div key={row.id} className="flex items-center gap-3 p-4">
               <Briefcase className="h-4 w-4 text-slate-400 flex-shrink-0" />
               <div className="flex-1 min-w-0">
@@ -205,12 +209,12 @@ export function RequisitionsPageClient({ authContext }: Props) {
               </div>
               {canManage && (
                 <div className="flex gap-1">
-                  <Button size="sm" variant="ghost" onClick={() => openEdit(row)}><Pencil className="h-4 w-4" /></Button>
-                  <Button size="sm" variant="ghost" onClick={() => handleArchive(row.id)} disabled={isPending}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                  <Button aria-label="Edit record" size="sm" variant="ghost" onClick={() => openEdit(row)}><Pencil className="h-4 w-4" /></Button>
+                  <Button aria-label="Archive record" size="sm" variant="ghost" onClick={() => handleArchive(row.id)} disabled={isPending}><Trash2 className="h-4 w-4 text-red-500" /></Button>
                 </div>
               )}
             </div>
-          ))}
+          )} />
         </div>
       )}
 
@@ -228,38 +232,38 @@ export function RequisitionsPageClient({ authContext }: Props) {
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <RequiredLabel required>Requisition Title</RequiredLabel>
-            <Input value={form.requisition_title} onChange={(e) => set("requisition_title", e.target.value)} placeholder="e.g. Senior Software Engineer" />
+            <Input aria-label="Requisition Title" required value={form.requisition_title} onChange={(e) => set("requisition_title", e.target.value)} placeholder="e.g. Senior Software Engineer" />
           </div>
           <div className="col-span-12 md:col-span-4">
             <Label>Status</Label>
-            <ERPCombobox value={form.requisition_status || null} onValueChange={(v) => set("requisition_status", String(v ?? "draft"))} options={STATUS_OPTIONS} placeholder="Status" />
+            <ERPCombobox ariaLabel="Status" value={form.requisition_status || null} onValueChange={(v) => set("requisition_status", String(v ?? "draft"))} options={STATUS_OPTIONS} placeholder="Status" />
           </div>
           <div className="col-span-12 md:col-span-4">
             <Label>Priority</Label>
-            <ERPCombobox value={form.priority || null} onValueChange={(v) => set("priority", String(v ?? "normal"))} options={PRIORITY_OPTIONS} placeholder="Priority" />
+            <ERPCombobox ariaLabel="Priority" value={form.priority || null} onValueChange={(v) => set("priority", String(v ?? "normal"))} options={PRIORITY_OPTIONS} placeholder="Priority" />
           </div>
           <div className="col-span-12 md:col-span-2">
             <Label>Vacancies</Label>
-            <Input type="number" min={1} value={form.vacancies_count} onChange={(e) => set("vacancies_count", e.target.value)} />
+            <Input aria-label="Vacancies" type="number" min={1} value={form.vacancies_count} onChange={(e) => set("vacancies_count", e.target.value)} />
           </div>
           <div className="col-span-12 md:col-span-2">
             <Label>Target Start</Label>
-            <Input type="date" value={form.target_start_date} onChange={(e) => set("target_start_date", e.target.value)} />
+            <Input aria-label="Target Start" type="date" value={form.target_start_date} onChange={(e) => set("target_start_date", e.target.value)} />
           </div>
           <div className="col-span-12">
             <Label>Job Description</Label>
-            <Textarea value={form.job_description} onChange={(e) => set("job_description", e.target.value)} rows={4} placeholder="Describe the role, responsibilities, and context..." />
+            <Textarea aria-label="Job Description" value={form.job_description} onChange={(e) => set("job_description", e.target.value)} rows={4} placeholder="Describe the role, responsibilities, and context..." />
           </div>
           <div className="col-span-12">
             <Label>Requirements</Label>
-            <Textarea value={form.requirements} onChange={(e) => set("requirements", e.target.value)} rows={3} placeholder="Skills, qualifications, experience required..." />
+            <Textarea aria-label="Requirements" value={form.requirements} onChange={(e) => set("requirements", e.target.value)} rows={3} placeholder="Skills, qualifications, experience required..." />
           </div>
           <div className="col-span-12">
             <Label>Notes</Label>
-            <Textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} rows={2} placeholder="Internal notes..." />
+            <Textarea aria-label="Notes" value={form.notes} onChange={(e) => set("notes", e.target.value)} rows={2} placeholder="Internal notes..." />
           </div>
         </div>
       </ERPChildDialogForm>
-    </div>
+    </div></QueryReadBoundary>
   );
 }

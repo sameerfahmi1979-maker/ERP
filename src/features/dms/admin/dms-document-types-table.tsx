@@ -1,5 +1,8 @@
 "use client";
 
+import { DmsListTools, useDmsListView, type DmsListField } from "@/features/dms/dms-list-view";
+import { ConfiguredRow } from "@/components/erp/table/list-controls";
+
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -88,6 +91,101 @@ function canManage(ctx: AuthContext) {
   );
 }
 
+const DMS_LIST_FIELDS: DmsListField[] = [
+  {
+    "id": "type_code",
+    "label": "Code",
+    "path": "type_code",
+    "type": "text",
+    "width": 160,
+    "required": true
+  },
+  {
+    "id": "name_en",
+    "label": "Name",
+    "path": "name_en",
+    "type": "text",
+    "width": 160
+  },
+  {
+    "id": "category",
+    "label": "Category",
+    "path": "category.name_en",
+    "type": "text",
+    "width": 160
+  },
+  {
+    "id": "requires_expiry_tracking",
+    "label": "Expiry tracking",
+    "path": "requires_expiry_tracking",
+    "type": "select",
+    "width": 110,
+    "options": [
+      {
+        "value": "true",
+        "label": "Yes"
+      },
+      {
+        "value": "false",
+        "label": "No"
+      }
+    ]
+  },
+  {
+    "id": "default_confidentiality",
+    "label": "Confidentiality",
+    "path": "default_confidentiality",
+    "type": "text",
+    "width": 160
+  },
+  {
+    "id": "metadata",
+    "label": "Metadata fields",
+    "type": "text",
+    "width": 160
+  },
+  {
+    "id": "is_system",
+    "label": "System",
+    "path": "is_system",
+    "type": "select",
+    "width": 110,
+    "options": [
+      {
+        "value": "true",
+        "label": "Yes"
+      },
+      {
+        "value": "false",
+        "label": "No"
+      }
+    ]
+  },
+  {
+    "id": "is_active",
+    "label": "Active",
+    "path": "is_active",
+    "type": "select",
+    "width": 110,
+    "options": [
+      {
+        "value": "true",
+        "label": "Yes"
+      },
+      {
+        "value": "false",
+        "label": "No"
+      }
+    ]
+  },
+  {
+    "id": "actions",
+    "label": "Actions",
+    "type": "text",
+    "width": 160
+  }
+];
+
 export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) {
   const router = useRouter();
   const manage = canManage(authContext);
@@ -96,6 +194,7 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
   const [editing, setEditing] = useState<DmsDocumentTypeRow | null>(null);
   const [form, setForm] = useState<FormState>({ ...emptyForm });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
@@ -105,6 +204,7 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
   const openAdd = () => {
     setEditing(null);
     setForm({ ...emptyForm });
+    setSaveError(null);
     setDialogOpen(true);
   };
 
@@ -125,6 +225,7 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
       is_active: row.is_active,
       sort_order: row.sort_order,
     });
+    setSaveError(null);
     setDialogOpen(true);
   };
 
@@ -148,6 +249,8 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
       return;
     }
     setIsSubmitting(true);
+    setSaveError(null);
+    try {
     const payload = {
       type_code: form.type_code.toUpperCase(),
       name_en: form.name_en,
@@ -166,11 +269,14 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
     const result = editing
       ? await updateDmsDocumentType(editing.id, payload)
       : await createDmsDocumentType(payload);
-    setIsSubmitting(false);
-    if (!result.success) { toast.error(result.error ?? "Failed to save"); return; }
+
+    if (!result.success) { setSaveError("The record was not saved. Check your access and whether this code or name is already in use. Your entries are retained."); return; }
     toast.success(editing ? "Document type updated" : "Document type created");
     setDialogOpen(false);
     router.refresh();
+  } catch {
+      setSaveError("The save could not be confirmed. Your entries are retained. Check the list before retrying to avoid duplicates.");
+    } finally { setIsSubmitting(false); }
   };
 
   const handleToggle = async (row: DmsDocumentTypeRow) => {
@@ -197,7 +303,9 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
     return true;
   }), [rows, filterCategory, filterStatus, filterSystem, searchText]);
 
-  const table = useSortPaginate(filteredRows, {
+  const listView = useDmsListView("document-types", filteredRows, DMS_LIST_FIELDS.filter(field => field.id !== "actions" || (manage)));
+  const table = useSortPaginate(listView.rows, {
+    memoryKey: "dms:document-types",
     defaultSortKey: "sort_order",
     defaultSortDir: "asc",
     defaultPageSize: 25,
@@ -262,25 +370,26 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
         )}
       </div>
 
-      <div className="rounded-md border overflow-auto">
-        <table className="w-full text-sm min-w-[900px]">
+      <DmsListTools view={listView} />
+<div className="rounded-md border overflow-auto">
+        <div role="region" aria-label="document-types table" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{ minWidth: listView.visible.reduce((sum, column) => sum + column.width, 0) }}><colgroup>{listView.visible.map(column => <col key={column.id} style={{ width: column.width }} />)}</colgroup>
           <thead className="bg-muted/50 border-b">
-            <tr>
-              <SortColHeader field="type_code" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort}>Code</SortColHeader>
-              <SortColHeader field="name_en" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort}>Name</SortColHeader>
-              <SortColHeader field="category" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort}>Category</SortColHeader>
-              <SortColHeader field="requires_expiry_tracking" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">Expiry</SortColHeader>
-              <SortColHeader field="default_confidentiality" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">Confidentiality</SortColHeader>
-              <SortColHeader field="metadata_defs" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">Fields</SortColHeader>
-              <SortColHeader field="is_system" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">Type</SortColHeader>
-              <SortColHeader field="is_active" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">Status</SortColHeader>
-              {manage && <th className="px-4 py-2.5 w-28" />}
-            </tr>
+            <ConfiguredRow columns={listView.columns}>
+              <SortColHeader data-column="type_code" field="type_code" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort}>Code</SortColHeader>
+              <SortColHeader data-column="name_en" field="name_en" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort}>Name</SortColHeader>
+              <SortColHeader data-column="category" field="category" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort}>Category</SortColHeader>
+              <SortColHeader data-column="requires_expiry_tracking" field="requires_expiry_tracking" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">Expiry</SortColHeader>
+              <SortColHeader data-column="default_confidentiality" field="default_confidentiality" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">Confidentiality</SortColHeader>
+              <SortColHeader data-column="metadata" field="metadata_defs" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">Fields</SortColHeader>
+              <SortColHeader data-column="is_system" field="is_system" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">Type</SortColHeader>
+              <SortColHeader data-column="is_active" field="is_active" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="center">Status</SortColHeader>
+              {manage && <th data-column="actions" className="px-4 py-2.5 w-28" />}
+            </ConfiguredRow>
           </thead>
           <tbody className="divide-y divide-border/50">
             {table.rows.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground text-sm">No document types found</td>
+                <td colSpan={listView.visible.length} className="px-4 py-8 text-center text-muted-foreground text-sm">No document types found</td>
               </tr>
             )}
             {table.rows.map((row) => {
@@ -288,8 +397,8 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
               const metaCount = row.metadata_defs?.length ?? 0;
               const isPartyType = PARTY_DOC_TYPE_CODES.has(row.type_code);
               return (
-                <tr key={row.id} className="hover:bg-muted/25 transition-colors">
-                  <td className="px-4 py-2.5">
+                <ConfiguredRow columns={listView.columns} key={row.id} className="hover:bg-muted/25 transition-colors">
+                  <td data-column="type_code" className="px-4 py-2.5">
                     <div className="flex items-center gap-1.5">
                       <span className="font-mono text-xs font-medium">{row.type_code}</span>
                       {isPartyType && (
@@ -297,14 +406,14 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-2.5">
+                  <td data-column="name_en" className="px-4 py-2.5">
                     <div className="text-sm font-medium">{row.name_en}</div>
                     {row.name_ar && <div className="text-xs text-muted-foreground" dir="rtl">{row.name_ar}</div>}
                   </td>
-                  <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                  <td data-column="category" className="px-4 py-2.5 text-xs text-muted-foreground">
                     {row.category?.name_en ?? "—"}
                   </td>
-                  <td className="px-4 py-2.5 text-center">
+                  <td data-column="requires_expiry_tracking" className="px-4 py-2.5 text-center">
                     <div className="flex items-center justify-center gap-1">
                       {row.requires_expiry_tracking ? (
                         <Badge className="bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 text-[10px] px-1.5 py-0">Expiry</Badge>
@@ -316,44 +425,44 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-2.5 text-center">
+                  <td data-column="default_confidentiality" className="px-4 py-2.5 text-center">
                     <Badge className={`text-[10px] px-1.5 py-0 ${conf.color}`}>{conf.label}</Badge>
                   </td>
-                  <td className="px-4 py-2.5 text-center text-xs text-muted-foreground font-medium">
+                  <td data-column="metadata" className="px-4 py-2.5 text-center text-xs text-muted-foreground font-medium">
                     {metaCount > 0 ? metaCount : "—"}
                   </td>
-                  <td className="px-4 py-2.5 text-center">
+                  <td data-column="is_system" className="px-4 py-2.5 text-center">
                     {row.is_system ? (
                       <Badge variant="outline" className="text-[10px] px-1.5 py-0">System</Badge>
                     ) : (
                       <Badge className="bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400 text-[10px] px-1.5 py-0">Custom</Badge>
                     )}
                   </td>
-                  <td className="px-4 py-2.5 text-center">
+                  <td data-column="is_active" className="px-4 py-2.5 text-center">
                     <Badge className={`text-[10px] px-1.5 py-0 ${row.is_active ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"}`}>
                       {row.is_active ? "Active" : "Inactive"}
                     </Badge>
                   </td>
                   {manage && (
-                    <td className="px-4 py-2.5">
+                    <td data-column="actions" className="px-4 py-2.5">
                       <div className="flex items-center gap-0.5 justify-end">
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(row)} title="Edit">
+                        <Button aria-label="Edit" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(row)} title="Edit">
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleToggle(row)} title={row.is_active ? "Deactivate" : "Activate"}>
+                        <Button aria-label={row.is_active ? "Deactivate" : "Activate"} size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleToggle(row)} title={row.is_active ? "Deactivate" : "Activate"}>
                           <Power className="h-3.5 w-3.5" />
                         </Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDuplicate(row)} title="Duplicate as Custom">
+                        <Button aria-label="Duplicate as Custom" size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDuplicate(row)} title="Duplicate as Custom">
                           <Copy className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     </td>
                   )}
-                </tr>
+                </ConfiguredRow>
               );
             })}
           </tbody>
-        </table>
+        </table></div>
         <TablePagination
           page={table.page}
           totalPages={table.totalPages}
@@ -376,10 +485,11 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
         isSubmitting={isSubmitting}
         onSubmit={handleSubmit}
       >
+        {saveError && <p role="alert" className="mb-3 rounded-sm border border-destructive/40 p-3 text-sm">{saveError}</p>}
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-5">
             <RequiredLabel required>Type Code</RequiredLabel>
-            <Input
+            <Input aria-label="Type Code" required
               value={form.type_code}
               onChange={(e) => setForm((f) => ({ ...f, type_code: e.target.value.toUpperCase() }))}
               placeholder="e.g. TRADE_LICENSE"
@@ -390,7 +500,7 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
               <p className="text-[10px] text-muted-foreground mt-1">System type codes cannot be changed</p>
             )}
           </div>
-          <div className="col-span-4">
+          <div className="col-span-12 sm:col-span-4">
             <Label>Category</Label>
             <Select value={form.category_id} onValueChange={(v) => setForm((f) => ({ ...f, category_id: v ?? "" }))}>
               <SelectTrigger>
@@ -408,26 +518,26 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
               </SelectContent>
             </Select>
           </div>
-          <div className="col-span-3">
+          <div className="col-span-12 sm:col-span-3">
             <Label>Sort Order</Label>
-            <Input
+            <Input aria-label="Sort Order"
               type="number"
               value={form.sort_order}
               onChange={(e) => setForm((f) => ({ ...f, sort_order: parseInt(e.target.value) || 0 }))}
               min={0}
             />
           </div>
-          <div className="col-span-6">
+          <div className="col-span-12 sm:col-span-6">
             <RequiredLabel required>Name (English)</RequiredLabel>
-            <Input
+            <Input aria-label="Name (English)" required
               value={form.name_en}
               onChange={(e) => setForm((f) => ({ ...f, name_en: e.target.value }))}
               placeholder="e.g. Trade License"
             />
           </div>
-          <div className="col-span-6">
+          <div className="col-span-12 sm:col-span-6">
             <Label>Name (Arabic)</Label>
-            <Input
+            <Input aria-label="Name (Arabic)"
               value={form.name_ar}
               onChange={(e) => setForm((f) => ({ ...f, name_ar: e.target.value }))}
               placeholder="الاسم بالعربي"
@@ -436,14 +546,14 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
           </div>
           <div className="col-span-12">
             <Label>Description</Label>
-            <Textarea
+            <Textarea aria-label="Description"
               value={form.description}
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
               placeholder="Optional description"
               rows={2}
             />
           </div>
-          <div className="col-span-6">
+          <div className="col-span-12 sm:col-span-6">
             <RequiredLabel required>Default Confidentiality</RequiredLabel>
             <Select value={form.default_confidentiality} onValueChange={(v) => setForm((f) => ({ ...f, default_confidentiality: v ?? "internal" }))}>
               <SelectTrigger>
@@ -456,9 +566,9 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
               </SelectContent>
             </Select>
           </div>
-          <div className="col-span-6">
+          <div className="col-span-12 sm:col-span-6">
             <Label>Default Retention (Days)</Label>
-            <Input
+            <Input aria-label="Default Retention (Days)"
               type="number"
               value={form.default_retention_days}
               onChange={(e) => setForm((f) => ({ ...f, default_retention_days: e.target.value }))}
@@ -483,19 +593,19 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
             </div>
           </div>
           <div className="col-span-12 flex flex-wrap items-center gap-6">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Switch checked={form.requires_expiry_tracking} onCheckedChange={(v) => setForm((f) => ({ ...f, requires_expiry_tracking: v }))} />
               <Label>Requires Expiry Tracking</Label>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Switch checked={form.is_renewable} onCheckedChange={(v) => setForm((f) => ({ ...f, is_renewable: v }))} />
               <Label>Renewable</Label>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Switch checked={form.requires_approval} onCheckedChange={(v) => setForm((f) => ({ ...f, requires_approval: v }))} />
               <Label>Requires Approval</Label>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Switch checked={form.is_active} onCheckedChange={(v) => setForm((f) => ({ ...f, is_active: v }))} />
               <Label>Active</Label>
             </div>

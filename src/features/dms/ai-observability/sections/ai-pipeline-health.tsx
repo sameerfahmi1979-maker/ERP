@@ -1,4 +1,5 @@
 "use client";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { getDmsAiPipelineHealth } from "@/server/actions/dms/ai-observability";
 import { useQuery } from "@tanstack/react-query";
@@ -19,7 +20,7 @@ function HealthRow({ label, value, warn }: { label: string; value: number; warn?
 }
 
 export function AiPipelineHealth({ refreshKey }: Props) {
-  const { data, isPending: loading, error: queryError } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: ["dms-observability", "getDmsAiPipelineHealth", refreshKey],
     queryFn: async () => {
       const result = await getDmsAiPipelineHealth();
@@ -30,14 +31,15 @@ export function AiPipelineHealth({ refreshKey }: Props) {
     gcTime: 0,
     refetchOnWindowFocus: false,
   });
+ const { data, isPending: loading, error: queryError } = uiRead1;
   const error = queryError?.message;
 
-  if (loading) return <div className="text-sm text-muted-foreground">Loading pipeline health...</div>;
-  if (error) return <div className="text-sm text-destructive">{error}</div>;
+  if (loading) return <QueryReadBoundary queries={[uiRead1]}><div className="text-sm text-muted-foreground">Loading pipeline health...</div></QueryReadBoundary>;
+  if (error) return <QueryReadBoundary queries={[uiRead1]}><div className="text-sm text-destructive">{error}</div></QueryReadBoundary>;
   if (!data) return null;
 
   return (
-    <div className="rounded-lg border p-4">
+    <QueryReadBoundary queries={[uiRead1]}><div className="rounded-lg border p-4">
       <HealthRow label="Documents pending AI" value={data.documentsWithPendingAi} />
       <HealthRow label="Documents AI processing" value={data.documentsAiProcessing} />
       <HealthRow label="Documents AI failed" value={data.documentsAiFailed} warn />
@@ -48,6 +50,6 @@ export function AiPipelineHealth({ refreshKey }: Props) {
       <HealthRow label="Review queue high priority" value={data.reviewQueueHighPriority} warn />
       <HealthRow label="Validation findings open" value={data.validationFindingsOpen} />
       <HealthRow label="Entity match candidates pending" value={data.entityMatchCandidatesPending} />
-    </div>
+    </div></QueryReadBoundary>
   );
 }

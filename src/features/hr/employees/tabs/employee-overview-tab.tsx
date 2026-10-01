@@ -1,4 +1,5 @@
 "use client";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { useQuery } from "@tanstack/react-query";
 import type { EmployeeListRow } from "@/server/actions/hr/employees";
@@ -214,12 +215,13 @@ export function EmployeeOverviewTab({ employee, canViewCompliance, canViewTime, 
 // ── Recruitment Link Component (HR.8) ────────────────────────────────────────
 
 function RecruitmentLinkSection({ employeeId, canView }: { employeeId: number; canView: boolean }) {
-  const { data: linkRes, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.recruitment.employeeRecruitmentLink(employeeId),
     enabled: canView,
     queryFn: () => getEmployeeRecruitmentLink(employeeId),
     staleTime: 60_000,
   });
+  const { data: linkRes, isLoading } = uiRead1;
 
   if (!canView) return null;
 
@@ -227,7 +229,7 @@ function RecruitmentLinkSection({ employeeId, canView }: { employeeId: number; c
   if (!isLoading && !link) return null;
 
   return (
-    <Card>
+    <QueryReadBoundary queries={[uiRead1]}><Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
           <Users className="h-4 w-4" />
@@ -260,21 +262,22 @@ function RecruitmentLinkSection({ employeeId, canView }: { employeeId: number; c
           </div>
         ) : null}
       </CardContent>
-    </Card>
+    </Card></QueryReadBoundary>
   );
 }
 
 // ── HR Actions Summary Component (HR.7) ──────────────────────────────────────
 
 function HrActionsSummarySection({ employeeId, canView }: { employeeId: number; canView: boolean }) {
-  const { data: summary, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.actions.summary(employeeId),
     enabled: canView,
     queryFn: () => getEmployeeHrActionsSummary(employeeId),
   });
+  const { data: summary, isLoading } = uiRead1;
 
   return (
-    <Card>
+    <QueryReadBoundary queries={[uiRead1]}><Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-sm font-semibold flex items-center gap-2">
           <Zap className="h-4 w-4 text-muted-foreground" />
@@ -340,26 +343,27 @@ function HrActionsSummarySection({ employeeId, canView }: { employeeId: number; 
           </div>
         )}
       </CardContent>
-    </Card>
+    </Card></QueryReadBoundary>
   );
 }
 
 // ── Compliance Summary Component ──────────────────────────────────────────────
 
 function ComplianceSummarySection({ employeeId, canView }: { employeeId: number; canView: boolean }) {
-  const { data: summary, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.compliance.summary(employeeId),
     enabled: canView,
     queryFn: async () => {
       const r = await getEmployeeComplianceSummary(employeeId);
-      return r.success ? r.data ?? null : null;
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? null : null;
     },
   });
+  const { data: summary, isLoading } = uiRead1;
 
   if (!canView) return null;
 
   return (
-    <Card>
+    <QueryReadBoundary queries={[uiRead1]}><Card>
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
           <Shield className="h-4 w-4" />
@@ -434,7 +438,7 @@ function ComplianceSummarySection({ employeeId, canView }: { employeeId: number;
           </div>
         )}
       </CardContent>
-    </Card>
+    </Card></QueryReadBoundary>
   );
 }
 
@@ -474,14 +478,15 @@ function ComplianceMiniCard({
 // ── Payroll Summary Component (HR.5) ──────────────────────────────────────────
 
 function PayrollSummarySection({ employeeId, canView }: { employeeId: number; canView: boolean }) {
-  const { data: summary, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.payroll.summary(employeeId),
     enabled: canView,
     queryFn: async () => {
       const r = await getEmployeePayrollSummary(employeeId);
-      return r.success ? r.data ?? null : null;
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? null : null;
     },
   });
+  const { data: summary, isLoading } = uiRead1;
 
   if (!canView) {
     return (
@@ -503,7 +508,7 @@ function PayrollSummarySection({ employeeId, canView }: { employeeId: number; ca
   }
 
   return (
-    <Card>
+    <QueryReadBoundary queries={[uiRead1]}><Card>
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
           <DollarSign className="h-4 w-4" />
@@ -567,26 +572,27 @@ function PayrollSummarySection({ employeeId, canView }: { employeeId: number; ca
           </div>
         )}
       </CardContent>
-    </Card>
+    </Card></QueryReadBoundary>
   );
 }
 
 // ── Time Summary Component (HR.4) ─────────────────────────────────────────────
 
 function TimeSummarySection({ employeeId, canView }: { employeeId: number; canView: boolean }) {
-  const { data: summary, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.time.summary(employeeId),
     enabled: canView,
     queryFn: async () => {
       const r = await getEmployeeTimeSummary(employeeId);
-      return r.success ? r.data ?? null : null;
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? null : null;
     },
   });
+  const { data: summary, isLoading } = uiRead1;
 
   if (!canView) return null;
 
   return (
-    <Card>
+    <QueryReadBoundary queries={[uiRead1]}><Card>
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
           <Clock className="h-4 w-4" />
@@ -647,18 +653,19 @@ function TimeSummarySection({ employeeId, canView }: { employeeId: number; canVi
           </div>
         )}
       </CardContent>
-    </Card>
+    </Card></QueryReadBoundary>
   );
 }
 
 // ── Operations Summary Component (HR.6) ──────────────────────────────────────
 
 function OperationsSummarySection({ employeeId, canView }: { employeeId: number; canView: boolean }) {
-  const { data, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.operations.summary(employeeId),
     queryFn: () => getEmployeeOperationsSummary(employeeId),
     enabled: canView,
   });
+  const { data, isLoading } = uiRead1;
 
   const summary = data?.success ? data.data : null;
 
@@ -679,7 +686,7 @@ function OperationsSummarySection({ employeeId, canView }: { employeeId: number;
   const accommodationLabel = activeAccommodation?.accommodation_location as string | null ?? null;
 
   return (
-    <Card>
+    <QueryReadBoundary queries={[uiRead1]}><Card>
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
           <MapPin className="h-4 w-4" />
@@ -759,6 +766,6 @@ function OperationsSummarySection({ employeeId, canView }: { employeeId: number;
           </div>
         )}
       </CardContent>
-    </Card>
+    </Card></QueryReadBoundary>
   );
 }

@@ -1,3 +1,4 @@
+import { LoadError } from "@/components/erp/load-error";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { redirect } from "next/navigation";
 import { listHrEmployeeCategories, createHrEmployeeCategory, updateHrEmployeeCategory, toggleHrSettingsRowActive } from "@/server/actions/hr/settings";
@@ -8,6 +9,7 @@ export default async function HrEmployeeCategoriesPage() {
   if (!hasPermission(ctx, "hr.settings.view") && !hasPermission(ctx, "hr.settings.manage") && !hasPermission(ctx, "hr.admin")) redirect("/admin/hr/settings");
   const canManage = hasPermission(ctx, "hr.settings.manage") || hasPermission(ctx, "hr.admin");
   const result = await listHrEmployeeCategories({});
+  if (!result.success) return <LoadError title="HR records" retryHref="/admin/hr/settings/employee-categories" />;
   const data = result.data?.data ?? [];
 
   async function toggle(id: number, is_active: boolean) {

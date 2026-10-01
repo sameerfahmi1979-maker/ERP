@@ -20,16 +20,14 @@ import {
 } from "@/server/actions/reports/template-governance";
 import {
   ArrowLeft,
-  CheckCircle2,
-  Globe,
   Loader2,
   SendHorizonal,
   ShieldAlert,
-  ShieldCheck,
-  XCircle
 } from "lucide-react";
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import type { ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -94,84 +92,27 @@ function RejectDialog({
 // Row component for approver queue and security review list
 // ─────────────────────────────────────────────────────────────────────────────
 
-function TemplateQueueRow({
-  template,
-  canApprove,
-  canPublish,
-  onAction,
-}: {
-  template: Partial<ReportTemplate>;
-  canApprove: boolean;
-  canPublish: boolean;
-  onAction: (id: number, action: string, extra?: string) => void;
+function GovernanceQueue({rows,canApprove,canPublish,canManage,onAction,busy,tableId}: {
+  rows:Partial<ReportTemplate>[]; canApprove:boolean; canPublish:boolean; canManage:boolean;
+  onAction:(id:number,action:string)=>void; busy:boolean; tableId:string;
 }) {
-  return (
-    <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-lg border bg-card hover:bg-muted/30 transition-colors">
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium truncate">{template.template_name}</span>
-          <GovernanceStatusBadge status={template.governance_status} />
-          <SecurityReviewBadge status={template.security_review_status} />
-          {template.version_no && template.version_no > 1 && (
-            <span className="text-[10px] text-muted-foreground font-mono">v{template.version_no}</span>
-          )}
-        </div>
-        <p className="text-xs text-muted-foreground font-mono mt-0.5 truncate">{template.template_code}</p>
-        {template.rejection_reason && (
-          <p className="text-xs text-red-600 mt-1 truncate">Rejection: {template.rejection_reason}</p>
-        )}
-        {template.security_review_notes && template.security_review_status === "failed" && (
-          <p className="text-xs text-destructive mt-1 truncate">{template.security_review_notes.split("\n")[0]}</p>
-        )}
-      </div>
-      <div className="flex items-center gap-1.5 shrink-0">
-        {template.governance_status === "in_review" && canApprove && (
-          <>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs gap-1 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
-              onClick={() => onAction(template.id!, "approve")}
-            >
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              Approve
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs gap-1 text-red-600 hover:bg-red-50 hover:text-red-700"
-              onClick={() => onAction(template.id!, "reject")}
-            >
-              <XCircle className="h-3.5 w-3.5" />
-              Reject
-            </Button>
-          </>
-        )}
-        {template.governance_status === "approved" && canPublish && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 text-xs gap-1 text-blue-700 hover:bg-blue-50 hover:text-blue-800"
-            onClick={() => onAction(template.id!, "publish")}
-          >
-            <Globe className="h-3.5 w-3.5" />
-            Publish
-          </Button>
-        )}
-        {template.security_review_status === "failed" && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 text-xs gap-1 text-muted-foreground"
-            onClick={() => onAction(template.id!, "rerun_security")}
-          >
-            <ShieldCheck className="h-3.5 w-3.5" />
-            Re-run Review
-          </Button>
-        )}
-      </div>
-    </div>
-  );
+  const columns:ColumnDef<Partial<ReportTemplate>>[]=[
+    {accessorKey:"template_name",header:"Template",size:240},
+    {accessorKey:"template_code",header:"Code",size:170},
+    {accessorKey:"version_no",header:"Version",size:100},
+    {accessorKey:"governance_status",header:"Status",size:160,cell:({row})=><GovernanceStatusBadge status={row.original.governance_status}/>},
+    {accessorKey:"security_review_status",header:"Security review",size:160,cell:({row})=><span className="flex gap-2"><SecurityReviewBadge status={row.original.security_review_status}/>{row.original.security_review_status??"Pending"}</span>},
+    {accessorKey:"rejection_reason",header:"Rejection reason",size:200},
+    {id:"actions",header:"Actions",size:240,enableSorting:false,cell:({row})=>{
+      const t=row.original;
+      return <div className="flex flex-wrap gap-2">
+        {t.id && t.governance_status==="in_review" && canApprove && <><Button disabled={busy} size="sm" variant="outline" onClick={()=>onAction(t.id!,"approve")}>Approve</Button><Button disabled={busy} size="sm" variant="outline" onClick={()=>onAction(t.id!,"reject")}>Reject</Button></>}
+        {t.id && t.governance_status==="approved" && canPublish && <Button disabled={busy} size="sm" variant="outline" onClick={()=>onAction(t.id!,"publish")}>Publish</Button>}
+        {t.id && t.security_review_status==="failed" && canManage && <Button disabled={busy} size="sm" variant="outline" onClick={()=>onAction(t.id!,"rerun_security")}>Re-run review</Button>}
+      </div>;
+    }},
+  ];
+  return <ERPDataTable tableId={tableId} columns={columns} data={rows} enableRowSelection={false} searchPlaceholder="Search loaded templates…" />;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -199,7 +140,12 @@ export function GovernanceDashboardClient({
   const [inReview, setInReview] = useState(initialInReview);
   const [failedSecurity, setFailedSecurity] = useState(initialFailed);
   const [rejectTarget, setRejectTarget] = useState<number | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isPending, transition] = useTransition();
+  const flight = useRef(false);
+  const startTransition = (action:()=>Promise<void>)=>{
+    if(flight.current)return;flight.current=true;
+    transition(async()=>{try{await action();}catch{toast.error("Change unconfirmed. Refresh before retrying; your reason is retained.");}finally{flight.current=false;}});
+  };
 
   const updateTemplateStatus = (
     id: number,
@@ -215,7 +161,8 @@ export function GovernanceDashboardClient({
     setFailedSecurity((prev) => prev.filter((t) => t.id !== id));
   };
 
-  const handleAction = (id: number, action: string, extra?: string) => {
+  const handleAction = (id: number, action: string) => {
+    if (flight.current || ((action === "reject" || action === "approve") && !canApprove) || (action === "publish" && !canPublish) || (action === "rerun_security" && !canManage)) return;
     if (action === "reject") {
       setRejectTarget(id);
       return;
@@ -256,12 +203,13 @@ export function GovernanceDashboardClient({
   };
 
   const handleReject = (reason: string) => {
-    if (!rejectTarget) return;
+    if (!rejectTarget || !canApprove || flight.current) return;
     const id = rejectTarget;
     setRejectTarget(null);
     startTransition(async () => {
       const res = await rejectTemplate({ templateId: id, reason });
       if (res.success) {
+        setRejectTarget(null);
         toast.success("Template rejected.");
         updateTemplateStatus(id, "rejected", "in_review");
       } else {
@@ -337,17 +285,7 @@ export function GovernanceDashboardClient({
             No templates pending review.
           </div>
         ) : (
-          <div className="space-y-2">
-            {inReview.map((t) => (
-              <TemplateQueueRow
-                key={t.id}
-                template={t}
-                canApprove={canApprove}
-                canPublish={canPublish}
-                onAction={handleAction}
-              />
-            ))}
-          </div>
+          <GovernanceQueue rows={inReview} tableId="template-governance.inReview" canApprove={canApprove} canPublish={canPublish} canManage={canManage} onAction={handleAction} busy={isPending} />
         )}
       </div>
 
@@ -361,17 +299,7 @@ export function GovernanceDashboardClient({
               {failedSecurity.length} template{failedSecurity.length !== 1 ? "s" : ""}
             </Badge>
           </h2>
-          <div className="space-y-2">
-            {failedSecurity.map((t) => (
-              <TemplateQueueRow
-                key={t.id}
-                template={t}
-                canApprove={canApprove}
-                canPublish={canPublish}
-                onAction={handleAction}
-              />
-            ))}
-          </div>
+          <GovernanceQueue rows={failedSecurity} tableId="template-governance.failedSecurity" canApprove={canApprove} canPublish={canPublish} canManage={canManage} onAction={handleAction} busy={isPending} />
         </div>
       )}
 

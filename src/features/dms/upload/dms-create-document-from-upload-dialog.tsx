@@ -163,7 +163,7 @@ function CreateDocumentSession({
 
         <div>
           <RequiredLabel required>Document Type</RequiredLabel>
-          <ERPCombobox
+          <ERPCombobox ariaLabel="Document Type" required
             options={typeOptions}
             value={documentTypeId}
             onValueChange={(v) => setDocumentTypeId(v as number | null)}
@@ -184,7 +184,7 @@ function CreateDocumentSession({
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <Label htmlFor="issue-date">Issue Date</Label>
             <Input

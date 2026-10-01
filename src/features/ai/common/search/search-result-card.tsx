@@ -58,7 +58,7 @@ export function SearchResultCard({ result, className }: SearchResultCardProps) {
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 {label}
               </span>
               {result.subtitle && (
@@ -78,7 +78,7 @@ export function SearchResultCard({ result, className }: SearchResultCardProps) {
 
           <Link
             href={result.route}
-            className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 hover:border-slate-300 transition-colors flex-shrink-0"
+            className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-foreground shadow-sm hover:bg-slate-50 hover:border-slate-300 transition-colors flex-shrink-0"
           >
             <ExternalLink className="h-3 w-3" />
             Open
@@ -86,7 +86,7 @@ export function SearchResultCard({ result, className }: SearchResultCardProps) {
         </div>
 
         {!result.isConfidential && result.snippet && (
-          <p className="mt-1 text-xs text-slate-500 line-clamp-2">{result.snippet}</p>
+          <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{result.snippet}</p>
         )}
 
         <SearchBadges

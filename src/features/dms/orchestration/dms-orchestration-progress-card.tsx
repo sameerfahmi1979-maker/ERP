@@ -1,4 +1,5 @@
 "use client";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 /**
  * ERP DMS AI ORCH.1 — Orchestration Progress Card
@@ -84,7 +85,7 @@ export function DmsOrchestrationProgressCard({
   // running — it must be a plain GET fetch, NOT a server action. A router.push
   // performed while a server action is in flight gets reverted when the
   // action resolves (the "tab snaps back" bug family).
-  const { data: statusData, isLoading, isError: statusFailed } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.dms.orchestrationStatus(sessionCode),
     queryFn: async () => {
       const res = await fetch(
@@ -100,6 +101,7 @@ export function DmsOrchestrationProgressCard({
     staleTime: 5_000,
     refetchInterval: isRunning ? 3_000 : false,
   });
+ const { data: statusData, isLoading, isError: statusFailed } = uiRead1;
 
   const orchestrationStatus = statusData?.orchestrationStatus ?? "pending";
   const steps = statusData?.steps ?? [];
@@ -157,17 +159,17 @@ export function DmsOrchestrationProgressCard({
   // If flag disabled and nothing ran
   if (orchestrationStatus === "skipped_feature_disabled") {
     return (
-      <div className="text-xs text-slate-400 flex items-center gap-1.5 py-1">
+      <QueryReadBoundary queries={[uiRead1]}><div className="text-xs text-slate-400 flex items-center gap-1.5 py-1">
         <Sparkles className="h-3 w-3" />
         Full AI pipeline orchestration is not enabled. Standard AI Fill is available.
-      </div>
+      </div></QueryReadBoundary>
     );
   }
 
   // Phase 9: job enqueued — show minimal queued state card
   if (orchestrationStatus === "queued") {
     return (
-      <div className="rounded-lg border bg-slate-50 border-slate-200 px-3 py-2">
+      <QueryReadBoundary queries={[uiRead1]}><div className="rounded-lg border bg-slate-50 border-slate-200 px-3 py-2">
         <div className="flex items-center gap-2">
           <Clock className="h-3.5 w-3.5 text-blue-500" />
           <span className="text-xs font-medium text-slate-700">AI Pipeline</span>
@@ -176,20 +178,20 @@ export function DmsOrchestrationProgressCard({
         <p className="text-[11px] text-slate-500 mt-1 ml-5.5">
           AI pipeline is queued for background processing. Refresh to check progress.
         </p>
-      </div>
+      </div></QueryReadBoundary>
     );
   }
 
   if (isLoading) return null;
-  if (statusFailed) return <p role="alert" className="text-xs text-destructive">Pipeline status is unavailable. Refresh before starting or retrying work.</p>;
+  if (statusFailed) return <QueryReadBoundary queries={[uiRead1]}><p role="alert" className="text-xs text-destructive">Pipeline status is unavailable. Refresh before starting or retrying work.</p></QueryReadBoundary>;
 
   // Don't show card if pipeline never ran and not auto-triggering
   if (orchestrationStatus === "pending" && !isRunning && !autoTrigger) return null;
 
   return (
-    <div className="rounded-lg border bg-slate-50 border-slate-200">
+    <QueryReadBoundary queries={[uiRead1]}><div className="rounded-lg border bg-slate-50 border-slate-200">
       {/* Header */}
-      <div
+      <div role="button" tabIndex={0} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); event.currentTarget.click(); } }}
         className="flex items-center justify-between px-3 py-2 cursor-pointer"
         onClick={() => setIsExpanded((v) => !v)}
       >
@@ -234,7 +236,7 @@ export function DmsOrchestrationProgressCard({
           )}
         </div>
       )}
-    </div>
+    </div></QueryReadBoundary>
   );
 }
 

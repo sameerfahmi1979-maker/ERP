@@ -121,7 +121,7 @@ export function NotificationBell() {
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           )}
         >
-          <Bell className="h-4 w-4 text-muted-foreground" />
+          <Bell className="h-4 w-4" />
           {unreadCount > 0 && (
             <span
               className={cn(
@@ -138,7 +138,8 @@ export function NotificationBell() {
       </PopoverTrigger>
 
       <PopoverContent
-        className="w-[380px] p-0"
+        className="w-[min(380px,calc(100vw-24px))] max-h-[calc(100dvh-80px)] overflow-y-auto p-0"
+        aria-label="Notifications"
         align="end"
         sideOffset={8}
       >
@@ -210,7 +211,7 @@ export function NotificationBell() {
                     onClick={() => handleDismiss(n.id)}
                     disabled={isPending}
                     aria-label={`Dismiss notification: ${n.title}`}
-                    className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground hover:bg-muted transition-all disabled:opacity-50"
+                    className="mt-0.5 shrink-0 h-11 w-11 sm:h-8 sm:w-8 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>

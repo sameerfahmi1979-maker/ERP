@@ -34,6 +34,7 @@ export default async function ProtectedLayout({
       displayName={ctx.profile.display_name ?? ctx.profile.full_name}
       email={ctx.email}
       permissionCodes={ctx.permissionCodes}
+      globalPermissionCodes={ctx.globalPermissionCodes}
       isGlobalAdmin={globalAdmin}
       appBranding={appBranding}
     >

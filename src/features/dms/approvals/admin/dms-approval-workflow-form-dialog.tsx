@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 import { PlusCircle, Trash2, ArrowUp, ArrowDown } from "lucide-react";
 
@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 
 import {
   adminCreateApprovalWorkflow,
+  adminListApprovalRoleOptions,
   adminUpdateApprovalWorkflow,
   type WorkflowWithSteps,
 } from "@/server/actions/dms/document-approvals";
@@ -67,6 +68,7 @@ function validate(
   if (initials.length !== 1) return "Exactly one step must be marked as Initial.";
   const finals = active.filter((s) => s.is_final);
   if (finals.length !== 1) return "Exactly one step must be marked as Final.";
+  if (!active[0].is_initial || !active[active.length - 1].is_final) return "The first step must be Initial and the last step must be Final. Reorder the steps or update their flags before saving.";
   for (const s of active) {
     if (!s.step_code.trim()) return `Step "${s.step_name || "(unnamed)"}" is missing a step code.`;
     if (!s.step_name.trim()) return `Step with code "${s.step_code}" is missing a name.`;
@@ -88,7 +90,11 @@ interface Props {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function DmsApprovalWorkflowFormDialog({
+export function DmsApprovalWorkflowFormDialog(props: Props) {
+  return props.open ? <WorkflowFormSession key={props.editing?.id ?? "new"} {...props} /> : null;
+}
+
+function WorkflowFormSession({
   open,
   onOpenChange,
   editing,
@@ -96,6 +102,7 @@ export function DmsApprovalWorkflowFormDialog({
   onSuccess,
 }: Props) {
   const isEdit = !!editing;
+  const formId = useId();
 
   // ── Form state ─────────────────────────────────────────────────────────────
 
@@ -121,6 +128,18 @@ export function DmsApprovalWorkflowFormDialog({
   );
   const [submitting, setSubmitting] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [roleOptions, setRoleOptions] = useState<Array<{ code: string; name: string }>>([]);
+  const [rolesState, setRolesState] = useState<"loading" | "loaded" | "failed">("loading");
+  const [roleAttempt, setRoleAttempt] = useState(0);
+  useEffect(() => {
+    let current = true;
+    void adminListApprovalRoleOptions().then(result => {
+      if (!current) return;
+      if (result.success && result.data) { setRoleOptions(result.data); setRolesState("loaded"); }
+      else setRolesState("failed");
+    }).catch(() => { if (current) setRolesState("failed"); });
+    return () => { current = false; };
+  }, [roleAttempt]);
 
   // ── Reset on open ──────────────────────────────────────────────────────────
 
@@ -209,6 +228,7 @@ export function DmsApprovalWorkflowFormDialog({
 
       if (isEdit && editing) {
         result = await adminUpdateApprovalWorkflow(editing.id, {
+          expected_updated_at: editing.updatedAt,
           name_en: nameEn.trim(),
           name_ar: nameAr.trim() || undefined,
           description: description.trim() || undefined,
@@ -229,11 +249,14 @@ export function DmsApprovalWorkflowFormDialog({
 
       if (result.success) {
         toast.success(isEdit ? "Workflow updated." : "Workflow created.");
-        handleOpenChange(false);
+        // A confirmed successful save may close; the pending guard only blocks user dismissal.
+        onOpenChange(false);
         onSuccess();
       } else {
-        toast.error(result.error ?? "Failed to save workflow.");
+        setValidationError("The workflow was not saved. Review its settings and your access, then try again.");
       }
+    } catch {
+      setValidationError("The save could not be confirmed. Your entries are still here. Check the workflow before retrying to avoid duplicates.");
     } finally {
       setSubmitting(false);
     }
@@ -261,14 +284,14 @@ export function DmsApprovalWorkflowFormDialog({
         {/* ── Basic Fields ───────────────────────────────────────────────── */}
 
         {/* Workflow Code — readonly in edit */}
-        <div className="col-span-4">
+        <div className="col-span-12 sm:col-span-4">
           <RequiredLabel required>Workflow Code</RequiredLabel>
           {isEdit ? (
             <div className="mt-1 flex h-9 items-center rounded-md border bg-muted/40 px-3 font-mono text-sm text-muted-foreground">
               {code}
             </div>
           ) : (
-            <Input
+            <Input aria-label="Workflow Code" name="workflow_code" required pattern="[A-Z0-9_]+"
               value={code}
               onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ""))}
               placeholder="INVOICE_APPROVAL"
@@ -279,9 +302,9 @@ export function DmsApprovalWorkflowFormDialog({
           )}
         </div>
 
-        <div className="col-span-5">
+        <div className="col-span-12 sm:col-span-5">
           <RequiredLabel required>Workflow Name (EN)</RequiredLabel>
-          <Input
+          <Input aria-label="Workflow Name (EN)" name="name_en" required
             value={nameEn}
             onChange={(e) => setNameEn(e.target.value)}
             placeholder="Invoice Approval"
@@ -291,21 +314,21 @@ export function DmsApprovalWorkflowFormDialog({
           />
         </div>
 
-        <div className="col-span-3">
+        <div className="col-span-12 sm:col-span-3">
           <Label className="text-xs text-muted-foreground">Active</Label>
           <div className="mt-2 flex items-center gap-2">
-            <Switch
+            <Switch aria-label="Workflow active"
               checked={isActive}
               onCheckedChange={setIsActive}
-              disabled={submitting}
+              disabled={submitting || !isEdit}
             />
             <span className="text-sm text-muted-foreground">{isActive ? "Active" : "Inactive"}</span>
           </div>
         </div>
 
-        <div className="col-span-6">
+        <div className="col-span-12 sm:col-span-6">
           <Label className="text-xs text-muted-foreground">Workflow Name (AR) <span className="text-muted-foreground/60">(optional)</span></Label>
-          <Input
+          <Input aria-label="Workflow Name (AR)"
             value={nameAr}
             onChange={(e) => setNameAr(e.target.value)}
             placeholder="Arabic name..."
@@ -316,7 +339,7 @@ export function DmsApprovalWorkflowFormDialog({
           />
         </div>
 
-        <div className="col-span-6">
+        <div className="col-span-12 sm:col-span-6">
           <Label className="text-xs text-muted-foreground">
             Document Types{" "}
             <span className="text-muted-foreground/60">(optional)</span>
@@ -374,6 +397,7 @@ export function DmsApprovalWorkflowFormDialog({
         <div className="col-span-12">
           <Label className="text-xs text-muted-foreground">Description <span className="text-muted-foreground/60">(optional)</span></Label>
           <Textarea
+            aria-label="Description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Describe when this workflow applies..."
@@ -404,8 +428,8 @@ export function DmsApprovalWorkflowFormDialog({
             </Button>
           </div>
 
-          <div className="rounded-lg border border-border overflow-hidden">
-            <table className="w-full text-xs">
+          <div role="region" aria-label="Approval steps editor" tabIndex={0} className="rounded-lg border border-border overflow-x-auto">
+            <table className="w-full min-w-[680px] text-xs">
               <thead className="bg-muted/40 border-b border-border">
                 <tr>
                   <th className="px-3 py-2 text-left font-semibold text-slate-500 uppercase tracking-wide w-6">#</th>
@@ -430,7 +454,7 @@ export function DmsApprovalWorkflowFormDialog({
                     <tr key={step._id} className={step.is_active ? "" : "opacity-50 bg-muted/20"}>
                       <td className="px-3 py-2 text-muted-foreground/60">{idx + 1}</td>
                       <td className="px-3 py-2">
-                        <Input
+                        <Input aria-label={`Step ${idx + 1} code`} name={`step_${step._id}_code`} required={step.is_active}
                           value={step.step_code}
                           onChange={(e) => updateStep(step._id, { step_code: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "") })}
                           placeholder="REVIEW"
@@ -439,7 +463,7 @@ export function DmsApprovalWorkflowFormDialog({
                         />
                       </td>
                       <td className="px-3 py-2">
-                        <Input
+                        <Input aria-label={`Step ${idx + 1} name`} name={`step_${step._id}_name`} required={step.is_active}
                           value={step.step_name}
                           onChange={(e) => updateStep(step._id, { step_name: e.target.value })}
                           placeholder="Review & Approve"
@@ -448,18 +472,21 @@ export function DmsApprovalWorkflowFormDialog({
                         />
                       </td>
                       <td className="px-3 py-2">
-                        <Input
+                        <select aria-label={`Step ${idx + 1} required role`}
                           value={step.requires_role}
                           onChange={(e) => updateStep(step._id, { requires_role: e.target.value })}
-                          placeholder="role_code"
-                          className="h-7 text-xs font-mono w-28"
-                          disabled={submitting}
-                        />
+                          className="h-9 min-w-36 max-w-56 rounded border bg-background px-2 text-sm"
+                          disabled={submitting || rolesState !== "loaded"}
+                        >
+                          <option value="">Any authorized reviewer</option>
+                          {step.requires_role && !roleOptions.some(r => r.code === step.requires_role) && <option value={step.requires_role}>Current role (unavailable)</option>}
+                          {roleOptions.map(role => <option key={role.code} value={role.code}>{role.name}</option>)}
+                        </select>
                       </td>
                       <td className="px-3 py-2 text-center">
                         <input
                           type="radio"
-                          name="initial_step"
+                          name={`${formId}_initial_step`} aria-label={`Step ${idx + 1} initial`}
                           checked={step.is_initial}
                           onChange={() => setOnlyInitial(step._id)}
                           disabled={submitting || !step.is_active}
@@ -469,7 +496,7 @@ export function DmsApprovalWorkflowFormDialog({
                       <td className="px-3 py-2 text-center">
                         <input
                           type="radio"
-                          name="final_step"
+                          name={`${formId}_final_step`} aria-label={`Step ${idx + 1} final`}
                           checked={step.is_final}
                           onChange={() => setOnlyFinal(step._id)}
                           disabled={submitting || !step.is_active}
@@ -477,7 +504,7 @@ export function DmsApprovalWorkflowFormDialog({
                         />
                       </td>
                       <td className="px-3 py-2 text-center">
-                        <Switch
+                        <Switch aria-label={`Step ${idx + 1} active`}
                           checked={step.is_active}
                           onCheckedChange={(v) => updateStep(step._id, { is_active: v })}
                           disabled={submitting}
@@ -485,7 +512,7 @@ export function DmsApprovalWorkflowFormDialog({
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1 justify-end">
-                          <Button
+                          <Button aria-label={`Move step ${idx + 1} up`}
                             type="button"
                             variant="ghost"
                             size="icon"
@@ -495,7 +522,7 @@ export function DmsApprovalWorkflowFormDialog({
                           >
                             <ArrowUp className="h-3 w-3" />
                           </Button>
-                          <Button
+                          <Button aria-label={`Move step ${idx + 1} down`}
                             type="button"
                             variant="ghost"
                             size="icon"
@@ -505,7 +532,7 @@ export function DmsApprovalWorkflowFormDialog({
                           >
                             <ArrowDown className="h-3 w-3" />
                           </Button>
-                          <Button
+                          <Button aria-label={`Remove step ${idx + 1}`}
                             type="button"
                             variant="ghost"
                             size="icon"
@@ -523,15 +550,17 @@ export function DmsApprovalWorkflowFormDialog({
               </tbody>
             </table>
           </div>
-          <p className="mt-1.5 text-[11px] text-muted-foreground/70">
-            Required Role: enter the <code className="bg-muted px-1 rounded text-[10px]">role_code</code> string (e.g. <code className="bg-muted px-1 rounded text-[10px]">dms_manager</code>). Leave blank for any eligible approver.
+          <p className="mt-2 text-sm text-muted-foreground">
+            Choose a required role for each step, or allow any authorized reviewer. Company, branch and confidential-document permissions still apply.
           </p>
+          {rolesState === "loading" && <p role="status" className="text-sm">Loading approval roles…</p>}
+          {rolesState === "failed" && <div role="alert" className="text-sm text-destructive">Approval roles could not be loaded. Existing selections are preserved. <Button type="button" variant="outline" onClick={() => { setRolesState("loading"); setRoleAttempt(n => n + 1); }}>Retry roles</Button></div>}
         </div>
 
         {/* ── Validation error ───────────────────────────────────────────── */}
         {validationError && (
           <div className="col-span-12">
-            <p className="text-xs text-destructive bg-destructive/10 rounded-md px-3 py-2">{validationError}</p>
+            <p role="alert" className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">{validationError}</p>
           </div>
         )}
       </div>

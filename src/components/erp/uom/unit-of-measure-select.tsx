@@ -10,6 +10,7 @@
  */
 
 import { useMemo } from "react";
+import { Button } from "@/components/ui/button";
 import { ERPCombobox } from "@/components/erp/combobox";
 import type { ERPComboboxOption } from "@/components/erp/combobox";
 import { useUnitsOfMeasureQuery } from "@/hooks/lookups";
@@ -28,6 +29,7 @@ interface UnitOfMeasureSelectProps {
   allowClear?: boolean;
   className?: string;
   name?: string;
+  ariaLabel?: string;
   error?: string;
 }
 
@@ -45,9 +47,10 @@ export function UnitOfMeasureSelect({
   allowClear = false,
   className,
   name,
+  ariaLabel = "Unit of measure",
   error,
 }: UnitOfMeasureSelectProps) {
-  const { data, options: baseOptions, isLoading, error: fetchError } = useUnitsOfMeasureQuery({
+  const { data, options: baseOptions, isLoading, isFetching, error: fetchError, refetch } = useUnitsOfMeasureQuery({
     categoryId: categoryId ?? null,
     includeInactive,
   });
@@ -80,33 +83,35 @@ export function UnitOfMeasureSelect({
     onValueChange(!isNaN(numValue) ? numValue : null);
   };
 
-  const isDisabled = disabled || (!categoryId && options.length === 0);
-  const effectivePlaceholder = categoryId !== undefined && categoryId !== null
-    ? placeholder
-    : "Select category first";
-  const effectiveEmptyText = categoryId !== undefined && categoryId !== null
-    ? "No units found"
-    : "Select a category first";
+  // No category means all permitted units, not a missing prerequisite. Keep an
+  // empty required control focusable so the shared form summary can identify it.
+  const empty = !isLoading && !fetchError && options.length === 0;
+  const effectiveEmptyText = categoryId != null ? "No active units are available in this category." : "No active units are available.";
 
   return (
+    <div className="min-w-0 space-y-1">
     <ERPCombobox
+      ariaLabel={ariaLabel}
       value={value ?? null}
       onValueChange={handleValueChange}
       options={options}
-      placeholder={effectivePlaceholder}
+      placeholder={placeholder}
       searchPlaceholder="Search units..."
       showCode={showCode}
       language={language}
-      disabled={isDisabled}
+      disabled={disabled}
       readOnly={false}
       required={required}
       loading={isLoading}
-      error={fetchError ?? error}
+      error={fetchError ? "Units could not be loaded. Retry before saving." : error}
       allowClear={allowClear}
       emptyText={effectiveEmptyText}
       noResultsText="No results found"
       className={className}
       name={name}
     />
+    {!disabled && empty && <p role="status" className="text-sm text-muted-foreground">{effectiveEmptyText} Ask a master-data administrator to add or activate a unit.</p>}
+    {!disabled && (fetchError || empty) && <Button type="button" variant="outline" size="sm" disabled={isFetching} aria-label={`Retry ${ariaLabel}`} onClick={() => refetch()}>Retry units</Button>}
+    </div>
   );
 }

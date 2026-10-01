@@ -34,9 +34,7 @@ export default async function DmsReviewQueuePage() {
         />
         <div className="rounded-md border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800">
           <p className="font-semibold">DMS Review Queue is not enabled.</p>
-          <p className="mt-1">
-            Set <code className="bg-amber-100 px-1 rounded text-xs">DMS_AI_REVIEW = true</code> in the AI Feature Flags admin to activate this feature.
-          </p>
+          <p className="mt-1">Contact your administrator if document review should be available to your team.</p>
         </div>
       </div>
     );
@@ -70,6 +68,7 @@ export default async function DmsReviewQueuePage() {
         initialItems={itemsResult.data?.items ?? []}
         initialTotal={itemsResult.data?.total ?? 0}
         initialCounts={countsResult.data ?? null}
+        initialLoadFailed={!itemsResult.success}
         canManage={canManage}
         canAdmin={canAdmin}
       />

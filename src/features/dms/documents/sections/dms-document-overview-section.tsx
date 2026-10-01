@@ -114,7 +114,7 @@ export function DmsDocumentOverviewSection({
       )}
 
       <div>
-        <RequiredLabel htmlFor="dms-title">Title</RequiredLabel>
+        <RequiredLabel required htmlFor="dms-title">Title</RequiredLabel>
         <Input
           id="dms-title"
           name="title"
@@ -139,10 +139,11 @@ export function DmsDocumentOverviewSection({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <RequiredLabel htmlFor="dms-doc-type">Document Type</RequiredLabel>
+          <RequiredLabel required>Document Type</RequiredLabel>
           <ERPCombobox
+            name="document_type_id" ariaLabel="Document Type" required
             options={dtOptions}
             value={documentTypeId}
             onValueChange={(v) => handleDocumentTypeChange(v as number | null)}
@@ -150,12 +151,12 @@ export function DmsDocumentOverviewSection({
             disabled={isViewing}
             searchPlaceholder="Search types..."
           />
-          <input type="hidden" name="document_type_id" value={documentTypeId ?? ""} />
         </div>
 
         <div>
-          <RequiredLabel htmlFor="dms-category">Category</RequiredLabel>
+          <RequiredLabel required>Category</RequiredLabel>
           <ERPCombobox
+            name="category_id" ariaLabel="Category" required
             options={catOptions}
             value={categoryId}
             onValueChange={(v) => setCategoryId(v as number | null)}
@@ -163,11 +164,10 @@ export function DmsDocumentOverviewSection({
             disabled={isViewing}
             searchPlaceholder="Search categories..."
           />
-          <input type="hidden" name="category_id" value={categoryId ?? ""} />
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <Label htmlFor="dms-status">Status</Label>
           <Select value={status} onValueChange={(v) => setStatus(v ?? "draft")} disabled={isViewing}>
@@ -203,7 +203,7 @@ export function DmsDocumentOverviewSection({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <Label htmlFor="dms-issue-date">Issue Date</Label>
           <Input
@@ -237,7 +237,7 @@ export function DmsDocumentOverviewSection({
       </div>
 
       {/* ── Owning Organization ── */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <Label>Owning Company</Label>
           <OwnerCompanySelect

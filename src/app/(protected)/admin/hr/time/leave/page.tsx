@@ -1,3 +1,4 @@
+import { LoadError } from "@/components/erp/load-error";
 import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { listLeaveRequests } from "@/server/actions/hr/time";
@@ -19,6 +20,7 @@ export default async function GlobalLeavePage() {
   }
 
   const result = await listLeaveRequests({ page: 1, page_size: 50, approval_status: "pending" });
+  if (!result.success) return <LoadError title="HR records" retryHref="/admin/hr/time/leave" />;
   const rows = result.success && result.data ? result.data.data : [];
   const count = result.success && result.data ? result.data.count : 0;
 
@@ -29,7 +31,7 @@ export default async function GlobalLeavePage() {
           <div className="flex items-center gap-2">
             <Plane className="h-5 w-5 text-muted-foreground" />
             <div>
-              <CardTitle>Leave Requests</CardTitle>
+              <CardTitle><h1>Leave Requests</h1></CardTitle>
               <CardDescription>
                 View, approve, reject, and manage employee leave requests across the organization.
               </CardDescription>

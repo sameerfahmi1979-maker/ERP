@@ -1,4 +1,7 @@
 "use client";
+import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
+import { RecordCollection } from "@/components/erp/table/record-collection";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 /**
  * ERP HR.6 — Employee Operations & Readiness Tab
@@ -13,7 +16,7 @@
  *   7. Accommodation
  */
 
-import { useState, useTransition, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -105,7 +108,7 @@ function Section({
 }) {
   return (
     <div className="rounded-xl border bg-card p-5 space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap gap-2 items-center justify-between">
         <div className="flex items-center gap-2">
           {icon}
           <h3 className="font-semibold text-base">{title}</h3>
@@ -171,10 +174,11 @@ function AssignmentsSection({
     [onChildOpen]
   );
 
-  const { data, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.operations.assignments(employeeId),
     queryFn: () => listEmployeeAssignments(employeeId),
   });
+  const { data, isLoading } = uiRead1;
 
   const assignments = data?.success ? (data.data as Record<string, unknown>[]) : [];
 
@@ -204,7 +208,7 @@ function AssignmentsSection({
   }
 
   return (
-    <Section
+    <QueryReadBoundary queries={[uiRead1]}><Section
       title="Assignments"
       icon={<MapPin className="h-5 w-5 text-primary" />}
       action={canManage ? (
@@ -219,7 +223,7 @@ function AssignmentsSection({
         <p className="text-sm text-muted-foreground py-4 text-center">No assignment records</p>
       ) : (
         <div className="divide-y">
-          {assignments.map((a) => {
+          <RecordCollection id="hr.employee-operations-tab.AssignmentsSection.assignments" rows={assignments} fields={[{"id":"assignment_status","path":"assignment_status","label":"Assignment Status"},{"id":"effective_from","path":"effective_from","label":"Effective From"},{"id":"effective_to","path":"effective_to","label":"Effective To"}]} renderRecord={(a) => {
             const badge = getAssignmentStatusBadge(a.assignment_status as AssignmentStatus);
             const dept = (a.departments as Record<string, unknown> | null)?.name_en;
             const desg = (a.designations as Record<string, unknown> | null)?.name_en;
@@ -238,10 +242,10 @@ function AssignmentsSection({
                 </div>
                 {canManage && (
                   <div className="flex gap-1.5">
-                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(a)}>
+                    <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(a)}>
                       <Edit2 className="h-3.5 w-3.5" />
                     </Button>
-                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => {
+                    <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => {
                       startTransition(async () => {
                         const r = await archiveEmployeeAssignment(a.id as number);
                         if (!r.success) { toast.error(r.error); return; }
@@ -255,7 +259,7 @@ function AssignmentsSection({
                 )}
               </div>
             );
-          })}
+          }} />
         </div>
       )}
 
@@ -272,7 +276,7 @@ function AssignmentsSection({
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-6">
             <Label>Assignment Type</Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Assignment Type"
               value={form.assignment_type as string}
               onValueChange={(v) => setForm((f) => ({ ...f, assignment_type: v }))}
               options={["primary", "temporary", "project", "site", "department", "relief"].map((t) => ({ value: t, label: t.charAt(0).toUpperCase() + t.slice(1) }))}
@@ -281,7 +285,7 @@ function AssignmentsSection({
           </div>
           <div className="col-span-6">
             <Label>Status</Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Status"
               value={form.assignment_status as string}
               onValueChange={(v) => setForm((f) => ({ ...f, assignment_status: v }))}
               options={["active", "planned", "completed", "cancelled"].map((s) => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }))}
@@ -290,19 +294,19 @@ function AssignmentsSection({
           </div>
           <div className="col-span-6">
             <Label>Effective From <span className="text-destructive">*</span></Label>
-            <Input type="date" value={form.effective_from as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, effective_from: e.target.value }))} />
+            <Input aria-label="Effective From" required type="date" value={form.effective_from as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, effective_from: e.target.value }))} />
           </div>
           <div className="col-span-6">
             <Label>Effective To</Label>
-            <Input type="date" value={form.effective_to as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, effective_to: e.target.value || null }))} />
+            <Input aria-label="Effective To" type="date" value={form.effective_to as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, effective_to: e.target.value || null }))} />
           </div>
           <div className="col-span-12">
             <Label>Notes</Label>
-            <Textarea value={form.notes as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} />
+            <Textarea aria-label="Notes" value={form.notes as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} />
           </div>
         </div>
       </ERPChildDialogForm>
-    </Section>
+    </Section></QueryReadBoundary>
   );
 }
 
@@ -327,10 +331,11 @@ function SiteReadinessSection({
     [onChildOpen]
   );
 
-  const { data, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.operations.siteReadiness(employeeId),
     queryFn: () => listEmployeeSiteReadiness(employeeId),
   });
+  const { data, isLoading } = uiRead1;
 
   const records = data?.success ? (data.data as Record<string, unknown>[]) : [];
 
@@ -346,7 +351,7 @@ function SiteReadinessSection({
   }
 
   return (
-    <Section
+    <QueryReadBoundary queries={[uiRead1]}><Section
       title="Site Readiness"
       icon={<ShieldCheck className="h-5 w-5 text-primary" />}
       action={canManage ? (
@@ -361,7 +366,7 @@ function SiteReadinessSection({
         <p className="text-sm text-muted-foreground py-4 text-center">No site readiness calculated yet</p>
       ) : (
         <div className="divide-y">
-          {records.map((r) => {
+          <RecordCollection id="hr.employee-operations-tab.SiteReadinessSection.records" rows={records} fields={[{"id":"readiness_status","path":"readiness_status","label":"Readiness Status"},{"id":"checked_at","path":"checked_at","label":"Checked At"}]} renderRecord={(r) => {
             const badge = getReadinessStatusBadge(r.readiness_status as string);
             const site = (r.work_sites as Record<string, unknown> | null)?.name_en;
             return (
@@ -375,7 +380,7 @@ function SiteReadinessSection({
                 </div>
               </div>
             );
-          })}
+          }} />
         </div>
       )}
 
@@ -394,7 +399,7 @@ function SiteReadinessSection({
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <Label>Work Site ID <span className="text-destructive">*</span></Label>
-            <Input
+            <Input aria-label="Work Site ID" required
               type="number"
               placeholder="Enter work site ID"
               value={siteId}
@@ -404,7 +409,7 @@ function SiteReadinessSection({
           </div>
         </div>
       </ERPChildDialogForm>
-    </Section>
+    </Section></QueryReadBoundary>
   );
 }
 
@@ -444,10 +449,11 @@ function RoleRequirementsSection({
     [onChildOpen]
   );
 
-  const { data, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.operations.roleRequirements(employeeId),
     queryFn: () => listEmployeeRoleRequirements(employeeId),
   });
+  const { data, isLoading } = uiRead1;
 
   const reqs = data?.success ? (data.data as Record<string, unknown>[]) : [];
 
@@ -503,7 +509,7 @@ function RoleRequirementsSection({
   };
 
   return (
-    <Section
+    <QueryReadBoundary queries={[uiRead1]}><Section
       title="Role Requirements"
       icon={<Briefcase className="h-5 w-5 text-primary" />}
       action={canManage ? (
@@ -530,7 +536,7 @@ function RoleRequirementsSection({
         <p className="text-sm text-muted-foreground py-4 text-center">No role requirements tracked</p>
       ) : (
         <div className="divide-y">
-          {reqs.map((r) => (
+          <RecordCollection id="hr.employee-operations-tab.RoleRequirementsSection.reqs" rows={reqs} fields={[{"id":"requirement_type","path":"requirement_type","label":"Requirement Type"},{"id":"status","path":"status","label":"Status"}]} renderRecord={(r) => (
             <div key={r.id as number} className="flex items-start justify-between py-3 px-1">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
@@ -542,13 +548,13 @@ function RoleRequirementsSection({
               </div>
               {canManage && (
                 <div className="flex gap-1.5">
-                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
+                  <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
                   {r.status !== "waived" && (
-                    <Button size="icon" variant="ghost" className="h-7 w-7" title="Waive" onClick={() => openWaiver(r.id as number)}>
+                    <Button aria-label="Waive" size="icon" variant="ghost" className="h-7 w-7" title="Waive" onClick={() => openWaiver(r.id as number)}>
                       <CheckCircle className="h-3.5 w-3.5" />
                     </Button>
                   )}
-                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => {
+                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => {
                     startTransition(async () => {
                       const res = await archiveEmployeeRoleRequirement(r.id as number);
                       if (!res.success) { toast.error(res.error); return; }
@@ -559,7 +565,7 @@ function RoleRequirementsSection({
                 </div>
               )}
             </div>
-          ))}
+          )} />
         </div>
       )}
 
@@ -575,11 +581,11 @@ function RoleRequirementsSection({
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <Label>Requirement Name <span className="text-destructive">*</span></Label>
-            <Input value={form.requirement_name as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, requirement_name: e.target.value }))} />
+            <Input aria-label="Requirement Name" required value={form.requirement_name as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, requirement_name: e.target.value }))} />
           </div>
           <div className="col-span-6">
             <Label>Type</Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Type"
               value={form.requirement_type as string}
               onValueChange={(v) => setForm((f) => ({ ...f, requirement_type: v }))}
               options={["document", "training", "medical", "access_card", "license", "other"].map((t) => ({ value: t, label: t.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) }))}
@@ -588,7 +594,7 @@ function RoleRequirementsSection({
           </div>
           <div className="col-span-6">
             <Label>Status</Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Status"
               value={form.status as string}
               onValueChange={(v) => setForm((f) => ({ ...f, status: v }))}
               options={["met", "missing", "expired", "expiring_soon", "waived", "not_required"].map((s) => ({ value: s, label: s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) }))}
@@ -597,11 +603,11 @@ function RoleRequirementsSection({
           </div>
           <div className="col-span-6">
             <Label>Expiry Date</Label>
-            <Input type="date" value={form.expiry_date as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, expiry_date: e.target.value || null }))} />
+            <Input aria-label="Expiry Date" type="date" value={form.expiry_date as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, expiry_date: e.target.value || null }))} />
           </div>
           <div className="col-span-6">
             <Label>Is Required</Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Is Required"
               value={form.is_required ? "yes" : "no"}
               onValueChange={(v) => setForm((f) => ({ ...f, is_required: v === "yes" }))}
               options={[{ value: "yes", label: "Yes" }, { value: "no", label: "No" }]}
@@ -626,11 +632,11 @@ function RoleRequirementsSection({
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <Label>Waiver Reason <span className="text-destructive">*</span></Label>
-            <Textarea value={waiverReason} onChange={(e) => setWaiverReason(e.target.value)} rows={3} />
+            <Textarea aria-label="Waiver Reason" required value={waiverReason} onChange={(e) => setWaiverReason(e.target.value)} rows={3} />
           </div>
         </div>
       </ERPChildDialogForm>
-    </Section>
+    </Section></QueryReadBoundary>
   );
 }
 
@@ -668,10 +674,11 @@ function OperationalBlocksSection({
     [onChildOpen]
   );
 
-  const { data, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.operations.blocks(employeeId),
     queryFn: () => listEmployeeOperationalBlocks(employeeId),
   });
+  const { data, isLoading } = uiRead1;
 
   const blocks = data?.success ? (data.data as Record<string, unknown>[]) : [];
 
@@ -703,7 +710,7 @@ function OperationalBlocksSection({
   }
 
   return (
-    <Section
+    <QueryReadBoundary queries={[uiRead1]}><Section
       title="Operational Blocks"
       icon={<AlertOctagon className="h-5 w-5 text-destructive" />}
       action={canManage ? (
@@ -718,7 +725,7 @@ function OperationalBlocksSection({
         <p className="text-sm text-muted-foreground py-4 text-center">No operational blocks</p>
       ) : (
         <div className="divide-y">
-          {blocks.map((b) => {
+          <RecordCollection id="hr.employee-operations-tab.OperationalBlocksSection.blocks" rows={blocks} fields={[{"id":"block_type","path":"block_type","label":"Block Type"},{"id":"block_status","path":"block_status","label":"Block Status"}]} renderRecord={(b) => {
             const badge = getBlockStatusBadge(b.block_status as BlockStatus);
             return (
               <div key={b.id as number} className="flex items-start justify-between py-3 px-1">
@@ -739,7 +746,7 @@ function OperationalBlocksSection({
                 )}
               </div>
             );
-          })}
+          }} />
         </div>
       )}
 
@@ -756,7 +763,7 @@ function OperationalBlocksSection({
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-6">
             <Label>Block Type <span className="text-destructive">*</span></Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Block Type" required
               value={form.block_type as string}
               onValueChange={(v) => setForm((f) => ({ ...f, block_type: v }))}
               options={["compliance", "medical", "training", "access", "payroll", "hr_hold", "operations", "safety", "other"].map((t) => ({ value: t, label: t.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) }))}
@@ -765,19 +772,19 @@ function OperationalBlocksSection({
           </div>
           <div className="col-span-6">
             <Label>Effective From <span className="text-destructive">*</span></Label>
-            <Input type="date" value={form.effective_from as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, effective_from: e.target.value }))} />
+            <Input aria-label="Effective From" required type="date" value={form.effective_from as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, effective_from: e.target.value }))} />
           </div>
           <div className="col-span-6">
             <Label>Effective To</Label>
-            <Input type="date" value={form.effective_to as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, effective_to: e.target.value || null }))} />
+            <Input aria-label="Effective To" type="date" value={form.effective_to as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, effective_to: e.target.value || null }))} />
           </div>
           <div className="col-span-12">
             <Label>Block Reason <span className="text-destructive">*</span></Label>
-            <Textarea value={form.block_reason as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, block_reason: e.target.value }))} rows={3} />
+            <Textarea aria-label="Block Reason" required value={form.block_reason as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, block_reason: e.target.value }))} rows={3} />
           </div>
           <div className="col-span-12">
             <Label>Notes</Label>
-            <Textarea value={form.notes as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} />
+            <Textarea aria-label="Notes" value={form.notes as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} />
           </div>
         </div>
       </ERPChildDialogForm>
@@ -797,11 +804,11 @@ function OperationalBlocksSection({
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <Label>Release Reason <span className="text-destructive">*</span></Label>
-            <Textarea value={releaseReason} onChange={(e) => setReleaseReason(e.target.value)} rows={3} />
+            <Textarea aria-label="Release Reason" required value={releaseReason} onChange={(e) => setReleaseReason(e.target.value)} rows={3} />
           </div>
         </div>
       </ERPChildDialogForm>
-    </Section>
+    </Section></QueryReadBoundary>
   );
 }
 
@@ -833,10 +840,11 @@ function AssetsSection({
   const setIsOpen = useCallback((open: boolean) => { setIsOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
   const setReturnOpen = useCallback((open: boolean) => { setReturnOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
 
-  const { data, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.operations.assets(employeeId),
     queryFn: () => listEmployeeAssets(employeeId),
   });
+  const { data, isLoading } = uiRead1;
 
   const assets = data?.success ? (data.data as Record<string, unknown>[]) : [];
 
@@ -871,7 +879,7 @@ function AssetsSection({
   }
 
   return (
-    <Section
+    <QueryReadBoundary queries={[uiRead1]}><Section
       title="Assets"
       icon={<Package className="h-5 w-5 text-primary" />}
       action={canManage ? <Button size="sm" onClick={openAdd}><Plus className="h-3.5 w-3.5 mr-1" />Issue Asset</Button> : undefined}
@@ -880,7 +888,7 @@ function AssetsSection({
         <p className="text-sm text-muted-foreground py-4 text-center">No assets issued</p>
       ) : (
         <div className="divide-y">
-          {assets.map((a) => (
+          <RecordCollection id="hr.employee-operations-tab.AssetsSection.assets" rows={assets} fields={[{"id":"asset_description","path":"asset_description","label":"Asset Description"},{"id":"issued_date","path":"issued_date","label":"Issued Date"},{"id":"status","path":"status","label":"Status"}]} renderRecord={(a) => (
             <div key={a.id as number} className="flex items-start justify-between py-3 px-1">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
@@ -893,11 +901,11 @@ function AssetsSection({
               </div>
               {canManage && (
                 <div className="flex gap-1.5">
-                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(a)}><Edit2 className="h-3.5 w-3.5" /></Button>
+                  <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(a)}><Edit2 className="h-3.5 w-3.5" /></Button>
                   {a.status === "issued" ? (
                     <Button size="sm" variant="outline" onClick={() => { setReturnTarget(a.id as number); setReturnDate(new Date().toISOString().slice(0, 10)); setReturnOpen(true); }}>Return</Button>
                   ) : null}
-                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => {
+                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => {
                     startTransition(async () => {
                       const r = await archiveEmployeeAsset(a.id as number);
                       if (!r.success) { toast.error(r.error); return; }
@@ -908,7 +916,7 @@ function AssetsSection({
                 </div>
               )}
             </div>
-          ))}
+          )} />
         </div>
       )}
 
@@ -916,31 +924,31 @@ function AssetsSection({
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-6">
             <Label>Asset Type <span className="text-destructive">*</span></Label>
-            <ERPCombobox value={form.asset_type as string} onValueChange={(v) => setForm((f) => ({ ...f, asset_type: v }))} options={["id_card", "phone", "sim", "laptop", "vehicle", "tool", "key", "other"].map((t) => ({ value: t, label: t.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) }))} placeholder="Select type..." />
+            <ERPCombobox ariaLabel="Asset Type" required value={form.asset_type as string} onValueChange={(v) => setForm((f) => ({ ...f, asset_type: v }))} options={["id_card", "phone", "sim", "laptop", "vehicle", "tool", "key", "other"].map((t) => ({ value: t, label: t.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) }))} placeholder="Select type..." />
           </div>
           <div className="col-span-6">
             <Label>Asset Reference</Label>
-            <Input value={form.asset_reference as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, asset_reference: e.target.value }))} />
+            <Input aria-label="Asset Reference" value={form.asset_reference as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, asset_reference: e.target.value }))} />
           </div>
           <div className="col-span-12">
             <Label>Description <span className="text-destructive">*</span></Label>
-            <Input value={form.asset_description as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, asset_description: e.target.value }))} />
+            <Input aria-label="Description" required value={form.asset_description as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, asset_description: e.target.value }))} />
           </div>
           <div className="col-span-6">
             <Label>Issued Date <span className="text-destructive">*</span></Label>
-            <Input type="date" value={form.issued_date as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, issued_date: e.target.value }))} />
+            <Input aria-label="Issued Date" required type="date" value={form.issued_date as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, issued_date: e.target.value }))} />
           </div>
           <div className="col-span-6">
             <Label>Return Due Date</Label>
-            <Input type="date" value={form.return_due_date as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, return_due_date: e.target.value || null }))} />
+            <Input aria-label="Return Due Date" type="date" value={form.return_due_date as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, return_due_date: e.target.value || null }))} />
           </div>
           <div className="col-span-12">
             <Label>Condition on Issue</Label>
-            <Input value={form.condition_on_issue as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, condition_on_issue: e.target.value }))} />
+            <Input aria-label="Condition on Issue" value={form.condition_on_issue as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, condition_on_issue: e.target.value }))} />
           </div>
           <div className="col-span-12">
             <Label>Notes</Label>
-            <Textarea value={form.notes as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} />
+            <Textarea aria-label="Notes" value={form.notes as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} />
           </div>
         </div>
       </ERPChildDialogForm>
@@ -949,11 +957,11 @@ function AssetsSection({
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <Label>Return Date <span className="text-destructive">*</span></Label>
-            <Input type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} />
+            <Input aria-label="Return Date" required type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} />
           </div>
         </div>
       </ERPChildDialogForm>
-    </Section>
+    </Section></QueryReadBoundary>
   );
 }
 
@@ -985,10 +993,11 @@ function PpeSection({
   const setIsOpen = useCallback((open: boolean) => { setIsOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
   const setReturnOpen = useCallback((open: boolean) => { setReturnOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
 
-  const { data, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.operations.ppe(employeeId),
     queryFn: () => listEmployeePpeIssues(employeeId),
   });
+  const { data, isLoading } = uiRead1;
 
   const ppe = data?.success ? (data.data as Record<string, unknown>[]) : [];
 
@@ -1018,7 +1027,7 @@ function PpeSection({
   }
 
   return (
-    <Section
+    <QueryReadBoundary queries={[uiRead1]}><Section
       title="PPE Issued"
       icon={<HardHat className="h-5 w-5 text-primary" />}
       action={canManage ? <Button size="sm" onClick={openAdd}><Plus className="h-3.5 w-3.5 mr-1" />Issue PPE</Button> : undefined}
@@ -1027,7 +1036,7 @@ function PpeSection({
         <p className="text-sm text-muted-foreground py-4 text-center">No PPE issued</p>
       ) : (
         <div className="divide-y">
-          {ppe.map((p) => (
+          <RecordCollection id="hr.employee-operations-tab.PpeSection.ppe" rows={ppe} fields={[{"id":"ppe_item","path":"ppe_item","label":"Ppe Item"},{"id":"issued_date","path":"issued_date","label":"Issued Date"}]} renderRecord={(p) => (
             <div key={p.id as number} className="flex items-start justify-between py-3 px-1">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
@@ -1040,11 +1049,11 @@ function PpeSection({
               </div>
               {canManage && (
                 <div className="flex gap-1.5">
-                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(p)}><Edit2 className="h-3.5 w-3.5" /></Button>
+                  <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(p)}><Edit2 className="h-3.5 w-3.5" /></Button>
                   {p.status === "issued" ? (
                     <Button size="sm" variant="outline" onClick={() => { setReturnTarget(p.id as number); setReturnDate(new Date().toISOString().slice(0, 10)); setReturnOpen(true); }}>Return</Button>
                   ) : null}
-                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => {
+                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => {
                     startTransition(async () => {
                       const r = await archiveEmployeePpeIssue(p.id as number);
                       if (!r.success) { toast.error(r.error); return; }
@@ -1055,7 +1064,7 @@ function PpeSection({
                 </div>
               )}
             </div>
-          ))}
+          )} />
         </div>
       )}
 
@@ -1063,27 +1072,27 @@ function PpeSection({
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-8">
             <Label>PPE Item <span className="text-destructive">*</span></Label>
-            <Input value={form.ppe_item as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, ppe_item: e.target.value }))} />
+            <Input aria-label="PPE Item" required value={form.ppe_item as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, ppe_item: e.target.value }))} />
           </div>
           <div className="col-span-4">
             <Label>Quantity <span className="text-destructive">*</span></Label>
-            <Input type="number" min={1} step={0.01} value={String(form.quantity ?? 1)} onChange={(e) => setForm((f) => ({ ...f, quantity: parseFloat(e.target.value) || 1 }))} />
+            <Input aria-label="Quantity" required type="number" min={1} step={0.01} value={String(form.quantity ?? 1)} onChange={(e) => setForm((f) => ({ ...f, quantity: parseFloat(e.target.value) || 1 }))} />
           </div>
           <div className="col-span-4">
             <Label>Standard / Size</Label>
-            <Input value={form.standard_or_size as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, standard_or_size: e.target.value }))} />
+            <Input aria-label="Standard / Size" value={form.standard_or_size as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, standard_or_size: e.target.value }))} />
           </div>
           <div className="col-span-4">
             <Label>Issued Date <span className="text-destructive">*</span></Label>
-            <Input type="date" value={form.issued_date as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, issued_date: e.target.value }))} />
+            <Input aria-label="Issued Date" required type="date" value={form.issued_date as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, issued_date: e.target.value }))} />
           </div>
           <div className="col-span-4">
             <Label>Expiry / Replace Date</Label>
-            <Input type="date" value={form.expiry_or_replacement_date as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, expiry_or_replacement_date: e.target.value || null }))} />
+            <Input aria-label="Expiry / Replace Date" type="date" value={form.expiry_or_replacement_date as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, expiry_or_replacement_date: e.target.value || null }))} />
           </div>
           <div className="col-span-12">
             <Label>Notes</Label>
-            <Textarea value={form.notes as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} />
+            <Textarea aria-label="Notes" value={form.notes as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} />
           </div>
         </div>
       </ERPChildDialogForm>
@@ -1092,11 +1101,11 @@ function PpeSection({
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <Label>Return Date <span className="text-destructive">*</span></Label>
-            <Input type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} />
+            <Input aria-label="Return Date" required type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} />
           </div>
         </div>
       </ERPChildDialogForm>
-    </Section>
+    </Section></QueryReadBoundary>
   );
 }
 
@@ -1127,10 +1136,11 @@ function AccommodationSection({
   const setIsOpen = useCallback((open: boolean) => { setIsOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
   const setEndOpen = useCallback((open: boolean) => { setEndOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
 
-  const { data, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.operations.accommodation(employeeId),
     queryFn: () => listEmployeeAccommodationRecords(employeeId),
   });
+  const { data, isLoading } = uiRead1;
 
   const records = data?.success ? (data.data as Record<string, unknown>[]) : [];
 
@@ -1162,7 +1172,7 @@ function AccommodationSection({
   }
 
   return (
-    <Section
+    <QueryReadBoundary queries={[uiRead1]}><Section
       title="Accommodation"
       icon={<Home className="h-5 w-5 text-primary" />}
       action={canManage ? <Button size="sm" onClick={openAdd}><Plus className="h-3.5 w-3.5 mr-1" />Assign Accommodation</Button> : undefined}
@@ -1171,7 +1181,7 @@ function AccommodationSection({
         <p className="text-sm text-muted-foreground py-4 text-center">No accommodation records</p>
       ) : (
         <div className="divide-y">
-          {records.map((r) => (
+          <RecordCollection id="hr.employee-operations-tab.AccommodationSection.records" rows={records} fields={[{"id":"assigned_from","path":"assigned_from","label":"Assigned From"},{"id":"assigned_to","path":"assigned_to","label":"Assigned To"}]} renderRecord={(r) => (
             <div key={r.id as number} className="flex items-start justify-between py-3 px-1">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
@@ -1186,11 +1196,11 @@ function AccommodationSection({
               </div>
               {canManage && (
                 <div className="flex gap-1.5">
-                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
+                  <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
                   {r.status === "active" ? (
                     <Button size="sm" variant="outline" onClick={() => { setEndTarget(r.id as number); setEndDate(new Date().toISOString().slice(0, 10)); setEndOpen(true); }}>End</Button>
                   ) : null}
-                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => {
+                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => {
                     startTransition(async () => {
                       const res = await archiveEmployeeAccommodationRecord(r.id as number);
                       if (!res.success) { toast.error(res.error); return; }
@@ -1201,7 +1211,7 @@ function AccommodationSection({
                 </div>
               )}
             </div>
-          ))}
+          )} />
         </div>
       )}
 
@@ -1209,27 +1219,27 @@ function AccommodationSection({
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-6">
             <Label>Accommodation Type</Label>
-            <ERPCombobox value={form.accommodation_type as string ?? ""} onValueChange={(v) => setForm((f) => ({ ...f, accommodation_type: v }))} options={["company_camp", "rented_room", "allowance", "other"].map((t) => ({ value: t, label: t.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) }))} placeholder="Select type..." />
+            <ERPCombobox ariaLabel="Accommodation Type" value={form.accommodation_type as string ?? ""} onValueChange={(v) => setForm((f) => ({ ...f, accommodation_type: v }))} options={["company_camp", "rented_room", "allowance", "other"].map((t) => ({ value: t, label: t.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) }))} placeholder="Select type..." />
           </div>
           <div className="col-span-6">
             <Label>Room / Bed No.</Label>
-            <Input value={form.room_or_bed_no as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, room_or_bed_no: e.target.value }))} />
+            <Input aria-label="Room / Bed No." value={form.room_or_bed_no as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, room_or_bed_no: e.target.value }))} />
           </div>
           <div className="col-span-12">
             <Label>Location</Label>
-            <Input value={form.accommodation_location as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, accommodation_location: e.target.value }))} />
+            <Input aria-label="Location" value={form.accommodation_location as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, accommodation_location: e.target.value }))} />
           </div>
           <div className="col-span-6">
             <Label>Assigned From <span className="text-destructive">*</span></Label>
-            <Input type="date" value={form.assigned_from as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, assigned_from: e.target.value }))} />
+            <Input aria-label="Assigned From" required type="date" value={form.assigned_from as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, assigned_from: e.target.value }))} />
           </div>
           <div className="col-span-6">
             <Label>Assigned To</Label>
-            <Input type="date" value={form.assigned_to as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, assigned_to: e.target.value || null }))} />
+            <Input aria-label="Assigned To" type="date" value={form.assigned_to as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, assigned_to: e.target.value || null }))} />
           </div>
           <div className="col-span-12">
             <Label>Notes</Label>
-            <Textarea value={form.notes as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} />
+            <Textarea aria-label="Notes" value={form.notes as string ?? ""} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} />
           </div>
         </div>
       </ERPChildDialogForm>
@@ -1238,10 +1248,10 @@ function AccommodationSection({
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <Label>End Date <span className="text-destructive">*</span></Label>
-            <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            <Input aria-label="End Date" required type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
           </div>
         </div>
       </ERPChildDialogForm>
-    </Section>
+    </Section></QueryReadBoundary>
   );
 }

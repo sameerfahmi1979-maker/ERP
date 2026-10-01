@@ -1,4 +1,5 @@
 "use client";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { ERPCombobox } from "@/components/erp/combobox";
 import { CountrySelect } from "@/components/erp/geography/country-select";
@@ -116,47 +117,52 @@ export function EmployeeProfileTab({
 
   // ── Lookup Queries ──────────────────────────────────────────────────────────
 
-  const { data: departments } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: ["departments", "list"],
     queryFn: async () => {
       const r = await listDepartments({ is_active: true });
       return r.data ?? [];
     },
   });
+  const { data: departments } = uiRead1;
 
-  const { data: designations } = useQuery({
+  const uiRead2 = useQuery({
     queryKey: ["designations", "list"],
     queryFn: async () => {
       const r = await listDesignations({ is_active: true });
       return r.data ?? [];
     },
   });
+  const { data: designations } = uiRead2;
 
-  const { data: workSites } = useQuery({
+  const uiRead3 = useQuery({
     queryKey: ["work-sites", "list"],
     queryFn: async () => {
       const r = await listWorkSites({ status: "active" });
       return r.data ?? [];
     },
   });
+  const { data: workSites } = uiRead3;
 
-  const { data: employeeCategories } = useQuery({
+  const uiRead4 = useQuery({
     queryKey: ["hr", "settings", "employee-categories"],
     queryFn: async () => {
       const r = await listHrEmployeeCategories({ is_active: true });
-      return r.success && r.data ? r.data.data : [];
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success && r.data ? r.data.data : [];
     },
   });
+  const { data: employeeCategories } = uiRead4;
 
-  const { data: employmentTypes } = useQuery({
+  const uiRead5 = useQuery({
     queryKey: ["hr", "settings", "employment-types"],
     queryFn: async () => {
       const r = await listHrEmploymentTypes({ is_active: true });
-      return r.success && r.data ? r.data.data : [];
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success && r.data ? r.data.data : [];
     },
   });
+  const { data: employmentTypes } = uiRead5;
 
-  const { data: mohreEstablishments } = useQuery({
+  const uiRead6 = useQuery({
     queryKey: ["hr", "settings", "mohre-establishments", form.owner_company_id],
     queryFn: async () => {
       const r = await listHrMohreEstablishments({
@@ -164,10 +170,11 @@ export function EmployeeProfileTab({
         owner_company_id: form.owner_company_id ?? undefined,
         page_size: 200,
       });
-      return r.success && r.data ? r.data.data : [];
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success && r.data ? r.data.data : [];
     },
     enabled: !!form.owner_company_id,
   });
+  const { data: mohreEstablishments } = uiRead6;
 
   /** Always include the employee's currently linked establishment (even if inactive or filtered out). */
   const mohreEstablishmentOptions = useMemo(() => {
@@ -191,16 +198,17 @@ export function EmployeeProfileTab({
     return fromList;
   }, [mohreEstablishments, employee?.mohre_establishment]);
 
-  const { data: relationshipTypes } = useQuery({
+  const uiRead7 = useQuery({
     queryKey: ["hr", "settings", "relationship-types"],
     queryFn: async () => {
       const r = await listHrRelationshipTypes({ is_active: true });
-      return r.success && r.data ? r.data.data : [];
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success && r.data ? r.data.data : [];
     },
   });
+  const { data: relationshipTypes } = uiRead7;
 
   return (
-    <div className="space-y-8 p-6">
+    <QueryReadBoundary queries={[uiRead1,uiRead2,uiRead3,uiRead4,uiRead5,uiRead6,uiRead7]}><div className="space-y-8 p-0 md:p-2">
       {/* ── Personal Information ─────────────────────────────────────────────── */}
       <section>
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">
@@ -208,7 +216,7 @@ export function EmployeeProfileTab({
         </h3>
         <div className="grid grid-cols-12 gap-4">
           {/* Employee Code (read-only always) */}
-          <div className="col-span-4 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <Label htmlFor="employee_code_display">Employee Code</Label>
             <Input
               id="employee_code_display"
@@ -219,9 +227,9 @@ export function EmployeeProfileTab({
             />
           </div>
 
-          <div className="col-span-8" /> {/* spacer */}
+          <div className="hidden xl:block col-span-8" /> {/* spacer */}
 
-          <div className="col-span-6 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 space-y-1.5">
             <RequiredLabel htmlFor="full_name_en">Full Name (English)</RequiredLabel>
             <Input
               id="full_name_en"
@@ -232,7 +240,7 @@ export function EmployeeProfileTab({
               required
             />
           </div>
-          <div className="col-span-6 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 space-y-1.5">
             <Label htmlFor="full_name_ar">Full Name (Arabic)</Label>
             <Input
               id="full_name_ar"
@@ -243,7 +251,7 @@ export function EmployeeProfileTab({
               disabled={disabled}
             />
           </div>
-          <div className="col-span-4 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <Label htmlFor="known_name">Known Name</Label>
             <Input
               id="known_name"
@@ -253,9 +261,9 @@ export function EmployeeProfileTab({
               disabled={disabled}
             />
           </div>
-          <div className="col-span-4 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <RequiredLabel htmlFor="gender">Gender</RequiredLabel>
-            <ERPCombobox name="gender"
+            <ERPCombobox name="gender" ariaLabel="Gender"
               value={form.gender}
               onValueChange={(v) => setForm((p) => ({ ...p, gender: v as string }))}
               options={GENDER_OPTIONS}
@@ -264,9 +272,9 @@ export function EmployeeProfileTab({
               required
             />
           </div>
-          <div className="col-span-4 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <Label htmlFor="marital_status">Marital Status</Label>
-            <ERPCombobox name="marital_status"
+            <ERPCombobox ariaLabel="Marital Status" name="marital_status"
               value={form.marital_status}
               onValueChange={(v) => setForm((p) => ({ ...p, marital_status: v as string }))}
               options={MARITAL_OPTIONS}
@@ -275,16 +283,16 @@ export function EmployeeProfileTab({
               allowClear
             />
           </div>
-          <div className="col-span-4 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <Label htmlFor="nationality_id">Nationality</Label>
-            <CountrySelect
+            <CountrySelect name="nationality_id"
               value={form.nationality_id}
               onValueChange={(v) => setForm((p) => ({ ...p, nationality_id: v })) }
               disabled={disabled}
               allowClear
             />
           </div>
-          <div className="col-span-4 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <RequiredLabel htmlFor="date_of_birth">Date of Birth</RequiredLabel>
             <Input
               id="date_of_birth"
@@ -296,9 +304,9 @@ export function EmployeeProfileTab({
               required
             />
           </div>
-          <div className="col-span-4 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <Label htmlFor="blood_group">Blood Group</Label>
-            <ERPCombobox name="blood_group"
+            <ERPCombobox ariaLabel="Blood Group" name="blood_group"
               value={form.blood_group}
               onValueChange={(v) => setForm((p) => ({ ...p, blood_group: v as string }))}
               options={BLOOD_GROUP_OPTIONS}
@@ -308,7 +316,7 @@ export function EmployeeProfileTab({
             />
             {!canManageMedical && <p className="text-xs text-muted-foreground">Separate medical access is required to change this field.</p>}
           </div>
-          <div className="col-span-4 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <RequiredLabel htmlFor="mobile_number">Mobile Number</RequiredLabel>
             <Input
               id="mobile_number"
@@ -319,7 +327,7 @@ export function EmployeeProfileTab({
               required
             />
           </div>
-          <div className="col-span-4 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <Label htmlFor="personal_email">Personal Email</Label>
             <Input
               id="personal_email"
@@ -330,7 +338,7 @@ export function EmployeeProfileTab({
               disabled={disabled}
             />
           </div>
-          <div className="col-span-6 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 space-y-1.5">
             <Label htmlFor="uae_address">UAE Address</Label>
             <Textarea
               id="uae_address"
@@ -341,7 +349,7 @@ export function EmployeeProfileTab({
               disabled={disabled}
             />
           </div>
-          <div className="col-span-6 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 space-y-1.5">
             <Label htmlFor="home_country_address">Home Country Address</Label>
             <Textarea
               id="home_country_address"
@@ -361,9 +369,9 @@ export function EmployeeProfileTab({
           Employment Details
         </h3>
         <div className="grid grid-cols-12 gap-4">
-          <div className="col-span-6 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 space-y-1.5">
             <RequiredLabel htmlFor="owner_company_id">Employer Company</RequiredLabel>
-            <OwnerCompanySelect
+            <OwnerCompanySelect name="owner_company_id" ariaLabel="Employer Company"
               value={form.owner_company_id}
               onValueChange={(v) =>
                 setForm((p) => ({
@@ -377,18 +385,18 @@ export function EmployeeProfileTab({
               required
             />
           </div>
-          <div className="col-span-6 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 space-y-1.5">
             <Label htmlFor="branch_id">Branch</Label>
-            <BranchSelect
+            <BranchSelect name="branch_id"
               value={form.branch_id}
               onValueChange={(v) => setForm((p) => ({ ...p, branch_id: v }))}
               disabled={disabled}
               allowClear
             />
           </div>
-          <div className="col-span-4 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <Label>Department</Label>
-            <ERPCombobox name="department_id"
+            <ERPCombobox ariaLabel="Department" name="department_id"
               value={form.department_id}
               onValueChange={(v) => setForm((p) => ({ ...p, department_id: Number(v) || null }))}
               options={(departments ?? []).map((d) => ({ value: d.id, label: d.department_name_en }))}
@@ -397,9 +405,9 @@ export function EmployeeProfileTab({
               allowClear
             />
           </div>
-          <div className="col-span-4 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <Label>Designation</Label>
-            <ERPCombobox name="designation_id"
+            <ERPCombobox ariaLabel="Designation" name="designation_id"
               value={form.designation_id}
               onValueChange={(v) => setForm((p) => ({ ...p, designation_id: Number(v) || null }))}
               options={(designations ?? []).map((d) => ({ value: d.id, label: d.designation_name_en }))}
@@ -408,9 +416,9 @@ export function EmployeeProfileTab({
               allowClear
             />
           </div>
-          <div className="col-span-4 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <RequiredLabel>Employee Category</RequiredLabel>
-            <ERPCombobox name="employee_category_id"
+            <ERPCombobox name="employee_category_id" ariaLabel="Employee Category"
               value={form.employee_category_id}
               onValueChange={(v) => setForm((p) => ({ ...p, employee_category_id: Number(v) || null }))}
               options={(employeeCategories ?? []).map((c) => ({ value: c.id, label: c.name_en }))}
@@ -419,9 +427,9 @@ export function EmployeeProfileTab({
               required
             />
           </div>
-          <div className="col-span-4 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <Label>Employment Type</Label>
-            <ERPCombobox name="employment_type_id"
+            <ERPCombobox ariaLabel="Employment Type" name="employment_type_id"
               value={form.employment_type_id}
               onValueChange={(v) => setForm((p) => ({ ...p, employment_type_id: Number(v) || null }))}
               options={(employmentTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }))}
@@ -430,7 +438,7 @@ export function EmployeeProfileTab({
               allowClear
             />
           </div>
-          <div className="col-span-4 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <RequiredLabel htmlFor="joining_date">Joining Date</RequiredLabel>
             <Input
               id="joining_date"
@@ -442,7 +450,7 @@ export function EmployeeProfileTab({
               required
             />
           </div>
-          <div className="col-span-4 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <Label htmlFor="actual_joining_date">Actual Joining Date</Label>
             <Input
               id="actual_joining_date"
@@ -453,9 +461,9 @@ export function EmployeeProfileTab({
               disabled={disabled}
             />
           </div>
-          <div className="col-span-4 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <RequiredLabel>Employee Status</RequiredLabel>
-            <ERPCombobox name="employee_status"
+            <ERPCombobox name="employee_status" ariaLabel="Employee Status"
               value={form.employee_status}
               onValueChange={(v) => setForm((p) => ({ ...p, employee_status: v as string }))}
               options={STATUS_OPTIONS}
@@ -464,9 +472,9 @@ export function EmployeeProfileTab({
               required
             />
           </div>
-          <div className="col-span-4 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <Label>Primary Work Site</Label>
-            <ERPCombobox name="primary_work_site_id"
+            <ERPCombobox ariaLabel="Primary Work Site" name="primary_work_site_id"
               value={form.primary_work_site_id}
               onValueChange={(v) => setForm((p) => ({ ...p, primary_work_site_id: Number(v) || null }))}
               options={(workSites ?? []).map((s) => ({ value: s.id, label: s.site_name }))}
@@ -475,18 +483,18 @@ export function EmployeeProfileTab({
               allowClear
             />
           </div>
-          <div className="col-span-4 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <Label>Sponsor Company</Label>
-            <OwnerCompanySelect
+            <OwnerCompanySelect name="sponsor_company_id" ariaLabel="Sponsor Company"
               value={form.sponsor_company_id}
               onValueChange={(v) => setForm((p) => ({ ...p, sponsor_company_id: v }))}
               disabled={disabled}
               allowClear
             />
           </div>
-          <div className="col-span-4 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <Label>MOHRE Establishment</Label>
-            <ERPCombobox name="mohre_establishment_id"
+            <ERPCombobox ariaLabel="MOHRE Establishment" name="mohre_establishment_id"
               value={form.mohre_establishment_id}
               onValueChange={(v) =>
                 setForm((p) => ({
@@ -524,9 +532,9 @@ export function EmployeeProfileTab({
           Contract & Probation
         </h3>
         <div className="grid grid-cols-12 gap-4">
-          <div className="col-span-4 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <Label>Contract Type</Label>
-            <ERPCombobox name="contract_type"
+            <ERPCombobox ariaLabel="Contract Type" name="contract_type"
               value={form.contract_type}
               onValueChange={(v) => setForm((p) => ({ ...p, contract_type: v as string }))}
               options={CONTRACT_TYPE_OPTIONS}
@@ -535,7 +543,7 @@ export function EmployeeProfileTab({
               allowClear
             />
           </div>
-          <div className="col-span-4 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <Label htmlFor="contract_start_date">Contract Start Date</Label>
             <Input
               id="contract_start_date"
@@ -546,7 +554,7 @@ export function EmployeeProfileTab({
               disabled={disabled}
             />
           </div>
-          <div className="col-span-4 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <Label htmlFor="contract_end_date">Contract End Date</Label>
             <Input
               id="contract_end_date"
@@ -557,7 +565,7 @@ export function EmployeeProfileTab({
               disabled={disabled}
             />
           </div>
-          <div className="col-span-4 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <Label htmlFor="probation_start_date">Probation Start Date</Label>
             <Input
               id="probation_start_date"
@@ -568,7 +576,7 @@ export function EmployeeProfileTab({
               disabled={disabled}
             />
           </div>
-          <div className="col-span-4 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <Label htmlFor="probation_end_date">Probation End Date</Label>
             <Input
               id="probation_end_date"
@@ -579,7 +587,7 @@ export function EmployeeProfileTab({
               disabled={disabled}
             />
           </div>
-          <div className="col-span-4 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <Label htmlFor="notice_period_days">Notice Period (Days)</Label>
             <Input
               id="notice_period_days"
@@ -600,7 +608,7 @@ export function EmployeeProfileTab({
           Emergency Contact
         </h3>
         <div className="grid grid-cols-12 gap-4">
-          <div className="col-span-4 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <RequiredLabel htmlFor="emergency_contact_name">Contact Name</RequiredLabel>
             <Input
               id="emergency_contact_name"
@@ -611,7 +619,7 @@ export function EmployeeProfileTab({
               required
             />
           </div>
-          <div className="col-span-4 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <RequiredLabel htmlFor="emergency_contact_mobile">Contact Mobile</RequiredLabel>
             <Input
               id="emergency_contact_mobile"
@@ -622,9 +630,9 @@ export function EmployeeProfileTab({
               required
             />
           </div>
-          <div className="col-span-4 space-y-1.5">
+          <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <Label>Relationship</Label>
-            <ERPCombobox name="emergency_contact_relationship_type_id"
+            <ERPCombobox ariaLabel="Relationship" name="emergency_contact_relationship_type_id"
               value={form.emergency_contact_relationship_type_id}
               onValueChange={(v) => setForm((p) => ({ ...p, emergency_contact_relationship_type_id: Number(v) || null }))}
               options={(relationshipTypes ?? []).map((r) => ({ value: r.id, label: r.name_en }))}
@@ -635,6 +643,6 @@ export function EmployeeProfileTab({
           </div>
         </div>
       </section>
-    </div>
+    </div></QueryReadBoundary>
   );
 }

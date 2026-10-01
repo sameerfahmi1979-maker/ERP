@@ -1,5 +1,9 @@
 "use client";
 
+import { DmsListTools, useDmsListView, type DmsListField } from "@/features/dms/dms-list-view";
+import { ConfiguredRow } from "@/components/erp/table/list-controls";
+import { DmsLoadError } from "@/features/dms/dms-load-error";
+
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
@@ -25,11 +29,63 @@ interface DmsRenewalRequestsTableProps {
   filter?: RenewalRequestsFilter;
 }
 
+const DMS_LIST_FIELDS: DmsListField[] = [
+  {
+    "id": "renewal_no",
+    "label": "Renewal number",
+    "path": "renewal_no",
+    "type": "text",
+    "width": 160,
+    "required": true
+  },
+  {
+    "id": "document",
+    "label": "Document",
+    "path": "document.title",
+    "type": "text",
+    "width": 260
+  },
+  {
+    "id": "status",
+    "label": "Status",
+    "path": "status",
+    "type": "text",
+    "width": 160
+  },
+  {
+    "id": "priority",
+    "label": "Priority",
+    "path": "priority",
+    "type": "text",
+    "width": 160
+  },
+  {
+    "id": "target_renewal_date",
+    "label": "Target date",
+    "path": "target_renewal_date",
+    "type": "date",
+    "width": 160
+  },
+  {
+    "id": "assignee",
+    "label": "Assigned to",
+    "path": "assignee.full_name",
+    "type": "text",
+    "width": 160
+  },
+  {
+    "id": "actions",
+    "label": "Actions",
+    "type": "text",
+    "width": 160
+  }
+];
+
 export function DmsRenewalRequestsTable({ filter = {} }: DmsRenewalRequestsTableProps) {
   const queryClient = useQueryClient();
   const [completeDialog, setCompleteDialog] = useState<{ renewal: DmsRenewalRequestRow } | null>(null);
 
-  const { data: renewals = [], isLoading } = useQuery({
+  const { data: renewals = [], isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: queryKeys.dms.renewalRequests(filter as Record<string, unknown>),
     queryFn: async () => {
       const result = await getDmsRenewalRequests(filter);
@@ -39,7 +95,9 @@ export function DmsRenewalRequestsTable({ filter = {} }: DmsRenewalRequestsTable
     staleTime: 30_000,
   });
 
-  const table = useSortPaginate(renewals, {
+  const listView = useDmsListView("renewals", renewals, DMS_LIST_FIELDS);
+  const table = useSortPaginate(listView.rows, {
+    memoryKey: "dms:renewals",
     defaultSortKey: "created_at",
     defaultSortDir: "desc",
     defaultPageSize: 25,
@@ -64,11 +122,7 @@ export function DmsRenewalRequestsTable({ filter = {} }: DmsRenewalRequestsTable
     return <div className="py-8 text-center text-sm text-muted-foreground">Loading…</div>;
   }
 
-  if (renewals.length === 0 && !isLoading) {
-    return (
-      <div className="py-8 text-center text-sm text-muted-foreground">No renewal requests found.</div>
-    );
-  }
+  if (isError) return <DmsLoadError subject="renewal requests" retry={refetch} pending={isFetching} />;
 
   return (
     <>
@@ -81,23 +135,24 @@ export function DmsRenewalRequestsTable({ filter = {} }: DmsRenewalRequestsTable
           </p>
           <TableSearchInput value={table.query} onChange={table.setQuery} placeholder="Search renewals…" className="w-52" />
         </div>
-        <div className="rounded-md border border-border overflow-auto">
-          <table className="w-full text-sm">
+        <DmsListTools view={listView} />
+<div className="rounded-md border border-border overflow-auto">
+          <div role="region" aria-label="renewals table" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{ minWidth: listView.visible.reduce((sum, column) => sum + column.width, 0) }}><colgroup>{listView.visible.map(column => <col key={column.id} style={{ width: column.width }} />)}</colgroup>
             <thead>
-              <tr className="bg-muted/20 border-b border-border">
-                <SortColHeader field="renewal_no" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2">Renewal No</SortColHeader>
-                <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground uppercase">Document</th>
-                <SortColHeader field="status" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2">Status</SortColHeader>
-                <SortColHeader field="priority" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2">Priority</SortColHeader>
-                <SortColHeader field="target_renewal_date" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2">Target Date</SortColHeader>
-                <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground uppercase">Assigned To</th>
-                <th className="px-3 py-2 w-36" />
-              </tr>
+              <ConfiguredRow columns={listView.columns} className="bg-muted/20 border-b border-border">
+                <SortColHeader data-column="renewal_no" field="renewal_no" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2">Renewal No</SortColHeader>
+                <th data-column="document" className="text-left px-3 py-2 text-xs font-medium text-muted-foreground uppercase">Document</th>
+                <SortColHeader data-column="status" field="status" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2">Status</SortColHeader>
+                <SortColHeader data-column="priority" field="priority" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2">Priority</SortColHeader>
+                <SortColHeader data-column="target_renewal_date" field="target_renewal_date" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2">Target Date</SortColHeader>
+                <th data-column="assignee" className="text-left px-3 py-2 text-xs font-medium text-muted-foreground uppercase">Assigned To</th>
+                <th data-column="actions" className="px-3 py-2 w-36" />
+              </ConfiguredRow>
             </thead>
             <tbody className="divide-y divide-border/50">
               {table.rows.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                  <td colSpan={listView.visible.length} className="px-3 py-8 text-center text-sm text-muted-foreground">
                     {table.query ? "No renewals match your search" : "No renewal requests found"}
                   </td>
                 </tr>
@@ -106,9 +161,9 @@ export function DmsRenewalRequestsTable({ filter = {} }: DmsRenewalRequestsTable
               const doc = r.document as Record<string, unknown> | null | undefined;
               const assignee = r.assignee as Record<string, unknown> | null | undefined;
               return (
-                <tr key={r.id} className="hover:bg-muted/10 transition-colors">
-                  <td className="px-3 py-2 font-mono text-xs">{r.renewal_no ?? `#${r.id}`}</td>
-                  <td className="px-3 py-2">
+                <ConfiguredRow columns={listView.columns} key={r.id} className="hover:bg-muted/10 transition-colors">
+                  <td data-column="renewal_no" className="px-3 py-2 font-mono text-xs">{r.renewal_no ?? `#${r.id}`}</td>
+                  <td data-column="document" className="px-3 py-2">
                     {doc ? (
                       <div>
                         <p className="font-mono text-xs text-muted-foreground">{doc.document_no as string}</p>
@@ -118,17 +173,17 @@ export function DmsRenewalRequestsTable({ filter = {} }: DmsRenewalRequestsTable
                       <span className="text-muted-foreground">—</span>
                     )}
                   </td>
-                  <td className="px-3 py-2">
+                  <td data-column="status" className="px-3 py-2">
                     <DmsRenewalStatusBadge status={r.status} />
                   </td>
-                  <td className="px-3 py-2 capitalize text-xs">{r.priority}</td>
-                  <td className="px-3 py-2 text-xs">
+                  <td data-column="priority" className="px-3 py-2 capitalize text-xs">{r.priority}</td>
+                  <td data-column="target_renewal_date" className="px-3 py-2 text-xs">
                     {r.target_renewal_date ? format(parseISO(r.target_renewal_date), "dd MMM yyyy") : "—"}
                   </td>
-                  <td className="px-3 py-2 text-xs">
+                  <td data-column="assignee" className="px-3 py-2 text-xs">
                     {(assignee?.full_name as string | null) ?? "—"}
                   </td>
-                  <td className="px-3 py-2">
+                  <td data-column="actions" className="px-3 py-2">
                     <div className="flex items-center gap-1 justify-end">
                       {doc && (
                         <Button
@@ -166,11 +221,11 @@ export function DmsRenewalRequestsTable({ filter = {} }: DmsRenewalRequestsTable
                       )}
                     </div>
                   </td>
-                </tr>
+                </ConfiguredRow>
               );
             })}
               </tbody>
-            </table>
+            </table></div>
             <TablePagination
               page={table.page}
               totalPages={table.totalPages}

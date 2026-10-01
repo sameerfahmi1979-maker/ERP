@@ -476,6 +476,7 @@ export interface FinanceBasicsSelectOption {
 }
 
 export interface FinanceBasicsSelectProps {
+  ariaLabel?: string;
   value?: number | null;
   onValueChange?: (value: number | null) => void;
   placeholder?: string;

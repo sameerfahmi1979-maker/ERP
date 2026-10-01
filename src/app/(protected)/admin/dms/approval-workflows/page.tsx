@@ -43,6 +43,8 @@ export default async function DmsApprovalWorkflowsAdminPage() {
       <DmsApprovalWorkflowsAdminPageClient
         initialWorkflows={workflowsResult.data ?? []}
         documentTypes={docTypesResult.data ?? []}
+        initialLoadFailed={!workflowsResult.success}
+        initialTypesFailed={!docTypesResult.success}
       />
     </div>
   );

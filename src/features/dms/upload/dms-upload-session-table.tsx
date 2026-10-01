@@ -1,5 +1,8 @@
 "use client";
 
+import { DmsListTools, useDmsListView, type DmsListField } from "@/features/dms/dms-list-view";
+import { ConfiguredRow } from "@/components/erp/table/list-controls";
+
 import { format, parseISO } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,6 +40,58 @@ const STATUS_BADGE: Record<string, { label: string; className: string }> = {
   cancelled: { label: "Cancelled", className: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400" },
 };
 
+const DMS_LIST_FIELDS: DmsListField[] = [
+  {
+    "id": "original_filename",
+    "label": "File",
+    "path": "original_filename",
+    "type": "text",
+    "width": 250,
+    "required": true
+  },
+  {
+    "id": "file_size_bytes",
+    "label": "Size (bytes)",
+    "path": "file_size_bytes",
+    "type": "number",
+    "width": 160
+  },
+  {
+    "id": "status",
+    "label": "Status",
+    "path": "status",
+    "type": "text",
+    "width": 160
+  },
+  {
+    "id": "is_duplicate",
+    "label": "Duplicate",
+    "path": "is_duplicate",
+    "type": "text",
+    "width": 160
+  },
+  {
+    "id": "uploaded_at",
+    "label": "Uploaded",
+    "path": "uploaded_at",
+    "type": "date",
+    "width": 160
+  },
+  {
+    "id": "expires_at",
+    "label": "Expires",
+    "path": "expires_at",
+    "type": "date",
+    "width": 160
+  },
+  {
+    "id": "actions",
+    "label": "Actions",
+    "type": "text",
+    "width": 160
+  }
+];
+
 export function DmsUploadSessionTable({
   sessions,
   onAttach,
@@ -45,6 +100,7 @@ export function DmsUploadSessionTable({
   onAiFill,
   isSubmitting,
 }: DmsUploadSessionTableProps) {
+  const listView = useDmsListView("upload-sessions", sessions, DMS_LIST_FIELDS);
   const now = useClock();
   if (sessions.length === 0) {
     return (
@@ -57,21 +113,21 @@ export function DmsUploadSessionTable({
   }
 
   return (
-    <div className="rounded-md border border-border overflow-auto">
-      <table className="w-full text-sm min-w-[900px]">
+    <><DmsListTools view={listView} search /><div className="rounded-md border border-border overflow-auto">
+      <div role="region" aria-label="upload-sessions table" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{ minWidth: listView.visible.reduce((sum, column) => sum + column.width, 0) }}><colgroup>{listView.visible.map(column => <col key={column.id} style={{ width: column.width }} />)}</colgroup>
         <thead>
-          <tr className="border-b border-border bg-muted/30">
-            <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">File</th>
-            <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Size</th>
-            <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Status</th>
-            <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Duplicate</th>
-            <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Uploaded</th>
-            <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Expires</th>
-            <th className="px-4 py-2.5 w-48" />
-          </tr>
+          <ConfiguredRow columns={listView.columns} className="border-b border-border bg-muted/30">
+            <th data-column="original_filename" className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">File</th>
+            <th data-column="file_size_bytes" className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Size</th>
+            <th data-column="status" className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Status</th>
+            <th data-column="is_duplicate" className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Duplicate</th>
+            <th data-column="uploaded_at" className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Uploaded</th>
+            <th data-column="expires_at" className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Expires</th>
+            <th data-column="actions" className="px-4 py-2.5 w-48" />
+          </ConfiguredRow>
         </thead>
-        <tbody className="divide-y divide-border/50">
-          {sessions.map((s) => {
+        <tbody className="divide-y divide-border/50">{listView.rows.length === 0 && <tr><td colSpan={listView.visible.length} className="p-4 text-center text-sm text-muted-foreground">No loaded records match your filters.</td></tr>}
+          {listView.rows.map((s) => {
             const statusInfo = STATUS_BADGE[s.status] ?? { label: s.status, className: "bg-gray-100 text-gray-600" };
             const isActionable = s.status === "uploaded" || s.status === "processing";
             const isAiReviewed = s.intake_status === "review_pending";
@@ -81,8 +137,8 @@ export function DmsUploadSessionTable({
               (s.intake_status === "ocr_processing" || s.intake_status === "ai_processing") &&
               (now === 0 || now - new Date(s.updated_at).getTime() < 5 * 60 * 1000);
             return (
-              <tr key={s.id} className="hover:bg-muted/20 transition-colors">
-                <td className="px-4 py-2.5">
+              <ConfiguredRow columns={listView.columns} key={s.id} className="hover:bg-muted/20 transition-colors">
+                <td data-column="original_filename" className="px-4 py-2.5">
                   <div className="flex items-center gap-2">
                     <FileTypeIcon mimeType={s.mime_type} />
                     <div className="min-w-0">
@@ -93,15 +149,15 @@ export function DmsUploadSessionTable({
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                <td data-column="file_size_bytes" className="px-4 py-2.5 text-xs text-muted-foreground">
                   <FileSize bytes={s.file_size_bytes} />
                 </td>
-                <td className="px-4 py-2.5">
+                <td data-column="status" className="px-4 py-2.5">
                   <Badge className={`text-[10px] px-1.5 py-0 ${statusInfo.className}`}>
                     {statusInfo.label}
                   </Badge>
                 </td>
-                <td className="px-4 py-2.5">
+                <td data-column="is_duplicate" className="px-4 py-2.5">
                   {s.is_duplicate ? (
                     <div className="flex items-center gap-1">
                       <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
@@ -123,21 +179,21 @@ export function DmsUploadSessionTable({
                     <span className="text-xs text-muted-foreground">—</span>
                   )}
                 </td>
-                <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                <td data-column="uploaded_at" className="px-4 py-2.5 text-xs text-muted-foreground">
                   {format(parseISO(s.uploaded_at), "dd MMM, HH:mm")}
                 </td>
-                <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                <td data-column="expires_at" className="px-4 py-2.5 text-xs text-muted-foreground">
                   {s.expires_at
                     ? format(parseISO(s.expires_at), "dd MMM yyyy")
                     : "—"}
                 </td>
-                <td className="px-4 py-2.5">
+                <td data-column="actions" className="px-4 py-2.5">
                   {isActionable && (
                     <div className="flex items-center gap-1 justify-end">
                       {/* AI review already complete — show direct Review link instead of re-running AI */}
                       {isAiReviewed ? (
                         <Link href={`/dms/intake/${s.session_code}`}>
-                          <Button
+                          <Button aria-label="AI review is ready — click to review and create document"
                             size="sm"
                             className="h-7 text-xs gap-1 bg-green-600 hover:bg-green-700 text-white"
                             title="AI review is ready — click to review and create document"
@@ -148,7 +204,7 @@ export function DmsUploadSessionTable({
                         </Link>
                       ) : (
                         onAiFill && (
-                          <Button
+                          <Button aria-label={isAiRunning ? "AI is already analyzing this file — please wait" : "Upload & AI Fill"}
                             size="sm"
                             variant="default"
                             className="h-7 text-xs gap-1 bg-violet-600 hover:bg-violet-700"
@@ -170,7 +226,11 @@ export function DmsUploadSessionTable({
                           </Button>
                         )
                       )}
-                      <Button
+                      <Button aria-label={
+                          isAiReviewed
+                            ? "Attach to existing document"
+                            : "Run \"Upload & AI Fill\" first to attach this file as a document version"
+                        }
                         size="sm"
                         variant="outline"
                         className="h-7 text-xs gap-1"
@@ -185,7 +245,7 @@ export function DmsUploadSessionTable({
                         <Paperclip className="h-3 w-3" />
                         Attach
                       </Button>
-                      <Button
+                      <Button aria-label="Create new document from this upload"
                         size="sm"
                         variant="ghost"
                         className="h-7 text-xs gap-1"
@@ -196,7 +256,7 @@ export function DmsUploadSessionTable({
                         <PlusCircle className="h-3 w-3" />
                         New Doc
                       </Button>
-                      <Button
+                      <Button aria-label="Cancel upload"
                         size="icon"
                         variant="ghost"
                         className="h-7 w-7"
@@ -215,11 +275,11 @@ export function DmsUploadSessionTable({
                     <span className="text-xs text-muted-foreground">{statusInfo.label}</span>
                   )}
                 </td>
-              </tr>
+              </ConfiguredRow>
             );
           })}
         </tbody>
-      </table>
-    </div>
+      </table></div>
+    </div></>
   );
 }

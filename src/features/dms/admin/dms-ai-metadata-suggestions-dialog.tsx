@@ -1,4 +1,6 @@
 "use client";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import { loadedListValue } from "@/components/erp/table/loaded-list-view";
 
 /**
  * DMS AI META.1 — AI Metadata Suggestions Review Dialog
@@ -9,7 +11,7 @@
  * reasoning field is display-only and never sent to createDmsMetadataDefinition.
  */
 
-import { Fragment, useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Sparkles, Brain, CheckCircle2, XCircle, Loader2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
@@ -100,6 +102,9 @@ export function DmsAiMetadataSuggestionsDialog({
   const [rowStatus, setRowStatus] = useState<Map<string, RowStatus>>(() => new Map());
   const [rowErrors, setRowErrors] = useState<Map<string, string>>(() => new Map());
   const [isSaving, setIsSaving] = useState(false);
+  const flight = useRef(false);
+  const [uncertain, setUncertain] = useState(false);
+  const [batchError, setBatchError] = useState<string | null>(null);
 
   // Reset state when suggestions change (new dialog open)
   const resetState = useCallback(() => {
@@ -161,7 +166,6 @@ export function DmsAiMetadataSuggestionsDialog({
   }, []);
 
   const allSelected = selected.size === suggestions.length;
-  const noneSelected = selected.size === 0;
 
   const toggleAll = useCallback(() => {
     if (allSelected) {
@@ -188,8 +192,11 @@ export function DmsAiMetadataSuggestionsDialog({
   );
 
   const handleSubmit = useCallback(async () => {
-    if (isSaving || selectedCount === 0) return;
-
+    if (flight.current || uncertain || isSaving || selectedCount === 0) return;
+    const invalid = suggestions.filter(s => selected.has(s.field_code) && rowStatus.get(s.field_code) !== "saved" && !getMergedRow(s).field_label_en.trim());
+    if (invalid.length) { setBatchError(`Enter a field label before saving: ${invalid.map(s=>s.field_code).join(", ")}. Use the list filters to locate these fields.`); return; }
+    flight.current = true;
+    setBatchError(null);
     setIsSaving(true);
     let createdCount = 0;
     let failedCount = 0;
@@ -268,16 +275,19 @@ export function DmsAiMetadataSuggestionsDialog({
         } else {
           setRowStatus((prev) => new Map(prev).set(code, "failed"));
           setRowErrors((prev) =>
-            new Map(prev).set(code, result.error ?? "Failed to create field")
+            new Map(prev).set(code, "Field creation was not accepted. Check its definition and your permissions.")
           );
           failedCount++;
         }
-      } catch (err) {
+      } catch {
+        setUncertain(true);
+        setBatchError("A field creation could not be confirmed. Further writes are paused; close and reload the metadata definitions before trying again.");
         setRowStatus((prev) => new Map(prev).set(code, "failed"));
         setRowErrors((prev) =>
-          new Map(prev).set(code, err instanceof Error ? err.message : "Unexpected error")
+          new Map(prev).set(code, "Save outcome unknown. Check existing definitions before retrying.")
         );
         failedCount++;
+        break;
       }
     }
 
@@ -306,6 +316,7 @@ export function DmsAiMetadataSuggestionsDialog({
     }
 
     setIsSaving(false);
+    flight.current = false;
 
     if (failedCount === 0 && createdCount > 0) {
       toast.success(
@@ -323,6 +334,7 @@ export function DmsAiMetadataSuggestionsDialog({
     }
   }, [
     isSaving,
+    uncertain,
     selectedCount,
     suggestions,
     selected,
@@ -342,7 +354,8 @@ export function DmsAiMetadataSuggestionsDialog({
 
   // DMS AI META.2 — reject/dismiss the whole batch without creating anything.
   const handleReject = useCallback(async () => {
-    if (isRejecting || isSaving) return;
+    if (flight.current || uncertain || isRejecting || isSaving) return;
+    flight.current = true;
     setIsRejecting(true);
     try {
       const result = await rejectMetadataSuggestions({
@@ -358,13 +371,18 @@ export function DmsAiMetadataSuggestionsDialog({
         router.refresh();
         onOpenChange(false);
       } else {
-        toast.error(result.error ?? "Failed to dismiss suggestions.");
+        toast.error("Dismissal was not accepted. Check your permissions.");
       }
+    } catch {
+      setUncertain(true);
+      setBatchError("Dismissal could not be confirmed. Reload the review queue before trying again.");
     } finally {
+      flight.current = false;
       setIsRejecting(false);
     }
   }, [
     isRejecting,
+    uncertain,
     isSaving,
     documentTypeId,
     documentTypeCode,
@@ -390,6 +408,8 @@ export function DmsAiMetadataSuggestionsDialog({
 
   const bodyContent = (
       <div className="space-y-4">
+        {batchError && <div role="alert" className="rounded-sm border border-destructive p-3 text-sm text-destructive">{batchError}</div>}
+        <Button type="button" variant="outline" onClick={toggleAll} disabled={isSaving || isRejecting || uncertain}>{allSelected ? "Clear selection" : "Select all loaded suggestions"}</Button>
         {/* AI info + warning banner */}
         <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3">
           <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
@@ -419,77 +439,35 @@ export function DmsAiMetadataSuggestionsDialog({
           </div>
         ) : (
           <div className="rounded-md border overflow-hidden">
-            <table className="w-full text-xs table-fixed">
-              <colgroup>
-                <col className="w-8" />
-                <col className="w-[130px]" />
-                <col className="w-auto" />
-                <col className="w-[120px]" />
-                <col className="w-[60px]" />
-                <col className="w-[60px]" />
-                <col className="w-[80px]" />
-              </colgroup>
-              <thead>
-                <tr className="border-b bg-muted/50">
-                  <th className="p-2 text-center">
-                    <Checkbox
-                      checked={allSelected}
-                      data-state={
-                        allSelected ? "checked" : noneSelected ? "unchecked" : "indeterminate"
-                      }
-                      onCheckedChange={toggleAll}
-                      aria-label="Select all"
-                    />
-                  </th>
-                  <th className="p-2 text-left font-medium text-muted-foreground">Field Code</th>
-                  <th className="p-2 text-left font-medium text-muted-foreground">Label / AI Hint</th>
-                  <th className="p-2 text-left font-medium text-muted-foreground">Type</th>
-                  <th className="p-2 text-center font-medium text-muted-foreground">Req.</th>
-                  <th className="p-2 text-center font-medium text-muted-foreground">AI</th>
-                  <th className="p-2 text-center font-medium text-muted-foreground">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {suggestions.map((s) => {
-                  const merged = getMergedRow(s);
-                  const isSelected = selected.has(s.field_code);
-                  const status = rowStatus.get(s.field_code) ?? "pending";
-                  const errorMsg = rowErrors.get(s.field_code);
-                  const isSavingRow = status === "saving";
-                  const isSaved = status === "saved";
-                  const isFailed = status === "failed";
+            {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable tableId="special.dms.admin.dms-ai-metadata-suggestions-dialog.3" data={suggestions} columns={[{id:"select",header:"Select",enableSorting:false,meta:{exportable:false},enableHiding:false,size:220,cell:({row:{original:s}})=>{
+const isSelected = selected.has(s.field_code);
+const status = rowStatus.get(s.field_code) ?? "pending";
 
-                  return (
-                    <Fragment key={s.field_code}>
-                      <tr
-                        className={cn(
-                          "border-b transition-colors",
-                          !isSelected && "opacity-40",
-                          isSaved && "bg-green-50 dark:bg-green-950/20",
-                          isFailed && "bg-red-50 dark:bg-red-950/20",
-                          isSavingRow && "opacity-70"
-                        )}
-                      >
-                        {/* Checkbox */}
-                        <td className="p-2 text-center">
-                          <Checkbox
+const isSavingRow = status === "saving";
+const isSaved = status === "saved";
+
+return <><Checkbox
                             checked={isSelected}
                             onCheckedChange={() => toggleRow(s.field_code)}
                             disabled={isSaved || isSavingRow}
                             aria-label={`Select ${s.field_code}`}
-                          />
-                        </td>
+                          /></>;}},{id:"field_code",header:"Field code",accessorFn:item=>loadedListValue(item,"field_code"),meta:{filter:{type:"text"}},enableHiding:false,size:180,cell:({row:{original:s}})=>{
 
-                        {/* Field code */}
-                        <td className="p-2">
-                          <code className="font-mono text-[10px] text-muted-foreground break-all">
+
+
+
+
+
+return <><code className="font-mono text-[10px] text-muted-foreground break-all">
                             {s.field_code}
-                          </code>
-                        </td>
+                          </code></>;}},{id:"field_label_en",header:"Label / AI hint",accessorFn:item=>loadedListValue(item,"field_label_en"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:s}})=>{const merged = getMergedRow(s);
+const isSelected = selected.has(s.field_code);
+const status = rowStatus.get(s.field_code) ?? "pending";
 
-                        {/* Label (editable) */}
-                        <td className="p-2">
-                          <Input
+const isSavingRow = status === "saving";
+const isSaved = status === "saved";
+
+return <><Input
                             value={merged.field_label_en}
                             onChange={(e) =>
                               updateEdit(s.field_code, { field_label_en: e.target.value })
@@ -497,17 +475,18 @@ export function DmsAiMetadataSuggestionsDialog({
                             disabled={isSaved || isSavingRow || !isSelected}
                             className="h-7 text-xs px-2"
                             aria-label={`Field label for ${s.field_code}`}
-                          />
-                          {merged.ai_field_hint && (
+                          />{merged.ai_field_hint && (
                             <p className="mt-0.5 text-[10px] text-muted-foreground line-clamp-1 pl-0.5">
                               {merged.ai_field_hint}
                             </p>
-                          )}
-                        </td>
+                          )}</>;}},{id:"field_type",header:"Type",accessorFn:item=>loadedListValue(item,"field_type"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:s}})=>{const merged = getMergedRow(s);
+const isSelected = selected.has(s.field_code);
+const status = rowStatus.get(s.field_code) ?? "pending";
 
-                        {/* Field type (editable) */}
-                        <td className="p-2">
-                          <select
+const isSavingRow = status === "saving";
+const isSaved = status === "saved";
+
+return <><select
                             value={merged.field_type}
                             onChange={(e) =>
                               updateEdit(s.field_code, {
@@ -523,80 +502,48 @@ export function DmsAiMetadataSuggestionsDialog({
                                 {opt.label}
                               </option>
                             ))}
-                          </select>
-                        </td>
+                          </select></>;}},{id:"is_required",header:"Required",accessorFn:item=>loadedListValue(item,"is_required"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:s}})=>{const merged = getMergedRow(s);
+const isSelected = selected.has(s.field_code);
+const status = rowStatus.get(s.field_code) ?? "pending";
 
-                        {/* Required toggle */}
-                        <td className="p-2 text-center">
-                          <Switch
+const isSavingRow = status === "saving";
+const isSaved = status === "saved";
+
+return <><Switch
                             checked={merged.is_required}
                             onCheckedChange={(v) =>
                               updateEdit(s.field_code, { is_required: v })
                             }
                             disabled={isSaved || isSavingRow || !isSelected}
                             aria-label={`Required for ${s.field_code}`}
-                          />
-                        </td>
+                          /></>;}},{id:"is_ai_extractable",header:"AI",accessorFn:item=>loadedListValue(item,"is_ai_extractable"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:s}})=>{const merged = getMergedRow(s);
+const isSelected = selected.has(s.field_code);
+const status = rowStatus.get(s.field_code) ?? "pending";
 
-                        {/* AI extractable toggle */}
-                        <td className="p-2 text-center">
-                          <Switch
+const isSavingRow = status === "saving";
+const isSaved = status === "saved";
+
+return <><Switch
                             checked={merged.is_ai_extractable}
                             onCheckedChange={(v) =>
                               updateEdit(s.field_code, { is_ai_extractable: v })
                             }
                             disabled={isSaved || isSavingRow || !isSelected}
                             aria-label={`AI extractable for ${s.field_code}`}
-                          />
-                        </td>
+                          /></>;}},{id:"status",header:"Status",enableSorting:false,meta:{exportable:false},enableHiding:true,size:180,cell:({row:{original:s}})=>{
 
-                        {/* Status */}
-                        <td className="p-2 text-center">
-                          {isSavingRow && (
+const status = rowStatus.get(s.field_code) ?? "pending";
+const errorMsg = rowErrors.get(s.field_code);
+const isSavingRow = status === "saving";
+const isSaved = status === "saved";
+const isFailed = status === "failed";
+return <>{isSavingRow && (
                             <Loader2 className="h-3.5 w-3.5 animate-spin mx-auto text-muted-foreground" />
-                          )}
-                          {isSaved && (
+                          )}{isSaved && (
                             <CheckCircle2 className="h-3.5 w-3.5 mx-auto text-green-600" />
-                          )}
-                          {isFailed && (
+                          )}{isFailed && (
                             <XCircle className="h-3.5 w-3.5 mx-auto text-red-600" />
-                          )}
-                        </td>
-                      </tr>
-
-                      {/* Reasoning row */}
-                      {s.reasoning && (
-                        <tr
-                          className={cn(
-                            "border-b bg-muted/20",
-                            !isSelected && "opacity-40"
-                          )}
-                        >
-                          <td />
-                          <td colSpan={6} className="px-2 pb-1.5 pt-0">
-                            <p className="text-[10px] text-muted-foreground italic">
-                              AI: {s.reasoning}
-                            </p>
-                          </td>
-                        </tr>
-                      )}
-
-                      {/* Error row */}
-                      {isFailed && errorMsg && (
-                        <tr className="border-b bg-red-50 dark:bg-red-950/20">
-                          <td />
-                          <td colSpan={6} className="px-2 pb-1.5 pt-0">
-                            <p className="text-[10px] text-red-600 dark:text-red-400">
-                              Error: {errorMsg}
-                            </p>
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
+                          )}<span className="sr-only">{status}</span>{s.reasoning && <p className="text-xs">AI: {s.reasoning}</p>}{isFailed && errorMsg && <p role="alert" className="text-destructive">{errorMsg}</p>}</>;}}]} enableRowSelection={false} searchPlaceholder="Search loaded records…" initialPageSize={10} />
           </div>
         )}
 
@@ -629,7 +576,7 @@ export function DmsAiMetadataSuggestionsDialog({
               type="button"
               variant="outline"
               onClick={handleReject}
-              disabled={isSaving || isRejecting}
+              disabled={isSaving || isRejecting || uncertain}
             >
               {isRejecting ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
               Dismiss All
@@ -638,7 +585,7 @@ export function DmsAiMetadataSuggestionsDialog({
           <Button
             type="button"
             onClick={handleSubmit}
-            disabled={isSaving || isRejecting || selectedCount === 0}
+            disabled={isSaving || isRejecting || uncertain || selectedCount === 0}
           >
             {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
             {submitLabel}
@@ -663,6 +610,7 @@ export function DmsAiMetadataSuggestionsDialog({
       mode="add"
       size="xl"
       isSubmitting={isSaving}
+      submitDisabled={uncertain || isRejecting}
       onSubmit={handleSubmit}
       submitLabel={submitLabel}
     >

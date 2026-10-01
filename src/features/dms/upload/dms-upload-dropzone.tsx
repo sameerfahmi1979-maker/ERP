@@ -63,6 +63,7 @@ export function DmsUploadDropzone({
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isHashing, setIsHashing] = useState(false);
+  const processing = useRef(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<SelectedDmsFile[]>([]);
@@ -72,6 +73,7 @@ export function DmsUploadDropzone({
 
   // ── Single-file mode ────────────────────────────────────────────────────────
   const processSingle = useCallback(async (file: File) => {
+    if (processing.current) return;
     setValidationError(null);
     setSelectedFile(null);
     const err = validateFile(file);
@@ -80,6 +82,7 @@ export function DmsUploadDropzone({
       return;
     }
     setIsHashing(true);
+    processing.current = true;
     try {
       const sha256_hash = await computeSha256(file);
       setSelectedFile(file);
@@ -93,16 +96,19 @@ export function DmsUploadDropzone({
     } catch {
       setValidationError("Failed to compute file hash. Please try again.");
     } finally {
+      processing.current = false;
       setIsHashing(false);
     }
   }, [onFileSelected]);
 
   // ── Multi-file mode ─────────────────────────────────────────────────────────
   const processMultiple = useCallback(async (files: File[]) => {
+    if (processing.current) return;
     setValidationError(null);
     if (files.length === 0) return;
 
     setIsHashing(true);
+    processing.current = true;
     try {
       const next: SelectedDmsFile[] = [];
       const errors: string[] = [];
@@ -140,6 +146,7 @@ export function DmsUploadDropzone({
     } catch {
       setValidationError("Failed to read one or more files. Please try again.");
     } finally {
+      processing.current = false;
       setIsHashing(false);
     }
   }, [maxFiles, onFilesSelected]);
@@ -206,7 +213,8 @@ export function DmsUploadDropzone({
           accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.webp,.doc,.docx,.xls,.xlsx"
           className="hidden"
           onChange={handleChange}
-          disabled={disabled}
+          disabled={disabled || isHashing}
+          aria-label={multiple ? "Choose document files" : "Choose document file"}
         />
 
         {isHashing ? (
@@ -222,10 +230,11 @@ export function DmsUploadDropzone({
               <p className="text-xs text-muted-foreground mt-0.5">{formatFileSize(selectedFile.size)}</p>
             </div>
             <Button
+              type="button"
               variant="outline"
               size="sm"
               onClick={(e) => { e.stopPropagation(); setSelectedFile(null); inputRef.current?.click(); }}
-              disabled={disabled}
+              disabled={disabled || isHashing}
             >
               Change file
             </Button>
@@ -240,9 +249,10 @@ export function DmsUploadDropzone({
               <p className="text-xs text-muted-foreground mt-1">or click to browse</p>
             </div>
             <Button
+              type="button"
               variant="outline"
               size="sm"
-              disabled={disabled}
+              disabled={disabled || isHashing}
               onClick={(e) => { e.stopPropagation(); inputRef.current?.click(); }}
             >
               Browse files
@@ -255,7 +265,7 @@ export function DmsUploadDropzone({
       </div>
 
       {validationError && (
-        <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2">
+        <div role="alert" className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2">
           <AlertCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
           <p className="text-xs text-destructive">{validationError}</p>
         </div>

@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import type { ColumnDef } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -34,6 +36,8 @@ interface Props {
 export function DesignationsListClient({ designations: initial, canManage }: Props) {
   const router = useRouter();
   const [designations, setDesignations] = useState(initial);
+  const [snapshot, setSnapshot] = useState(initial);
+  if (snapshot !== initial) { setSnapshot(initial); setDesignations(initial); }
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DesignationRow | null>(null);
 
@@ -73,36 +77,13 @@ export function DesignationsListClient({ designations: initial, canManage }: Pro
     }
   };
 
-  return (
-    <>
-      <div className="divide-y">
-        {designations.map((d) => (
-          <div key={d.id} className="flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors">
-            <Link
-              href={`/admin/common-master-data/designations/record/${d.id}`}
-              className="flex-1 min-w-0 mr-3"
-            >
-              <div className="flex items-center gap-2 text-sm font-medium flex-wrap">
-                {d.designation_name_en}
-                <span className="text-xs text-muted-foreground">({d.designation_code})</span>
-                {!d.is_active && (
-                  <Badge variant="destructive" className="text-[10px]">Inactive</Badge>
-                )}
-                {d.management_level && (
-                  <Badge variant="outline" className="text-[10px] capitalize">
-                    {d.management_level.replace(/_/g, " ")}
-                  </Badge>
-                )}
-              </div>
-              {d.owner_company && (
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {(d.owner_company as { legal_name_en: string }).legal_name_en}
-                </p>
-              )}
-            </Link>
-
-            {canManage ? (
-              <DropdownMenu>
+  const columns: ColumnDef<DesignationRow>[] = [
+    {accessorKey:"designation_name_en",header:"Designation",enableHiding:false,cell:({row})=><Link className="font-medium underline" href={`/admin/common-master-data/designations/record/${row.original.id}`}>{row.original.designation_name_en}</Link>},
+    {accessorKey:"designation_code",header:"Code"},
+    {accessorKey:"management_level",header:"Management level"},
+    {id:"company",header:"Company",accessorFn:d=>(d.owner_company as {legal_name_en?:string}|null)?.legal_name_en ?? ""},
+    {accessorKey:"is_active",header:"Active",cell:({row})=><Badge variant={row.original.is_active?"outline":"destructive"}>{row.original.is_active?"Active":"Inactive"}</Badge>},
+    ...(canManage ? [{id:"actions",header:"Actions",enableSorting:false,enableHiding:false,cell:({row}: {row: {original: DesignationRow}})=>{ const d=row.original; return (<DropdownMenu>
                 <DropdownMenuTrigger
                   disabled={pendingId === d.id}
                   className="h-8 w-8 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 transition-colors shrink-0"
@@ -142,18 +123,12 @@ export function DesignationsListClient({ designations: initial, canManage }: Pro
                     Delete
                   </DropdownMenuItem>
                 </DropdownMenuContent>
-              </DropdownMenu>
-            ) : (
-              <Link
-                href={`/admin/common-master-data/designations/record/${d.id}`}
-                className="text-xs text-muted-foreground shrink-0"
-              >
-                →
-              </Link>
-            )}
-          </div>
-        ))}
-      </div>
+              </DropdownMenu>);}}] : []),
+  ];
+
+  return (
+    <>
+      <ERPDataTable tableId="common.designations" resultsLabel="Designations" data={designations} columns={columns} enableRowSelection={false} />
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
         <AlertDialogContent>

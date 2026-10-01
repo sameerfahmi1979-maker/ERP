@@ -1,4 +1,6 @@
 "use client";
+import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { ERPCombobox } from "@/components/erp/combobox";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
@@ -15,7 +17,7 @@ import { convertCandidateToEmployee, prepareCandidateEmployeeConversion } from "
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle, ExternalLink, UserCheck } from "lucide-react";
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useState} from "react";
 import { toast } from "sonner";
 
 type Props = {
@@ -65,7 +67,7 @@ export function CandidateConversionTab({ candidate, canManage, canCreateEmployee
   const [isPending, startTransition] = useTransition();
   const [conversionResult, setConversionResult] = useState<{ employee_id: number; employee_code: string } | null>(null);
 
-  const { data: linkRes, isLoading: linkLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.recruitment.employeeRecruitmentLink(0),
     queryFn: async () => {
       // We need to find the employee that was converted from this candidate
@@ -74,12 +76,14 @@ export function CandidateConversionTab({ candidate, canManage, canCreateEmployee
     },
     enabled: false,
   });
+  const { data: linkRes, isLoading: linkLoading } = uiRead1;
 
-  const { data: prepRes, isLoading: prepLoading, refetch: refetchPrep } = useQuery({
+  const uiRead2 = useQuery({
     queryKey: ["recruitment", "conversion-prep", candidate.id],
     queryFn: () => prepareCandidateEmployeeConversion(candidate.id),
     staleTime: 30_000,
   });
+  const { data: prepRes, isLoading: prepLoading, refetch: refetchPrep } = uiRead2;
 
   const alreadyConverted = prepRes?.data?.already_converted ?? false;
   const latestOffer = prepRes?.data?.latest_offer;
@@ -149,7 +153,7 @@ export function CandidateConversionTab({ candidate, canManage, canCreateEmployee
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="p-6 space-y-6">
       <div>
         <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-4">Candidate Conversion</h3>
 
@@ -239,7 +243,7 @@ export function CandidateConversionTab({ candidate, canManage, canCreateEmployee
 
           <div className="col-span-12 md:col-span-6">
             <RequiredLabel required>Owner Company ID</RequiredLabel>
-            <Input
+            <Input aria-label="Owner Company ID" required
               type="number"
               value={form.owner_company_id != null ? String(form.owner_company_id) : ""}
               onChange={(e) => set("owner_company_id", e.target.value ? Number(e.target.value) : null)}
@@ -248,11 +252,11 @@ export function CandidateConversionTab({ candidate, canManage, canCreateEmployee
           </div>
           <div className="col-span-12 md:col-span-6">
             <RequiredLabel required>Joining Date</RequiredLabel>
-            <Input type="date" value={form.joining_date} onChange={(e) => set("joining_date", e.target.value)} />
+            <Input aria-label="Joining Date" required type="date" value={form.joining_date} onChange={(e) => set("joining_date", e.target.value)} />
           </div>
           <div className="col-span-12 md:col-span-6">
             <Label>Employee Status</Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Employee Status"
               value={form.employee_status || null}
               onValueChange={(v) => set("employee_status", String(v ?? "active"))}
               options={EMPLOYEE_STATUS_OPTIONS}
@@ -261,22 +265,22 @@ export function CandidateConversionTab({ candidate, canManage, canCreateEmployee
           </div>
           <div className="col-span-12 md:col-span-6">
             <Label>Branch ID (optional)</Label>
-            <Input type="number" value={form.branch_id != null ? String(form.branch_id) : ""} onChange={(e) => set("branch_id", e.target.value ? Number(e.target.value) : null)} placeholder="Branch ID" />
+            <Input aria-label="Branch ID (optional)" type="number" value={form.branch_id != null ? String(form.branch_id) : ""} onChange={(e) => set("branch_id", e.target.value ? Number(e.target.value) : null)} placeholder="Branch ID" />
           </div>
           <div className="col-span-12 md:col-span-6">
             <Label>Department ID (optional)</Label>
-            <Input type="number" value={form.department_id != null ? String(form.department_id) : ""} onChange={(e) => set("department_id", e.target.value ? Number(e.target.value) : null)} placeholder="Department ID" />
+            <Input aria-label="Department ID (optional)" type="number" value={form.department_id != null ? String(form.department_id) : ""} onChange={(e) => set("department_id", e.target.value ? Number(e.target.value) : null)} placeholder="Department ID" />
           </div>
           <div className="col-span-12 md:col-span-6">
             <Label>Designation ID (optional)</Label>
-            <Input type="number" value={form.designation_id != null ? String(form.designation_id) : ""} onChange={(e) => set("designation_id", e.target.value ? Number(e.target.value) : null)} placeholder="Designation ID" />
+            <Input aria-label="Designation ID (optional)" type="number" value={form.designation_id != null ? String(form.designation_id) : ""} onChange={(e) => set("designation_id", e.target.value ? Number(e.target.value) : null)} placeholder="Designation ID" />
           </div>
           <div className="col-span-12">
             <Label>Conversion Notes</Label>
-            <Textarea value={form.conversion_notes} onChange={(e) => set("conversion_notes", e.target.value)} rows={3} placeholder="Notes about this conversion..." />
+            <Textarea aria-label="Conversion Notes" value={form.conversion_notes} onChange={(e) => set("conversion_notes", e.target.value)} rows={3} placeholder="Notes about this conversion..." />
           </div>
         </div>
       </ERPChildDialogForm>
-    </div>
+    </div></QueryReadBoundary>
   );
 }

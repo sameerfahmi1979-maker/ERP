@@ -1,3 +1,4 @@
+import { LoadError } from "@/components/erp/load-error";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { redirect } from "next/navigation";
 import { listHrReadinessRuleTemplates } from "@/server/actions/hr/settings";
@@ -10,6 +11,7 @@ export default async function HrReadinessRuleTemplatesPage() {
   const ctx = await getAuthContext();
   if (!hasPermission(ctx, "hr.settings.view") && !hasPermission(ctx, "hr.settings.manage") && !hasPermission(ctx, "hr.admin")) redirect("/admin/hr/settings");
   const result = await listHrReadinessRuleTemplates({ page_size: 100 });
+  if (!result.success) return <LoadError title="HR records" retryHref="/admin/hr/settings/readiness-rule-templates" />;
   const rows = result.data?.data ?? [];
 
   return (

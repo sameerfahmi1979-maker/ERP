@@ -136,17 +136,17 @@ export function ConversionWorkspaceForm({ conversion, mode }: ConversionWorkspac
             <div className="space-y-2 col-span-12">
               <RequiredLabel htmlFor="from_uom">From Unit</RequiredLabel>
               {isEditing || isViewing ? (
-                <Input value={conversion?.from_unit?.unit_name_en ?? ""} disabled />
+                <Input aria-label="From Unit" value={conversion?.from_unit?.unit_name_en ?? ""} disabled />
               ) : (
-                <UnitOfMeasureSelect value={fromUomId} onValueChange={(v) => { setFromUomId(v); writeDraftField("from_uom_id", v ?? ""); }} required />
+                <UnitOfMeasureSelect name="from_uom_id" ariaLabel="From Unit" value={fromUomId} onValueChange={(v) => { setFromUomId(v); writeDraftField("from_uom_id", v ?? ""); }} required />
               )}
             </div>
             <div className="space-y-2 col-span-12">
               <RequiredLabel htmlFor="to_uom">To Unit</RequiredLabel>
               {isEditing || isViewing ? (
-                <Input value={conversion?.to_unit?.unit_name_en ?? ""} disabled />
+                <Input aria-label="To Unit" value={conversion?.to_unit?.unit_name_en ?? ""} disabled />
               ) : (
-                <UnitOfMeasureSelect value={toUomId} onValueChange={(v) => { setToUomId(v); writeDraftField("to_uom_id", v ?? ""); }} required />
+                <UnitOfMeasureSelect name="to_uom_id" ariaLabel="To Unit" value={toUomId} onValueChange={(v) => { setToUomId(v); writeDraftField("to_uom_id", v ?? ""); }} required />
               )}
             </div>
             <div className="space-y-2 col-span-6">
@@ -200,11 +200,11 @@ export function ConversionWorkspaceForm({ conversion, mode }: ConversionWorkspac
             <div className="grid grid-cols-12 gap-4">
               <div className="space-y-2 col-span-6">
                 <Label className="text-muted-foreground text-xs">Created At</Label>
-                <Input value={new Date(conversion.created_at).toLocaleString()} disabled className="text-xs" />
+                <Input aria-label="Created At" value={new Date(conversion.created_at).toLocaleString()} disabled className="text-xs" />
               </div>
               <div className="space-y-2 col-span-6">
                 <Label className="text-muted-foreground text-xs">Updated At</Label>
-                <Input value={new Date(conversion.updated_at).toLocaleString()} disabled className="text-xs" />
+                <Input aria-label="Updated At" value={new Date(conversion.updated_at).toLocaleString()} disabled className="text-xs" />
               </div>
             </div>
           ) : (

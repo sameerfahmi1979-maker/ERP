@@ -1,4 +1,6 @@
 "use client";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
+import { RecordCollection } from "@/components/erp/table/record-collection";
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -87,7 +89,7 @@ export function DuplicateCandidatesPageClient({
     limit: 100,
   };
 
-  const { data: listData, isLoading, refetch } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.ai.duplicateCandidates(listFilters),
     queryFn: async () => {
       const res = await getDuplicateCandidates(listFilters);
@@ -95,8 +97,9 @@ export function DuplicateCandidatesPageClient({
       return res.data!;
     },
   });
+ const { data: listData, isLoading, refetch } = uiRead1;
 
-  const { data: detail } = useQuery({
+  const uiRead2 = useQuery({
     queryKey: queryKeys.ai.duplicateCandidateDetail(selectedId ?? 0),
     enabled: selectedId != null,
     queryFn: async () => {
@@ -105,6 +108,7 @@ export function DuplicateCandidatesPageClient({
       return res.data!;
     },
   });
+ const { data: detail } = uiRead2;
 
   const handleScan = async (withAi: boolean) => {
     setIsScanning(true);
@@ -170,7 +174,7 @@ export function DuplicateCandidatesPageClient({
   const rows = listData?.rows ?? [];
 
   return (
-    <div className="space-y-6">
+    <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="space-y-6">
       {!summary.featureEnabled && (
         <Alert className="border-amber-300 bg-amber-50">
           <AlertTriangle className="h-4 w-4 text-amber-600" />
@@ -259,14 +263,14 @@ export function DuplicateCandidatesPageClient({
             {!isLoading && rows.length === 0 && (
               <p className="p-4 text-sm text-muted-foreground">No candidates match filters.</p>
             )}
-            {rows.map((row) => (
+            {<RecordCollection id="special.duplicate-candidates-page-client" rows={rows} fields={[{"id":"candidateType","path":"candidateType","label":"Candidate type"},{"id":"entityTypeA","path":"entityTypeA","label":"Entity type"},{"id":"confidenceScore","path":"confidenceScore","label":"Confidence"},{"id":"status","path":"status","label":"Status"}]} renderRecord={(row) => (
               <CandidateListItem
                 key={row.id}
                 row={row}
                 selected={selectedId === row.id}
                 onSelect={() => setSelectedId(row.id)}
               />
-            ))}
+            )} />}
           </div>
         </div>
 
@@ -285,7 +289,7 @@ export function DuplicateCandidatesPageClient({
           )}
         </div>
       </div>
-    </div>
+    </div></QueryReadBoundary>
   );
 }
 
@@ -332,6 +336,7 @@ function CandidateListItem({
     <button
       type="button"
       onClick={onSelect}
+      aria-pressed={selected}
       className={`w-full text-left p-3 hover:bg-muted/50 transition-colors ${selected ? "bg-muted" : ""}`}
     >
       <div className="flex items-start justify-between gap-2">

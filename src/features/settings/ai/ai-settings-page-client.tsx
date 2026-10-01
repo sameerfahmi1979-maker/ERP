@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -37,6 +37,7 @@ type UsageLogRow = {
 };
 
 interface AiSettingsPageClientProps {
+  permissions: { canManage: boolean; canManageSecrets: boolean; canTest: boolean; canViewUsage: boolean };
   configs: AiProviderConfig[];
   featureFlags: AiFeatureFlag[];
   usageLogs: UsageLogRow[];
@@ -46,20 +47,19 @@ export function AiSettingsPageClient({
   configs,
   featureFlags,
   usageLogs,
+  permissions,
 }: AiSettingsPageClientProps) {
   const [addOpen, setAddOpen] = useState(false);
-  const [, startTransition] = useTransition();
 
   const enabledCount = configs.filter((c) => c.isEnabled).length;
   const testedCount = configs.filter((c) => c.lastTestStatus === "success").length;
   const enabledFlagsCount = featureFlags.filter((f) => f.isEnabled).length;
 
-  void startTransition;
 
   return (
     <div className="flex flex-col gap-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-violet-500/10">
             <Brain className="h-6 w-6 text-violet-500" />
@@ -71,10 +71,10 @@ export function AiSettingsPageClient({
             </p>
           </div>
         </div>
-        <Button onClick={() => setAddOpen(true)} className="gap-2">
+        {permissions.canManage && <Button onClick={() => setAddOpen(true)} className="gap-2">
           <Plus className="h-4 w-4" />
           Add Provider
-        </Button>
+        </Button>}
       </div>
 
       {/* Summary cards */}
@@ -120,28 +120,29 @@ export function AiSettingsPageClient({
             <ToggleLeft className="h-4 w-4" />
             Feature Flags
           </TabsTrigger>
-          <TabsTrigger value="usage" className="gap-2">
+          {permissions.canViewUsage && <TabsTrigger value="usage" className="gap-2">
             <BarChart3 className="h-4 w-4" />
             Usage Logs
-          </TabsTrigger>
+          </TabsTrigger>}
         </TabsList>
 
         <TabsContent value="providers" className="mt-4">
-          <AiProviderConfigList configs={configs} onAdd={() => setAddOpen(true)} />
+          <AiProviderConfigList configs={configs} onAdd={() => setAddOpen(true)} {...permissions} />
         </TabsContent>
 
         <TabsContent value="features" className="mt-4">
-          <AiFeatureFlagsPanel flags={featureFlags} />
+          <AiFeatureFlagsPanel flags={featureFlags} canManage={permissions.canManage} />
         </TabsContent>
 
         <TabsContent value="usage" className="mt-4">
-          <AiUsageLogTable logs={usageLogs} />
+          {permissions.canViewUsage && <AiUsageLogTable logs={usageLogs} />}
         </TabsContent>
       </Tabs>
 
-      {addOpen && (
+      {addOpen && permissions.canManage && (
         <AiProviderFormDialog
           open={addOpen}
+          canManageSecrets={permissions.canManageSecrets}
           onClose={() => setAddOpen(false)}
           onSaved={() => {
             toast.success("Provider configuration saved");

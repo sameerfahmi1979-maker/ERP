@@ -92,7 +92,7 @@ export function HrAiLetterPanel({ employeeId, canUse, canViewPayroll = false, ca
       <div className="grid grid-cols-1 gap-3">
         <div className="space-y-1">
           <Label className="text-xs">Document Type</Label>
-          <select
+          <select aria-label="Document Type"
             value={draftType}
             onChange={(e) => { setDraftType(e.target.value); setResult(null); }}
             className="flex h-8 w-full rounded-md border border-input bg-background text-sm px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
@@ -105,7 +105,7 @@ export function HrAiLetterPanel({ employeeId, canUse, canViewPayroll = false, ca
 
         <div className="space-y-1">
           <Label className="text-xs">Purpose (optional)</Label>
-          <Input
+          <Input aria-label="Purpose (optional)"
             value={purposeNote}
             onChange={(e) => setPurposeNote(e.target.value)}
             placeholder="e.g. Visa renewal, bank account opening…"
@@ -116,7 +116,7 @@ export function HrAiLetterPanel({ employeeId, canUse, canViewPayroll = false, ca
 
         <div className="space-y-1">
           <Label className="text-xs">Recipient Context (optional)</Label>
-          <Input
+          <Input aria-label="Recipient Context (optional)"
             value={recipientContext}
             onChange={(e) => setRecipientContext(e.target.value)}
             placeholder="e.g. UAE Embassy, HR Manager…"

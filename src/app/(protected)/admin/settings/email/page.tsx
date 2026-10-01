@@ -41,6 +41,11 @@ export default async function EmailSettingsPage() {
         configs={configs}
         featureFlags={featureFlags}
         sendLogs={sendLogs}
+        canManage={hasPermission(ctx, "settings.email.manage")}
+        canTest={hasPermission(ctx, "settings.email.test") || hasPermission(ctx, "settings.email.manage")}
+        canSecrets={hasPermission(ctx, "settings.email.secrets.manage") || hasPermission(ctx, "settings.email.manage")}
+        canFlags={hasPermission(ctx, "settings.email.feature_flags.manage") || hasPermission(ctx, "settings.email.manage")}
+        initialError={!configsResult.success || !flagsResult.success}
       />
     </div>
   );

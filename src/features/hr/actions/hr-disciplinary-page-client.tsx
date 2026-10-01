@@ -1,4 +1,8 @@
 "use client";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import { loadedListValue } from "@/components/erp/table/loaded-list-view";
+import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import {
@@ -33,7 +37,7 @@ import {
   Search,
   Trash2
 } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useState} from "react";
 import { toast } from "sonner";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -256,7 +260,7 @@ function DetailDialogSession({ record, open, mode, canManage, onClose, onEdit, o
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <Label className="text-xs font-semibold">Subject <span className="text-destructive">*</span></Label>
-            <Input
+            <Input aria-label="Subject" required
               value={form.subject}
               onChange={e => setForm(f => ({ ...f, subject: e.target.value }))}
               placeholder="Brief description of the incident / warning"
@@ -266,7 +270,7 @@ function DetailDialogSession({ record, open, mode, canManage, onClose, onEdit, o
 
           <div className="col-span-6">
             <Label className="text-xs font-semibold">Type <span className="text-destructive">*</span></Label>
-            <select
+            <select aria-label="Type" required
               value={form.disciplinary_type}
               onChange={e => setForm(f => ({ ...f, disciplinary_type: e.target.value }))}
               className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -277,7 +281,7 @@ function DetailDialogSession({ record, open, mode, canManage, onClose, onEdit, o
 
           <div className="col-span-6">
             <Label className="text-xs font-semibold">Severity <span className="text-destructive">*</span></Label>
-            <select
+            <select aria-label="Severity" required
               value={form.severity}
               onChange={e => setForm(f => ({ ...f, severity: e.target.value }))}
               className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -288,7 +292,7 @@ function DetailDialogSession({ record, open, mode, canManage, onClose, onEdit, o
 
           <div className="col-span-6">
             <Label className="text-xs font-semibold">Status <span className="text-destructive">*</span></Label>
-            <select
+            <select aria-label="Status" required
               value={form.status}
               onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
               className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -299,7 +303,7 @@ function DetailDialogSession({ record, open, mode, canManage, onClose, onEdit, o
 
           <div className="col-span-6">
             <Label className="text-xs font-semibold">Record Date <span className="text-destructive">*</span></Label>
-            <Input
+            <Input aria-label="Record Date" required
               type="date"
               value={form.record_date}
               onChange={e => setForm(f => ({ ...f, record_date: e.target.value }))}
@@ -309,7 +313,7 @@ function DetailDialogSession({ record, open, mode, canManage, onClose, onEdit, o
 
           <div className="col-span-6">
             <Label className="text-xs font-semibold">Incident Date</Label>
-            <Input
+            <Input aria-label="Incident Date"
               type="date"
               value={form.incident_date}
               onChange={e => setForm(f => ({ ...f, incident_date: e.target.value }))}
@@ -319,7 +323,7 @@ function DetailDialogSession({ record, open, mode, canManage, onClose, onEdit, o
 
           <div className="col-span-12">
             <Label className="text-xs font-semibold">Description</Label>
-            <Textarea
+            <Textarea aria-label="Description"
               value={form.description}
               onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
               placeholder="Full description of the incident or behaviour..."
@@ -330,7 +334,7 @@ function DetailDialogSession({ record, open, mode, canManage, onClose, onEdit, o
 
           <div className="col-span-12">
             <Label className="text-xs font-semibold">Action Taken</Label>
-            <Textarea
+            <Textarea aria-label="Action Taken"
               value={form.action_taken}
               onChange={e => setForm(f => ({ ...f, action_taken: e.target.value }))}
               placeholder="What action was taken in response..."
@@ -386,10 +390,11 @@ export function HrDisciplinaryPageClient({ authContext }: Props) {
     authContext.roleCodes.includes("system_admin") ||
     authContext.roleCodes.includes("group_admin");
 
-  const { data: items = [], isLoading, refetch } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.actions.globalDisciplinary(),
     queryFn: () => listGlobalDisciplinaryRecords(),
   });
+  const { data: items = [], isLoading, refetch } = uiRead1;
 
   const filtered = items.filter(item => {
     if (!search.trim()) return true;
@@ -436,9 +441,9 @@ export function HrDisciplinaryPageClient({ authContext }: Props) {
   };
 
   return (
-    <div className="p-6 space-y-4">
+    <QueryReadBoundary queries={[uiRead1]}><div className="p-6 space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap gap-2 items-center justify-between">
         <div className="flex items-center gap-3">
           <AlertTriangle className="h-5 w-5 text-primary" />
           <div>
@@ -446,7 +451,7 @@ export function HrDisciplinaryPageClient({ authContext }: Props) {
             <p className="text-muted-foreground text-xs">All employee disciplinary records and warnings.</p>
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()}>
+        <Button aria-label="Refresh" variant="outline" size="sm" onClick={() => refetch()}>
           <RefreshCw className="h-3.5 w-3.5" />
         </Button>
       </div>
@@ -454,7 +459,7 @@ export function HrDisciplinaryPageClient({ authContext }: Props) {
       {/* Search */}
       <div className="relative max-w-sm">
         <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-        <Input
+        <Input aria-label="Search by employee, subject, type"
           placeholder="Search by employee, subject, type..."
           value={search}
           onChange={e => setSearch(e.target.value)}
@@ -474,64 +479,20 @@ export function HrDisciplinaryPageClient({ authContext }: Props) {
         </div>
       ) : (
         <div className="rounded-md border border-border overflow-x-auto">
-          <table className="w-full text-xs" style={{ tableLayout: "fixed", minWidth: "750px" }}>
-            <colgroup>
-              <col style={{ width: "200px" }} />
-              <col style={{ width: "180px" }} />
-              <col style={{ width: "120px" }} />
-              <col style={{ width: "90px" }} />
-              <col style={{ width: "90px" }} />
-              <col style={{ width: "90px" }} />
-              <col style={{ width: "104px" }} />
-            </colgroup>
-            <thead className="border-b border-border bg-muted/30 hover:bg-muted/30">
-              <tr>
-                <th className="px-3 py-2 text-left font-medium overflow-hidden">Employee</th>
-                <th className="px-3 py-2 text-left font-medium overflow-hidden">Subject</th>
-                <th className="px-3 py-2 text-left font-medium overflow-hidden">Type</th>
-                <th className="px-3 py-2 text-left font-medium overflow-hidden">Severity</th>
-                <th className="px-3 py-2 text-left font-medium overflow-hidden">Status</th>
-                <th className="px-3 py-2 text-left font-medium overflow-hidden">Date</th>
-                <th className="px-3 py-2 text-right font-medium overflow-hidden">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(item => (
-                <tr
-                  key={item.id}
-                  className="border-b border-border hover:bg-muted/20 transition-colors cursor-pointer"
-                  onClick={() => openView(item)}
-                >
-                  <td className="px-3 py-2 overflow-hidden">
-                    <p className="font-medium truncate">{item.employee?.full_name_en ?? `Employee #${item.employee_id}`}</p>
-                    <p className="text-muted-foreground truncate font-mono text-[10px]">{item.employee?.employee_code ?? ""}</p>
-                  </td>
-                  <td className="px-3 py-2 overflow-hidden truncate font-medium">{item.subject}</td>
-                  <td className="px-3 py-2 overflow-hidden truncate text-muted-foreground capitalize">
-                    {label(item.disciplinary_type)}
-                  </td>
-                  <td className="px-3 py-2 overflow-hidden">
-                    <Badge variant="outline" className={`text-[10px] font-semibold px-1.5 py-0.5 border ${SEVERITY_BADGE[item.severity] ?? "bg-slate-100 text-slate-600 border-slate-200"}`}>
+          {/* UI04 explicit table: loaded authorized rows only */}<ERPDataTable tableId="hr.actions.hr-disciplinary-page-client" data={filtered} columns={[{id:"employee.full_name_en",header:"Employee",accessorFn:item=>loadedListValue(item,"employee.full_name_en"),enableHiding:false,size:240,cell:({row:{original:item}})=><><p className="font-medium truncate">{item.employee?.full_name_en ?? `Employee #${item.employee_id}`}</p><p className="text-muted-foreground truncate font-mono text-[10px]">{item.employee?.employee_code ?? ""}</p></>},{id:"subject",header:"Subject",accessorFn:item=>loadedListValue(item,"subject"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{item.subject}</>},{id:"disciplinary_type",header:"Type",accessorFn:item=>loadedListValue(item,"disciplinary_type"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{label(item.disciplinary_type)}</>},{id:"severity",header:"Severity",accessorFn:item=>loadedListValue(item,"severity"),enableHiding:true,size:160,cell:({row:{original:item}})=><><Badge variant="outline" className={`text-[10px] font-semibold px-1.5 py-0.5 border ${SEVERITY_BADGE[item.severity] ?? "bg-slate-100 text-slate-600 border-slate-200"}`}>
                       {label(item.severity)}
-                    </Badge>
-                  </td>
-                  <td className="px-3 py-2 overflow-hidden">
-                    <Badge variant="outline" className={`text-[10px] font-semibold px-1.5 py-0.5 border ${STATUS_BADGE[item.status] ?? "bg-slate-100 text-slate-600 border-slate-200"}`}>
+                    </Badge></>},{id:"status",header:"Status",accessorFn:item=>loadedListValue(item,"status"),enableHiding:true,size:160,cell:({row:{original:item}})=><><Badge variant="outline" className={`text-[10px] font-semibold px-1.5 py-0.5 border ${STATUS_BADGE[item.status] ?? "bg-slate-100 text-slate-600 border-slate-200"}`}>
                       {label(item.status)}
-                    </Badge>
-                  </td>
-                  <td className="px-3 py-2 overflow-hidden truncate text-muted-foreground">{item.record_date}</td>
-                  <td className="px-3 py-2 overflow-hidden" onClick={e => e.stopPropagation()}>
-                    <div className="flex items-center gap-1 justify-end">
-                      <Button size="icon" variant="ghost" className="h-6 w-6" title="View details" onClick={() => openView(item)}>
+                    </Badge></>},{id:"record_date",header:"Date",accessorFn:item=>loadedListValue(item,"record_date"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{item.record_date}</>},{id:"actions",header:"Actions",enableHiding:true,size:200,enableSorting:false,meta:{exportable:false},cell:({row:{original:item}})=><><div className="flex items-center gap-1 justify-end">
+                      <Button aria-label="View details" size="icon" variant="ghost" className="h-6 w-6" title="View details" onClick={() => openView(item)}>
                         <Eye className="h-3 w-3" />
                       </Button>
                       {canManage && (
                         <>
-                          <Button size="icon" variant="ghost" className="h-6 w-6" title="Edit" onClick={() => openEdit(item)}>
+                          <Button aria-label="Edit" size="icon" variant="ghost" className="h-6 w-6" title="Edit" onClick={() => openEdit(item)}>
                             <Pencil className="h-3 w-3" />
                           </Button>
-                          <Button
+                          <Button aria-label="Delete"
                             size="icon"
                             variant="ghost"
                             className="h-6 w-6 text-destructive hover:text-destructive"
@@ -542,12 +503,7 @@ export function HrDisciplinaryPageClient({ authContext }: Props) {
                           </Button>
                         </>
                       )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    </div></>}]} enableRowSelection={false} initialPageSize={25} searchPlaceholder="Search loaded records…"/>
         </div>
       )}
 
@@ -592,6 +548,6 @@ export function HrDisciplinaryPageClient({ authContext }: Props) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </div></QueryReadBoundary>
   );
 }

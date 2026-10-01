@@ -1,6 +1,7 @@
 "use client";
+import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
 
-import { useState, useCallback, useTransition } from "react";
+import { useState, useCallback} from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { FileText } from "lucide-react";

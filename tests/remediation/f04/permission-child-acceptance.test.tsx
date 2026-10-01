@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import '../f05/setup';
+vi.mock('@/components/erp/export/erp-export-menu',()=>({ERPExportMenu:()=>null}));
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { createWorkspaceDraftStore } from '@/lib/workspace/workspace-draft-store';
@@ -21,4 +23,12 @@ it('reverting staged selections produces no pending changes or action',()=>{
 });
 it('independent principal store cannot restore another principal permission draft',()=>{
  const a=mount();fireEvent.click(a.getAllByRole('checkbox')[0]);a.unmount();ctx.store=createWorkspaceDraftStore();const b=mount();expect(b.getAllByRole('checkbox')[0].getAttribute('aria-checked')).toBe('false');expect(b.queryByText('Review changes')).toBeNull();expect(localStorage.length).toBe(0);expect(sessionStorage.length).toBe(0);
+});
+it('view-only and non-global system-role viewers cannot stage grants',()=>{
+ for(const props of [{canManage:false,isSystemRole:false},{canManage:true,isSystemRole:true}]){
+  const ui=render(<RolePermissionsSection roleId={99002} {...props} isGlobalAdmin={false}/>);
+  for(const box of ui.getAllByRole('checkbox'))expect(box.getAttribute('data-disabled')!==null||box.hasAttribute('disabled')).toBe(true);
+  expect(ui.queryByText('Review changes')).toBeNull();ui.unmount();
+ }
+ expect(ctx.save).not.toHaveBeenCalled();
 });

@@ -1,11 +1,12 @@
 "use client";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import type { ColumnDef } from "@tanstack/react-table";
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import type { UserWithRoles, Role, UserRoleAssignment } from "@/types/domain";
@@ -244,6 +245,11 @@ export function UserWorkspaceForm({
   const selectClass =
     "flex h-9 w-full rounded-md border border-input bg-background text-foreground px-3 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40";
 
+  const assignedRoleColumns: ColumnDef<UserRoleAssignment>[] = [
+{accessorKey:"role_name",header:"Role"},{accessorKey:"role_code",header:"Code"},{id:"scope",header:"Scope",accessorFn:role=>formatRoleScopeLabel(role.scope,role.scope_company_name,role.scope_branch_name)},
+{accessorKey:"assigned_at",header:"Assigned",meta:{filter:{type:"date"}},cell:({row})=>format(new Date(row.original.assigned_at),"d MMM yyyy HH:mm")},
+{id:"actions",header:"Actions",enableHiding:false,enableSorting:false,cell:({row})=>isViewing?null:<Button type="button" variant="outline" onClick={()=>setRoleToRemove(row.original)} aria-label={`Remove role ${row.original.role_name}`}>Remove</Button>}];
+
   return (
     <>
       <ERPRecordWorkspaceForm
@@ -418,7 +424,7 @@ export function UserWorkspaceForm({
                   </div>
                   <div className="col-span-6 space-y-1.5">
                     <Label className="text-muted-foreground text-xs">User Code</Label>
-                    <Input value={user?.user_code ?? "Auto-generated"} disabled className="font-mono" />
+                    <Input aria-label="User Code" value={user?.user_code ?? "Auto-generated"} disabled className="font-mono" />
                   </div>
                 </>
               )}
@@ -514,40 +520,7 @@ export function UserWorkspaceForm({
           {mode !== "add" && (
             <ERPRecordSectionPanel id="roles" activeId={activeSection} title="Assigned Roles">
               <div className="space-y-3">
-                {user?.roles && user.roles.length > 0 ? (
-                  <div className="space-y-2">
-                    {user.roles.map((r) => (
-                      <div key={r.user_role_id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-md border border-border bg-muted/30 text-xs">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-medium">{r.role_name}</span>
-                            <Badge variant="outline" className="text-[10px] font-mono">{r.role_code}</Badge>
-                            <Badge variant="secondary" className="text-[10px]">
-                              {formatRoleScopeLabel(r.scope, r.scope_company_name, r.scope_branch_name)}
-                            </Badge>
-                          </div>
-                          <p className="text-[10px] text-muted-foreground mt-1">
-                            Assigned {format(new Date(r.assigned_at), "d MMM yyyy HH:mm")}
-                          </p>
-                        </div>
-                        {!isViewing && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-7 text-xs shrink-0"
-                            onClick={() => setRoleToRemove(r)}
-                            aria-label={`Remove role ${r.role_name}`}
-                          >
-                            Remove
-                          </Button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No roles assigned.</p>
-                )}
+                <ERPDataTable tableId={`user.roles:${user?.id}`} resultsLabel="Assigned roles" data={user?.roles ?? []} columns={assignedRoleColumns} enableRowSelection={false}/>
                 {!isViewing && user && (
                   <Button
                     type="button"

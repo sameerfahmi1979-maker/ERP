@@ -115,11 +115,11 @@ export async function listEmployeeAssignments(
     .select(
       `id, assignment_type, assignment_status, effective_from, effective_to, notes,
        created_at, updated_at,
-       owner_companies(id, name),
-       branches(id, name),
-       departments(id, name_en),
-       designations(id, name_en),
-       work_sites(id, name_en),
+       owner_companies(id, name:legal_name_en),
+       branches(id, name:branch_name_en),
+       departments(id, name_en:department_name_en),
+       designations(id, name_en:designation_name_en),
+       work_sites(id, name_en:site_name),
        reporting_manager:employees!employee_assignments_reporting_manager_id_fkey(id, full_name_en, employee_code),
        supervisor:employees!employee_assignments_supervisor_id_fkey(id, full_name_en, employee_code)`
     )
@@ -147,11 +147,11 @@ export async function getCurrentEmployeeAssignment(employeeId: number): Promise<
     .from("employee_assignments")
     .select(
       `id, assignment_type, assignment_status, effective_from, effective_to, notes,
-       owner_companies(id, name),
-       branches(id, name),
-       departments(id, name_en),
-       designations(id, name_en),
-       work_sites(id, name_en)`
+       owner_companies(id, name:legal_name_en),
+       branches(id, name:branch_name_en),
+       departments(id, name_en:department_name_en),
+       designations(id, name_en:designation_name_en),
+       work_sites(id, name_en:site_name)`
     )
     .eq("employee_id", employeeId)
     .eq("assignment_status", "active")
@@ -183,11 +183,11 @@ export async function listGlobalEmployeeAssignments(params?: {
     .from("employee_assignments")
     .select(
       `id, assignment_type, assignment_status, effective_from, effective_to,
-       employees(id, full_name_en, employee_code),
-       owner_companies(id, name),
-       departments(id, name_en),
-       designations(id, name_en),
-       work_sites(id, name_en)`,
+       employees!employee_assignments_employee_id_fkey(id, full_name_en, employee_code),
+       owner_companies(id, name:legal_name_en),
+       departments(id, name_en:department_name_en),
+       designations(id, name_en:designation_name_en),
+       work_sites(id, name_en:site_name)`,
       { count: "exact" }
     )
     .is("deleted_at", null)
@@ -347,7 +347,7 @@ export async function listEmployeeRoleRequirements(
       `id, requirement_type, requirement_name, is_required, is_met, status,
        expiry_date, waived_at, waiver_reason, met_record_type, met_record_id,
        created_at, updated_at,
-       designations(id, name_en)`
+       designations(id, name_en:designation_name_en)`
     )
     .eq("employee_id", employeeId)
     .is("deleted_at", null)
@@ -582,7 +582,7 @@ export async function listEmployeeSiteReadiness(employeeId: number): Promise<Act
     .from("employee_site_readiness")
     .select(
       `id, readiness_status, checked_at, notes, missing_requirements_json,
-       work_sites(id, name_en),
+       work_sites(id, name_en:site_name),
        hr_access_card_types(id, name_en)`
     )
     .eq("employee_id", employeeId)
@@ -609,7 +609,7 @@ export async function listGlobalSiteReadiness(params?: {
     .select(
       `id, readiness_status, checked_at,
        employees(id, full_name_en, employee_code),
-       work_sites(id, name_en)`,
+       work_sites(id, name_en:site_name)`,
       { count: "exact" }
     )
     .is("deleted_at", null)
@@ -1605,7 +1605,7 @@ export async function getEmployeeOperationsSummary(
     await Promise.all([
       supabase
         .from("employee_assignments")
-        .select(`id, assignment_type, assignment_status, effective_from, effective_to, departments(name_en), designations(name_en), work_sites(name_en)`)
+        .select(`id, assignment_type, assignment_status, effective_from, effective_to, departments(name_en:department_name_en), designations(name_en:designation_name_en), work_sites(name_en:site_name)`)
         .eq("employee_id", employeeId)
         .eq("assignment_status", "active")
         .is("deleted_at", null)
@@ -1643,7 +1643,7 @@ export async function getEmployeeOperationsSummary(
         .maybeSingle(),
       supabase
         .from("employee_site_readiness")
-        .select("id, readiness_status, work_sites(name_en), checked_at")
+        .select("id, readiness_status, work_sites(name_en:site_name), checked_at")
         .eq("employee_id", employeeId)
         .is("deleted_at", null)
         .order("checked_at", { ascending: false }),
@@ -1690,7 +1690,7 @@ export async function getEmployeeReadinessSummary(
       .is("deleted_at", null),
     supabase
       .from("employee_site_readiness")
-      .select("id, readiness_status, work_sites(name_en), checked_at, missing_requirements_json")
+      .select("id, readiness_status, work_sites(name_en:site_name), checked_at, missing_requirements_json")
       .eq("employee_id", employeeId)
       .is("deleted_at", null)
       .order("checked_at", { ascending: false }),

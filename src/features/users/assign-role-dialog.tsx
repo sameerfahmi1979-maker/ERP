@@ -146,7 +146,7 @@ function AssignRoleDialogFields({
 
         <div>
           <RequiredLabel required>Role</RequiredLabel>
-          <ERPCombobox
+          <ERPCombobox ariaLabel="Role"
             value={roleId}
             onValueChange={(v) => {
               setRoleId(v != null ? String(v) : "");
@@ -161,7 +161,7 @@ function AssignRoleDialogFields({
 
         <div>
           <RequiredLabel htmlFor="scope">Scope</RequiredLabel>
-          <ERPCombobox
+          <ERPCombobox ariaLabel="Scope"
             value={selectedScope}
             onValueChange={(v) => {
               // Clearing a required selector must never widen the assignment.
@@ -181,7 +181,7 @@ function AssignRoleDialogFields({
         {selectedScope !== "global" && (
           <div>
             <RequiredLabel required>Organization</RequiredLabel>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Organization"
               value={ownerCompanyId}
               onValueChange={(v) => {
                 setOwnerCompanyId(v != null ? String(v) : "");
@@ -198,7 +198,7 @@ function AssignRoleDialogFields({
         {selectedScope === "branch" && (
           <div>
             <RequiredLabel required>Branch</RequiredLabel>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Branch"
               value={branchId}
               onValueChange={(v) => setBranchId(v != null ? String(v) : "")}
               options={branchOptions}

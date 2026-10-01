@@ -216,6 +216,9 @@ export function ERPCombobox({
             variant="outline"
             role="combobox"
             data-workspace-field={name}
+            data-workspace-required={name && required && !readOnly ? "true" : undefined}
+            data-workspace-empty={value === null || value === undefined || value === "" ? "true" : "false"}
+            aria-required={required || undefined}
             aria-label={ariaLabel ?? name?.replaceAll('_', ' ')}
             aria-expanded={open}
             aria-invalid={!!error}
@@ -305,7 +308,7 @@ export function ERPCombobox({
           size="sm"
           className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6 p-0 hover:bg-transparent"
           onClick={handleClear}
-          tabIndex={-1}
+          aria-label={`Clear ${ariaLabel ?? name?.replaceAll('_', ' ') ?? 'selection'}`}
         >
           <X className="h-3 w-3" />
         </Button>

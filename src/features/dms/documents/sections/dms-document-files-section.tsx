@@ -1,6 +1,10 @@
 "use client";
 
+import { DmsListTools, useDmsListView, type DmsListField } from "@/features/dms/dms-list-view";
+import { ConfiguredRow } from "@/components/erp/table/list-controls";
+
 import { Badge } from "@/components/ui/badge";
+import { DmsLoadError } from "@/features/dms/dms-load-error";
 import { Button } from "@/components/ui/button";
 import { DmsOcrStatusBadge } from "@/features/dms/ocr/dms-ocr-status-badge";
 import { DmsFileIntegrityBadge } from "@/features/dms/upload/dms-file-integrity-badge";
@@ -63,9 +67,10 @@ interface PreviewPanelProps {
   file: DmsDocumentFileRow;
   onClose: () => void;
   onDownload: () => void;
+  canDownload: boolean;
 }
 
-function PreviewPanel({ file, onClose, onDownload }: PreviewPanelProps) {
+function PreviewPanel({ file, onClose, onDownload, canDownload }: PreviewPanelProps) {
   const [imageScale, setImageScale] = useState(1);
   const { data: signedUrl, isPending: loading, error: queryError } = useQuery({
     queryKey: ["dms-file-preview", file.id],
@@ -83,7 +88,7 @@ function PreviewPanel({ file, onClose, onDownload }: PreviewPanelProps) {
   return (
     <div className="border border-border rounded-lg overflow-hidden bg-background flex flex-col">
       {/* ── Preview header ── */}
-      <div className="flex items-center justify-between px-3 py-2 bg-muted/30 border-b border-border gap-2 shrink-0">
+      <div className="flex flex-wrap items-center justify-between px-3 py-2 bg-muted/30 border-b border-border gap-2 shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           <FileTypeIcon mimeType={file.mime_type} />
           <div className="min-w-0">
@@ -97,7 +102,7 @@ function PreviewPanel({ file, onClose, onDownload }: PreviewPanelProps) {
         <div className="flex items-center gap-1 shrink-0">
           {isImage(mime) && signedUrl && (
             <>
-              <Button
+              <Button aria-label="Zoom in"
                 size="icon"
                 variant="ghost"
                 className="h-7 w-7"
@@ -106,7 +111,7 @@ function PreviewPanel({ file, onClose, onDownload }: PreviewPanelProps) {
               >
                 <ZoomIn className="h-3.5 w-3.5" />
               </Button>
-              <Button
+              <Button aria-label="Zoom out"
                 size="icon"
                 variant="ghost"
                 className="h-7 w-7"
@@ -122,7 +127,7 @@ function PreviewPanel({ file, onClose, onDownload }: PreviewPanelProps) {
               )}
             </>
           )}
-          <Button
+          <Button aria-label="Open in new tab"
               size="icon"
               variant="ghost"
               className="h-7 w-7"
@@ -137,10 +142,10 @@ function PreviewPanel({ file, onClose, onDownload }: PreviewPanelProps) {
             >
               <ExternalLink className="h-3.5 w-3.5" />
             </Button>
-          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onDownload} title="Download">
+          {canDownload && <Button aria-label="Download" size="icon" variant="ghost" className="h-7 w-7" onClick={onDownload} title="Download">
             <Download className="h-3.5 w-3.5" />
-          </Button>
-          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onClose} title="Close preview">
+          </Button>}
+          <Button aria-label="Close preview" size="icon" variant="ghost" className="h-7 w-7" onClick={onClose} title="Close preview">
             <X className="h-3.5 w-3.5" />
           </Button>
         </div>
@@ -161,10 +166,10 @@ function PreviewPanel({ file, onClose, onDownload }: PreviewPanelProps) {
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="flex flex-col items-center gap-2 text-muted-foreground text-center px-4">
               <AlertTriangle className="h-6 w-6 text-destructive/60" />
-              <p className="text-xs">{error}</p>
-              <Button size="sm" variant="outline" className="text-xs h-7 mt-1" onClick={onDownload}>
+              <p role="alert" className="text-xs">Preview could not be loaded. Check your connection and access, then reopen the preview.</p>
+              {canDownload && <Button size="sm" variant="outline" className="text-xs h-7 mt-1" onClick={onDownload}>
                 <Download className="h-3 w-3 mr-1" /> Download to view
-              </Button>
+              </Button>}
             </div>
           </div>
         )}
@@ -207,9 +212,9 @@ function PreviewPanel({ file, onClose, onDownload }: PreviewPanelProps) {
                   {getMimeTypeLabel(file.mime_type)} files cannot be previewed in the browser.
                 </p>
               </div>
-              <Button size="sm" variant="outline" className="text-xs h-7" onClick={onDownload}>
+              {canDownload && <Button size="sm" variant="outline" className="text-xs h-7" onClick={onDownload}>
                 <Download className="h-3 w-3 mr-1" /> Download to view
-              </Button>
+              </Button>}
             </div>
           </div>
         )}
@@ -220,19 +225,93 @@ function PreviewPanel({ file, onClose, onDownload }: PreviewPanelProps) {
 
 // ── Main section ──────────────────────────────────────────────────────────────
 
+const DMS_LIST_FIELDS: DmsListField[] = [
+  {
+    "id": "indicator",
+    "label": "Preview indicator",
+    "type": "text",
+    "width": 160
+  },
+  {
+    "id": "file_name",
+    "label": "File",
+    "path": "file_name",
+    "type": "text",
+    "width": 250,
+    "required": true
+  },
+  {
+    "id": "mime_type",
+    "label": "Type",
+    "path": "mime_type",
+    "type": "text",
+    "width": 160
+  },
+  {
+    "id": "file_size_bytes",
+    "label": "Size (bytes)",
+    "path": "file_size_bytes",
+    "type": "number",
+    "width": 160
+  },
+  {
+    "id": "file_role",
+    "label": "Role",
+    "path": "file_role",
+    "type": "text",
+    "width": 160
+  },
+  {
+    "id": "integrity_status",
+    "label": "Integrity",
+    "path": "integrity_status",
+    "type": "text",
+    "width": 160
+  },
+  {
+    "id": "ocr_status",
+    "label": "OCR",
+    "path": "ocr_status",
+    "type": "text",
+    "width": 160
+  },
+  {
+    "id": "version",
+    "label": "Version",
+    "path": "version.version_number",
+    "type": "number",
+    "width": 160
+  },
+  {
+    "id": "created_at",
+    "label": "Uploaded",
+    "path": "created_at",
+    "type": "date",
+    "width": 160
+  },
+  {
+    "id": "actions",
+    "label": "Actions",
+    "type": "text",
+    "width": 160
+  }
+];
+
 export function DmsDocumentFilesSection({
   documentId,
-  canPreview = true,
-  canDownload = true,
+  canPreview = false,
+  canDownload = false,
   canTriggerOcr = false,
   canDeleteFiles = false,
 }: DmsDocumentFilesSectionProps) {
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
-  const [selectedFileId, setSelectedFileId] = useState<number | null>(null);
+  // Undefined selects an initial preview. Null explicitly closes it.
+  const [selectedFileId, setSelectedFileId] = useState<number | null | undefined>(undefined);
+  const [actionError, setActionError] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
-  const { data: files = [], isLoading } = useQuery({
+  const { data: files = [], isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: queryKeys.dms.documentFiles(documentId),
     queryFn: async () => {
       const result = await getDmsDocumentFiles(documentId);
@@ -242,10 +321,13 @@ export function DmsDocumentFilesSection({
     staleTime: 30_000,
   });
 
-  const selectedFile = files.find((f) => f.id === selectedFileId)
-    ?? files.find((f) => isPreviewable(f.mime_type)) ?? files[0] ?? null;
+  const listView = useDmsListView("document-files", files, DMS_LIST_FIELDS);
+  const selectedFile = selectedFileId === undefined
+    ? files.find((f) => isPreviewable(f.mime_type)) ?? files[0] ?? null
+    : files.find((f) => f.id === selectedFileId) ?? null;
 
   const handleDownload = useCallback(async (file: DmsDocumentFileRow) => {
+    if (!canDownload) return;
     const key = `${file.id}-download`;
     setLoadingAction(key);
     try {
@@ -262,20 +344,23 @@ export function DmsDocumentFilesSection({
     } finally {
       setLoadingAction(null);
     }
-  }, []);
+  }, [canDownload]);
 
   const handleRunOcr = async (file: DmsDocumentFileRow) => {
     const key = `${file.id}-ocr`;
+    setActionError(null);
     setLoadingAction(key);
     try {
       const result = await triggerDmsOcrForFile({ fileId: file.id, forceRetry: false });
       if (result.success) {
         toast.success(result.data?.message ?? "OCR triggered successfully");
       } else {
-        toast.error(result.error ?? "Failed to trigger OCR");
+        setActionError("OCR was not started. Check the file status and your access before retrying.");
       }
       invalidateDmsOcr(queryClient, documentId);
       invalidateDmsDocumentFiles(queryClient, documentId);
+    } catch {
+      setActionError("The OCR result could not be confirmed. Check the file status before retrying.");
     } finally {
       setLoadingAction(null);
     }
@@ -287,6 +372,7 @@ export function DmsDocumentFilesSection({
       return;
     }
     const key = `${file.id}-delete`;
+    setActionError(null);
     setConfirmDeleteId(null);
     setLoadingAction(key);
     try {
@@ -305,8 +391,10 @@ export function DmsDocumentFilesSection({
         invalidateDmsOcr(queryClient, documentId);
         void queryClient.invalidateQueries({ queryKey: queryKeys.dms.documentVersions(documentId) });
       } else {
-        toast.error(result.error ?? "Failed to delete file");
+        setActionError("The file was not deleted. Check your access and refresh the file list before retrying.");
       }
+    } catch {
+      setActionError("The deletion result could not be confirmed. Refresh the file list before retrying.");
     } finally {
       setLoadingAction(null);
     }
@@ -319,6 +407,8 @@ export function DmsDocumentFilesSection({
       </div>
     );
   }
+
+  if (isError) return <DmsLoadError subject="document files" retry={refetch} pending={isFetching} />;
 
   if (files.length === 0) {
     return (
@@ -340,25 +430,26 @@ export function DmsDocumentFilesSection({
 
   return (
     <div className="space-y-3">
+      {actionError && <p role="alert" className="rounded-sm border border-destructive/40 p-3 text-sm">{actionError}</p>}
       {/* ── File list table ── */}
-      <div className="rounded-md border border-border overflow-hidden">
-        <table className="w-full text-sm">
+      <><DmsListTools view={listView} search /><div className="rounded-md border border-border overflow-hidden">
+        <div role="region" aria-label="document-files table" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{ minWidth: listView.visible.reduce((sum, column) => sum + column.width, 0) }}><colgroup>{listView.visible.map(column => <col key={column.id} style={{ width: column.width }} />)}</colgroup>
           <thead>
-            <tr className="border-b border-border bg-muted/20">
-              <th className="text-left px-3 py-2 font-medium text-xs text-muted-foreground uppercase tracking-wide w-6" />
-              <th className="text-left px-3 py-2 font-medium text-xs text-muted-foreground uppercase tracking-wide">File</th>
-              <th className="text-left px-3 py-2 font-medium text-xs text-muted-foreground uppercase tracking-wide">Type</th>
-              <th className="text-left px-3 py-2 font-medium text-xs text-muted-foreground uppercase tracking-wide">Size</th>
-              <th className="text-left px-3 py-2 font-medium text-xs text-muted-foreground uppercase tracking-wide">Role</th>
-              <th className="text-left px-3 py-2 font-medium text-xs text-muted-foreground uppercase tracking-wide">Integrity</th>
-              <th className="text-left px-3 py-2 font-medium text-xs text-muted-foreground uppercase tracking-wide">OCR</th>
-              <th className="text-left px-3 py-2 font-medium text-xs text-muted-foreground uppercase tracking-wide">Version</th>
-              <th className="text-left px-3 py-2 font-medium text-xs text-muted-foreground uppercase tracking-wide">Uploaded</th>
-              <th className="px-3 py-2 w-28" />
-            </tr>
+            <ConfiguredRow columns={listView.columns} className="border-b border-border bg-muted/20">
+              <th data-column="indicator" className="text-left px-3 py-2 font-medium text-xs text-muted-foreground uppercase tracking-wide w-6" />
+              <th data-column="file_name" className="text-left px-3 py-2 font-medium text-xs text-muted-foreground uppercase tracking-wide">File</th>
+              <th data-column="mime_type" className="text-left px-3 py-2 font-medium text-xs text-muted-foreground uppercase tracking-wide">Type</th>
+              <th data-column="file_size_bytes" className="text-left px-3 py-2 font-medium text-xs text-muted-foreground uppercase tracking-wide">Size</th>
+              <th data-column="file_role" className="text-left px-3 py-2 font-medium text-xs text-muted-foreground uppercase tracking-wide">Role</th>
+              <th data-column="integrity_status" className="text-left px-3 py-2 font-medium text-xs text-muted-foreground uppercase tracking-wide">Integrity</th>
+              <th data-column="ocr_status" className="text-left px-3 py-2 font-medium text-xs text-muted-foreground uppercase tracking-wide">OCR</th>
+              <th data-column="version" className="text-left px-3 py-2 font-medium text-xs text-muted-foreground uppercase tracking-wide">Version</th>
+              <th data-column="created_at" className="text-left px-3 py-2 font-medium text-xs text-muted-foreground uppercase tracking-wide">Uploaded</th>
+              <th data-column="actions" className="px-3 py-2 w-28" />
+            </ConfiguredRow>
           </thead>
-          <tbody className="divide-y divide-border/50">
-            {files.map((f) => {
+          <tbody className="divide-y divide-border/50">{listView.rows.length === 0 && <tr><td colSpan={listView.visible.length} className="p-4 text-center text-sm text-muted-foreground">No loaded records match your filters.</td></tr>}
+            {listView.rows.map((f) => {
               const canPrev = isPreviewable(f.mime_type);
               const isSelected = selectedFile?.id === f.id;
               const downloadKey = `${f.id}-download`;
@@ -367,7 +458,7 @@ export function DmsDocumentFilesSection({
               const isDeletingThisFile = loadingAction === deleteKey;
 
               return (
-                <tr
+                <ConfiguredRow columns={listView.columns}
                   key={f.id}
                   className={`transition-colors cursor-pointer ${
                     isSelected
@@ -376,10 +467,10 @@ export function DmsDocumentFilesSection({
                       ? "bg-destructive/5"
                       : "hover:bg-muted/20"
                   }`}
-                  onClick={() => setSelectedFileId(isSelected ? null : f.id)}
+                  onClick={() => { if (canPreview) setSelectedFileId(isSelected ? null : f.id); }}
                 >
                   {/* Selection indicator */}
-                  <td className="px-2 py-2 w-6">
+                  <td data-column="indicator" className="px-2 py-2 w-6">
                     {isSelected ? (
                       <ChevronRight className="h-3.5 w-3.5 text-primary" />
                     ) : canPrev ? (
@@ -389,7 +480,7 @@ export function DmsDocumentFilesSection({
                     )}
                   </td>
 
-                  <td className="px-3 py-2">
+                  <td data-column="file_name" className="px-3 py-2">
                     <div className="flex items-center gap-2">
                       <FileTypeIcon mimeType={f.mime_type} />
                       <div className="min-w-0">
@@ -403,23 +494,23 @@ export function DmsDocumentFilesSection({
                     </div>
                   </td>
 
-                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                  <td data-column="mime_type" className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                     <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                       {getMimeTypeLabel(f.mime_type)}
                     </Badge>
                   </td>
 
-                  <td className="px-3 py-2 text-xs text-muted-foreground">
+                  <td data-column="file_size_bytes" className="px-3 py-2 text-xs text-muted-foreground">
                     <FileSize bytes={f.file_size_bytes} />
                   </td>
 
-                  <td className="px-3 py-2">
+                  <td data-column="file_role" className="px-3 py-2">
                     <Badge className="text-[10px] px-1.5 py-0 bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400">
                       {f.file_role}
                     </Badge>
                   </td>
 
-                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                  <td data-column="integrity_status" className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                     <DmsFileIntegrityBadge
                       status={f.integrity_status ?? "pending"}
                       checkedAt={f.integrity_checked_at}
@@ -427,23 +518,23 @@ export function DmsDocumentFilesSection({
                     />
                   </td>
 
-                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                  <td data-column="ocr_status" className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                     <DmsOcrStatusBadge status={f.ocr_status ?? "not_started"} />
                   </td>
 
-                  <td className="px-3 py-2 text-xs text-muted-foreground">
+                  <td data-column="version" className="px-3 py-2 text-xs text-muted-foreground">
                     {f.version ? `v${f.version.version_number}` : "—"}
                   </td>
 
-                  <td className="px-3 py-2 text-xs text-muted-foreground">
+                  <td data-column="created_at" className="px-3 py-2 text-xs text-muted-foreground">
                     {format(parseISO(f.created_at), "dd MMM yyyy")}
                   </td>
 
                   {/* Actions — stop propagation so row click doesn't fire */}
-                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                  <td data-column="actions" className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1">
                       {canPreview && canPrev && (
-                        <Button
+                        <Button aria-label={isSelected ? "Hide preview" : "Preview"}
                           size="icon"
                           variant={isSelected ? "default" : "ghost"}
                           className="h-7 w-7"
@@ -457,7 +548,7 @@ export function DmsDocumentFilesSection({
                       )}
 
                       {canDownload && (
-                        <Button
+                        <Button aria-label="Download"
                           size="icon"
                           variant="ghost"
                           className="h-7 w-7"
@@ -472,7 +563,7 @@ export function DmsDocumentFilesSection({
                       )}
 
                       {canTriggerOcr && (
-                        <Button
+                        <Button aria-label={f.ocr_status === "complete" ? "Re-run OCR" : "Run OCR"}
                           size="icon"
                           variant="ghost"
                           className="h-7 w-7"
@@ -487,7 +578,7 @@ export function DmsDocumentFilesSection({
                       )}
 
                       {canDeleteFiles && !isConfirmingDelete && (
-                        <Button
+                        <Button aria-label="Delete file (admin)"
                           size="icon"
                           variant="ghost"
                           className="h-7 w-7 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
@@ -505,7 +596,7 @@ export function DmsDocumentFilesSection({
                         <span className="flex items-center gap-1">
                           <AlertTriangle className="h-3 w-3 text-destructive shrink-0" />
                           <span className="text-[10px] text-destructive font-medium">Sure?</span>
-                          <Button
+                          <Button aria-label="Confirm delete"
                             size="icon"
                             variant="ghost"
                             className="h-6 w-6 text-destructive hover:bg-destructive/10"
@@ -514,7 +605,7 @@ export function DmsDocumentFilesSection({
                           >
                             <Check className="h-3 w-3" />
                           </Button>
-                          <Button
+                          <Button aria-label="Cancel"
                             size="icon"
                             variant="ghost"
                             className="h-6 w-6"
@@ -527,25 +618,26 @@ export function DmsDocumentFilesSection({
                       )}
                     </div>
                   </td>
-                </tr>
+                </ConfiguredRow>
               );
             })}
           </tbody>
-        </table>
-      </div>
+        </table></div>
+      </div></>
 
       {/* ── Inline preview panel ── */}
       {selectedFile && canPreview && (
         <PreviewPanel
           key={selectedFile.id}
           file={selectedFile}
+          canDownload={canDownload}
           onClose={() => setSelectedFileId(null)}
           onDownload={() => handleDownload(selectedFile)}
         />
       )}
 
       {/* ── Hint when no file selected ── */}
-      {!selectedFile && files.some((f) => isPreviewable(f.mime_type)) && (
+      {!selectedFile && canPreview && files.some((f) => isPreviewable(f.mime_type)) && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
           <FileImage className="h-3.5 w-3.5 shrink-0" />
           <span>Click any file row or the <Eye className="h-3 w-3 inline mx-0.5" /> button to preview it inline.</span>

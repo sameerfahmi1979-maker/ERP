@@ -26,8 +26,10 @@ export function WorkspaceContent({ children, className }: WorkspaceContentProps)
     (isWorkspaceRoute(pathname) && !workspace.state.tabs.some(tab => tab.route.split("?")[0] === pathname)));
   return (
     <main
+      id="erp-main-content"
+      tabIndex={-1}
       className={cn(
-        "flex-1 overflow-auto bg-gray-50/40 dark:bg-slate-950/40 p-6 lg:p-8",
+        "flex-1 min-w-0 min-h-0 overflow-auto bg-background p-3 md:p-6",
         className
       )}
     >

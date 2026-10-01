@@ -20,5 +20,5 @@ export default async function DmsExpiringPage() {
     (hasPermission(ctx, "dms.notifications.manage") &&
       hasPermission(ctx, "notifications.email_queue.manage"));
 
-  return <DmsExpiryDashboardPageClient isAdmin={isAdmin} canBridge={canBridge} />;
+  return <DmsExpiryDashboardPageClient isAdmin={isAdmin} canBridge={canBridge} canRenew={hasPermission(ctx, "dms.renewals.manage") || hasPermission(ctx, "dms.admin")} />;
 }

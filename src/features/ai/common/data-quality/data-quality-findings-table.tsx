@@ -1,9 +1,10 @@
 'use client';
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import { loadedListValue } from "@/components/erp/table/loaded-list-view";
 
 import type { DataQualityFinding } from '@/lib/ai/common/data-quality/types';
 import { DataQualitySeverityBadge } from './data-quality-severity-badge';
 import { DataQualityStatusBadge } from './data-quality-status-badge';
-import { cn } from '@/lib/utils';
 
 interface Props {
   findings: DataQualityFinding[];
@@ -34,50 +35,13 @@ export function DataQualityFindingsTable({ findings, selectedId, onSelect }: Pro
   return (
     <div className="rounded-lg border bg-card overflow-hidden">
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="border-b bg-muted/50">
-            <tr>
-              <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Severity</th>
-              <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Title</th>
-              <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Category</th>
-              <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Entity Type</th>
-              <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Status</th>
-              <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Detected</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {findings.map((finding) => (
-              <tr
-                key={finding.id}
-                onClick={() => onSelect(finding)}
-                className={cn(
-                  'cursor-pointer transition-colors hover:bg-muted/50',
-                  selectedId === finding.id && 'bg-primary/5 border-l-2 border-l-primary'
-                )}
-              >
-                <td className="px-4 py-2.5">
-                  <DataQualitySeverityBadge severity={finding.severity} />
-                </td>
-                <td className="px-4 py-2.5">
-                  <span className="font-medium text-foreground line-clamp-1">{finding.title}</span>
-                  <span className="block text-xs text-muted-foreground font-mono">{finding.rule_code}</span>
-                </td>
-                <td className="px-4 py-2.5 text-xs text-muted-foreground">
-                  {CATEGORY_LABELS[finding.rule_category] ?? finding.rule_category}
-                </td>
-                <td className="px-4 py-2.5 text-xs text-muted-foreground capitalize">
-                  {finding.entity_type.replace('_', ' ')}
-                </td>
-                <td className="px-4 py-2.5">
-                  <DataQualityStatusBadge status={finding.status} />
-                </td>
-                <td className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
-                  {new Date(finding.detected_at).toLocaleDateString()}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable tableId="special.ai.common.data-quality.data-quality-findings-table" data={findings} columns={[{id:"severity",header:"Severity",accessorFn:finding=>loadedListValue(finding,"severity"),meta:{filter:{type:"text"}},enableHiding:false,size:220,cell:({row:{original:finding}})=>{
+return <><DataQualitySeverityBadge severity={finding.severity} /></>;}},{id:"title",header:"Title",accessorFn:finding=>loadedListValue(finding,"title"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:finding}})=>{
+return <><button type="button" aria-pressed={selectedId === finding.id} className="text-left underline underline-offset-2 focus-visible:outline-2" onClick={()=>onSelect(finding)}><span className="font-medium text-foreground line-clamp-1">{finding.title}</span><span className="block text-xs text-muted-foreground font-mono">{finding.rule_code}</span></button></>;}},{id:"rule_category",header:"Category",accessorFn:finding=>loadedListValue(finding,"rule_category"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:finding}})=>{
+return <>{CATEGORY_LABELS[finding.rule_category] ?? finding.rule_category}</>;}},{id:"entity_type",header:"Entity type",accessorFn:finding=>loadedListValue(finding,"entity_type"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:finding}})=>{
+return <>{finding.entity_type.replace('_', ' ')}</>;}},{id:"status",header:"Status",accessorFn:finding=>loadedListValue(finding,"status"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:finding}})=>{
+return <><DataQualityStatusBadge status={finding.status} /></>;}},{id:"detected_at",header:"Detected",accessorFn:finding=>loadedListValue(finding,"detected_at"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:finding}})=>{
+return <>{new Date(finding.detected_at).toLocaleDateString()}</>;}}]} enableRowSelection={false} searchPlaceholder="Search loaded records…" initialPageSize={10} />
       </div>
     </div>
   );

@@ -160,30 +160,30 @@ function DepartmentWorkspaceFormInstance({ department, mode, companies = [] }: P
         <DraftRestoredNotice visible={!isViewing && restoredFromDraft} />
         <ERPRecordSectionPanel id="basic" activeId={activeSection} title="Department Details">
           <div className="grid grid-cols-12 gap-4">
-            <div className="col-span-6 space-y-1.5">
+            <div className="col-span-12 sm:col-span-6 space-y-1.5">
               <RequiredLabel htmlFor="owner_company_id">Organization</RequiredLabel>
               <select id="owner_company_id" name="owner_company_id" value={form.owner_company_id} onChange={e => field("owner_company_id", e.target.value)} required disabled={disabled} className="flex h-9 w-full rounded-md border border-input bg-background text-foreground px-3 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40">
                 <option value="">Select organization...</option>
                 {companies.map(c => <option key={c.id} value={c.id}>{c.legal_name_en} ({c.company_code})</option>)}
               </select>
             </div>
-            <div className="col-span-6 space-y-1.5">
+            <div className="col-span-12 sm:col-span-6 space-y-1.5">
               <RequiredLabel htmlFor="department_code">Department Code</RequiredLabel>
               <Input id="department_code" name="department_code" className="uppercase" value={form.department_code} onChange={e => field("department_code", e.target.value)} disabled={disabled || isEditing || isSubmitting} required maxLength={20} placeholder="e.g., HR, FIN, OPS" />
             </div>
-            <div className="col-span-6 space-y-1.5">
+            <div className="col-span-12 sm:col-span-6 space-y-1.5">
               <RequiredLabel htmlFor="department_name_en">Name (English)</RequiredLabel>
               <Input id="department_name_en" name="department_name_en" value={form.department_name_en} onChange={e => field("department_name_en", e.target.value)} disabled={disabled} required maxLength={200} />
             </div>
-            <div className="col-span-6 space-y-1.5">
+            <div className="col-span-12 sm:col-span-6 space-y-1.5">
               <Label htmlFor="department_name_ar" className="text-muted-foreground text-xs">Name (Arabic)</Label>
               <Input id="department_name_ar" name="department_name_ar" value={form.department_name_ar} onChange={e => field("department_name_ar", e.target.value)} disabled={disabled} dir="rtl" maxLength={200} />
             </div>
-            <div className="col-span-6 space-y-1.5">
+            <div className="col-span-12 sm:col-span-6 space-y-1.5">
               <Label htmlFor="effective_from" className="text-muted-foreground text-xs">Effective From</Label>
               <Input type="date" id="effective_from" name="effective_from" value={form.effective_from} onChange={e => field("effective_from", e.target.value)} disabled={disabled} />
             </div>
-            <div className="col-span-6 space-y-1.5">
+            <div className="col-span-12 sm:col-span-6 space-y-1.5">
               <Label htmlFor="effective_to" className="text-muted-foreground text-xs">Effective To</Label>
               <Input type="date" id="effective_to" name="effective_to" value={form.effective_to} onChange={e => field("effective_to", e.target.value)} disabled={disabled} />
             </div>

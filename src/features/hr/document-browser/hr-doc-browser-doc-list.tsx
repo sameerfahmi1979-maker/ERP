@@ -1,4 +1,5 @@
 "use client";
+import { RecordCollection } from "@/components/erp/table/record-collection";
 
 /**
  * HR.DOC_BROWSER.1 — Column 2: unified document list for the selected entity.
@@ -67,11 +68,13 @@ export function HrDocBrowserDocList({
             No documents linked yet. Link documents from the {entity.type === "employee" ? "employee profile" : "dependent record"}.
           </p>
         ) : (
-          documents.map((doc, index) => {
+          <RecordCollection id={`special.hr-doc-browser-doc-list-${entity.type}-${entity.id}`} rows={documents} fields={[{"id":"title","path":"title","label":"Document"},{"id":"typeNameEn","path":"typeNameEn","label":"Type"},{"id":"source","path":"source","label":"Source"}]} renderRecord={(doc, index) => {
             const isSelected = selectedIndex === index;
             return (
               <button
                 key={`${doc.source}-${doc.id ?? "hr"}-${index}`}
+                type="button"
+                aria-pressed={isSelected}
                 onClick={() => onSelect(index)}
                 className={cn(
                   "w-full text-left px-3 py-2.5 border-l-2 border-b border-b-border/40 transition-colors",
@@ -115,7 +118,7 @@ export function HrDocBrowserDocList({
                 </div>
               </button>
             );
-          })
+          }} />
         )}
       </div>
     </div>

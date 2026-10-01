@@ -1,4 +1,6 @@
 "use client";
+import { RecordCollection } from "@/components/erp/table/record-collection";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -20,7 +22,7 @@ export function HrReadinessPageClient() {
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(0);
 
-  const { data, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.operations.globalReadiness({ status: statusFilter, page }),
     queryFn: () =>
       listGlobalSiteReadiness({
@@ -29,6 +31,7 @@ export function HrReadinessPageClient() {
         offset: page * PAGE_SIZE,
       }),
   });
+  const { data, isLoading } = uiRead1;
 
   const result = data?.success ? data.data : { data: [], count: 0 };
   const records = result.data as Record<string, unknown>[];
@@ -48,7 +51,7 @@ export function HrReadinessPageClient() {
     : records;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <QueryReadBoundary queries={[uiRead1]}><div className="p-6 max-w-7xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
           <ShieldCheck className="h-6 w-6" />
@@ -57,10 +60,10 @@ export function HrReadinessPageClient() {
         <p className="text-muted-foreground mt-1">Employee site readiness status across all work sites</p>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-4">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
+          <Input aria-label="Search by name, code, or site"
             placeholder="Search by name, code, or site..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -89,7 +92,7 @@ export function HrReadinessPageClient() {
         <div className="text-center py-12 text-muted-foreground">No readiness records found</div>
       ) : (
         <div className="rounded-lg border divide-y">
-          {filtered.map((r) => {
+          <RecordCollection id="hr.hr-readiness-page-client.HrReadinessPageClient.filtered" rows={filtered} fields={[{"id":"employees_full_name_en","path":"employees.full_name_en","label":"Full Name En"},{"id":"readiness_status","path":"readiness_status","label":"Readiness Status"}]} renderRecord={(r) => {
             const emp = r.employees as Record<string, unknown> | null;
             const site = r.work_sites as Record<string, unknown> | null;
             const badge = getReadinessStatusBadge(r.readiness_status as string);
@@ -111,18 +114,18 @@ export function HrReadinessPageClient() {
                   <span className="text-xs text-muted-foreground">
                     {r.checked_at ? format(new Date(r.checked_at as string), "dd MMM yyyy") : "—"}
                   </span>
-                  <Link href={`/admin/hr/employees/${(emp as Record<string, unknown>)?.id}`}>
+                  <Link href={`/admin/hr/employees/record/${(emp as Record<string, unknown>)?.id}`}>
                     <Button size="sm" variant="ghost">View</Button>
                   </Link>
                 </div>
               </div>
             );
-          })}
+          }} />
         </div>
       )}
 
       {totalPages > 1 && (
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap gap-2 items-center justify-between">
           <p className="text-sm text-muted-foreground">
             {count} total · Page {page + 1} of {totalPages}
           </p>
@@ -132,6 +135,6 @@ export function HrReadinessPageClient() {
           </div>
         </div>
       )}
-    </div>
+    </div></QueryReadBoundary>
   );
 }

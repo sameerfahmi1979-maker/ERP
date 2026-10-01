@@ -1,4 +1,5 @@
 "use client";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 /**
  * DMS Apply Correction — Propose Correction Drawer
@@ -67,11 +68,7 @@ export function DmsApplyCorrectionDrawer({
   > | null>(null);
 
   // ── Load source ─────────────────────────────────────────────────────────
-  const {
-    data: source,
-    isLoading: sourceLoading,
-    error: sourceError,
-  } = useQuery<CorrectionSourceData | null>({
+  const uiRead1 = useQuery<CorrectionSourceData | null>({
     queryKey: queryKeys.dms.applyCorrectionSource(applyItemId),
     queryFn: async () => {
       const result = await getApplyCorrectionSource(applyItemId);
@@ -82,6 +79,11 @@ export function DmsApplyCorrectionDrawer({
     staleTime: 30_000,
     retry: false,
   });
+ const {
+    data: source,
+    isLoading: sourceLoading,
+    error: sourceError,
+  } = uiRead1;
 
   // ── Handle propose ──────────────────────────────────────────────────────
   const handlePropose = async () => {
@@ -143,7 +145,7 @@ export function DmsApplyCorrectionDrawer({
   // ── Render loading ───────────────────────────────────────────────────────
   if (sourceLoading) {
     return (
-      <ERPChildDialogForm
+      <QueryReadBoundary queries={[uiRead1]}><ERPChildDialogForm
         open={open}
         onOpenChange={onOpenChange}
         title="Propose Correction"
@@ -156,14 +158,14 @@ export function DmsApplyCorrectionDrawer({
           <Loader2 className="h-5 w-5 animate-spin" />
           <span>Loading correction source…</span>
         </div>
-      </ERPChildDialogForm>
+      </ERPChildDialogForm></QueryReadBoundary>
     );
   }
 
   // ── Render error ─────────────────────────────────────────────────────────
   if (sourceError || !source) {
     return (
-      <ERPChildDialogForm
+      <QueryReadBoundary queries={[uiRead1]}><ERPChildDialogForm
         open={open}
         onOpenChange={onOpenChange}
         title="Propose Correction"
@@ -178,12 +180,12 @@ export function DmsApplyCorrectionDrawer({
             ? sourceError.message
             : "Could not load correction source. The apply item may not be applicable."}
         </div>
-      </ERPChildDialogForm>
+      </ERPChildDialogForm></QueryReadBoundary>
     );
   }
 
   return (
-    <>
+    <QueryReadBoundary queries={[uiRead1]}><>
       <ERPChildDialogForm
         open={open && !confirmProposal}
         onOpenChange={(o) => { if (!o) handleCancel(); }}
@@ -239,6 +241,6 @@ export function DmsApplyCorrectionDrawer({
           }}
         />
       )}
-    </>
+    </></QueryReadBoundary>
   );
 }

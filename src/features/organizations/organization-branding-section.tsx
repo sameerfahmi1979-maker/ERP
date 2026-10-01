@@ -66,13 +66,18 @@ export function OrganizationBrandingSection({
 }: OrganizationBrandingSectionProps) {
   const { openTab } = useWorkspace();
   const [profile, setProfile] = useState<OrgBrandingProfileSummary | null | undefined>(undefined);
+  const [loadError, setLoadError] = useState(false);
   const [isLoading, startLoadTransition] = useTransition();
   const [isEnsuring, startEnsureTransition] = useTransition();
 
   const loadProfile = useCallback(() => {
     startLoadTransition(async () => {
-      const result = await getOrganizationBrandingProfile(companyId);
-      setProfile(result.success ? result.data ?? null : null);
+      setLoadError(false);
+      try {
+        const result = await getOrganizationBrandingProfile(companyId);
+        if (!result.success) { setLoadError(true); return; }
+        setProfile(result.data ?? null);
+      } catch { setLoadError(true); }
     });
   }, [companyId]);
 
@@ -111,6 +116,8 @@ export function OrganizationBrandingSection({
       </p>
     );
   }
+
+  if (loadError && !isLoading) return <div role="alert" className="rounded border p-4"><p>Branding information could not be loaded. This does not mean a profile is missing.</p><Button type="button" variant="outline" onClick={loadProfile}>Try again</Button></div>;
 
   if (profile === undefined || isLoading) {
     return (

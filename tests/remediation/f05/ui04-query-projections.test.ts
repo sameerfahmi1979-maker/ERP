@@ -1,0 +1,16 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+const m=vi.hoisted(()=>({allowed:true,select:vi.fn(),eq:vi.fn(),from:vi.fn()}));
+vi.mock('server-only',()=>({}));
+vi.mock('@/lib/rbac/check',()=>({getAuthContext:async()=>({profile:{id:844}}),hasPermission:()=>m.allowed}));
+vi.mock('@/server/actions/audit',()=>({logAudit:vi.fn()}));
+vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
+vi.mock('@/server/actions/hr/_shared/employee-context',()=>({getEmployeeCtx:vi.fn()}));
+vi.mock('@/lib/supabase/server',()=>({createClient:async()=>({from:m.from})}));
+import {listEmployeeAssignments,getCurrentEmployeeAssignment,listGlobalEmployeeAssignments,listEmployeeSiteReadiness,listGlobalSiteReadiness} from '@/server/actions/hr/operations';
+import {listEmployeeApprovalRequests,listGlobalApprovalRequests} from '@/server/actions/hr/actions';
+beforeEach(()=>{vi.clearAllMocks();m.allowed=true;const chain:Record<string,unknown>={then:(resolve:(x:unknown)=>unknown)=>Promise.resolve({data:[],error:null,count:0}).then(resolve)};for(const key of ['select','eq','is','order','limit','range','lte','or','maybeSingle'])chain[key]=(...args:unknown[])=>{if(key==='select')m.select(...args);if(key==='eq')m.eq(...args);return chain;};m.from.mockReturnValue(chain);});
+it.each([listEmployeeAssignments,getCurrentEmployeeAssignment])('employee assignment reads use schema-correct aliases and employee scope',async run=>{expect((await run(8998)).success).toBe(true);const sql=m.select.mock.calls[0][0];for(const field of ['name:legal_name_en','name:branch_name_en','name_en:department_name_en','name_en:designation_name_en','name_en:site_name'])expect(sql).toContain(field);expect(m.eq).toHaveBeenCalledWith('employee_id',8998);});
+it('global assignment projection keeps presentation aliases without changing row authorization',async()=>{await listGlobalEmployeeAssignments();expect(m.select.mock.calls[0][0]).toContain('owner_companies(id, name:legal_name_en)');expect(m.select.mock.calls[0][0]).toContain('departments(id, name_en:department_name_en)');});
+it.each([()=>listEmployeeSiteReadiness(8998),()=>listGlobalSiteReadiness()])('site readiness uses site_name through its existing UI alias',async run=>{await run();expect(m.select.mock.calls[0][0]).toContain('work_sites(id, name_en:site_name)');});
+it.each([()=>listEmployeeApprovalRequests(8998),()=>listGlobalApprovalRequests()])('approval role label uses role_name through its existing UI alias',async run=>{await run();expect(m.select.mock.calls[0][0]).toContain('approval_role:approval_roles(name:role_name)');});
+it('denied HR reads never construct a database query',async()=>{m.allowed=false;expect((await listGlobalEmployeeAssignments()).success).toBe(false);expect((await listEmployeeSiteReadiness(8998)).success).toBe(false);await expect(listGlobalApprovalRequests()).rejects.toThrow('No permission');expect(m.from).not.toHaveBeenCalled();});

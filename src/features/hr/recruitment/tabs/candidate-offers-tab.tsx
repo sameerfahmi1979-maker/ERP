@@ -1,4 +1,7 @@
 "use client";
+import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
+import { RecordCollection } from "@/components/erp/table/record-collection";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { ERPCombobox } from "@/components/erp/combobox";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
@@ -14,7 +17,7 @@ import type { OfferRow } from "@/server/actions/hr/recruitment";
 import { archiveOffer, changeOfferStatus, createOffer, listCandidateOffers, updateOffer } from "@/server/actions/hr/recruitment";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle, Gift, Pencil, Plus, Trash2, XCircle } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useState} from "react";
 import { toast } from "sonner";
 
 type Props = {
@@ -83,11 +86,12 @@ export function CandidateOffersTab({ candidateId, canManage, authContext, defaul
   const salaryAllowed=(code:string)=>salaryCompany===null?hasGlobalPermission(authContext,code):hasPermissionInScope(authContext,code,salaryCompany,salaryBranch);
   const canManageSalary=salaryAllowed('hr.payroll.view')&&salaryAllowed('hr.payroll.manage');
 
-  const { data: res, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.recruitment.candidateOffers(candidateId),
     queryFn: () => listCandidateOffers(candidateId),
     staleTime: 30_000,
   });
+  const { data: res, isLoading } = uiRead1;
   const offers = Array.isArray(res?.data) ? res.data : [];
 
   function openAdd() {
@@ -174,7 +178,7 @@ export function CandidateOffersTab({ candidateId, canManage, authContext, defaul
   }
 
   return (
-    <div className="p-6">
+    <QueryReadBoundary queries={[uiRead1]}><div className="p-6">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Offers</h3>
         {canManage && (
@@ -193,7 +197,7 @@ export function CandidateOffersTab({ candidateId, canManage, authContext, defaul
         </div>
       ) : (
         <div className="divide-y border rounded-lg">
-          {offers.map((offer) => (
+          <RecordCollection id="hr.candidate-offers-tab.CandidateOffersTab.offers" rows={offers} fields={[{"id":"offer_status","path":"offer_status","label":"Offer Status"},{"id":"proposed_joining_date","path":"proposed_joining_date","label":"Proposed Joining Date"},{"id":"valid_until","path":"valid_until","label":"Valid Until"}]} renderRecord={(offer) => (
             <div key={offer.id} className="flex items-center gap-3 p-3">
               <Gift className="h-4 w-4 text-slate-400 flex-shrink-0" />
               <div className="flex-1 min-w-0">
@@ -213,19 +217,19 @@ export function CandidateOffersTab({ candidateId, canManage, authContext, defaul
                 <div className="flex gap-1">
                   {offer.offer_status === "sent" && (
                     <>
-                      <Button size="sm" variant="ghost" onClick={() => handleStatusChange(offer.id, "accepted")} disabled={isPending} title="Accept"><CheckCircle className="h-4 w-4 text-green-600" /></Button>
-                      <Button size="sm" variant="ghost" onClick={() => handleStatusChange(offer.id, "rejected")} disabled={isPending} title="Reject"><XCircle className="h-4 w-4 text-red-500" /></Button>
+                      <Button aria-label="Accept" size="sm" variant="ghost" onClick={() => handleStatusChange(offer.id, "accepted")} disabled={isPending} title="Accept"><CheckCircle className="h-4 w-4 text-green-600" /></Button>
+                      <Button aria-label="Reject" size="sm" variant="ghost" onClick={() => handleStatusChange(offer.id, "rejected")} disabled={isPending} title="Reject"><XCircle className="h-4 w-4 text-red-500" /></Button>
                     </>
                   )}
                   {["draft", "pending_approval", "approved"].includes(offer.offer_status) && (
-                    <Button size="sm" variant="ghost" onClick={() => handleStatusChange(offer.id, "sent")} disabled={isPending} title="Mark Sent" className="text-xs px-2">Send</Button>
+                    <Button aria-label="Mark Sent" size="sm" variant="ghost" onClick={() => handleStatusChange(offer.id, "sent")} disabled={isPending} title="Mark Sent" className="text-xs px-2">Send</Button>
                   )}
-                  <Button size="sm" variant="ghost" onClick={() => openEdit(offer)}><Pencil className="h-4 w-4" /></Button>
-                  <Button size="sm" variant="ghost" onClick={() => handleArchive(offer.id)} disabled={isPending}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                  <Button aria-label="Edit record" size="sm" variant="ghost" onClick={() => openEdit(offer)}><Pencil className="h-4 w-4" /></Button>
+                  <Button aria-label="Archive record" size="sm" variant="ghost" onClick={() => handleArchive(offer.id)} disabled={isPending}><Trash2 className="h-4 w-4 text-red-500" /></Button>
                 </div>
               )}
             </div>
-          ))}
+          )} />
         </div>
       )}
 
@@ -243,38 +247,38 @@ export function CandidateOffersTab({ candidateId, canManage, authContext, defaul
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12 md:col-span-6">
             <Label>Offer Status</Label>
-            <ERPCombobox value={form.offer_status || null} onValueChange={(v) => set("offer_status", String(v ?? "draft"))} options={STATUS_OPTIONS} placeholder="Select status" />
+            <ERPCombobox ariaLabel="Offer Status" value={form.offer_status || null} onValueChange={(v) => set("offer_status", String(v ?? "draft"))} options={STATUS_OPTIONS} placeholder="Select status" />
           </div>
           <div className="col-span-12 md:col-span-3">
             <Label>Offer Date</Label>
-            <Input type="date" value={form.offer_date} onChange={(e) => set("offer_date", e.target.value)} />
+            <Input aria-label="Offer Date" type="date" value={form.offer_date} onChange={(e) => set("offer_date", e.target.value)} />
           </div>
           <div className="col-span-12 md:col-span-3">
             <Label>Valid Until</Label>
-            <Input type="date" value={form.valid_until} onChange={(e) => set("valid_until", e.target.value)} />
+            <Input aria-label="Valid Until" type="date" value={form.valid_until} onChange={(e) => set("valid_until", e.target.value)} />
           </div>
           <div className="col-span-12 md:col-span-4">
             <Label>Proposed Joining Date</Label>
-            <Input type="date" value={form.proposed_joining_date} onChange={(e) => set("proposed_joining_date", e.target.value)} />
+            <Input aria-label="Proposed Joining Date" type="date" value={form.proposed_joining_date} onChange={(e) => set("proposed_joining_date", e.target.value)} />
           </div>
           <div className="col-span-12 md:col-span-3">
             <Label>Basic Salary</Label>
-            <Input type="number" min={0} value={form.basic_salary} onChange={(e) => set("basic_salary", e.target.value)} disabled={!canManageSalary} placeholder={canManageSalary?"0.00":"Salary access restricted"} />
+            <Input aria-label="Basic Salary" type="number" min={0} value={form.basic_salary} onChange={(e) => set("basic_salary", e.target.value)} disabled={!canManageSalary} placeholder={canManageSalary?"0.00":"Salary access restricted"} />
           </div>
           <div className="col-span-12 md:col-span-3">
             <Label>Gross Salary</Label>
-            <Input type="number" min={0} value={form.gross_salary} onChange={(e) => set("gross_salary", e.target.value)} disabled={!canManageSalary} placeholder={canManageSalary?"0.00":"Salary access restricted"} />
+            <Input aria-label="Gross Salary" type="number" min={0} value={form.gross_salary} onChange={(e) => set("gross_salary", e.target.value)} disabled={!canManageSalary} placeholder={canManageSalary?"0.00":"Salary access restricted"} />
           </div>
           <div className="col-span-12 md:col-span-2">
             <Label>Currency</Label>
-            <Input value={form.currency} onChange={(e) => set("currency", e.target.value)} placeholder="AED" />
+            <Input aria-label="Currency" value={form.currency} onChange={(e) => set("currency", e.target.value)} placeholder="AED" />
           </div>
           <div className="col-span-12">
             <Label>Notes</Label>
-            <Textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} rows={3} placeholder="Offer notes..." />
+            <Textarea aria-label="Notes" value={form.notes} onChange={(e) => set("notes", e.target.value)} rows={3} placeholder="Offer notes..." />
           </div>
         </div>
       </ERPChildDialogForm>
-    </div>
+    </div></QueryReadBoundary>
   );
 }

@@ -1,4 +1,5 @@
 "use client";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 /**
  * DMS 12.3 — DmsDocumentIntelligenceSection
@@ -88,11 +89,7 @@ export function DmsDocumentIntelligenceSection({
   const queryClient = useQueryClient();
   const [running, setRunning] = useState<"completeness" | "risk" | "both" | null>(null);
 
-  const {
-    data: completenessRow,
-    isLoading: completenessLoading,
-    refetch: refetchCompleteness,
-  } = useQuery<DocumentCompletenessRow | null>({
+  const uiRead1 = useQuery<DocumentCompletenessRow | null>({
     queryKey: queryKeys.dms.documentIntelligence(documentId, "completeness"),
     queryFn: async () => {
       const r = await getDmsDocumentCompletenessStatus(documentId);
@@ -102,12 +99,13 @@ export function DmsDocumentIntelligenceSection({
     staleTime: 30_000,
     retry: false,
   });
+ const {
+    data: completenessRow,
+    isLoading: completenessLoading,
+    refetch: refetchCompleteness,
+  } = uiRead1;
 
-  const {
-    data: riskRow,
-    isLoading: riskLoading,
-    refetch: refetchRisk,
-  } = useQuery<DocumentRiskRow | null>({
+  const uiRead2 = useQuery<DocumentRiskRow | null>({
     queryKey: queryKeys.dms.documentIntelligence(documentId, "risk"),
     queryFn: async () => {
       const r = await getDmsDocumentRiskStatus(documentId);
@@ -117,6 +115,11 @@ export function DmsDocumentIntelligenceSection({
     staleTime: 30_000,
     retry: false,
   });
+ const {
+    data: riskRow,
+    isLoading: riskLoading,
+    refetch: refetchRisk,
+  } = uiRead2;
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
 
@@ -175,7 +178,7 @@ export function DmsDocumentIntelligenceSection({
 
     return (
       <div className="rounded-md border bg-card p-4 space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm font-semibold">Completeness</span>
@@ -252,7 +255,7 @@ export function DmsDocumentIntelligenceSection({
 
     return (
       <div className="rounded-md border bg-card p-4 space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <ShieldAlert className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm font-semibold">Risk</span>
@@ -333,10 +336,10 @@ export function DmsDocumentIntelligenceSection({
   // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-4 p-1">
+    <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="space-y-4 p-1">
       {/* Combined action */}
       {canEvaluate && (
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground">
             Evaluate completeness and risk from document structure and metadata.
           </p>
@@ -370,6 +373,6 @@ export function DmsDocumentIntelligenceSection({
           Re-evaluate after making changes.
         </span>
       </div>
-    </div>
+    </div></QueryReadBoundary>
   );
 }

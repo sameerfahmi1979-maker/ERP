@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
@@ -19,13 +18,19 @@ interface AiProviderSecretDialogProps {
   onSaved: () => void;
 }
 
-export function AiProviderSecretDialog({
+export function AiProviderSecretDialog(props: AiProviderSecretDialogProps) {
+  return props.open ? <SecretSession key={props.config.id} {...props} /> : null;
+}
+
+function SecretSession({
   open,
   config,
   onClose,
   onSaved,
 }: AiProviderSecretDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [uncertain, setUncertain] = useState(false);
   const [showKey, setShowKey] = useState(false);
   const suggestedRef = ENV_VAR_SUGGESTIONS[config.providerType] ?? "PROVIDER_API_KEY";
 
@@ -45,8 +50,9 @@ export function AiProviderSecretDialog({
   };
 
   const handleSubmit = async () => {
-    if (!validate()) return;
+    if (isSubmitting || uncertain || !validate()) return;
     setIsSubmitting(true);
+    setSaveError(null);
     try {
       const result = await saveAiProviderSecret({
         id: config.id,
@@ -58,8 +64,11 @@ export function AiProviderSecretDialog({
         setSecretValue("");
         onSaved();
       } else {
-        toast.error(result.error ?? "Failed to save API key");
+        setSaveError("The key update was not accepted. Check your permissions and the deployment secret policy before retrying.");
       }
+    } catch {
+      setUncertain(true);
+      setSaveError("The key update could not be confirmed. Check the provider status before submitting again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -75,10 +84,12 @@ export function AiProviderSecretDialog({
       mode="edit"
       size="sm"
       isSubmitting={isSubmitting}
+      submitDisabled={uncertain}
       onCancel={onClose}
       onSubmit={handleSubmit}
       submitLabel="Save Key Reference"
     >
+      {saveError && <div role="alert" className="rounded-sm border border-destructive p-3 text-sm text-destructive">{saveError}</div>}
       <div className="flex flex-col gap-4 py-2">
         {config.maskedSecretPreview && (
           <div className="rounded-md bg-muted px-3 py-2 text-sm">
@@ -101,7 +112,7 @@ export function AiProviderSecretDialog({
           <Label htmlFor="secret_ref">
             Environment Variable Name <span className="text-destructive">*</span>
           </Label>
-          <Input
+          <Input required
             id="secret_ref"
             value={secretRef}
             onChange={(e) => {
@@ -125,6 +136,9 @@ export function AiProviderSecretDialog({
           <div className="relative">
             <Input
               id="secret_value"
+              required
+              maxLength={500}
+              pattern="(?!https?://).*"
               type={showKey ? "text" : "password"}
               value={secretValue}
               onChange={(e) => {
@@ -139,7 +153,8 @@ export function AiProviderSecretDialog({
               type="button"
               className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               onClick={() => setShowKey((v) => !v)}
-              tabIndex={-1}
+              aria-label={showKey ? "Hide API key" : "Show API key"}
+              aria-pressed={showKey}
             >
               {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>

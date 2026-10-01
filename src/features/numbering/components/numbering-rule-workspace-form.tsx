@@ -276,11 +276,11 @@ export function NumberingRuleWorkspaceForm({ rule, mode }: NumberingRuleWorkspac
               <>
                 <div className="space-y-2 col-span-6">
                   <Label className="text-muted-foreground text-xs">Current Sequence</Label>
-                  <Input value={rule.current_sequence_number ?? 0} disabled className="font-mono font-bold" />
+                  <Input aria-label="Current Sequence" value={rule.current_sequence_number ?? 0} disabled className="font-mono font-bold" />
                 </div>
                 <div className="space-y-2 col-span-6">
                   <Label className="text-muted-foreground text-xs">Next Sequence</Label>
-                  <Input value={rule.next_sequence_number ?? 1} disabled className="font-mono font-bold" />
+                  <Input aria-label="Next Sequence" value={rule.next_sequence_number ?? 1} disabled className="font-mono font-bold" />
                 </div>
               </>
             )}
@@ -325,19 +325,19 @@ export function NumberingRuleWorkspaceForm({ rule, mode }: NumberingRuleWorkspac
             <div className="grid grid-cols-12 gap-4">
               <div className="space-y-2 col-span-6">
                 <Label className="text-muted-foreground text-xs">Created At</Label>
-                <Input value={new Date(rule.created_at).toLocaleString()} disabled className="text-xs" />
+                <Input aria-label="Created At" value={new Date(rule.created_at).toLocaleString()} disabled className="text-xs" />
               </div>
               <div className="space-y-2 col-span-6">
                 <Label className="text-muted-foreground text-xs">Updated At</Label>
-                <Input value={new Date(rule.updated_at).toLocaleString()} disabled className="text-xs" />
+                <Input aria-label="Updated At" value={new Date(rule.updated_at).toLocaleString()} disabled className="text-xs" />
               </div>
               <div className="space-y-2 col-span-6">
                 <Label className="text-muted-foreground text-xs">Created By</Label>
-                <Input value={rule.created_by ?? "—"} disabled className="text-xs" />
+                <Input aria-label="Created By" value={rule.created_by ?? "—"} disabled className="text-xs" />
               </div>
               <div className="space-y-2 col-span-6">
                 <Label className="text-muted-foreground text-xs">Updated By</Label>
-                <Input value={rule.updated_by ?? "—"} disabled className="text-xs" />
+                <Input aria-label="Updated By" value={rule.updated_by ?? "—"} disabled className="text-xs" />
               </div>
             </div>
           ) : (

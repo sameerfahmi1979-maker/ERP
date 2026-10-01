@@ -1,5 +1,7 @@
 "use client";
 
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import type { ColumnDef } from "@tanstack/react-table";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -118,6 +120,31 @@ export function ServiceCategoriesAdminTable({ rows, authContext }: Props) {
     router.refresh();
   };
 
+  const columns: ColumnDef<ServiceCategoryAdminRow>[] = [
+    {accessorKey:"category_code",header:"Code",cell:({row:tableRow})=>{const row=tableRow.original;return <>{row.category_code}</>; }},
+    {accessorKey:"category_name_en",header:"Name",cell:({row:tableRow})=>{const row=tableRow.original;return <>
+                  <div>{row.category_name_en}</div>
+                  {row.category_name_ar && <div className="text-xs text-muted-foreground">{row.category_name_ar}</div>}
+                </>; }},
+    {accessorKey:"parent_name",header:"Parent",cell:({row:tableRow})=>{const row=tableRow.original;return <>{row.parent_name ?? "—"}</>; }},
+    {accessorKey:"is_active",header:"Status",cell:({row:tableRow})=>{const row=tableRow.original;return <>
+                  <Badge className={row.is_active ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"}>
+                    {row.is_active ? "Active" : "Inactive"}
+                  </Badge>
+                </>; }},
+    {accessorKey:"sort_order",header:"Order",cell:({row:tableRow})=>{const row=tableRow.original;return <>{row.sort_order}</>; }},
+    ...(canManage ? [{id:"actions",header:"Actions",enableSorting:false,cell:({row:tableRow})=>{const row=tableRow.original;return <>
+                    <div className="flex items-center gap-1 justify-end">
+                      <Button aria-label="Edit record" size="icon" variant="ghost" onClick={() => openEdit(row)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button aria-label={row.is_active ? "Deactivate record" : "Activate record"} size="icon" variant="ghost" onClick={() => handleToggle(row)}>
+                        <Power className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </>;}} satisfies ColumnDef<ServiceCategoryAdminRow>] : []),
+  ];
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -134,48 +161,7 @@ export function ServiceCategoriesAdminTable({ rows, authContext }: Props) {
       </div>
 
       <div className="rounded-md border">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50">
-            <tr>
-              <th className="text-left p-3 font-medium">Code</th>
-              <th className="text-left p-3 font-medium">Name</th>
-              <th className="text-left p-3 font-medium">Parent</th>
-              <th className="text-center p-3 font-medium">Status</th>
-              <th className="text-center p-3 font-medium">Order</th>
-              {canManage && <th className="p-3" />}
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {rows.map((row) => (
-              <tr key={row.id} className="hover:bg-muted/25">
-                <td className="p-3 font-mono text-xs font-medium">{row.category_code}</td>
-                <td className="p-3">
-                  <div>{row.category_name_en}</div>
-                  {row.category_name_ar && <div className="text-xs text-muted-foreground">{row.category_name_ar}</div>}
-                </td>
-                <td className="p-3 text-muted-foreground">{row.parent_name ?? "—"}</td>
-                <td className="p-3 text-center">
-                  <Badge className={row.is_active ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"}>
-                    {row.is_active ? "Active" : "Inactive"}
-                  </Badge>
-                </td>
-                <td className="p-3 text-center text-muted-foreground">{row.sort_order}</td>
-                {canManage && (
-                  <td className="p-3">
-                    <div className="flex items-center gap-1 justify-end">
-                      <Button size="icon" variant="ghost" onClick={() => openEdit(row)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button size="icon" variant="ghost" onClick={() => handleToggle(row)}>
-                        <Power className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <ERPDataTable tableId="admin.service-categories" resultsLabel="service categories" data={rows} columns={columns} enableRowSelection={false} />
       </div>
 
       <ERPChildDialogForm
@@ -193,7 +179,7 @@ export function ServiceCategoriesAdminTable({ rows, authContext }: Props) {
           <div className="col-span-6">
             <RequiredLabel required>Code</RequiredLabel>
             <Input
-              value={form.category_code}
+              required aria-label="Code" name="category_code" value={form.category_code}
               onChange={(e) => setForm((f) => ({ ...f, category_code: e.target.value.toUpperCase() }))}
               placeholder="e.g. CIVIL_WORKS"
               disabled={!!editing}
@@ -202,19 +188,19 @@ export function ServiceCategoriesAdminTable({ rows, authContext }: Props) {
           </div>
           <div className="col-span-6">
             <Label>Sort Order</Label>
-            <Input type="number" value={form.sort_order} onChange={(e) => setForm((f) => ({ ...f, sort_order: parseInt(e.target.value) || 0 }))} />
+            <Input aria-label="Sort Order" type="number" value={form.sort_order} onChange={(e) => setForm((f) => ({ ...f, sort_order: parseInt(e.target.value) || 0 }))} />
           </div>
           <div className="col-span-6">
             <RequiredLabel required>Name (English)</RequiredLabel>
-            <Input value={form.category_name_en} onChange={(e) => setForm((f) => ({ ...f, category_name_en: e.target.value }))} />
+            <Input required aria-label="Name" name="category_name_en" value={form.category_name_en} onChange={(e) => setForm((f) => ({ ...f, category_name_en: e.target.value }))} />
           </div>
           <div className="col-span-6">
             <Label>Name (Arabic)</Label>
-            <Input value={form.category_name_ar} onChange={(e) => setForm((f) => ({ ...f, category_name_ar: e.target.value }))} dir="rtl" />
+            <Input aria-label="Name (Arabic)" value={form.category_name_ar} onChange={(e) => setForm((f) => ({ ...f, category_name_ar: e.target.value }))} dir="rtl" />
           </div>
           <div className="col-span-12">
             <Label>Parent Category</Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Parent Category"
               value={form.parent_category_id}
               onValueChange={(v) => setForm((f) => ({ ...f, parent_category_id: v !== null ? Number(v) : null }))}
               options={parentOptions}
@@ -225,7 +211,7 @@ export function ServiceCategoriesAdminTable({ rows, authContext }: Props) {
           </div>
           <div className="col-span-12">
             <Label>Description</Label>
-            <Textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={2} />
+            <Textarea aria-label="Description" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={2} />
           </div>
           <div className="col-span-6 flex items-center gap-3">
             <Switch checked={form.is_active} onCheckedChange={(v) => setForm((f) => ({ ...f, is_active: v }))} />

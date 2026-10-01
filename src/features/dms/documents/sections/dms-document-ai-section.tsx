@@ -1,4 +1,7 @@
 "use client";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import { loadedListValue } from "@/components/erp/table/loaded-list-view";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 /**
  * DMS.10 / Phase 6 — DmsDocumentAiSection
@@ -100,7 +103,7 @@ export function DmsDocumentAiSection({
 }: DmsDocumentAiSectionProps) {
   const queryClient = useQueryClient();
 
-  const { data: correctionAccess } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: ["dms", "apply-correction-access"],
     queryFn: async () => {
       const r = await getApplyCorrectionAccess();
@@ -109,11 +112,12 @@ export function DmsDocumentAiSection({
     staleTime: 60_000,
     enabled: canProposeCorrection,
   });
+ const { data: correctionAccess } = uiRead1;
   const correctionEnabled = canProposeCorrection && (correctionAccess?.proposalsEnabled ?? false);
   const [running, setRunning] = useState(false);
   const [expandedResult, setExpandedResult] = useState<number | null>(null);
 
-  const { data: aiStatus, isLoading: statusLoading } = useQuery({
+  const uiRead2 = useQuery({
     queryKey: queryKeys.dms.documentAiStatus(documentId),
     queryFn: async () => {
       const r = await getDmsAiAnalysisStatus(documentId);
@@ -122,8 +126,9 @@ export function DmsDocumentAiSection({
     },
     staleTime: 15_000,
   });
+ const { data: aiStatus, isLoading: statusLoading } = uiRead2;
 
-  const { data: results = [], isLoading: resultsLoading } = useQuery({
+  const uiRead3 = useQuery({
     queryKey: queryKeys.dms.documentAiResults(documentId),
     queryFn: async () => {
       const r = await getDmsAiExtractionResults(documentId);
@@ -133,6 +138,7 @@ export function DmsDocumentAiSection({
     enabled: canView,
     staleTime: 15_000,
   });
+ const { data: results = [], isLoading: resultsLoading } = uiRead3;
 
   const handleRunAnalysis = async () => {
     setRunning(true);
@@ -179,9 +185,9 @@ export function DmsDocumentAiSection({
 
   if (statusLoading || resultsLoading) {
     return (
-      <div className="py-8 flex items-center justify-center text-sm text-muted-foreground">
+      <QueryReadBoundary queries={[uiRead1,uiRead2,uiRead3]}><div className="py-8 flex items-center justify-center text-sm text-muted-foreground">
         Loading AI analysis…
-      </div>
+      </div></QueryReadBoundary>
     );
   }
 
@@ -189,9 +195,9 @@ export function DmsDocumentAiSection({
   const hasPendingJob = (aiStatus?.pending_jobs ?? 0) > 0;
 
   return (
-    <div className="space-y-5">
+    <QueryReadBoundary queries={[uiRead1,uiRead2,uiRead3]}><div className="space-y-5">
       {/* ── Header bar ── */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-3">
           <div>
             <p className="text-xs text-muted-foreground">AI Analysis Status</p>
@@ -291,7 +297,7 @@ export function DmsDocumentAiSection({
         className="pt-2 border-t border-border/50"
         correctionEnabled={correctionEnabled}
       />
-    </div>
+    </div></QueryReadBoundary>
   );
 }
 
@@ -493,33 +499,11 @@ function AiResultCard({
                 Suggested Field Values ({fields.length})
               </p>
               <div className="rounded-md border border-border overflow-hidden">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b border-border bg-muted/20">
-                      <th className="text-left px-3 py-1.5 font-medium text-muted-foreground">Field</th>
-                      <th className="text-left px-3 py-1.5 font-medium text-muted-foreground">Suggested Value</th>
-                      <th className="text-left px-3 py-1.5 font-medium text-muted-foreground">Confidence</th>
-                      <th className="text-left px-3 py-1.5 font-medium text-muted-foreground">Source</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/50">
-                    {fields.map(([fieldCode, value]) => {
-                      const conf = confidence?.[fieldCode];
-                      return (
-                        <tr key={fieldCode} className="hover:bg-muted/10">
-                          <td className="px-3 py-1.5 font-mono text-muted-foreground">{fieldCode}</td>
-                          <td className="px-3 py-1.5 font-medium">{String(value)}</td>
-                          <td className="px-3 py-1.5">
-                            {conf ? <DmsAiConfidenceBadge label={conf.label} score={conf.score} /> : "—"}
-                          </td>
-                          <td className="px-3 py-1.5 text-muted-foreground italic truncate max-w-[160px]">
-                            {conf?.source_snippet ?? "—"}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable tableId="special.dms.documents.sections.dms-document-ai-section.0" data={fields} columns={[{id:"0",header:"Field",accessorFn:item=>loadedListValue(item,"0"),meta:{filter:{type:"text"}},enableHiding:false,size:220,cell:({row:{original:[fieldCode,]}})=>{
+return <>{fieldCode}</>;}},{id:"1",header:"Suggested value",accessorFn:item=>loadedListValue(item,"1"),meta:{filter:{type:"text"}},enableHiding:false,size:180,cell:({row:{original:[,value]}})=>{
+return <>{String(value)}</>;}},{id:"confidence",header:"Confidence",enableSorting:false,meta:{exportable:false},enableHiding:true,size:180,cell:({row:{original:[fieldCode,]}})=>{const conf = confidence?.[fieldCode];
+return <>{conf ? <DmsAiConfidenceBadge label={conf.label} score={conf.score} /> : "—"}</>;}},{id:"source",header:"Source",enableSorting:false,meta:{exportable:false},enableHiding:true,size:180,cell:({row:{original:[fieldCode,]}})=>{const conf = confidence?.[fieldCode];
+return <>{conf?.source_snippet ?? "—"}</>;}}]} enableRowSelection={false} searchPlaceholder="Search loaded records…" initialPageSize={10} />
               </div>
             </div>
           )}
@@ -603,7 +587,7 @@ function AiMetadataDiffSection({ documentId, documentTypeId, result, onApplied }
   const [lowConfConfirmed, setLowConfConfirmed] = useState(false);
 
   // Load definitions and current values
-  const { data: defs = [], isLoading: defsLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.dms.documentMetadataDefs(documentTypeId),
     queryFn: async () => {
       const r = await getMetadataDefinitionsForType(documentTypeId, "all");
@@ -611,8 +595,9 @@ function AiMetadataDiffSection({ documentId, documentTypeId, result, onApplied }
     },
     staleTime: 5 * 60 * 1000,
   });
+ const { data: defs = [], isLoading: defsLoading } = uiRead1;
 
-  const { data: currentValues = [], isLoading: valuesLoading } = useQuery({
+  const uiRead2 = useQuery({
     queryKey: queryKeys.dms.documentMetadata(documentId),
     queryFn: async () => {
       const r = await getDmsDocumentMetadataValues(documentId);
@@ -620,13 +605,14 @@ function AiMetadataDiffSection({ documentId, documentTypeId, result, onApplied }
     },
     staleTime: 30 * 1000,
   });
+ const { data: currentValues = [], isLoading: valuesLoading } = uiRead2;
 
   if (defsLoading || valuesLoading) {
     return (
-      <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground border-t border-border/50 pt-4">
+      <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="flex items-center gap-2 py-3 text-xs text-muted-foreground border-t border-border/50 pt-4">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
         Loading diff…
-      </div>
+      </div></QueryReadBoundary>
     );
   }
 
@@ -649,7 +635,7 @@ function AiMetadataDiffSection({ documentId, documentTypeId, result, onApplied }
 
   if (applicableRows.length === 0) {
     return (
-      <div className="border-t border-border/50 pt-4 space-y-2">
+      <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="border-t border-border/50 pt-4 space-y-2">
         <div className="flex items-center gap-2">
           <Wand2 className="h-3.5 w-3.5 text-muted-foreground" />
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Apply to Metadata</p>
@@ -659,7 +645,7 @@ function AiMetadataDiffSection({ documentId, documentTypeId, result, onApplied }
             ? "All AI-suggested values already match current metadata."
             : "No applicable AI suggestions for this document type's metadata fields."}
         </p>
-      </div>
+      </div></QueryReadBoundary>
     );
   }
 
@@ -740,9 +726,9 @@ function AiMetadataDiffSection({ documentId, documentTypeId, result, onApplied }
   }
 
   return (
-    <div className="border-t border-border/50 pt-4 space-y-3">
+    <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="border-t border-border/50 pt-4 space-y-3">
       {/* Section header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Wand2 className="h-3.5 w-3.5 text-purple-500" />
           <p className="text-xs font-semibold text-foreground">Apply to Metadata</p>
@@ -771,30 +757,9 @@ function AiMetadataDiffSection({ documentId, documentTypeId, result, onApplied }
 
       {/* Diff table */}
       <div className="rounded-md border border-border overflow-hidden">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="border-b border-border bg-muted/20">
-              <th className="px-2 py-1.5 w-8"></th>
-              <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">Field</th>
-              <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">Current</th>
-              <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">AI Suggestion</th>
-              <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">Confidence</th>
-              <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">Status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border/50">
-            {diffRows
-              .filter((r) => r.diffState !== "not_extractable" && r.diffState !== "no_ai_value" && r.diffState !== "same")
-              .map((row) => {
-                const isDisabled = !row.canApply;
-                const isChecked = selectedIds.has(row.definitionId);
-                return (
-                  <tr
-                    key={row.definitionId}
-                    className={`${isDisabled ? "opacity-50" : "hover:bg-muted/10"}`}
-                  >
-                    <td className="px-2 py-1.5 text-center">
-                      {row.canApply ? (
+        {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable tableId="special.dms.documents.sections.dms-document-ai-section.1" data={diffRows.filter((r) => r.diffState !== "not_extractable" && r.diffState !== "no_ai_value" && r.diffState !== "same")} columns={[{id:"select",header:"Select",enableSorting:false,meta:{exportable:false},enableHiding:false,size:220,cell:({row:{original:row}})=>{
+const isChecked = selectedIds.has(row.definitionId);
+return <>{row.canApply ? (
                         <input
                           type="checkbox"
                           checked={isChecked}
@@ -804,36 +769,23 @@ function AiMetadataDiffSection({ documentId, documentTypeId, result, onApplied }
                         />
                       ) : (
                         <MinusCircle className="h-3.5 w-3.5 text-muted-foreground mx-auto" aria-label={row.validationError ?? "Cannot apply"} />
-                      )}
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <div className="font-medium text-foreground">{row.fieldLabelEn}</div>
-                      {row.fieldGroup && (
+                      )}</>;}},{id:"fieldLabelEn",header:"Field",accessorFn:item=>loadedListValue(item,"fieldLabelEn"),meta:{filter:{type:"text"}},enableHiding:false,size:180,cell:({row:{original:row}})=>{
+
+return <><div className="font-medium text-foreground">{row.fieldLabelEn}</div>{row.fieldGroup && (
                         <div className="text-[9px] text-muted-foreground">{row.fieldGroup}</div>
-                      )}
-                    </td>
-                    <td className="px-2 py-1.5 text-muted-foreground">
-                      {row.currentValueRaw ?? <span className="text-slate-400 italic">—</span>}
-                    </td>
-                    <td className="px-2 py-1.5">
-                      {row.aiValueRaw ?? "—"}
-                      {row.validationError && (
+                      )}</>;}},{id:"currentValueRaw",header:"Current",accessorFn:item=>loadedListValue(item,"currentValueRaw"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+
+return <>{row.currentValueRaw ?? <span className="text-slate-400 italic">—</span>}</>;}},{id:"aiValueRaw",header:"Suggestion",accessorFn:item=>loadedListValue(item,"aiValueRaw"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+
+return <>{row.aiValueRaw ?? "—"}{row.validationError && (
                         <p className="text-[9px] text-red-600 mt-0.5">{row.validationError}</p>
-                      )}
-                    </td>
-                    <td className="px-2 py-1.5">
-                      {row.confidenceScore !== null ? (
+                      )}</>;}},{id:"confidenceScore",header:"Confidence",accessorFn:item=>loadedListValue(item,"confidenceScore"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+
+return <>{row.confidenceScore !== null ? (
                         <DmsAiConfidenceBadge label={row.confidenceLabel ?? "low"} score={row.confidenceScore} />
-                      ) : "—"}
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <DiffStateBadge state={row.diffState} />
-                    </td>
-                  </tr>
-                );
-              })}
-          </tbody>
-        </table>
+                      ) : "—"}</>;}},{id:"diffState",header:"Status",accessorFn:item=>loadedListValue(item,"diffState"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
+
+return <><DiffStateBadge state={row.diffState} /></>;}}]} enableRowSelection={false} searchPlaceholder="Search loaded records…" initialPageSize={10} />
       </div>
 
       {/* Apply button */}
@@ -922,7 +874,7 @@ function AiMetadataDiffSection({ documentId, documentTypeId, result, onApplied }
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </div></QueryReadBoundary>
   );
 }
 
@@ -937,7 +889,7 @@ function ApplyHistoryPanel({ documentId, aiResultId }: ApplyHistoryPanelProps) {
   const [expanded, setExpanded] = useState(false);
   const [expandedRunIds, setExpandedRunIds] = useState<Set<number>>(new Set());
 
-  const { data: runs, isLoading, error } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.dms.documentAiApplyHistory(documentId),
     queryFn: async () => {
       const r = await getDmsAiMetadataApplyHistory(documentId);
@@ -947,6 +899,7 @@ function ApplyHistoryPanel({ documentId, aiResultId }: ApplyHistoryPanelProps) {
     staleTime: 30_000,
     enabled: expanded,
   });
+ const { data: runs, isLoading, error } = uiRead1;
 
   // Filter runs belonging to this AI result
   const relevantRuns = (runs ?? []).filter(
@@ -963,7 +916,7 @@ function ApplyHistoryPanel({ documentId, aiResultId }: ApplyHistoryPanelProps) {
   };
 
   return (
-    <div className="border-t border-border/50 pt-4">
+    <QueryReadBoundary queries={[uiRead1]}><div className="border-t border-border/50 pt-4">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
@@ -1008,7 +961,7 @@ function ApplyHistoryPanel({ documentId, aiResultId }: ApplyHistoryPanelProps) {
           ))}
         </div>
       )}
-    </div>
+    </div></QueryReadBoundary>
   );
 }
 
@@ -1065,49 +1018,22 @@ function ApplyHistoryRunRow({
           {run.items.length === 0 ? (
             <p className="px-3 py-2 text-xs text-muted-foreground italic">No item details recorded.</p>
           ) : (
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-border/50 bg-muted/10">
-                  <th className="px-2 py-1.5 w-6"></th>
-                  <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">Field</th>
-                  <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">Before</th>
-                  <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">After</th>
-                  <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">Confidence</th>
-                  <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">Note</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/30">
-                {run.items.map((item) => (
-                  <tr key={item.id} className={item.itemStatus !== "applied" ? "opacity-60" : ""}>
-                    <td className="px-2 py-1.5 text-center">
-                      {item.itemStatus === "applied" ? (
-                        <CheckCircle2 className="h-3 w-3 text-green-600 mx-auto" />
+            <ERPDataTable tableId={`special.ai-apply-history.${run.id}`} data={run.items} columns={[{id:"result",header:"Result",accessorKey:"itemStatus",meta:{filter:{type:"text"}},enableHiding:false,size:220,cell:({row:{original:item}})=>{
+return <>{item.itemStatus === "applied" ? (
+                        <span>Applied <CheckCircle2 className="inline h-3 w-3 text-green-600" aria-hidden /></span>
                       ) : (
-                        <XCircle className="h-3 w-3 text-muted-foreground mx-auto" />
-                      )}
-                    </td>
-                    <td className="px-2 py-1.5 font-mono text-muted-foreground">{item.fieldCode}</td>
-                    <td className="px-2 py-1.5 text-muted-foreground">
-                      {item.oldValueSummary ?? <span className="italic text-slate-400">—</span>}
-                    </td>
-                    <td className="px-2 py-1.5 font-medium">
-                      {item.newValueSummary ?? <span className="italic text-slate-400">—</span>}
-                    </td>
-                    <td className="px-2 py-1.5">
-                      {item.confidenceScore !== null ? (
+                        <span>{item.itemStatus} <XCircle className="inline h-3 w-3 text-muted-foreground" aria-hidden /></span>
+                      )}</>;}},{id:"fieldCode",header:"Field",accessorFn:item=>loadedListValue(item,"fieldCode"),meta:{filter:{type:"text"}},enableHiding:false,size:180,cell:({row:{original:item}})=>{
+return <>{item.fieldCode}</>;}},{id:"oldValueSummary",header:"Before",accessorFn:item=>loadedListValue(item,"oldValueSummary"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:item}})=>{
+return <>{item.oldValueSummary ?? <span className="italic text-slate-400">—</span>}</>;}},{id:"newValueSummary",header:"After",accessorFn:item=>loadedListValue(item,"newValueSummary"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:item}})=>{
+return <>{item.newValueSummary ?? <span className="italic text-slate-400">—</span>}</>;}},{id:"confidenceScore",header:"Confidence",accessorFn:item=>loadedListValue(item,"confidenceScore"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:item}})=>{
+return <>{item.confidenceScore !== null ? (
                         <DmsAiConfidenceBadge
                           label={item.confidenceLabel ?? "low"}
                           score={item.confidenceScore}
                         />
-                      ) : "—"}
-                    </td>
-                    <td className="px-2 py-1.5 text-muted-foreground italic">
-                      {item.skipReason ?? (item.applyMode === "fill_missing_only" ? "fill only" : item.applyMode ?? "")}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      ) : "—"}</>;}},{id:"skipReason",header:"Note",accessorFn:item=>loadedListValue(item,"skipReason"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:item}})=>{
+return <>{item.skipReason ?? (item.applyMode === "fill_missing_only" ? "fill only" : item.applyMode ?? "")}</>;}}]} enableRowSelection={false} searchPlaceholder="Search loaded records…" initialPageSize={10} />
           )}
         </div>
       )}

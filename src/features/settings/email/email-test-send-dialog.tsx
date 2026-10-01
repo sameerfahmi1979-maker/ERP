@@ -18,7 +18,11 @@ interface EmailTestSendDialogProps {
   onSuccess?: () => void;
 }
 
-export function EmailTestSendDialog({
+export function EmailTestSendDialog(props: EmailTestSendDialogProps) {
+  return props.open ? <EmailTestSendSession key={props.providerId} {...props} /> : null;
+}
+
+function EmailTestSendSession({
   open,
   onOpenChange,
   providerId,
@@ -31,6 +35,7 @@ export function EmailTestSendDialog({
   const [subject, setSubject] = useState("ALGT ERP Email Test");
   const [message, setMessage] = useState("This is a test email from ALGT ERP Email Settings.");
   const [result, setResult] = useState<{ ok: boolean; message: string; durationMs?: number } | null>(null);
+  const [uncertain, setUncertain] = useState(false);
 
   const reset = () => {
     setToEmail(defaultRecipient ?? "");
@@ -44,22 +49,27 @@ export function EmailTestSendDialog({
   };
 
   const handleSubmit = async () => {
+    if (uncertain || result?.ok) return;
     if (!toEmail.trim()) { toast.error("Recipient email is required"); return; }
     setIsSubmitting(true);
     setResult(null);
     try {
       const res = await sendTestEmail(providerId, { to_email: toEmail, subject, message });
       const ok = res.success;
+      if (!ok) setUncertain(true);
       const resData = (res as { data?: { message?: string; durationMs?: number } }).data;
       setResult({
         ok,
-        message: ok ? (resData?.message ?? "Email sent successfully.") : ((res as { error?: string }).error ?? "Failed."),
+        message: ok ? "The send request completed. Check the recipient's mailbox; this is not proof of inbox delivery." : "The send was not confirmed. Review the delivery log before trying another message.",
         durationMs: resData?.durationMs,
       });
       if (ok) {
-        toast.success("Test email sent successfully");
+        toast.success("Test send completed — please verify receipt.");
         onSuccess?.();
       }
+    } catch {
+      setUncertain(true);
+      setResult({ok:false,message:"The response was lost. The email may have been sent. Check delivery history and the recipient before starting a new send."});
     } finally {
       setIsSubmitting(false);
     }
@@ -75,12 +85,13 @@ export function EmailTestSendDialog({
       mode="add"
       size="md"
       isSubmitting={isSubmitting}
+      submitDisabled={uncertain || result?.ok === true}
       onSubmit={handleSubmit}
       submitLabel="Send Test Email"
     >
       <div className="space-y-4">
         {result && (
-          <div className={`rounded-md border p-3 flex items-start gap-2 text-sm ${
+          <div role={result.ok ? "status" : "alert"} className={`rounded-md border p-3 flex items-start gap-2 text-sm ${
             result.ok
               ? "border-green-300 bg-green-50 text-green-700 dark:bg-green-950/20 dark:border-green-900 dark:text-green-400"
               : "border-red-300 bg-red-50 text-red-700 dark:bg-red-950/20 dark:border-red-900 dark:text-red-400"
@@ -99,7 +110,7 @@ export function EmailTestSendDialog({
           <Label htmlFor="to-email" className="mb-1.5 block">
             To Email <span className="text-red-500">*</span>
           </Label>
-          <Input
+          <Input required
             id="to-email"
             type="email"
             value={toEmail}

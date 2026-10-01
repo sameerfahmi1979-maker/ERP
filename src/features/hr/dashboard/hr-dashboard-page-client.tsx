@@ -1,6 +1,7 @@
 "use client";
 
 import { ERPSectionCard } from "@/components/erp/section-card";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { queryKeys } from "@/lib/query/query-keys";
@@ -76,7 +77,6 @@ interface HrDashboardPageClientProps {
 export function HrDashboardPageClient({ permissions, initialFilters = {} }: HrDashboardPageClientProps) {
   const [filters] = useState<DashboardFilters>(initialFilters);
 
-  const filtersKey = JSON.stringify(filters);
   const filtersObj = filters && Object.keys(filters).length > 0 ? filters : undefined;
 
   // ── Queries ──────────────────────────────────────────────────────────────
@@ -155,15 +155,15 @@ export function HrDashboardPageClient({ permissions, initialFilters = {} }: HrDa
 
   const handleRefresh = useCallback(() => {
     summaryQuery.refetch();
-    employeeQuery.refetch();
-    complianceQuery.refetch();
-    timeQuery.refetch();
-    payrollQuery.refetch();
-    operationsQuery.refetch();
-    actionsQuery.refetch();
-    recruitmentQuery.refetch();
+    if (permissions.canViewEmployees) void employeeQuery.refetch();
+    if (permissions.canViewCompliance) void complianceQuery.refetch();
+    if (permissions.canViewAttendance || permissions.canViewLeave) void timeQuery.refetch();
+    if (permissions.canViewPayroll) void payrollQuery.refetch();
+    if (permissions.canViewAssignments) void operationsQuery.refetch();
+    if (permissions.canViewActions) void actionsQuery.refetch();
+    if (permissions.canViewRecruitment) void recruitmentQuery.refetch();
     attentionQuery.refetch();
-  }, [summaryQuery, employeeQuery, complianceQuery, timeQuery, payrollQuery, operationsQuery, actionsQuery, recruitmentQuery, attentionQuery]);
+  }, [summaryQuery, employeeQuery, complianceQuery, timeQuery, payrollQuery, operationsQuery, actionsQuery, recruitmentQuery, attentionQuery, permissions]);
 
   // ── Data shortcuts ────────────────────────────────────────────────────────
 
@@ -277,6 +277,14 @@ export function HrDashboardPageClient({ permissions, initialFilters = {} }: HrDa
   const recruitmentSeverity: SectionSeverity = (recruit?.offers_pending ?? 0) > 0 ? "warning" : "ok";
 
   return (
+    <QueryReadBoundary queries={[summaryQuery, attentionQuery,
+      ...(permissions.canViewEmployees ? [employeeQuery] : []),
+      ...(permissions.canViewCompliance ? [complianceQuery] : []),
+      ...(permissions.canViewAttendance || permissions.canViewLeave ? [timeQuery] : []),
+      ...(permissions.canViewPayroll ? [payrollQuery] : []),
+      ...(permissions.canViewAssignments ? [operationsQuery] : []),
+      ...(permissions.canViewActions ? [actionsQuery] : []),
+      ...(permissions.canViewRecruitment ? [recruitmentQuery] : [])]}>
     <div className="space-y-6 max-w-[1600px]">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -529,5 +537,6 @@ export function HrDashboardPageClient({ permissions, initialFilters = {} }: HrDa
         )}
       </ERPSectionCard>
     </div>
+    </QueryReadBoundary>
   );
 }

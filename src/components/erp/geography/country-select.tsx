@@ -71,6 +71,7 @@ export function CountrySelect({
       noResultsText="No results found"
       className={className}
       name={name}
+      ariaLabel={name === "nationality_id" ? "Nationality" : "Country"}
     />
   );
 }

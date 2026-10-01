@@ -1,6 +1,8 @@
 "use client";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
-import { ERPCombobox } from "@/components/erp/combobox";
+import { ConfiguredRow, EditColumns, EditFilters, useListColumns, type ListColumn } from "@/components/erp/table/list-controls";
+import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -10,9 +12,8 @@ import { queryKeys } from "@/lib/query/query-keys";
 import type { AuthContext } from "@/lib/rbac/check";
 import { listCandidates } from "@/server/actions/hr/recruitment";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Mail, Phone, Plus, Users } from "lucide-react";
+import { ArrowRight, Plus, Users } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
 
 type Props = { authContext: AuthContext };
 
@@ -41,33 +42,32 @@ const PIPELINE_OPTIONS = [
   { value: "closed", label: "Closed" },
 ];
 
-const STATUS_COLORS: Record<string, string> = {
-  new: "bg-slate-100 text-slate-700",
-  screening: "bg-blue-100 text-blue-700",
-  shortlisted: "bg-cyan-100 text-cyan-700",
-  interview: "bg-indigo-100 text-indigo-700",
-  selected: "bg-green-100 text-green-700",
-  offered: "bg-emerald-100 text-emerald-700",
-  accepted: "bg-green-100 text-green-700",
-  rejected: "bg-red-100 text-red-700",
-  withdrawn: "bg-amber-100 text-amber-700",
-  hired: "bg-green-200 text-green-800",
-  blacklisted: "bg-red-200 text-red-800",
-};
+const CANDIDATE_COLUMNS: ListColumn[] = [
+  {id:"code",label:"Code",width:140,visible:true,required:true},
+  {id:"name",label:"Candidate",width:240,visible:true,required:true},
+  {id:"status",label:"Status",width:130,visible:true},
+  {id:"stage",label:"Pipeline stage",width:150,visible:true},
+  {id:"mobile",label:"Mobile",width:150,visible:true},
+  {id:"email",label:"Email",width:220,visible:true},
+  {id:"source",label:"Source",width:150,visible:false},
+  {id:"requisition",label:"Requisition",width:240,visible:true}
+];
 
 export function CandidatesPageClient({ authContext }: Props) {
   const canManage = authContext.permissionCodes.includes("hr.recruitment.manage") || authContext.roleCodes.includes("system_admin");
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string | null>(null);
-  const [pipelineFilter, setPipelineFilter] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
+  const [search, setSearch] = usePersistentUiState("candidates:search","");
+  const [statusFilter, setStatusFilter] = usePersistentUiState<string | null>("candidates:status",null);
+  const [pipelineFilter, setPipelineFilter] = usePersistentUiState<string | null>("candidates:stage",null);
+  const [page, setPage] = usePersistentUiState("candidates:page",1);
 
-  const { data: res, isLoading } = useQuery({
+  const columnState = useListColumns("hr-candidates", CANDIDATE_COLUMNS);
+  const uiRead1 = useQuery({
     queryKey: queryKeys.recruitment.candidates({ search, status: statusFilter, pipelineStage: pipelineFilter, page }),
     queryFn: () => listCandidates({ search: search || undefined, status: statusFilter ?? undefined, pipelineStage: pipelineFilter ?? undefined, page }),
     staleTime: 30_000,
   });
+  const { data: res, isLoading, isError, refetch } = uiRead1;
 
   // ERP REALTIME.1C — live candidates list sync.
   useRealtimeSync({
@@ -83,10 +83,10 @@ export function CandidatesPageClient({ authContext }: Props) {
   const totalCount = res?.data?.totalCount ?? 0;
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-4">
-      <div className="flex items-center justify-between">
+    <QueryReadBoundary queries={[uiRead1]}><div className="p-0 max-w-full mx-auto space-y-4">
+      <div className="flex flex-wrap gap-2 items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Candidates</h1>
+          <h1 className="text-xl font-semibold text-foreground">Candidates</h1>
           <p className="text-sm text-muted-foreground">{totalCount} total</p>
         </div>
         {canManage && (
@@ -98,23 +98,16 @@ export function CandidatesPageClient({ authContext }: Props) {
         )}
       </div>
 
-      <div className="flex gap-2 flex-wrap">
-        <Input placeholder="Search by name, code, email, phone..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} className="max-w-xs" />
-        <ERPCombobox
-          value={statusFilter}
-          onValueChange={(v) => { setStatusFilter(v ? String(v) : null); setPage(1); }}
-          options={[{ value: "", label: "All Statuses" }, ...STATUS_OPTIONS]}
-          placeholder="Filter by status"
-        />
-        <ERPCombobox
-          value={pipelineFilter}
-          onValueChange={(v) => { setPipelineFilter(v ? String(v) : null); setPage(1); }}
-          options={[{ value: "", label: "All Stages" }, ...PIPELINE_OPTIONS]}
-          placeholder="Filter by stage"
-        />
+      <div className="flex gap-2 flex-wrap items-center">
+        <Input aria-label="Search candidates" placeholder="Search by name, code, email, phone..." value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}} className="max-w-sm" />
+        <EditColumns columns={columnState.columns} defaults={CANDIDATE_COLUMNS} onApply={columnState.setColumns} />
+        <EditFilters scopeLabel="Search and filters query all permitted candidates." definitions={[
+          {id:"status",label:"Status",type:"select",options:STATUS_OPTIONS},
+          {id:"stage",label:"Pipeline stage",type:"select",options:PIPELINE_OPTIONS}
+        ]} values={{status:statusFilter ?? "",stage:pipelineFilter ?? ""}} onApply={values=>{setStatusFilter(values.status || null);setPipelineFilter(values.stage || null);setPage(1);}} />
       </div>
 
-      {isLoading ? (
+      {isError || (res && !res.success) ? <div role="alert" className="border border-destructive p-4">Candidates could not be loaded. Your filters are retained. <Button variant="outline" onClick={()=>void refetch()}>Retry</Button></div> : isLoading ? (
         <div className="space-y-2">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-16 rounded" />)}</div>
       ) : rows.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground text-sm">
@@ -122,32 +115,21 @@ export function CandidatesPageClient({ authContext }: Props) {
           No candidates found.
         </div>
       ) : (
-        <div className="border rounded-lg divide-y">
-          {rows.map((row) => (
-            <div key={row.id} className="flex items-center gap-3 p-4">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  {row.candidate_code && <span className="text-xs font-mono text-muted-foreground">{row.candidate_code}</span>}
-                  <span className="text-sm font-medium">{row.full_name_en}</span>
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[row.candidate_status] ?? "bg-slate-100 text-slate-700"}`}>
-                    {row.candidate_status.replace(/_/g, " ")}
-                  </span>
-                  <span className="text-xs text-muted-foreground bg-slate-100 px-2 py-0.5 rounded capitalize">{row.pipeline_stage}</span>
-                </div>
-                <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground flex-wrap">
-                  {row.mobile_number && <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{row.mobile_number}</span>}
-                  {row.email && <span className="flex items-center gap-1"><Mail className="h-3 w-3" />{row.email}</span>}
-                  {row.source && <span className="capitalize">{row.source}</span>}
-                  {row.requisition && <span>{row.requisition.requisition_code} — {row.requisition.requisition_title}</span>}
-                </div>
-              </div>
-              <Link href={`/admin/hr/recruitment/candidates/record/${row.id}`}>
-                <Button size="sm" variant="outline">
-                  Open <ArrowRight className="h-3.5 w-3.5 ml-1" />
-                </Button>
-              </Link>
-            </div>
-          ))}
+        <div role="region" aria-label="Scrollable candidates" tabIndex={0} className="overflow-x-auto border bg-card rounded-sm">
+          <table aria-label="Candidates" className="w-full text-sm table-fixed" style={{minWidth:columnState.visible.reduce((sum,column)=>sum+column.width,100)}}>
+            <thead><tr>{columnState.visible.map(column=><th key={column.id} className="text-left p-3 border-b bg-muted/30 font-semibold" style={{width:column.width}}>{column.label}</th>)}<th className="w-24 p-3 border-b">Actions</th></tr></thead>
+            <tbody>{rows.map(row=><ConfiguredRow key={row.id} columns={columnState.columns} className="border-b hover:bg-muted/30">
+              <td data-column="code" className="p-3 truncate">{row.candidate_code}</td>
+              <td data-column="name" className="p-3"><Link className="text-primary underline underline-offset-2" href={`/admin/hr/recruitment/candidates/record/${row.id}`}>{row.full_name_en}</Link></td>
+              <td data-column="status" className="p-3 capitalize">{row.candidate_status.replaceAll("_"," ")}</td>
+              <td data-column="stage" className="p-3 capitalize">{row.pipeline_stage}</td>
+              <td data-column="mobile" className="p-3 truncate">{row.mobile_number ?? "—"}</td>
+              <td data-column="email" className="p-3 truncate">{row.email ?? "—"}</td>
+              <td data-column="source" className="p-3">{row.source ?? "—"}</td>
+              <td data-column="requisition" className="p-3">{row.requisition ? `${row.requisition.requisition_code} — ${row.requisition.requisition_title}` : "—"}</td>
+              <td className="p-2"><Link aria-label={`Open ${row.candidate_code ?? "candidate"}`} className="inline-flex min-h-11 items-center gap-1 text-primary" href={`/admin/hr/recruitment/candidates/record/${row.id}`}>Open <ArrowRight className="h-4 w-4" /></Link></td>
+            </ConfiguredRow>)}</tbody>
+          </table>
         </div>
       )}
 
@@ -155,9 +137,9 @@ export function CandidatesPageClient({ authContext }: Props) {
         <div className="flex justify-center gap-2">
           <Button size="sm" variant="outline" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Previous</Button>
           <span className="text-sm text-muted-foreground py-2">Page {page}</span>
-          <Button size="sm" variant="outline" disabled={rows.length < 50} onClick={() => setPage(p => p + 1)}>Next</Button>
+          <Button size="sm" variant="outline" disabled={page * 50 >= totalCount} onClick={() => setPage(p => p + 1)}>Next</Button>
         </div>
       )}
-    </div>
+    </div></QueryReadBoundary>
   );
 }

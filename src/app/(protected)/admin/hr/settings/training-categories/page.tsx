@@ -1,3 +1,4 @@
+import { LoadError } from "@/components/erp/load-error";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { redirect } from "next/navigation";
 import { listHrTrainingCategories, createHrTrainingCategory, updateHrTrainingCategory, toggleHrSettingsRowActive } from "@/server/actions/hr/settings";
@@ -8,6 +9,7 @@ export default async function HrTrainingCategoriesPage() {
   if (!hasPermission(ctx, "hr.settings.view") && !hasPermission(ctx, "hr.settings.manage") && !hasPermission(ctx, "hr.admin")) redirect("/admin/hr/settings");
   const canManage = hasPermission(ctx, "hr.settings.manage") || hasPermission(ctx, "hr.admin");
   const result = await listHrTrainingCategories({});
+  if (!result.success) return <LoadError title="HR records" retryHref="/admin/hr/settings/training-categories" />;
   const data = result.data?.data ?? [];
 
   async function toggle(id: number, is_active: boolean) {

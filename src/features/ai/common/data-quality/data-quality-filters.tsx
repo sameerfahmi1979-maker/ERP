@@ -65,7 +65,7 @@ export function DataQualityFilters({ filter, onChange }: Props) {
 
   return (
     <div className="space-y-3 rounded-lg border bg-card p-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-sm font-medium">Filters</span>
         <Button variant="ghost" size="sm" onClick={reset}>
           Reset

@@ -119,7 +119,7 @@ function ResultPanel({
 
   return (
     <div className="mt-3 rounded-md border border-border/50 bg-muted/30 p-3 text-xs space-y-2">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="font-semibold text-foreground">Result</span>
         <Button
           variant="ghost"
@@ -246,7 +246,7 @@ function AdminBulkCard({
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <Label className="text-xs">Batch Size (max {maxBatchSize})</Label>
-          <Input
+          <Input aria-label="Batch Size (max )"
             type="number"
             min={1}
             max={maxBatchSize}
@@ -257,7 +257,7 @@ function AdminBulkCard({
         </div>
         <div className="space-y-1">
           <Label className="text-xs">Resume from Document ID</Label>
-          <Input
+          <Input aria-label="Resume from Document ID"
             type="number"
             min={1}
             placeholder="optional"
@@ -268,7 +268,7 @@ function AdminBulkCard({
         </div>
       </div>
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Checkbox
             id={`dryRun-${title}`}
@@ -701,7 +701,7 @@ export function DmsIntelligenceAdminPageClient({ stats }: Props) {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Batch Size (max 100)</Label>
-                <Input
+                <Input aria-label="Batch Size (max 100)"
                   type="number"
                   min={1}
                   max={100}
@@ -714,7 +714,7 @@ export function DmsIntelligenceAdminPageClient({ stats }: Props) {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Resume from Doc ID</Label>
-                <Input
+                <Input aria-label="Resume from Doc ID"
                   type="number"
                   min={1}
                   placeholder="optional"
@@ -725,7 +725,7 @@ export function DmsIntelligenceAdminPageClient({ stats }: Props) {
               </div>
             </div>
 
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Checkbox
                   id="backfill-dry"
@@ -820,7 +820,7 @@ export function DmsIntelligenceAdminPageClient({ stats }: Props) {
                 <Label className="text-xs">
                   Batch Size (max {ocrBackfillMode === "inline" ? 50 : 200})
                 </Label>
-                <Input
+                <Input aria-label="Batch Size (max )"
                   type="number" min={1} max={ocrBackfillMode === "inline" ? 50 : 200}
                   value={ocrBackfillBatch}
                   onChange={(e) => setOcrBackfillBatch(parseInt(e.target.value, 10) || 10)}
@@ -829,7 +829,7 @@ export function DmsIntelligenceAdminPageClient({ stats }: Props) {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Resume from Document ID</Label>
-                <Input
+                <Input aria-label="Resume from Document ID"
                   type="number" min={1} placeholder="optional"
                   value={ocrBackfillResume}
                   onChange={(e) => setOcrBackfillResume(e.target.value)}
@@ -840,7 +840,7 @@ export function DmsIntelligenceAdminPageClient({ stats }: Props) {
 
             <div className="space-y-1">
               <Label className="text-xs">Target specific Document ID (leave blank for all broken)</Label>
-              <Input
+              <Input aria-label="Target specific Document ID (leave blank for all broken)"
                 type="number" min={1} placeholder="optional — e.g. 13"
                 value={ocrBackfillTargetDoc}
                 onChange={(e) => setOcrBackfillTargetDoc(e.target.value)}
@@ -920,7 +920,7 @@ export function DmsIntelligenceAdminPageClient({ stats }: Props) {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Batch Size (max 50)</Label>
-                <Input
+                <Input aria-label="Batch Size (max 50)"
                   type="number"
                   min={1}
                   max={50}
@@ -933,7 +933,7 @@ export function DmsIntelligenceAdminPageClient({ stats }: Props) {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Resume from Doc ID</Label>
-                <Input
+                <Input aria-label="Resume from Doc ID"
                   type="number"
                   min={1}
                   placeholder="optional"
@@ -944,7 +944,7 @@ export function DmsIntelligenceAdminPageClient({ stats }: Props) {
               </div>
             </div>
 
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Checkbox
                   id="summary-dry"
@@ -1002,7 +1002,7 @@ export function DmsIntelligenceAdminPageClient({ stats }: Props) {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Batch Size (max 100)</Label>
-                <Input
+                <Input aria-label="Batch Size (max 100)"
                   type="number"
                   min={1}
                   max={100}
@@ -1015,7 +1015,7 @@ export function DmsIntelligenceAdminPageClient({ stats }: Props) {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Resume from Doc ID</Label>
-                <Input
+                <Input aria-label="Resume from Doc ID"
                   type="number"
                   min={1}
                   placeholder="optional"
@@ -1026,7 +1026,7 @@ export function DmsIntelligenceAdminPageClient({ stats }: Props) {
               </div>
             </div>
 
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Checkbox
                   id="eval-dry"
@@ -1088,7 +1088,7 @@ export function DmsIntelligenceAdminPageClient({ stats }: Props) {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Batch Size (max 50)</Label>
-                <Input
+                <Input aria-label="Batch Size (max 50)"
                   type="number"
                   min={1}
                   max={50}
@@ -1099,7 +1099,7 @@ export function DmsIntelligenceAdminPageClient({ stats }: Props) {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Resume from Doc ID</Label>
-                <Input
+                <Input aria-label="Resume from Doc ID"
                   type="number"
                   min={1}
                   placeholder="optional"
@@ -1110,7 +1110,7 @@ export function DmsIntelligenceAdminPageClient({ stats }: Props) {
               </div>
             </div>
 
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Checkbox
                   id="embed-dry"
@@ -1206,7 +1206,7 @@ export function DmsIntelligenceAdminPageClient({ stats }: Props) {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="space-y-1">
               <Label className="text-xs">Batch Size (max 100)</Label>
-              <Input
+              <Input aria-label="Batch Size (max 100)"
                 type="number"
                 min={1}
                 max={100}
@@ -1217,7 +1217,7 @@ export function DmsIntelligenceAdminPageClient({ stats }: Props) {
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Resume from Doc ID</Label>
-              <Input
+              <Input aria-label="Resume from Doc ID"
                 type="number"
                 min={1}
                 placeholder="optional"
@@ -1228,7 +1228,7 @@ export function DmsIntelligenceAdminPageClient({ stats }: Props) {
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Target Doc ID (single)</Label>
-              <Input
+              <Input aria-label="Target Doc ID (single)"
                 type="number"
                 min={1}
                 placeholder="optional"
@@ -1270,7 +1270,7 @@ export function DmsIntelligenceAdminPageClient({ stats }: Props) {
           {/* Result */}
           {semanticResult && (
             <div className="rounded-md border border-border/50 bg-muted/30 p-3 text-xs space-y-2">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="font-semibold text-foreground">Result</span>
                 <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px]" onClick={() => setSemanticResult(null)}>
                   Clear
@@ -1429,7 +1429,7 @@ function BackfillResultPanel({
 
   return (
     <div className="rounded-md border border-border/50 bg-muted/30 p-3 text-xs space-y-2">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="font-semibold text-foreground">Result</span>
         <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px]" onClick={onClear}>
           Clear
@@ -1497,7 +1497,7 @@ function BulkResultPanel({
 
   return (
     <div className="rounded-md border border-border/50 bg-muted/30 p-3 text-xs space-y-2">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="font-semibold text-foreground">Result</span>
         <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px]" onClick={onClear}>
           Clear

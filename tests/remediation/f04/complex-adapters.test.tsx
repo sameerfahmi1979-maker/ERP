@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import '../f05/setup';
+vi.mock('@/components/erp/export/erp-export-menu',()=>({ERPExportMenu:()=>null}));
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createWorkspaceDraftStore } from '@/lib/workspace/workspace-draft-store';
@@ -51,6 +53,12 @@ it('organization draft restores geography, currency and office child clears inde
 });
 it('organization cleared currency cannot silently become AED or the original saved currency',async()=>{
  ctx.store!.writeField('draft:tab:owner:organization-workspace-form','currency_id','');const ui=org();fireEvent.click(ui.getByText('Test save'));await waitFor(()=>expect((ui.getByText('Test save') as HTMLButtonElement).disabled).toBe(false));expect(ctx.save).not.toHaveBeenCalled();expect(ui.getByText('Unsaved')).toBeTruthy();
+});
+it('organization missing default currency is distinct from a failed lookup',async()=>{
+ ctx.db.mockResolvedValue({data:null,error:null});const ui=org();await ui.findByText('The default currency is unavailable. Choose an active currency before saving.');expect(ctx.save).not.toHaveBeenCalled();
+});
+it('organization lookup failure is visible and choosing a currency clears its notice',async()=>{
+ ctx.db.mockResolvedValue({data:null,error:{message:'Synthetic unavailable'}});const ui=org();await ui.findByText('The default currency could not be loaded. Choose an available currency or reload this record.');fireEvent.change(ui.getByLabelText('Currency'),{target:{value:'6'}});expect(ui.queryByText(/The default currency could not be loaded/)).toBeNull();expect(ctx.save).not.toHaveBeenCalled();
 });
 it('organization never writes a stale currency code when lookup verification fails',async()=>{
  ctx.store!.writeField('draft:tab:owner:organization-workspace-form','currency_id','6');ctx.db.mockResolvedValue({data:null,error:{message:'offline'}});const ui=org();fireEvent.click(ui.getByText('Test save'));await waitFor(()=>expect((ui.getByText('Test save') as HTMLButtonElement).disabled).toBe(false));expect(ctx.save).not.toHaveBeenCalled();expect(ui.getByText('Unsaved')).toBeTruthy();

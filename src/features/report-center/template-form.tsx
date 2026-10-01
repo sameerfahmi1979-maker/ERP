@@ -186,7 +186,7 @@ function TemplateFormSession({ open, onOpenChange, template, profiles, onSaved }
             <Label className="text-xs font-medium">
               Code <span className="text-destructive">*</span>
             </Label>
-            <Input
+            <Input aria-label="Code" required
               className="mt-1 uppercase h-9 text-sm"
               placeholder="COMPANY_1_REPORT"
               value={form.template_code}
@@ -199,7 +199,7 @@ function TemplateFormSession({ open, onOpenChange, template, profiles, onSaved }
           <Label className="text-xs font-medium">
             Name <span className="text-destructive">*</span>
           </Label>
-          <Input
+          <Input aria-label="Name" required
             className="mt-1 h-9 text-sm"
             placeholder="Company Default Report"
             value={form.template_name}
@@ -279,7 +279,7 @@ function TemplateFormSession({ open, onOpenChange, template, profiles, onSaved }
 
         <div className="col-span-3">
           <Label className="text-xs font-medium">Font Family</Label>
-          <Input
+          <Input aria-label="Font Family"
             className="mt-1 h-9 text-sm"
             value={form.font_family}
             onChange={(e) => setForm((f) => ({ ...f, font_family: e.target.value }))}
@@ -308,7 +308,7 @@ function TemplateFormSession({ open, onOpenChange, template, profiles, onSaved }
         {form.show_watermark && (
           <div className="col-span-6">
             <Label className="text-xs font-medium">Watermark Text</Label>
-            <Input
+            <Input aria-label="Watermark Text"
               className="mt-1 h-9 text-sm"
               placeholder="CONFIDENTIAL"
               value={form.watermark_text ?? ""}

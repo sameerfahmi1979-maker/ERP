@@ -1,18 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
+import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import type { NotificationTemplateRow } from "@/server/actions/notifications/templates";
 import {
   createNotificationTemplate,
@@ -26,14 +19,17 @@ interface NotificationTemplateFormDialogProps {
   template?: NotificationTemplateRow | null;
 }
 
-export function NotificationTemplateFormDialog({
+export function NotificationTemplateFormDialog(props: NotificationTemplateFormDialogProps) {
+  return props.open ? <NotificationTemplateSession key={props.template?.id ?? "new"} {...props}/> : null;
+}
+
+function NotificationTemplateSession({
   open,
   onClose,
   onSuccess,
   template,
 }: NotificationTemplateFormDialogProps) {
   const isEdit = !!template;
-  const [pending, startTransition] = useTransition();
 
   const [form, setForm] = useState({
     template_code: template?.templateCode ?? "",
@@ -53,8 +49,7 @@ export function NotificationTemplateFormDialog({
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleSubmit = () => {
-    startTransition(async () => {
+  const handleSubmit = async () => {
       const result = isEdit
         ? await updateNotificationTemplate(template!.id, {
             template_name: form.template_name,
@@ -83,24 +78,21 @@ export function NotificationTemplateFormDialog({
 
       if (result.success) {
         toast.success(isEdit ? "Template updated" : "Template created");
+        onClose();
         onSuccess();
       } else {
         toast.error(result.error ?? "Failed");
       }
-    });
   };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>{isEdit ? "Edit Template" : "New Notification Template"}</DialogTitle>
-        </DialogHeader>
+    <ERPChildDialogForm open={open} onOpenChange={v=>{if(!v)onClose();}} title={isEdit ? "Edit Template" : "New Notification Template"}
+      mode={isEdit?"edit":"add"} onSubmit={handleSubmit} submitLabel={isEdit?"Save changes":"Create template"}>
 
-        <div className="grid grid-cols-2 gap-4 py-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-2">
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs">Template Code *</Label>
-            <Input
+            <Input aria-label="Template Code" required
               value={form.template_code}
               onChange={(e) => handleChange("template_code", e.target.value.toUpperCase())}
               disabled={isEdit}
@@ -110,7 +102,7 @@ export function NotificationTemplateFormDialog({
           </div>
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs">Template Name *</Label>
-            <Input
+            <Input aria-label="Template Name" required
               value={form.template_name}
               onChange={(e) => handleChange("template_name", e.target.value)}
               placeholder="My Notification Template"
@@ -119,7 +111,7 @@ export function NotificationTemplateFormDialog({
           </div>
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs">Source Module *</Label>
-            <Input
+            <Input aria-label="Source Module" required
               value={form.source_module}
               onChange={(e) => handleChange("source_module", e.target.value.toUpperCase())}
               placeholder="DMS / HR / SYSTEM"
@@ -128,25 +120,25 @@ export function NotificationTemplateFormDialog({
           </div>
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs">Notification Type *</Label>
-            <Input
+            <Input aria-label="Notification Type" required
               value={form.notification_type}
               onChange={(e) => handleChange("notification_type", e.target.value)}
               placeholder="expiry_reminder"
               className="text-sm h-8"
             />
           </div>
-          <div className="flex flex-col gap-1.5 col-span-2">
+          <div className="flex flex-col gap-1.5 sm:col-span-2">
             <Label className="text-xs">Subject Template * (use {"{{variable}}"} placeholders)</Label>
-            <Input
+            <Input aria-label="Subject template" required maxLength={998}
               value={form.subject_template}
               onChange={(e) => handleChange("subject_template", e.target.value)}
               placeholder="Document {{document_no}} — {{title}} expires soon"
               className="text-sm h-8"
             />
           </div>
-          <div className="flex flex-col gap-1.5 col-span-2">
+          <div className="flex flex-col gap-1.5 sm:col-span-2">
             <Label className="text-xs">Text Body *</Label>
-            <Textarea
+            <Textarea aria-label="Text Body" required
               value={form.text_template}
               onChange={(e) => handleChange("text_template", e.target.value)}
               rows={3}
@@ -154,9 +146,9 @@ export function NotificationTemplateFormDialog({
               className="text-sm resize-none"
             />
           </div>
-          <div className="flex flex-col gap-1.5 col-span-2">
+          <div className="flex flex-col gap-1.5 sm:col-span-2">
             <Label className="text-xs">HTML Body (optional)</Label>
-            <Textarea
+            <Textarea aria-label="HTML Body (optional)"
               value={form.html_template}
               onChange={(e) => handleChange("html_template", e.target.value)}
               rows={3}
@@ -166,7 +158,7 @@ export function NotificationTemplateFormDialog({
           </div>
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs">Default Severity</Label>
-            <select
+            <select aria-label="Default Severity"
               value={form.default_severity}
               onChange={(e) => handleChange("default_severity", e.target.value)}
               className="h-8 rounded-md border bg-background px-2 text-sm"
@@ -203,13 +195,6 @@ export function NotificationTemplateFormDialog({
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" size="sm" onClick={onClose} disabled={pending}>Cancel</Button>
-          <Button size="sm" onClick={handleSubmit} disabled={pending}>
-            {isEdit ? "Save Changes" : "Create Template"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    </ERPChildDialogForm>
   );
 }

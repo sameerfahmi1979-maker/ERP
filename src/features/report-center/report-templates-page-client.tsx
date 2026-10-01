@@ -6,7 +6,8 @@
  * Phase BRANDING.3 — Organization and Company Branding Linkage (profile list improvements)
  */
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
+import { listBrandingProfiles } from "@/server/actions/reports/templates";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Plus, FileText, Building2, CheckCircle2, XCircle, Pencil, RefreshCw, ImageOff, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -57,6 +58,7 @@ export function ReportTemplatesPageClient({
   const [editingTemplate, setEditingTemplate] = useState<ReportTemplate | null>(null);
 
   const [isBackfilling, startBackfill] = useTransition();
+  const backfillFlight = useRef(false);
 
   const handleProfileSaved = (profile: ReportBrandingProfile, isNew: boolean) => {
     setProfiles((prev) =>
@@ -85,7 +87,10 @@ export function ReportTemplatesPageClient({
   };
 
   const handleBackfill = () => {
+    if (!canManage || backfillFlight.current) return;
+    backfillFlight.current = true;
     startBackfill(async () => {
+      try {
       const result = await backfillAllOrgBrandingProfiles();
       if (!result.success) {
         toast.error(result.error ?? "Backfill failed");
@@ -98,6 +103,11 @@ export function ReportTemplatesPageClient({
       if (d.errors.length > 0) {
         toast.error(`${d.errors.length} companies had errors`);
       }
+      const refreshed = await listBrandingProfiles();
+      if (refreshed.success && refreshed.data) setProfiles(refreshed.data);
+      else toast.error("Profiles could not be refreshed. Reload before another operation.");
+      } catch { toast.error("Backfill outcome could not be confirmed. Reload and check profiles before retrying."); }
+      finally { backfillFlight.current = false; }
     });
   };
 
@@ -260,6 +270,7 @@ export function ReportTemplatesPageClient({
                 variant="ghost"
                 size="icon"
                 className="h-7 w-7"
+                aria-label={`Edit branding profile ${row.original.profile_name}`}
                 onClick={() => { setEditingProfile(row.original); setProfileDrawerOpen(true); }}
               >
                 <Pencil className="h-3.5 w-3.5" />
@@ -395,6 +406,7 @@ export function ReportTemplatesPageClient({
               size="icon"
               className="h-7 w-7"
               disabled={row.original.governance_status === "archived"}
+              aria-label={`Edit template ${row.original.template_name}`}
               onClick={() => { setEditingTemplate(row.original); setTemplateDrawerOpen(true); }}
             >
               <Pencil className="h-3.5 w-3.5" />
@@ -430,7 +442,7 @@ export function ReportTemplatesPageClient({
           { label: "Templates & Branding" },
         ]}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Link href="/admin/reports/templates/governance">
               <Button variant="outline" size="sm" className="gap-1.5">
                 <ShieldCheck className="h-3.5 w-3.5" />
@@ -474,7 +486,7 @@ export function ReportTemplatesPageClient({
 
         <TabsContent value="profiles">
           {canManage ? (
-            <div className="flex items-center justify-between py-2 px-1 mb-1">
+            <div className="flex flex-wrap gap-2 items-center justify-between py-2 px-1 mb-1">
               <p className="text-xs text-muted-foreground">
                 Profiles linked to owner companies. Missing profiles can be created via the
                 Backfill button.

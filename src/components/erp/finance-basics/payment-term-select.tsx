@@ -22,6 +22,7 @@ export function PaymentTermSelect({
   allowClear = false,
   className,
   name,
+  ariaLabel = "Payment term",
   error,
 }: FinanceBasicsSelectProps) {
   const {
@@ -50,6 +51,7 @@ export function PaymentTermSelect({
 
   return (
     <ERPCombobox
+      ariaLabel={ariaLabel}
       value={value ?? null}
       onValueChange={handleValueChange}
       options={options}

@@ -10,6 +10,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import type { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -212,12 +214,12 @@ function RoleAssignmentPanel({
 
       const key = `${selectedPermission.id}:${role.id}`;
       const originalAssigned = originalPermissions.get(key) ?? false;
-      const hasDraft = draftChanges.has(key);
+
       const status = getStatus(originalAssigned, draftChanges, selectedPermission.id, role.id);
 
       if (roleFilter === "assigned") return originalAssigned || status === "pending_grant";
       if (roleFilter === "unassigned") return !originalAssigned || status === "pending_revoke";
-      if (roleFilter === "pending") return hasDraft;
+      if (roleFilter === "pending") return draftChanges.has(key);
       return true;
     });
   }, [roles, selectedPermission, roleSearchLower, roleFilter, originalPermissions, draftChanges]);
@@ -234,6 +236,67 @@ function RoleAssignmentPanel({
       </div>
     );
   }
+
+  const assignmentColumns: ColumnDef<Role>[] = [{id:"role",header:"Role",accessorFn:role=>[role.display_name,role.role_name,role.role_code].filter(Boolean).join(" "),enableHiding:false,cell:({row})=>{const role=row.original; return (<>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-medium text-sm">{role.display_name ?? role.role_name}</span>
+                          {role.is_system_role && (
+                            <Badge variant="outline" className="text-[10px] h-4 px-1 border-blue-300 text-blue-700">
+                              System
+                            </Badge>
+                          )}
+                        </div>
+                        {role.description && (
+                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{role.description}</p>
+                        )}
+                      </div>
+                    </>);}},{id:"type",header:"Type",accessorFn:role=>role.is_system_role?"System":"Custom",cell:({row})=>{const role=row.original; return (<>
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "text-[10px]",
+                          role.is_system_role
+                            ? "border-blue-300 text-blue-700"
+                            : "border-emerald-300 text-emerald-700",
+                        )}
+                      >
+                        {role.is_system_role ? "System" : "Custom"}
+                      </Badge>
+                    </>);}},{id:"status",header:"Status",accessorFn:role=>getStatus(originalPermissions.get(`${selectedPermission.id}:${role.id}`)??false,draftChanges,selectedPermission.id,role.id).replaceAll("_"," "),cell:({row})=>{const role=row.original;                 const key = `${selectedPermission.id}:${role.id}`;
+                const originalAssigned = originalPermissions.get(key) ?? false;
+                const status = getStatus(originalAssigned, draftChanges, selectedPermission.id, role.id);
+
+
+
+
+
+return (<>
+                      <StatusBadge status={status} />
+                    </>);}},{id:"actions",header:"Assignment",enableSorting:false,enableHiding:false,cell:({row})=>{const role=row.original;                 const key = `${selectedPermission.id}:${role.id}`;
+                const originalAssigned = originalPermissions.get(key) ?? false;
+                const status = getStatus(originalAssigned, draftChanges, selectedPermission.id, role.id);
+                const isPendingGrant = status === "pending_grant";
+                const isPendingRevoke = status === "pending_revoke";
+                const isCurrentlyOn = isPendingGrant || (status === "assigned");
+
+
+return (<>
+                      <Switch
+                        checked={isCurrentlyOn}
+                        disabled={!canManage}
+                        onCheckedChange={() => onToggle(role, selectedPermission, originalAssigned)}
+                        aria-label={
+                          isCurrentlyOn
+                            ? `Revoke ${selectedPermission.permission_name} permission from ${role.role_name}`
+                            : `Grant ${selectedPermission.permission_name} permission to ${role.role_name}`
+                        }
+                        className={cn(
+                          isPendingGrant && "data-[state=checked]:bg-blue-600",
+                          isPendingRevoke && "data-[state=unchecked]:bg-amber-200",
+                        )}
+                      />
+                    </>);}}];
 
   const pendingForPermission = [...draftChanges.values()].filter(
     (c) => c.permissionId === selectedPermission.id,
@@ -279,6 +342,7 @@ function RoleAssignmentPanel({
                   ? "bg-primary text-primary-foreground border-primary"
                   : "bg-transparent text-muted-foreground border-muted-foreground/30 hover:border-muted-foreground/60",
               )}
+              aria-pressed={roleFilter === value}
               onClick={() => setRoleFilter(value)}
             >
               {label}
@@ -328,85 +392,7 @@ function RoleAssignmentPanel({
             )}
           </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-background z-10">
-              <tr className="border-b">
-                <th className="text-left px-4 py-2.5 font-medium text-xs text-muted-foreground">Role</th>
-                <th className="text-left px-4 py-2.5 font-medium text-xs text-muted-foreground hidden md:table-cell">Type</th>
-                <th className="text-left px-4 py-2.5 font-medium text-xs text-muted-foreground">Status</th>
-                <th className="text-center px-4 py-2.5 font-medium text-xs text-muted-foreground">Assign</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {filteredRoles.map((role) => {
-                const key = `${selectedPermission.id}:${role.id}`;
-                const originalAssigned = originalPermissions.get(key) ?? false;
-                const status = getStatus(originalAssigned, draftChanges, selectedPermission.id, role.id);
-                const isPendingGrant = status === "pending_grant";
-                const isPendingRevoke = status === "pending_revoke";
-                const isCurrentlyOn = isPendingGrant || (status === "assigned");
-                const hasDraft = draftChanges.has(key);
-
-                return (
-                  <tr
-                    key={role.id}
-                    className={cn(
-                      "hover:bg-muted/40 transition-colors",
-                      hasDraft && "bg-blue-50/50",
-                    )}
-                  >
-                    <td className="px-4 py-3">
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-medium text-sm">{role.display_name ?? role.role_name}</span>
-                          {role.is_system_role && (
-                            <Badge variant="outline" className="text-[10px] h-4 px-1 border-blue-300 text-blue-700">
-                              System
-                            </Badge>
-                          )}
-                        </div>
-                        {role.description && (
-                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{role.description}</p>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 hidden md:table-cell">
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          "text-[10px]",
-                          role.is_system_role
-                            ? "border-blue-300 text-blue-700"
-                            : "border-emerald-300 text-emerald-700",
-                        )}
-                      >
-                        {role.is_system_role ? "System" : "Custom"}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={status} />
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <Switch
-                        checked={isCurrentlyOn}
-                        disabled={!canManage}
-                        onCheckedChange={() => onToggle(role, selectedPermission, originalAssigned)}
-                        aria-label={
-                          isCurrentlyOn
-                            ? `Revoke ${selectedPermission.permission_name} permission from ${role.role_name}`
-                            : `Grant ${selectedPermission.permission_name} permission to ${role.role_name}`
-                        }
-                        className={cn(
-                          isPendingGrant && "data-[state=checked]:bg-blue-600",
-                          isPendingRevoke && "data-[state=unchecked]:bg-amber-200",
-                        )}
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <ERPDataTable tableId={`permission-roles:${selectedPermission.id}`} resultsLabel="Role assignments" data={filteredRoles} columns={assignmentColumns} enableRowSelection={false} enableGlobalFilter={false} />
         )}
       </div>
     </div>
@@ -654,12 +640,12 @@ export function PermissionCommandCenter({
       {/* Two-panel layout */}
       <fieldset disabled={isSaving} aria-busy={isSaving}
         className={cn(
-          "flex flex-col md:flex-row gap-0 border rounded-lg overflow-hidden bg-card min-w-0",
-          "md:h-[calc(100vh-320px)] min-h-[500px]",
+          "flex flex-col xl:flex-row gap-0 border rounded-lg overflow-hidden bg-card min-w-0",
+          "xl:h-[calc(100vh-320px)] min-h-[500px]",
         )}
       >
         {/* LEFT — Permission Explorer */}
-        <div className="w-full md:w-[340px] lg:w-[380px] shrink-0 border-b md:border-b-0 md:border-r flex flex-col h-80 md:h-auto">
+        <div className="w-full xl:w-[340px] shrink-0 border-b xl:border-b-0 xl:border-r flex flex-col h-80 xl:h-auto">
           <div className="px-3 py-3 border-b bg-muted/30">
             <h2 className="text-sm font-semibold">1. Find a Permission</h2>
           </div>

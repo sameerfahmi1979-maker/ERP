@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { EmailFeatureFlag, EmailProviderConfig, EmailSendLogRow } from "@/lib/email/providers/types";
 import { BookOpen, Mail, Plus, RefreshCw, ScrollText, ToggleLeft } from "lucide-react";
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { EmailFeatureFlagsPanel } from "./email-feature-flags-panel";
 import { EmailProviderConfigList } from "./email-provider-config-list";
 import { EmailProviderFormDialog } from "./email-provider-form-dialog";
@@ -15,14 +16,21 @@ interface EmailSettingsPageClientProps {
   configs: EmailProviderConfig[];
   featureFlags: EmailFeatureFlag[];
   sendLogs: EmailSendLogRow[];
+  canManage?: boolean;
+  canTest?: boolean;
+  canSecrets?: boolean;
+  canFlags?: boolean;
+  initialError?: boolean;
 }
 
 export function EmailSettingsPageClient({
   configs,
   featureFlags,
   sendLogs,
+  canManage = false, canTest = false, canSecrets = false, canFlags = false, initialError = false,
 }: EmailSettingsPageClientProps) {
   const [addOpen, setAddOpen] = useState(false);
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
   const enabledProviders = configs.filter((c) => c.isEnabled);
@@ -32,14 +40,14 @@ export function EmailSettingsPageClient({
   const handleRefresh = () => {
     startTransition(() => {
       // Next.js will re-fetch on server component re-render
-      window.location.reload();
+      router.refresh();
     });
   };
 
   return (
     <div className="flex flex-col gap-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap gap-3 items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">Email Settings</h1>
           <p className="text-sm text-muted-foreground">
@@ -51,10 +59,10 @@ export function EmailSettingsPageClient({
             <RefreshCw className={`h-4 w-4 ${isPending ? "animate-spin" : ""}`} />
             Refresh
           </Button>
-          <Button size="sm" className="gap-1.5" onClick={() => setAddOpen(true)}>
+          {canManage && <Button disabled={initialError || isPending} size="sm" className="gap-1.5" onClick={() => setAddOpen(true)}>
             <Plus className="h-4 w-4" />
             Add Provider
-          </Button>
+          </Button>}
         </div>
       </div>
 
@@ -79,6 +87,7 @@ export function EmailSettingsPageClient({
       </div>
 
       {/* Security notice */}
+      {initialError && <div role="alert">Email settings could not be loaded completely. Refresh before making changes.</div>}
       <EmailSecurityNotice />
 
       {/* Not ready notice if no enabled provider */}
@@ -86,7 +95,7 @@ export function EmailSettingsPageClient({
 
       {/* Main tabs */}
       <Tabs defaultValue="providers">
-        <TabsList>
+        <TabsList className="h-auto flex flex-wrap justify-start">
           <TabsTrigger value="providers" className="gap-1.5">
             <Mail className="h-3.5 w-3.5" />Providers
           </TabsTrigger>
@@ -104,6 +113,9 @@ export function EmailSettingsPageClient({
         <TabsContent value="providers" className="mt-4">
           <EmailProviderConfigList
             configs={configs}
+            canManage={canManage && !initialError && !isPending}
+            canTest={canTest && !initialError && !isPending}
+            canSecrets={canSecrets && !initialError && !isPending}
             onRefresh={handleRefresh}
             onAdd={() => setAddOpen(true)}
           />
@@ -116,7 +128,7 @@ export function EmailSettingsPageClient({
               Control which ERP modules can send emails. All flags are disabled by default.
               Flags marked &quot;Requires approval&quot; prompt confirmation before enabling.
             </p>
-            <EmailFeatureFlagsPanel flags={featureFlags} onRefresh={handleRefresh} />
+            <EmailFeatureFlagsPanel flags={featureFlags} onRefresh={handleRefresh} canManage={canFlags && !initialError && !isPending} />
           </div>
         </TabsContent>
 

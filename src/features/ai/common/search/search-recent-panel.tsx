@@ -34,7 +34,7 @@ export function SearchRecentPanel({ recent, onSelect, onClear }: SearchRecentPan
         <Button
           variant="ghost"
           size="sm"
-          className="h-6 text-xs text-slate-500 hover:text-red-600 gap-1"
+          className="h-6 text-xs text-muted-foreground hover:text-red-600 gap-1"
           onClick={handleClear}
           disabled={isPending}
         >
@@ -46,7 +46,7 @@ export function SearchRecentPanel({ recent, onSelect, onClear }: SearchRecentPan
         {recent.slice(0, 10).map((item) => (
           <li key={item.id}>
             <button
-              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
+              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-slate-50 transition-colors text-left"
               onClick={() => onSelect(item.searchText)}
             >
               <Clock className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />

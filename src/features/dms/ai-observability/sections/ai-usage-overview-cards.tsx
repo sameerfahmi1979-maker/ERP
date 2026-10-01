@@ -1,4 +1,5 @@
 "use client";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { getDmsAiObservabilityOverview, type ObservabilityFilters } from "@/server/actions/dms/ai-observability";
 import { useQuery } from "@tanstack/react-query";
@@ -29,7 +30,7 @@ function fmt(n: number) {
 }
 
 export function AiUsageOverviewCards({ filters, refreshKey }: Props) {
-  const { data, isPending: loading, error: queryError } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: ["dms-observability", "getDmsAiObservabilityOverview", filters, refreshKey],
     queryFn: async () => {
       const result = await getDmsAiObservabilityOverview(filters);
@@ -40,14 +41,15 @@ export function AiUsageOverviewCards({ filters, refreshKey }: Props) {
     gcTime: 0,
     refetchOnWindowFocus: false,
   });
+ const { data, isPending: loading, error: queryError } = uiRead1;
   const error = queryError?.message;
 
-  if (loading) return <div className="text-sm text-muted-foreground">Loading overview...</div>;
-  if (error) return <div className="text-sm text-destructive">{error}</div>;
+  if (loading) return <QueryReadBoundary queries={[uiRead1]}><div className="text-sm text-muted-foreground">Loading overview...</div></QueryReadBoundary>;
+  if (error) return <QueryReadBoundary queries={[uiRead1]}><div className="text-sm text-destructive">{error}</div></QueryReadBoundary>;
   if (!data) return null;
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+    <QueryReadBoundary queries={[uiRead1]}><div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
       <StatCard label="Total Calls" value={fmt(data.totalLogs)} icon={<Hash className="h-5 w-5" />} />
       <StatCard label="Success" value={fmt(data.successCount)} icon={<CheckCircle2 className="h-5 w-5 text-green-600" />} />
       <StatCard label="Failed" value={fmt(data.failedCount)} icon={<XCircle className="h-5 w-5 text-destructive" />} warn={data.failedCount > 0} />
@@ -66,6 +68,6 @@ export function AiUsageOverviewCards({ filters, refreshKey }: Props) {
         icon={<DollarSign className="h-5 w-5" />}
         sub={!data.costDataAvailable ? "Rates unconfirmed" : undefined}
       />
-    </div>
+    </div></QueryReadBoundary>
   );
 }

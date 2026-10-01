@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ERPCombobox } from "@/components/erp/combobox";
 import type { ERPComboboxOption } from "@/components/erp/combobox";
@@ -31,6 +31,7 @@ export function DmsLinkEntitySelect({
   required = false,
   className,
 }: DmsLinkEntitySelectProps) {
+  const fieldId = useId();
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
@@ -48,7 +49,7 @@ export function DmsLinkEntitySelect({
     setDebouncedSearch("");
   }
 
-  const { data: options = [], isLoading, isError, error } = useQuery({
+  const { data: options = [], isLoading, isError } = useQuery({
     queryKey: ["dms", "link-entity-options", entityType, debouncedSearch],
     queryFn: async () => {
       const result = await searchDmsLinkEntityOptions(entityType, debouncedSearch || undefined);
@@ -90,6 +91,7 @@ export function DmsLinkEntitySelect({
 
   return (
     <ERPCombobox
+      name={`entity_${fieldId}`} ariaLabel={`Linked ${typeLabel.toLowerCase()}`}
       value={value}
       onValueChange={(v) => {
         const id = v !== null ? Number(v) : null;
@@ -110,7 +112,7 @@ export function DmsLinkEntitySelect({
       disabled={disabled}
       required={required}
       loading={showInitialLoading}
-      error={isError ? (error instanceof Error ? error.message : "Failed to load entities") : undefined}
+      error={isError ? "Could not load permitted entities. Try the search again." : undefined}
       allowClear
       className={className}
       triggerClassName="h-8 text-xs"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import type { ReviewQueueItem } from "@/server/actions/dms/review-queue";
 import {
@@ -42,12 +42,15 @@ interface Props {
   onClose:          () => void;
   onMutated:        () => void;
   onItemRefreshed?: () => void; // refresh item in-place without closing drawer
+  onBusyChange?: (busy: boolean) => void;
 }
 
 // ── Detail drawer ─────────────────────────────────────────────────────────────
 
-export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, onItemRefreshed }: Props) {
+export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, onItemRefreshed, onBusyChange }: Props) {
+  const actionFlight = useRef(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  useEffect(() => { onBusyChange?.(isSubmitting); return () => onBusyChange?.(false); }, [isSubmitting, onBusyChange]);
   const [error, setError]               = useState<string | null>(null);
   const [resolutionCode, setResolutionCode] = useState(RESOLUTION_CODES[0].value);
   const [resolutionNote, setResolutionNote] = useState("");
@@ -63,18 +66,24 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
   const isActive = ["open", "assigned", "in_review"].includes(item.status);
 
   const handleAssignToMe = async () => {
+    if(actionFlight.current)return; actionFlight.current=true;
+    try {
     setIsSubmitting(true); setError(null);
     const result = await assignDmsReviewQueueItem(item.id, 0); // 0 = self (server resolves current user)
-    if (!result.success) setError(result.error ?? "Failed to assign");
+    if (!result.success) setError("The action was not accepted. Check the item state and your access.");
     else onMutated();
     setIsSubmitting(false);
-  };
+
+    } catch { setError("The change could not be confirmed. Your entries remain here. Refresh the item before retrying."); } finally { actionFlight.current=false; setIsSubmitting(false); }
+};
 
   const handleStart = async () => {
+    if(actionFlight.current)return; actionFlight.current=true;
+    try {
     setIsSubmitting(true); setError(null);
     const result = await startDmsReviewQueueItem(item.id);
     if (!result.success) {
-      setError(result.error ?? "Failed to start");
+      setError("The action was not accepted. Check the item state and your access.");
       setIsSubmitting(false);
       return;
     }
@@ -85,27 +94,37 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
     }
     onItemRefreshed?.();
     setIsSubmitting(false);
-  };
+
+    } catch { setError("The change could not be confirmed. Your entries remain here. Refresh the item before retrying."); } finally { actionFlight.current=false; setIsSubmitting(false); }
+};
 
   const handleResolve = async () => {
+    if(actionFlight.current)return; actionFlight.current=true;
+    try {
     setIsSubmitting(true); setError(null);
     const result = await resolveDmsReviewQueueItem(item.id, {
       resolutionCode,
       resolutionNote: resolutionNote.trim() || undefined,
     });
-    if (!result.success) setError(result.error ?? "Failed to resolve");
+    if (!result.success) setError("The action was not accepted. Check the item state and your access.");
     else onMutated();
     setIsSubmitting(false);
-  };
+
+    } catch { setError("The change could not be confirmed. Your entries remain here. Refresh the item before retrying."); } finally { actionFlight.current=false; setIsSubmitting(false); }
+};
 
   const handleDismiss = async () => {
+    if(actionFlight.current)return; actionFlight.current=true;
+    try {
     if (!dismissReason.trim()) { setError("Please provide a dismissal reason."); return; }
     setIsSubmitting(true); setError(null);
     const result = await dismissDmsReviewQueueItem(item.id, dismissReason.trim());
-    if (!result.success) setError(result.error ?? "Failed to dismiss");
+    if (!result.success) setError("The action was not accepted. Check the item state and your access.");
     else onMutated();
     setIsSubmitting(false);
-  };
+
+    } catch { setError("The change could not be confirmed. Your entries remain here. Refresh the item before retrying."); } finally { actionFlight.current=false; setIsSubmitting(false); }
+};
 
   // Source link — prefer the final document (via session.document_id) in edit mode
   const sessionDocumentId = item.uploadSession?.document_id ?? null;
@@ -174,73 +193,89 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
   }));
 
   const handleAcceptCandidate = async () => {
+    if(actionFlight.current)return; actionFlight.current=true;
+    try {
     if (!item.entityMatchCandidateId) return;
     setIsSubmitting(true); setError(null);
     const result = await reviewDmsEntityMatchCandidate(item.entityMatchCandidateId, {
       decision: "accepted_for_later_apply",
       note: "Accepted for later apply via review queue.",
     });
-    if (!result.success) setError(result.error ?? "Failed to accept candidate");
+    if (!result.success) setError("The action was not accepted. Check the item state and your access.");
     else onMutated();
     setIsSubmitting(false);
-  };
+
+    } catch { setError("The change could not be confirmed. Your entries remain here. Refresh the item before retrying."); } finally { actionFlight.current=false; setIsSubmitting(false); }
+};
 
   const handleRejectCandidate = async () => {
+    if(actionFlight.current)return; actionFlight.current=true;
+    try {
     if (!item.entityMatchCandidateId) return;
     setIsSubmitting(true); setError(null);
     const result = await reviewDmsEntityMatchCandidate(item.entityMatchCandidateId, {
       decision: "rejected",
       note: "Rejected via review queue.",
     });
-    if (!result.success) setError(result.error ?? "Failed to reject candidate");
+    if (!result.success) setError("The action was not accepted. Check the item state and your access.");
     else onMutated();
     setIsSubmitting(false);
-  };
+
+    } catch { setError("The change could not be confirmed. Your entries remain here. Refresh the item before retrying."); } finally { actionFlight.current=false; setIsSubmitting(false); }
+};
 
   const handleFindingFalsePositive = async () => {
+    if(actionFlight.current)return; actionFlight.current=true;
+    try {
     if (!item.validationFindingId) return;
     setIsSubmitting(true); setError(null);
     const result = await markDmsValidationFindingFalsePositive(item.validationFindingId, "Marked false positive via review queue.");
-    if (!result.success) setError(result.error ?? "Failed to mark false positive");
+    if (!result.success) setError("The action was not accepted. Check the item state and your access.");
     else onMutated();
     setIsSubmitting(false);
-  };
+
+    } catch { setError("The change could not be confirmed. Your entries remain here. Refresh the item before retrying."); } finally { actionFlight.current=false; setIsSubmitting(false); }
+};
 
   const handleFindingReviewed = async () => {
+    if(actionFlight.current)return; actionFlight.current=true;
+    try {
     if (!item.validationFindingId) return;
     setIsSubmitting(true); setError(null);
     const result = await reviewDmsValidationFinding(item.validationFindingId, {
       decision: "reviewed_no_action",
       note: "Reviewed with no action via review queue.",
     });
-    if (!result.success) setError(result.error ?? "Failed to mark as reviewed");
+    if (!result.success) setError("The action was not accepted. Check the item state and your access.");
     else onMutated();
     setIsSubmitting(false);
-  };
+
+    } catch { setError("The change could not be confirmed. Your entries remain here. Refresh the item before retrying."); } finally { actionFlight.current=false; setIsSubmitting(false); }
+};
 
   const PRIORITY_COLORS: Record<string, string> = {
     urgent: "text-red-700 bg-red-50 border-red-200",
     high:   "text-orange-700 bg-orange-50 border-orange-200",
     normal: "text-sky-700 bg-sky-50 border-sky-200",
-    low:    "text-slate-500 bg-slate-50 border-slate-200",
+    low:    "text-muted-foreground bg-slate-50 border-border",
   };
 
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-start justify-between border-b border-slate-200 px-6 py-4">
+      <div className="flex items-start justify-between border-b border-border px-6 py-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-0.5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">
             Review Item #{item.id}
           </p>
-          <h2 className="text-base font-semibold text-slate-900">
+          <h2 className="text-base font-semibold text-foreground">
             {REVIEW_TYPE_LABELS[item.reviewType] ?? item.reviewType}
           </h2>
         </div>
         <button
           type="button"
-          onClick={onClose}
-          className="rounded-md p-1 hover:bg-slate-100 text-slate-500"
+          aria-label="Close review item" disabled={isSubmitting} onClick={onClose}
+          className="rounded-md p-1 hover:bg-slate-100 text-muted-foreground"
         >
           <X className="h-5 w-5" />
         </button>
@@ -254,11 +289,11 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
           <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold uppercase ${PRIORITY_COLORS[item.priority] ?? PRIORITY_COLORS.normal}`}>
             {item.priority} priority
           </span>
-          <span className="rounded-full border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 bg-slate-50">
+          <span className="rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground bg-slate-50">
             {item.status.replace("_", " ")}
           </span>
           {item.confidence != null && (
-            <span className="rounded-full border border-slate-200 px-2.5 py-1 text-xs font-mono text-slate-600 bg-slate-50">
+            <span className="rounded-full border border-border px-2.5 py-1 text-xs font-mono text-muted-foreground bg-slate-50">
               {(item.confidence * 100).toFixed(0)}% confidence
             </span>
           )}
@@ -280,7 +315,7 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
         {/* Source link */}
         {sourceUrl && (
           <div>
-            <p className="text-xs font-semibold text-slate-500 mb-1.5">Source Document</p>
+            <p className="text-xs font-semibold text-muted-foreground mb-1.5">Source Document</p>
             <a
               href={sourceUrl}
               target="_blank"
@@ -297,42 +332,42 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
         )}
 
         {/* Meta grid */}
-        <div className="grid grid-cols-2 gap-3 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
           <div>
-            <p className="text-slate-400 font-medium">Queued</p>
-            <p className="text-slate-700">{formatDistanceToNow(parseISO(item.queuedAt), { addSuffix: true })}</p>
+            <p className="text-muted-foreground font-medium">Queued</p>
+            <p className="text-foreground">{formatDistanceToNow(parseISO(item.queuedAt), { addSuffix: true })}</p>
           </div>
           {item.dueAt && (
             <div>
-              <p className="text-slate-400 font-medium flex items-center gap-0.5">
+              <p className="text-muted-foreground font-medium flex items-center gap-0.5">
                 <Clock className="h-3 w-3" /> Due
               </p>
-              <p className="text-slate-700">{formatDistanceToNow(parseISO(item.dueAt), { addSuffix: true })}</p>
+              <p className="text-foreground">{formatDistanceToNow(parseISO(item.dueAt), { addSuffix: true })}</p>
             </div>
           )}
           {item.assignedUser?.full_name && (
             <div>
-              <p className="text-slate-400 font-medium">Assigned To</p>
-              <p className="text-slate-700">{item.assignedUser.full_name}</p>
+              <p className="text-muted-foreground font-medium">Assigned To</p>
+              <p className="text-foreground">{item.assignedUser.full_name}</p>
             </div>
           )}
           {item.reviewedAt && (
             <div>
-              <p className="text-slate-400 font-medium">Reviewed</p>
-              <p className="text-slate-700">{formatDistanceToNow(parseISO(item.reviewedAt), { addSuffix: true })}</p>
+              <p className="text-muted-foreground font-medium">Reviewed</p>
+              <p className="text-foreground">{formatDistanceToNow(parseISO(item.reviewedAt), { addSuffix: true })}</p>
             </div>
           )}
         </div>
 
         {/* Resolution info (if already closed) */}
         {(item.status === "resolved" || item.status === "dismissed") && item.resolutionCode && (
-          <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
-            <p className="text-xs font-semibold text-slate-600 mb-1">
+          <div className="rounded-md border border-border bg-slate-50 p-3">
+            <p className="text-xs font-semibold text-muted-foreground mb-1">
               {item.status === "resolved" ? "Resolution" : "Dismissal Reason"}
             </p>
-            <p className="text-sm text-slate-700">{item.resolutionCode.replace(/_/g, " ")}</p>
+            <p className="text-sm text-foreground">{item.resolutionCode.replace(/_/g, " ")}</p>
             {item.resolutionNote && (
-              <p className="mt-1 text-xs text-slate-500">{item.resolutionNote}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{item.resolutionNote}</p>
             )}
           </div>
         )}
@@ -348,7 +383,7 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
                   ? "text-red-700 bg-red-50 border-red-200"
                   : item.validationFinding.severity === "warning"
                   ? "text-orange-700 bg-orange-50 border-orange-200"
-                  : "text-slate-600 bg-slate-50 border-slate-200"
+                  : "text-muted-foreground bg-slate-50 border-border"
               }`}>
                 {item.validationFinding.severity}
               </span>
@@ -363,19 +398,19 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
             </div>
             {/* Conflict comparison */}
             {(item.validationFinding.currentValueSummary || item.validationFinding.aiValueSummary) && (
-              <div className="grid grid-cols-2 gap-2 pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                 {item.validationFinding.currentValueSummary && (
-                  <div className="rounded bg-white border border-amber-200 p-2">
+                  <div className="rounded bg-card border border-amber-200 p-2">
                     <p className="text-xs text-amber-600 font-medium mb-0.5">Saved Value</p>
-                    <p className="text-xs text-slate-700 font-mono break-all">
+                    <p className="text-xs text-foreground font-mono break-all">
                       {item.validationFinding.currentValueSummary}
                     </p>
                   </div>
                 )}
                 {item.validationFinding.aiValueSummary && (
-                  <div className="rounded bg-white border border-amber-200 p-2">
+                  <div className="rounded bg-card border border-amber-200 p-2">
                     <p className="text-xs text-amber-600 font-medium mb-0.5">AI Value</p>
-                    <p className="text-xs text-slate-700 font-mono break-all">
+                    <p className="text-xs text-foreground font-mono break-all">
                       {item.validationFinding.aiValueSummary}
                     </p>
                   </div>
@@ -400,7 +435,7 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
               <Search className="h-4 w-4 text-sky-600" />
               <p className="text-xs font-semibold text-sky-800 uppercase tracking-wide">Entity Match Candidate</p>
               {item.entityMatchCandidate.matchScore != null && (
-                <span className="ml-auto text-xs font-medium rounded-full px-2 py-0.5 border border-sky-200 bg-white text-sky-700">
+                <span className="ml-auto text-xs font-medium rounded-full px-2 py-0.5 border border-sky-200 bg-card text-sky-700">
                   {(item.entityMatchCandidate.matchScore * 100).toFixed(0)}% match
                 </span>
               )}
@@ -510,7 +545,7 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
                   className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
                     partyTargetKind === kind
                       ? "bg-violet-600 text-white border-violet-600"
-                      : "bg-white text-violet-700 border-violet-300 hover:bg-violet-50"
+                      : "bg-card text-violet-700 border-violet-300 hover:bg-violet-50"
                   }`}
                 >
                   {kind === "party_licenses" ? "Party Licenses" : "Tax Registrations"}
@@ -593,7 +628,7 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
               {metadataSuggestionsPayload.document_type_name ?? metadataSuggestionsPayload.document_type_code}.
               Review and select the fields you want to create — nothing is saved until you approve.
             </p>
-            <div className="rounded-md border bg-white p-3">
+            <div className="rounded-md border bg-card p-3">
               <DmsAiMetadataSuggestionsDialog
                 open
                 onOpenChange={() => {
@@ -618,8 +653,8 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
 
         {/* Phase 13 — Safety Notice */}
         {(isValidationReviewType || isMatchingReviewType) && (
-          <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
-            <p className="font-semibold text-slate-600 mb-1">Phase 13 Safety Notice</p>
+          <div className="rounded-md border border-border bg-slate-50 p-3 text-xs text-muted-foreground">
+            <p className="font-semibold text-muted-foreground mb-1">Phase 13 Safety Notice</p>
             <p>
               All actions on this item update finding/candidate status only.
               No metadata is auto-saved, no owner company/branch/party/employee links are written,
@@ -630,27 +665,28 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
         )}
 
         {/* Audit timeline placeholder */}
-        <div className="rounded-md border border-dashed border-slate-200 p-3 text-center text-xs text-slate-400">
-          Audit timeline
+        <div className="rounded-md border border-dashed border-border p-3 text-center text-xs text-muted-foreground">
+            Audit timeline is not available in this panel.
         </div>
 
         {/* Error */}
         {error && (
-          <div className="rounded-md bg-red-50 border border-red-200 p-3 text-xs text-red-700">
+          <div role="alert" className="rounded-md bg-destructive/10 border border-destructive/30 p-3 text-xs text-destructive">
             {error}
           </div>
         )}
 
         {/* Resolve form */}
         {showResolveForm && isActive && canManage && (
-          <div className="rounded-md border border-slate-200 p-4 space-y-3 bg-white">
-            <p className="text-sm font-semibold text-slate-700">Resolve Item</p>
+          <div className="rounded-md border border-border p-4 space-y-3 bg-card">
+            <p className="text-sm font-semibold text-foreground">Resolve Item</p>
             <div>
-              <label className="text-xs text-slate-500 font-medium block mb-1">Resolution Code</label>
+              <label className="text-xs text-muted-foreground font-medium block mb-1">Resolution Code</label>
               <select
+                aria-label="Resolution Code"
                 value={resolutionCode}
                 onChange={(e) => setResolutionCode(e.target.value)}
-                className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-sky-500"
               >
                 {RESOLUTION_CODES.map((c) => (
                   <option key={c.value} value={c.value}>{c.label}</option>
@@ -658,16 +694,17 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
               </select>
             </div>
             <div>
-              <label className="text-xs text-slate-500 font-medium block mb-1">Notes (optional)</label>
+              <label className="text-xs text-muted-foreground font-medium block mb-1">Notes (optional)</label>
               <textarea
+                aria-label="Resolution notes"
                 value={resolutionNote}
                 onChange={(e) => setResolutionNote(e.target.value.slice(0, 500))}
                 rows={3}
                 maxLength={500}
-                className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500 resize-none"
+                className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-sky-500 resize-none"
                 placeholder="Brief notes about this resolution…"
               />
-              <p className="text-right text-xs text-slate-400 mt-0.5">{resolutionNote.length}/500</p>
+              <p className="text-right text-xs text-muted-foreground mt-0.5">{resolutionNote.length}/500</p>
             </div>
             <div className="flex gap-2">
               <Button size="sm" onClick={handleResolve} disabled={isSubmitting}>
@@ -683,19 +720,20 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
 
         {/* Dismiss form */}
         {showDismissForm && isActive && canManage && (
-          <div className="rounded-md border border-slate-200 p-4 space-y-3 bg-white">
-            <p className="text-sm font-semibold text-slate-700">Dismiss Item</p>
+          <div className="rounded-md border border-border p-4 space-y-3 bg-card">
+            <p className="text-sm font-semibold text-foreground">Dismiss Item</p>
             <div>
-              <label className="text-xs text-slate-500 font-medium block mb-1">Reason for dismissal</label>
+              <label className="text-xs text-muted-foreground font-medium block mb-1">Reason for dismissal</label>
               <textarea
+                aria-label="Reason for dismissal"
                 value={dismissReason}
                 onChange={(e) => setDismissReason(e.target.value.slice(0, 500))}
                 rows={3}
                 maxLength={500}
-                className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500 resize-none"
+                className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-sky-500 resize-none"
                 placeholder="Briefly explain why this item requires no action…"
               />
-              <p className="text-right text-xs text-slate-400 mt-0.5">{dismissReason.length}/500</p>
+              <p className="text-right text-xs text-muted-foreground mt-0.5">{dismissReason.length}/500</p>
             </div>
             <div className="flex gap-2">
               <Button size="sm" variant="outline" onClick={handleDismiss} disabled={isSubmitting}>
@@ -712,7 +750,7 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
 
       {/* Footer — action controls */}
       {isActive && canManage && !showResolveForm && !showDismissForm && !isMetadataSuggestionsReviewType && (
-        <div className="border-t border-slate-200 px-6 py-4 flex flex-wrap gap-2 bg-slate-50">
+        <div className="border-t border-border px-6 py-4 flex flex-wrap gap-2 bg-slate-50">
           {item.status === "open" && (
             <Button size="sm" variant="outline" onClick={handleAssignToMe} disabled={isSubmitting}>
               <UserCheck className="h-3.5 w-3.5 mr-1" />
@@ -743,7 +781,7 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
                 variant="outline"
                 onClick={handleRejectCandidate}
                 disabled={isSubmitting}
-                className="text-slate-600"
+                className="text-muted-foreground"
               >
                 <Ban className="h-3.5 w-3.5 mr-1" />
                 Reject Candidate
@@ -768,7 +806,7 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
                 variant="outline"
                 onClick={handleFindingFalsePositive}
                 disabled={isSubmitting}
-                className="text-slate-600"
+                className="text-muted-foreground"
               >
                 <ShieldAlert className="h-3.5 w-3.5 mr-1" />
                 Mark False Positive
@@ -790,7 +828,7 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
             variant="ghost"
             onClick={() => { setShowDismissForm(true); setShowResolveForm(false); }}
             disabled={isSubmitting}
-            className="text-slate-500 hover:text-slate-700"
+            className="text-muted-foreground hover:text-foreground"
           >
             <Ban className="h-3.5 w-3.5 mr-1" />
             Dismiss
@@ -799,8 +837,8 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
       )}
 
       {!canManage && isActive && (
-        <div className="border-t border-slate-200 px-6 py-3 bg-slate-50">
-          <p className="text-xs text-slate-500">You have view-only access to the review queue.</p>
+        <div className="border-t border-border px-6 py-3 bg-slate-50">
+          <p className="text-xs text-muted-foreground">You have view-only access to the review queue.</p>
         </div>
       )}
     </div>

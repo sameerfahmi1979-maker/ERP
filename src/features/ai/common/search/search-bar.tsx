@@ -23,7 +23,7 @@ export function SearchBar({
   className,
 }: SearchBarProps) {
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter" && value.trim().length > 0) {
+    if (e.key === "Enter" && !isSearching && value.trim().length > 0) {
       onSearch();
     }
   }
@@ -33,6 +33,7 @@ export function SearchBar({
       <div className="relative flex-1">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
         <Input
+          aria-label="Search ERP"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -42,6 +43,8 @@ export function SearchBar({
         />
         {value && (
           <button
+            type="button"
+            aria-label="Clear search"
             onClick={() => onChange("")}
             className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
           >
@@ -50,6 +53,7 @@ export function SearchBar({
         )}
       </div>
       <Button
+        aria-label={isSearching ? "Searching" : "Search"}
         onClick={onSearch}
         disabled={isSearching || value.trim().length === 0}
         className="h-10 px-4"

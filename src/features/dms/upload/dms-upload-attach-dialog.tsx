@@ -126,7 +126,7 @@ function UploadAttachSession({
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <Label htmlFor="version-label" className="mb-1.5 block">
               Version Label <span className="text-xs text-muted-foreground">(optional)</span>

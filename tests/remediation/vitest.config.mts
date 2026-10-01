@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import path from 'node:path';
+import { fluentTestServer } from './fluent-test-config.mts';
 export default defineConfig({
   resolve: { alias: {
     '@': path.resolve('src'),
@@ -7,6 +8,7 @@ export default defineConfig({
   } },
   oxc: { jsx: { runtime: 'automatic' } },
   test: {
+    server: fluentTestServer,
     environment: 'node', fileParallelism: false,
     exclude: ['**/*.local.test.ts', '**/node_modules/**'],
     include: [
@@ -17,6 +19,7 @@ export default defineConfig({
       'tests/remediation/f02-final/*.test.{ts,tsx}',
       'tests/remediation/f03/*.test.{ts,tsx}',
       'tests/remediation/f04/*.test.{ts,tsx}',
+      'tests/remediation/f05/*.test.{ts,tsx}',
     ],
     setupFiles: ['tests/remediation/f01/offline-setup.ts'],
   },

@@ -1,5 +1,7 @@
 "use client";
 
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import type { ColumnDef } from "@tanstack/react-table";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -99,6 +101,28 @@ export function RelationshipTypesAdminTable({ rows, authContext }: Props) {
     router.refresh();
   };
 
+  const columns: ColumnDef<RelationshipTypeAdminRow>[] = [
+    {accessorKey:"relationship_code",header:"Code",cell:({row:tableRow})=>{const row=tableRow.original;return <>{row.relationship_code}</>; }},
+    {accessorKey:"name_en",header:"Name",cell:({row:tableRow})=>{const row=tableRow.original;return <>
+                  <div>{row.name_en}</div>
+                  {row.name_ar && <div className="text-xs text-muted-foreground">{row.name_ar}</div>}
+                </>; }},
+    {accessorKey:"description",header:"Description",cell:({row:tableRow})=>{const row=tableRow.original;return <>{row.description ?? "—"}</>; }},
+    {accessorKey:"is_system",header:"System",cell:({row:tableRow})=>{const row=tableRow.original;return <>
+                  {row.is_system && <Badge variant="outline" className="text-xs">System</Badge>}
+                </>; }},
+    {accessorKey:"is_active",header:"Status",cell:({row:tableRow})=>{const row=tableRow.original;return <>
+                  <Badge className={row.is_active ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"}>
+                    {row.is_active ? "Active" : "Inactive"}
+                  </Badge>
+                </>; }},
+    ...(canManage ? [{id:"actions",header:"Actions",enableSorting:false,cell:({row:tableRow})=>{const row=tableRow.original;return <>
+                    <Button aria-label="Edit record" size="icon" variant="ghost" onClick={() => openEdit(row)}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  </>;}} satisfies ColumnDef<RelationshipTypeAdminRow>] : []),
+  ];
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -115,45 +139,7 @@ export function RelationshipTypesAdminTable({ rows, authContext }: Props) {
       </div>
 
       <div className="rounded-md border">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50">
-            <tr>
-              <th className="text-left p-3 font-medium">Code</th>
-              <th className="text-left p-3 font-medium">Name</th>
-              <th className="text-left p-3 font-medium">Description</th>
-              <th className="text-center p-3 font-medium">System</th>
-              <th className="text-center p-3 font-medium">Status</th>
-              {canManage && <th className="p-3" />}
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {rows.map((row) => (
-              <tr key={row.id} className="hover:bg-muted/25">
-                <td className="p-3 font-mono text-xs font-medium">{row.relationship_code}</td>
-                <td className="p-3">
-                  <div>{row.name_en}</div>
-                  {row.name_ar && <div className="text-xs text-muted-foreground">{row.name_ar}</div>}
-                </td>
-                <td className="p-3 text-muted-foreground max-w-xs truncate">{row.description ?? "—"}</td>
-                <td className="p-3 text-center">
-                  {row.is_system && <Badge variant="outline" className="text-xs">System</Badge>}
-                </td>
-                <td className="p-3 text-center">
-                  <Badge className={row.is_active ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"}>
-                    {row.is_active ? "Active" : "Inactive"}
-                  </Badge>
-                </td>
-                {canManage && (
-                  <td className="p-3">
-                    <Button size="icon" variant="ghost" onClick={() => openEdit(row)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <ERPDataTable tableId="admin.relationship-types" resultsLabel="relationship types" data={rows} columns={columns} enableRowSelection={false} />
       </div>
 
       <ERPChildDialogForm
@@ -171,7 +157,7 @@ export function RelationshipTypesAdminTable({ rows, authContext }: Props) {
           <div className="col-span-6">
             <RequiredLabel required>Code</RequiredLabel>
             <Input
-              value={form.relationship_code}
+              required aria-label="Code" name="relationship_code" value={form.relationship_code}
               onChange={(e) => setForm((f) => ({ ...f, relationship_code: e.target.value.toUpperCase() }))}
               placeholder="e.g. SUBSIDIARY"
               disabled={!!editing}
@@ -180,19 +166,19 @@ export function RelationshipTypesAdminTable({ rows, authContext }: Props) {
           </div>
           <div className="col-span-6">
             <Label>Sort Order</Label>
-            <Input type="number" value={form.sort_order} onChange={(e) => setForm((f) => ({ ...f, sort_order: parseInt(e.target.value) || 0 }))} />
+            <Input aria-label="Sort Order" type="number" value={form.sort_order} onChange={(e) => setForm((f) => ({ ...f, sort_order: parseInt(e.target.value) || 0 }))} />
           </div>
           <div className="col-span-6">
             <RequiredLabel required>Name (English)</RequiredLabel>
-            <Input value={form.name_en} onChange={(e) => setForm((f) => ({ ...f, name_en: e.target.value }))} />
+            <Input required aria-label="Name" name="name_en" value={form.name_en} onChange={(e) => setForm((f) => ({ ...f, name_en: e.target.value }))} />
           </div>
           <div className="col-span-6">
             <Label>Name (Arabic)</Label>
-            <Input value={form.name_ar} onChange={(e) => setForm((f) => ({ ...f, name_ar: e.target.value }))} dir="rtl" />
+            <Input aria-label="Name (Arabic)" value={form.name_ar} onChange={(e) => setForm((f) => ({ ...f, name_ar: e.target.value }))} dir="rtl" />
           </div>
           <div className="col-span-12">
             <Label>Description</Label>
-            <Textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={2} />
+            <Textarea aria-label="Description" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={2} />
           </div>
           <div className="col-span-6 flex items-center gap-3">
             <Switch checked={form.is_active} onCheckedChange={(v) => setForm((f) => ({ ...f, is_active: v }))} />

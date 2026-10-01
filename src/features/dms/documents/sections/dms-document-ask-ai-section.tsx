@@ -246,7 +246,7 @@ export function DmsDocumentAskAiSection({
                 )}
               </Button>
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-[10px] text-muted-foreground">
                 Answers come only from this document&apos;s extracted text, AI summary, and metadata.
               </span>

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { LoadError } from "@/components/erp/load-error";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { getDmsDashboardStats } from "@/server/actions/dms/dashboard";
 import { DmsDashboardPageClient } from "@/features/dms/dashboard/dms-dashboard-page-client";
@@ -17,6 +18,7 @@ export default async function DmsDashboardPage() {
   }
 
   const statsResult = await getDmsDashboardStats(30);
+  if (!statsResult.success || !statsResult.data) return <LoadError title="Document dashboard" retryHref="/dms" />;
   const initialStats = statsResult.success && statsResult.data
     ? statsResult.data
     : {

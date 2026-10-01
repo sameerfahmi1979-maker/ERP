@@ -1,5 +1,8 @@
 "use client";
 
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import type { ColumnDef } from "@tanstack/react-table";
+
 import { useState } from "react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -48,7 +51,7 @@ const emptyForm = {
 
 export function PartyDocumentsTab({ partyId, disabled, onChildOpen }: PartyDocumentsTabProps) {
   const queryClient = useQueryClient();
-  const { items: documents, isLoading } = usePartyDocumentsQuery(partyId);
+  const { items: documents, isLoading, error: loadError, refetch } = usePartyDocumentsQuery(partyId);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const setDialogOpen = (open: boolean) => { setIsDialogOpen(open); onChildOpen?.(open); };
   const [editing, setEditing] = useState<PartyDocument | null>(null);
@@ -137,32 +140,8 @@ export function PartyDocumentsTab({ partyId, disabled, onChildOpen }: PartyDocum
     }
   };
 
-  if (isLoading) return <Skeleton className="h-32 w-full" />;
-
-  return (
-    <div className="space-y-4">
-      <div className="rounded-md border border-dashed border-muted-foreground/30 bg-muted/20 px-3 py-2 text-xs text-muted-foreground flex items-center gap-2">
-        <FileText className="h-3.5 w-3.5 shrink-0" />
-        Document metadata only. File upload will be added in the DMS phase.
-      </div>
-
-      {!disabled && (
-        <div className="flex justify-end">
-          <Button type="button" size="sm" onClick={openAdd} className="gap-2">
-            <Plus className="h-4 w-4" /> Add Document Record
-          </Button>
-        </div>
-      )}
-
-      {(documents ?? []).length === 0 ? (
-        <p className="text-sm text-muted-foreground">No document records added yet.</p>
-      ) : (
-        <div className="space-y-2">
-          {(documents ?? []).map((doc) => {
-            const isExpired = doc.expiry_date && isPast(new Date(doc.expiry_date));
-            return (
-              <div key={doc.id} className="rounded-md border p-3 flex items-start justify-between gap-3">
-                <div className="space-y-1">
+  const columns: ColumnDef<PartyDocument>[] = [
+    {id:"document_title",header:"Document",size:360,accessorFn:row=>[row.document_title,row.document_type_name,row.document_number,row.expiry_date].filter(Boolean).join(" "),enableHiding:false,cell:({row})=>{const doc=row.original;const isExpired = doc.expiry_date && isPast(new Date(doc.expiry_date));return (<div className="space-y-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-xs text-muted-foreground">{doc.document_code}</span>
                     {doc.document_status_name && <Badge variant="outline" className="text-xs">{doc.document_status_name}</Badge>}
@@ -181,22 +160,39 @@ export function PartyDocumentsTab({ partyId, disabled, onChildOpen }: PartyDocum
                   {!doc.file_path && (
                     <div className="text-xs text-amber-600">No file attached (metadata only)</div>
                   )}
-                </div>
-                {!disabled && (
+                </div>);}},
+    {accessorKey:"expiry_date",header:"Expiry date",meta:{filter:{type:"date"}},},
+    {id:"actions",header:"Actions",size:180,enableSorting:false,enableHiding:false,cell:({row})=>{const doc=row.original;return (<>{!disabled && (
                   <div className="flex gap-1 shrink-0">
-                    <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(doc)}>
+                    <Button aria-label="Edit record" type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(doc)}>
                       <Edit className="h-3.5 w-3.5" />
                     </Button>
-                    <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(doc.id)}>
+                    <Button aria-label="Delete record" type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(doc.id)}>
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
-                )}
-              </div>
-            );
-          })}
+                )}</>);}},
+  ];
+
+  if (isLoading) return <Skeleton className="h-32 w-full" />;
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-md border border-dashed border-muted-foreground/30 bg-muted/20 px-3 py-2 text-xs text-muted-foreground flex items-center gap-2">
+        <FileText className="h-3.5 w-3.5 shrink-0" />
+        Document metadata only. File upload will be added in the DMS phase.
+      </div>
+
+      {!disabled && (
+        <div className="flex justify-end">
+          <Button type="button" size="sm" onClick={openAdd} className="gap-2">
+            <Plus className="h-4 w-4" /> Add Document Record
+          </Button>
         </div>
       )}
+
+      {loadError ? <div role="alert" className="rounded border p-4"><p>Document records could not be loaded.</p><Button type="button" variant="outline" onClick={refetch}>Try again</Button></div> :
+        <ERPDataTable tableId={`party.documents:${partyId}`} resultsLabel="Document" data={documents ?? []} columns={columns} enableRowSelection={false} />}
 
       <ERPChildDialogForm
         open={isDialogOpen}
@@ -212,7 +208,7 @@ export function PartyDocumentsTab({ partyId, disabled, onChildOpen }: PartyDocum
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-6">
             <RequiredLabel required>Document Type</RequiredLabel>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Document Type"
               value={form.document_type_id}
               onValueChange={(v) => setForm((f) => ({ ...f, document_type_id: v !== null ? Number(v) : null }))}
               options={(docTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }))}
@@ -222,7 +218,7 @@ export function PartyDocumentsTab({ partyId, disabled, onChildOpen }: PartyDocum
           </div>
           <div className="col-span-6">
             <RequiredLabel required>Document Status</RequiredLabel>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Document Status"
               value={form.document_status_id}
               onValueChange={(v) => setForm((f) => ({ ...f, document_status_id: v !== null ? Number(v) : null }))}
               options={(docStatuses ?? []).map((s) => ({ value: s.id, label: s.name_en }))}
@@ -232,19 +228,19 @@ export function PartyDocumentsTab({ partyId, disabled, onChildOpen }: PartyDocum
           </div>
           <div className="col-span-12">
             <RequiredLabel required>Document Title</RequiredLabel>
-            <Input value={form.document_title} onChange={(e) => setForm((f) => ({ ...f, document_title: e.target.value }))} />
+            <Input aria-label="Document Title" required value={form.document_title} onChange={(e) => setForm((f) => ({ ...f, document_title: e.target.value }))} />
           </div>
           <div className="col-span-12">
             <Label>Document Number</Label>
-            <Input value={form.document_number} onChange={(e) => setForm((f) => ({ ...f, document_number: e.target.value }))} />
+            <Input aria-label="Document Number" value={form.document_number} onChange={(e) => setForm((f) => ({ ...f, document_number: e.target.value }))} />
           </div>
           <div className="col-span-6">
             <Label>Issue Date</Label>
-            <Input type="date" value={form.issue_date} onChange={(e) => setForm((f) => ({ ...f, issue_date: e.target.value }))} />
+            <Input aria-label="Issue Date" type="date" value={form.issue_date} onChange={(e) => setForm((f) => ({ ...f, issue_date: e.target.value }))} />
           </div>
           <div className="col-span-6">
             <Label>Expiry Date</Label>
-            <Input type="date" value={form.expiry_date} onChange={(e) => setForm((f) => ({ ...f, expiry_date: e.target.value }))} />
+            <Input aria-label="Expiry Date" type="date" value={form.expiry_date} onChange={(e) => setForm((f) => ({ ...f, expiry_date: e.target.value }))} />
           </div>
           <div className="col-span-12 flex items-center gap-2">
             <Checkbox id="doc_expiry_req" checked={form.expiry_required} onCheckedChange={(c) => setForm((f) => ({ ...f, expiry_required: !!c }))} />
@@ -252,7 +248,7 @@ export function PartyDocumentsTab({ partyId, disabled, onChildOpen }: PartyDocum
           </div>
           <div className="col-span-12">
             <Label>Remarks</Label>
-            <Textarea value={form.remarks} onChange={(e) => setForm((f) => ({ ...f, remarks: e.target.value }))} rows={2} />
+            <Textarea aria-label="Remarks" value={form.remarks} onChange={(e) => setForm((f) => ({ ...f, remarks: e.target.value }))} rows={2} />
           </div>
         </div>
       </ERPChildDialogForm>

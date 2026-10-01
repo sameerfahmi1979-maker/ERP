@@ -106,7 +106,7 @@ function ToggleRow({
   onCheckedChange: (v: boolean) => void;
 }) {
   return (
-    <div className="col-span-6 flex items-center gap-2">
+    <div className="col-span-12 sm:col-span-6 flex items-center gap-2">
       <Switch checked={checked} onCheckedChange={onCheckedChange} />
       <Label className="text-sm font-normal">{label}</Label>
     </div>
@@ -134,9 +134,9 @@ export function DmsMetadataDefinitionFormBody({ form, setForm, editing, document
         </div>
       )}
       <Section title="Basic" defaultOpen>
-        <div className="col-span-6">
+        <div className="col-span-12 sm:col-span-6">
           <RequiredLabel required>Document Type</RequiredLabel>
-          <ERPCombobox
+          <ERPCombobox ariaLabel="Document Type" required
             options={documentTypes.map((dt) => ({ value: dt.id, label: dt.name_en }))}
             value={form.document_type_id ? Number(form.document_type_id) : null}
             onValueChange={(v) =>
@@ -146,7 +146,7 @@ export function DmsMetadataDefinitionFormBody({ form, setForm, editing, document
             searchPlaceholder="Search types..."
           />
         </div>
-        <div className="col-span-3">
+        <div className="col-span-12 sm:col-span-3">
           <RequiredLabel required>Field Type</RequiredLabel>
           <Select
             value={form.field_type}
@@ -164,50 +164,50 @@ export function DmsMetadataDefinitionFormBody({ form, setForm, editing, document
             </SelectContent>
           </Select>
         </div>
-        <div className="col-span-3">
+        <div className="col-span-12 sm:col-span-3">
           <Label>Order</Label>
-          <Input
+          <Input aria-label="Order"
             type="number"
             value={form.sort_order}
             onChange={(e) => setForm((f) => ({ ...f, sort_order: parseInt(e.target.value) || 0 }))}
             min={0}
           />
         </div>
-        <div className="col-span-4">
+        <div className="col-span-12 sm:col-span-4">
           <RequiredLabel required>Field Code</RequiredLabel>
-          <Input
+          <Input aria-label="Field Code" required
             value={form.field_code}
             onChange={(e) => setForm((f) => ({ ...f, field_code: e.target.value.toLowerCase() }))}
             placeholder="e.g. license_number"
             className="font-mono"
           />
         </div>
-        <div className="col-span-4">
+        <div className="col-span-12 sm:col-span-4">
           <Label>Field Group</Label>
-          <Input
+          <Input aria-label="Field Group"
             value={form.field_group}
             onChange={(e) => setForm((f) => ({ ...f, field_group: e.target.value }))}
             placeholder="e.g. Identity"
           />
         </div>
-        <div className="col-span-4">
+        <div className="col-span-12 sm:col-span-4">
           <Label>Field Section</Label>
-          <Input
+          <Input aria-label="Field Section"
             value={form.field_section}
             onChange={(e) => setForm((f) => ({ ...f, field_section: e.target.value }))}
             placeholder="e.g. Document Details"
           />
         </div>
-        <div className="col-span-6">
+        <div className="col-span-12 sm:col-span-6">
           <RequiredLabel required>Label (English)</RequiredLabel>
-          <Input
+          <Input aria-label="Label (English)" required
             value={form.field_label_en}
             onChange={(e) => setForm((f) => ({ ...f, field_label_en: e.target.value }))}
           />
         </div>
-        <div className="col-span-6">
+        <div className="col-span-12 sm:col-span-6">
           <Label>Label (Arabic)</Label>
-          <Input
+          <Input aria-label="Label (Arabic)"
             value={form.field_label_ar}
             onChange={(e) => setForm((f) => ({ ...f, field_label_ar: e.target.value }))}
             dir="rtl"
@@ -239,24 +239,24 @@ export function DmsMetadataDefinitionFormBody({ form, setForm, editing, document
         </div>
         <div className="col-span-12">
           <Label>AI Field Hint</Label>
-          <Input
+          <Input aria-label="AI Field Hint"
             value={form.ai_field_hint}
             onChange={(e) => setForm((f) => ({ ...f, ai_field_hint: e.target.value }))}
             placeholder="Hint for AI extraction"
           />
         </div>
-        <div className="col-span-6">
+        <div className="col-span-12 sm:col-span-6">
           <Label>AI Possible Labels (EN) — one per line</Label>
-          <Textarea
+          <Textarea aria-label="AI Possible Labels (EN) — one per line"
             value={form.ai_possible_labels_en_text}
             onChange={(e) => setForm((f) => ({ ...f, ai_possible_labels_en_text: e.target.value }))}
             rows={3}
             className="text-xs font-mono"
           />
         </div>
-        <div className="col-span-6">
+        <div className="col-span-12 sm:col-span-6">
           <Label>AI Possible Labels (AR) — one per line</Label>
-          <Textarea
+          <Textarea aria-label="AI Possible Labels (AR) — one per line"
             value={form.ai_possible_labels_ar_text}
             onChange={(e) => setForm((f) => ({ ...f, ai_possible_labels_ar_text: e.target.value }))}
             rows={3}
@@ -264,35 +264,35 @@ export function DmsMetadataDefinitionFormBody({ form, setForm, editing, document
             dir="rtl"
           />
         </div>
-        <div className="col-span-6">
+        <div className="col-span-12 sm:col-span-6">
           <Label>AI Keywords — one per line</Label>
-          <Textarea
+          <Textarea aria-label="AI Keywords — one per line"
             value={form.ai_keywords_text}
             onChange={(e) => setForm((f) => ({ ...f, ai_keywords_text: e.target.value }))}
             rows={2}
             className="text-xs font-mono"
           />
         </div>
-        <div className="col-span-6">
+        <div className="col-span-12 sm:col-span-6">
           <Label>AI Negative Keywords — one per line</Label>
-          <Textarea
+          <Textarea aria-label="AI Negative Keywords — one per line"
             value={form.ai_negative_keywords_text}
             onChange={(e) => setForm((f) => ({ ...f, ai_negative_keywords_text: e.target.value }))}
             rows={2}
             className="text-xs font-mono"
           />
         </div>
-        <div className="col-span-6">
+        <div className="col-span-12 sm:col-span-6">
           <Label>Expected Format</Label>
-          <Input
+          <Input aria-label="Expected Format"
             value={form.ai_expected_format}
             onChange={(e) => setForm((f) => ({ ...f, ai_expected_format: e.target.value }))}
             placeholder="e.g. 784-YYYY-NNNNNNN-N"
           />
         </div>
-        <div className="col-span-3">
+        <div className="col-span-12 sm:col-span-3">
           <Label>Confidence Threshold (0–1)</Label>
-          <Input
+          <Input aria-label="Confidence Threshold (0–1)"
             type="number"
             step="0.01"
             min={0}
@@ -302,9 +302,9 @@ export function DmsMetadataDefinitionFormBody({ form, setForm, editing, document
             placeholder="e.g. 0.85"
           />
         </div>
-        <div className="col-span-3">
+        <div className="col-span-12 sm:col-span-3">
           <Label>Normalization Rule</Label>
-          <Input
+          <Input aria-label="Normalization Rule"
             value={form.normalization_rule}
             onChange={(e) => setForm((f) => ({ ...f, normalization_rule: e.target.value }))}
             placeholder="trim, uppercase, date_iso"
@@ -312,7 +312,7 @@ export function DmsMetadataDefinitionFormBody({ form, setForm, editing, document
         </div>
         <div className="col-span-12">
           <Label>AI Example Values — one per line</Label>
-          <Textarea
+          <Textarea aria-label="AI Example Values — one per line"
             value={form.ai_example_values_text}
             onChange={(e) => setForm((f) => ({ ...f, ai_example_values_text: e.target.value }))}
             rows={2}
@@ -324,7 +324,7 @@ export function DmsMetadataDefinitionFormBody({ form, setForm, editing, document
       <Section title="Validation & Review">
         <div className="col-span-12">
           <Label>Validation JSON</Label>
-          <Textarea
+          <Textarea aria-label="Validation JSON"
             value={form.validation_json_text}
             onChange={(e) => setForm((f) => ({ ...f, validation_json_text: e.target.value }))}
             placeholder='{"pattern": "^[0-9]+$", "min": 1, "max": 100}'
@@ -342,26 +342,26 @@ export function DmsMetadataDefinitionFormBody({ form, setForm, editing, document
           checked={form.review_required_if_low_confidence}
           onCheckedChange={(v) => setForm((f) => ({ ...f, review_required_if_low_confidence: v }))}
         />
-        <div className="col-span-6">
+        <div className="col-span-12 sm:col-span-6">
           <Label>Placeholder (EN)</Label>
-          <Input value={form.placeholder_en} onChange={(e) => setForm((f) => ({ ...f, placeholder_en: e.target.value }))} />
+          <Input aria-label="Placeholder (EN)" value={form.placeholder_en} onChange={(e) => setForm((f) => ({ ...f, placeholder_en: e.target.value }))} />
         </div>
-        <div className="col-span-6">
+        <div className="col-span-12 sm:col-span-6">
           <Label>Placeholder (AR)</Label>
-          <Input value={form.placeholder_ar} onChange={(e) => setForm((f) => ({ ...f, placeholder_ar: e.target.value }))} dir="rtl" />
+          <Input aria-label="Placeholder (AR)" value={form.placeholder_ar} onChange={(e) => setForm((f) => ({ ...f, placeholder_ar: e.target.value }))} dir="rtl" />
         </div>
-        <div className="col-span-6">
+        <div className="col-span-12 sm:col-span-6">
           <Label>Help Text (EN)</Label>
-          <Textarea value={form.help_text_en} onChange={(e) => setForm((f) => ({ ...f, help_text_en: e.target.value }))} rows={2} />
+          <Textarea aria-label="Help Text (EN)" value={form.help_text_en} onChange={(e) => setForm((f) => ({ ...f, help_text_en: e.target.value }))} rows={2} />
         </div>
-        <div className="col-span-6">
+        <div className="col-span-12 sm:col-span-6">
           <Label>Help Text (AR)</Label>
-          <Textarea value={form.help_text_ar} onChange={(e) => setForm((f) => ({ ...f, help_text_ar: e.target.value }))} rows={2} dir="rtl" />
+          <Textarea aria-label="Help Text (AR)" value={form.help_text_ar} onChange={(e) => setForm((f) => ({ ...f, help_text_ar: e.target.value }))} rows={2} dir="rtl" />
         </div>
         {(form.field_type === "select" || form.field_type === "multi_select") && (
           <div className="col-span-12">
             <RequiredLabel required>Options JSON</RequiredLabel>
-            <Textarea
+            <Textarea aria-label="Options JSON" required
               value={form.options_json_text}
               onChange={(e) => setForm((f) => ({ ...f, options_json_text: e.target.value }))}
               rows={4}
@@ -374,7 +374,7 @@ export function DmsMetadataDefinitionFormBody({ form, setForm, editing, document
       <Section title="Advanced">
         <div className="col-span-12">
           <Label>AI Rules JSON (optional overflow)</Label>
-          <Textarea
+          <Textarea aria-label="AI Rules JSON (optional overflow)"
             value={form.ai_rules_json_text}
             onChange={(e) => setForm((f) => ({ ...f, ai_rules_json_text: e.target.value }))}
             rows={3}

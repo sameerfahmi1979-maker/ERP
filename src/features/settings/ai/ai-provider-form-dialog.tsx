@@ -18,6 +18,7 @@ import {
 import { ENV_VAR_SUGGESTIONS } from "./ai-provider-secret-dialog";
 
 interface AiProviderFormDialogProps {
+  canManageSecrets?: boolean;
   open: boolean;
   config?: AiProviderConfig | null;
   onClose: () => void;
@@ -70,13 +71,21 @@ const PURPOSES: { value: Purpose; label: string }[] = [
   { value: "assistant", label: "Assistant" },
 ];
 
-export function AiProviderFormDialog({
+export function AiProviderFormDialog(props: AiProviderFormDialogProps) {
+  return props.open ? <ProviderFormSession key={props.config?.id ?? "new"} {...props} /> : null;
+}
+
+function ProviderFormSession({
   open,
   config,
   onClose,
   onSaved,
+  canManageSecrets = false,
 }: AiProviderFormDialogProps) {
-  const isEdit = !!config;
+  const [createdId, setCreatedId] = useState<number | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [uncertain, setUncertain] = useState(false);
+  const isEdit = !!config || createdId !== null;
 
   const [form, setForm] = useState<FormState>({
     config_code: config?.configCode ?? "",
@@ -135,8 +144,10 @@ export function AiProviderFormDialog({
   };
 
   const handleSubmit = async () => {
+    if (uncertain || isSubmitting) return;
     if (!validate()) return;
     setIsSubmitting(true);
+    setSaveError(null);
     try {
       const payload = {
         config_code: form.config_code,
@@ -155,38 +166,39 @@ export function AiProviderFormDialog({
       };
 
       let result;
-      let configId: number | undefined = config?.id;
-      if (isEdit && config) {
-        result = await updateAiProviderConfig({ ...payload, id: config.id });
+      let configId: number | undefined = config?.id ?? createdId ?? undefined;
+      if (configId !== undefined) {
+        result = await updateAiProviderConfig({ ...payload, id: configId });
       } else {
         const createResult = await createAiProviderConfig(payload);
         result = createResult;
-        if (createResult.success) configId = createResult.data?.id;
+        if (createResult.success) { configId = createResult.data?.id; if (configId !== undefined) setCreatedId(configId); }
       }
 
       if (!result.success) {
-        toast.error(result.error ?? "Failed to save provider");
+        setSaveError("The provider was not saved. Check the values and your permissions, then try again.");
         return;
       }
 
       // If an API key was entered, persist it to the server env and apply it
-      if (secretValue.trim() && configId != null) {
+      if (canManageSecrets && secretValue.trim() && configId != null) {
         const secretResult = await saveAiProviderSecret({
           id: configId,
           secret_value: secretValue,
           secret_ref: secretRef.trim(),
         });
         if (!secretResult.success) {
-          toast.error(
-            `Provider saved, but the API key was not saved: ${secretResult.error ?? "unknown error"}`
-          );
+          setSaveError("Provider saved, but the API key was not saved. Retry updates this same provider; managed deployments may require administrator-controlled secret rotation.");
           return;
         }
         setSecretValue("");
-        toast.success("Provider and API key saved. Key is active immediately.");
+        toast.success("Provider and key saved for this server. Multi-server deployments require coordinated secret rotation.");
       }
 
       onSaved();
+    } catch {
+      setUncertain(true);
+      setSaveError("The save could not be confirmed. Close this dialog and refresh the provider list before retrying to avoid a duplicate.");
     } finally {
       setIsSubmitting(false);
     }
@@ -197,23 +209,27 @@ export function AiProviderFormDialog({
       open={open}
       onOpenChange={(o) => !o && onClose()}
       title={isEdit ? "Edit AI Provider" : "Add AI Provider"}
-      subtitle="Configure the provider. The API key is saved to the server environment — never to the database."
+      subtitle="Configure the provider. Secret changes require separate permission and deployment support."
       icon={<Brain className="h-5 w-5 text-violet-500" />}
       mode={isEdit ? "edit" : "add"}
       size="md"
       isSubmitting={isSubmitting}
+      submitDisabled={uncertain}
       onCancel={onClose}
       onSubmit={handleSubmit}
       submitLabel={isEdit ? "Save Changes" : "Add Provider"}
     >
+      {saveError && <div role="alert" className="rounded-sm border border-destructive p-3 text-sm text-destructive">{saveError}</div>}
       <div className="grid gap-4 py-2">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="config_code">
               Config Code <span className="text-destructive">*</span>
             </Label>
-            <Input
+            <Input required
               id="config_code"
+              pattern="[A-Z0-9_]+"
+              maxLength={100}
               value={form.config_code}
               onChange={(e) => set("config_code", e.target.value.toUpperCase())}
               placeholder="DEFAULT_CHAT"
@@ -228,7 +244,7 @@ export function AiProviderFormDialog({
             <Label>
               Provider Type <span className="text-destructive">*</span>
             </Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Provider Type" required
               value={form.provider_type}
               onValueChange={(v) => {
                 const next = (v ?? "openai") as ProviderType;
@@ -247,13 +263,14 @@ export function AiProviderFormDialog({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="provider_name">
               Provider Name <span className="text-destructive">*</span>
             </Label>
-            <Input
+            <Input required
               id="provider_name"
+              maxLength={200}
               value={form.provider_name}
               onChange={(e) => set("provider_name", e.target.value)}
               placeholder="e.g. OpenAI GPT"
@@ -267,7 +284,7 @@ export function AiProviderFormDialog({
             <Label>
               Purpose <span className="text-destructive">*</span>
             </Label>
-            <ERPCombobox
+            <ERPCombobox ariaLabel="Purpose" required
               value={form.purpose}
               onValueChange={(v) => set("purpose", (v ?? "general") as Purpose)}
               options={PURPOSES.map((p) => ({ value: p.value, label: p.label }))}
@@ -276,7 +293,7 @@ export function AiProviderFormDialog({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="model_id">Model ID</Label>
             <Input
@@ -303,6 +320,7 @@ export function AiProviderFormDialog({
           <Label htmlFor="api_endpoint">API Endpoint</Label>
           <Input
             id="api_endpoint"
+            type="url"
             value={form.api_endpoint}
             onChange={(e) => set("api_endpoint", e.target.value)}
             placeholder="https://... (required for Azure/local providers)"
@@ -315,7 +333,7 @@ export function AiProviderFormDialog({
           </p>
         </div>
 
-        <div className="rounded-md border p-3 flex flex-col gap-3">
+        {canManageSecrets && <div className="rounded-md border p-3 flex flex-col gap-3">
           <div className="flex items-center gap-2">
             <KeyRound className="h-4 w-4 text-violet-500" />
             <span className="text-sm font-medium">API Key</span>
@@ -326,16 +344,17 @@ export function AiProviderFormDialog({
             )}
           </div>
           <p className="text-xs text-muted-foreground">
-            Saved to the server&apos;s <code className="font-mono">.env.local</code> file and
-            applied immediately — never stored in the database.
+            Server-file secret changes must be explicitly enabled by the deployment administrator.
+            Managed deployments should use their deployment secret store. Plaintext keys are not saved in application records.
             {isEdit && " Leave blank to keep the current key."}
           </p>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="secret_ref_inline">Environment Variable Name</Label>
               <Input
                 id="secret_ref_inline"
+                required={!!secretValue.trim()}
                 value={secretRef}
                 onChange={(e) => {
                   setSecretRef(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "_"));
@@ -351,6 +370,8 @@ export function AiProviderFormDialog({
               <div className="relative">
                 <Input
                   id="secret_value_inline"
+                  maxLength={500}
+                  pattern="(?!https?://).*"
                   type={showKey ? "text" : "password"}
                   value={secretValue}
                   onChange={(e) => {
@@ -365,7 +386,8 @@ export function AiProviderFormDialog({
                   type="button"
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                   onClick={() => setShowKey((v) => !v)}
-                  tabIndex={-1}
+                  aria-label={showKey ? "Hide API key" : "Show API key"}
+                  aria-pressed={showKey}
                 >
                   {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -373,7 +395,7 @@ export function AiProviderFormDialog({
             </div>
           </div>
           {secretError && <p className="text-xs text-destructive">{secretError}</p>}
-        </div>
+        </div>}
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="confidence_threshold">
@@ -382,6 +404,7 @@ export function AiProviderFormDialog({
           <div className="flex items-center gap-2">
             <Input
               id="confidence_threshold"
+              required
               type="number"
               min={0}
               max={1}

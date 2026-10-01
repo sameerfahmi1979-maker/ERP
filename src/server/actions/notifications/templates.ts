@@ -139,7 +139,7 @@ export async function createNotificationTemplate(
 
 export async function updateNotificationTemplate(
   id: number,
-  input: Partial<z.infer<typeof templateSchema>>
+  input: Partial<z.infer<typeof templateSchema>> & { is_active?: boolean }
 ): Promise<ActionResult> {
   try {
     const supabase = await createClient();
@@ -149,13 +149,15 @@ export async function updateNotificationTemplate(
       return { success: false, error: "Permission denied" };
     }
 
+    const parsed = templateSchema.partial().extend({is_active:z.boolean().optional()}).strict().safeParse(input);
+    if (!Number.isSafeInteger(id) || id <= 0 || !parsed.success) return {success:false,error:"Check the template values before saving."};
     const now = new Date().toISOString();
-    const { error } = await supabase
+    const { data: changed, error } = await supabase
       .from("erp_notification_templates")
-      .update({ ...input, updated_by: ctx.profile.id, updated_at: now })
-      .eq("id", id);
+      .update({ ...parsed.data, updated_by: ctx.profile.id, updated_at: now })
+      .eq("id", id).is("deleted_at",null).select("id").maybeSingle();
 
-    if (error) return { success: false, error: error.message };
+    if (error || !changed) return { success: false, error: "The template was not updated. It may be unavailable or you may no longer have permission." };
     await logAudit({ module_code: "NOTIFICATIONS", entity_name: "erp_notification_templates", entity_id: id, entity_reference: String(id), action: "update", new_values: input });
     revalidatePath(REVALIDATE_PATH);
     return { success: true };
@@ -165,24 +167,11 @@ export async function updateNotificationTemplate(
 }
 
 export async function activateNotificationTemplate(id: number): Promise<ActionResult> {
-  return updateNotificationTemplate(id, { is_system: undefined });
+  return updateNotificationTemplate(id, { is_active: true });
 }
 
 export async function deactivateNotificationTemplate(id: number): Promise<ActionResult> {
-  try {
-    const supabase = await createClient();
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!hasPermission(ctx, "notifications.templates.manage") && !hasPermission(ctx, "notifications.admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-    const now = new Date().toISOString();
-    await supabase.from("erp_notification_templates").update({ is_active: false, updated_at: now }).eq("id", id);
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: String(e) };
-  }
+  return updateNotificationTemplate(id, { is_active: false });
 }
 
 export async function renderNotificationTemplate(

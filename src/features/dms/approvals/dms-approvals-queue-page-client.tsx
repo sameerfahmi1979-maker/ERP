@@ -4,7 +4,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { ArrowDown, ArrowUp, ArrowUpDown, CheckCircle2, ClipboardCheck, ExternalLink, RefreshCw, Undo2, XCircle } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { ConfiguredRow, EditColumns, EditFilters, useListColumns, type ListColumn } from "@/components/erp/table/list-controls";
+import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,7 +41,7 @@ const PAGE_SIZE = 20;
 // ── Sort header ───────────────────────────────────────────────────────────────
 
 function SortHeader({
-  field, label, sortBy, sortDir, onSort, className,
+  field, label, sortBy, sortDir, onSort, className, "data-column": column,
 }: {
   field: SortBy;
   label: string;
@@ -47,21 +49,23 @@ function SortHeader({
   sortDir: SortDir;
   onSort: (f: SortBy) => void;
   className?: string;
+  "data-column"?: string;
 }) {
   const active = sortBy === field;
   return (
     <th
-      onClick={() => onSort(field)}
-      className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 cursor-pointer select-none hover:text-slate-800 transition-colors whitespace-nowrap ${className ?? ""}`}
+      data-column={column}
+      aria-sort={active ? sortDir === "asc" ? "ascending" : "descending" : "none"}
+      className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap ${className ?? ""}`}
     >
-      <span className="inline-flex items-center gap-1">
+      <button type="button" onClick={() => onSort(field)} className="inline-flex items-center gap-1 focus-visible:outline-2 focus-visible:outline-primary">
         {label}
         {active ? (
           sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
         ) : (
           <ArrowUpDown className="h-3 w-3 opacity-35" />
         )}
-      </span>
+      </button>
     </th>
   );
 }
@@ -91,6 +95,17 @@ const STATUS_TABS: { label: string; value: StatusFilter }[] = [
   { label: "Withdrawn", value: "withdrawn" },
 ];
 
+const COLUMNS: ListColumn[] = [
+  { id: "document_no", label: "Document number", width: 160, visible: true, required: true },
+  { id: "title", label: "Title", width: 260, visible: true },
+  { id: "type", label: "Type", width: 160, visible: true },
+  { id: "submitted_at", label: "Submitted", width: 160, visible: true },
+  { id: "submitter", label: "Submitted by", width: 160, visible: true },
+  { id: "status", label: "Status", width: 160, visible: true },
+  { id: "pending", label: "Pending", width: 110, visible: true },
+  { id: "actions", label: "Actions", width: 160, visible: true },
+];
+
 // ── Main page client ──────────────────────────────────────────────────────────
 
 interface Props {
@@ -98,7 +113,7 @@ interface Props {
   isAdmin: boolean;
 }
 
-export function DmsApprovalsQueuePageClient({ canAct, isAdmin }: Props) {
+export function DmsApprovalsQueuePageClient({ isAdmin }: Props) {
   const qc = useQueryClient();
   const [isPending, startTransition] = useTransition();
 
@@ -106,8 +121,10 @@ export function DmsApprovalsQueuePageClient({ canAct, isAdmin }: Props) {
   const [total, setTotal] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const listColumns = useListColumns("dms:approval-queue:v1", COLUMNS);
+  const request = useRef(0);
 
-  const [filters, setFilters] = useState<Filters>({
+  const [filters, setFilters] = usePersistentUiState<Filters>("dms:approval-queue:criteria", {
     status: "pending_approval",
     search: "",
     sortBy: "submitted_at",
@@ -123,8 +140,10 @@ export function DmsApprovalsQueuePageClient({ canAct, isAdmin }: Props) {
   // ── Fetch ─────────────────────────────────────────────────────────────────
 
   const fetchQueue = useCallback((f: Filters) => {
+    const generation = ++request.current;
     startTransition(async () => {
       setLoadError(null);
+      try {
       const result = await listPendingDocumentApprovalsForCurrentUser({
         status: f.status,
         search: f.search.trim() || undefined,
@@ -133,13 +152,20 @@ export function DmsApprovalsQueuePageClient({ canAct, isAdmin }: Props) {
         page: f.page,
         pageSize: PAGE_SIZE,
       });
+      if (generation !== request.current) return;
       if (result.success && result.data) {
         setRows(result.data.rows);
         setTotal(result.data.total);
         setLoaded(true);
       } else {
-        setLoadError(result.error ?? "Failed to load approval queue.");
+        setLoadError("Could not load the approval queue. This is not an empty result. Check your access and connection, then retry.");
         setLoaded(true);
+      }
+      } catch {
+        if (generation === request.current) {
+          setLoadError("Could not load the approval queue. Check your connection, then retry.");
+          setLoaded(true);
+        }
       }
     });
   }, []);
@@ -202,9 +228,11 @@ export function DmsApprovalsQueuePageClient({ canAct, isAdmin }: Props) {
       <div className="space-y-4">
 
         {/* ── Tabs ─────────────────────────────────────────────────────────── */}
-        <div className="flex items-center gap-1 border-b border-border pb-0">
+        <div className="flex flex-wrap items-center gap-1 border-b border-border pb-0">
           {STATUS_TABS.map((tab) => (
             <button
+              type="button"
+              aria-pressed={filters.status === tab.value}
               key={tab.value}
               onClick={() => applyFilters({ status: tab.value })}
               className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
@@ -220,8 +248,9 @@ export function DmsApprovalsQueuePageClient({ canAct, isAdmin }: Props) {
         </div>
 
         {/* ── Search + Refresh ─────────────────────────────────────────────── */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Input
+            aria-label="Search approval queue"
             placeholder="Search by document no, title, or submitter…"
             value={filters.search}
             onChange={(e) => applyFilters({ search: e.target.value })}
@@ -246,6 +275,14 @@ export function DmsApprovalsQueuePageClient({ canAct, isAdmin }: Props) {
           </div>
         </div>
 
+        <div className="flex flex-wrap gap-2">
+          <EditColumns columns={listColumns.columns} defaults={COLUMNS} onApply={listColumns.setColumns} />
+          <EditFilters definitions={[{ id: "status", label: "Approval status", type: "select", options: STATUS_TABS }, { id: "search", label: "Search", type: "text" }]}
+            values={{ status: filters.status === "all" ? "" : filters.status, search: filters.search }}
+            onApply={values => applyFilters({ status: STATUS_TABS.some(tab => tab.value === values.status) ? values.status as StatusFilter : "all", search: values.search ?? "" })}
+            scopeLabel="These criteria are applied by the server to all approval records you may access, before pagination." />
+        </div>
+
         {/* ── Table ────────────────────────────────────────────────────────── */}
         <div className="rounded-lg border border-border bg-card overflow-hidden">
           {!loaded || isPending ? (
@@ -263,7 +300,7 @@ export function DmsApprovalsQueuePageClient({ canAct, isAdmin }: Props) {
             </div>
           ) : loadError ? (
             <div className="p-8 text-center space-y-3">
-              <p className="text-sm text-destructive">{loadError}</p>
+              <p role="alert" className="text-sm text-destructive">{loadError}</p>
               <Button variant="outline" size="sm" onClick={handleRefresh}>
                 Retry
               </Button>
@@ -280,25 +317,25 @@ export function DmsApprovalsQueuePageClient({ canAct, isAdmin }: Props) {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+            <div role="region" aria-label="Approval queue table" tabIndex={0} className="max-w-full overflow-x-auto">
+              <table className="w-full table-fixed text-sm" style={{ minWidth: listColumns.visible.reduce((sum, column) => sum + column.width, 0) }}><colgroup>{listColumns.visible.map(column => <col key={column.id} style={{ width: column.width }} />)}</colgroup>
                 <thead className="bg-muted/40 border-b border-border">
-                  <tr>
-                    <SortHeader field="document_no" label="Doc No" sortBy={filters.sortBy} sortDir={filters.sortDir} onSort={handleSort} className="w-32" />
-                    <SortHeader field="title" label="Title" sortBy={filters.sortBy} sortDir={filters.sortDir} onSort={handleSort} />
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Type</th>
-                    <SortHeader field="submitted_at" label="Submitted" sortBy={filters.sortBy} sortDir={filters.sortDir} onSort={handleSort} className="w-36" />
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Submitted By</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Pending</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Actions</th>
-                  </tr>
+                  <ConfiguredRow columns={listColumns.columns}>
+                    <SortHeader data-column="document_no" field="document_no" label="Doc No" sortBy={filters.sortBy} sortDir={filters.sortDir} onSort={handleSort} className="w-32" />
+                    <SortHeader data-column="title" field="title" label="Title" sortBy={filters.sortBy} sortDir={filters.sortDir} onSort={handleSort} />
+                    <th data-column="type" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Type</th>
+                    <SortHeader data-column="submitted_at" field="submitted_at" label="Submitted" sortBy={filters.sortBy} sortDir={filters.sortDir} onSort={handleSort} className="w-36" />
+                    <th data-column="submitter" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Submitted By</th>
+                    <th data-column="status" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Status</th>
+                    <th data-column="pending" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Pending</th>
+                    <th data-column="actions" className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Actions</th>
+                  </ConfiguredRow>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {rows.map((row) => (
-                    <tr key={row.documentId} className="hover:bg-muted/30 transition-colors">
+                    <ConfiguredRow columns={listColumns.columns} key={row.documentId} className="hover:bg-muted/30 transition-colors">
                       {/* Doc No */}
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td data-column="document_no" className="px-4 py-3 whitespace-nowrap">
                         <Link
                           href={`/dms/documents/record/${row.documentId}`}
                           className="font-mono text-xs font-semibold text-primary hover:underline inline-flex items-center gap-1"
@@ -310,14 +347,14 @@ export function DmsApprovalsQueuePageClient({ canAct, isAdmin }: Props) {
 
 
                       {/* Title */}
-                      <td className="px-4 py-3 max-w-xs">
+                      <td data-column="title" className="px-4 py-3 max-w-xs">
                         <span className="text-sm font-medium line-clamp-1" title={row.title}>
                           {row.title}
                         </span>
                       </td>
 
                       {/* Type */}
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td data-column="type" className="px-4 py-3 whitespace-nowrap">
                         {row.documentTypeName ? (
                           <span className="text-xs text-muted-foreground">{row.documentTypeName}</span>
                         ) : (
@@ -326,7 +363,7 @@ export function DmsApprovalsQueuePageClient({ canAct, isAdmin }: Props) {
                       </td>
 
                       {/* Submitted At */}
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td data-column="submitted_at" className="px-4 py-3 whitespace-nowrap">
                         {row.submittedAt ? (
                           <Tooltip>
                             <TooltipTrigger>
@@ -347,17 +384,17 @@ export function DmsApprovalsQueuePageClient({ canAct, isAdmin }: Props) {
                       </td>
 
                       {/* Submitted By */}
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td data-column="submitter" className="px-4 py-3 whitespace-nowrap">
                         <span className="text-xs text-muted-foreground">{row.submittedByName ?? "—"}</span>
                       </td>
 
                       {/* Status */}
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td data-column="status" className="px-4 py-3 whitespace-nowrap">
                         <DmsApprovalStatusBadge status={row.approvalStatus as "pending_approval" | "approved" | "rejected" | "withdrawn" | null} />
                       </td>
 
                       {/* Days Pending */}
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td data-column="pending" className="px-4 py-3 whitespace-nowrap">
                         {row.approvalStatus === "pending_approval" ? (
                           <DaysPendingBadge days={row.daysPending} />
                         ) : (
@@ -366,7 +403,7 @@ export function DmsApprovalsQueuePageClient({ canAct, isAdmin }: Props) {
                       </td>
 
                       {/* Actions */}
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td data-column="actions" className="px-4 py-3 whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1">
                           {/* View Document */}
                           <Tooltip>
@@ -381,7 +418,7 @@ export function DmsApprovalsQueuePageClient({ canAct, isAdmin }: Props) {
                           </Tooltip>
 
                           {/* Approve */}
-                          {(canAct || row.canAct) && row.approvalStatus === "pending_approval" && (
+                          {row.canAct && row.approvalStatus === "pending_approval" && (
                             <Tooltip>
                               <TooltipTrigger>
                                 <Button
@@ -401,7 +438,7 @@ export function DmsApprovalsQueuePageClient({ canAct, isAdmin }: Props) {
                           )}
 
                           {/* Reject */}
-                          {(canAct || row.canAct) && row.approvalStatus === "pending_approval" && (
+                          {row.canAct && row.approvalStatus === "pending_approval" && (
                             <Tooltip>
                               <TooltipTrigger>
                                 <Button
@@ -441,7 +478,7 @@ export function DmsApprovalsQueuePageClient({ canAct, isAdmin }: Props) {
                           )}
                         </div>
                       </td>
-                    </tr>
+                    </ConfiguredRow>
                   ))}
                 </tbody>
               </table>

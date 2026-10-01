@@ -1,4 +1,5 @@
 "use client";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 /**
  * ERP COMMON AI.2 — Document Understanding Section
@@ -171,36 +172,37 @@ export function DmsDocumentUnderstandingSection({
   documentId,
   onNavigateToSection,
 }: DmsDocumentUnderstandingSectionProps) {
-  const { data: result, isLoading, error, refetch, isRefetching } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.dms.documentUnderstanding(documentId ?? 0),
     queryFn: () => getDmsDocumentUnderstanding(documentId!),
     enabled: !!documentId,
     staleTime: 60_000,
   });
+ const { data: result, isLoading, error, refetch, isRefetching } = uiRead1;
 
   if (!documentId) {
     return (
-      <div className="py-8 text-center text-sm text-muted-foreground">
+      <QueryReadBoundary queries={[uiRead1]}><div className="py-8 text-center text-sm text-muted-foreground">
         Save the document first before using AI Understanding.
-      </div>
+      </div></QueryReadBoundary>
     );
   }
 
   if (isLoading) {
     return (
-      <div className="space-y-3">
+      <QueryReadBoundary queries={[uiRead1]}><div className="space-y-3">
         <Skeleton className="h-20 w-full rounded-lg" />
         <div className="grid grid-cols-2 gap-3">
           {[1,2,3,4,5,6].map((i) => <Skeleton key={i} className="h-28 w-full rounded-lg" />)}
         </div>
-      </div>
+      </div></QueryReadBoundary>
     );
   }
 
   if (!result?.success) {
     const isDisabled = result?.code === "FEATURE_DISABLED";
     return (
-      <div className="py-6">
+      <QueryReadBoundary queries={[uiRead1]}><div className="py-6">
         {isDisabled ? (
           <Alert className="border-slate-200 bg-slate-50">
             <Brain className="h-4 w-4 text-slate-500" />
@@ -216,14 +218,14 @@ export function DmsDocumentUnderstandingSection({
             <AlertDescription>{result?.error ?? error?.message ?? "Failed to load document understanding."}</AlertDescription>
           </Alert>
         )}
-      </div>
+      </div></QueryReadBoundary>
     );
   }
 
   const u = result.data!;
 
   return (
-    <div className="space-y-3">
+    <QueryReadBoundary queries={[uiRead1]}><div className="space-y-3">
       {/* Refresh button */}
       <div className="flex justify-end">
         <Button size="sm" variant="ghost" onClick={() => refetch()} disabled={isRefetching} className="h-6 text-xs px-2 text-slate-500">
@@ -241,23 +243,23 @@ export function DmsDocumentUnderstandingSection({
         {/* Identity */}
         <SectionCard title="Document" icon={<FileText className="h-3 w-3" />}>
           <div className="space-y-1.5 text-xs">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-slate-500">No.</span>
               <span className="font-mono font-medium">{u.identity.documentNo ?? "—"}</span>
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-slate-500">Type</span>
               <span className="text-right max-w-[160px] truncate">{u.identity.typeName ?? "—"}{u.identity.typeNameAr && <span className="text-slate-400 ml-1">({u.identity.typeNameAr})</span>}</span>
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-slate-500">Status</span>
               <Badge variant="outline" className="text-[10px] px-1.5 py-0 capitalize">{u.identity.status ?? "—"}</Badge>
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-slate-500">Expiry</span>
               <ExpiryBadge status={u.identity.expiryStatus} days={u.identity.daysUntilExpiry} />
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-slate-500">Confidentiality</span>
               <Badge variant="outline" className="text-[10px] px-1.5 py-0 capitalize">{u.identity.confidentialityLevel}</Badge>
             </div>
@@ -267,25 +269,25 @@ export function DmsDocumentUnderstandingSection({
         {/* OCR Status */}
         <SectionCard title="OCR & Text" icon={<FileText className="h-3 w-3" />}>
           <div className="space-y-1.5 text-xs">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-slate-500">OCR processed</span>
               <StatusBadge
                 ok={u.ocrStatus.ocrRunComplete}
                 label={u.ocrStatus.ocrRunComplete ? "Complete" : "Not run"}
               />
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-slate-500">OCR text</span>
               <StatusBadge
                 ok={u.ocrStatus.ocrTextAvailable}
                 label={u.ocrStatus.ocrTextAvailable ? "Available" : "Missing"}
               />
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-slate-500">Files with OCR</span>
               <span>{u.ocrStatus.filesWithOcr} / {u.ocrStatus.fileCount}</span>
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-slate-500">Content text</span>
               <StatusBadge ok={u.ocrStatus.contentTextAvailable} label={u.ocrStatus.contentTextAvailable ? `${u.ocrStatus.contentTextCharCount?.toLocaleString() ?? "?"} chars` : "Missing"} />
             </div>
@@ -306,12 +308,12 @@ export function DmsDocumentUnderstandingSection({
         {/* AI Summary */}
         <SectionCard title="AI Summary" icon={<Brain className="h-3 w-3" />}>
           <div className="space-y-1.5 text-xs">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-slate-500">Status</span>
               <StatusBadge ok={u.summaryStatus.status === "complete"} label={u.summaryStatus.status ?? "Not run"} />
             </div>
             {u.summaryStatus.summaryModel && (
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-slate-500">Model</span>
                 <span className="font-mono text-[10px]">{u.summaryStatus.summaryModel}</span>
               </div>
@@ -339,7 +341,7 @@ export function DmsDocumentUnderstandingSection({
                   <span className="font-bold text-sm">{Math.round(u.completeness.score * 100)}%</span>
                 </div>
                 <div className="w-full bg-slate-200 rounded-full h-1.5 mb-2"><div className="h-1.5 rounded-full bg-blue-500" style={{ width: `${Math.round((u.completeness.score ?? 0) * 100)}%` }} /></div>
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-slate-500">Metadata fields</span>
                   <span>{u.completeness.filledMetadataFields} / {u.completeness.totalMetadataFields} filled</span>
                 </div>
@@ -359,12 +361,12 @@ export function DmsDocumentUnderstandingSection({
         {/* Risk */}
         <SectionCard title="Risk" icon={<AlertCircle className="h-3 w-3" />}>
           <div className="space-y-1.5 text-xs">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-slate-500">Risk level</span>
               <RiskBadge level={u.risk.riskLevel} />
             </div>
             {u.risk.riskScore !== null && (
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-slate-500">Score</span>
                 <span>{Math.round(u.risk.riskScore * 100)}%</span>
               </div>
@@ -385,24 +387,24 @@ export function DmsDocumentUnderstandingSection({
         {/* Embedding */}
         <SectionCard title="Semantic Embedding" icon={<Zap className="h-3 w-3" />}>
           <div className="space-y-1.5 text-xs">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-slate-500">Status</span>
               <StatusBadge ok={u.embedding.readyForSemanticSearch} label={u.embedding.status ?? "Not generated"} />
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-slate-500">Semantic search</span>
               <span className={u.embedding.readyForSemanticSearch ? "text-green-700 font-medium" : "text-slate-400"}>
                 {u.embedding.readyForSemanticSearch ? "Ready ✓" : "Not ready"}
               </span>
             </div>
             {u.embedding.model && (
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-slate-500">Model</span>
                 <span className="font-mono text-[10px]">{u.embedding.model}</span>
               </div>
             )}
             {u.embedding.source && (
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-slate-500">Source</span>
                 <span className="capitalize">{u.embedding.source.replace("_", " ")}</span>
               </div>
@@ -413,7 +415,7 @@ export function DmsDocumentUnderstandingSection({
         {/* Tags & Links */}
         <SectionCard title="Tags & Links" icon={<Tag className="h-3 w-3" />}>
           <div className="space-y-1.5 text-xs">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-slate-500">Tags</span>
               <span>{u.tagsLinks.tagCount} applied{u.tagsLinks.pendingTagSuggestions > 0 && ` · ${u.tagsLinks.pendingTagSuggestions} pending`}</span>
             </div>
@@ -449,17 +451,17 @@ export function DmsDocumentUnderstandingSection({
         {/* AI Extraction */}
         <SectionCard title="AI Classification" icon={<Brain className="h-3 w-3" />}>
           <div className="space-y-1.5 text-xs">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-slate-500">Status</span>
               <StatusBadge ok={u.extractionStatus.aiStatus === "complete"} label={u.extractionStatus.aiStatus ?? "Not run"} />
             </div>
             {u.extractionStatus.classificationConfidence !== null && (
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-slate-500">Confidence</span>
                 <span className="font-medium">{Math.round((u.extractionStatus.classificationConfidence ?? 0) * 100)}%</span>
               </div>
             )}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-slate-500">Fields extracted</span>
               <span>{u.extractionStatus.extractedFieldCount}</span>
             </div>
@@ -648,7 +650,7 @@ export function DmsDocumentUnderstandingSection({
       <p className="text-[10px] text-slate-400 text-center pt-1">
         Intelligence aggregated at {new Date(u.generatedAt).toLocaleTimeString()} — {new Date(u.generatedAt).toLocaleDateString()}
       </p>
-    </div>
+    </div></QueryReadBoundary>
   );
 }
 

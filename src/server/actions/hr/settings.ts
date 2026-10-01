@@ -827,7 +827,7 @@ export async function listHrApprovalWorkflows(params?: { workflow_type?: string;
     const from = ((params?.page ?? 1) - 1) * ps;
     const to = from + ps - 1;
     let q = sb.from("hr_approval_workflows")
-      .select("*, approval_role:approval_roles(id,role_name)")
+      .select("*, approval_role:approval_roles!hr_approval_workflows_approval_role_id_fkey(id,role_name)")
       .is("deleted_at", null).order("workflow_code").order("approval_step").range(from, to);
     if (params?.workflow_type) q = q.eq("workflow_type", params.workflow_type);
     if (params?.is_active !== undefined) q = q.eq("is_active", params.is_active);

@@ -48,7 +48,7 @@ export function HrKpiCards({ cards }: Props) {
           <>
             <span className={cn("absolute inset-y-0 left-0 w-1", ACCENT_BAR[card.accent])} />
             <div className="flex flex-1 flex-col gap-2 p-4 pl-5">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                   {card.label}
                 </span>
@@ -57,7 +57,7 @@ export function HrKpiCards({ cards }: Props) {
               <p className="text-2xl font-bold tracking-tight tabular-nums leading-none">
                 {card.value}
               </p>
-              {card.sub && <p className="text-[11px] text-muted-foreground/80">{card.sub}</p>}
+              {card.sub && <p className="text-[11px] text-muted-foreground">{card.sub}</p>}
             </div>
           </>
         );

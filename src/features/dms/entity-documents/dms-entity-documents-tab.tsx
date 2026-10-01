@@ -266,7 +266,7 @@ export function DmsEntityDocumentsTab({
           Documents linked to this {label}. All documents are managed in the DMS repository.
         </p>
         <div className="flex items-center gap-2 flex-wrap">
-          <Button
+          <Button aria-label="Refresh"
             type="button"
             variant="ghost"
             size="sm"
@@ -358,7 +358,7 @@ export function DmsEntityDocumentsTab({
                 </div>
               </div>
               <div className="flex items-center gap-1 shrink-0">
-                <Button
+                <Button aria-label="Open in DMS"
                   type="button"
                   variant="ghost"
                   size="icon"
@@ -371,7 +371,7 @@ export function DmsEntityDocumentsTab({
                   <ExternalLink className="h-3.5 w-3.5" />
                 </Button>
                 {canUnlink && (
-                  <Button
+                  <Button aria-label="Unlink document"
                     type="button"
                     variant="ghost"
                     size="icon"

@@ -395,7 +395,7 @@ function PartyFormDrawerInner({ party, mode, open, onOpenChange, authContext, de
 
                   <div className="col-span-6">
                     <RequiredLabel htmlFor="party_nature_id" required>Party Nature</RequiredLabel>
-                    <ERPCombobox
+                    <ERPCombobox ariaLabel="Party Nature"
                       value={partyNatureId}
                       onValueChange={(v) => setPartyNatureId(v !== null ? Number(v) : null)}
                       options={(natures ?? []).map((n) => ({ value: n.id, label: n.name_en }))}
@@ -583,7 +583,7 @@ function PartyFormDrawerInner({ party, mode, open, onOpenChange, authContext, de
                 <ERPFieldGrid>
                   <div className="col-span-6">
                     <RequiredLabel htmlFor="party_status_id" required>Party Status</RequiredLabel>
-                    <ERPCombobox
+                    <ERPCombobox ariaLabel="Party Status"
                       value={partyStatusId}
                       onValueChange={(v) => setPartyStatusId(v !== null ? Number(v) : null)}
                       options={(statuses ?? []).map((s) => ({ value: s.id, label: s.name_en }))}

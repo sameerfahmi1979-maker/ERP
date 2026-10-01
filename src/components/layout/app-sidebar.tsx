@@ -419,12 +419,14 @@ function getInitials(name?: string | null, email?: string | null): string {
 function canUserSeeItem(
   item: NavItem,
   permissionCodes: string[],
-  isGlobalAdmin: boolean
+  isGlobalAdmin: boolean,
+  globalPermissionCodes: string[] = [],
 ): boolean {
   // Disabled items are admin-only (greyed out)
   if (item.disabled) return isGlobalAdmin;
   if (item.publicToAllActive) return true;
   if (isGlobalAdmin) return true;
+  if (item.path === "/admin/notifications/email-queue") return globalPermissionCodes.includes("notifications.email_queue.view") || globalPermissionCodes.includes("notifications.admin");
   if (item.requiresGlobalAdmin) return false;
   if (item.requiredPermission) return permissionCodes.includes(item.requiredPermission);
   if (item.requiredAnyPermissions) {
@@ -451,7 +453,7 @@ function sectionHasVisibleChildren(
 
 function Collapsible({ open, children }: { open: boolean; children: React.ReactNode }) {
   return (
-    <div className={cn("grid transition-[grid-template-rows] duration-200 ease-in-out", open ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
+    <div inert={!open || undefined} aria-hidden={!open} className={cn("grid transition-[grid-template-rows] duration-200 ease-in-out", open ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
       <div className="overflow-hidden">
         {children}
       </div>
@@ -462,12 +464,14 @@ function Collapsible({ open, children }: { open: boolean; children: React.ReactN
 // ??? Component ????????????????????????????????????????????????????????????????
 
 interface AppSidebarProps {
+  onNavigate?: () => void;
   collapsed: boolean;
   onToggle: () => void;
   displayName?: string | null;
   email?: string | null;
   /** ERP USERS.4 ? permission codes for sidebar filtering */
   permissionCodes?: string[];
+  globalPermissionCodes?: string[];
   /** ERP USERS.4 ? true for system_admin / group_admin (bypass all checks) */
   isGlobalAdmin?: boolean;
   /** BRANDING.2 — tenant-global app shell branding */
@@ -475,11 +479,13 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({
+  onNavigate,
   collapsed,
   onToggle,
   displayName,
   email,
   permissionCodes = [],
+  globalPermissionCodes = [],
   isGlobalAdmin = false,
   appBranding,
 }: AppSidebarProps) {
@@ -536,6 +542,7 @@ export function AppSidebar({
   const handleNavClick = (item: NavItem) => {
     if (item.disabled) return;
     openTab({ route: item.path, title: item.label, icon: item.icon.displayName ?? item.icon.name });
+    onNavigate?.();
   };
 
   // Filter items by search query
@@ -565,6 +572,8 @@ export function AppSidebar({
         key={item.path}
         type="button"
         onClick={() => handleNavClick(item)}
+        aria-label={item.label}
+        aria-current={active ? "page" : undefined}
         // WS.2: warm the router cache on hover so the tab opens near-instantly
         onMouseEnter={() => router.prefetch(item.path)}
         className={cn(
@@ -620,6 +629,7 @@ export function AppSidebar({
         <button
           type="button"
           onClick={() => !isFiltering && toggleSubSection(key)}
+          aria-expanded={isExpanded || isFiltering}
           className={cn(
             "flex items-center justify-between w-full px-2 py-1.5 rounded-md",
             "text-[11px] font-semibold uppercase tracking-wide transition-colors",
@@ -694,8 +704,8 @@ export function AppSidebar({
     <TooltipProvider delay={0}>
       <aside
         className={cn(
-          "h-screen flex flex-col border-r border-border/40 bg-card transition-all duration-300 shrink-0",
-          collapsed ? "w-[68px]" : "w-[260px]"
+          "algt-sitemap h-full min-h-0 flex flex-col border-r border-border bg-card transition-all duration-200 shrink-0",
+          collapsed ? "w-[60px]" : "w-[216px]"
         )}
       >
         {/* ?? Logo ??????????????????????????????????????????????????????????? */}
@@ -725,13 +735,15 @@ export function AppSidebar({
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Filter menu?"
+                placeholder="Find a page"
+                aria-label="Find a page in navigation"
                 className="h-7 pl-7 pr-7 text-xs bg-muted/40 border-0 focus-visible:ring-1 focus-visible:ring-primary/40 placeholder:text-muted-foreground/40"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery("")}
+                  aria-label="Clear navigation search"
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-muted-foreground"
                 >
                   <X className="h-3 w-3" />
@@ -744,7 +756,7 @@ export function AppSidebar({
         {/* ?? Navigation ????????????????????????????????????????????????????? */}
         <div className="relative flex-1 min-h-0 flex flex-col">
           {canScrollUp && (
-            <button type="button" onClick={() => scrollBy("up")}
+            <button type="button" aria-label="Scroll navigation up" onClick={() => scrollBy("up")}
               className="absolute top-0 left-0 right-0 z-10 flex items-center justify-center h-6 bg-gradient-to-b from-card to-transparent hover:from-muted/80 transition-colors">
               <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
             </button>
@@ -753,7 +765,7 @@ export function AppSidebar({
           <div ref={scrollRef}
             className="flex-1 overflow-y-auto overscroll-contain py-2 scrollbar-none"
             style={{ scrollbarWidth: "none" }}>
-            <nav className="px-2 space-y-0.5">
+            <nav aria-label="ERP navigation" className="px-2 space-y-0.5">
               {navSections.map((section) => {
                 const isSectionExpanded = expandedSections.includes(section.label);
                 const isSectionActive = activeSectionLabel === section.label;
@@ -762,11 +774,11 @@ export function AppSidebar({
                  // ERP USERS.4 - Apply permission filter first, then search filter
                  const visibleDirectItems = section.children
                    .filter((c) => !isSubSection(c))
-                   .filter((c) => canUserSeeItem(c as NavItem, permissionCodes, isGlobalAdmin))
+                   .filter((c) => canUserSeeItem(c as NavItem, permissionCodes, isGlobalAdmin, globalPermissionCodes))
                    .filter((c) => !isFiltering || (c as NavItem).label.toLowerCase().includes(q)) as NavItem[];
                  const visibleSubSections = section.children
                    .filter(isSubSection)
-                   .map((s) => ({ ...s, items: s.items.filter((item) => canUserSeeItem(item, permissionCodes, isGlobalAdmin)) }))
+                   .map((s) => ({ ...s, items: s.items.filter((item) => canUserSeeItem(item, permissionCodes, isGlobalAdmin, globalPermissionCodes)) }))
                    .filter((s) => s.items.length > 0)
                    .filter((s) => !isFiltering || s.items.some((i) => i.label.toLowerCase().includes(q)));
 
@@ -783,6 +795,7 @@ export function AppSidebar({
                       <button
                         type="button"
                         onClick={() => !isFiltering && toggleSection(section.label)}
+                        aria-expanded={isSectionExpanded || isFiltering}
                         className={cn(
                           "flex items-center justify-between w-full px-2 py-1.5 rounded-md",
                           "text-[11px] font-bold uppercase tracking-widest transition-colors",
@@ -815,6 +828,8 @@ export function AppSidebar({
                           <button
                             type="button"
                             onClick={() => toggleSection(section.label)}
+                            aria-label={section.label}
+                            aria-expanded={true}
                             className={cn(
                               "flex items-center justify-center w-full p-2 rounded-md transition-colors",
                               isSectionActive ? "bg-primary/10" : "hover:bg-muted/40"
@@ -859,7 +874,7 @@ export function AppSidebar({
           </div>
 
           {canScrollDown && (
-            <button type="button" onClick={() => scrollBy("down")}
+            <button type="button" aria-label="Scroll navigation down" onClick={() => scrollBy("down")}
               className="absolute bottom-0 left-0 right-0 z-10 flex items-center justify-center h-6 bg-gradient-to-t from-card to-transparent hover:from-muted/80 transition-colors">
               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
             </button>
@@ -896,10 +911,10 @@ export function AppSidebar({
 
         {/* ?? Collapse toggle ????????????????????????????????????????????????? */}
         <div className="border-t border-border/40 p-2 shrink-0">
-          <Button variant="ghost" size="sm" onClick={onToggle}
+          <Button variant="ghost" size="sm" onClick={onToggle} aria-label={onNavigate ? "Close navigation" : collapsed ? "Expand navigation" : "Collapse navigation"}
             className="w-full h-8 text-muted-foreground hover:text-foreground">
             <ChevronLeft className={cn("h-4 w-4 transition-transform", collapsed && "rotate-180")} />
-            {!collapsed && <span className="ml-2 text-xs">Collapse</span>}
+            {!collapsed && <span className="ml-2 text-xs">{onNavigate ? "Close navigation" : "Collapse"}</span>}
           </Button>
         </div>
       </aside>

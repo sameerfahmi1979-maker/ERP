@@ -512,7 +512,7 @@ function PartyWorkspaceFormInner({
 
                 <div className="col-span-6">
                   <RequiredLabel htmlFor="party_nature_id" required>Party Nature</RequiredLabel>
-                  <ERPCombobox
+                  <ERPCombobox ariaLabel="Party Nature"
                     value={partyNatureId}
                     onValueChange={(v) => { const n = v !== null ? Number(v) : null; setPartyNatureId(n); writeDraftField("party_nature_id", n ?? ""); }}
                     options={(natures ?? []).map((n) => ({ value: n.id, label: n.name_en }))}
@@ -622,7 +622,7 @@ function PartyWorkspaceFormInner({
               <ERPFieldGrid>
                 <div className="col-span-6">
                   <RequiredLabel htmlFor="party_status_id" required>Party Status</RequiredLabel>
-                  <ERPCombobox
+                  <ERPCombobox ariaLabel="Party Status"
                     value={partyStatusId}
                     onValueChange={(v) => { const n = v !== null ? Number(v) : null; setPartyStatusId(n); writeDraftField("party_status_id", n ?? ""); }}
                     options={(statuses ?? []).map((s) => ({ value: s.id, label: s.name_en }))}

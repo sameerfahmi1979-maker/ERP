@@ -31,7 +31,7 @@ export function AiObservabilityFilters({ filters, onChange }: Props) {
     <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-muted/30 p-3">
       <div className="flex flex-col gap-1 min-w-[130px]">
         <Label className="text-xs">From</Label>
-        <Input
+        <Input aria-label="From"
           type="date"
           value={filters.dateFrom ?? ""}
           onChange={(e) => update({ dateFrom: e.target.value || null })}
@@ -40,7 +40,7 @@ export function AiObservabilityFilters({ filters, onChange }: Props) {
       </div>
       <div className="flex flex-col gap-1 min-w-[130px]">
         <Label className="text-xs">To</Label>
-        <Input
+        <Input aria-label="To"
           type="date"
           value={filters.dateTo ?? ""}
           onChange={(e) => update({ dateTo: e.target.value || null })}
@@ -49,7 +49,7 @@ export function AiObservabilityFilters({ filters, onChange }: Props) {
       </div>
       <div className="flex flex-col gap-1 min-w-[180px]">
         <Label className="text-xs">Feature Area</Label>
-        <select
+        <select aria-label="Feature Area"
           value={filters.featureArea ?? ""}
           onChange={(e) => update({ featureArea: e.target.value || null })}
           className="h-8 rounded-md border border-input bg-background px-2 text-sm"
@@ -61,7 +61,7 @@ export function AiObservabilityFilters({ filters, onChange }: Props) {
       </div>
       <div className="flex flex-col gap-1 min-w-[120px]">
         <Label className="text-xs">Status</Label>
-        <select
+        <select aria-label="Status"
           value={filters.status ?? ""}
           onChange={(e) => update({ status: e.target.value || null })}
           className="h-8 rounded-md border border-input bg-background px-2 text-sm"
@@ -73,7 +73,7 @@ export function AiObservabilityFilters({ filters, onChange }: Props) {
       </div>
       <div className="flex flex-col gap-1 min-w-[150px]">
         <Label className="text-xs">Model ID</Label>
-        <Input
+        <Input aria-label="Model ID"
           type="text"
           placeholder="e.g. gpt-4.1"
           value={filters.modelId ?? ""}

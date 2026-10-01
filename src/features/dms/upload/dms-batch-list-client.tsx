@@ -1,6 +1,9 @@
 "use client";
 
-import { useState, useTransition, useCallback } from "react";
+import { DmsListTools, useDmsListView, type DmsListField } from "@/features/dms/dms-list-view";
+import { ConfiguredRow } from "@/components/erp/table/list-controls";
+
+import { useTransition, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { RefreshCw, Layers, ArrowRight, Inbox } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -38,12 +41,73 @@ function formatDate(iso: string): string {
   }
 }
 
+const DMS_LIST_FIELDS: DmsListField[] = [
+  {
+    "id": "batch_code",
+    "label": "Batch",
+    "path": "batch_code",
+    "type": "text",
+    "width": 160,
+    "required": true
+  },
+  {
+    "id": "status",
+    "label": "Status",
+    "path": "status",
+    "type": "text",
+    "width": 160
+  },
+  {
+    "id": "total_files",
+    "label": "Files",
+    "path": "total_files",
+    "type": "number",
+    "width": 100
+  },
+  {
+    "id": "pendingCount",
+    "label": "Pending",
+    "path": "pendingCount",
+    "type": "number",
+    "width": 110
+  },
+  {
+    "id": "approvedCount",
+    "label": "Approved",
+    "path": "approvedCount",
+    "type": "number",
+    "width": 110
+  },
+  {
+    "id": "discardedCount",
+    "label": "Discarded",
+    "path": "discardedCount",
+    "type": "number",
+    "width": 110
+  },
+  {
+    "id": "created_at",
+    "label": "Created",
+    "path": "created_at",
+    "type": "date",
+    "width": 160
+  },
+  {
+    "id": "actions",
+    "label": "Actions",
+    "type": "text",
+    "width": 160
+  }
+];
+
 export function DmsBatchListClient({ initialBatches }: Props) {
   const router = useRouter();
-  const [batches] = useState<DmsUploadBatchListRow[]>(initialBatches);
+  const batches = initialBatches;
   const [isPending, startTransition] = useTransition();
 
-  const table = useSortPaginate(batches, {
+  const listView = useDmsListView("upload-batches", batches, DMS_LIST_FIELDS);
+  const table = useSortPaginate(listView.rows, {
+    memoryKey: "dms:upload-batches",
     defaultSortKey: "created_at",
     defaultSortDir: "desc",
     defaultPageSize: 25,
@@ -73,7 +137,7 @@ export function DmsBatchListClient({ initialBatches }: Props) {
             ? `${table.total} of ${batches.length} batches`
             : `${batches.length} ${batches.length === 1 ? "batch" : "batches"}`}
         </p>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <TableSearchInput value={table.query} onChange={table.setQuery} placeholder="Search batches…" className="w-48" />
           <Button size="sm" variant="outline" onClick={refresh} disabled={isPending}>
             <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", isPending && "animate-spin")} />
@@ -82,42 +146,43 @@ export function DmsBatchListClient({ initialBatches }: Props) {
         </div>
       </div>
 
-      <div className="rounded-xl border bg-card overflow-hidden">
-        <table className="w-full text-sm">
+      <DmsListTools view={listView} />
+<div className="rounded-xl border bg-card overflow-hidden">
+        <div role="region" aria-label="upload-batches table" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{ minWidth: listView.visible.reduce((sum, column) => sum + column.width, 0) }}><colgroup>{listView.visible.map(column => <col key={column.id} style={{ width: column.width }} />)}</colgroup>
           <thead className="bg-muted/40 text-xs text-muted-foreground">
-            <tr>
-              <SortColHeader field="batch_code" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2">Batch</SortColHeader>
-              <SortColHeader field="status" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2">Status</SortColHeader>
-              <SortColHeader field="total_files" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="right" className="px-3 py-2">Files</SortColHeader>
-              <SortColHeader field="pendingCount" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="right" className="px-3 py-2">Pending</SortColHeader>
-              <SortColHeader field="approvedCount" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="right" className="px-3 py-2">Approved</SortColHeader>
-              <SortColHeader field="discardedCount" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="right" className="px-3 py-2">Discarded</SortColHeader>
-              <SortColHeader field="created_at" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2">Created</SortColHeader>
-              <th className="text-right font-medium px-3 py-2">Actions</th>
-            </tr>
+            <ConfiguredRow columns={listView.columns}>
+              <SortColHeader data-column="batch_code" field="batch_code" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2">Batch</SortColHeader>
+              <SortColHeader data-column="status" field="status" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2">Status</SortColHeader>
+              <SortColHeader data-column="total_files" field="total_files" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="right" className="px-3 py-2">Files</SortColHeader>
+              <SortColHeader data-column="pendingCount" field="pendingCount" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="right" className="px-3 py-2">Pending</SortColHeader>
+              <SortColHeader data-column="approvedCount" field="approvedCount" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="right" className="px-3 py-2">Approved</SortColHeader>
+              <SortColHeader data-column="discardedCount" field="discardedCount" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} align="right" className="px-3 py-2">Discarded</SortColHeader>
+              <SortColHeader data-column="created_at" field="created_at" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2">Created</SortColHeader>
+              <th data-column="actions" className="text-right font-medium px-3 py-2">Actions</th>
+            </ConfiguredRow>
           </thead>
           <tbody>
             {table.rows.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-3 py-12 text-center text-sm text-muted-foreground">
+                <td colSpan={listView.visible.length} className="px-3 py-12 text-center text-sm text-muted-foreground">
                   <Inbox className="h-6 w-6 mx-auto mb-2 opacity-40" />
                   {table.query ? "No batches match your search." : "No upload batches yet. Use the Upload Inbox in \"Multiple Files (Batch)\" mode to create one."}
                 </td>
               </tr>
             )}
             {table.rows.map((b) => (
-              <tr
+              <ConfiguredRow columns={listView.columns}
                 key={b.id}
                 className="border-t hover:bg-muted/20 cursor-pointer"
                 onClick={() => open(b.batch_code)}
               >
-                <td className="px-3 py-2">
-                  <div className="flex items-center gap-2">
+                <td data-column="batch_code" className="px-3 py-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Layers className="h-3.5 w-3.5 text-violet-600 shrink-0" />
                     <span className="font-mono text-xs font-semibold">{b.batch_code}</span>
                   </div>
                 </td>
-                <td className="px-3 py-2">
+                <td data-column="status" className="px-3 py-2">
                   <Badge
                     variant="outline"
                     className={cn(
@@ -128,18 +193,18 @@ export function DmsBatchListClient({ initialBatches }: Props) {
                     {b.status.replace(/_/g, " ")}
                   </Badge>
                 </td>
-                <td className="px-3 py-2 text-right tabular-nums">{b.total_files}</td>
-                <td className="px-3 py-2 text-right tabular-nums">
+                <td data-column="total_files" className="px-3 py-2 text-right tabular-nums">{b.total_files}</td>
+                <td data-column="pendingCount" className="px-3 py-2 text-right tabular-nums">
                   {b.pendingCount > 0 ? (
                     <span className="font-semibold text-amber-600">{b.pendingCount}</span>
                   ) : (
                     <span className="text-muted-foreground">0</span>
                   )}
                 </td>
-                <td className="px-3 py-2 text-right tabular-nums text-green-600">{b.approvedCount}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{b.discardedCount}</td>
-                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">{formatDate(b.created_at)}</td>
-                <td className="px-3 py-2 text-right">
+                <td data-column="approvedCount" className="px-3 py-2 text-right tabular-nums text-green-600">{b.approvedCount}</td>
+                <td data-column="discardedCount" className="px-3 py-2 text-right tabular-nums text-muted-foreground">{b.discardedCount}</td>
+                <td data-column="created_at" className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">{formatDate(b.created_at)}</td>
+                <td data-column="actions" className="px-3 py-2 text-right">
                   <Button
                     size="sm"
                     variant="outline"
@@ -153,10 +218,10 @@ export function DmsBatchListClient({ initialBatches }: Props) {
                     <ArrowRight className="h-3.5 w-3.5 ml-1.5" />
                   </Button>
                 </td>
-              </tr>
+              </ConfiguredRow>
             ))}
           </tbody>
-        </table>
+        </table></div>
         <TablePagination
           page={table.page}
           totalPages={table.totalPages}

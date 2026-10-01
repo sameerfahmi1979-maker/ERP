@@ -9,7 +9,9 @@ import { getRolePermissionsAction } from "@/server/actions/roles";
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink, Lock, ShieldAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import type { ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
 import { parsePermissionDraft, type PermissionDraft } from "./permission-draft";
@@ -32,6 +34,8 @@ export function RolePermissionsSection({ roleId, isSystemRole, canManage, isGlob
   const [toggling, setToggling] = useState<number | null>(null);
   const [draft, setDraft] = useState<PermissionDraft>(() => parsePermissionDraft(getDraftDefault("permission_changes", "{}")));
   const [reviewing, setReviewing] = useState(false);
+  const saving = useRef(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const dirty = Object.keys(draft).length > 0;
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
@@ -51,7 +55,6 @@ export function RolePermissionsSection({ roleId, isSystemRole, canManage, isGlob
     },
     retry: false, gcTime: 0, refetchOnWindowFocus: false,
   });
-  useEffect(() => { if (error) toast.error(error.message); }, [error]);
 
   const handleToggle = (permId: number, originallyAssigned: boolean) => {
     if (!canEdit || toggling !== null) return;
@@ -64,7 +67,9 @@ export function RolePermissionsSection({ roleId, isSystemRole, canManage, isGlob
     setDraft(next);
   };
   const handleApply = async () => {
-    if (!canEdit) return;
+    if (!canEdit || saving.current || !reviewing || !Object.keys(draft).length) return;
+    saving.current = true;
+    setSaveError(null);
     setToggling(-1);
     try {
       const result = await saveRolePermissionDraftChanges(Object.entries(draft).map(([id,change]) => ({
@@ -77,17 +82,30 @@ export function RolePermissionsSection({ roleId, isSystemRole, canManage, isGlob
         router.refresh();
         await refetch();
       } else {
+        setSaveError("Permission changes could not be applied. Your draft is retained; reload the current permissions and review before retrying.");
         toast.error(result.error ?? "Failed to update permission");
       }
     } catch {
+      setSaveError("The save could not be confirmed. Your draft is retained; reload the current permissions and review before retrying.");
       toast.error("An unexpected error occurred");
     } finally {
+      saving.current = false;
       setToggling(null);
     }
   };
 
   const totalAssigned = groups.reduce((n, g) => n + g.permissions.filter((p) => p.assigned).length, 0);
   const totalPerms = groups.reduce((n, g) => n + g.permissions.length, 0);
+  const rows = groups.flatMap(group => group.permissions.map(permission => ({ ...permission, moduleLabel: permissionModuleLabel(group.module_code) })));
+  type PermissionRow = typeof rows[number];
+  const columns: ColumnDef<PermissionRow>[] = [
+    { id: "permission", header: "Permission", size: 300, accessorFn: p => `${p.permission_name} ${p.permission_code}`, cell: ({ row }) => <div><p className="font-medium">{row.original.permission_name}</p><p className="text-xs text-muted-foreground">{row.original.permission_code}</p></div> },
+    { accessorKey: "moduleLabel", header: "Module" },
+    { accessorKey: "description", header: "Description", size: 300 },
+    { accessorKey: "action_code", header: "Action" },
+    { id: "status", header: "Status", accessorFn: p => p.is_active ? "Active" : "Inactive" },
+    { id: "actions", header: "Assigned / draft", accessorFn: p => (draft[p.id]?.assigned ?? p.assigned) ? "Assigned" : "Not assigned", cell: ({ row }) => <div className="flex items-center gap-2"><Checkbox aria-label={`Assign ${row.original.permission_name}`} checked={draft[row.original.id]?.assigned ?? row.original.assigned} disabled={!canEdit || toggling !== null || !row.original.is_active} onCheckedChange={() => handleToggle(row.original.id, row.original.assigned)}/>{draft[row.original.id] && <Badge variant="outline">Unsaved</Badge>}</div> },
+  ];
 
   if (isLoading) {
     return (
@@ -102,7 +120,7 @@ export function RolePermissionsSection({ roleId, isSystemRole, canManage, isGlob
   return (
     <div className="space-y-4">
       {/* Header row */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span>{totalAssigned} / {totalPerms} permissions assigned</span>
         </div>
@@ -145,70 +163,11 @@ export function RolePermissionsSection({ roleId, isSystemRole, canManage, isGlob
           {reviewing ? <Button type="button" disabled={toggling !== null} onClick={handleApply}>Apply reviewed changes</Button> : <Button type="button" onClick={() => setReviewing(true)}>Review changes</Button>}
         </div>
       </div>}
-      <div className="space-y-4">
-        {groups.map((group) => {
-          const assignedCount = group.permissions.filter((p) => p.assigned).length;
-          return (
-            <div key={group.module_code} className="rounded-lg border">
-              <div className="flex items-center justify-between px-4 py-2.5 border-b bg-muted/20">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold capitalize">
-                    {permissionModuleLabel(group.module_code)}
-                  </span>
-                  <Badge variant="outline" className="text-xs">
-                    {assignedCount}/{group.permissions.length}
-                  </Badge>
-                </div>
-              </div>
-              <div className="divide-y">
-                {group.permissions.map((perm) => (
-                  <div
-                    key={perm.id}
-                    className={`flex items-center gap-3 px-4 py-2.5 ${
-                      !perm.is_active ? "opacity-50" : ""
-                    }`}
-                  >
-                    <Checkbox
-                      id={`perm-${perm.id}`}
-                      checked={draft[perm.id]?.assigned ?? perm.assigned}
-                      disabled={!canEdit || toggling !== null || !perm.is_active}
-                      onCheckedChange={() => handleToggle(perm.id, perm.assigned)}
-                      className="shrink-0"
-                    />
-                    <label
-                      htmlFor={`perm-${perm.id}`}
-                      className={`flex-1 cursor-pointer ${!canEdit ? "cursor-default" : ""}`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">{perm.permission_name}</span>
-                        {!perm.is_active && (
-                          <Badge variant="outline" className="text-xs text-muted-foreground">Inactive</Badge>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-xs font-mono text-muted-foreground">{perm.permission_code}</span>
-                        {perm.description && (
-                          <span className="text-xs text-muted-foreground">— {perm.description}</span>
-                        )}
-                      </div>
-                    </label>
-                    <Badge variant="outline" className="text-[10px] shrink-0">
-                      {perm.action_code}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {groups.length === 0 && (
-        <div className="flex flex-col items-center gap-2 py-12 text-muted-foreground">
-          <Lock className="h-8 w-8 opacity-30" />
-          <p className="text-sm">No permissions found</p>
-        </div>
-      )}
+      {(error || saveError) && <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
+        <p>{saveError ?? "Role permissions could not be loaded. No changes have been applied."}</p>
+        <Button type="button" variant="outline" disabled={toggling !== null} onClick={() => { setReviewing(false); void refetch(); }}>Reload permissions</Button>
+      </div>}
+      {!error && <ERPDataTable tableId={`role.permissions:${roleId}`} resultsLabel="Role permissions" data={rows} columns={columns} enableRowSelection={false}/>}
     </div>
   );
 }

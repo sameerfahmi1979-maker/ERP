@@ -1,4 +1,6 @@
 "use client";
+import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 /**
  * IdentityDocumentAddDialog — 3-step wizard for adding Legal Documents
@@ -10,7 +12,7 @@
  *     show a progress / results screen. No per-document review in batch mode.
  */
 
-import { useCallback, useState, useTransition } from "react";
+import { useCallback, useState} from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -106,23 +108,25 @@ export function IdentityDocumentAddDialog({
     onOpenChange(next);
   }, [onOpenChange, resetState]);
 
-  const { data: employeeDocs, isLoading: employeeDocsLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.dms.entityDocuments("employee", employeeId),
     queryFn: async () => {
       const r = await getDmsDocumentsByEntity("employee", employeeId);
-      return r.success ? r.data ?? [] : [];
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? [] : [];
     },
     enabled: open && step === "pick-dms" && pickMode === "employee",
   });
+  const { data: employeeDocs, isLoading: employeeDocsLoading } = uiRead1;
 
-  const { data: libraryDocs, isLoading: libraryDocsLoading } = useQuery({
+  const uiRead2 = useQuery({
     queryKey: queryKeys.dms.attachableDocuments("employee", employeeId, dmsSearch),
     queryFn: async () => {
       const r = await getAvailableDmsDocumentsForLink("employee", employeeId, dmsSearch);
-      return r.success ? r.data ?? [] : [];
+      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? [] : [];
     },
     enabled: open && step === "pick-dms" && pickMode === "dms",
   });
+  const { data: libraryDocs, isLoading: libraryDocsLoading } = uiRead2;
 
   const docTypeOptions = docTypes.map((t) => ({ value: t.id, label: t.name_en }));
 
@@ -318,7 +322,7 @@ export function IdentityDocumentAddDialog({
   const docsLoading = pickMode === "employee" ? employeeDocsLoading : libraryDocsLoading;
 
   return (
-    <ERPChildDialogForm
+    <QueryReadBoundary queries={[uiRead1,uiRead2]}><ERPChildDialogForm
       open={open}
       onOpenChange={handleOpenChange}
       title={title}
@@ -427,7 +431,7 @@ export function IdentityDocumentAddDialog({
           {pickMode === "dms" && (
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
+              <Input aria-label="Search by document no or title"
                 value={dmsSearch}
                 onChange={(e) => setDmsSearch(e.target.value)}
                 placeholder="Search by document no or title..."
@@ -565,7 +569,7 @@ export function IdentityDocumentAddDialog({
           )}
         </div>
       )}
-    </ERPChildDialogForm>
+    </ERPChildDialogForm></QueryReadBoundary>
   );
 }
 

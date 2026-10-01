@@ -1,4 +1,5 @@
 "use client";
+import { RecordCollection } from "@/components/erp/table/record-collection";
 
 /**
  * HR.12 — HR AI Activity Log Panel
@@ -60,7 +61,7 @@ export function HrAiActivityPanel({ employeeId, canView }: Props) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-sm font-medium">AI Activity History</p>
           <p className="text-xs text-muted-foreground">Recent HR AI calls for this employee. No prompts or sensitive data stored.</p>
@@ -79,7 +80,7 @@ export function HrAiActivityPanel({ employeeId, canView }: Props) {
           <p className="text-sm text-muted-foreground py-4 text-center">No HR AI activity yet for this employee.</p>
         ) : (
           <div className="space-y-1">
-            {records.map((r) => (
+            {<RecordCollection id="special.hr-ai-activity-panel" rows={records} fields={[{"id":"featureCode","path":"featureCode","label":"Feature"},{"id":"createdAt","path":"createdAt","label":"Created"},{"id":"status","path":"status","label":"Status"}]} renderRecord={(r) => (
               <div key={r.id} className="flex items-center gap-2 py-1.5 border-b border-border/50 last:border-0">
                 {r.status === "success" ? (
                   <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
@@ -103,7 +104,7 @@ export function HrAiActivityPanel({ employeeId, canView }: Props) {
                   {new Date(r.createdAt).toLocaleString("en-AE", { dateStyle: "short", timeStyle: "short" })}
                 </span>
               </div>
-            ))}
+            )} />}
           </div>
         )
       )}

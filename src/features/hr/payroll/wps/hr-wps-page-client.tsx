@@ -1,4 +1,7 @@
 "use client";
+import { ERPDataTable } from "@/components/erp/table/erp-data-table";
+import { loadedListValue } from "@/components/erp/table/loaded-list-view";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -7,7 +10,6 @@ import { listWpsReadiness } from "@/server/actions/hr/payroll";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   getWpsReadinessLabel,
   getWpsReadinessBadgeVariant,
@@ -45,12 +47,13 @@ export function HrWpsPageClient({ initialData }: Props) {
   const [searchInput, setSearchInput] = useState("");
   const [onHoldOnly, setOnHoldOnly] = useState(false);
 
-  const { data: queryData, isLoading } = useQuery({
+  const uiRead1 = useQuery({
     queryKey: queryKeys.hr.payroll.globalWpsReadiness({ page, page_size: PAGE_SIZE, wps_status: wpsStatus || undefined, on_hold: onHoldOnly || undefined }),
     queryFn: () => listWpsReadiness({ page, page_size: PAGE_SIZE, wps_status: wpsStatus || undefined, on_hold: onHoldOnly || undefined }),
     initialData: page === 1 && !wpsStatus && !onHoldOnly ? { success: true, data: initialData } : undefined,
     placeholderData: (prev) => prev,
   });
+  const { data: queryData, isLoading } = uiRead1;
 
   const rows = queryData?.data?.data ?? [];
   const total = queryData?.data?.count ?? 0;
@@ -64,7 +67,7 @@ export function HrWpsPageClient({ initialData }: Props) {
     : rows;
 
   return (
-    <div className="container mx-auto py-6 space-y-4">
+    <QueryReadBoundary queries={[uiRead1]}><div className="container mx-auto py-6 space-y-4">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Landmark className="h-6 w-6 text-primary" />
@@ -79,7 +82,7 @@ export function HrWpsPageClient({ initialData }: Props) {
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 min-w-[200px] max-w-xs">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
+          <Input aria-label="Search employee"
             className="pl-8"
             placeholder="Search employee..."
             value={searchInput}
@@ -87,7 +90,7 @@ export function HrWpsPageClient({ initialData }: Props) {
             onKeyDown={e => { if (e.key === "Enter") { setSearch(searchInput); setPage(1); } }}
           />
         </div>
-        <select
+        <select aria-label="WPS status"
           className="border rounded px-2 py-1.5 text-sm"
           value={wpsStatus}
           onChange={e => { setWpsStatus(e.target.value); setPage(1); }}
@@ -115,75 +118,23 @@ export function HrWpsPageClient({ initialData }: Props) {
 
       {/* Table */}
       <div className="rounded-xl border overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50">
-            <tr>
-              <th className="text-left px-4 py-3 font-medium">Employee</th>
-              <th className="text-left px-4 py-3 font-medium">WPS Status</th>
-              <th className="text-left px-4 py-3 font-medium">Payment Method</th>
-              <th className="text-left px-4 py-3 font-medium">Payroll Hold</th>
-              <th className="text-left px-4 py-3 font-medium">Readiness</th>
-              <th className="px-4 py-3" />
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              [...Array(8)].map((_, i) => (
-                <tr key={i} className="border-t">
-                  <td colSpan={6} className="px-4 py-2">
-                    <Skeleton className="h-5 w-full" />
-                  </td>
-                </tr>
-              ))
-            ) : filtered.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
-                  No employees found.
-                </td>
-              </tr>
-            ) : (
-              filtered.map((row) => (
-                <tr key={row.employee_id} className="border-t hover:bg-muted/30">
-                  <td className="px-4 py-2.5">
-                    <div className="font-medium">{row.full_name_en}</div>
-                    <div className="text-xs text-muted-foreground">{row.employee_code}</div>
-                  </td>
-                  <td className="px-4 py-2.5">
-                    {row.wps_status ? (
+        {/* UI04 explicit table: loaded authorized rows only */}<ERPDataTable isLoading={isLoading} tableId="hr.payroll.wps.hr-wps-page-client" data={filtered} columns={[{id:"full_name_en",header:"Employee",accessorFn:row=>loadedListValue(row,"full_name_en"),enableHiding:false,size:240,cell:({row:{original:row}})=><><div className="font-medium">{row.full_name_en}</div><div className="text-xs text-muted-foreground">{row.employee_code}</div></>},{id:"wps_status",header:"WPS Status",accessorFn:row=>loadedListValue(row,"wps_status"),enableHiding:true,size:160,cell:({row:{original:row}})=><>{row.wps_status ? (
                       <Badge variant={WPS_STATUS_VARIANT[row.wps_status] ?? "outline"} className="capitalize">
                         {row.wps_status}
                       </Badge>
                     ) : (
                       <Badge variant="outline">Not Set</Badge>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5 capitalize">
-                    {row.salary_payment_method?.replace("_", " ") ?? "—"}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    {row.has_active_hold ? (
+                    )}</>},{id:"salary_payment_method",header:"Payment Method",accessorFn:row=>loadedListValue(row,"salary_payment_method"),enableHiding:true,size:160,cell:({row:{original:row}})=><>{row.salary_payment_method?.replace("_", " ") ?? "—"}</>},{id:"has_active_hold",header:"Payroll Hold",accessorFn:row=>loadedListValue(row,"has_active_hold"),enableHiding:true,size:160,cell:({row:{original:row}})=><>{row.has_active_hold ? (
                       <Badge variant="destructive" className="text-xs">Active Hold</Badge>
                     ) : (
                       <span className="text-muted-foreground text-xs">None</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <Badge variant={getWpsReadinessBadgeVariant(row.readiness_status as Parameters<typeof getWpsReadinessBadgeVariant>[0])}>
+                    )}</>},{id:"readiness_status",header:"Readiness",accessorFn:row=>loadedListValue(row,"readiness_status"),enableHiding:true,size:160,cell:({row:{original:row}})=><><Badge variant={getWpsReadinessBadgeVariant(row.readiness_status as Parameters<typeof getWpsReadinessBadgeVariant>[0])}>
                       {getWpsReadinessLabel(row.readiness_status as Parameters<typeof getWpsReadinessLabel>[0])}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <Link href={`/admin/hr/employees/record/${row.employee_id}?section=payroll`}>
-                      <Button size="icon" variant="ghost" className="h-7 w-7">
+                    </Badge></>},{id:"actions",header:"Actions",enableHiding:true,size:200,enableSorting:false,meta:{exportable:false},cell:({row:{original:row}})=><><Link href={`/admin/hr/employees/record/${row.employee_id}?section=payroll`}>
+                      <Button aria-label="Open employee payroll" size="icon" variant="ghost" className="h-7 w-7">
                         <LinkIcon className="h-3.5 w-3.5" />
                       </Button>
-                    </Link>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+                    </Link></>}]} enableRowSelection={false} initialPageSize={25} searchPlaceholder="Search loaded records…"/>
       </div>
 
       {/* Pagination */}
@@ -191,16 +142,16 @@ export function HrWpsPageClient({ initialData }: Props) {
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <span>{total} total employees</span>
           <div className="flex items-center gap-2">
-            <Button size="icon" variant="outline" className="h-8 w-8" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
+            <Button aria-label="Previous page" size="icon" variant="outline" className="h-8 w-8" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <span>Page {page} of {totalPages}</span>
-            <Button size="icon" variant="outline" className="h-8 w-8" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>
+            <Button aria-label="Next page" size="icon" variant="outline" className="h-8 w-8" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
         </div>
       )}
-    </div>
+    </div></QueryReadBoundary>
   );
 }

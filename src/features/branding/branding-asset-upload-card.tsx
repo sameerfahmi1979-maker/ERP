@@ -1,9 +1,8 @@
 "use client";
 
+import { useRef, useTransition, useState } from "react";
 
-
-import { useRef, useTransition } from "react";
-
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import Image from "next/image";
 
 import { toast } from "sonner";
@@ -49,8 +48,6 @@ export type BrandingAssetUploadView = {
 
 };
 
-
-
 type BrandingAssetUploadCardProps = {
 
   label: string;
@@ -79,8 +76,6 @@ type BrandingAssetUploadCardProps = {
 
 };
 
-
-
 function formatBytes(bytes: number | null | undefined): string {
 
   if (!bytes) return "—";
@@ -93,8 +88,6 @@ function formatBytes(bytes: number | null | undefined): string {
 
 }
 
-
-
 function uploadPermissionHint(scope: BrandingAssetScope): string {
 
   if (scope === "app") {
@@ -106,8 +99,6 @@ function uploadPermissionHint(scope: BrandingAssetScope): string {
   return "Upload requires branding.assets.upload and reports.manage.";
 
 }
-
-
 
 export function BrandingAssetUploadCard({
 
@@ -137,17 +128,20 @@ export function BrandingAssetUploadCard({
 
 }: BrandingAssetUploadCardProps) {
 
+  const [error, setError] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const flight = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [isPending, startTransition] = useTransition();
 
-
-
   const handleUpload = (file: File) => {
+    if (!canUpload || flight.current) return;
+    setError(null);
 
     if (scope === "app" && !appSettingsId) {
 
-      toast.error("App settings ID is missing");
+      setError("App settings ID is missing");
 
       return;
 
@@ -155,7 +149,7 @@ export function BrandingAssetUploadCard({
 
     if (scope === "report" && !brandingProfileId) {
 
-      toast.error("Save the branding profile before uploading assets");
+      setError("Save the branding profile before uploading assets");
 
       return;
 
@@ -163,15 +157,15 @@ export function BrandingAssetUploadCard({
 
     if (file.size > MAX_BRANDING_FILE_SIZE_BYTES) {
 
-      toast.error("File exceeds maximum size of 10 MB");
+      setError("File exceeds maximum size of 10 MB");
 
       return;
 
     }
 
-
-
+    flight.current = true;
     startTransition(async () => {
+      try {
 
       const formData = new FormData();
 
@@ -197,13 +191,11 @@ export function BrandingAssetUploadCard({
 
       );
 
-
-
       const result = await uploadBrandingAsset(formData);
 
       if (!result.success) {
 
-        toast.error(result.error ?? "Upload failed");
+        setError(result.error ?? "Upload failed");
 
         return;
 
@@ -212,38 +204,40 @@ export function BrandingAssetUploadCard({
       toast.success(`${label} uploaded`);
 
       onChanged?.();
-
+      } catch { setError("This change could not be confirmed. Check the asset before trying again."); }
+      finally { flight.current = false; }
     });
 
   };
 
-
-
   const handleDeactivate = () => {
 
-    if (!asset) return;
+    if (!asset || !canUpload || flight.current) return;
+    setError(null);
 
+    flight.current = true;
     startTransition(async () => {
+      try {
 
       const result = await deactivateBrandingAsset(asset.id);
 
       if (!result.success) {
 
-        toast.error(result.error ?? "Could not deactivate asset");
+        setError(result.error ?? "Could not deactivate asset");
 
         return;
 
       }
 
+      setConfirmRemove(false);
       toast.success(`${label} deactivated`);
 
       onChanged?.();
-
+      } catch { setError("This change could not be confirmed. Check the asset before trying again."); }
+      finally { flight.current = false; }
     });
 
   };
-
-
 
   const previewUrl = asset?.previewUrl ?? null;
 
@@ -255,11 +249,9 @@ export function BrandingAssetUploadCard({
 
     asset?.mimeType !== "image/vnd.microsoft.icon";
 
-
-
   return (
 
-    <div className="rounded-lg border border-border bg-card p-4 flex flex-col gap-3">
+    <div aria-busy={isPending} className="rounded-sm border border-border bg-card p-4 flex flex-col gap-3">
 
       <div className="flex items-start justify-between gap-3">
 
@@ -288,8 +280,6 @@ export function BrandingAssetUploadCard({
         ) : null}
 
       </div>
-
-
 
       <div
 
@@ -325,7 +315,7 @@ export function BrandingAssetUploadCard({
 
             { }
 
-            <img src={previewUrl} alt={label} className="h-8 w-8" />
+            <Image src={previewUrl} alt={label} width={32} height={32} unoptimized className="h-8 w-8" />
 
             <span>Icon uploaded</span>
 
@@ -344,8 +334,6 @@ export function BrandingAssetUploadCard({
         )}
 
       </div>
-
-
 
       {asset ? (
 
@@ -369,15 +357,13 @@ export function BrandingAssetUploadCard({
 
       )}
 
-
-
       <div className="flex gap-2 mt-auto">
 
         <input
 
           ref={inputRef}
 
-          type="file"
+          type="file" aria-label={`Choose ${label} file`}
 
           accept={accept}
 
@@ -407,7 +393,7 @@ export function BrandingAssetUploadCard({
 
           disabled={!canUpload || isPending}
 
-          onClick={() => inputRef.current?.click()}
+          aria-label={`${asset ? "Replace" : "Upload"} ${label}`} onClick={() => inputRef.current?.click()}
 
         >
 
@@ -431,7 +417,7 @@ export function BrandingAssetUploadCard({
 
             disabled={isPending}
 
-            onClick={handleDeactivate}
+            aria-label={`Deactivate ${label}`} onClick={() => setConfirmRemove(true)}
 
           >
 
@@ -443,8 +429,13 @@ export function BrandingAssetUploadCard({
 
       </div>
 
-
-
+      {isPending && <p role="status" className="text-sm">Saving asset…</p>}
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      <AlertDialog open={confirmRemove} onOpenChange={value => { if (!isPending) setConfirmRemove(value); }}>
+        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Deactivate {label}?</AlertDialogTitle><AlertDialogDescription>The current asset will stop being used. Its history is retained.</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel disabled={isPending}>Keep asset</AlertDialogCancel><AlertDialogAction disabled={isPending} onClick={event => {event.preventDefault();handleDeactivate();}}>Deactivate</AlertDialogAction></AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {!canUpload ? (
 
         <p className="text-[11px] text-muted-foreground">{uploadPermissionHint(scope)}</p>

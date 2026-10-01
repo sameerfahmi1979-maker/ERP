@@ -464,7 +464,7 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
               enableSorting: false,
               cell: ({ row }: { row: { original: DmsMetadataDefinitionRow } }) => (
                 <div className="flex items-center gap-1 justify-end">
-                  <Button
+                  <Button aria-label="ERP Mappings"
                     size="icon"
                     variant="ghost"
                     className="h-7 w-7"
@@ -473,7 +473,7 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
                   >
                     <Network className="h-3.5 w-3.5 text-blue-500" />
                   </Button>
-                  <Button
+                  <Button aria-label="Edit"
                     size="icon"
                     variant="ghost"
                     className="h-7 w-7"
@@ -482,7 +482,7 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
                   >
                     <Pencil className="h-3.5 w-3.5" />
                   </Button>
-                  <Button
+                  <Button aria-label={row.original.is_active ? "Deactivate" : "Activate"}
                     size="icon"
                     variant="ghost"
                     className="h-7 w-7"
@@ -492,7 +492,7 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
                     <Power className="h-3.5 w-3.5" />
                   </Button>
                   {allowDelete && (
-                    <Button
+                    <Button aria-label="Delete (only if unused)"
                       size="icon"
                       variant="ghost"
                       className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
@@ -594,7 +594,7 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
         const isChecking = aiProviderAvailable === null;
         const isUnavailable = aiProviderAvailable === false;
         return (
-          <Button
+          <Button aria-label={isUnavailable ? "AI provider not configured. Contact administrator." : undefined}
             onClick={handleAiSuggest}
             size="sm"
             variant="outline"

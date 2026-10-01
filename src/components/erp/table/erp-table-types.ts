@@ -12,6 +12,8 @@ import type { ColumnDef, ColumnSizingState, SortingState, Table, VisibilityState
  */
 declare module "@tanstack/react-table" {
   interface ColumnMeta<TData, TValue> {
+    /** Human-readable list filter; independent from exported column wording. */
+    filter?: { type: "text" | "number" | "date" | "select"; options?: { value: string; label: string }[] };
     /** Whether this column should be exported (default: true) */
     exportable?: boolean;
     /** Override column header text for export */
@@ -77,6 +79,12 @@ export interface ERPTablePreferences {
  * Table configuration
  */
 export interface ERPTableConfig<TData> {
+  /** A read in progress is visibly distinct from an empty collection. */
+  isLoading?: boolean;
+  /** Server-paginated lists supply their own filters/paging; never imply client filters cover all records. */
+  serverPaged?: boolean;
+  /** Name of the contained results region. */
+  resultsLabel?: string;
   /** Unique table ID for preferences */
   tableId: string;
   /** Column definitions */

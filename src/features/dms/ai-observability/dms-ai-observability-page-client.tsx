@@ -32,7 +32,7 @@ export function DmsAiObservabilityPageClient({ config }: Props) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
         <AlertTriangle className="h-10 w-10 text-destructive" />
-        <h2 className="text-lg font-semibold">Access Denied</h2>
+        <h1 className="text-lg font-semibold">Access Denied</h1>
         <p className="text-muted-foreground text-sm">
           You do not have permission to view DMS AI Observability.
         </p>
@@ -47,7 +47,7 @@ export function DmsAiObservabilityPageClient({ config }: Props) {
           <AlertTriangle className="h-8 w-8 text-muted-foreground" />
         </div>
         <div>
-          <h2 className="text-lg font-semibold mb-1">DMS AI Observability is not enabled</h2>
+          <h1 className="text-lg font-semibold mb-1">DMS AI Observability is not enabled</h1>
           <p className="text-muted-foreground text-sm max-w-md">
             The <strong>DMS_AI_OBSERVABILITY</strong> feature flag is currently disabled.
             Enable it in Administration → Settings → AI Settings (Feature Flags) to access

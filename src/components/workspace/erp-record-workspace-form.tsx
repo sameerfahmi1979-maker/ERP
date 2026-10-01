@@ -180,7 +180,9 @@ export function ERPRecordWorkspaceForm({
   }, [issues.length]);
   const reveal = (issue: WorkspaceFieldIssue) => {
     if (issue.section) onSectionChange(issue.section);
-    setFocusTarget(issue);
+    // The same summary entry can be activated repeatedly. A fresh request is
+    // needed even when the field/section did not change (notably in WebKit).
+    setFocusTarget({ ...issue });
   };
   React.useEffect(() => {
     if (!pending && focusTarget?.control?.isConnected) focusTarget.control.focus();

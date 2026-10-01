@@ -31,7 +31,7 @@ export default async function GlobalAttendancePage() {
           <div className="flex items-center gap-2">
             <Clock className="h-5 w-5 text-muted-foreground" />
             <div>
-              <CardTitle>Daily Attendance</CardTitle>
+              <CardTitle><h1>Daily Attendance</h1></CardTitle>
               <CardDescription>
                 View and manage daily attendance summaries. Filter by date, status, and site.
               </CardDescription>

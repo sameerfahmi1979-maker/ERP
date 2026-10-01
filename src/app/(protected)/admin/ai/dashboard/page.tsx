@@ -28,7 +28,7 @@ export default async function AiDailyDashboardPage() {
   if (!enabled) {
     return (
       <div className="p-8 text-center text-slate-500 dark:text-slate-400">
-        <p className="text-lg font-medium">AI Daily Dashboard is not enabled.</p>
+        <h1 className="text-lg font-medium">AI Daily Dashboard is not enabled.</h1>
         <p className="text-sm mt-1">
           Enable the <code className="font-mono bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-xs">ERP_AI_DAILY_DASHBOARD</code> feature flag in AI Settings to activate.
         </p>

@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { useWorkspaceTableState } from "@/hooks/use-workspace-table-state";
 import type { AuthContext } from "@/lib/rbac/check";
+import { hasPermission } from "@/lib/rbac/scope";
 import type { EmployeeListRow, EmployeeListParams } from "@/server/actions/hr/employees";
 import { listEmployees, archiveEmployee } from "@/server/actions/hr/employees";
 import { listDepartments } from "@/server/actions/common-master-data/departments";
@@ -170,9 +171,14 @@ export function EmployeesTable({ initialRows, initialTotal, authContext, documen
 
   const { options: companyOptions } = useOwnerCompaniesQuery();
   const { options: countryOptions } = useCountriesQuery();
+  // Lookup capabilities are separate from employee access. Do not request a
+  // forbidden master-data list and then disable an otherwise permitted grid.
+  const canFilterDepartments = hasPermission(authContext, "common_md.view") || hasPermission(authContext, "common_md.departments.view");
+  const canFilterDesignations = hasPermission(authContext, "common_md.view") || hasPermission(authContext, "common_md.designations.view");
 
   const uiRead1 = useQuery({
     queryKey: ["hr", "employees", "filter-departments", filters.companyId],
+    enabled: canFilterDepartments,
     queryFn: async () => {
       const result = await listDepartments({
         is_active: true,
@@ -193,6 +199,7 @@ export function EmployeesTable({ initialRows, initialTotal, authContext, documen
 
   const uiRead2 = useQuery({
     queryKey: ["hr", "employees", "filter-designations", filters.companyId, filters.departmentId],
+    enabled: canFilterDesignations,
     queryFn: async () => {
       const result = await listDesignations({
         is_active: true,
@@ -388,7 +395,7 @@ export function EmployeesTable({ initialRows, initialTotal, authContext, documen
   const colSpan = columnState.visible.length + 1;
 
   return (
-    <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="space-y-4">
+    <QueryReadBoundary queries={[...(canFilterDepartments ? [uiRead1] : []), ...(canFilterDesignations ? [uiRead2] : [])]}><div className="space-y-4">
       {/* Row 1: Search + actions */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[200px]">
@@ -446,13 +453,14 @@ export function EmployeesTable({ initialRows, initialTotal, authContext, documen
           definitions={[
             {id:"status",label:"Status",type:"select",options:statusOptions.map(o=>({value:String(o.value),label:o.label}))},
             {id:"companyId",label:"Company",type:"select",options:companyOptions.map(o=>({value:String(o.value),label:o.label}))},
-            {id:"departmentId",label:loadingDepartments ? "Department (loading)" : "Department",type:"select",options:departmentOptions.map(o=>({value:String(o.value),label:o.label}))},
-            {id:"designationId",label:loadingDesignations ? "Designation (loading)" : "Designation",type:"select",options:designationOptions.map(o=>({value:String(o.value),label:o.label}))},
+            ...(canFilterDepartments ? [{id:"departmentId",label:loadingDepartments ? "Department (loading)" : "Department",type:"select" as const,options:departmentOptions.map(o=>({value:String(o.value),label:o.label}))}] : []),
+            ...(canFilterDesignations ? [{id:"designationId",label:loadingDesignations ? "Designation (loading)" : "Designation",type:"select" as const,options:designationOptions.map(o=>({value:String(o.value),label:o.label}))}] : []),
             {id:"nationalityId",label:"Nationality",type:"select",options:countryOptions.map(o=>({value:String(o.value),label:o.label}))}
           ]}
           values={Object.fromEntries(Object.entries(filters).map(([key,value])=>[key,value == null ? "" : String(value)]))}
           onApply={values=>setFilter({status:values.status || null,companyId:values.companyId ? Number(values.companyId) : null,departmentId:values.departmentId ? Number(values.departmentId) : null,designationId:values.designationId ? Number(values.designationId) : null,nationalityId:values.nationalityId ? Number(values.nationalityId) : null})} />
         <span className="text-xs text-muted-foreground">Column sorting applies to the current page.</span>
+        {(!canFilterDepartments || !canFilterDesignations) && <span className="text-xs text-muted-foreground">Some filters are unavailable with your current permissions.</span>}
       </div>
 
       {/* Table */}

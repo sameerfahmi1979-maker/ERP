@@ -31,7 +31,7 @@ export default async function GlobalLeavePage() {
           <div className="flex items-center gap-2">
             <Plane className="h-5 w-5 text-muted-foreground" />
             <div>
-              <CardTitle>Leave Requests</CardTitle>
+              <CardTitle><h1>Leave Requests</h1></CardTitle>
               <CardDescription>
                 View, approve, reject, and manage employee leave requests across the organization.
               </CardDescription>

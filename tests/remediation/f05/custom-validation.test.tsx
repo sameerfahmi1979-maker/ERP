@@ -9,6 +9,13 @@ import { ERPRecordWorkspaceForm } from '@/components/workspace/erp-record-worksp
 import { ERPChildDialogForm } from '@/components/erp/erp-child-dialog-form';
 import { WORKSPACE_FIELD_ERRORS_EVENT } from '@/lib/workspace/field-errors';
 afterEach(cleanup);
+it('activating the same summary entry again restores field focus each time',async()=>{
+ const ui=render(<ERPRecordWorkspaceForm title="Repeat focus" mode="add" isDirty sections={[]} activeSection="basic" onSectionChange={()=>{}} onSave={()=>{}}><form><input aria-label="Title" name="title" required/></form></ERPRecordWorkspaceForm>);
+ fireEvent.click(ui.getByRole('button',{name:'Save',exact:true}));
+ const input=ui.getByLabelText('Title');await waitFor(()=>expect(document.activeElement).toBe(input));
+ const summaryEntry=ui.getByRole('button',{name:'Title: This field is required.',exact:true});
+ for(let i=0;i<2;i++){summaryEntry.focus();fireEvent.click(summaryEntry);await waitFor(()=>expect(document.activeElement).toBe(input));}
+});
 function Custom(){const [chosen,setChosen]=useState(false);const root=useRef<HTMLDivElement>(null);return <div ref={root}><button type="button" aria-label="Company" data-workspace-field="company_id" data-workspace-required="true" data-workspace-empty={chosen?'false':'true'} onClick={()=>{setChosen(true);root.current?.dispatchEvent(new Event('change',{bubbles:true}));}}>Select</button></div>;}
 it('custom native change signals clear record feedback after controlled state commits',async()=>{
  const save=vi.fn();const ui=render(<ERPRecordWorkspaceForm title="Synthetic" mode="add" isDirty sections={[]} activeSection="basic" onSectionChange={()=>{}} onSave={save}><form><Custom/></form></ERPRecordWorkspaceForm>);

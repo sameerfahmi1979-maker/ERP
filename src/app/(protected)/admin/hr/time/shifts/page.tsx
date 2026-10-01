@@ -31,7 +31,7 @@ export default async function GlobalShiftsPage() {
           <div className="flex items-center gap-2">
             <Calendar className="h-5 w-5 text-muted-foreground" />
             <div>
-              <CardTitle>Shift Calendar</CardTitle>
+              <CardTitle><h1>Shift Calendar</h1></CardTitle>
               <CardDescription>
                 View and manage employee shift and work calendar assignments.
               </CardDescription>

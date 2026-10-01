@@ -42,7 +42,7 @@ export function AssistantChatInput({ onSend, isLoading, disabled }: AssistantCha
   const isOverLimit = remaining < 0;
 
   return (
-    <div className="border-t border-slate-200 bg-white p-3">
+    <div className="border-t border-border bg-card p-3">
       <div className="flex items-end gap-2">
         <div className="flex-1 relative">
           <Textarea
@@ -53,11 +53,11 @@ export function AssistantChatInput({ onSend, isLoading, disabled }: AssistantCha
             placeholder="Ask me to search, explain, or prepare a draft…"
             rows={1}
             disabled={isLoading || disabled}
-            className="resize-none min-h-[40px] max-h-[150px] py-2 pr-3 text-sm bg-slate-50 border-slate-200 focus:ring-violet-500"
+            className="resize-none min-h-[40px] max-h-[150px] py-2 pr-3 text-sm bg-muted border-border focus:ring-violet-500"
           />
           {value.length > MAX_USER_MESSAGE_LENGTH * 0.8 && (
             <span
-              className={`absolute bottom-1.5 right-2 text-[10px] ${isOverLimit ? "text-red-500 font-medium" : "text-slate-400"}`}
+              className={`absolute bottom-1.5 right-2 text-[10px] ${isOverLimit ? "text-red-500 font-medium dark:text-red-300" : "text-muted-foreground"}`}
             >
               {remaining}
             </span>
@@ -77,7 +77,7 @@ export function AssistantChatInput({ onSend, isLoading, disabled }: AssistantCha
           )}
         </Button>
       </div>
-      <p className="text-[10px] text-slate-400 mt-1.5 px-0.5">
+      <p className="text-[10px] text-muted-foreground mt-1.5 px-0.5">
         Press Enter to send · Shift+Enter for new line · Assistant cannot execute changes automatically
       </p>
     </div>

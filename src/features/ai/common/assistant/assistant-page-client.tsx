@@ -192,7 +192,7 @@ export function AssistantPageClient({
   const activeSession = sessions.find((s) => s.id === activeSessionId);
 
   return (
-    <div className="flex h-[calc(100vh-180px)] min-h-[400px] bg-white border border-slate-200 rounded-xl overflow-hidden">
+    <div className="flex h-[calc(100vh-180px)] min-h-[400px] bg-card border border-border rounded-xl overflow-hidden">
       {/* Session list (left panel) */}
       <AssistantSessionList
         sessions={sessions}
@@ -205,13 +205,13 @@ export function AssistantPageClient({
       {/* Chat area (right panel) */}
       <div className="flex flex-col flex-1 min-w-0">
         {/* Header */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-200 bg-slate-50">
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-muted">
           <div>
-            <h2 className="text-sm font-semibold text-slate-900">
+            <h2 className="text-sm font-semibold text-foreground">
               {activeSession?.title ?? (activeSessionId ? `Session #${activeSessionId}` : "AI Assistant")}
             </h2>
-            <p className="text-xs text-slate-500 flex items-center gap-1">
-              <ShieldAlert className="h-3 w-3 text-amber-500" />
+            <p className="text-xs text-muted-foreground flex items-center gap-1">
+              <ShieldAlert className="h-3 w-3 text-amber-500 dark:text-amber-300" />
               Read-only · Draft-only · Human review required for all actions
             </p>
           </div>

@@ -73,7 +73,7 @@ export function DmsApplyToErpPreview({
           {!isPending && <ChevronRight className="h-3 w-3" />}
         </Button>
         {error && (
-          <p className="text-xs text-red-600">{error}</p>
+          <p className="text-xs text-red-600 dark:text-red-300">{error}</p>
         )}
       </div>
 

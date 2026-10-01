@@ -31,7 +31,7 @@ export function SearchBar({
   return (
     <div className={cn("relative flex items-center gap-2", className)}>
       <div className="relative flex-1">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
         <Input
           aria-label="Search ERP"
           value={value}
@@ -46,7 +46,7 @@ export function SearchBar({
             type="button"
             aria-label="Clear search"
             onClick={() => onChange("")}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-muted-foreground"
           >
             <X className="h-4 w-4" />
           </button>

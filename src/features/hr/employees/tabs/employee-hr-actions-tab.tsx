@@ -108,36 +108,36 @@ type Props = {
 function statusBadge(status: string, type: "process" | "action" | "perf" | "disc" | "approval" | "eos" | "clearance") {
   const color: Record<string, string> = {
     // process
-    draft: "bg-slate-100 text-slate-700",
-    requested: "bg-blue-100 text-blue-700",
-    in_progress: "bg-amber-100 text-amber-700",
-    waiting_for_document: "bg-orange-100 text-orange-700",
+    draft: "bg-muted text-foreground",
+    requested: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-200",
+    in_progress: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-200",
+    waiting_for_document: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-200",
     submitted: "bg-indigo-100 text-indigo-700",
-    approved: "bg-emerald-100 text-emerald-700",
-    rejected: "bg-red-100 text-red-700",
-    cancelled: "bg-slate-100 text-slate-500",
-    completed: "bg-green-100 text-green-700",
+    approved: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200",
+    rejected: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-200",
+    cancelled: "bg-muted text-muted-foreground",
+    completed: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-200",
     // actions
-    open: "bg-blue-100 text-blue-700",
-    closed: "bg-slate-100 text-slate-600",
+    open: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-200",
+    closed: "bg-muted text-muted-foreground",
     // performance
     // perf uses same as process
     // disciplinary
-    under_review: "bg-amber-100 text-amber-700",
+    under_review: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-200",
     // approvals
-    pending: "bg-amber-100 text-amber-700",
+    pending: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-200",
     // eos
-    notice_served: "bg-orange-100 text-orange-700",
+    notice_served: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-200",
     clearance_in_progress: "bg-indigo-100 text-indigo-700",
-    pending_final_settlement: "bg-purple-100 text-purple-700",
+    pending_final_settlement: "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-200",
     // clearance items
-    cleared: "bg-green-100 text-green-700",
-    not_applicable: "bg-slate-100 text-slate-500",
-    blocked: "bg-red-100 text-red-700",
+    cleared: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-200",
+    not_applicable: "bg-muted text-muted-foreground",
+    blocked: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-200",
   };
   const label = status.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${color[status] ?? "bg-slate-100 text-slate-600"}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${color[status] ?? "bg-muted text-muted-foreground"}`}>
       {label}
     </span>
   );
@@ -145,13 +145,13 @@ function statusBadge(status: string, type: "process" | "action" | "perf" | "disc
 
 function severityBadge(severity: string) {
   const map: Record<string, string> = {
-    low: "bg-slate-100 text-slate-600",
-    medium: "bg-amber-100 text-amber-700",
-    high: "bg-orange-100 text-orange-700",
-    critical: "bg-red-100 text-red-700",
+    low: "bg-muted text-muted-foreground",
+    medium: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-200",
+    high: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-200",
+    critical: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-200",
   };
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${map[severity] ?? "bg-slate-100 text-slate-600"}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${map[severity] ?? "bg-muted text-muted-foreground"}`}>
       {severity.charAt(0).toUpperCase() + severity.slice(1)}
     </span>
   );
@@ -169,10 +169,10 @@ function SectionHeader({ icon: Icon, title, count, onAdd, addLabel }: {
   return (
     <div className="flex items-center justify-between mb-3">
       <div className="flex items-center gap-2">
-        <Icon className="h-4 w-4 text-slate-500" />
-        <span className="font-semibold text-sm text-slate-800">{title}</span>
+        <Icon className="h-4 w-4 text-muted-foreground" />
+        <span className="font-semibold text-sm text-foreground">{title}</span>
         {count !== undefined && (
-          <span className="text-xs text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">{count}</span>
+          <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{count}</span>
         )}
       </div>
       {onAdd && (
@@ -284,14 +284,14 @@ function ProProcessesSection({ employeeId, canManage, qc, onChildOpen }: {
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium text-sm">{item.process_title}</span>
                   {statusBadge(item.process_status, "process")}
-                  <span className={`text-xs px-1.5 py-0.5 rounded ${item.priority === "urgent" ? "bg-red-100 text-red-700" : item.priority === "high" ? "bg-orange-100 text-orange-700" : "bg-slate-100 text-slate-600"}`}>{item.priority}</span>
+                  <span className={`text-xs px-1.5 py-0.5 rounded ${item.priority === "urgent" ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-200" : item.priority === "high" ? "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-200" : "bg-muted text-muted-foreground"}`}>{item.priority}</span>
                 </div>
                 <div className="text-xs text-muted-foreground mt-0.5">Requested: {item.request_date}{item.target_date ? ` · Target: ${item.target_date}` : ""}</div>
               </div>
               {canManage && (
                 <div className="flex gap-1 ml-2 shrink-0">
                   <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openDialog(item)}><Edit2 className="h-3.5 w-3.5" /></Button>
-                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-red-500" onClick={() => handleArchive(item.id)}><Archive className="h-3.5 w-3.5" /></Button>
+                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-red-500 dark:text-red-300" onClick={() => handleArchive(item.id)}><Archive className="h-3.5 w-3.5" /></Button>
                 </div>
               )}
             </div>
@@ -311,7 +311,7 @@ function ProProcessesSection({ employeeId, canManage, qc, onChildOpen }: {
       >
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
-            <Label>Process Title <span className="text-red-500">*</span></Label>
+            <Label>Process Title <span className="text-red-500 dark:text-red-300">*</span></Label>
             <Input aria-label="Process Title" required value={form.process_title} onChange={e => setForm(f => ({ ...f, process_title: e.target.value }))} placeholder="e.g. Visa Renewal" />
           </div>
           <div className="col-span-6">
@@ -323,7 +323,7 @@ function ProProcessesSection({ employeeId, canManage, qc, onChildOpen }: {
             <ERPCombobox ariaLabel="Priority" value={form.priority} onValueChange={v => setForm(f => ({ ...f, priority: String(v ?? "") }))} options={PRIORITIES} placeholder="Select priority" />
           </div>
           <div className="col-span-6">
-            <Label>Request Date <span className="text-red-500">*</span></Label>
+            <Label>Request Date <span className="text-red-500 dark:text-red-300">*</span></Label>
             <Input aria-label="Request Date" required type="date" value={form.request_date} onChange={e => setForm(f => ({ ...f, request_date: e.target.value }))} />
           </div>
           <div className="col-span-6">
@@ -414,9 +414,9 @@ function HrActionsSection({ employeeId, canManage, qc, onChildOpen }: {
                 <div className="flex gap-1 ml-2 shrink-0">
                   <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openDialog(item)}><Edit2 className="h-3.5 w-3.5" /></Button>
                   {item.action_status === "open" || item.action_status === "in_progress" ? (
-                    <Button aria-label="Close" size="icon" variant="ghost" className="h-7 w-7 text-green-600" title="Close" onClick={() => handleClose2(item.id)}><CheckCircle className="h-3.5 w-3.5" /></Button>
+                    <Button aria-label="Close" size="icon" variant="ghost" className="h-7 w-7 text-green-600 dark:text-green-300" title="Close" onClick={() => handleClose2(item.id)}><CheckCircle className="h-3.5 w-3.5" /></Button>
                   ) : null}
-                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-red-500" onClick={async () => { const r = await archiveEmployeeHrAction(item.id); if (r.success) { toast.success("Archived"); invalidateHrEmployeeHrActions(qc, employeeId); } else toast.error(r.error); }}><Archive className="h-3.5 w-3.5" /></Button>
+                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-red-500 dark:text-red-300" onClick={async () => { const r = await archiveEmployeeHrAction(item.id); if (r.success) { toast.success("Archived"); invalidateHrEmployeeHrActions(qc, employeeId); } else toast.error(r.error); }}><Archive className="h-3.5 w-3.5" /></Button>
                 </div>
               )}
             </div>
@@ -427,7 +427,7 @@ function HrActionsSection({ employeeId, canManage, qc, onChildOpen }: {
       <ERPChildDialogForm open={dialogOpen} onOpenChange={handleClose} title={editing ? "Edit HR Action" : "Add HR Action"} icon={<Zap className="h-5 w-5" />} mode={editing ? "edit" : "add"} isSubmitting={isPending} onSubmit={handleSubmit} size="lg">
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-8">
-            <Label>Action Title <span className="text-red-500">*</span></Label>
+            <Label>Action Title <span className="text-red-500 dark:text-red-300">*</span></Label>
             <Input aria-label="Action Title" required value={form.action_title} onChange={e => setForm(f => ({ ...f, action_title: e.target.value }))} placeholder="e.g. Probation Review" />
           </div>
           <div className="col-span-4">
@@ -439,7 +439,7 @@ function HrActionsSection({ employeeId, canManage, qc, onChildOpen }: {
             <ERPCombobox ariaLabel="Status" value={form.action_status} onValueChange={v => setForm(f => ({ ...f, action_status: String(v ?? "") }))} options={ACTION_STATUSES} placeholder="Select status" />
           </div>
           <div className="col-span-4">
-            <Label>Action Date <span className="text-red-500">*</span></Label>
+            <Label>Action Date <span className="text-red-500 dark:text-red-300">*</span></Label>
             <Input aria-label="Action Date" required type="date" value={form.action_date} onChange={e => setForm(f => ({ ...f, action_date: e.target.value }))} />
           </div>
           <div className="col-span-4">
@@ -522,9 +522,9 @@ function PerformanceSection({ employeeId, canManage, qc, onChildOpen }: {
               {canManage && (
                 <div className="flex gap-1 ml-2 shrink-0">
                   {item.status === "draft" && <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openDialog(item)}><Edit2 className="h-3.5 w-3.5" /></Button>}
-                  {item.status === "draft" && <Button aria-label="Submit" size="icon" variant="ghost" className="h-7 w-7 text-blue-500" title="Submit" onClick={async () => { const r = await submitEmployeePerformanceRecord(item.id); if (r.success) { toast.success("Submitted"); invalidateHrEmployeePerformance(qc, employeeId); } else toast.error(r.error); }}><CheckSquare className="h-3.5 w-3.5" /></Button>}
-                  {item.status === "submitted" && <Button aria-label="Approve" size="icon" variant="ghost" className="h-7 w-7 text-green-600" title="Approve" onClick={async () => { const r = await approveEmployeePerformanceRecord(item.id); if (r.success) { toast.success("Approved"); invalidateHrEmployeePerformance(qc, employeeId); } else toast.error(r.error); }}><CheckCircle className="h-3.5 w-3.5" /></Button>}
-                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-red-500" onClick={async () => { const r = await archiveEmployeePerformanceRecord(item.id); if (r.success) { toast.success("Archived"); invalidateHrEmployeePerformance(qc, employeeId); } else toast.error(r.error); }}><Archive className="h-3.5 w-3.5" /></Button>
+                  {item.status === "draft" && <Button aria-label="Submit" size="icon" variant="ghost" className="h-7 w-7 text-blue-500 dark:text-blue-300" title="Submit" onClick={async () => { const r = await submitEmployeePerformanceRecord(item.id); if (r.success) { toast.success("Submitted"); invalidateHrEmployeePerformance(qc, employeeId); } else toast.error(r.error); }}><CheckSquare className="h-3.5 w-3.5" /></Button>}
+                  {item.status === "submitted" && <Button aria-label="Approve" size="icon" variant="ghost" className="h-7 w-7 text-green-600 dark:text-green-300" title="Approve" onClick={async () => { const r = await approveEmployeePerformanceRecord(item.id); if (r.success) { toast.success("Approved"); invalidateHrEmployeePerformance(qc, employeeId); } else toast.error(r.error); }}><CheckCircle className="h-3.5 w-3.5" /></Button>}
+                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-red-500 dark:text-red-300" onClick={async () => { const r = await archiveEmployeePerformanceRecord(item.id); if (r.success) { toast.success("Archived"); invalidateHrEmployeePerformance(qc, employeeId); } else toast.error(r.error); }}><Archive className="h-3.5 w-3.5" /></Button>
                 </div>
               )}
             </div>
@@ -535,11 +535,11 @@ function PerformanceSection({ employeeId, canManage, qc, onChildOpen }: {
       <ERPChildDialogForm open={dialogOpen} onOpenChange={handleClose} title={editing ? "Edit Performance Review" : "Add Performance Review"} icon={<TrendingUp className="h-5 w-5" />} mode={editing ? "edit" : "add"} isSubmitting={isPending} onSubmit={handleSubmit} size="lg">
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-6">
-            <Label>Review Type <span className="text-red-500">*</span></Label>
+            <Label>Review Type <span className="text-red-500 dark:text-red-300">*</span></Label>
             <ERPCombobox ariaLabel="Review Type" required value={form.review_type} onValueChange={v => setForm(f => ({ ...f, review_type: String(v ?? "") }))} options={REVIEW_TYPES} placeholder="Select type" />
           </div>
           <div className="col-span-6">
-            <Label>Review Date <span className="text-red-500">*</span></Label>
+            <Label>Review Date <span className="text-red-500 dark:text-red-300">*</span></Label>
             <Input aria-label="Review Date" required type="date" value={form.review_date} onChange={e => setForm(f => ({ ...f, review_date: e.target.value }))} />
           </div>
           <div className="col-span-6">
@@ -628,9 +628,9 @@ function DisciplinarySection({ employeeId, canManage, qc, onChildOpen }: {
                 <div className="flex gap-1 ml-2 shrink-0">
                   <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openDialog(item)}><Edit2 className="h-3.5 w-3.5" /></Button>
                   {!item.acknowledged_by_employee && (
-                    <Button aria-label="Mark acknowledged" size="icon" variant="ghost" className="h-7 w-7 text-blue-500" title="Mark acknowledged" onClick={async () => { const r = await acknowledgeEmployeeDisciplinaryRecord(item.id); if (r.success) { toast.success("Acknowledged"); invalidateHrEmployeeDisciplinary(qc, employeeId); } else toast.error(r.error); }}><CheckCircle className="h-3.5 w-3.5" /></Button>
+                    <Button aria-label="Mark acknowledged" size="icon" variant="ghost" className="h-7 w-7 text-blue-500 dark:text-blue-300" title="Mark acknowledged" onClick={async () => { const r = await acknowledgeEmployeeDisciplinaryRecord(item.id); if (r.success) { toast.success("Acknowledged"); invalidateHrEmployeeDisciplinary(qc, employeeId); } else toast.error(r.error); }}><CheckCircle className="h-3.5 w-3.5" /></Button>
                   )}
-                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-red-500" onClick={async () => { const r = await archiveEmployeeDisciplinaryRecord(item.id); if (r.success) { toast.success("Archived"); invalidateHrEmployeeDisciplinary(qc, employeeId); } else toast.error(r.error); }}><Archive className="h-3.5 w-3.5" /></Button>
+                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-red-500 dark:text-red-300" onClick={async () => { const r = await archiveEmployeeDisciplinaryRecord(item.id); if (r.success) { toast.success("Archived"); invalidateHrEmployeeDisciplinary(qc, employeeId); } else toast.error(r.error); }}><Archive className="h-3.5 w-3.5" /></Button>
                 </div>
               )}
             </div>
@@ -641,15 +641,15 @@ function DisciplinarySection({ employeeId, canManage, qc, onChildOpen }: {
       <ERPChildDialogForm open={dialogOpen} onOpenChange={handleClose} title={editing ? "Edit Disciplinary Record" : "Add Disciplinary Record"} icon={<AlertTriangle className="h-5 w-5" />} mode={editing ? "edit" : "add"} isSubmitting={isPending} onSubmit={handleSubmit} size="lg">
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-8">
-            <Label>Subject <span className="text-red-500">*</span></Label>
+            <Label>Subject <span className="text-red-500 dark:text-red-300">*</span></Label>
             <Input aria-label="Subject" required value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} placeholder="Brief description of the issue" />
           </div>
           <div className="col-span-4">
-            <Label>Record Date <span className="text-red-500">*</span></Label>
+            <Label>Record Date <span className="text-red-500 dark:text-red-300">*</span></Label>
             <Input aria-label="Record Date" required type="date" value={form.record_date} onChange={e => setForm(f => ({ ...f, record_date: e.target.value }))} />
           </div>
           <div className="col-span-4">
-            <Label>Type <span className="text-red-500">*</span></Label>
+            <Label>Type <span className="text-red-500 dark:text-red-300">*</span></Label>
             <ERPCombobox ariaLabel="Type" required value={form.disciplinary_type} onValueChange={v => setForm(f => ({ ...f, disciplinary_type: String(v ?? "") }))} options={DISC_TYPES} placeholder="Select type" />
           </div>
           <div className="col-span-4">
@@ -715,7 +715,7 @@ function HrNotesSection({ employeeId, canManage, qc, onChildOpen }: {
   return (
     <QueryReadBoundary queries={[uiRead1]}><div className="rounded-lg border bg-card p-4">
       <SectionHeader icon={StickyNote} title="HR Notes" count={items.length} onAdd={canManage ? openDialog : undefined} addLabel="Add Note" />
-      <p className="text-xs text-amber-600 mb-3 flex items-center gap-1"><AlertCircle className="h-3 w-3" /> Restricted visibility. Contents not shown in overview.</p>
+      <p className="text-xs text-amber-600 mb-3 flex items-center gap-1 dark:text-amber-300"><AlertCircle className="h-3 w-3" /> Restricted visibility. Contents not shown in overview.</p>
       {isLoading ? <Skeleton className="h-16 w-full" /> : items.length === 0 ? <EmptyState text="No HR notes." /> : (
         <div className="space-y-2">
           <RecordCollection id="hr.employee-hr-actions-tab.HrNotesSection.items" rows={items} fields={[{"id":"note_type","path":"note_type","label":"Note Type"},{"id":"created_at","path":"created_at","label":"Created At"}]} renderRecord={item => (
@@ -728,11 +728,11 @@ function HrNotesSection({ employeeId, canManage, qc, onChildOpen }: {
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">{new Date(item.created_at).toLocaleDateString()}</span>
                   {canManage && (
-                    <Button aria-label="Archive record" size="icon" variant="ghost" className="h-6 w-6 text-red-500" onClick={async () => { const r = await archiveEmployeeHrNote(item.id); if (r.success) { toast.success("Deleted"); invalidateHrEmployeeNotes(qc, employeeId); } else toast.error(r.error); }}><Archive className="h-3 w-3" /></Button>
+                    <Button aria-label="Archive record" size="icon" variant="ghost" className="h-6 w-6 text-red-500 dark:text-red-300" onClick={async () => { const r = await archiveEmployeeHrNote(item.id); if (r.success) { toast.success("Deleted"); invalidateHrEmployeeNotes(qc, employeeId); } else toast.error(r.error); }}><Archive className="h-3 w-3" /></Button>
                   )}
                 </div>
               </div>
-              <p className="text-sm text-slate-700 whitespace-pre-wrap">{item.note_text}</p>
+              <p className="text-sm text-foreground whitespace-pre-wrap">{item.note_text}</p>
             </div>
           )} />
         </div>
@@ -749,7 +749,7 @@ function HrNotesSection({ employeeId, canManage, qc, onChildOpen }: {
             <ERPCombobox ariaLabel="Visibility" value={form.visibility} onValueChange={v => setForm(f => ({ ...f, visibility: String(v ?? "") }))} options={VISIBILITIES} placeholder="Select visibility" />
           </div>
           <div className="col-span-12">
-            <Label>Note <span className="text-red-500">*</span></Label>
+            <Label>Note <span className="text-red-500 dark:text-red-300">*</span></Label>
             <Textarea aria-label="Note" required value={form.note_text} onChange={e => setForm(f => ({ ...f, note_text: e.target.value }))} rows={5} placeholder="Enter note text..." />
           </div>
         </div>
@@ -832,9 +832,9 @@ function ApprovalsSection({ employeeId, canManage, qc, onChildOpen }: {
               </div>
               {canManage && item.request_status === "pending" && (
                 <div className="flex gap-1 ml-2 shrink-0">
-                  <Button size="sm" variant="outline" className="h-7 text-xs text-green-700 border-green-300" onClick={() => { setDecisionDialog({ id: item.id, action: "approve" }); onChildOpen(true); }}>Approve</Button>
-                  <Button size="sm" variant="outline" className="h-7 text-xs text-red-700 border-red-300" onClick={() => { setDecisionDialog({ id: item.id, action: "reject" }); onChildOpen(true); }}>Reject</Button>
-                  <Button aria-label="Reject" size="icon" variant="ghost" className="h-7 w-7 text-slate-500" onClick={() => { setDecisionDialog({ id: item.id, action: "cancel" }); onChildOpen(true); }}><XCircle className="h-3.5 w-3.5" /></Button>
+                  <Button size="sm" variant="outline" className="h-7 text-xs text-green-700 border-green-300 dark:text-green-200 dark:border-green-800" onClick={() => { setDecisionDialog({ id: item.id, action: "approve" }); onChildOpen(true); }}>Approve</Button>
+                  <Button size="sm" variant="outline" className="h-7 text-xs text-red-700 border-red-300 dark:text-red-200 dark:border-red-800" onClick={() => { setDecisionDialog({ id: item.id, action: "reject" }); onChildOpen(true); }}>Reject</Button>
+                  <Button aria-label="Reject" size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground" onClick={() => { setDecisionDialog({ id: item.id, action: "cancel" }); onChildOpen(true); }}><XCircle className="h-3.5 w-3.5" /></Button>
                 </div>
               )}
             </div>
@@ -845,11 +845,11 @@ function ApprovalsSection({ employeeId, canManage, qc, onChildOpen }: {
       <ERPChildDialogForm open={dialogOpen} onOpenChange={handleClose} title="New Approval Request" icon={<CheckSquare className="h-5 w-5" />} mode="add" isSubmitting={isPending} onSubmit={handleSubmit} size="md">
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-6">
-            <Label>Type <span className="text-red-500">*</span></Label>
+            <Label>Type <span className="text-red-500 dark:text-red-300">*</span></Label>
             <ERPCombobox ariaLabel="Type" required value={form.approval_type} onValueChange={v => setForm(f => ({ ...f, approval_type: String(v ?? "") }))} options={APPROVAL_TYPES} placeholder="Select type" />
           </div>
           <div className="col-span-12">
-            <Label>Request Title <span className="text-red-500">*</span></Label>
+            <Label>Request Title <span className="text-red-500 dark:text-red-300">*</span></Label>
             <Input aria-label="Request Title" required value={form.request_title} onChange={e => setForm(f => ({ ...f, request_title: e.target.value }))} placeholder="e.g. Approve Transfer to Dubai Branch" />
           </div>
         </div>
@@ -958,7 +958,7 @@ function EosSection({ employeeId, canManage, qc, onChildOpen }: {
   return (
     <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="rounded-lg border bg-card p-4">
       <SectionHeader icon={UserMinus} title="EOS & Clearance" count={eosCases.length} onAdd={canManage ? () => openEosDialog() : undefined} addLabel="Open EOS Case" />
-      <p className="text-xs text-slate-500 mb-3">End-of-service process shell. Financial settlement handled by Finance.</p>
+      <p className="text-xs text-muted-foreground mb-3">End-of-service process shell. Financial settlement handled by Finance.</p>
 
       {eosLoading ? <Skeleton className="h-16 w-full" /> : eosCases.length === 0 ? <EmptyState text="No EOS cases." /> : (
         <div className="space-y-4">
@@ -986,20 +986,20 @@ function EosSection({ employeeId, canManage, qc, onChildOpen }: {
 
                 {isSelected && caseItems.length > 0 && (
                   <div className="border-t px-3 pb-3 pt-2">
-                    <p className="text-xs font-medium text-slate-600 mb-2">Clearance Checklist ({caseItems.filter(i => i.item_status === "cleared").length}/{caseItems.length} cleared)</p>
+                    <p className="text-xs font-medium text-muted-foreground mb-2">Clearance Checklist ({caseItems.filter(i => i.item_status === "cleared").length}/{caseItems.length} cleared)</p>
                     <div className="grid grid-cols-1 gap-1.5">
                       {<RecordCollection id={`employee-clearance-items-${eos.id}`} rows={caseItems} fields={[{"id":"item_title","label":"Item","path":"item_title"},{"id":"clearance_area","label":"Clearance area","path":"clearance_area"},{"id":"item_status","label":"Status","path":"item_status"}]} renderRecord={ci => (
-                        <div key={ci.id} className="flex items-center justify-between text-xs p-2 rounded bg-slate-50">
+                        <div key={ci.id} className="flex items-center justify-between text-xs p-2 rounded bg-muted">
                           <div className="flex items-center gap-2">
-                            <span className="text-slate-500 uppercase text-[10px] font-medium">{ci.clearance_area}</span>
+                            <span className="text-muted-foreground uppercase text-[10px] font-medium">{ci.clearance_area}</span>
                             <span>{ci.item_title}</span>
                           </div>
                           <div className="flex items-center gap-1">
                             {statusBadge(ci.item_status, "clearance")}
                             {canManage && ci.item_status === "pending" && (
                               <>
-                                <Button aria-label="Clear" disabled={isPending} size="icon" variant="ghost" className="h-5 w-5 text-green-600" title="Clear" onClick={() => startTransition(async () => { const r = await clearEmployeeClearanceItem(ci.id); if (r.success) { toast.success("Cleared"); invalidateHrEmployeeClearance(qc, eos.id, employeeId); } else toast.error(r.error); })}><CheckCircle className="h-3 w-3" /></Button>
-                                <Button aria-label="Block" disabled={isPending} size="icon" variant="ghost" className="h-5 w-5 text-red-500" title="Block" onClick={() => startTransition(async () => { const r = await blockEmployeeClearanceItem(ci.id); if (r.success) { toast.success("Blocked"); invalidateHrEmployeeClearance(qc, eos.id, employeeId); } else toast.error(r.error); })}><XCircle className="h-3 w-3" /></Button>
+                                <Button aria-label="Clear" disabled={isPending} size="icon" variant="ghost" className="h-5 w-5 text-green-600 dark:text-green-300" title="Clear" onClick={() => startTransition(async () => { const r = await clearEmployeeClearanceItem(ci.id); if (r.success) { toast.success("Cleared"); invalidateHrEmployeeClearance(qc, eos.id, employeeId); } else toast.error(r.error); })}><CheckCircle className="h-3 w-3" /></Button>
+                                <Button aria-label="Block" disabled={isPending} size="icon" variant="ghost" className="h-5 w-5 text-red-500 dark:text-red-300" title="Block" onClick={() => startTransition(async () => { const r = await blockEmployeeClearanceItem(ci.id); if (r.success) { toast.success("Blocked"); invalidateHrEmployeeClearance(qc, eos.id, employeeId); } else toast.error(r.error); })}><XCircle className="h-3 w-3" /></Button>
                               </>
                             )}
                           </div>
@@ -1017,7 +1017,7 @@ function EosSection({ employeeId, canManage, qc, onChildOpen }: {
       <ERPChildDialogForm open={eosDialogOpen} onOpenChange={handleEosClose} title={editingEos ? "Edit EOS Case" : "Open EOS Case"} icon={<UserMinus className="h-5 w-5" />} mode={editingEos ? "edit" : "add"} isSubmitting={isPending} onSubmit={handleEosSubmit} size="lg">
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-6">
-            <Label>EOS Type <span className="text-red-500">*</span></Label>
+            <Label>EOS Type <span className="text-red-500 dark:text-red-300">*</span></Label>
             <ERPCombobox ariaLabel="EOS Type" required value={eosForm.eos_type} onValueChange={v => setEosForm(f => ({ ...f, eos_type: String(v ?? "") }))} options={EOS_TYPES} placeholder="Select type" />
           </div>
           <div className="col-span-6">
@@ -1036,7 +1036,7 @@ function EosSection({ employeeId, canManage, qc, onChildOpen }: {
             <Label>Reason</Label>
             <Textarea aria-label="Reason" value={eosForm.reason} onChange={e => setEosForm(f => ({ ...f, reason: e.target.value }))} rows={3} />
           </div>
-          <div className="col-span-12 bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-700">
+          <div className="col-span-12 bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-700 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-200">
             Financial / gratuity settlement is handled by the Finance module. EOS case here is a process shell only.
           </div>
         </div>
@@ -1045,11 +1045,11 @@ function EosSection({ employeeId, canManage, qc, onChildOpen }: {
       <ERPChildDialogForm open={clearanceDialogOpen} onOpenChange={handleClearanceClose} title="Add Clearance Item" icon={<CheckSquare className="h-5 w-5" />} mode="add" isSubmitting={isPending} onSubmit={handleClearanceSubmit} size="md">
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-6">
-            <Label>Clearance Area <span className="text-red-500">*</span></Label>
+            <Label>Clearance Area <span className="text-red-500 dark:text-red-300">*</span></Label>
             <ERPCombobox ariaLabel="Clearance Area" required value={clearanceForm.clearance_area} onValueChange={v => setClearanceForm(f => ({ ...f, clearance_area: String(v ?? "") }))} options={CLEARANCE_AREAS} placeholder="Select area" />
           </div>
           <div className="col-span-12">
-            <Label>Item Title <span className="text-red-500">*</span></Label>
+            <Label>Item Title <span className="text-red-500 dark:text-red-300">*</span></Label>
             <Input aria-label="Item Title" required value={clearanceForm.item_title} onChange={e => setClearanceForm(f => ({ ...f, item_title: e.target.value }))} placeholder="e.g. Return company laptop" />
           </div>
         </div>

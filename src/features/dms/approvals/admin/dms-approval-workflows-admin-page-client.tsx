@@ -106,8 +106,8 @@ function SortHeader({ field, label, sortKey, sortDir, onSort, className }: {
 
 function ActiveBadge({ active }: { active: boolean }) {
   return active
-    ? <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200">Active</Badge>
-    : <Badge variant="outline" className="text-[10px] bg-slate-100 text-slate-500 border-slate-200">Inactive</Badge>;
+    ? <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-200 dark:border-emerald-800">Active</Badge>
+    : <Badge variant="outline" className="text-[10px] bg-muted text-muted-foreground border-border">Inactive</Badge>;
 }
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -396,9 +396,9 @@ export function DmsApprovalWorkflowsAdminPageClient({ initialWorkflows, document
                   <SortHeader data-column="nameEn" field="nameEn" label="Name" sortKey={sortKey} sortDir={sortDir} onSort={toggle} />
                   <SortHeader data-column="types" field="documentTypeNames" label="Document Types" sortKey={sortKey} sortDir={sortDir} onSort={toggle} />
                   <SortHeader data-column="stepCount" field="stepCount" label="Steps" sortKey={sortKey} sortDir={sortDir} onSort={toggle} className="w-16" />
-                  <th data-column="isActive" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Status</th>
+                  <th data-column="isActive" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap">Status</th>
                   <SortHeader data-column="updatedAt" field="updatedAt" label="Updated" sortKey={sortKey} sortDir={sortDir} onSort={toggle} className="w-32" />
-                  <th data-column="actions" className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">Actions</th>
+                  <th data-column="actions" className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap">Actions</th>
                 </ConfiguredRow>
               </thead>
               <tbody className="divide-y divide-border">
@@ -459,7 +459,7 @@ export function DmsApprovalWorkflowsAdminPageClient({ initialWorkflows, document
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-7 px-2 gap-1 text-xs text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                            className="h-7 px-2 gap-1 text-xs text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:text-amber-200 dark:hover:bg-amber-950"
                             onClick={() => setDeactivateTarget(row)}
                             disabled={isPending}
                           >
@@ -470,7 +470,7 @@ export function DmsApprovalWorkflowsAdminPageClient({ initialWorkflows, document
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-7 px-2 gap-1 text-xs text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                            className="h-7 px-2 gap-1 text-xs text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:text-emerald-200 dark:hover:bg-emerald-950"
                             onClick={() => handleReactivate(row)}
                             disabled={isPending}
                           >

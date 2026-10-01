@@ -28,9 +28,9 @@ export function AssistantMessageBubble({
   if (isSystemNotice) {
     return (
       <div className="flex justify-center py-2">
-        <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 rounded-full px-3 py-1">
-          <Info className="h-3.5 w-3.5 text-amber-600" />
-          <span className="text-xs text-amber-700">{message.messageText}</span>
+        <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 rounded-full px-3 py-1 dark:bg-amber-950 dark:border-amber-800">
+          <Info className="h-3.5 w-3.5 text-amber-600 dark:text-amber-300" />
+          <span className="text-xs text-amber-700 dark:text-amber-200">{message.messageText}</span>
         </div>
       </div>
     );
@@ -42,15 +42,15 @@ export function AssistantMessageBubble({
       <div
         className={cn(
           "flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center",
-          isUser ? "bg-slate-200" : isBlocked ? "bg-red-100" : "bg-violet-100"
+          isUser ? "bg-muted" : isBlocked ? "bg-red-100 dark:bg-red-950" : "bg-violet-100 dark:bg-violet-950"
         )}
       >
         {isUser ? (
-          <User className="h-4 w-4 text-slate-600" />
+          <User className="h-4 w-4 text-muted-foreground" />
         ) : isBlocked ? (
-          <AlertOctagon className="h-4 w-4 text-red-600" />
+          <AlertOctagon className="h-4 w-4 text-red-600 dark:text-red-300" />
         ) : (
-          <Bot className="h-4 w-4 text-violet-600" />
+          <Bot className="h-4 w-4 text-violet-600 dark:text-violet-300" />
         )}
       </div>
 
@@ -61,8 +61,8 @@ export function AssistantMessageBubble({
           isUser
             ? "bg-violet-600 text-white rounded-tr-sm"
             : isBlocked
-              ? "bg-red-50 border border-red-200 text-slate-800 rounded-tl-sm"
-              : "bg-white border border-slate-200 text-slate-800 rounded-tl-sm"
+              ? "bg-red-50 border border-red-200 text-foreground rounded-tl-sm dark:bg-red-950 dark:border-red-800"
+              : "bg-card border border-border text-foreground rounded-tl-sm"
         )}
       >
         {/* Message text — render with basic markdown-ish formatting */}
@@ -75,15 +75,15 @@ export function AssistantMessageBubble({
               <Link
                 key={i}
                 href={r.route}
-                className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200 hover:border-violet-300 transition-colors"
+                className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-muted border border-border hover:border-violet-300 transition-colors dark:hover:border-violet-800"
               >
                 <div className="flex-1 min-w-0">
-                  <span className="text-xs font-medium text-slate-900">{r.title}</span>
+                  <span className="text-xs font-medium text-foreground">{r.title}</span>
                   {r.subtitle && (
-                    <span className="text-xs text-slate-500 ml-1">· {r.subtitle}</span>
+                    <span className="text-xs text-muted-foreground ml-1">· {r.subtitle}</span>
                   )}
                 </div>
-                <ExternalLink className="h-3 w-3 text-slate-400 flex-shrink-0" />
+                <ExternalLink className="h-3 w-3 text-muted-foreground flex-shrink-0" />
               </Link>
             ))}
           </div>
@@ -96,7 +96,7 @@ export function AssistantMessageBubble({
               <Link
                 key={i}
                 href={link.route}
-                className="inline-flex items-center gap-1 text-xs text-violet-600 hover:text-violet-700 underline underline-offset-2"
+                className="inline-flex items-center gap-1 text-xs text-violet-600 hover:text-violet-700 underline underline-offset-2 dark:text-violet-300 dark:hover:text-violet-200"
               >
                 <ExternalLink className="h-3 w-3" />
                 {link.label}

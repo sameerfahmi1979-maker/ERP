@@ -85,7 +85,7 @@ function StateChip({ state, revoked, superseded }: { state: string | null; revok
     return <Badge className="bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 text-[10px]">Superseded</Badge>;
   }
   const s = state ?? "unknown";
-  return <Badge className={`${STATE_STYLES[s] ?? "bg-slate-100 text-slate-600"} text-[10px]`}>{s.replace(/_/g, " ")}</Badge>;
+  return <Badge className={`${STATE_STYLES[s] ?? "bg-muted text-muted-foreground"} text-[10px]`}>{s.replace(/_/g, " ")}</Badge>;
 }
 
 function fmtMs(ms: number | null | undefined): string {
@@ -245,9 +245,9 @@ export function OutputOpsConsole() {
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><HeartPulse className="h-3.5 w-3.5" />Renderer</div>
           <div className="mt-1 flex items-center gap-1.5 text-sm font-semibold">
             {metrics == null ? "…" : metrics.rendererHealthy ? (
-              <><CheckCircle2 className="h-4 w-4 text-emerald-500" /> Healthy</>
+              <><CheckCircle2 className="h-4 w-4 text-emerald-500 dark:text-emerald-300" /> Healthy</>
             ) : (
-              <><ShieldAlert className="h-4 w-4 text-red-500" /> Unreachable</>
+              <><ShieldAlert className="h-4 w-4 text-red-500 dark:text-red-300" /> Unreachable</>
             )}
           </div>
         </div>
@@ -277,8 +277,8 @@ export function OutputOpsConsole() {
             {metrics == null ? "…" : (
               <span>
                 {metrics.scheduleRuns.succeededLast24h} ok
-                {metrics.scheduleRuns.retryable > 0 && <span className="ml-1.5 text-amber-600">{metrics.scheduleRuns.retryable} retrying</span>}
-                {metrics.scheduleRuns.terminal > 0 && <span className="ml-1.5 text-red-600">{metrics.scheduleRuns.terminal} failed</span>}
+                {metrics.scheduleRuns.retryable > 0 && <span className="ml-1.5 text-amber-600 dark:text-amber-300">{metrics.scheduleRuns.retryable} retrying</span>}
+                {metrics.scheduleRuns.terminal > 0 && <span className="ml-1.5 text-red-600 dark:text-red-300">{metrics.scheduleRuns.terminal} failed</span>}
               </span>
             )}
           </div>
@@ -408,7 +408,7 @@ export function OutputOpsConsole() {
                 </td>
                 <td data-column="serial" className="px-3 py-2 font-mono text-[10px]">
                   {r.serial_no ?? "—"}
-                  {r.serial_status === "voided" && <span className="ml-1 text-red-500">(voided)</span>}
+                  {r.serial_status === "voided" && <span className="ml-1 text-red-500 dark:text-red-300">(voided)</span>}
                 </td>
                 <td data-column="qr" className="px-3 py-2">
                   {r.qr_status ? (
@@ -438,7 +438,7 @@ export function OutputOpsConsole() {
                     {canRevoke && !loadFailed && !isLoading && r.lifecycle_state === "issued" && !r.revoked_at && (
                       <Button
                         variant="outline" size="sm"
-                        className="h-6 px-2 text-[10px] gap-1 text-red-600 hover:text-red-700"
+                        className="h-6 px-2 text-[10px] gap-1 text-red-600 hover:text-red-700 dark:text-red-300 dark:hover:text-red-200"
                         onClick={() => { setActionReason(""); setActionTarget({ kind: "revoke", row: r }); }}
                       >
                         <Ban className="h-3 w-3" /> Revoke
@@ -485,7 +485,7 @@ export function OutputOpsConsole() {
               <h4 className="font-semibold text-sm">Lifecycle</h4>
               <div className="flex items-center gap-2">
                 <StateChip state={detail.lifecycle_state} revoked={!!detail.revoked_at} superseded={detail.superseded_by_id != null} />
-                {detail.failure_reason && <span className="text-red-600">{detail.failure_reason}</span>}
+                {detail.failure_reason && <span className="text-red-600 dark:text-red-300">{detail.failure_reason}</span>}
               </div>
               <div className="grid grid-cols-2 gap-x-3 gap-y-1 mt-2">
                 <span className="text-muted-foreground">Generated</span><span>{fmtDate(detail.generated_at)}</span>
@@ -534,7 +534,7 @@ export function OutputOpsConsole() {
                       <span className="text-muted-foreground">issued {fmtDate(l.issued_at)}</span>
                       <span className="text-muted-foreground">expires {l.expires_at ? fmtDate(l.expires_at) : "never"}</span>
                       <span className="text-muted-foreground">views {l.view_count ?? 0}</span>
-                      {l.cancel_reason && <span className="text-red-600">{l.cancel_reason}</span>}
+                      {l.cancel_reason && <span className="text-red-600 dark:text-red-300">{l.cancel_reason}</span>}
                     </div>
                   ))}
                 </div>

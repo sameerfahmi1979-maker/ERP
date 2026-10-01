@@ -20,11 +20,11 @@ interface Props {
 }
 
 const BATCH_STATUS_STYLES: Record<string, string> = {
-  processing: "bg-blue-100 text-blue-700 border-blue-200",
-  ready_for_review: "bg-amber-100 text-amber-700 border-amber-200",
-  partially_approved: "bg-violet-100 text-violet-700 border-violet-200",
-  completed: "bg-green-100 text-green-700 border-green-200",
-  cancelled: "bg-gray-100 text-gray-600 border-gray-200",
+  processing: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-200 dark:border-blue-800",
+  ready_for_review: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800",
+  partially_approved: "bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-950 dark:text-violet-200 dark:border-violet-800",
+  completed: "bg-green-100 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-200 dark:border-green-800",
+  cancelled: "bg-muted text-muted-foreground border-border",
 };
 
 function formatDate(iso: string): string {
@@ -178,7 +178,7 @@ export function DmsBatchListClient({ initialBatches }: Props) {
               >
                 <td data-column="batch_code" className="px-3 py-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Layers className="h-3.5 w-3.5 text-violet-600 shrink-0" />
+                    <Layers className="h-3.5 w-3.5 text-violet-600 shrink-0 dark:text-violet-300" />
                     <span className="font-mono text-xs font-semibold">{b.batch_code}</span>
                   </div>
                 </td>
@@ -187,7 +187,7 @@ export function DmsBatchListClient({ initialBatches }: Props) {
                     variant="outline"
                     className={cn(
                       "text-[10px] border",
-                      BATCH_STATUS_STYLES[b.status] ?? "bg-slate-100 text-slate-700 border-slate-200"
+                      BATCH_STATUS_STYLES[b.status] ?? "bg-muted text-foreground border-border"
                     )}
                   >
                     {b.status.replace(/_/g, " ")}
@@ -196,12 +196,12 @@ export function DmsBatchListClient({ initialBatches }: Props) {
                 <td data-column="total_files" className="px-3 py-2 text-right tabular-nums">{b.total_files}</td>
                 <td data-column="pendingCount" className="px-3 py-2 text-right tabular-nums">
                   {b.pendingCount > 0 ? (
-                    <span className="font-semibold text-amber-600">{b.pendingCount}</span>
+                    <span className="font-semibold text-amber-600 dark:text-amber-300">{b.pendingCount}</span>
                   ) : (
                     <span className="text-muted-foreground">0</span>
                   )}
                 </td>
-                <td data-column="approvedCount" className="px-3 py-2 text-right tabular-nums text-green-600">{b.approvedCount}</td>
+                <td data-column="approvedCount" className="px-3 py-2 text-right tabular-nums text-green-600 dark:text-green-300">{b.approvedCount}</td>
                 <td data-column="discardedCount" className="px-3 py-2 text-right tabular-nums text-muted-foreground">{b.discardedCount}</td>
                 <td data-column="created_at" className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">{formatDate(b.created_at)}</td>
                 <td data-column="actions" className="px-3 py-2 text-right">

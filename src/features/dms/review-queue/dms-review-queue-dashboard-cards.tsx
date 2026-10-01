@@ -16,11 +16,11 @@ interface CardProps {
 
 function DashboardCard({ label, value, icon, variant }: CardProps) {
   const variantClasses: Record<CardProps["variant"], string> = {
-    default: "bg-white border-slate-200 text-slate-700",
-    warning: "bg-amber-50 border-amber-200 text-amber-800",
-    danger:  "bg-red-50 border-red-200 text-red-800",
-    success: "bg-emerald-50 border-emerald-200 text-emerald-800",
-    info:    "bg-sky-50 border-sky-200 text-sky-800",
+    default: "bg-card border-border text-foreground",
+    warning: "bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-200",
+    danger:  "bg-red-50 border-red-200 text-red-800 dark:bg-red-950 dark:border-red-800 dark:text-red-200",
+    success: "bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950 dark:border-emerald-800 dark:text-emerald-200",
+    info:    "bg-sky-50 border-sky-200 text-sky-800 dark:bg-sky-950 dark:border-sky-800 dark:text-sky-200",
   };
 
   return (

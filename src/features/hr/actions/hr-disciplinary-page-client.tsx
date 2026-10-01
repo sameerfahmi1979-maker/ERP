@@ -60,17 +60,17 @@ type EditForm = {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const SEVERITY_BADGE: Record<string, string> = {
-  low:      "bg-slate-100 text-slate-600 border-slate-200",
-  medium:   "bg-amber-100 text-amber-700 border-amber-200",
-  high:     "bg-orange-100 text-orange-700 border-orange-200",
-  critical: "bg-red-100 text-red-700 border-red-200",
+  low:      "bg-muted text-muted-foreground border-border",
+  medium:   "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800",
+  high:     "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-200 dark:border-orange-800",
+  critical: "bg-red-100 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-200 dark:border-red-800",
 };
 
 const STATUS_BADGE: Record<string, string> = {
-  open:         "bg-blue-100 text-blue-700 border-blue-200",
-  under_review: "bg-amber-100 text-amber-700 border-amber-200",
-  closed:       "bg-slate-100 text-slate-600 border-slate-200",
-  cancelled:    "bg-slate-100 text-slate-500 border-slate-200",
+  open:         "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-200 dark:border-blue-800",
+  under_review: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800",
+  closed:       "bg-muted text-muted-foreground border-border",
+  cancelled:    "bg-muted text-muted-foreground border-border",
 };
 
 const DISCIPLINARY_TYPES = [
@@ -187,16 +187,16 @@ function DetailDialogSession({ record, open, mode, canManage, onClose, onEdit, o
             <Badge variant="outline" className={`text-[11px] font-semibold px-2 py-0.5 border ${STATUS_BADGE[record.status]}`}>
               {label(record.status)}
             </Badge>
-            <Badge variant="outline" className="text-[11px] font-semibold px-2 py-0.5 border bg-slate-50 text-slate-700 border-slate-200">
+            <Badge variant="outline" className="text-[11px] font-semibold px-2 py-0.5 border bg-muted text-foreground border-border">
               {label(record.disciplinary_type)}
             </Badge>
             {record.acknowledged_by_employee && (
-              <Badge variant="outline" className="text-[11px] font-semibold px-2 py-0.5 border bg-green-50 text-green-700 border-green-200">
+              <Badge variant="outline" className="text-[11px] font-semibold px-2 py-0.5 border bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-200 dark:border-green-800">
                 Acknowledged
               </Badge>
             )}
             {record.creates_operational_block && (
-              <Badge variant="outline" className="text-[11px] font-semibold px-2 py-0.5 border bg-red-50 text-red-700 border-red-200">
+              <Badge variant="outline" className="text-[11px] font-semibold px-2 py-0.5 border bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-200 dark:border-red-800">
                 Operational Block
               </Badge>
             )}
@@ -479,9 +479,9 @@ export function HrDisciplinaryPageClient({ authContext }: Props) {
         </div>
       ) : (
         <div className="rounded-md border border-border overflow-x-auto">
-          {/* UI04 explicit table: loaded authorized rows only */}<ERPDataTable tableId="hr.actions.hr-disciplinary-page-client" data={filtered} columns={[{id:"employee.full_name_en",header:"Employee",accessorFn:item=>loadedListValue(item,"employee.full_name_en"),enableHiding:false,size:240,cell:({row:{original:item}})=><><p className="font-medium truncate">{item.employee?.full_name_en ?? `Employee #${item.employee_id}`}</p><p className="text-muted-foreground truncate font-mono text-[10px]">{item.employee?.employee_code ?? ""}</p></>},{id:"subject",header:"Subject",accessorFn:item=>loadedListValue(item,"subject"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{item.subject}</>},{id:"disciplinary_type",header:"Type",accessorFn:item=>loadedListValue(item,"disciplinary_type"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{label(item.disciplinary_type)}</>},{id:"severity",header:"Severity",accessorFn:item=>loadedListValue(item,"severity"),enableHiding:true,size:160,cell:({row:{original:item}})=><><Badge variant="outline" className={`text-[10px] font-semibold px-1.5 py-0.5 border ${SEVERITY_BADGE[item.severity] ?? "bg-slate-100 text-slate-600 border-slate-200"}`}>
+          {/* UI04 explicit table: loaded authorized rows only */}<ERPDataTable tableId="hr.actions.hr-disciplinary-page-client" data={filtered} columns={[{id:"employee.full_name_en",header:"Employee",accessorFn:item=>loadedListValue(item,"employee.full_name_en"),enableHiding:false,size:240,cell:({row:{original:item}})=><><p className="font-medium truncate">{item.employee?.full_name_en ?? `Employee #${item.employee_id}`}</p><p className="text-muted-foreground truncate font-mono text-[10px]">{item.employee?.employee_code ?? ""}</p></>},{id:"subject",header:"Subject",accessorFn:item=>loadedListValue(item,"subject"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{item.subject}</>},{id:"disciplinary_type",header:"Type",accessorFn:item=>loadedListValue(item,"disciplinary_type"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{label(item.disciplinary_type)}</>},{id:"severity",header:"Severity",accessorFn:item=>loadedListValue(item,"severity"),enableHiding:true,size:160,cell:({row:{original:item}})=><><Badge variant="outline" className={`text-[10px] font-semibold px-1.5 py-0.5 border ${SEVERITY_BADGE[item.severity] ?? "bg-muted text-muted-foreground border-border"}`}>
                       {label(item.severity)}
-                    </Badge></>},{id:"status",header:"Status",accessorFn:item=>loadedListValue(item,"status"),enableHiding:true,size:160,cell:({row:{original:item}})=><><Badge variant="outline" className={`text-[10px] font-semibold px-1.5 py-0.5 border ${STATUS_BADGE[item.status] ?? "bg-slate-100 text-slate-600 border-slate-200"}`}>
+                    </Badge></>},{id:"status",header:"Status",accessorFn:item=>loadedListValue(item,"status"),enableHiding:true,size:160,cell:({row:{original:item}})=><><Badge variant="outline" className={`text-[10px] font-semibold px-1.5 py-0.5 border ${STATUS_BADGE[item.status] ?? "bg-muted text-muted-foreground border-border"}`}>
                       {label(item.status)}
                     </Badge></>},{id:"record_date",header:"Date",accessorFn:item=>loadedListValue(item,"record_date"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{item.record_date}</>},{id:"actions",header:"Actions",enableHiding:true,size:200,enableSorting:false,meta:{exportable:false},cell:({row:{original:item}})=><><div className="flex items-center gap-1 justify-end">
                       <Button aria-label="View details" size="icon" variant="ghost" className="h-6 w-6" title="View details" onClick={() => openView(item)}>

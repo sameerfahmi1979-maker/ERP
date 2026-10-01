@@ -1,5 +1,5 @@
 .algt-fluent-root.fui-FluentProvider { min-height: 100%; flex: 1; background: transparent; }
-.algt-shell, .algt-form-surface, .algt-mobile-nav, .algt-auth {
+.algt-shell, .algt-form-surface, .algt-mobile-nav, .algt-auth, .algt-dialog {
   --radius: .25rem;
   --background: #f3f2f1; --foreground: #242424; --card: #fff; --card-foreground: #242424;
   --primary: #115ea3; --primary-foreground: #fff; --border: #e1dfdd; --input: #8a8886;
@@ -9,7 +9,26 @@
 .algt-shell {
   height: 100dvh; display: flex; flex-direction: column; overflow: hidden;
 }
-.dark .algt-shell, .dark .algt-form-surface, .dark .algt-mobile-nav, .dark .algt-auth { --background: #141414; --foreground: #f5f5f5; --card: #1f1f1f; --card-foreground: #f5f5f5; --primary: #75b6e7; --primary-foreground: #102a43; --border: #525252; --input: #858585; --muted: #292929; --muted-foreground: #c2c2c2; --ring: #75b6e7; }
+.dark .algt-shell, .dark .algt-form-surface, .dark .algt-mobile-nav, .dark .algt-auth, .dark .algt-dialog { --background: #141414; --foreground: #f5f5f5; --card: #1f1f1f; --card-foreground: #f5f5f5; --primary: #75b6e7; --primary-foreground: #102a43; --border: #525252; --input: #858585; --muted: #292929; --muted-foreground: #c2c2c2; --ring: #75b6e7; }
+/* Native popups do not reliably inherit their owning select's surface on Windows.
+   Pair BOTH colours explicitly for every select/option, including body portals.
+   Keep browser selection/highlight and forced-colour behaviour intact. */
+select {
+  background-color: var(--card);
+  color: var(--card-foreground);
+}
+select option, select optgroup {
+  background-color: var(--card);
+  color: var(--card-foreground);
+}
+select option:disabled, select optgroup:disabled {
+  color: var(--muted-foreground);
+}
+select:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+@media (forced-colors: active) {
+  select, select option, select optgroup { background-color: Canvas; color: CanvasText; }
+  select:disabled, select option:disabled, select optgroup:disabled { color: GrayText; }
+}
 .algt-global-header { background: #0f1c32; color: #fff; min-height: 48px; padding: 0 12px; display:flex; align-items:center; gap:12px; flex-shrink:0; }
 .algt-global-header button, .algt-global-header a { color: inherit; }
 .algt-global-header button:hover, .algt-global-header a:hover { background: #263952; }

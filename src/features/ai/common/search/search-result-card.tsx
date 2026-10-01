@@ -14,11 +14,11 @@ import { SearchBadges } from "./search-badges";
 import type { ErpSearchResult, ErpSearchEntityType } from "@/lib/ai/common/search/types";
 
 const ENTITY_ICONS: Record<ErpSearchEntityType | string, React.ReactNode> = {
-  organization: <Building2 className="h-4 w-4 text-blue-600" />,
-  branch: <GitBranch className="h-4 w-4 text-green-600" />,
-  party: <Users className="h-4 w-4 text-purple-600" />,
-  site: <MapPin className="h-4 w-4 text-orange-600" />,
-  dms_document: <FileText className="h-4 w-4 text-slate-600" />,
+  organization: <Building2 className="h-4 w-4 text-blue-600 dark:text-blue-300" />,
+  branch: <GitBranch className="h-4 w-4 text-green-600 dark:text-green-300" />,
+  party: <Users className="h-4 w-4 text-purple-600 dark:text-purple-300" />,
+  site: <MapPin className="h-4 w-4 text-orange-600 dark:text-orange-300" />,
+  dms_document: <FileText className="h-4 w-4 text-muted-foreground" />,
 };
 
 const ENTITY_LABELS: Record<string, string> = {
@@ -45,12 +45,12 @@ export function SearchResultCard({ result, className }: SearchResultCardProps) {
   return (
     <div
       className={cn(
-        "group flex items-start gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm",
-        "hover:border-slate-300 hover:shadow-md transition-all duration-150",
+        "group flex items-start gap-3 rounded-lg border border-border bg-card p-4 shadow-sm",
+        "hover:border-input hover:shadow-md transition-all duration-150",
         className
       )}
     >
-      <div className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-slate-50 border border-slate-200">
+      <div className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-muted border border-border">
         {icon}
       </div>
 
@@ -62,12 +62,12 @@ export function SearchResultCard({ result, className }: SearchResultCardProps) {
                 {label}
               </span>
               {result.subtitle && (
-                <span className="text-xs text-slate-400">{result.subtitle}</span>
+                <span className="text-xs text-muted-foreground">{result.subtitle}</span>
               )}
             </div>
-            <p className="mt-0.5 text-sm font-semibold text-slate-900 truncate">
+            <p className="mt-0.5 text-sm font-semibold text-foreground truncate">
               {result.isConfidential ? (
-                <span className="text-red-700">
+                <span className="text-red-700 dark:text-red-200">
                   {result.title} — Confidential
                 </span>
               ) : (
@@ -78,7 +78,7 @@ export function SearchResultCard({ result, className }: SearchResultCardProps) {
 
           <Link
             href={result.route}
-            className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-foreground shadow-sm hover:bg-slate-50 hover:border-slate-300 transition-colors flex-shrink-0"
+            className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground shadow-sm hover:bg-muted hover:border-input transition-colors flex-shrink-0"
           >
             <ExternalLink className="h-3 w-3" />
             Open

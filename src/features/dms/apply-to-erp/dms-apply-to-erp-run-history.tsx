@@ -167,10 +167,10 @@ function RunHistorySession({ documentId, className, correctionEnabled }: Props) 
                 ) : expandedRun ? (
                   <div className="space-y-2">
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-muted-foreground">
-                      <div>Applied: <span className="text-green-700 font-medium">{expandedRun.items.filter(i => i.status === "applied").length}</span></div>
+                      <div>Applied: <span className="text-green-700 font-medium dark:text-green-200">{expandedRun.items.filter(i => i.status === "applied").length}</span></div>
                       <div>Skipped: <span className="font-medium">{expandedRun.items.filter(i => i.status === "skipped").length}</span></div>
-                      <div>Conflict: <span className="text-amber-700 font-medium">{expandedRun.items.filter(i => i.status === "conflict").length}</span></div>
-                      <div>Failed: <span className="text-red-700 font-medium">{expandedRun.items.filter(i => i.status === "failed").length}</span></div>
+                      <div>Conflict: <span className="text-amber-700 font-medium dark:text-amber-200">{expandedRun.items.filter(i => i.status === "conflict").length}</span></div>
+                      <div>Failed: <span className="text-red-700 font-medium dark:text-red-200">{expandedRun.items.filter(i => i.status === "failed").length}</span></div>
                     </div>
                     {expandedRun.items.length > 0 && (
                       <div className="space-y-1">
@@ -229,7 +229,7 @@ function ApplyItemRow({
           <Button
             size="sm"
             variant="ghost"
-            className="h-6 px-2 text-xs gap-1 text-slate-600 hover:text-slate-900"
+            className="h-6 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground"
             onClick={() => onProposeCorrection(item.id)}
             title="Propose a correction for this applied field"
           >

@@ -61,7 +61,7 @@ interface DmsDocumentUnderstandingSectionProps {
 function StatusBadge({ ok, label, variant }: { ok: boolean; label: string; variant?: string }) {
   return (
     <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0",
-      ok ? "bg-green-50 text-green-700 border-green-200" : "bg-slate-50 text-slate-500 border-slate-200"
+      ok ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-200 dark:border-green-800" : "bg-muted text-muted-foreground border-border"
     )}>
       {ok ? <CheckCircle2 className="h-2.5 w-2.5 mr-0.5 inline" /> : <Clock className="h-2.5 w-2.5 mr-0.5 inline" />}
       {label}
@@ -71,11 +71,11 @@ function StatusBadge({ ok, label, variant }: { ok: boolean; label: string; varia
 
 function RiskBadge({ level }: { level: string | null }) {
   const colors: Record<string, string> = {
-    none: "bg-green-50 text-green-700 border-green-200",
-    low: "bg-blue-50 text-blue-700 border-blue-200",
-    medium: "bg-amber-50 text-amber-700 border-amber-200",
-    high: "bg-orange-50 text-orange-700 border-orange-200",
-    critical: "bg-red-50 text-red-700 border-red-200",
+    none: "bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-200 dark:border-green-800",
+    low: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-200 dark:border-blue-800",
+    medium: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800",
+    high: "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-200 dark:border-orange-800",
+    critical: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-200 dark:border-red-800",
   };
   const key = (level ?? "none").toLowerCase();
   return (
@@ -87,10 +87,10 @@ function RiskBadge({ level }: { level: string | null }) {
 
 function ExpiryBadge({ status, days }: { status: string; days: number | null }) {
   const cfg: Record<string, { cls: string; label: string }> = {
-    valid: { cls: "bg-green-50 text-green-700 border-green-200", label: `Valid (${days}d)` },
-    expiring_soon: { cls: "bg-amber-50 text-amber-700 border-amber-200", label: `Expiring in ${days}d` },
-    expired: { cls: "bg-red-50 text-red-700 border-red-200", label: "Expired" },
-    unknown: { cls: "bg-slate-50 text-slate-500 border-slate-200", label: "No expiry" },
+    valid: { cls: "bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-200 dark:border-green-800", label: `Valid (${days}d)` },
+    expiring_soon: { cls: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800", label: `Expiring in ${days}d` },
+    expired: { cls: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-200 dark:border-red-800", label: "Expired" },
+    unknown: { cls: "bg-muted text-muted-foreground border-border", label: "No expiry" },
   };
   const c = cfg[status] ?? cfg.unknown;
   return <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0", c.cls)}>{c.label}</Badge>;
@@ -100,9 +100,9 @@ function SectionCard({ title, icon, children, className }: {
   title: string; icon: React.ReactNode; children: React.ReactNode; className?: string;
 }) {
   return (
-    <Card className={cn("border-slate-200", className)}>
+    <Card className={cn("border-border", className)}>
       <CardHeader className="pb-2 pt-3 px-4">
-        <CardTitle className="text-xs font-semibold text-slate-600 flex items-center gap-1.5 uppercase tracking-wide">
+        <CardTitle className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5 uppercase tracking-wide">
           {icon}{title}
         </CardTitle>
       </CardHeader>
@@ -115,10 +115,10 @@ function SectionCard({ title, icon, children, className }: {
 
 function HealthCard({ health }: { health: DmsUnderstandingHealth }) {
   const colors = {
-    "Excellent": "text-green-700 bg-green-50 border-green-200",
-    "Good": "text-blue-700 bg-blue-50 border-blue-200",
-    "Needs Attention": "text-amber-700 bg-amber-50 border-amber-200",
-    "Critical": "text-red-700 bg-red-50 border-red-200",
+    "Excellent": "text-green-700 bg-green-50 border-green-200 dark:text-green-200 dark:bg-green-950 dark:border-green-800",
+    "Good": "text-blue-700 bg-blue-50 border-blue-200 dark:text-blue-200 dark:bg-blue-950 dark:border-blue-800",
+    "Needs Attention": "text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-200 dark:bg-amber-950 dark:border-amber-800",
+    "Critical": "text-red-700 bg-red-50 border-red-200 dark:text-red-200 dark:bg-red-950 dark:border-red-800",
   };
   const barColors = {
     "Excellent": "bg-green-500",
@@ -139,7 +139,7 @@ function HealthCard({ health }: { health: DmsUnderstandingHealth }) {
           </div>
           <span className="text-xl font-bold">{health.score}<span className="text-sm font-normal opacity-60">/100</span></span>
         </div>
-        <div className="w-full bg-slate-200 rounded-full h-1.5 mb-3">
+        <div className="w-full bg-muted rounded-full h-1.5 mb-3">
           <div className="h-1.5 rounded-full transition-all" style={{ width: `${health.score}%`, background: health.score >= 85 ? "#22c55e" : health.score >= 65 ? "#3b82f6" : health.score >= 40 ? "#f59e0b" : "#ef4444" }} />
         </div>
         <div className="flex items-center gap-3 flex-wrap text-[11px]">
@@ -152,13 +152,13 @@ function HealthCard({ health }: { health: DmsUnderstandingHealth }) {
           ].map((item) => (
             <span key={item.label} className="flex items-center gap-0.5">
               {item.ok
-                ? <CheckCircle2 className="h-3 w-3 text-green-600" />
+                ? <CheckCircle2 className="h-3 w-3 text-green-600 dark:text-green-300" />
                 : <XCircle className="h-3 w-3 text-slate-300" />}
-              <span className={item.ok ? "text-slate-700" : "text-slate-400"}>{item.label}</span>
+              <span className={item.ok ? "text-foreground" : "text-muted-foreground"}>{item.label}</span>
             </span>
           ))}
           {health.warningCount > 0 && (
-            <span className="text-amber-600 ml-auto">{health.warningCount} warning{health.warningCount > 1 ? "s" : ""}</span>
+            <span className="text-amber-600 ml-auto dark:text-amber-300">{health.warningCount} warning{health.warningCount > 1 ? "s" : ""}</span>
           )}
         </div>
       </CardContent>
@@ -204,12 +204,12 @@ export function DmsDocumentUnderstandingSection({
     return (
       <QueryReadBoundary queries={[uiRead1]}><div className="py-6">
         {isDisabled ? (
-          <Alert className="border-slate-200 bg-slate-50">
-            <Brain className="h-4 w-4 text-slate-500" />
-            <AlertDescription className="text-sm text-slate-600">
+          <Alert className="border-border bg-muted">
+            <Brain className="h-4 w-4 text-muted-foreground" />
+            <AlertDescription className="text-sm text-muted-foreground">
               <strong>AI Document Understanding is not enabled.</strong><br />
-              Enable <code className="text-xs bg-slate-100 px-1 rounded">ERP_AI_DOC_UNDERSTANDING</code> in{" "}
-              <a href="/admin/settings/ai" className="text-blue-600 underline">Admin → AI Settings</a> to use this feature.
+              Enable <code className="text-xs bg-muted px-1 rounded">ERP_AI_DOC_UNDERSTANDING</code> in{" "}
+              <a href="/admin/settings/ai" className="text-blue-600 underline dark:text-blue-300">Admin → AI Settings</a> to use this feature.
             </AlertDescription>
           </Alert>
         ) : (
@@ -228,7 +228,7 @@ export function DmsDocumentUnderstandingSection({
     <QueryReadBoundary queries={[uiRead1]}><div className="space-y-3">
       {/* Refresh button */}
       <div className="flex justify-end">
-        <Button size="sm" variant="ghost" onClick={() => refetch()} disabled={isRefetching} className="h-6 text-xs px-2 text-slate-500">
+        <Button size="sm" variant="ghost" onClick={() => refetch()} disabled={isRefetching} className="h-6 text-xs px-2 text-muted-foreground">
           <RefreshCw className={cn("h-3 w-3 mr-1", isRefetching && "animate-spin")} />
           Refresh
         </Button>
@@ -244,23 +244,23 @@ export function DmsDocumentUnderstandingSection({
         <SectionCard title="Document" icon={<FileText className="h-3 w-3" />}>
           <div className="space-y-1.5 text-xs">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-slate-500">No.</span>
+              <span className="text-muted-foreground">No.</span>
               <span className="font-mono font-medium">{u.identity.documentNo ?? "—"}</span>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-slate-500">Type</span>
-              <span className="text-right max-w-[160px] truncate">{u.identity.typeName ?? "—"}{u.identity.typeNameAr && <span className="text-slate-400 ml-1">({u.identity.typeNameAr})</span>}</span>
+              <span className="text-muted-foreground">Type</span>
+              <span className="text-right max-w-[160px] truncate">{u.identity.typeName ?? "—"}{u.identity.typeNameAr && <span className="text-muted-foreground ml-1">({u.identity.typeNameAr})</span>}</span>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-slate-500">Status</span>
+              <span className="text-muted-foreground">Status</span>
               <Badge variant="outline" className="text-[10px] px-1.5 py-0 capitalize">{u.identity.status ?? "—"}</Badge>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-slate-500">Expiry</span>
+              <span className="text-muted-foreground">Expiry</span>
               <ExpiryBadge status={u.identity.expiryStatus} days={u.identity.daysUntilExpiry} />
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-slate-500">Confidentiality</span>
+              <span className="text-muted-foreground">Confidentiality</span>
               <Badge variant="outline" className="text-[10px] px-1.5 py-0 capitalize">{u.identity.confidentialityLevel}</Badge>
             </div>
           </div>
@@ -270,35 +270,35 @@ export function DmsDocumentUnderstandingSection({
         <SectionCard title="OCR & Text" icon={<FileText className="h-3 w-3" />}>
           <div className="space-y-1.5 text-xs">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-slate-500">OCR processed</span>
+              <span className="text-muted-foreground">OCR processed</span>
               <StatusBadge
                 ok={u.ocrStatus.ocrRunComplete}
                 label={u.ocrStatus.ocrRunComplete ? "Complete" : "Not run"}
               />
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-slate-500">OCR text</span>
+              <span className="text-muted-foreground">OCR text</span>
               <StatusBadge
                 ok={u.ocrStatus.ocrTextAvailable}
                 label={u.ocrStatus.ocrTextAvailable ? "Available" : "Missing"}
               />
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-slate-500">Files with OCR</span>
+              <span className="text-muted-foreground">Files with OCR</span>
               <span>{u.ocrStatus.filesWithOcr} / {u.ocrStatus.fileCount}</span>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-slate-500">Content text</span>
+              <span className="text-muted-foreground">Content text</span>
               <StatusBadge ok={u.ocrStatus.contentTextAvailable} label={u.ocrStatus.contentTextAvailable ? `${u.ocrStatus.contentTextCharCount?.toLocaleString() ?? "?"} chars` : "Missing"} />
             </div>
             {u.ocrStatus.contentTextTruncated && (
-              <p className="text-amber-600">⚠ Content was truncated (very long document)</p>
+              <p className="text-amber-600 dark:text-amber-300">⚠ Content was truncated (very long document)</p>
             )}
             {u.ocrStatus.ocrRunComplete && !u.ocrStatus.ocrTextAvailable && !u.ocrStatus.contentTextAvailable && (
-              <p className="text-amber-600">OCR finished but no text was found in this file.</p>
+              <p className="text-amber-600 dark:text-amber-300">OCR finished but no text was found in this file.</p>
             )}
             {!u.ocrStatus.ocrRunComplete && (
-              <a href="?section=ocr" className="block mt-1 text-center text-[10px] text-blue-600 underline hover:text-blue-800 py-1 border border-slate-200 rounded">
+              <a href="?section=ocr" className="block mt-1 text-center text-[10px] text-blue-600 underline hover:text-blue-800 py-1 border border-border rounded dark:text-blue-300 dark:hover:text-blue-200">
                 Run OCR → OCR/Text tab
               </a>
             )}
@@ -309,22 +309,22 @@ export function DmsDocumentUnderstandingSection({
         <SectionCard title="AI Summary" icon={<Brain className="h-3 w-3" />}>
           <div className="space-y-1.5 text-xs">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-slate-500">Status</span>
+              <span className="text-muted-foreground">Status</span>
               <StatusBadge ok={u.summaryStatus.status === "complete"} label={u.summaryStatus.status ?? "Not run"} />
             </div>
             {u.summaryStatus.summaryModel && (
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-slate-500">Model</span>
+                <span className="text-muted-foreground">Model</span>
                 <span className="font-mono text-[10px]">{u.summaryStatus.summaryModel}</span>
               </div>
             )}
             {u.summaryStatus.isConfidentialRedacted && (
-              <Alert className="py-1.5 border-amber-200 bg-amber-50">
-                <AlertDescription className="text-[11px] text-amber-700">Summary restricted — confidential document.</AlertDescription>
+              <Alert className="py-1.5 border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950">
+                <AlertDescription className="text-[11px] text-amber-700 dark:text-amber-200">Summary restricted — confidential document.</AlertDescription>
               </Alert>
             )}
             {u.summaryStatus.summaryText && !u.summaryStatus.isConfidentialRedacted && (
-              <p className="text-slate-700 leading-relaxed line-clamp-4 border-l-2 border-violet-200 pl-2">
+              <p className="text-foreground leading-relaxed line-clamp-4 border-l-2 border-violet-200 pl-2 dark:border-violet-800">
                 {u.summaryStatus.summaryText}
               </p>
             )}
@@ -337,23 +337,23 @@ export function DmsDocumentUnderstandingSection({
             {u.completeness.score !== null ? (
               <>
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-slate-500">Score</span>
+                  <span className="text-muted-foreground">Score</span>
                   <span className="font-bold text-sm">{Math.round(u.completeness.score * 100)}%</span>
                 </div>
-                <div className="w-full bg-slate-200 rounded-full h-1.5 mb-2"><div className="h-1.5 rounded-full bg-blue-500" style={{ width: `${Math.round((u.completeness.score ?? 0) * 100)}%` }} /></div>
+                <div className="w-full bg-muted rounded-full h-1.5 mb-2"><div className="h-1.5 rounded-full bg-blue-500" style={{ width: `${Math.round((u.completeness.score ?? 0) * 100)}%` }} /></div>
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-slate-500">Metadata fields</span>
+                  <span className="text-muted-foreground">Metadata fields</span>
                   <span>{u.completeness.filledMetadataFields} / {u.completeness.totalMetadataFields} filled</span>
                 </div>
                 {u.completeness.missingFieldLabels.length > 0 && (
                   <div>
-                    <span className="text-slate-500">Missing: </span>
-                    <span className="text-amber-700">{u.completeness.missingFieldLabels.slice(0, 4).join(", ")}{u.completeness.missingFieldLabels.length > 4 && ` +${u.completeness.missingFieldLabels.length - 4} more`}</span>
+                    <span className="text-muted-foreground">Missing: </span>
+                    <span className="text-amber-700 dark:text-amber-200">{u.completeness.missingFieldLabels.slice(0, 4).join(", ")}{u.completeness.missingFieldLabels.length > 4 && ` +${u.completeness.missingFieldLabels.length - 4} more`}</span>
                   </div>
                 )}
               </>
             ) : (
-              <p className="text-slate-400">Not evaluated yet. Run Intelligence evaluation.</p>
+              <p className="text-muted-foreground">Not evaluated yet. Run Intelligence evaluation.</p>
             )}
           </div>
         </SectionCard>
@@ -362,25 +362,25 @@ export function DmsDocumentUnderstandingSection({
         <SectionCard title="Risk" icon={<AlertCircle className="h-3 w-3" />}>
           <div className="space-y-1.5 text-xs">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-slate-500">Risk level</span>
+              <span className="text-muted-foreground">Risk level</span>
               <RiskBadge level={u.risk.riskLevel} />
             </div>
             {u.risk.riskScore !== null && (
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-slate-500">Score</span>
+                <span className="text-muted-foreground">Score</span>
                 <span>{Math.round(u.risk.riskScore * 100)}%</span>
               </div>
             )}
             {u.risk.riskReasonLabels.length > 0 && (
               <ul className="space-y-0.5 mt-1">
                 {u.risk.riskReasonLabels.slice(0, 4).map((r, i) => (
-                  <li key={i} className="text-slate-600 flex items-start gap-1">
-                    <span className="text-amber-500 mt-0.5">•</span>{r}
+                  <li key={i} className="text-muted-foreground flex items-start gap-1">
+                    <span className="text-amber-500 mt-0.5 dark:text-amber-300">•</span>{r}
                   </li>
                 ))}
               </ul>
             )}
-            {u.risk.riskLevel === null && <p className="text-slate-400">Not evaluated yet.</p>}
+            {u.risk.riskLevel === null && <p className="text-muted-foreground">Not evaluated yet.</p>}
           </div>
         </SectionCard>
 
@@ -388,24 +388,24 @@ export function DmsDocumentUnderstandingSection({
         <SectionCard title="Semantic Embedding" icon={<Zap className="h-3 w-3" />}>
           <div className="space-y-1.5 text-xs">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-slate-500">Status</span>
+              <span className="text-muted-foreground">Status</span>
               <StatusBadge ok={u.embedding.readyForSemanticSearch} label={u.embedding.status ?? "Not generated"} />
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-slate-500">Semantic search</span>
-              <span className={u.embedding.readyForSemanticSearch ? "text-green-700 font-medium" : "text-slate-400"}>
+              <span className="text-muted-foreground">Semantic search</span>
+              <span className={u.embedding.readyForSemanticSearch ? "text-green-700 font-medium dark:text-green-200" : "text-muted-foreground"}>
                 {u.embedding.readyForSemanticSearch ? "Ready ✓" : "Not ready"}
               </span>
             </div>
             {u.embedding.model && (
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-slate-500">Model</span>
+                <span className="text-muted-foreground">Model</span>
                 <span className="font-mono text-[10px]">{u.embedding.model}</span>
               </div>
             )}
             {u.embedding.source && (
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-slate-500">Source</span>
+                <span className="text-muted-foreground">Source</span>
                 <span className="capitalize">{u.embedding.source.replace("_", " ")}</span>
               </div>
             )}
@@ -416,7 +416,7 @@ export function DmsDocumentUnderstandingSection({
         <SectionCard title="Tags & Links" icon={<Tag className="h-3 w-3" />}>
           <div className="space-y-1.5 text-xs">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-slate-500">Tags</span>
+              <span className="text-muted-foreground">Tags</span>
               <span>{u.tagsLinks.tagCount} applied{u.tagsLinks.pendingTagSuggestions > 0 && ` · ${u.tagsLinks.pendingTagSuggestions} pending`}</span>
             </div>
             {u.tagsLinks.tagNames.length > 0 && (
@@ -427,23 +427,23 @@ export function DmsDocumentUnderstandingSection({
               </div>
             )}
             <div className="flex items-center justify-between mt-1">
-              <span className="text-slate-500">Linked entities</span>
+              <span className="text-muted-foreground">Linked entities</span>
               <span>{u.tagsLinks.linkCount}{u.tagsLinks.pendingLinkSuggestions > 0 && ` · ${u.tagsLinks.pendingLinkSuggestions} AI suggestions`}</span>
             </div>
             {u.tagsLinks.linkedEntities.map((e) => (
               <div key={`${e.entityType}-${e.entityId}`} className="flex items-center gap-1.5">
-                <Link2 className="h-2.5 w-2.5 text-slate-400" />
+                <Link2 className="h-2.5 w-2.5 text-muted-foreground" />
                 <Badge variant="outline" className="text-[9px] px-1 py-0 shrink-0">
                   {e.entityTypeLabel}
                 </Badge>
-                <span className="truncate max-w-[180px] font-medium text-slate-700">
+                <span className="truncate max-w-[180px] font-medium text-foreground">
                   {e.entityDisplayName}
                 </span>
                 {e.isPrimary && <Badge variant="outline" className="text-[9px] px-1 py-0">Primary</Badge>}
               </div>
             ))}
             {u.tagsLinks.linkCount === 0 && (
-              <p className="text-slate-400">No entity linked. Link to an organization or party.</p>
+              <p className="text-muted-foreground">No entity linked. Link to an organization or party.</p>
             )}
           </div>
         </SectionCard>
@@ -452,24 +452,24 @@ export function DmsDocumentUnderstandingSection({
         <SectionCard title="AI Classification" icon={<Brain className="h-3 w-3" />}>
           <div className="space-y-1.5 text-xs">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-slate-500">Status</span>
+              <span className="text-muted-foreground">Status</span>
               <StatusBadge ok={u.extractionStatus.aiStatus === "complete"} label={u.extractionStatus.aiStatus ?? "Not run"} />
             </div>
             {u.extractionStatus.classificationConfidence !== null && (
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-slate-500">Confidence</span>
+                <span className="text-muted-foreground">Confidence</span>
                 <span className="font-medium">{Math.round((u.extractionStatus.classificationConfidence ?? 0) * 100)}%</span>
               </div>
             )}
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-slate-500">Fields extracted</span>
+              <span className="text-muted-foreground">Fields extracted</span>
               <span>{u.extractionStatus.extractedFieldCount}</span>
             </div>
             {u.extractionStatus.lowConfidenceFieldCount > 0 && (
-              <p className="text-amber-600">{u.extractionStatus.lowConfidenceFieldCount} field(s) need review</p>
+              <p className="text-amber-600 dark:text-amber-300">{u.extractionStatus.lowConfidenceFieldCount} field(s) need review</p>
             )}
             {!u.extractionStatus.hasResult && (
-              <p className="text-slate-400">No AI analysis run yet. Use the AI Analysis tab.</p>
+              <p className="text-muted-foreground">No AI analysis run yet. Use the AI Analysis tab.</p>
             )}
           </div>
         </SectionCard>
@@ -481,24 +481,24 @@ export function DmsDocumentUnderstandingSection({
         <SectionCard title="AI Pipeline (ORCH.1)" icon={<Zap className="h-3 w-3" />}>
           <div className="flex items-center gap-2 mb-2">
             <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0",
-              u.orchestrationStatus.status === "complete" ? "bg-green-50 text-green-700 border-green-200" :
-              u.orchestrationStatus.status === "complete_with_warnings" ? "bg-amber-50 text-amber-700 border-amber-200" :
-              u.orchestrationStatus.status === "failed" ? "bg-red-50 text-red-700 border-red-200" :
-              "bg-slate-50 text-slate-500 border-slate-200"
+              u.orchestrationStatus.status === "complete" ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-200 dark:border-green-800" :
+              u.orchestrationStatus.status === "complete_with_warnings" ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800" :
+              u.orchestrationStatus.status === "failed" ? "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-200 dark:border-red-800" :
+              "bg-muted text-muted-foreground border-border"
             )}>
               {u.orchestrationStatus.status?.replace(/_/g, " ") ?? "Unknown"}
             </Badge>
-            <span className="text-xs text-slate-500">{u.orchestrationStatus.completedSteps} steps complete{u.orchestrationStatus.failedSteps > 0 && `, ${u.orchestrationStatus.failedSteps} failed`}</span>
+            <span className="text-xs text-muted-foreground">{u.orchestrationStatus.completedSteps} steps complete{u.orchestrationStatus.failedSteps > 0 && `, ${u.orchestrationStatus.failedSteps} failed`}</span>
           </div>
           <div className="flex flex-wrap gap-1">
             {u.orchestrationStatus.steps.slice(0, 10).map((step) => {
               const icons: Record<string, React.ReactNode> = {
-                completed: <CheckCircle2 className="h-2.5 w-2.5 text-green-500" />,
+                completed: <CheckCircle2 className="h-2.5 w-2.5 text-green-500 dark:text-green-300" />,
                 failed: <XCircle className="h-2.5 w-2.5 text-red-400" />,
                 skipped: <SkipForward className="h-2.5 w-2.5 text-slate-300" />,
               };
               return (
-                <div key={step.step} className="flex items-center gap-0.5 text-[10px] text-slate-600">
+                <div key={step.step} className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
                   {icons[step.status] ?? <Clock className="h-2.5 w-2.5 text-slate-300" />}
                   <span className="capitalize">{step.step.replace(/_/g, " ")}</span>
                 </div>
@@ -511,7 +511,7 @@ export function DmsDocumentUnderstandingSection({
       {/* Field Update Candidates */}
       <SectionCard title="Field Update Candidates (COMMON AI)" icon={<Sparkles className="h-3 w-3" />}>
         {!u.fieldCandidates.registryAvailable ? (
-          <div className="text-xs text-slate-400">
+          <div className="text-xs text-muted-foreground">
             {u.tagsLinks.linkCount === 0
               ? "Link this document to an Organization or Party to see field update candidates."
               : "Field update preview is currently available for Organization and Party only."}
@@ -519,9 +519,9 @@ export function DmsDocumentUnderstandingSection({
         ) : (
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-500 capitalize">{u.fieldCandidates.entityType} — {u.fieldCandidates.candidateFields.length} candidate fields</span>
+              <span className="text-muted-foreground capitalize">{u.fieldCandidates.entityType} — {u.fieldCandidates.candidateFields.length} candidate fields</span>
               {u.fieldCandidates.pendingSuggestionCount > 0 && (
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-violet-50 text-violet-700 border-violet-200">
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950 dark:text-violet-200 dark:border-violet-800">
                   {u.fieldCandidates.pendingSuggestionCount} pending suggestion{u.fieldCandidates.pendingSuggestionCount > 1 ? "s" : ""}
                 </Badge>
               )}
@@ -532,12 +532,12 @@ export function DmsDocumentUnderstandingSection({
                   <span className={cn("h-1.5 w-1.5 rounded-full flex-shrink-0",
                     f.relevance === "high" ? "bg-violet-500" : "bg-slate-300"
                   )} />
-                  <span className="truncate text-slate-700">{f.fieldLabel}</span>
-                  {f.hasPendingSuggestion && <CheckCircle2 className="h-2.5 w-2.5 text-green-500 flex-shrink-0" />}
+                  <span className="truncate text-foreground">{f.fieldLabel}</span>
+                  {f.hasPendingSuggestion && <CheckCircle2 className="h-2.5 w-2.5 text-green-500 flex-shrink-0 dark:text-green-300" />}
                 </div>
               ))}
             </div>
-            <p className="text-[10px] text-slate-400 flex items-center gap-1">
+            <p className="text-[10px] text-muted-foreground flex items-center gap-1">
               <Info className="h-2.5 w-2.5" />
               Preview only. Open the entity AI Review tab to generate and apply suggestions.
             </p>
@@ -546,7 +546,7 @@ export function DmsDocumentUnderstandingSection({
                 href={u.fieldCandidates.aiReviewRoute}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-[11px] text-violet-700 border border-violet-200 rounded px-2 py-1 hover:bg-violet-50"
+                className="inline-flex items-center gap-1 text-[11px] text-violet-700 border border-violet-200 rounded px-2 py-1 hover:bg-violet-50 dark:text-violet-200 dark:border-violet-800 dark:hover:bg-violet-950"
               >
                 <ExternalLink className="h-2.5 w-2.5" />
                 Open {u.fieldCandidates.entityType === "company" ? "Organization" : "Party"} AI Review
@@ -558,15 +558,15 @@ export function DmsDocumentUnderstandingSection({
 
       {/* Duplicate / Conflict Candidates (COMMON AI.3) */}
       {u.duplicateCandidates.hasPending && (
-        <SectionCard title="Duplicate / Conflict Review" icon={<GitMerge className="h-3 w-3" />} className="border-amber-200 bg-amber-50/40">
-          <p className="text-xs text-amber-900">
+        <SectionCard title="Duplicate / Conflict Review" icon={<GitMerge className="h-3 w-3" />} className="border-amber-200 bg-amber-50/40 dark:border-amber-800 dark:bg-amber-950/40">
+          <p className="text-xs text-amber-900 dark:text-amber-200">
             {u.duplicateCandidates.pendingCount} pending duplicate/conflict candidate
             {u.duplicateCandidates.pendingCount === 1 ? "" : "s"} linked to this document.
           </p>
           {u.duplicateCandidates.reviewRoute && (
             <a
               href={u.duplicateCandidates.reviewRoute}
-              className="inline-flex items-center gap-1 text-[11px] text-amber-800 border border-amber-300 rounded px-2 py-1 mt-2 hover:bg-amber-100"
+              className="inline-flex items-center gap-1 text-[11px] text-amber-800 border border-amber-300 rounded px-2 py-1 mt-2 hover:bg-amber-100 dark:text-amber-200 dark:border-amber-800 dark:hover:bg-amber-950"
             >
               <ExternalLink className="h-2.5 w-2.5" />
               Review in AI Duplicates
@@ -582,11 +582,11 @@ export function DmsDocumentUnderstandingSection({
           icon={<Scale className="h-3 w-3" />}
           className={
             u.complianceFindings.hasCritical
-              ? "border-red-200 bg-red-50/40"
+              ? "border-red-200 bg-red-50/40 dark:border-red-800 dark:bg-red-950/40"
               : "border-teal-200 bg-teal-50/40"
           }
         >
-          <p className={`text-xs ${u.complianceFindings.hasCritical ? "text-red-900" : "text-teal-900"}`}>
+          <p className={`text-xs ${u.complianceFindings.hasCritical ? "text-red-900 dark:text-red-200" : "text-teal-900"}`}>
             {u.complianceFindings.openCount} open compliance finding
             {u.complianceFindings.openCount === 1 ? "" : "s"} linked to this document.
           </p>
@@ -595,7 +595,7 @@ export function DmsDocumentUnderstandingSection({
               href={u.complianceFindings.reviewRoute}
               className={`inline-flex items-center gap-1 text-[11px] border rounded px-2 py-1 mt-2 hover:opacity-90 ${
                 u.complianceFindings.hasCritical
-                  ? "text-red-800 border-red-300 hover:bg-red-100"
+                  ? "text-red-800 border-red-300 hover:bg-red-100 dark:text-red-200 dark:border-red-800 dark:hover:bg-red-950"
                   : "text-teal-800 border-teal-300 hover:bg-teal-100"
               }`}
             >
@@ -613,21 +613,21 @@ export function DmsDocumentUnderstandingSection({
           icon={<TrendingUp className="h-3 w-3" />}
           className={
             u.entityRisk.riskLevel === "critical" || u.entityRisk.riskLevel === "high"
-              ? "border-orange-200 bg-orange-50/40"
-              : "border-slate-200 bg-slate-50/40"
+              ? "border-orange-200 bg-orange-50/40 dark:border-orange-800 dark:bg-orange-950/40"
+              : "border-border bg-muted/40"
           }
         >
           <div className="flex items-center gap-2 text-xs">
             <span className="capitalize text-muted-foreground">{u.entityRisk.entityType}</span>
             <RiskLevelBadge level={u.entityRisk.riskLevel} score={u.entityRisk.riskScore} />
             {u.entityRisk.isStale && (
-              <span className="text-[10px] text-amber-700 font-medium">Stale</span>
+              <span className="text-[10px] text-amber-700 font-medium dark:text-amber-200">Stale</span>
             )}
           </div>
           {u.entityRisk.reviewRoute && (
             <a
               href={u.entityRisk.reviewRoute}
-              className="inline-flex items-center gap-1 text-[11px] border rounded px-2 py-1 mt-2 hover:opacity-90 text-orange-800 border-orange-300 hover:bg-orange-100"
+              className="inline-flex items-center gap-1 text-[11px] border rounded px-2 py-1 mt-2 hover:opacity-90 text-orange-800 border-orange-300 hover:bg-orange-100 dark:text-orange-200 dark:border-orange-800 dark:hover:bg-orange-950"
             >
               <ExternalLink className="h-2.5 w-2.5" />
               Review in AI Risk
@@ -638,7 +638,7 @@ export function DmsDocumentUnderstandingSection({
 
       {/* Recommended Actions */}
       {u.actions.length > 0 && (
-        <SectionCard title="Recommended Actions" icon={<Zap className="h-3 w-3" />} className="border-blue-100 bg-blue-50/30">
+        <SectionCard title="Recommended Actions" icon={<Zap className="h-3 w-3" />} className="border-blue-100 bg-blue-50/30 dark:border-blue-800 dark:bg-blue-950/30">
           <div className="space-y-1.5">
             {u.actions.map((action) => (
               <ActionRow key={action.actionCode} action={action} onNavigateToSection={onNavigateToSection} />
@@ -647,7 +647,7 @@ export function DmsDocumentUnderstandingSection({
         </SectionCard>
       )}
 
-      <p className="text-[10px] text-slate-400 text-center pt-1">
+      <p className="text-[10px] text-muted-foreground text-center pt-1">
         Intelligence aggregated at {new Date(u.generatedAt).toLocaleTimeString()} — {new Date(u.generatedAt).toLocaleDateString()}
       </p>
     </div></QueryReadBoundary>
@@ -664,14 +664,14 @@ function ActionRow({
   onNavigateToSection?: (section: string) => void;
 }) {
   const colors = {
-    high: "border-red-200 bg-red-50/50",
-    medium: "border-amber-200 bg-amber-50/50",
-    low: "border-slate-200 bg-white",
+    high: "border-red-200 bg-red-50/50 dark:border-red-800 dark:bg-red-950/50",
+    medium: "border-amber-200 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/50",
+    low: "border-border bg-card",
   };
   const badgeColors = {
-    high: "bg-red-50 text-red-700 border-red-200",
-    medium: "bg-amber-50 text-amber-700 border-amber-200",
-    low: "bg-slate-50 text-slate-500 border-slate-200",
+    high: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-200 dark:border-red-800",
+    medium: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800",
+    low: "bg-muted text-muted-foreground border-border",
   };
 
   const openBtn = (() => {
@@ -682,7 +682,7 @@ function ActionRow({
           href={action.linkToRoute}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-blue-600 hover:text-blue-800 flex items-center gap-0.5 text-[10px] flex-shrink-0 mt-0.5"
+          className="text-blue-600 hover:text-blue-800 flex items-center gap-0.5 text-[10px] flex-shrink-0 mt-0.5 dark:text-blue-300 dark:hover:text-blue-200"
         >
           Open <ExternalLink className="h-2.5 w-2.5" />
         </a>
@@ -694,7 +694,7 @@ function ActionRow({
         <button
           type="button"
           onClick={() => onNavigateToSection?.(action.linkToTab!)}
-          className="text-blue-600 hover:text-blue-800 flex items-center gap-0.5 text-[10px] flex-shrink-0 mt-0.5 cursor-pointer"
+          className="text-blue-600 hover:text-blue-800 flex items-center gap-0.5 text-[10px] flex-shrink-0 mt-0.5 cursor-pointer dark:text-blue-300 dark:hover:text-blue-200"
         >
           Open <ExternalLink className="h-2.5 w-2.5" />
         </button>
@@ -709,8 +709,8 @@ function ActionRow({
         {action.priority}
       </Badge>
       <div className="flex-1 min-w-0">
-        <p className="font-medium text-slate-800">{action.label}</p>
-        <p className="text-slate-500 text-[11px]">{action.description}</p>
+        <p className="font-medium text-foreground">{action.label}</p>
+        <p className="text-muted-foreground text-[11px]">{action.description}</p>
       </div>
       {openBtn}
     </div>

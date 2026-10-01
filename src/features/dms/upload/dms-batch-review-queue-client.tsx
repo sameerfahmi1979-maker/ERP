@@ -44,11 +44,11 @@ interface Props {
 }
 
 const BATCH_STATUS_STYLES: Record<string, string> = {
-  processing: "bg-blue-100 text-blue-700 border-blue-200",
-  ready_for_review: "bg-amber-100 text-amber-700 border-amber-200",
-  partially_approved: "bg-violet-100 text-violet-700 border-violet-200",
-  completed: "bg-green-100 text-green-700 border-green-200",
-  cancelled: "bg-gray-100 text-gray-600 border-gray-200",
+  processing: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-200 dark:border-blue-800",
+  ready_for_review: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800",
+  partially_approved: "bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-950 dark:text-violet-200 dark:border-violet-800",
+  completed: "bg-green-100 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-200 dark:border-green-800",
+  cancelled: "bg-muted text-muted-foreground border-border",
 };
 
 function StatCard({ label, value, tone }: { label: string; value: number; tone?: string }) {
@@ -319,11 +319,11 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
       <div className="rounded-xl border bg-card p-4 space-y-3">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2">
-            <Layers className="h-4 w-4 text-violet-600" />
+            <Layers className="h-4 w-4 text-violet-600 dark:text-violet-300" />
             <span className="font-mono text-sm font-semibold">{batch.batch_code}</span>
             <Badge
               variant="outline"
-              className={cn("text-[10px] border", BATCH_STATUS_STYLES[batch.status] ?? "bg-slate-100 text-slate-700 border-slate-200")}
+              className={cn("text-[10px] border", BATCH_STATUS_STYLES[batch.status] ?? "bg-muted text-foreground border-border")}
             >
               {batch.status.replace(/_/g, " ")}
             </Badge>
@@ -335,7 +335,7 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
               variant="outline"
               onClick={handleRunBatchOrchestration}
               disabled={isOrchRunning || isPending}
-              className="border-violet-200 text-violet-700 hover:bg-violet-50 gap-1.5"
+              className="border-violet-200 text-violet-700 hover:bg-violet-50 gap-1.5 dark:border-violet-800 dark:text-violet-200 dark:hover:bg-violet-950"
               title="Run full AI pipeline (summary, intelligence, embedding, tags, links) on all pending drafts. One-by-one approval is still required."
             >
               {isOrchRunning
@@ -375,14 +375,14 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
           <StatCard label="Total" value={batch.total_files} />
           <StatCard label="Processed" value={batch.processed_files} />
-          <StatCard label="Pending Review" value={pending} tone="text-amber-600" />
-          <StatCard label="Approved" value={approved} tone="text-green-600" />
+          <StatCard label="Pending Review" value={pending} tone="text-amber-600 dark:text-amber-300" />
+          <StatCard label="Approved" value={approved} tone="text-green-600 dark:text-green-300" />
           <StatCard label="Failed" value={failed} tone="text-destructive" />
           <StatCard label="Discarded" value={discarded} tone="text-muted-foreground" />
         </div>
 
         <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20 px-3 py-2">
-          <AlertTriangle className="h-3.5 w-3.5 text-amber-600 mt-0.5 shrink-0" />
+          <AlertTriangle className="h-3.5 w-3.5 text-amber-600 mt-0.5 shrink-0 dark:text-amber-300" />
           <p className="text-[11px] text-amber-700 dark:text-amber-400">
             One-by-one approval only. Open each draft with <strong>Review &amp; Approve</strong>, verify the AI-filled
             fields, then click <strong>Approve &amp; Save</strong> inside the review screen. There is no bulk approval.
@@ -477,7 +477,7 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
                         </p>
                       </div>
                       {d.isDuplicate && (
-                        <Badge variant="outline" className="text-[9px] border-orange-300 text-orange-700 bg-orange-50 shrink-0">
+                        <Badge variant="outline" className="text-[9px] border-orange-300 text-orange-700 bg-orange-50 shrink-0 dark:border-orange-800 dark:text-orange-200 dark:bg-orange-950">
                           Dup
                         </Badge>
                       )}
@@ -494,9 +494,9 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
                   </td>
                   <td data-column="status" className="px-3 py-2">
                     {isFailed ? (
-                      <Badge variant="outline" className="text-[10px] border-red-200 text-red-700 bg-red-50">Failed</Badge>
+                      <Badge variant="outline" className="text-[10px] border-red-200 text-red-700 bg-red-50 dark:border-red-800 dark:text-red-200 dark:bg-red-950">Failed</Badge>
                     ) : isDiscarded ? (
-                      <Badge variant="outline" className="text-[10px] border-gray-200 text-gray-600 bg-gray-50">Discarded</Badge>
+                      <Badge variant="outline" className="text-[10px] border-border text-muted-foreground bg-muted">Discarded</Badge>
                     ) : d.documentStatus ? (
                       <DmsDocumentStatusBadge status={d.documentStatus} />
                     ) : (

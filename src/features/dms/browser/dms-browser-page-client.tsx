@@ -375,7 +375,7 @@ export function DmsBrowserPageClient({ docTypes }: DmsBrowserPageClientProps) {
 
         {/* AI intent banner — only visible after AI search fired */}
         {(aiIntent ?? isAiSearching) && (
-          <div className="border-b border-border/40 bg-slate-50/60 px-3">
+          <div className="border-b border-border/40 bg-muted/60 px-3">
             <DmsBrowserIntentBanner
               intent={aiIntent}
               resultCount={aiIntent ? rows.length : null}

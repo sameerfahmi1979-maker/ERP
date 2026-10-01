@@ -22,8 +22,8 @@ export function AssistantSessionList({
   isCreating,
 }: AssistantSessionListProps) {
   return (
-    <div className="flex flex-col h-full bg-slate-50 border-r border-slate-200 w-64 flex-shrink-0">
-      <div className="p-3 border-b border-slate-200">
+    <div className="flex flex-col h-full bg-muted border-r border-border w-64 flex-shrink-0">
+      <div className="p-3 border-b border-border">
         <Button
           onClick={onNewSession}
           disabled={isCreating}
@@ -39,7 +39,7 @@ export function AssistantSessionList({
         {sessions.length === 0 && (
           <div className="text-center py-8">
             <MessageSquare className="h-8 w-8 text-slate-300 mx-auto mb-2" />
-            <p className="text-xs text-slate-400">No sessions yet</p>
+            <p className="text-xs text-muted-foreground">No sessions yet</p>
           </div>
         )}
         {sessions.map((session) => (
@@ -50,18 +50,18 @@ export function AssistantSessionList({
             className={cn(
               "w-full text-left px-3 py-2.5 rounded-lg transition-colors",
               activeSessionId === session.id
-                ? "bg-violet-100 border border-violet-200"
-                : "hover:bg-white hover:border hover:border-slate-200 border border-transparent"
+                ? "bg-violet-100 border border-violet-200 dark:bg-violet-950 dark:border-violet-800"
+                : "hover:bg-card hover:border hover:border-border border border-transparent"
             )}
           >
             <div className="flex items-start gap-2">
               {session.status === "archived" ? (
-                <Archive className="h-3.5 w-3.5 text-slate-400 flex-shrink-0 mt-0.5" />
+                <Archive className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0 mt-0.5" />
               ) : (
                 <MessageSquare
                   className={cn(
                     "h-3.5 w-3.5 flex-shrink-0 mt-0.5",
-                    activeSessionId === session.id ? "text-violet-600" : "text-slate-400"
+                    activeSessionId === session.id ? "text-violet-600 dark:text-violet-300" : "text-muted-foreground"
                   )}
                 />
               )}
@@ -69,12 +69,12 @@ export function AssistantSessionList({
                 <p
                   className={cn(
                     "text-xs font-medium truncate",
-                    activeSessionId === session.id ? "text-violet-900" : "text-slate-700"
+                    activeSessionId === session.id ? "text-violet-900 dark:text-violet-200" : "text-foreground"
                   )}
                 >
                   {session.title ?? `Session #${session.id}`}
                 </p>
-                <p className="text-[10px] text-slate-400 mt-0.5">
+                <p className="text-[10px] text-muted-foreground mt-0.5">
                   {session.messageCount} msg ·{" "}
                   {formatDistanceToNow(new Date(session.createdAt), { addSuffix: true })}
                 </p>

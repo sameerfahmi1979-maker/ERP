@@ -13,12 +13,12 @@ import { UserMinus } from "lucide-react";
 type Props = { authContext: AuthContext };
 
 const STATUS_COLORS: Record<string, string> = {
-  draft: "bg-slate-100 text-slate-600",
-  notice_served: "bg-orange-100 text-orange-700",
+  draft: "bg-muted text-muted-foreground",
+  notice_served: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-200",
   clearance_in_progress: "bg-indigo-100 text-indigo-700",
-  pending_final_settlement: "bg-purple-100 text-purple-700",
-  closed: "bg-slate-100 text-slate-500",
-  cancelled: "bg-slate-100 text-slate-400",
+  pending_final_settlement: "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-200",
+  closed: "bg-muted text-muted-foreground",
+  cancelled: "bg-muted text-muted-foreground",
 };
 
 export function HrEosPageClient({ authContext }: Props) {
@@ -44,9 +44,9 @@ export function HrEosPageClient({ authContext }: Props) {
         <div className="text-center py-16 text-muted-foreground">No EOS cases found.</div>
       ) : (
         <div className="rounded-lg border overflow-hidden">
-          {/* UI04 explicit table: loaded authorized rows only */}<ERPDataTable tableId="hr.actions.hr-eos-page-client" data={items} columns={[{id:"eos_type",header:"EOS Type",accessorFn:item=>loadedListValue(item,"eos_type"),enableHiding:false,size:240,cell:({row:{original:item}})=><>{item.eos_type.replace(/_/g, " ")}</>},{id:"case_status",header:"Status",accessorFn:item=>loadedListValue(item,"case_status"),enableHiding:true,size:160,cell:({row:{original:item}})=><><span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[item.case_status] ?? "bg-slate-100 text-slate-600"}`}>
+          {/* UI04 explicit table: loaded authorized rows only */}<ERPDataTable tableId="hr.actions.hr-eos-page-client" data={items} columns={[{id:"eos_type",header:"EOS Type",accessorFn:item=>loadedListValue(item,"eos_type"),enableHiding:false,size:240,cell:({row:{original:item}})=><>{item.eos_type.replace(/_/g, " ")}</>},{id:"case_status",header:"Status",accessorFn:item=>loadedListValue(item,"case_status"),enableHiding:true,size:160,cell:({row:{original:item}})=><><span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[item.case_status] ?? "bg-muted text-muted-foreground"}`}>
                       {item.case_status.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
-                    </span></>},{id:"notice_date",header:"Notice Date",accessorFn:item=>loadedListValue(item,"notice_date"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{item.notice_date ?? "—"}</>},{id:"last_working_date",header:"Last Working Date",accessorFn:item=>loadedListValue(item,"last_working_date"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{item.last_working_date ?? "—"}</>},{id:"final_settlement_status",header:"Settlement",accessorFn:item=>loadedListValue(item,"final_settlement_status"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{item.final_settlement_status.replace(/_/g, " ")}</>},{id:"clearance_completed",header:"Clearance",accessorFn:item=>loadedListValue(item,"clearance_completed"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{item.clearance_completed ? <span className="text-green-600 font-medium">Completed</span> : <span className="text-muted-foreground">Pending</span>}</>}]} enableRowSelection={false} initialPageSize={25} searchPlaceholder="Search loaded records…"/>
+                    </span></>},{id:"notice_date",header:"Notice Date",accessorFn:item=>loadedListValue(item,"notice_date"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{item.notice_date ?? "—"}</>},{id:"last_working_date",header:"Last Working Date",accessorFn:item=>loadedListValue(item,"last_working_date"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{item.last_working_date ?? "—"}</>},{id:"final_settlement_status",header:"Settlement",accessorFn:item=>loadedListValue(item,"final_settlement_status"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{item.final_settlement_status.replace(/_/g, " ")}</>},{id:"clearance_completed",header:"Clearance",accessorFn:item=>loadedListValue(item,"clearance_completed"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{item.clearance_completed ? <span className="text-green-600 font-medium dark:text-green-300">Completed</span> : <span className="text-muted-foreground">Pending</span>}</>}]} enableRowSelection={false} initialPageSize={25} searchPlaceholder="Search loaded records…"/>
         </div>
       )}
     </div></QueryReadBoundary>

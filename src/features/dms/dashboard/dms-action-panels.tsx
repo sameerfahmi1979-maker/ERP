@@ -32,9 +32,9 @@ function PanelShell({
     blue: "bg-blue-500",
   }[accent];
   const badgeCls = {
-    amber: "bg-amber-50 text-amber-700 border-amber-200",
-    red: "bg-red-50 text-red-700 border-red-200",
-    blue: "bg-blue-50 text-blue-700 border-blue-200",
+    amber: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800",
+    red: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-200 dark:border-red-800",
+    blue: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-200 dark:border-blue-800",
   }[accent];
 
   return (
@@ -65,7 +65,7 @@ function PanelShell({
 function EmptyState({ label }: { label: string }) {
   return (
     <div className="flex flex-col items-center justify-center gap-1.5 py-8 text-center">
-      <CheckCircle2 className="h-5 w-5 text-emerald-500/70" />
+      <CheckCircle2 className="h-5 w-5 text-emerald-500/70 dark:text-emerald-300/70" />
       <p className="text-xs text-muted-foreground">{label}</p>
     </div>
   );
@@ -79,7 +79,7 @@ export function DmsInboxPanel({ items }: InboxPanelProps) {
   return (
     <PanelShell
       accent="amber"
-      icon={<Inbox className="h-4 w-4 text-amber-500" />}
+      icon={<Inbox className="h-4 w-4 text-amber-500 dark:text-amber-300" />}
       title="Inbox Needs Processing"
       count={items.length}
       href="/dms/inbox"
@@ -102,7 +102,7 @@ export function DmsInboxPanel({ items }: InboxPanelProps) {
             </div>
             <Badge
               variant="outline"
-              className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 shrink-0"
+              className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 shrink-0 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800"
             >
               {item.intake_status === "pending" ? "Pending" : "Processing"}
             </Badge>
@@ -126,10 +126,10 @@ function expiryBadge(dateStr: string) {
       className={cn(
         "text-[10px] shrink-0",
         days <= 0
-          ? "bg-red-100 text-red-700 border-red-200"
+          ? "bg-red-100 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-200 dark:border-red-800"
           : days <= 3
-          ? "bg-orange-100 text-orange-700 border-orange-200"
-          : "bg-amber-50 text-amber-700 border-amber-200"
+          ? "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-200 dark:border-orange-800"
+          : "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800"
       )}
     >
       {label}
@@ -141,7 +141,7 @@ export function DmsExpiringPanel({ items }: ExpiringPanelProps) {
   return (
     <PanelShell
       accent="red"
-      icon={<AlertTriangle className="h-4 w-4 text-red-500" />}
+      icon={<AlertTriangle className="h-4 w-4 text-red-500 dark:text-red-300" />}
       title="Expiring This Week"
       count={items.length}
       href="/dms/expiring"
@@ -174,10 +174,10 @@ export function DmsExpiringPanel({ items }: ExpiringPanelProps) {
 // ── Renewals Panel ─────────────────────────────────────────────────────────────
 
 const PRIORITY_STYLES: Record<string, string> = {
-  urgent: "bg-red-100 text-red-700 border-red-200",
-  high: "bg-orange-100 text-orange-700 border-orange-200",
-  medium: "bg-amber-50 text-amber-700 border-amber-200",
-  low: "bg-slate-100 text-slate-600 border-slate-200",
+  urgent: "bg-red-100 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-200 dark:border-red-800",
+  high: "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-200 dark:border-orange-800",
+  medium: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800",
+  low: "bg-muted text-muted-foreground border-border",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -193,7 +193,7 @@ export function DmsRenewalsPanel({ items }: RenewalsPanelProps) {
   return (
     <PanelShell
       accent="blue"
-      icon={<RefreshCw className="h-4 w-4 text-blue-500" />}
+      icon={<RefreshCw className="h-4 w-4 text-blue-500 dark:text-blue-300" />}
       title="Active Renewals"
       count={items.length}
       href="/dms/renewals"
@@ -215,7 +215,7 @@ export function DmsRenewalsPanel({ items }: RenewalsPanelProps) {
                 variant="outline"
                 className={cn(
                   "text-[10px] shrink-0 capitalize",
-                  PRIORITY_STYLES[item.priority] ?? "bg-slate-100 text-slate-600"
+                  PRIORITY_STYLES[item.priority] ?? "bg-muted text-muted-foreground"
                 )}
               >
                 {item.priority}

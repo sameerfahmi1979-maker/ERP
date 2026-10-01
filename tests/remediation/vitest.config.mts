@@ -4,6 +4,7 @@ import { fluentTestServer } from './fluent-test-config.mts';
 export default defineConfig({
   resolve: { alias: {
     '@': path.resolve('src'),
+    'server-only': path.resolve('tests/unit/server-only.ts'),
     'https://esm.sh/@supabase/supabase-js@2.106.2': path.resolve('tests/remediation/f02-repair/no-db.ts'),
   } },
   oxc: { jsx: { runtime: 'automatic' } },

@@ -128,7 +128,7 @@ export function ServiceCategoriesAdminTable({ rows, authContext }: Props) {
                 </>; }},
     {accessorKey:"parent_name",header:"Parent",cell:({row:tableRow})=>{const row=tableRow.original;return <>{row.parent_name ?? "—"}</>; }},
     {accessorKey:"is_active",header:"Status",cell:({row:tableRow})=>{const row=tableRow.original;return <>
-                  <Badge className={row.is_active ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"}>
+                  <Badge className={row.is_active ? "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-200" : "bg-muted text-muted-foreground"}>
                     {row.is_active ? "Active" : "Inactive"}
                   </Badge>
                 </>; }},

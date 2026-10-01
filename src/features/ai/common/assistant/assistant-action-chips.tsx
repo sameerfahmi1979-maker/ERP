@@ -25,13 +25,13 @@ interface AssistantActionChipsProps {
 
 export function AssistantActionChips({ onChipClick }: AssistantActionChipsProps) {
   return (
-    <div className="flex flex-wrap gap-1.5 px-4 py-2 border-b border-slate-100">
+    <div className="flex flex-wrap gap-1.5 px-4 py-2 border-b border-border">
       {ACTION_CHIPS.map((chip) => (
         <button
           key={chip.label}
           type="button"
           onClick={() => onChipClick(chip.prompt)}
-          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs text-slate-600 bg-white border border-slate-200 rounded-full hover:bg-violet-50 hover:border-violet-300 hover:text-violet-700 transition-colors"
+          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs text-muted-foreground bg-card border border-border rounded-full hover:bg-violet-50 hover:border-violet-300 hover:text-violet-700 transition-colors dark:hover:bg-violet-950 dark:hover:border-violet-800 dark:hover:text-violet-200"
         >
           {chip.icon}
           {chip.label}

@@ -23,10 +23,10 @@ import type { AuthContext } from "@/lib/rbac/check";
 type Props = { authContext: AuthContext };
 
 const STATUS_COLORS: Record<string, string> = {
-  pending: "bg-amber-100 text-amber-700",
-  approved: "bg-green-100 text-green-700",
-  rejected: "bg-red-100 text-red-700",
-  cancelled: "bg-slate-100 text-slate-500",
+  pending: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-200",
+  approved: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-200",
+  rejected: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-200",
+  cancelled: "bg-muted text-muted-foreground",
 };
 
 export function HrApprovalsPageClient({ authContext }: Props) {
@@ -76,14 +76,14 @@ export function HrApprovalsPageClient({ authContext }: Props) {
         <div className="text-center py-16 text-muted-foreground">No approval requests found.</div>
       ) : (
         <div className="rounded-lg border overflow-hidden">
-          {/* UI04 explicit table: loaded authorized rows only */}<ERPDataTable tableId="hr.actions.hr-approvals-page-client" data={items} columns={[{id:"request_title",header:"Request",accessorFn:item=>loadedListValue(item,"request_title"),enableHiding:false,size:240,cell:({row:{original:item}}:{row:{original:(typeof items)[number]}})=><>{item.request_title}</>},{id:"approval_type",header:"Type",accessorFn:item=>loadedListValue(item,"approval_type"),enableHiding:true,size:160,cell:({row:{original:item}}:{row:{original:(typeof items)[number]}})=><>{item.approval_type.replace(/_/g, " ")}</>},{id:"request_status",header:"Status",accessorFn:item=>loadedListValue(item,"request_status"),enableHiding:true,size:160,cell:({row:{original:item}}:{row:{original:(typeof items)[number]}})=><><span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[item.request_status] ?? "bg-slate-100 text-slate-600"}`}>
+          {/* UI04 explicit table: loaded authorized rows only */}<ERPDataTable tableId="hr.actions.hr-approvals-page-client" data={items} columns={[{id:"request_title",header:"Request",accessorFn:item=>loadedListValue(item,"request_title"),enableHiding:false,size:240,cell:({row:{original:item}}:{row:{original:(typeof items)[number]}})=><>{item.request_title}</>},{id:"approval_type",header:"Type",accessorFn:item=>loadedListValue(item,"approval_type"),enableHiding:true,size:160,cell:({row:{original:item}}:{row:{original:(typeof items)[number]}})=><>{item.approval_type.replace(/_/g, " ")}</>},{id:"request_status",header:"Status",accessorFn:item=>loadedListValue(item,"request_status"),enableHiding:true,size:160,cell:({row:{original:item}}:{row:{original:(typeof items)[number]}})=><><span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[item.request_status] ?? "bg-muted text-muted-foreground"}`}>
                       {item.request_status.charAt(0).toUpperCase() + item.request_status.slice(1)}
                     </span></>},{id:"requested_at",header:"Requested",accessorFn:item=>loadedListValue(item,"requested_at"),enableHiding:true,size:160,cell:({row:{original:item}}:{row:{original:(typeof items)[number]}})=><>{new Date(item.requested_at).toLocaleDateString()}</>},...(canManage?[{id:"actions",header:"Actions",enableHiding:true,size:200,enableSorting:false,meta:{exportable:false},cell:({row:{original:item}}:{row:{original:(typeof items)[number]}})=><>{item.request_status === "pending" && (
                         <div className="flex gap-1">
-                          <Button size="sm" variant="outline" className="h-7 text-xs text-green-700 border-green-300" disabled={isPending} onClick={() => handleApprove(item.id)}>
+                          <Button size="sm" variant="outline" className="h-7 text-xs text-green-700 border-green-300 dark:text-green-200 dark:border-green-800" disabled={isPending} onClick={() => handleApprove(item.id)}>
                             <CheckCircle className="h-3 w-3 mr-1" />Approve
                           </Button>
-                          <Button size="sm" variant="outline" className="h-7 text-xs text-red-700 border-red-300" disabled={isPending} onClick={() => handleReject(item.id)}>
+                          <Button size="sm" variant="outline" className="h-7 text-xs text-red-700 border-red-300 dark:text-red-200 dark:border-red-800" disabled={isPending} onClick={() => handleReject(item.id)}>
                             <XCircle className="h-3 w-3 mr-1" />Reject
                           </Button>
                         </div>

@@ -59,12 +59,12 @@ const GOVERNANCE_BADGE: Record<
   TemplateGovernanceStatus,
   { label: string; className: string }
 > = {
-  draft: { label: "Draft", className: "bg-slate-100 text-slate-700 border-slate-300" },
-  in_review: { label: "In Review", className: "bg-amber-100 text-amber-800 border-amber-300" },
-  approved: { label: "Approved", className: "bg-emerald-100 text-emerald-800 border-emerald-300" },
-  published: { label: "Published", className: "bg-blue-100 text-blue-800 border-blue-300" },
+  draft: { label: "Draft", className: "bg-muted text-foreground border-input" },
+  in_review: { label: "In Review", className: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800" },
+  approved: { label: "Approved", className: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-200 dark:border-emerald-800" },
+  published: { label: "Published", className: "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950 dark:text-blue-200 dark:border-blue-800" },
   archived: { label: "Archived", className: "bg-zinc-100 text-zinc-500 border-zinc-300" },
-  rejected: { label: "Rejected", className: "bg-red-100 text-red-700 border-red-300" },
+  rejected: { label: "Rejected", className: "bg-red-100 text-red-700 border-red-300 dark:bg-red-950 dark:text-red-200 dark:border-red-800" },
 };
 
 export function GovernanceStatusBadge({
@@ -98,14 +98,14 @@ export function SecurityReviewBadge({
   }
   if (status === "passed") {
     return (
-      <span title="Security review passed" className="text-emerald-600">
+      <span title="Security review passed" className="text-emerald-600 dark:text-emerald-300">
         <ShieldCheck className="h-3.5 w-3.5" />
       </span>
     );
   }
   if (status === "failed") {
     return (
-      <span title="Security review failed" className="text-red-600">
+      <span title="Security review failed" className="text-red-600 dark:text-red-300">
         <ShieldAlert className="h-3.5 w-3.5" />
       </span>
     );
@@ -135,16 +135,16 @@ const EVENT_LABELS: Record<string, string> = {
 };
 
 const EVENT_ICON_CLASS: Record<string, string> = {
-  template_created: "bg-slate-200 text-slate-600",
-  template_updated: "bg-slate-200 text-slate-600",
-  template_submitted_for_review: "bg-amber-100 text-amber-700",
-  template_approved: "bg-emerald-100 text-emerald-700",
-  template_rejected: "bg-red-100 text-red-700",
-  template_published: "bg-blue-100 text-blue-700",
+  template_created: "bg-muted text-muted-foreground",
+  template_updated: "bg-muted text-muted-foreground",
+  template_submitted_for_review: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-200",
+  template_approved: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200",
+  template_rejected: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-200",
+  template_published: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-200",
   template_archived: "bg-zinc-100 text-zinc-500",
-  template_new_version_created: "bg-purple-100 text-purple-700",
-  template_security_review_failed: "bg-red-100 text-red-700",
-  template_security_review_passed: "bg-emerald-100 text-emerald-700",
+  template_new_version_created: "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-200",
+  template_security_review_failed: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-200",
+  template_security_review_passed: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200",
 };
 
 function formatEventDate(dateStr: string): string {
@@ -201,7 +201,7 @@ export function TemplateGovernanceHistoryDialog({
               <span
                 className={cn(
                   "absolute -left-3 flex h-6 w-6 items-center justify-center rounded-full text-[9px] font-bold border",
-                  EVENT_ICON_CLASS[event.event_type] ?? "bg-slate-100 text-slate-500"
+                  EVENT_ICON_CLASS[event.event_type] ?? "bg-muted text-muted-foreground"
                 )}
               >
                 {event.event_type.charAt(9).toUpperCase()}
@@ -494,13 +494,13 @@ export function GovernanceActionsDropdown({
         <DropdownMenuContent align="end" className="w-52">
           {canSubmit && (
             <DropdownMenuItem onClick={handleSubmitForReview} className="gap-2 text-sm">
-              <SendHorizonal className="h-3.5 w-3.5 text-amber-600" />
+              <SendHorizonal className="h-3.5 w-3.5 text-amber-600 dark:text-amber-300" />
               Submit for Review
             </DropdownMenuItem>
           )}
           {canApproveAction && (
             <DropdownMenuItem onClick={handleApprove} className="gap-2 text-sm">
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-300" />
               Approve
             </DropdownMenuItem>
           )}
@@ -509,13 +509,13 @@ export function GovernanceActionsDropdown({
               onClick={() => setRejectDialogOpen(true)}
               className="gap-2 text-sm"
             >
-              <XCircle className="h-3.5 w-3.5 text-red-600" />
+              <XCircle className="h-3.5 w-3.5 text-red-600 dark:text-red-300" />
               Reject
             </DropdownMenuItem>
           )}
           {canPublishAction && (
             <DropdownMenuItem onClick={handlePublish} className="gap-2 text-sm">
-              <Globe className="h-3.5 w-3.5 text-blue-600" />
+              <Globe className="h-3.5 w-3.5 text-blue-600 dark:text-blue-300" />
               Publish
             </DropdownMenuItem>
           )}

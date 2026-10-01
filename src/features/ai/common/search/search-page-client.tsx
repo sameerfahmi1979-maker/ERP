@@ -159,9 +159,9 @@ export function SearchPageClient({
         <div className="space-y-1">
           {response.totalCount > 0 && (
             <div className="flex items-center gap-2 pb-2">
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-muted-foreground">
                 {response.totalCount} result{response.totalCount !== 1 ? "s" : ""} for{" "}
-                <span className="font-medium text-slate-800">&ldquo;{response.query}&rdquo;</span>
+                <span className="font-medium text-foreground">&ldquo;{response.query}&rdquo;</span>
               </p>
               {response.intent && (
                 <Badge variant="outline" className="text-xs">

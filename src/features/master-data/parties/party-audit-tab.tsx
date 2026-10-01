@@ -13,10 +13,10 @@ type Props = {
 };
 
 const ACTION_COLORS: Record<string, string> = {
-  create: "bg-green-100 text-green-800",
-  update: "bg-blue-100 text-blue-800",
-  delete: "bg-red-100 text-red-800",
-  deactivate: "bg-orange-100 text-orange-800",
+  create: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-200",
+  update: "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-200",
+  delete: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200",
+  deactivate: "bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-200",
   reactivate: "bg-teal-100 text-teal-800",
 };
 
@@ -68,7 +68,7 @@ export function PartyAuditTab({ partyId, canViewAudit }: Props) {
         {logs.map((log) => (
           <div key={log.id} className="border rounded-md px-4 py-3 flex items-start gap-4">
             <div className="flex-shrink-0 pt-0.5">
-              <Badge className={`text-xs capitalize ${ACTION_COLORS[log.action] ?? "bg-gray-100 text-gray-800"}`}>
+              <Badge className={`text-xs capitalize ${ACTION_COLORS[log.action] ?? "bg-muted text-foreground"}`}>
                 {log.action}
               </Badge>
             </div>

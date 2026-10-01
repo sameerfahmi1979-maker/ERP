@@ -15,8 +15,8 @@ export function SearchResultGroupComponent({ group, results }: SearchResultGroup
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
-        <h3 className="text-sm font-semibold text-slate-700">{group.label}</h3>
-        <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+        <h3 className="text-sm font-semibold text-foreground">{group.label}</h3>
+        <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
           {group.count}
         </span>
       </div>

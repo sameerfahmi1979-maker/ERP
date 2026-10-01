@@ -37,13 +37,13 @@ function formatDate(value: string | null | undefined): string {
 
 function ValidBanner({ title }: { title: string }) {
   return (
-    <div className="flex items-start gap-4 p-5 rounded-xl bg-green-50 border-2 border-green-600">
-      <CheckCircle2 className="h-7 w-7 text-green-600 shrink-0 mt-0.5" />
+    <div className="flex items-start gap-4 p-5 rounded-xl bg-green-50 border-2 border-green-600 dark:bg-green-950">
+      <CheckCircle2 className="h-7 w-7 text-green-600 shrink-0 mt-0.5 dark:text-green-300" />
       <div>
-        <p className="text-base font-bold text-green-800 uppercase tracking-wide">
+        <p className="text-base font-bold text-green-800 uppercase tracking-wide dark:text-green-200">
           Authenticity Verified
         </p>
-        <p className="text-sm text-green-700 mt-0.5">
+        <p className="text-sm text-green-700 mt-0.5 dark:text-green-200">
           <strong>{title}</strong> is an authentic document issued through the ERP system.
         </p>
       </div>
@@ -53,13 +53,13 @@ function ValidBanner({ title }: { title: string }) {
 
 function ExpiredBanner() {
   return (
-    <div className="flex items-start gap-4 p-5 rounded-xl bg-yellow-50 border-2 border-yellow-500">
-      <Clock className="h-7 w-7 text-yellow-600 shrink-0 mt-0.5" />
+    <div className="flex items-start gap-4 p-5 rounded-xl bg-yellow-50 border-2 border-yellow-500 dark:bg-yellow-950">
+      <Clock className="h-7 w-7 text-yellow-600 shrink-0 mt-0.5 dark:text-yellow-300" />
       <div>
-        <p className="text-base font-bold text-yellow-800 uppercase tracking-wide">
+        <p className="text-base font-bold text-yellow-800 uppercase tracking-wide dark:text-yellow-200">
           Verification Link Expired
         </p>
-        <p className="text-sm text-yellow-700 mt-0.5">
+        <p className="text-sm text-yellow-700 mt-0.5 dark:text-yellow-200">
           This verification link has expired. Please request a fresh document from the issuing organization.
         </p>
       </div>
@@ -69,13 +69,13 @@ function ExpiredBanner() {
 
 function CancelledBanner({ reason }: { reason?: string | null }) {
   return (
-    <div className="flex items-start gap-4 p-5 rounded-xl bg-red-50 border-2 border-red-600">
-      <XCircle className="h-7 w-7 text-red-600 shrink-0 mt-0.5" />
+    <div className="flex items-start gap-4 p-5 rounded-xl bg-red-50 border-2 border-red-600 dark:bg-red-950">
+      <XCircle className="h-7 w-7 text-red-600 shrink-0 mt-0.5 dark:text-red-300" />
       <div>
-        <p className="text-base font-bold text-red-800 uppercase tracking-wide">
+        <p className="text-base font-bold text-red-800 uppercase tracking-wide dark:text-red-200">
           Verification Link Cancelled
         </p>
-        <p className="text-sm text-red-700 mt-0.5">
+        <p className="text-sm text-red-700 mt-0.5 dark:text-red-200">
           This verification link has been cancelled by the issuing organization.
           {reason && (
             <span className="block mt-1 italic">Reason: {reason}</span>
@@ -88,19 +88,19 @@ function CancelledBanner({ reason }: { reason?: string | null }) {
 
 function SupersededBanner({ newToken }: { newToken?: string | null }) {
   return (
-    <div className="flex items-start gap-4 p-5 rounded-xl bg-blue-50 border-2 border-blue-500">
-      <ArrowRight className="h-7 w-7 text-blue-600 shrink-0 mt-0.5" />
+    <div className="flex items-start gap-4 p-5 rounded-xl bg-blue-50 border-2 border-blue-500 dark:bg-blue-950">
+      <ArrowRight className="h-7 w-7 text-blue-600 shrink-0 mt-0.5 dark:text-blue-300" />
       <div className="flex-1">
-        <p className="text-base font-bold text-blue-800 uppercase tracking-wide">
+        <p className="text-base font-bold text-blue-800 uppercase tracking-wide dark:text-blue-200">
           Updated Version Available
         </p>
-        <p className="text-sm text-blue-700 mt-0.5">
+        <p className="text-sm text-blue-700 mt-0.5 dark:text-blue-200">
           A newer version of this document has been issued.
         </p>
         {newToken && (
           <a
             href={`/verify/${newToken}`}
-            className="inline-flex items-center gap-1.5 mt-2 text-sm font-semibold text-blue-700 underline hover:text-blue-900"
+            className="inline-flex items-center gap-1.5 mt-2 text-sm font-semibold text-blue-700 underline hover:text-blue-900 dark:text-blue-200 dark:hover:text-blue-200"
           >
             View current version
             <ExternalLink className="h-3.5 w-3.5" />
@@ -113,13 +113,13 @@ function SupersededBanner({ newToken }: { newToken?: string | null }) {
 
 function NotFoundBanner() {
   return (
-    <div className="flex items-start gap-4 p-5 rounded-xl bg-slate-50 border-2 border-slate-300">
-      <AlertTriangle className="h-7 w-7 text-slate-500 shrink-0 mt-0.5" />
+    <div className="flex items-start gap-4 p-5 rounded-xl bg-muted border-2 border-input">
+      <AlertTriangle className="h-7 w-7 text-muted-foreground shrink-0 mt-0.5" />
       <div>
-        <p className="text-base font-bold text-slate-700 uppercase tracking-wide">
+        <p className="text-base font-bold text-foreground uppercase tracking-wide">
           Verification Link Not Found
         </p>
-        <p className="text-sm text-slate-600 mt-0.5">
+        <p className="text-sm text-muted-foreground mt-0.5">
           This verification link is not available or no longer exists. If you believe this is an error, contact the issuing organization directly.
         </p>
       </div>
@@ -133,11 +133,11 @@ function NotFoundBanner() {
 
 function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-4 border-b border-dotted border-neutral-300 py-2">
-      <span className="text-[10px] uppercase tracking-widest text-neutral-500 shrink-0">
+    <div className="flex items-baseline justify-between gap-4 border-b border-dotted border-border py-2">
+      <span className="text-[10px] uppercase tracking-widest text-muted-foreground shrink-0">
         {label}
       </span>
-      <span className="text-sm font-medium text-neutral-900 text-right break-words max-w-[60%]">
+      <span className="text-sm font-medium text-foreground text-right break-words max-w-[60%]">
         {value || "—"}
       </span>
     </div>
@@ -175,18 +175,18 @@ export function VerifyPageContent({ token, result }: VerifyPageContentProps) {
   const showSummary = isValid && summaryEntries.length > 0;
 
   return (
-    <div className="min-h-screen bg-slate-50" style={{ fontFamily: "Arial, Helvetica, sans-serif" }}>
+    <div className="min-h-screen bg-muted" style={{ fontFamily: "Arial, Helvetica, sans-serif" }}>
       {/* Header bar */}
-      <div className="bg-white border-b border-slate-200 shadow-sm">
+      <div className="bg-card border-b border-border shadow-sm">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
           <div className="h-9 w-9 rounded-lg bg-slate-900 flex items-center justify-center shrink-0">
             <ShieldCheck className="h-5 w-5 text-white" />
           </div>
           <div>
-            <h1 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+            <h1 className="text-sm font-bold text-foreground uppercase tracking-wider">
               Document Verification
             </h1>
-            <p className="text-xs text-slate-500">ERP Authenticated Output</p>
+            <p className="text-xs text-muted-foreground">ERP Authenticated Output</p>
           </div>
         </div>
       </div>
@@ -203,7 +203,7 @@ export function VerifyPageContent({ token, result }: VerifyPageContentProps) {
 
         {/* Document identity card */}
         {result && (
-          <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
             {/* Document header */}
             <div className="bg-slate-900 px-5 py-4 flex items-start justify-between">
               <div>
@@ -218,10 +218,10 @@ export function VerifyPageContent({ token, result }: VerifyPageContentProps) {
                 <span
                   className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest border ${
                     isValid
-                      ? "border-green-400 text-green-300"
+                      ? "border-green-400 text-green-300 dark:border-green-800"
                       : isExpired
-                        ? "border-yellow-400 text-yellow-300"
-                        : "border-red-400 text-red-300"
+                        ? "border-yellow-400 text-yellow-300 dark:border-yellow-800"
+                        : "border-red-400 text-red-300 dark:border-red-800"
                   }`}
                 >
                   {result.status}
@@ -232,8 +232,8 @@ export function VerifyPageContent({ token, result }: VerifyPageContentProps) {
             {/* Document details */}
             <div className="px-5 py-4 space-y-1">
               <div className="flex items-center gap-1.5 mb-3">
-                <FileText className="h-3 w-3 text-slate-400" />
-                <span className="text-[9px] uppercase tracking-widest text-slate-400 font-bold">
+                <FileText className="h-3 w-3 text-muted-foreground" />
+                <span className="text-[9px] uppercase tracking-widest text-muted-foreground font-bold">
                   Document Details
                 </span>
               </div>
@@ -250,7 +250,7 @@ export function VerifyPageContent({ token, result }: VerifyPageContentProps) {
                   label="Document Date"
                   value={
                     <span className="flex items-center gap-1">
-                      <Calendar className="h-3 w-3 text-slate-400" />
+                      <Calendar className="h-3 w-3 text-muted-foreground" />
                       {formatDate(result.document_date)}
                     </span>
                   }
@@ -278,11 +278,11 @@ export function VerifyPageContent({ token, result }: VerifyPageContentProps) {
 
         {/* Verification summary (summary / full_view levels) */}
         {showSummary && (
-          <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
             <div className="px-5 py-4">
               <div className="flex items-center gap-1.5 mb-3">
-                <Hash className="h-3 w-3 text-slate-400" />
-                <span className="text-[9px] uppercase tracking-widest text-slate-400 font-bold">
+                <Hash className="h-3 w-3 text-muted-foreground" />
+                <span className="text-[9px] uppercase tracking-widest text-muted-foreground font-bold">
                   Verification Summary
                 </span>
               </div>
@@ -301,11 +301,11 @@ export function VerifyPageContent({ token, result }: VerifyPageContentProps) {
 
         {/* Full public payload */}
         {showPayload && (
-          <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
             <div className="px-5 py-4">
               <div className="flex items-center gap-1.5 mb-3">
-                <Building2 className="h-3 w-3 text-slate-400" />
-                <span className="text-[9px] uppercase tracking-widest text-slate-400 font-bold">
+                <Building2 className="h-3 w-3 text-muted-foreground" />
+                <span className="text-[9px] uppercase tracking-widest text-muted-foreground font-bold">
                   Document Content
                 </span>
               </div>
@@ -324,15 +324,15 @@ export function VerifyPageContent({ token, result }: VerifyPageContentProps) {
 
         {/* Download (deferred) */}
         {result?.download_enabled && (
-          <div className="bg-white border border-neutral-200 rounded-xl px-5 py-4 shadow-sm">
-            <p className="text-sm text-slate-500 italic text-center">
+          <div className="bg-card border border-border rounded-xl px-5 py-4 shadow-sm">
+            <p className="text-sm text-muted-foreground italic text-center">
               Download not available in this version. Please contact the issuing organization.
             </p>
           </div>
         )}
 
         {/* Footer */}
-        <div className="text-center text-[10px] text-slate-400 space-y-1 pb-8">
+        <div className="text-center text-[10px] text-muted-foreground space-y-1 pb-8">
           <p className="font-mono break-all text-slate-300">
             Token: {token.slice(0, 8)}…{token.slice(-4)}
           </p>

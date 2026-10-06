@@ -3,7 +3,8 @@
 ## Scope and status
 
 This tooling and dependency-patch candidate does not change ERP application code, permissions,
-database schema, workers or deployment configuration. No merge or production
+database schema or workers. Docker packaging includes the reviewed vendor sources
+in both build and runtime layers; this is not a deployment. No merge or production
 deployment is authorized by this pull request.
 
 Browser baseline measurements remain **NOT RUN / OWNER-DEFERRED**. On 6 October
@@ -41,7 +42,7 @@ into passes or erase them from the inventory.
 
 Run `node node_modules/vitest/vitest.mjs run --config tests/performance/p00.config.mts`.
 This is an offline test suite: no browser, production database or provider access.
-The local Windows run has 73 passes, zero failures and eight explicitly skipped
+The latest local Windows run has 106 passes, zero failures and eight explicitly skipped
 file-symlink cases because that host does not permit creating file symlinks.
 
 The dedicated Windows/Linux CI workflow requires every case to execute and fails
@@ -81,14 +82,22 @@ database dumps or runtime environment files belong in this public candidate.
 ## Dependency remediation — 6 October 2026
 
 Two targeted upstream patch updates are included: proxy-addr 2.0.7 to 2.0.8
-and source-map-js 1.2.1 to 1.2.2. Application dependency declarations and framework
-versions are unchanged; unrelated lockfile platform metadata is preserved.
+and source-map-js 1.2.1 to 1.2.2. Framework versions are unchanged;
+unrelated lockfile platform metadata is preserved.
 Regression cases exercise trust boundaries, ordinary mappings and invalid or
 excessive source-map offsets. No production changes are made by this PR.
 
-The audit gate remains blocking: braces and sprintf-js have no patched version
-listed by their advisories as checked on 6 October. No forced major downgrade,
-dependency alias, audit suppression or threshold relaxation is used.
+The owner approved locally maintained patches for braces and sprintf-js, whose
+advisories list no upstream patched version as checked on 6 October. Source,
+original licenses, provenance digests, explicit local versions and maintenance
+instructions are in vendor/. Root dependencies and overrides ensure nested
+consumers resolve to those patches. A clean reinstall and resolution inspection
+passed locally; npm audit reports zero vulnerabilities, but registry audit does
+not evaluate local source and is not proof of patch safety. The mandatory vendor
+integrity check and 24 regression/compatibility tests provide separate evidence.
+No audit suppression, threshold relaxation or forced major downgrade is used.
+See vendor/README.md for scope limitations. Published Windows/Linux, full
+engineering and image checks must pass before closing the dependency gate.
 
 References: [proxy-addr patch](https://github.com/advisories/GHSA-jqcg-44mw-7w3h),
 [source-map-js patch](https://github.com/advisories/GHSA-68fv-2mgg-jv7q),

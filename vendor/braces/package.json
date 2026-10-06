@@ -1,0 +1,11 @@
+{
+  "name": "braces",
+  "version": "3.0.3-algt.1",
+  "private": true,
+  "description": "ALGT maintained depth-limited security patch of braces 3.0.3",
+  "main": "index.js",
+  "license": "MIT",
+  "engines": {"node": ">=22"},
+  "dependencies": {"fill-range": "^7.1.1"},
+  "files": ["index.js", "lib", "LICENSE"]
+}

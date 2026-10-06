@@ -1,0 +1,9 @@
+{
+  "name": "sprintf-js",
+  "version": "1.0.3-algt.1",
+  "private": true,
+  "description": "ALGT maintained bounded-precision security patch of sprintf-js 1.0.3",
+  "main": "src/sprintf.js",
+  "license": "BSD-3-Clause",
+  "files": ["src", "LICENSE"]
+}

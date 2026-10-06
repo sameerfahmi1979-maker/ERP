@@ -7,4 +7,5 @@ export default defineConfig({test:{environment:'node',fileParallelism:false,incl
   'tests/performance/adoption-dependency-hashes.test.ts',
   'tests/performance/export-review.test.ts',
   'tests/performance/dependency-security.test.ts',
+  'tests/performance/local-dependency-patches.test.ts',
 ]}});

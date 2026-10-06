@@ -6,6 +6,7 @@ RUN test "$(node --version)" = "v22.23.2" && test "$(npm --version)" = "10.9.8"
 
 FROM base AS build
 COPY package.json package-lock.json ./
+COPY vendor ./vendor
 RUN npm ci --no-fund
 COPY src ./src
 COPY public ./public
@@ -28,6 +29,7 @@ ENV NODE_ENV=production \
 # Preserve Next's full-server behavior and required native server packages.
 COPY --from=build --chown=node:node /app/package.json /app/package-lock.json ./
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/vendor ./vendor
 COPY --from=build --chown=node:node /app/.next ./.next
 COPY --from=build --chown=node:node /app/public ./public
 COPY --from=build --chown=node:node /app/next.config.ts /app/tsconfig.json /app/tsconfig.shipping.json ./

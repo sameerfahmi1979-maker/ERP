@@ -21,6 +21,7 @@ jobs:
           cache: npm
       - run: npm install --global npm@10.9.8
       - run: npm ci
+      - run: npm run security:vendor
       - run: node node_modules/vitest/vitest.mjs run --config tests/performance/p00.config.mts --reporter=json --outputFile=p00-results.json
       - name: Require all cases to execute, including native file symlinks
-        run: node -e "const r=require('./p00-results.json'); if(!r.success || r.numFailedTests || r.numPendingTests || r.numTotalTests < 90) process.exit(1); console.log({passed:r.numPassedTests,skipped:r.numPendingTests});"
+        run: node -e "const r=require('./p00-results.json'); if(!r.success || r.numFailedTests || r.numPendingTests || r.numTotalTests < 114) process.exit(1); console.log({passed:r.numPassedTests,skipped:r.numPendingTests});"

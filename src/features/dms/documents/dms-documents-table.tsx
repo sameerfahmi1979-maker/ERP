@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState, useTransition } from "react";
+
 import { toast } from "sonner";
 import { format, parseISO } from "date-fns";
 import {
@@ -40,7 +40,8 @@ import { semanticSearchDmsDocuments } from "@/server/actions/dms/semantic-search
 import type { DmsAiSearchResult, DmsSearchIntent, DmsSemanticSearchResult } from "@/lib/dms/ai/types";
 import { SortColHeader } from "@/components/erp/table/sort-col-header";
 import { TablePagination } from "@/components/erp/table/table-pagination";
-import { useSortPaginate } from "@/hooks/use-sort-paginate";
+import { useServerPage } from "@/hooks/use-server-page";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import { ConfiguredRow, EditColumns, EditFilters, useListColumns, type ListColumn } from "@/components/erp/table/list-controls";
 import { useRealtimeSync } from "@/hooks/realtime/use-realtime-sync";
 import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
@@ -92,6 +93,8 @@ const DMS_EXPIRY_FILTER_OPTIONS: ERPComboboxOption[] = [
 
 interface DmsDocumentsTableProps {
   initialDocuments: DmsDocumentRow[];
+  initialTotal: number;
+  initialUpdatedAt: number;
   categories: { id: number; name_en: string }[];
   documentTypes: { id: number; name_en: string }[];
   /** Only system_admin users — hard delete is permanently irreversible */
@@ -100,26 +103,27 @@ interface DmsDocumentsTableProps {
 
 export function DmsDocumentsTable({
   initialDocuments,
+  initialTotal,
+  initialUpdatedAt,
   categories,
   documentTypes,
   canHardDelete = false,
 }: DmsDocumentsTableProps) {
-  const router = useRouter();
+
   const { openTab } = useWorkspace();
   const [isPending, startTransition] = useTransition();
   const [deleteTarget, setDeleteTarget] = useState<DmsDocumentRow | null>(null);
 
   // ERP REALTIME.1B — live DMS document list sync.
-  // When another user creates/updates/archives/deletes a document, router.refresh()
-  // triggers a new server fetch so this list updates automatically.
-  // Wrapped in startTransition to avoid marking the list as "pending" on every event.
+  // Revalidate only the active protected read when another user changes a document.
   useRealtimeSync({
     table: "dms_documents",
     event: "*",
     debounceMs: 500,
     onEvent: () => {
       startTransition(() => {
-        router.refresh();
+        void uiReadDocuments.refetch();
+
       });
     },
   });
@@ -187,51 +191,18 @@ export function DmsDocumentsTable({
     }
   }
 
-  const filtered = useMemo(() => initialDocuments.filter((doc) => {
-    if (search) {
-      const s = search.toLowerCase();
-      const matches =
-        doc.document_no.toLowerCase().includes(s) ||
-        doc.title.toLowerCase().includes(s) ||
-        (doc.description ?? "").toLowerCase().includes(s) ||
-        (doc.legacy_document_code ?? "").toLowerCase().includes(s);
-      if (!matches) return false;
-    }
-    if (filterType != null && doc.document_type_id !== filterType) return false;
-    if (filterCategory != null && doc.category_id !== filterCategory) return false;
-    if (filterStatus != null && doc.status !== filterStatus) return false;
-    if (filterConfidentiality != null && doc.confidentiality_level !== filterConfidentiality) return false;
-
-    if (filterExpiry != null) {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      if (filterExpiry === "expired") {
-        if (!doc.expiry_date || new Date(doc.expiry_date) >= today) return false;
-      } else if (filterExpiry === "expiring_30") {
-        if (!doc.expiry_date) return false;
-        const d = new Date(doc.expiry_date);
-        const days = Math.ceil((d.getTime() - today.getTime()) / 86400000);
-        if (days < 0 || days > 30) return false;
-      } else if (filterExpiry === "valid") {
-        if (!doc.expiry_date || new Date(doc.expiry_date) < today) return false;
-      } else if (filterExpiry === "no_expiry") {
-        if (doc.expiry_date) return false;
-      }
-    }
-
-    return true;
-  }), [initialDocuments, search, filterType, filterCategory, filterStatus, filterConfidentiality, filterExpiry]);
-
-  const table = useSortPaginate(filtered, {
-    memoryKey: "dms-documents:table",
-    defaultSortKey: "created_at",
-    defaultSortDir: "desc",
-    defaultPageSize: 25,
-    comparators: {
-      document_type: (a, b) => (a.document_type?.name_en ?? "").localeCompare(b.document_type?.name_en ?? ""),
-      tags: (a, b) => (a.tags?.length ?? 0) - (b.tags?.length ?? 0),
-    },
-  });
+  const [page,setPageRaw]=usePersistentUiState("dms-documents:table:page",1);
+  const [pageSize,setPageSizeRaw]=usePersistentUiState("dms-documents:table:size",25);
+  const [sortKey,setSortKey]=usePersistentUiState<string|null>("dms-documents:table:sort","created_at");
+  const [sortDir,setSortDir]=usePersistentUiState<"asc"|"desc">("dms-documents:table:direction","desc");
+  const seed=useMemo(()=>({rows:initialDocuments,totalCount:initialTotal,page:1,pageSize:25}),[initialDocuments,initialTotal]);
+  const today=new Date().toISOString().slice(0,10);
+  const filters={excludeArchived:true,search:search.trim()||undefined,searchMode:searchMode==="quick"?"quick":searchMode==="safe"?"safe_fts":searchMode==="content"?"content":undefined,document_type_id:filterType??undefined,category_id:filterCategory??undefined,status:filterStatus??undefined,confidentiality:filterConfidentiality??undefined,expired:filterExpiry==="expired"?true:undefined,expiring_soon:filterExpiry==="expiring_30"?true:undefined,expiry_from:filterExpiry==="valid"?today:undefined,expiryState:filterExpiry==="no_expiry"?"missing_expiry":undefined};
+  const uiReadDocuments=useServerPage<DmsDocumentRow>({resource:"dms-documents",params:{page,pageSize,sortKey:sortKey??"created_at",sortDir,filters},seedParams:{page:1,pageSize:25,sortKey:"created_at",sortDir:"desc",filters:{excludeArchived:true}},seed,updatedAt:initialUpdatedAt});
+  const total=uiReadDocuments.data?.totalCount??0;
+  const totalPages=Math.max(1,Math.ceil(total/pageSize));
+  useEffect(()=>{if(!uiReadDocuments.isBusy&&!uiReadDocuments.isError&&uiReadDocuments.data&&page>totalPages)setPageRaw(totalPages);},[uiReadDocuments.isBusy,uiReadDocuments.isError,uiReadDocuments.data,page,totalPages,setPageRaw]);
+  const table={rows:uiReadDocuments.data?.rows??[],total,totalPages,page,pageSize,sortKey,sortDir,setPage:(value:number)=>setPageRaw(Math.max(1,Math.min(value,totalPages))),setPageSize:(value:number)=>{setPageSizeRaw(value);setPageRaw(1);},toggleSort:(field:string)=>{if(sortKey===field)setSortDir(dir=>dir==="asc"?"desc":"asc");else{setSortKey(field);setSortDir("asc");}setPageRaw(1);}};
 
   const columnState = useListColumns("dms-documents", DOC_COLUMNS);
   const colWidths = Object.fromEntries(columnState.columns.map(column=>[column.id,column.width])) as Record<DocColKey,number>;
@@ -252,7 +223,8 @@ export function DmsDocumentsTable({
         : await archiveDmsDocument(doc.id);
       if (result.success) {
         toast.success(doc.is_archived ? "Document unarchived" : "Document archived");
-        router.refresh();
+        void uiReadDocuments.refetch();
+
       } else {
         toast.error(result.error ?? "Action failed");
       }
@@ -271,7 +243,8 @@ export function DmsDocumentsTable({
       const result = await deleteDmsDocument(doc.id);
       if (result.success) {
         toast.success(`Document "${doc.document_no}" permanently deleted`);
-        router.refresh();
+        void uiReadDocuments.refetch();
+
       } else {
         toast.error(result.error ?? "Delete failed");
       }
@@ -297,7 +270,7 @@ export function DmsDocumentsTable({
   );
 
   return (
-    <div className="space-y-4">
+    <QueryReadBoundary queries={[uiReadDocuments]}><div className="space-y-4">
       {/* Row 1: Search */}
       <div className="flex flex-wrap items-center gap-2">
         {/* Search mode selector */}
@@ -393,7 +366,7 @@ export function DmsDocumentsTable({
         )}
 
         <div className="ml-auto flex items-center gap-2 shrink-0">
-          <Button variant="outline" size="sm" aria-label="Refresh documents" onClick={() => router.refresh()} disabled={isPending}>
+          <Button variant="outline" size="sm" aria-label="Refresh documents" onClick={() => {void uiReadDocuments.refetch();}} disabled={isPending||uiReadDocuments.isBusy}>
             <RefreshCw className="h-3.5 w-3.5" />
           </Button>
           <Button size="sm" onClick={openNewDocument} className="gap-1.5">
@@ -685,7 +658,7 @@ export function DmsDocumentsTable({
 
       {/* Table */}
       {searchMode !== "ai" && searchMode !== "semantic" && (
-      <div role="region" aria-label="Scrollable documents" tabIndex={0} className="rounded-md border border-border overflow-x-auto">
+      <div role="region" aria-label="Scrollable documents" tabIndex={0} aria-busy={uiReadDocuments.isBusy} inert={uiReadDocuments.isBusy||undefined} className="rounded-md border border-border overflow-x-auto">
         <table aria-label="Documents" className="w-full text-sm table-fixed" style={{minWidth:columnState.visible.reduce((sum,col)=>sum+col.width,104)}}>
           <thead>
             <ConfiguredRow columns={columnState.columns} className="border-b border-border bg-muted/30">
@@ -704,7 +677,7 @@ export function DmsDocumentsTable({
                 <td colSpan={columnState.visible.length + 1} className="text-center py-10 text-muted-foreground">
                   <div className="flex flex-col items-center gap-2">
                     <FileText className="h-8 w-8 opacity-30" />
-                    <p className="text-sm">No documents found</p>
+                    <p className="text-sm">{uiReadDocuments.isBusy ? "Loading documents…" : "No documents found"}</p>
                     <Button size="sm" variant="outline" onClick={openNewDocument} className="mt-1 gap-1.5">
                       <Plus className="h-3.5 w-3.5" /> Create first document
                     </Button>
@@ -840,7 +813,7 @@ export function DmsDocumentsTable({
 
       {searchMode !== "ai" && searchMode !== "semantic" && (
         <div className="text-xs text-muted-foreground">
-          Showing {table.total} of {initialDocuments.length} document{initialDocuments.length !== 1 ? "s" : ""}
+          {uiReadDocuments.isBusy ? "Loading documents…" : `${table.total} permitted document${table.total!==1?"s":""}; search, filters and sorting apply across all pages.`}
         </div>
       )}
 
@@ -878,6 +851,6 @@ export function DmsDocumentsTable({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </div></QueryReadBoundary>
   );
 }

@@ -1,10 +1,10 @@
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { redirect } from "next/navigation";
 import { ERPPageHeader } from "@/components/erp/page-header";
-import { ERPEmptyState } from "@/components/erp/empty-state";
+import { LoadError } from "@/components/erp/load-error";
 import { Button } from "@/components/ui/button";
-import { Building2, Plus } from "lucide-react";
-import { listDepartments } from "@/server/actions/common-master-data/departments";
+import { Plus } from "lucide-react";
+import { readDepartments } from "@/server/reads/departments";
 import Link from "next/link";
 import { DepartmentsListClient } from "@/features/common-master-data/departments/departments-list-client";
 
@@ -14,7 +14,8 @@ export default async function DepartmentsPage() {
     redirect("/admin/common-master-data");
   }
   const canManage = hasPermission(ctx, "common_md.manage") || hasPermission(ctx, "common_md.departments.manage");
-  const result = await listDepartments({});
+  const result = await readDepartments({},ctx);
+  if(!result.success)return <LoadError title="Departments" retryHref="/admin/common-master-data/departments" />;
   const departments = result.data ?? [];
 
   return (
@@ -33,11 +34,7 @@ export default async function DepartmentsPage() {
           </Link>
         ) : null}
       />
-      {departments.length === 0 ? (
-        <ERPEmptyState icon={Building2} title="No departments yet" description="Create your first department." />
-      ) : (
-        <DepartmentsListClient departments={departments} canManage={canManage} />
-      )}
+      <DepartmentsListClient departments={departments} canManage={canManage} />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
-import { getDmsDocuments } from "@/server/actions/dms/documents";
-import { getDmsNewDocumentDefaults } from "@/server/actions/dms/documents";
+import { readDmsDocumentPage } from "@/server/reads/dms-documents";
+import { readDmsListChoices } from "@/server/reads/dms-list-choices";
 import { DmsDocumentsTable } from "@/features/dms/documents/dms-documents-table";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { DmsLoadError } from "@/features/dms/documents/dms-load-error";
@@ -18,11 +18,11 @@ export default async function DmsDocumentsPage() {
 
   const [docsResult, defaultsResult] = await Promise.all([
     // DMS ARCHIVE.1 — exclude archived/superseded; they live in /dms/archive
-    getDmsDocuments({ excludeArchived: true }),
-    getDmsNewDocumentDefaults(),
+    readDmsDocumentPage({ filters:{excludeArchived:true} },authContext),
+    readDmsListChoices(authContext),
   ]);
 
-  const documents = docsResult.data ?? [];
+  const documents = docsResult.data?.rows ?? [];
   const categories = defaultsResult.data?.categories ?? [];
   const documentTypes = defaultsResult.data?.documentTypes ?? [];
 
@@ -36,6 +36,8 @@ export default async function DmsDocumentsPage() {
 
       {!docsResult.success || !defaultsResult.success ? <DmsLoadError /> : <DmsDocumentsTable
         initialDocuments={documents}
+        initialTotal={docsResult.data?.totalCount??0}
+        initialUpdatedAt={docsResult.data?.updatedAt??0}
         categories={categories}
         documentTypes={documentTypes}
         canHardDelete={isGlobalAdmin(authContext)}

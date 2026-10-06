@@ -1,18 +1,16 @@
 "use client";
-import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { useCallback, useEffect, useMemo, useState} from "react";
-import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { useWorkspaceTableState } from "@/hooks/use-workspace-table-state";
 import type { AuthContext } from "@/lib/rbac/check";
 import { hasPermission } from "@/lib/rbac/scope";
-import type { EmployeeListRow, EmployeeListParams } from "@/server/actions/hr/employees";
-import { listEmployees, archiveEmployee } from "@/server/actions/hr/employees";
-import { listDepartments } from "@/server/actions/common-master-data/departments";
-import { listDesignations } from "@/server/actions/common-master-data/designations";
+import type { EmployeeListRow } from "@/server/actions/hr/employees";
+import { archiveEmployee } from "@/server/actions/hr/employees";
+import { useServerPage } from "@/hooks/use-server-page";
+import { readJson, retryAuthorizedRead } from "@/lib/reads/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -29,8 +27,8 @@ import type { ERPComboboxOption } from "@/components/erp/combobox";
 import { SortColHeader } from "@/components/erp/table/sort-col-header";
 import { TablePagination } from "@/components/erp/table/table-pagination";
 import { ConfiguredRow, EditColumns, EditFilters, useListColumns, type ListColumn } from "@/components/erp/table/list-controls";
-import { useOwnerCompaniesQuery } from "@/hooks/lookups/use-org-queries";
-import { useCountriesQuery } from "@/hooks/lookups/use-geography-queries";
+import { useEmployeeFilterChoices } from "@/hooks/lookups/use-employee-filter-choices";
+
 import {
   EmployeeStatusBadge,
   EMPLOYEE_STATUS_FILTER_VALUES,
@@ -85,6 +83,7 @@ type EmployeeFilters = {
 type Props = {
   initialRows: EmployeeListRow[];
   initialTotal: number;
+  initialUpdatedAt: number;
   authContext: AuthContext;
   documentWizardEnabled?: boolean;
 };
@@ -103,10 +102,8 @@ function statusFilterLabel(s: string): string {
   return s.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
 }
 
-export function EmployeesTable({ initialRows, initialTotal, authContext, documentWizardEnabled = false }: Props) {
-  const router = useRouter();
+export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, authContext, documentWizardEnabled = false }: Props) {
   const { openTab } = useWorkspace();
-  const [isPending, startTransition] = useTransition();
 
   const {
     search,
@@ -135,18 +132,6 @@ export function EmployeesTable({ initialRows, initialTotal, authContext, documen
     ]
   );
 
-  const [rows, setRows] = useState<EmployeeListRow[]>(initialRows);
-  const [totalCount, setTotalCount] = useState(initialTotal);
-
-  // Re-sync local state whenever the server re-provides fresh props
-  // (e.g. after router.refresh() following a create/update, or on tab return).
-  // Without this, the initial useState() snapshot never updates on re-render.
-  const [serverSnapshot, setServerSnapshot] = useState({ initialRows, initialTotal });
-  if (serverSnapshot.initialRows !== initialRows || serverSnapshot.initialTotal !== initialTotal) {
-    setServerSnapshot({ initialRows, initialTotal });
-    setRows(initialRows);
-    setTotalCount(initialTotal);
-  }
   const [archiveTarget, setArchiveTarget] = useState<EmployeeListRow | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [sortKey, setSortKey] = usePersistentUiState<string | null>("employees:sort-key", "employee_code");
@@ -169,51 +154,34 @@ export function EmployeesTable({ initialRows, initialTotal, authContext, documen
   const showNationality = true; // ConfiguredRow owns visibility and ordering.
   const colWidths = Object.fromEntries(columnState.columns.map(column => [column.id, column.width])) as Record<EmpColKey, number>;
 
-  const { options: companyOptions } = useOwnerCompaniesQuery();
-  const { options: countryOptions } = useCountriesQuery();
+  const companyRead = useEmployeeFilterChoices("companies", {selectedId:filters.companyId??undefined});
+  const countryRead = useEmployeeFilterChoices("countries", {selectedId:filters.nationalityId??undefined});
+  const companyOptions = companyRead.options;
+  const countryOptions = countryRead.options;
   // Lookup capabilities are separate from employee access. Do not request a
   // forbidden master-data list and then disable an otherwise permitted grid.
   const canFilterDepartments = hasPermission(authContext, "common_md.view") || hasPermission(authContext, "common_md.departments.view");
   const canFilterDesignations = hasPermission(authContext, "common_md.view") || hasPermission(authContext, "common_md.designations.view");
 
   const uiRead1 = useQuery({
-    queryKey: ["hr", "employees", "filter-departments", filters.companyId],
+    queryKey: ["read", "employee-filter-departments", filters.companyId, filters.departmentId],
     enabled: canFilterDepartments,
-    queryFn: async () => {
-      const result = await listDepartments({
-        is_active: true,
-        owner_company_id: filters.companyId ?? undefined,
-      });
-      if (!result.success) throw new Error(result.error);
-      return (result.data ?? []).map(
-        (d): ERPComboboxOption => ({
-          value: d.id,
-          label: d.department_name_en,
-          code: d.department_code,
-        })
-      );
+    retry: retryAuthorizedRead,
+    queryFn: async ({signal}) => {
+      const result=await readJson<{success:true;data:ERPComboboxOption[]}>("employee-filter-departments",{owner_company_id:filters.companyId??undefined,selectedId:filters.departmentId??undefined},signal);
+      return result.data;
     },
     staleTime: 60_000,
   });
   const { data: departmentOptions = [], isLoading: loadingDepartments } = uiRead1;
 
   const uiRead2 = useQuery({
-    queryKey: ["hr", "employees", "filter-designations", filters.companyId, filters.departmentId],
+    queryKey: ["read", "employee-filter-designations", filters.companyId, filters.departmentId, filters.designationId],
     enabled: canFilterDesignations,
-    queryFn: async () => {
-      const result = await listDesignations({
-        is_active: true,
-        owner_company_id: filters.companyId ?? undefined,
-        department_id: filters.departmentId ?? undefined,
-      });
-      if (!result.success) throw new Error(result.error);
-      return (result.data ?? []).map(
-        (d): ERPComboboxOption => ({
-          value: d.id,
-          label: d.designation_name_en,
-          code: d.designation_code,
-        })
-      );
+    retry: retryAuthorizedRead,
+    queryFn: async ({signal}) => {
+      const result=await readJson<{success:true;data:ERPComboboxOption[]}>("employee-filter-designations",{owner_company_id:filters.companyId??undefined,department_id:filters.departmentId??undefined,selectedId:filters.designationId??undefined},signal);
+      return result.data;
     },
     staleTime: 60_000,
   });
@@ -224,38 +192,12 @@ export function EmployeesTable({ initialRows, initialTotal, authContext, documen
     []
   );
 
-  const fetchEmployees = useCallback(
-    (p: number, ps: number, q: string, f: EmployeeFilters) => {
-      startTransition(async () => {
-        const params: Partial<EmployeeListParams> = {
-          page: p,
-          pageSize: ps,
-          search: q.trim() || undefined,
-          employeeStatus: f.status ?? undefined,
-          ownerCompanyId: f.companyId ?? undefined,
-          departmentId: f.departmentId ?? undefined,
-          designationId: f.designationId ?? undefined,
-          nationalityId: f.nationalityId ?? undefined,
-        };
-        const result = await listEmployees(params);
-        if (result.success && result.data) {
-          setRows(result.data.rows);
-          setTotalCount(result.data.totalCount);
-        } else {
-          toast.error(result.error ?? "Failed to load employees");
-        }
-      });
-    },
-    []
-  );
-
-  // Debounced server search + filter refetch
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchEmployees(page, pageSize, search, filters);
-    }, 350);
-    return () => clearTimeout(timer);
-  }, [search, filters, page, pageSize, fetchEmployees]);
+  const seed = useMemo(() => ({rows:initialRows,totalCount:initialTotal,page:1,pageSize:25}),[initialRows,initialTotal]);
+  const uiReadEmployees=useServerPage<EmployeeListRow>({resource:"employees",params:{page,pageSize,search:search.trim()||undefined,employeeStatus:filters.status??undefined,ownerCompanyId:filters.companyId??undefined,departmentId:filters.departmentId??undefined,designationId:filters.designationId??undefined,nationalityId:filters.nationalityId??undefined,sortKey:sortKey??"employee_code",sortDir},seedParams:{page:1,pageSize:25,sortKey:"employee_code",sortDir:"asc"},seed,updatedAt:initialUpdatedAt});
+  const rows=uiReadEmployees.data?.rows??[];
+  const totalCount=uiReadEmployees.data?.totalCount??0;
+  const fetching=uiReadEmployees.isBusy;
+  const fetchEmployees=()=>{void uiReadEmployees.refetch();};
 
   // ERP REALTIME.1C — live employee list sync (Pattern C hybrid).
   // When another user creates/updates/archives an employee, re-fetch with
@@ -265,7 +207,7 @@ export function EmployeesTable({ initialRows, initialTotal, authContext, documen
     event: "*",
     debounceMs: 500,
     onEvent: () => {
-      fetchEmployees(page, pageSize, search, filters);
+      fetchEmployees();
     },
   });
 
@@ -289,6 +231,7 @@ export function EmployeesTable({ initialRows, initialTotal, authContext, documen
   );
 
   const toggleSort = (field: string) => {
+    setPagination(prev=>({...prev,pageIndex:0}));
     if (sortKey === field) {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     } else {
@@ -297,51 +240,15 @@ export function EmployeesTable({ initialRows, initialTotal, authContext, documen
     }
   };
 
-  const sortedRows = useMemo(() => {
-    if (!sortKey) return rows;
-    const dir = sortDir === "asc" ? 1 : -1;
-    return [...rows].sort((a, b) => {
-      let av: string | number = "";
-      let bv: string | number = "";
-      switch (sortKey) {
-        case "employee_code":
-          av = a.employee_code;
-          bv = b.employee_code;
-          break;
-        case "full_name_en":
-          av = a.full_name_en;
-          bv = b.full_name_en;
-          break;
-        case "nationality":
-          av = a.nationality?.name_en ?? "";
-          bv = b.nationality?.name_en ?? "";
-          break;
-        case "department":
-          av = a.department?.department_name_en ?? "";
-          bv = b.department?.department_name_en ?? "";
-          break;
-        case "designation":
-          av = a.designation?.designation_name_en ?? "";
-          bv = b.designation?.designation_name_en ?? "";
-          break;
-        case "employee_status":
-          av = a.employee_status;
-          bv = b.employee_status;
-          break;
-        case "company":
-          av = a.owner_company?.company_code ?? "";
-          bv = b.owner_company?.company_code ?? "";
-          break;
-        default:
-          return 0;
-      }
-      return String(av).localeCompare(String(bv)) * dir;
-    });
-  }, [rows, sortKey, sortDir]);
+  const sortedRows=rows;
 
   const activeFilterCount = Object.values(filters).filter(value => value != null).length;
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  useEffect(()=>{
+    if(!uiReadEmployees.isBusy&&!uiReadEmployees.isError&&uiReadEmployees.data&&page>totalPages)
+      setPagination(prev=>({...prev,pageIndex:totalPages-1}));
+  },[page,totalPages,uiReadEmployees.isBusy,uiReadEmployees.isError,uiReadEmployees.data,setPagination]);
 
   const openAdd = () => {
     openTab({
@@ -385,7 +292,7 @@ export function EmployeesTable({ initialRows, initialTotal, authContext, documen
     const result = await archiveEmployee(archiveTarget.id, "Archived from list");
     if (result.success) {
       toast.success(`Employee ${archiveTarget.employee_code} archived`);
-      fetchEmployees(page, pageSize, search, filters);
+      fetchEmployees();
     } else {
       toast.error(result.error ?? "Failed to archive employee");
     }
@@ -395,7 +302,7 @@ export function EmployeesTable({ initialRows, initialTotal, authContext, documen
   const colSpan = columnState.visible.length + 1;
 
   return (
-    <QueryReadBoundary queries={[...(canFilterDepartments ? [uiRead1] : []), ...(canFilterDesignations ? [uiRead2] : [])]}><div className="space-y-4">
+    <QueryReadBoundary queries={[uiReadEmployees, companyRead, countryRead,...(canFilterDepartments ? [uiRead1] : []), ...(canFilterDesignations ? [uiRead2] : [])]}><div className="space-y-4">
       {/* Row 1: Search + actions */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[200px]">
@@ -418,11 +325,11 @@ export function EmployeesTable({ initialRows, initialTotal, authContext, documen
           <Button aria-label="Refresh"
             variant="outline"
             size="sm"
-            onClick={() => router.refresh()}
-            disabled={isPending}
+            onClick={() => {void uiReadEmployees.refetch();}}
+            disabled={fetching}
             title="Refresh"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${isPending ? "animate-spin" : ""}`} />
+            <RefreshCw className={`h-3.5 w-3.5 ${fetching ? "animate-spin" : ""}`} />
           </Button>
 
           {canCreate && (
@@ -459,13 +366,13 @@ export function EmployeesTable({ initialRows, initialTotal, authContext, documen
           ]}
           values={Object.fromEntries(Object.entries(filters).map(([key,value])=>[key,value == null ? "" : String(value)]))}
           onApply={values=>setFilter({status:values.status || null,companyId:values.companyId ? Number(values.companyId) : null,departmentId:values.departmentId ? Number(values.departmentId) : null,designationId:values.designationId ? Number(values.designationId) : null,nationalityId:values.nationalityId ? Number(values.nationalityId) : null})} />
-        <span className="text-xs text-muted-foreground">Column sorting applies to the current page.</span>
+        <span className="text-xs text-muted-foreground">Search, filters and sorting apply to all permitted employees.</span>
         {(!canFilterDepartments || !canFilterDesignations) && <span className="text-xs text-muted-foreground">Some filters are unavailable with your current permissions.</span>}
       </div>
 
       {/* Table */}
-      <div role="region" aria-label="Scrollable employees" tabIndex={0} className="rounded-md border border-border overflow-x-auto relative">
-        {isPending && (
+      <div role="region" aria-label="Scrollable employees" tabIndex={0} aria-busy={fetching} inert={fetching||undefined} className="rounded-md border border-border overflow-x-auto relative">
+        {fetching && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/50">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
@@ -556,7 +463,7 @@ export function EmployeesTable({ initialRows, initialTotal, authContext, documen
                   <div className="flex flex-col items-center gap-2">
                     <Users className="h-8 w-8 opacity-30" />
                     <p className="text-sm">
-                      {search || activeFilterCount > 0
+                      {fetching ? "Loading employees…" : search || activeFilterCount > 0
                         ? "No employees found matching your search or filters"
                         : "No employees found"}
                     </p>

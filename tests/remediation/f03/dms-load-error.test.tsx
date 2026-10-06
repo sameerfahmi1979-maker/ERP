@@ -8,6 +8,8 @@ const state = vi.hoisted(() => ({ refresh: vi.fn(), allowed: true,
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: state.refresh }), redirect: () => { throw new Error("denied"); } }));
 vi.mock("@/lib/rbac/check", () => ({ getAuthContext: async () => ({}), hasPermission: () => state.allowed, isGlobalAdmin: () => false }));
 vi.mock("@/server/actions/dms/documents", () => ({ getDmsDocuments: async () => state.docs, getArchivedDocuments: async () => state.docs, getDmsNewDocumentDefaults: async () => state.defaults }));
+vi.mock("@/server/reads/dms-documents",()=>({readDmsDocumentPage:async()=>({...state.docs,data:{rows:state.docs.data,totalCount:state.docs.data.length}})}));
+vi.mock("@/server/reads/dms-list-choices",()=>({readDmsListChoices:async()=>state.defaults}));
 vi.mock("@/components/erp/page-header", () => ({ ERPPageHeader: () => null }));
 vi.mock("@/features/dms/documents/dms-documents-table", () => ({ DmsDocumentsTable: () => <p>No documents found</p> }));
 vi.mock("@/features/dms/archive/dms-archive-table", () => ({ DmsArchiveTable: () => <p>No archived documents found</p> }));

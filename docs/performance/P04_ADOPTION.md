@@ -14,6 +14,21 @@ Status: partial implementation; **P04 is not closed**. This candidate is stacked
 
 No new database migration is introduced here. Existing P03 migrations are prerequisites. Do not substitute the older lab's protected reader or disable confidentiality for performance.
 
+## Expiry and renewal continuation
+
+- Expiry and renewal compatibility reads now walk complete, exact-counted 500-row pages with stable ID ordering and a 10,000-row safety ceiling. An explicit legacy expiry limit is a safety ceiling, never a silently incomplete export. This is a completeness bridge, **not yet server-paged interactive-list adoption**.
+- Input and response contracts reject invalid criteria, malformed rows, duplicates, changing counts, missing counts and short pages. Type exclusions, category choices and entity links are also complete; link identity is distinct from document identity. Unnecessary expiry-type reads are skipped outside the missing-expiry view.
+- Literal search is escaped. Expiry date criteria are frozen for each traversal. Existing ordinary-client RLS, protected document projections and business filter semantics remain unchanged.
+- Summary queries no longer report failed/unavailable counts as zero. The renewal count also bounds its unused result page. Loading/failed expiry tables retain recovery controls and mask stale rows, exports and mutation targets.
+- Renewal controls default to read-only. Both actual server pages forward the existing renewal-management capability through their client parents; expiry administration alone is not renewal-management permission. Server mutation checks remain unchanged.
+- These changes do not alter reminder generation, notification delivery, renewal business decisions, role assignments or production settings.
+
+The opt-in local harness additionally checks complete synthetic expiry/renewal identities, summary availability and no-role denial. A failed native check is retained as a failed acceptance gate, not converted into a pass by an offline test. Test timings are lab observations, not browser timings or production guarantees.
+
+Latest native disposition: all 2,214 synthetic expiry identities and ten summary metrics succeeded. The independent renewal traversal still times out (SQLSTATE 57014), including with the reviewed P03 prerequisites. Renewal native acceptance remains **FAIL/OPEN**; the failed case did not reach its final expiry/renewal no-role checks. Existing offline denial tests are not substituted for those native checks. The lab was restored and its test sessions signed out.
+
+The dependency gate also identified GHSA-wq5f-xc86-pv6w. The lockfile updates only Sharp and its platform/libvips packages to the patched Sharp 0.35.5 family; unrelated dependency metadata is preserved. No deployment is implied.
+
 ## Verification
 
 Run the P04 Vitest configuration and its TypeScript project, the existing P01/P02/P03 suites, the complete remediation and unit suites, shipping/E2E types, lint, build and security gates. CI includes the P04 offline suite and local-harness typecheck.

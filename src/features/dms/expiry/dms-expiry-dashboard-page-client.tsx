@@ -304,7 +304,7 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false, canRe
         </TabsContent>
 
         <TabsContent value="renewals" className="mt-4">
-          <DmsRenewalRequestsTable />
+          <DmsRenewalRequestsTable canManage={canRenew} />
         </TabsContent>
 
         <TabsContent value="ignored" className="mt-4">

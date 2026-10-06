@@ -14,5 +14,5 @@ export default async function DmsRenewalsPage() {
 
   if (!canView) redirect("/access-denied");
 
-  return <DmsRenewalRequestsPageClient />;
+  return <DmsRenewalRequestsPageClient canManage={hasPermission(ctx, "dms.renewals.manage") || hasPermission(ctx, "dms.admin")} />;
 }

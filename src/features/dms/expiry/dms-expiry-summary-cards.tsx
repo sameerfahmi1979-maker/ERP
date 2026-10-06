@@ -33,8 +33,8 @@ export function DmsExpirySummaryCards() {
     queryKey: queryKeys.dms.expiryDashboardStats(),
     queryFn: async () => {
       const result = await getDmsExpiryDashboardStats();
-      if (!result.success) throw new Error(result.error);
-      return result.data!;
+      if (!result.success || !result.data) throw new Error(result.error ?? "Expiry totals are unavailable");
+      return result.data;
     },
     staleTime: 60_000,
   });
@@ -42,19 +42,15 @@ export function DmsExpirySummaryCards() {
   if (isLoading) {
     return (
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
-        {Array.from({ length: 9 }).map((_, i) => (
+        {Array.from({ length: 10 }).map((_, i) => (
           <div key={i} className="rounded-lg border border-border p-4 h-20 animate-pulse bg-muted/20" />
         ))}
       </div>
     );
   }
 
-  if (isError) return <div role="alert">Expiry totals are unavailable, not zero. <Button onClick={() => void refetch()}>Retry expiry totals</Button></div>;
-  const s = stats ?? {
-    expired: 0, expiring_7: 0, expiring_30: 0, expiring_60: 0, expiring_90: 0,
-    missing_expiry: 0, pending_reminders: 0, dismissed_reminders: 0, open_renewals: 0,
-    expiry_ignored: 0,
-  };
+  if (isError || !stats) return <div role="alert">Expiry totals are unavailable, not zero. <Button onClick={() => void refetch()}>Retry expiry totals</Button></div>;
+  const s = stats;
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">

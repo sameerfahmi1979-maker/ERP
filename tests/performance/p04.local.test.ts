@@ -9,9 +9,13 @@ vi.mock("@/lib/supabase/client",()=>({createClient:()=>state.client}));
 vi.mock("@/lib/supabase/admin",()=>({createAdminClient:()=>state.admin}));
 vi.mock("next/cache",()=>({revalidatePath:()=>{}}));
 vi.mock("next/headers",()=>({headers:async()=>new Headers()}));
+vi.mock("@/server/actions/email",()=>({sendExportEmail:()=>{throw Error("Delivery forbidden in read-only lab");}}));
+vi.mock("@/server/actions/audit",()=>({logAudit:()=>{throw Error("Business writes forbidden in read-only lab");}}));
 import {withDocumentReadPolicy} from "@/lib/supabase/document-read-policy";
 import {fetchConfigurationChoices,type ConfigurationResource} from "@/lib/lookups/configuration-fetchers";
 import {readDmsArchivePage} from "@/server/reads/dms-archive";
+import {getDmsExpiringDocuments,getDmsExpiryDashboardStats} from "@/server/actions/dms/expiry-reminders";
+import {getDmsRenewalRequests} from "@/server/actions/dms/renewals";
 const clients=new Map<string,SupabaseClient>(),samples:Record<string,unknown>[]=[];
 const actualFetch=globalThis.fetch;
 let output="",signoutFailures=0;
@@ -66,4 +70,36 @@ it("archive route data preserves authorized empty/nonempty counts and denies the
   if(actor==="none"){expect(result.success).toBe(false);expect(result.error).toBe("Permission denied");}
   else {expect(result.success,actor).toBe(true);expect(result.data!.rows.length).toBe(Math.min(25,result.data!.totalCount));}
  }
+});
+
+it("expiry continuation preserves the complete admin identity set and rejects no-role reads",async()=>{
+ state.client=clients.get("admin")!;
+ const ids:number[]=[];let total=0;
+ for(let from=0;from===0||from<total;from+=100){
+  const result=await state.client.from("dms_documents").select("id",{count:"exact"}).is("deleted_at",null).neq("status","superseded").order("id").range(from,from+99);
+  expect(result.error).toBeNull();expect(result.count).not.toBeNull();if(from)expect(result.count).toBe(total);total=result.count!;
+  expect(total).toBeLessThanOrEqual(10000);expect(result.data!.length).toBe(Math.min(100,Math.max(0,total-from)));ids.push(...result.data!.map(row=>row.id as number));
+ }
+ const start=performance.now(),result=await getDmsExpiringDocuments({view:"all"});
+ samples.push({actor:"admin",resource:"expiry-all",success:result.success,total:result.data?.length,baseline:ids.length,elapsedMs:Math.round(performance.now()-start)});
+ expect(result.success).toBe(true);expect(ids.length).toBeGreaterThan(200);expect(result.data!.map(row=>row.id).sort((a,b)=>a-b)).toEqual(ids);
+ const summary=await getDmsExpiryDashboardStats();samples.push({actor:"admin",resource:"expiry-summary",success:summary.success,metrics:summary.data?Object.keys(summary.data).length:0});
+ if(!summary.success){
+  // Read-only diagnostics contain table/error identifiers only, never rows or credentials.
+  for(const table of ["dms_document_types","dms_documents","dms_expiry_reminders","dms_renewal_requests"]){
+   const result=await state.client.from(table).select("id",{count:"exact",head:true});samples.push({resource:"summary-diagnostic",table,status:result.status,count:result.count,error:result.error?{code:result.error.code,message:result.error.message}:null});
+   if(result.error){const detail=await state.client.from(table).select("id",{count:"exact"}).limit(1);samples.push({resource:"summary-diagnostic-detail",table,status:detail.status,error:detail.error?{code:detail.error.code,message:detail.error.message}:null});}
+  }
+ }
+ expect(summary.success).toBe(true);
+ const renewalIds:number[]=[];let renewalTotal=0;
+ for(let from=0;from===0||from<renewalTotal;from+=100){
+  const baseline=await state.client.from("dms_renewal_requests").select("id",{count:"exact"}).is("deleted_at",null).order("id").range(from,from+99);
+  expect(baseline.error).toBeNull();expect(baseline.count).not.toBeNull();if(from)expect(baseline.count).toBe(renewalTotal);renewalTotal=baseline.count!;
+  expect(renewalTotal).toBeLessThanOrEqual(10000);expect(baseline.data!.length).toBe(Math.min(100,Math.max(0,renewalTotal-from)));renewalIds.push(...baseline.data!.map(row=>row.id as number));
+ }
+ const renewalStart=performance.now(),renewals=await getDmsRenewalRequests({includeCompleted:true});samples.push({actor:"admin",resource:"renewals-all",success:renewals.success,total:renewals.data?.length,baseline:renewalTotal,elapsedMs:Math.round(performance.now()-renewalStart)});
+ expect(renewals.success).toBe(true);expect(renewalTotal).toBeGreaterThan(200);expect(renewals.data!.map(row=>row.id).sort((a,b)=>a-b)).toEqual(renewalIds);
+ state.client=clients.get("none")!;
+ for(const denied of [await getDmsExpiringDocuments(),await getDmsExpiryDashboardStats(),await getDmsRenewalRequests()]){samples.push({actor:"none",resource:"expiry-denial",success:denied.success});expect(denied.success).toBe(false);expect(denied.data).toBeUndefined();}
 });

@@ -141,12 +141,13 @@ export function DmsExpiringDocumentsTable({ view, onStartRenewal, advancedFilter
     queryKey: queryKeys.dms.expiringDocuments(filterKey as Record<string, unknown>),
     queryFn: async () => {
       const result = await getDmsExpiringDocuments(filterKey);
-      if (!result.success) throw new Error(result.error);
-      return result.data ?? [];
+      if (!result.success || !Array.isArray(result.data)) throw new Error(result.error ?? "Expiring documents are unavailable");
+      return result.data;
     },
     staleTime: 60_000,
   });
-  const docs = queryData ?? EMPTY_DOCS;
+  // A denied/failed refresh must not leave cached rows or mutation targets visible.
+  const docs = isError || isLoading ? EMPTY_DOCS : queryData ?? EMPTY_DOCS;
 
   // Expose full row set to parent (for export / email)
   useEffect(() => {
@@ -226,31 +227,20 @@ export function DmsExpiringDocumentsTable({ view, onStartRenewal, advancedFilter
     ignored: "No documents with expiry tracking ignored",
   };
 
-  if (isError) return <div role="alert">Expiring documents could not be loaded. <Button onClick={() => void refetch()}>Retry documents</Button></div>;
-  if (isLoading) {
-    return <div className="py-8 text-center text-sm text-muted-foreground">Loading…</div>;
-  }
-
-  if (docs.length === 0 && !isLoading) {
-    return (
-      <div className="py-8 text-center text-sm text-muted-foreground">
-        {emptyMessages[view]}
-      </div>
-    );
-  }
-
   const showExpiryColumn = view !== "missing_expiry" && view !== "ignored";
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-sm text-muted-foreground">
-          {table.total !== docs.length
+          {isError ? "Document count unavailable" : isLoading ? "Loading document count…" : table.total !== docs.length
             ? `${table.total} of ${docs.length} documents`
             : `${docs.length} document${docs.length !== 1 ? "s" : ""}`}
         </p>
         <TableSearchInput value={table.query} onChange={table.setQuery} placeholder="Search documents…" className="w-52" />
       </div>
+      {isError && <div role="alert">Expiring documents could not be loaded. <Button onClick={() => void refetch()}>Retry documents</Button></div>}
+      {isLoading && <div role="status" className="py-8 text-center text-sm text-muted-foreground">Loading…</div>}
       <div className="rounded-md border border-border overflow-auto"><LoadedListTools view={listView} search />
         <div role="region" aria-label="DmsExpiringDocumentsTable results" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{minWidth:listView.visible.reduce((sum,c)=>sum+c.width,0)}}><colgroup>{listView.visible.map(c=><col key={c.id} style={{width:c.width}} />)}</colgroup>
           <thead>
@@ -268,10 +258,10 @@ export function DmsExpiringDocumentsTable({ view, onStartRenewal, advancedFilter
             </ConfiguredRow>
           </thead>
           <tbody className="divide-y divide-border/50">
-            {table.rows.length === 0 && (
+            {!isLoading && !isError && table.rows.length === 0 && (
               <tr>
                 <td colSpan={listView.visible.length} className="px-3 py-8 text-center text-sm text-muted-foreground">
-                  {table.query ? "No documents match your search" : "No documents found"}
+                  {table.query || listView.rows.length !== docs.length ? "No documents match your search" : emptyMessages[view]}
                 </td>
               </tr>
             )}
@@ -398,7 +388,7 @@ export function DmsExpiringDocumentsTable({ view, onStartRenewal, advancedFilter
       </div>
 
       <IgnoreDialog
-        doc={ignoreTarget}
+        doc={isError || isLoading || !canManage ? null : ignoreTarget}
         onClose={() => setIgnoreTarget(null)}
         onConfirm={handleIgnoreConfirm}
         isSubmitting={isIgnoring}

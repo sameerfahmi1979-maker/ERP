@@ -27,6 +27,7 @@ import { invalidateDmsRenewals } from "@/lib/query/invalidation";
 
 interface DmsRenewalRequestsTableProps {
   filter?: RenewalRequestsFilter;
+  canManage?: boolean;
 }
 
 const DMS_LIST_FIELDS: DmsListField[] = [
@@ -81,7 +82,7 @@ const DMS_LIST_FIELDS: DmsListField[] = [
   }
 ];
 
-export function DmsRenewalRequestsTable({ filter = {} }: DmsRenewalRequestsTableProps) {
+export function DmsRenewalRequestsTable({ filter = {}, canManage = false }: DmsRenewalRequestsTableProps) {
   const queryClient = useQueryClient();
   const [completeDialog, setCompleteDialog] = useState<{ renewal: DmsRenewalRequestRow } | null>(null);
 
@@ -89,8 +90,8 @@ export function DmsRenewalRequestsTable({ filter = {} }: DmsRenewalRequestsTable
     queryKey: queryKeys.dms.renewalRequests(filter as Record<string, unknown>),
     queryFn: async () => {
       const result = await getDmsRenewalRequests(filter);
-      if (!result.success) throw new Error(result.error);
-      return result.data ?? [];
+      if (!result.success || !Array.isArray(result.data)) throw new Error(result.error ?? "Renewal requests are unavailable");
+      return result.data;
     },
     staleTime: 30_000,
   });
@@ -109,6 +110,7 @@ export function DmsRenewalRequestsTable({ filter = {} }: DmsRenewalRequestsTable
   });
 
   const handleCancel = async (id: number) => {
+    if (!canManage || isError) return;
     const result = await cancelDmsRenewalRequest(id, "Cancelled from dashboard");
     if (result.success) {
       toast.success("Renewal request cancelled");
@@ -196,7 +198,7 @@ export function DmsRenewalRequestsTable({ filter = {} }: DmsRenewalRequestsTable
                           <ExternalLink className="h-3 w-3" />
                         </Button>
                       )}
-                      {!["renewed", "cancelled", "rejected"].includes(r.status) && (
+                      {canManage && !["renewed", "cancelled", "rejected"].includes(r.status) && (
                         <>
                           <Button
                             type="button"
@@ -213,6 +215,7 @@ export function DmsRenewalRequestsTable({ filter = {} }: DmsRenewalRequestsTable
                             variant="ghost"
                             size="sm"
                             className="h-7 text-xs gap-1 text-destructive hover:text-destructive"
+                            aria-label="Cancel renewal"
                             onClick={() => handleCancel(r.id)}
                           >
                             <XCircle className="h-3 w-3" />
@@ -237,7 +240,7 @@ export function DmsRenewalRequestsTable({ filter = {} }: DmsRenewalRequestsTable
           </div>
         </div>
 
-      {completeDialog && (
+      {canManage && completeDialog && (
         <DmsCompleteRenewalDialog
           open
           onOpenChange={(v) => { if (!v) setCompleteDialog(null); }}

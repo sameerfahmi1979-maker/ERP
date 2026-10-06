@@ -8,6 +8,9 @@ import type { EmailAttachment } from "@/lib/email/email-types";
 import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { readAllPages } from "@/server/reads/all-pages";
+import { expiryFilterSchema, expiryIdRowsSchema, expiryLinkRowsSchema, expiryDocumentRowsSchema, readNoExpiryTypeIds } from "@/server/reads/dms-expiry-contract";
+import { literalContains } from "@/lib/reads/search";
 
 export type ActionResult<T = unknown> = {
   success: boolean;
@@ -105,10 +108,10 @@ const DEFAULT_REMINDER_DAYS = [90, 60, 30, 14, 7, 3, 1, 0] as const;
 
 export async function getDmsExpiryDashboardStats(): Promise<ActionResult<DmsExpiryDashboardStats>> {
   try {
-    const supabase = await createClient();
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canViewExpiry(ctx)) return { success: false, error: "Permission denied" };
+    if (!ctx.isAccountActive || ctx.profile.must_change_password || !canViewExpiry(ctx)) return { success: false, error: "Permission denied" };
+    const supabase = await createClient();
 
     const today = new Date().toISOString().split("T")[0];
     const in7 = new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
@@ -117,12 +120,7 @@ export async function getDmsExpiryDashboardStats(): Promise<ActionResult<DmsExpi
     const in90 = new Date(Date.now() + 90 * 86400000).toISOString().split("T")[0];
 
     // Fetch document type IDs that do NOT require expiry tracking — exclude from "missing expiry"
-    const { data: noExpiryTypes } = await supabase
-      .from("dms_document_types")
-      .select("id")
-      .eq("requires_expiry_tracking", false)
-      .is("deleted_at", null);
-    const noExpiryTypeIds = (noExpiryTypes ?? []).map((t) => (t as Record<string, unknown>).id as number);
+    const noExpiryTypeIds = await readNoExpiryTypeIds(supabase);
 
     // Base missing_expiry query excluding non-expiry types
     const missingExpiryQuery = supabase.from("dms_documents").select("id", { count: "exact", head: true })
@@ -131,18 +129,7 @@ export async function getDmsExpiryDashboardStats(): Promise<ActionResult<DmsExpi
       missingExpiryQuery.not("document_type_id", "in", `(${noExpiryTypeIds.join(",")})`);
     }
 
-    const [
-      { count: expired },
-      { count: expiring_7 },
-      { count: expiring_30 },
-      { count: expiring_60 },
-      { count: expiring_90 },
-      { count: missing_expiry },
-      { count: pending_reminders },
-      { count: dismissed_reminders },
-      { count: open_renewals },
-      { count: expiry_ignored },
-    ] = await Promise.all([
+    const counts = await Promise.all([
       supabase.from("dms_documents").select("id", { count: "exact", head: true })
         .not("expiry_date", "is", null).lt("expiry_date", today).is("deleted_at", null).neq("status", "archived").neq("status", "superseded").is("expiry_tracking_override", null),
       supabase.from("dms_documents").select("id", { count: "exact", head: true })
@@ -157,10 +144,17 @@ export async function getDmsExpiryDashboardStats(): Promise<ActionResult<DmsExpi
       supabase.from("dms_expiry_reminders").select("id", { count: "exact", head: true }).eq("status", "pending"),
       supabase.from("dms_expiry_reminders").select("id", { count: "exact", head: true }).eq("status", "dismissed"),
       supabase.from("dms_renewal_requests").select("id", { count: "exact", head: true })
-        .in("status", ["draft", "requested", "in_progress", "waiting_for_document"]).is("deleted_at", null),
+        // Bound the unused result page as well as requesting an exact count.
+        // HEAD suppresses the HTTP body, not the database's row-producing plan.
+        .in("status", ["draft", "requested", "in_progress", "waiting_for_document"]).is("deleted_at", null).range(0, 0),
       supabase.from("dms_documents").select("id", { count: "exact", head: true })
         .eq("expiry_tracking_override", "ignored").is("deleted_at", null),
     ]);
+
+    if (counts.some(result => result.error || result.count === null || !Number.isSafeInteger(result.count) || result.count < 0)) {
+      return { success: false, error: "Expiry totals could not be verified. Please retry." };
+    }
+    const [expired, expiring_7, expiring_30, expiring_60, expiring_90, missing_expiry, pending_reminders, dismissed_reminders, open_renewals, expiry_ignored] = counts.map(result => result.count!);
 
     return {
       success: true,
@@ -177,8 +171,8 @@ export async function getDmsExpiryDashboardStats(): Promise<ActionResult<DmsExpi
         expiry_ignored: expiry_ignored ?? 0,
       },
     };
-  } catch (e) {
-    return { success: false, error: String(e) };
+  } catch {
+    return { success: false, error: "Expiry totals could not be verified. Please retry." };
   }
 }
 
@@ -209,47 +203,54 @@ export type ExpiringDocumentsFilter = {
 export async function getDmsExpiringDocuments(
   filter: ExpiringDocumentsFilter = { view: "expiring" }
 ): Promise<ActionResult<DmsExpiringDocumentRow[]>> {
+  const parsed = expiryFilterSchema.safeParse(filter);
+  if (!parsed.success) return { success: false, error: "Invalid expiry search criteria" };
+  filter = parsed.data;
   try {
-    const supabase = await createClient();
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canViewExpiry(ctx)) return { success: false, error: "Permission denied" };
+    if (!ctx.isAccountActive || ctx.profile.must_change_password || !canViewExpiry(ctx)) return { success: false, error: "Permission denied" };
+    const supabase = await createClient();
 
-    const today = new Date().toISOString().split("T")[0];
-    const in90 = new Date(Date.now() + 90 * 86400000).toISOString().split("T")[0];
+    // Freeze date criteria across all pages, including a traversal at midnight.
+    const now = Date.now();
+    const today = new Date(now).toISOString().split("T")[0];
+    const in90 = new Date(now + 90 * 86400000).toISOString().split("T")[0];
 
     // Fetch document type IDs that do NOT require expiry tracking — exclude from "missing expiry"
-    const { data: noExpiryTypes } = await supabase
-      .from("dms_document_types")
-      .select("id")
-      .eq("requires_expiry_tracking", false)
-      .is("deleted_at", null);
-    const noExpiryTypeIds = (noExpiryTypes ?? []).map((t) => (t as Record<string, unknown>).id as number);
+    const noExpiryTypeIds = filter.view === "missing_expiry" ? await readNoExpiryTypeIds(supabase) : [];
 
     // ── Category filter: resolve to document_type_ids ────────────────────────
     let categoryTypeIds: number[] | null = null;
     if (filter.categoryId) {
-      const { data: catTypes } = await supabase
+      const catTypes = await readAllPages(async (from, to) => {
+      const result = await supabase
         .from("dms_document_types")
-        .select("id")
-        .eq("category_id", filter.categoryId)
-        .is("deleted_at", null);
-      categoryTypeIds = (catTypes ?? []).map((t) => (t as Record<string, unknown>).id as number);
+        .select("id", { count: "exact" })
+        .eq("category_id", filter.categoryId!)
+        .is("deleted_at", null).order("id", { ascending: true }).range(from, to);
+      return { ...result, data: expiryIdRowsSchema.parse(result.data) };
+      }, { identity: row => row.id, maxRows: 10000 });
+      categoryTypeIds = catTypes.map(t => t.id);
       if (categoryTypeIds.length === 0) return { success: true, data: [] };
     }
 
     // ── Entity link filter: resolve to document_ids ──────────────────────────
     let entityLinkedDocIds: number[] | null = null;
     if (filter.entityType && filter.entityId) {
-      const { data: linkRows } = await supabase
+      const linkRows = await readAllPages(async (from, to) => {
+      const result = await supabase
         .from("dms_document_links")
-        .select("document_id")
-        .eq("entity_type", filter.entityType)
-        .eq("entity_id", filter.entityId);
-      entityLinkedDocIds = (linkRows ?? []).map((r) => (r as Record<string, unknown>).document_id as number);
+        .select("id, document_id", { count: "exact" })
+        .eq("entity_type", filter.entityType!)
+        .eq("entity_id", filter.entityId!).order("id", { ascending: true }).range(from, to);
+      return { ...result, data: expiryLinkRowsSchema.parse(result.data) };
+      }, { identity: row => row.id, maxRows: 10000 });
+      entityLinkedDocIds = [...new Set(linkRows.map(r => r.document_id))];
       if (entityLinkedDocIds.length === 0) return { success: true, data: [] };
     }
 
+    const data = await readAllPages(async (from, to) => {
     let query = supabase
       .from("dms_documents")
       .select(
@@ -257,13 +258,14 @@ export async function getDmsExpiringDocuments(
          expiry_tracking_override, expiry_override_reason,
          document_type:dms_document_types!document_type_id(name_en, is_renewable),
          category:dms_document_types!document_type_id(category:dms_document_categories!category_id(name_en))`,
+        { count: "exact" },
       )
       .is("deleted_at", null)
       // A superseded document has already been renewed/replaced — it must stop
       // being flagged as expired/expiring once the replacement is linked.
       .neq("status", "superseded")
       .order("expiry_date", { ascending: true, nullsFirst: false })
-      .limit(filter.limit ?? 200);
+      .order("id", { ascending: true }).range(from, to);
 
     if (filter.view === "expired") {
       query = query.not("expiry_date", "is", null).lt("expiry_date", today).is("expiry_tracking_override", null);
@@ -290,8 +292,8 @@ export async function getDmsExpiringDocuments(
       query = query.eq("status", filter.status);
     }
     if (filter.searchText?.trim()) {
-      const t = filter.searchText.trim();
-      query = query.or(`title.ilike.%${t}%,document_no.ilike.%${t}%`);
+      const t = literalContains(filter.searchText);
+      query = query.or(`title.ilike.${t},document_no.ilike.${t}`);
     }
     if (filter.expiryDateFrom) {
       query = query.gte("expiry_date", filter.expiryDateFrom);
@@ -300,21 +302,22 @@ export async function getDmsExpiringDocuments(
       query = query.lte("expiry_date", filter.expiryDateTo);
     }
     if (filter.daysRemainingMin !== undefined) {
-      const minDate = new Date(Date.now() + filter.daysRemainingMin * 86400000).toISOString().split("T")[0];
+      const minDate = new Date(now + filter.daysRemainingMin * 86400000).toISOString().split("T")[0];
       query = query.gte("expiry_date", minDate);
     }
     if (filter.daysRemainingMax !== undefined) {
-      const maxDate = new Date(Date.now() + filter.daysRemainingMax * 86400000).toISOString().split("T")[0];
+      const maxDate = new Date(now + filter.daysRemainingMax * 86400000).toISOString().split("T")[0];
       query = query.lte("expiry_date", maxDate);
     }
     if (entityLinkedDocIds && entityLinkedDocIds.length > 0) {
       query = query.in("id", entityLinkedDocIds);
     }
 
-    const { data, error } = await query;
-    if (error) return { success: false, error: error.message };
+    const result = await query;
+    return { ...result, data: expiryDocumentRowsSchema.parse(result.data) };
+    }, { identity: row => row.id, maxRows: filter.limit ?? 10000 });
 
-    const today2 = new Date();
+    const today2 = new Date(now);
     const rows: DmsExpiringDocumentRow[] = (data ?? []).map((d) => {
       const raw = d as Record<string, unknown>;
       const expiryDate = raw.expiry_date as string | null;
@@ -345,8 +348,8 @@ export async function getDmsExpiringDocuments(
     });
 
     return { success: true, data: rows };
-  } catch (e) {
-    return { success: false, error: String(e) };
+  } catch {
+    return { success: false, error: "Expiring documents could not be completely loaded. Refine the filters or retry." };
   }
 }
 

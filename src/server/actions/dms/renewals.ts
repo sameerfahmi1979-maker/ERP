@@ -6,6 +6,8 @@ import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { rebuildDmsExpiryReminders } from "./expiry-reminders";
+import { readAllPages } from "@/server/reads/all-pages";
+import { renewalFilterSchema, renewalRowsSchema } from "@/server/reads/dms-renewal-contract";
 
 export type ActionResult<T = unknown> = {
   success: boolean;
@@ -77,18 +79,22 @@ export type RenewalRequestsFilter = {
 export async function getDmsRenewalRequests(
   filter: RenewalRequestsFilter = {}
 ): Promise<ActionResult<DmsRenewalRequestRow[]>> {
+  const parsed = renewalFilterSchema.safeParse(filter);
+  if (!parsed.success) return { success: false, error: "Invalid renewal criteria" };
+  filter = parsed.data;
   try {
-    const supabase = await createClient();
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canViewRenewals(ctx)) return { success: false, error: "Permission denied" };
+    if (!ctx.isAccountActive || ctx.profile.must_change_password || !canViewRenewals(ctx)) return { success: false, error: "Permission denied" };
+    const supabase = await createClient();
 
+    const data = await readAllPages(async (from, to) => {
     let query = supabase
       .from("dms_renewal_requests")
-      .select(RENEWAL_SELECT)
+      .select(RENEWAL_SELECT, { count: "exact" })
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
-      .limit(200);
+      .order("id", { ascending: true }).range(from, to);
 
     if (filter.documentId) query = query.eq("document_id", filter.documentId);
     if (filter.status) query = query.eq("status", filter.status);
@@ -97,11 +103,12 @@ export async function getDmsRenewalRequests(
       query = query.not("status", "in", '("renewed","cancelled","rejected")');
     }
 
-    const { data, error } = await query;
-    if (error) return { success: false, error: error.message };
-    return { success: true, data: (data as unknown as DmsRenewalRequestRow[]) ?? [] };
-  } catch (e) {
-    return { success: false, error: String(e) };
+    const result = await query;
+    return { ...result, data: renewalRowsSchema.parse(result.data) };
+    }, { identity: row => row.id, maxRows: 10000 });
+    return { success: true, data };
+  } catch {
+    return { success: false, error: "Renewal requests could not be completely loaded. Refine the filters or retry." };
   }
 }
 

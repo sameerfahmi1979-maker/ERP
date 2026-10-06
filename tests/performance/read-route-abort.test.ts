@@ -283,7 +283,7 @@ it("actual route cancellation reaches the client once, not as two service attemp
 it("non-abort response loss retains the one bounded retry", async () => {
   const fetcher = vi.fn(async () => {throw new TypeError("Synthetic response loss");}); vi.stubGlobal("fetch", fetcher); const queries = cache();
   try {
-    await expect(queries.fetchQuery({queryKey: ["lost-read"], queryFn: ({signal}) => readJson("example", {}, signal)})).rejects.toBeInstanceOf(TypeError);
+    await expect(queries.fetchQuery({queryKey: ["lost-read"], queryFn: ({signal}) => readJson("example", {}, signal)})).rejects.toThrow("Records could not be loaded. Please retry.");
     expect(fetcher).toHaveBeenCalledTimes(2); expect(log.warn).not.toHaveBeenCalled();
   } finally {queries.clear();}
 });

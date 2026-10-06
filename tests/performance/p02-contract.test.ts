@@ -23,3 +23,9 @@ it("never exposes an untrusted successful-HTTP error body", async () => {
   vi.stubGlobal("fetch",async()=>Response.json({success:false,error:"private database detail"}));
   await expect(readJson("example",{})).rejects.toThrow("Records could not be loaded. Please retry.");
 });
+it("malformed JSON and thrown network diagnostics never escape to consumers", async () => {
+  vi.stubGlobal("fetch",async()=>new Response("private upstream diagnostic",{status:200}));
+  await expect(readJson("example",{})).rejects.toThrow("Records could not be loaded. Please retry.");
+  vi.stubGlobal("fetch",async()=>{throw Error("private network detail");});
+  await expect(readJson("example",{})).rejects.toThrow("Records could not be loaded. Please retry.");
+});

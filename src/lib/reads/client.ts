@@ -32,6 +32,8 @@ export async function readJson<T>(resource: string, params: unknown, signal?: Ab
   return result as T;
   } catch(error) {
     if(signal?.aborted||(typeof error==="object"&&error!==null&&"name"in error&&error.name==="AbortError"))throw cancelled();
-    throw error;
+    if(error instanceof ReadError)throw error;
+    // JSON parser/network exceptions may include fragments of an upstream body.
+    throw new Error("Records could not be loaded. Please retry.");
   }
 }

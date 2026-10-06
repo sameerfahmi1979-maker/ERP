@@ -10,8 +10,9 @@ deployment is authorized by this pull request.
 Browser baseline measurements remain **NOT RUN / OWNER-DEFERRED**. On 6 October
 2026 the owner explicitly moved them out of P00 closeout to cloud validation
 after the performance phases. No browser access restriction has been bypassed.
-P00 may close under this revised scope only after its remaining non-browser
-gates pass. This is not cloud release approval or a performance acceptance claim.
+P00's revised non-browser scope is complete, subject to the final documentation
+commit retaining passing checks. This is not cloud release approval or a
+performance acceptance claim. No browser measurement has been fabricated.
 
 The deferred gate includes Employees, Departments and DMS; admin and scoped
 synthetic users; cold route, warm navigation, reload, workspace return and
@@ -34,9 +35,13 @@ source/dependency hashes invalidate stale acceptance.
 The export-review tool resolves each referenced action export to its declaration,
 records source digests and call locations, and separates read/write/mixed/delegated
 syntax. A read-looking name, select call, or lack of visible writes never proves
-purity. The current 763-export triage resolves declarations, but **manual delegated
-effect review remains open**. The tool deliberately does not turn those entries
-into passes or erase them from the inventory.
+purity. All 763 referenced exports now have source-bound manual direct-business
+contract reviews, with material delegated-business-helper notes. An independent
+join verifies exact key coverage, no duplicate reviews, matching source hashes
+and all 1,717 current files. Consumer-pattern classification is a separate sidecar;
+the original inventory, 225 overlays and unresolved security/runtime holds remain
+unchanged. Unknown RPC/provider/infrastructure effects remain explicit: this is
+not exhaustive transitive purity, safe-cache admission or runtime acceptance.
 
 ## Verification
 
@@ -47,7 +52,12 @@ file-symlink cases because that host does not permit creating file symlinks.
 
 The dedicated Windows/Linux CI workflow requires every case to execute and fails
 if any case is skipped. It does not change host security permissions to force a pass.
-CI results must be inspected independently; adding the workflow is not a passing result.
+On implementation commit f633accc720b70958cec5a93246593d79bb395ee, Windows and Linux
+each passed all 114 cases, with zero failures or skips (run 37445857067).
+Engineering run 37445857120 passed verification, lint and production-image checks.
+Ordinary unit tests passed 464 cases and remediation tests passed 827; local lint
+has zero errors and 134 existing warnings, with no new warnings. E2E listing and
+image anonymous-route probes are not signed-in browser acceptance.
 
 ## Measurement binding
 
@@ -72,12 +82,14 @@ Raw discovery and potential import reachability are not runtime execution.
 No generated inventory, credentials, private audit reports, production records,
 database dumps or runtime environment files belong in this public candidate.
 
-## Remaining acceptance
+## Deferred and later-phase acceptance
 
-- Manual semantic/effect review beyond the export syntax triage.
-- Passing native file-link and ordinary repository checks on the published commit.
 - Actual browser measurements, separately deferred by the owner.
 - Fresh identical schema/fixture/build binding when paired measurement resumes.
+- Source-specific transitive/RPC/security review and runtime tests before later
+  read adoption or caching; P00 classification does not pass those gates.
+- Existing affected native ACL revalidation and app-wide adoption holds.
+- Production-volume, real-device and integrated release acceptance.
 
 ## Dependency remediation — 6 October 2026
 
@@ -97,7 +109,10 @@ not evaluate local source and is not proof of patch safety. The mandatory vendor
 integrity check and 24 regression/compatibility tests provide separate evidence.
 No audit suppression, threshold relaxation or forced major downgrade is used.
 See vendor/README.md for scope limitations. Published Windows/Linux, full
-engineering and image checks must pass before closing the dependency gate.
+engineering and image checks passed on the implementation commit above. Local
+fork maintenance remains an explicit duty until verified upstream fixes replace
+the patches. Preserve frozen measurement builds and rebind dependencies before
+future comparisons; those older builds were not silently upgraded.
 
 References: [proxy-addr patch](https://github.com/advisories/GHSA-jqcg-44mw-7w3h),
 [source-map-js patch](https://github.com/advisories/GHSA-68fv-2mgg-jv7q),

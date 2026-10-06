@@ -16,6 +16,9 @@ import {fetchConfigurationChoices,type ConfigurationResource} from "@/lib/lookup
 import {readDmsArchivePage} from "@/server/reads/dms-archive";
 import {getDmsExpiringDocuments,getDmsExpiryDashboardStats} from "@/server/actions/dms/expiry-reminders";
 import {getDmsRenewalRequests} from "@/server/actions/dms/renewals";
+import {POST as expiryRoute} from "@/app/api/reads/dms-expiring/route";
+import {POST as summaryRoute} from "@/app/api/reads/dms-expiry-summary/route";
+import {POST as renewalRoute} from "@/app/api/reads/dms-renewals/route";
 const clients=new Map<string,SupabaseClient>(),samples:Record<string,unknown>[]=[];
 const actualFetch=globalThis.fetch;
 let output="",signoutFailures=0;
@@ -100,6 +103,21 @@ it("expiry continuation preserves the complete admin identity set and rejects no
  }
  const renewalStart=performance.now(),renewals=await getDmsRenewalRequests({includeCompleted:true});samples.push({actor:"admin",resource:"renewals-all",success:renewals.success,total:renewals.data?.length,baseline:renewalTotal,elapsedMs:Math.round(performance.now()-renewalStart)});
  expect(renewals.success).toBe(true);expect(renewalTotal).toBeGreaterThan(200);expect(renewals.data!.map(row=>row.id).sort((a,b)=>a-b)).toEqual(renewalIds);
+ // Execute the actual route handlers with the same ordinary caller-backed reads.
+ // This is native route composition, not an HTTP-server/browser measurement.
+ const routes=[{name:"expiry",run:expiryRoute,params:{view:"all"},ids},{name:"summary",run:summaryRoute,params:{}},{name:"renewals",run:renewalRoute,params:{includeCompleted:true},ids:renewalIds}];
+ for(const route of routes){
+  const response=await route.run(new Request("http://127.0.0.1:16801/api/reads/test",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(route.params)}));
+  expect(response.status).toBe(200);expect(response.headers.get("cache-control")).toBe("private, no-store, max-age=0");
+  const body=await response.json();expect(body.success).toBe(true);
+  if(route.ids)expect(body.data.map((row:{id:number})=>row.id).sort((a:number,b:number)=>a-b)).toEqual(route.ids);
+  else expect(Object.keys(body.data)).toHaveLength(10);
+  samples.push({actor:"admin",resource:"native-route-"+route.name,success:true,total:route.ids?.length,qualification:"Actual handler plus SDK-backed reads, not HTTP/browser timing"});
+ }
  state.client=clients.get("none")!;
  for(const denied of [await getDmsExpiringDocuments(),await getDmsExpiryDashboardStats(),await getDmsRenewalRequests()]){samples.push({actor:"none",resource:"expiry-denial",success:denied.success});expect(denied.success).toBe(false);expect(denied.data).toBeUndefined();}
+ for(const route of routes){
+  const response=await route.run(new Request("http://127.0.0.1:16801/api/reads/test",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(route.params)}));
+  expect(response.status).toBe(403);expect((await response.json()).data).toBeUndefined();samples.push({actor:"none",resource:"native-route-"+route.name,status:403});
+ }
 });

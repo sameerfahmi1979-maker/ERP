@@ -12,7 +12,7 @@ Status: partial implementation; **P04 is not closed**. This candidate is stacked
 - Archive guards reject malformed, partial, duplicate or count-inconsistent rows and replacements. Ordinary DMS document pages also reject duplicate identities.
 - Confirmed restore invalidates related list/record/dashboard/expiry caches; failed restore does not. Document-list invalidation includes the archive read family.
 
-No new database migration is introduced here. Existing P03 migrations are prerequisites. Do not substitute the older lab's protected reader or disable confidentiality for performance.
+The initial shared-selector/archive checkpoint added no migration. The renewal continuation below adds one guarded SELECT-policy optimization and requires the existing P03 migrations. Do not substitute the older lab's protected reader or disable confidentiality for performance.
 
 ## Expiry and renewal continuation
 
@@ -25,7 +25,17 @@ No new database migration is introduced here. Existing P03 migrations are prereq
 
 The opt-in local harness additionally checks complete synthetic expiry/renewal identities, summary availability and no-role denial. A failed native check is retained as a failed acceptance gate, not converted into a pass by an offline test. Test timings are lab observations, not browser timings or production guarantees.
 
-Latest native disposition: all 2,214 synthetic expiry identities and ten summary metrics succeeded. The independent renewal traversal still times out (SQLSTATE 57014), including with the reviewed P03 prerequisites. Renewal native acceptance remains **FAIL/OPEN**; the failed case did not reach its final expiry/renewal no-role checks. Existing offline denial tests are not substituted for those native checks. The lab was restored and its test sessions signed out.
+### Renewal timeout repair and cancellable reads
+
+The previous native renewal SQLSTATE 57014 failure is repaired in the isolated candidate. A read-only execution plan identified repeated row-level authorization work: the old exact count scanned 1,107 renewals and took about 5.5 seconds in the synthetic lab. This is diagnostic evidence, not a production benchmark.
+
+`20261006155439_perf_p04_renewal_read_scope.sql` reuses the reviewed P03 visible-document set for renewal SELECT. It splits the old restrictive ALL subject policy into operation-specific policies, retaining its exact INSERT/UPDATE/DELETE predicate. Existing permissive write policies, live-principal policy, table/function grants and helper definitions are unchanged. No new privileged endpoint or persistent authorization cache is created. Guarded preimages reject a changed dependency/policy or accidental second application.
+
+Native acceptance now passes for all 2,214 expiry identities, ten summary metrics and all 1,107 renewal identities against independent ordinary-caller reads. The no-role assertions were reached and passed. Complete renewal sets matched the frozen F03 helper for eight synthetic identities: administrator 1,107; company 1,103; branch 1,051; other company 4; combined roles 1,055; no-role/self/manager 0. Each of the eight sessions returned zero rows after sign-out. Empty self/manager results demonstrate denial in these fixtures, not positive self/manager workflow coverage. An additional 96 document-projection probes passed. Replay restored all modified policy/function definitions, owners and ACLs exactly; synthetic sessions were signed out.
+
+The three actual expiry-list, expiry-summary and renewal-list consumers now use private, uncached read routes and consume cancellation signals. Denials are terminal, transient retry has one owner, invalid parameters are rejected before business reads, and provider errors are not exposed. A cancelled route fences late results; this does not claim cancellation of an already-running database query. Existing server actions remain compatibility readers and all mutation actions remain unchanged. Renewal controls also remain mounted during loading/errors; stale completion targets are hidden.
+
+The complete renewal compatibility read still took about 9.4 seconds for all 1,107 joined rows in one diagnostic run. Therefore this repair is **not** acceptance of fast server-paged interactive renewal UI. Bounded interactive paging and the wider P04 adoption gates below remain open. Browser measurements remain deferred.
 
 The dependency gate also identified GHSA-wq5f-xc86-pv6w. The lockfile updates only Sharp and its platform/libvips packages to the patched Sharp 0.35.5 family; unrelated dependency metadata is preserved. No deployment is implied.
 
@@ -51,4 +61,4 @@ Keep F03 confidentiality, F04 draft/mutation safety and F05 appearance intact. W
 
 ## Integration/rollback
 
-Review against the exact P03 base and selected owning-phase revisions in an isolated environment. Apply the existing P03 migrations only against their guarded preimages before deploying dependent reads. Stop on a preimage mismatch, missing/false counts, denial leakage, lost drafts or failed reads. Preserve the previous application build; rolling back this application checkpoint must not remove F03 security or reset business data.
+Review against the exact P03 base and selected owning-phase revisions in an isolated environment. Apply P03 prerequisites before the P04 renewal migration, each against guarded preimages. Stop on a preimage mismatch, missing/false counts, denial leakage, lost drafts or failed reads. Preserve the previous application build and exact policy preimages. Backout restores the original restrictive ALL subject policy and original permissive SELECT expression after removing only the four operation-specific replacement policies; do not remove the original write/principal policies, F03 security or business data. Exact backout was verified in the synthetic lab. No deployment is authorized by this checkpoint.

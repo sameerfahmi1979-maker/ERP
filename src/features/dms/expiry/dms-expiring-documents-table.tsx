@@ -19,7 +19,7 @@ import { TableSearchInput } from "@/components/erp/table/table-search-input";
 import { useSortPaginate } from "@/hooks/use-sort-paginate";
 import { queryKeys } from "@/lib/query/query-keys";
 import {
-  getDmsExpiringDocuments,
+  type ActionResult,
   generateDmsExpiryRemindersForDocument,
   setDmsExpiryTrackingOverride,
   type ExpiringDocumentsFilter,
@@ -28,6 +28,7 @@ import {
 import { DmsExpiryStatusBadge } from "./dms-expiry-status-badge";
 import { invalidateDmsExpiry } from "@/lib/query/invalidation";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
+import {readJson,retryAuthorizedRead} from "@/lib/reads/client";
 
 interface DmsExpiringDocumentsTableProps {
   view: "expired" | "expiring" | "missing_expiry" | "ignored";
@@ -139,12 +140,13 @@ export function DmsExpiringDocumentsTable({ view, onStartRenewal, advancedFilter
 
   const { data: queryData, isLoading, isError, refetch } = useQuery({
     queryKey: queryKeys.dms.expiringDocuments(filterKey as Record<string, unknown>),
-    queryFn: async () => {
-      const result = await getDmsExpiringDocuments(filterKey);
-      if (!result.success || !Array.isArray(result.data)) throw new Error(result.error ?? "Expiring documents are unavailable");
+    queryFn: async ({signal}) => {
+      const result = await readJson<ActionResult<DmsExpiringDocumentRow[]>>("dms-expiring",filterKey,signal);
+      if (!result.success || !Array.isArray(result.data)) throw new Error("Expiring documents are unavailable");
       return result.data;
     },
     staleTime: 60_000,
+    retry: retryAuthorizedRead,
   });
   // A denied/failed refresh must not leave cached rows or mutation targets visible.
   const docs = isError || isLoading ? EMPTY_DOCS : queryData ?? EMPTY_DOCS;

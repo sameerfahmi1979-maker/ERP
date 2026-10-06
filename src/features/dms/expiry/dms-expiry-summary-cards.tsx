@@ -4,7 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { CalendarX, AlertTriangle, Clock, HelpCircle, Bell, RefreshCw, CheckCircle2, EyeOff } from "lucide-react";
 import { queryKeys } from "@/lib/query/query-keys";
-import { getDmsExpiryDashboardStats } from "@/server/actions/dms/expiry-reminders";
+import type { ActionResult, DmsExpiryDashboardStats } from "@/server/actions/dms/expiry-reminders";
+import {readJson,retryAuthorizedRead} from "@/lib/reads/client";
 
 interface CardProps {
   label: string;
@@ -31,12 +32,13 @@ function StatCard({ label, count, icon: Icon, iconClass, cardClass }: CardProps)
 export function DmsExpirySummaryCards() {
   const { data: stats, isLoading, isError, refetch } = useQuery({
     queryKey: queryKeys.dms.expiryDashboardStats(),
-    queryFn: async () => {
-      const result = await getDmsExpiryDashboardStats();
-      if (!result.success || !result.data) throw new Error(result.error ?? "Expiry totals are unavailable");
+    queryFn: async ({signal}) => {
+      const result = await readJson<ActionResult<DmsExpiryDashboardStats>>("dms-expiry-summary",{},signal);
+      if (!result.success || !result.data) throw new Error("Expiry totals are unavailable");
       return result.data;
     },
     staleTime: 60_000,
+    retry: retryAuthorizedRead,
   });
 
   if (isLoading) {

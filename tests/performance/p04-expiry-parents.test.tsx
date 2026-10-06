@@ -5,6 +5,7 @@ import {afterEach,beforeEach,expect,it,vi} from "vitest";
 import {act,cleanup,render,screen} from "@testing-library/react";
 import {QueryClient,QueryClientProvider} from "@tanstack/react-query";
 const state=vi.hoisted(()=>({allowed:new Set<string>(),stats:vi.fn()}));
+vi.mock("@/lib/reads/client",async importOriginal=>({...await importOriginal<typeof import("@/lib/reads/client")>(),readJson:state.stats}));
 vi.mock("@/lib/rbac/check",()=>({getAuthContext:async()=>({}),hasPermission:(_ctx:unknown,p:string)=>state.allowed.has(p)}));
 vi.mock("next/navigation",()=>({redirect:()=>{throw Error("redirect");}}));
 vi.mock("@/components/ui/tabs",()=>({Tabs:({children}:{children:React.ReactNode})=><>{children}</>,TabsList:({children}:{children:React.ReactNode})=><>{children}</>,TabsTrigger:({children}:{children:React.ReactNode})=><>{children}</>,TabsContent:({children}:{children:React.ReactNode})=><>{children}</>}));
@@ -20,7 +21,7 @@ vi.mock("@/server/actions/dms/expiry-reminders",()=>({getDmsExpiryDashboardStats
 import ExpiryPage from "@/app/(protected)/dms/expiring/page";
 import RenewalPage from "@/app/(protected)/dms/renewals/page";
 import {DmsExpirySummaryCards} from "@/features/dms/expiry/dms-expiry-summary-cards";
-function cache(){return new QueryClient({defaultOptions:{queries:{retry:false}}});}
+function cache(){return new QueryClient({defaultOptions:{queries:{retry:false,retryDelay:0}}});}
 beforeEach(()=>{state.allowed.clear();state.stats.mockResolvedValue({success:false,error:"Unavailable"});});
 afterEach(()=>{cleanup();vi.clearAllMocks();});
 it.each([false,true])("actual expiry page forwards renewal capability independently of expiry administration: %s",async manage=>{

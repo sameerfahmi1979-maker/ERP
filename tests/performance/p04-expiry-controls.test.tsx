@@ -6,7 +6,9 @@ import {act,cleanup,fireEvent,render,screen} from "@testing-library/react";
 import {QueryClient,QueryClientProvider} from "@tanstack/react-query";
 import {FluentProvider,webLightTheme} from "@fluentui/react-components";
 import {WorkspaceUiMemoryProvider} from "@/hooks/use-persistent-ui-state";
+import {ReadError} from "@/lib/reads/client";
 const mocks=vi.hoisted(()=>({read:vi.fn(),cancel:vi.fn(),renewals:vi.fn()}));
+vi.mock("@/lib/reads/client",async importOriginal=>({...await importOriginal<typeof import("@/lib/reads/client")>(),readJson:(resource:string,params:unknown,signal:AbortSignal)=>resource==="dms-expiring"?mocks.read(params,signal):mocks.renewals(params,signal)}));
 vi.mock("@/server/actions/dms/expiry-reminders",()=>({getDmsExpiringDocuments:mocks.read,generateDmsExpiryRemindersForDocument:vi.fn(),setDmsExpiryTrackingOverride:vi.fn()}));
 vi.mock("@/server/actions/dms/renewals",()=>({getDmsRenewalRequests:mocks.renewals,cancelDmsRenewalRequest:mocks.cancel}));
 vi.mock("@/features/dms/renewals/dms-complete-renewal-dialog",()=>({DmsCompleteRenewalDialog:()=> <div>Complete renewal dialog</div>}));
@@ -15,7 +17,7 @@ import {DmsExpiringDocumentsTable} from "@/features/dms/expiry/dms-expiring-docu
 import {DmsRenewalRequestsTable} from "@/features/dms/renewals/dms-renewal-requests-table";
 const expiry={id:1,document_no:"SYNTH-1",title:"Synthetic expiry",expiry_date:"2026-01-01",issue_date:null,status:"active",confidentiality:"company",days_remaining:-20,document_type:"Synthetic type",category:"Test",is_renewable:true,owner:null,latest_reminder_status:null,expiry_tracking_override:null,expiry_override_reason:null};
 const renewal={id:1,renewal_no:"SYNTH-RENEW",document_id:1,status:"requested",priority:"normal",created_at:"2026-01-01",document:{id:1,document_no:"SYNTH-1",title:"Synthetic expiry",expiry_date:"2026-01-01",document_type_id:1}};
-function client(){return new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});}
+function client(){return new QueryClient({defaultOptions:{queries:{retry:false,retryDelay:0},mutations:{retry:false}}});}
 function wrap(cache:QueryClient,children:React.ReactNode){return <FluentProvider theme={webLightTheme}><WorkspaceUiMemoryProvider><QueryClientProvider client={cache}>{children}</QueryClientProvider></WorkspaceUiMemoryProvider></FluentProvider>;}
 beforeEach(()=>{mocks.read.mockResolvedValue({success:true,data:[]});mocks.renewals.mockResolvedValue({success:true,data:[renewal]});mocks.cancel.mockResolvedValue({success:true});});
 afterEach(()=>{cleanup();vi.resetAllMocks();});
@@ -47,4 +49,25 @@ it("explicit managers can open completion but lose the dialog when the capabilit
 it.each(["expiry","renewals"])("missing successful %s payload is an error, not empty",async which=>{
  mocks.read.mockResolvedValue({success:true});mocks.renewals.mockResolvedValue({success:true});render(wrap(client(),which==="expiry"?<DmsExpiringDocumentsTable view="expired"/>:<DmsRenewalRequestsTable/>));
  await screen.findByRole("alert");expect(screen.queryByText("No expired documents")).toBeNull();expect(screen.queryByText("No renewal requests found")).toBeNull();
+});
+
+it.each(["expiry","renewals"])("%s consumes the cancellation signal and aborts on unmount",async which=>{
+ const read=which==="expiry"?mocks.read:mocks.renewals;read.mockReturnValue(new Promise(()=>{}));
+ const view=render(wrap(client(),which==="expiry"?<DmsExpiringDocumentsTable view="expired"/>:<DmsRenewalRequestsTable/>));
+ expect(read).toHaveBeenCalledOnce();const signal=read.mock.calls[0][1] as AbortSignal;expect(signal.aborted).toBe(false);view.unmount();expect(signal.aborted).toBe(true);
+});
+
+it.each(["expiry","renewals"])("%s does not retry access denial",async which=>{
+ const read=which==="expiry"?mocks.read:mocks.renewals;read.mockRejectedValue(new ReadError("Denied",403));
+ render(wrap(client(),which==="expiry"?<DmsExpiringDocumentsTable view="expired"/>:<DmsRenewalRequestsTable/>));
+ await screen.findByRole("alert");expect(read).toHaveBeenCalledOnce();
+});
+
+it("renewal filters stay mounted through loading and failure, without false zero or stale actions",async()=>{
+ let resolve!:(v:unknown)=>void;mocks.renewals.mockReturnValue(new Promise(r=>{resolve=r;}));const cache=client();
+ render(wrap(cache,<DmsRenewalRequestsTable canManage/>));expect(screen.getByPlaceholderText("Search renewals…")).toBeTruthy();expect(screen.getByRole("button",{name:/Edit filters/i})).toBeTruthy();
+ await act(async()=>resolve({success:true,data:[renewal]}));await screen.findByText("SYNTH-RENEW");fireEvent.click(screen.getByRole("button",{name:"Complete"}));
+ mocks.renewals.mockRejectedValue(new ReadError("Denied",403));await act(async()=>{await cache.invalidateQueries();});await screen.findByRole("alert");
+ expect(screen.queryByText("SYNTH-RENEW")).toBeNull();expect(screen.queryByText("Complete renewal dialog")).toBeNull();expect(screen.getByText("Renewal count unavailable")).toBeTruthy();expect(screen.queryByText("0 renewals")).toBeNull();
+ expect(screen.getByPlaceholderText("Search renewals…")).toBeTruthy();expect(screen.getByRole("button",{name:/Edit filters/i})).toBeTruthy();
 });

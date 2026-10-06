@@ -16,7 +16,7 @@ import { TableSearchInput } from "@/components/erp/table/table-search-input";
 import { useSortPaginate } from "@/hooks/use-sort-paginate";
 import { queryKeys } from "@/lib/query/query-keys";
 import {
-  getDmsRenewalRequests,
+  type ActionResult,
   cancelDmsRenewalRequest,
   type DmsRenewalRequestRow,
   type RenewalRequestsFilter,
@@ -24,6 +24,7 @@ import {
 import { DmsRenewalStatusBadge } from "./dms-renewal-status-badge";
 import { DmsCompleteRenewalDialog } from "./dms-complete-renewal-dialog";
 import { invalidateDmsRenewals } from "@/lib/query/invalidation";
+import {readJson,retryAuthorizedRead} from "@/lib/reads/client";
 
 interface DmsRenewalRequestsTableProps {
   filter?: RenewalRequestsFilter;
@@ -88,15 +89,17 @@ export function DmsRenewalRequestsTable({ filter = {}, canManage = false }: DmsR
 
   const { data: renewals = [], isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: queryKeys.dms.renewalRequests(filter as Record<string, unknown>),
-    queryFn: async () => {
-      const result = await getDmsRenewalRequests(filter);
-      if (!result.success || !Array.isArray(result.data)) throw new Error(result.error ?? "Renewal requests are unavailable");
+    queryFn: async ({signal}) => {
+      const result = await readJson<ActionResult<DmsRenewalRequestRow[]>>("dms-renewals",filter,signal);
+      if (!result.success || !Array.isArray(result.data)) throw new Error("Renewal requests are unavailable");
       return result.data;
     },
     staleTime: 30_000,
+    retry: retryAuthorizedRead,
   });
 
-  const listView = useDmsListView("renewals", renewals, DMS_LIST_FIELDS);
+  const visibleRenewals = isLoading || isError ? [] : renewals;
+  const listView = useDmsListView("renewals", visibleRenewals, DMS_LIST_FIELDS);
   const table = useSortPaginate(listView.rows, {
     memoryKey: "dms:renewals",
     defaultSortKey: "created_at",
@@ -120,24 +123,19 @@ export function DmsRenewalRequestsTable({ filter = {}, canManage = false }: DmsR
     }
   };
 
-  if (isLoading) {
-    return <div className="py-8 text-center text-sm text-muted-foreground">Loading…</div>;
-  }
-
-  if (isError) return <DmsLoadError subject="renewal requests" retry={refetch} pending={isFetching} />;
-
   return (
     <>
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <p className="text-sm text-muted-foreground">
-            {table.total !== renewals.length
+            {isError ? "Renewal count unavailable" : isLoading ? "Loading renewals…" : table.total !== renewals.length
               ? `${table.total} of ${renewals.length} renewal${renewals.length !== 1 ? "s" : ""}`
               : `${renewals.length} renewal${renewals.length !== 1 ? "s" : ""}`}
           </p>
           <TableSearchInput value={table.query} onChange={table.setQuery} placeholder="Search renewals…" className="w-52" />
         </div>
         <DmsListTools view={listView} />
+        {isError ? <DmsLoadError subject="renewal requests" retry={refetch} pending={isFetching} /> : isLoading ? <div role="status" className="py-8 text-center text-sm text-muted-foreground">Loading…</div> : <>
 <div className="rounded-md border border-border overflow-auto">
           <div role="region" aria-label="renewals table" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{ minWidth: listView.visible.reduce((sum, column) => sum + column.width, 0) }}><colgroup>{listView.visible.map(column => <col key={column.id} style={{ width: column.width }} />)}</colgroup>
             <thead>
@@ -238,9 +236,10 @@ export function DmsRenewalRequestsTable({ filter = {}, canManage = false }: DmsR
               total={table.total}
             />
           </div>
+          </>}
         </div>
 
-      {canManage && completeDialog && (
+      {canManage && !isError && !isLoading && completeDialog && visibleRenewals.some(row=>row.id===completeDialog.renewal.id&&row.document_id===completeDialog.renewal.document_id) && (
         <DmsCompleteRenewalDialog
           open
           onOpenChange={(v) => { if (!v) setCompleteDialog(null); }}

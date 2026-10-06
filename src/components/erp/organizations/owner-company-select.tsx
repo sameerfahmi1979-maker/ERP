@@ -6,6 +6,7 @@
  */
 
 import { ERPCombobox } from "@/components/erp/combobox";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import { useOwnerCompaniesQuery } from "@/hooks/lookups";
 
 interface OwnerCompanySelectProps {
@@ -39,7 +40,8 @@ export function OwnerCompanySelect({
   ariaLabel = "Company",
   error,
 }: OwnerCompanySelectProps) {
-  const { options, isLoading, error: fetchError } = useOwnerCompaniesQuery({ includeInactive });
+  const choiceRead = useOwnerCompaniesQuery({ includeInactive, selectedId: value ?? null });
+  const { options, isLoading, error: fetchError } = choiceRead;
 
   const handleValueChange = (newValue: string | number | null) => {
     if (!onValueChange) return;
@@ -52,7 +54,7 @@ export function OwnerCompanySelect({
   };
 
   return (
-    <ERPCombobox
+    <QueryReadBoundary queries={[choiceRead]}><ERPCombobox
       value={value ?? null}
       onValueChange={handleValueChange}
       options={options}
@@ -71,6 +73,6 @@ export function OwnerCompanySelect({
       className={className}
       name={name}
       ariaLabel={ariaLabel}
-    />
+    /></QueryReadBoundary>
   );
 }

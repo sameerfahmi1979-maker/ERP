@@ -233,6 +233,7 @@ export function invalidateAllDmsAdmin(queryClient: QueryClient): void {
 
 export function invalidateDmsDocuments(queryClient: QueryClient): void {
   invalidateAuthorizedRead(queryClient, "dms-documents");
+  invalidateAuthorizedRead(queryClient, "dms-archive");
   void queryClient.invalidateQueries({ queryKey: ["dms", "documents"] });
 }
 

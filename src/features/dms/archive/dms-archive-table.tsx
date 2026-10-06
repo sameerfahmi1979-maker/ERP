@@ -3,8 +3,11 @@
 import { DmsListTools, useDmsListView, type DmsListField } from "@/features/dms/dms-list-view";
 import { ConfiguredRow } from "@/components/erp/table/list-controls";
 
-import { useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useTransition } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { invalidateDmsDocuments, invalidateDmsDashboard, invalidateDmsExpiry } from "@/lib/query/invalidation";
+import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
+import { canonicalReadParams, useServerPage } from "@/hooks/use-server-page";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import {
@@ -24,7 +27,6 @@ import { unarchiveDmsDocument } from "@/server/actions/dms/documents";
 import type { ArchivedDocumentRow } from "@/server/actions/dms/documents";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { TablePagination } from "@/components/erp/table/table-pagination";
-import { useSortPaginate } from "@/hooks/use-sort-paginate";
 import { SortColHeader } from "@/components/erp/table/sort-col-header";
 import { useRealtimeSync } from "@/hooks/realtime/use-realtime-sync";
 
@@ -55,8 +57,10 @@ function ArchiveReasonBadge({ reason }: { reason: "archived" | "renewed" }) {
 
 interface Props {
   initialDocuments: ArchivedDocumentRow[];
-  categories: { id: number; name_en: string; category_code: string }[];
-  documentTypes: { id: number; name_en: string; type_code: string }[];
+  initialTotal?: number;
+  initialUpdatedAt?: number;
+  categories: { id: number; name_en: string }[];
+  documentTypes: { id: number; name_en: string }[];
   canUnarchive: boolean;
 }
 
@@ -108,12 +112,14 @@ const DMS_LIST_FIELDS: DmsListField[] = [
 
 export function DmsArchiveTable({
   initialDocuments,
+  initialTotal=initialDocuments.length,
+  initialUpdatedAt=0,
   categories,
   documentTypes,
   canUnarchive,
 }: Props) {
-  const router = useRouter();
   const { openTab } = useWorkspace();
+  const queryClient = useQueryClient();
   const [isPending, startTransition] = useTransition();
 
   // Live sync: if another user archives/unarchives, refresh the list.
@@ -121,14 +127,14 @@ export function DmsArchiveTable({
     table: "dms_documents",
     event: "*",
     debounceMs: 600,
-    onEvent: () => { router.refresh(); },
+    onEvent: () => { void archiveRead.refetch(); },
   });
 
   // ── Filters ───────────────────────────────────────────────────────────────
-  const [search, setSearch] = useState("");
-  const [filterReason, setFilterReason] = useState<string | null>(null);
-  const [filterType, setFilterType] = useState<number | null>(null);
-  const [filterCategory, setFilterCategory] = useState<number | null>(null);
+  const [search, setSearch] = usePersistentUiState("dms-archive:search","");
+  const [filterReason, setFilterReason] = usePersistentUiState<string | null>("dms-archive:reason",null);
+  const [filterType, setFilterType] = usePersistentUiState<number | null>("dms-archive:type",null);
+  const [filterCategory, setFilterCategory] = usePersistentUiState<number | null>("dms-archive:category",null);
 
   const typeOptions: ERPComboboxOption[] = useMemo(
     () => documentTypes.map((t) => ({ value: t.id, label: t.name_en })),
@@ -143,37 +149,25 @@ export function DmsArchiveTable({
     { value: "renewed", label: "Renewed" },
   ];
 
-  // ── Client filtering ──────────────────────────────────────────────────────
-  const filtered = useMemo(() => {
-    return initialDocuments.filter((doc) => {
-      if (search) {
-        const s = search.toLowerCase();
-        if (
-          !doc.document_no.toLowerCase().includes(s) &&
-          !doc.title.toLowerCase().includes(s) &&
-          !(doc.description ?? "").toLowerCase().includes(s)
-        ) {
-          return false;
-        }
-      }
-      if (filterReason && doc.reason !== filterReason) return false;
-      if (filterType != null && doc.document_type_id !== filterType) return false;
-      if (filterCategory != null && doc.category_id !== filterCategory) return false;
-      return true;
-    });
-  }, [initialDocuments, search, filterReason, filterType, filterCategory]);
-
-  const listView = useDmsListView("archive", filtered, DMS_LIST_FIELDS);
-  const tbl = useSortPaginate(listView.rows, {
-    memoryKey: "dms:archive",
-    defaultSortKey: "updated_at",
-    defaultSortDir: "desc",
-    defaultPageSize: 25,
-    comparators: {
-      document_type: (a, b) =>
-        (a.document_type?.name_en ?? "").localeCompare(b.document_type?.name_en ?? ""),
-    },
-  });
+  // Keep the approved column/filter controls and identity-owned memory.
+  // All criteria, sorting and counting now execute before server pagination.
+  const viewState = useDmsListView<ArchivedDocumentRow>("archive", [], DMS_LIST_FIELDS, {serverFiltered:true});
+  const [page,setPage]=usePersistentUiState("dms:archive:page",1);
+  const [pageSize,setPageSize]=usePersistentUiState("dms:archive:size",25);
+  const [sortKey,setSortKey]=usePersistentUiState("dms:archive:sort","updated_at");
+  const [sortDir,setSortDir]=usePersistentUiState<"asc"|"desc">("dms:archive:direction","desc");
+  const criteria={search:search.trim(),reason:filterReason??undefined,documentTypeId:filterType??undefined,categoryId:filterCategory??undefined,columnFilters:viewState.filters};
+  const criteriaKey=canonicalReadParams(criteria);
+  const [appliedCriteria,setAppliedCriteria]=usePersistentUiState("dms:archive:criteria",criteriaKey);
+  const effectivePage=criteriaKey===appliedCriteria?page:1;
+  useEffect(()=>{if(criteriaKey!==appliedCriteria){setAppliedCriteria(criteriaKey);setPage(1);}},[criteriaKey,appliedCriteria,setAppliedCriteria,setPage]);
+  const seed=useMemo(()=>({rows:initialDocuments,totalCount:initialTotal,page:1,pageSize:25}),[initialDocuments,initialTotal]);
+  const archiveRead=useServerPage<ArchivedDocumentRow>({resource:"dms-archive",params:{...criteria,page:effectivePage,pageSize,sortKey,sortDir},seedParams:{page:1,pageSize:25,sortKey:"updated_at",sortDir:"desc",search:"",columnFilters:{}},seed,updatedAt:initialUpdatedAt});
+  const total=archiveRead.data?.totalCount;
+  const rows=archiveRead.data?.rows??[];
+  const totalPages=Math.max(1,Math.ceil((total??0)/pageSize));
+  const listView={...viewState,rows,totalCount:total,loadedCount:rows.length};
+  const tbl={rows,total:total??0,totalPages,page:effectivePage,pageSize,sortKey,sortDir,setPage:(value:number)=>setPage(Math.max(1,Math.min(value,totalPages))),setPageSize:(size:number)=>{setPageSize(size);setPage(1);},toggleSort:(key:string)=>{if(key===sortKey)setSortDir(direction=>direction==="asc"?"desc":"asc");else{setSortKey(key);setSortDir("asc");}setPage(1);}};
 
   // ── Actions ───────────────────────────────────────────────────────────────
   function handleOpen(doc: ArchivedDocumentRow) {
@@ -203,8 +197,10 @@ export function DmsArchiveTable({
     startTransition(async () => {
       const result = await unarchiveDmsDocument(doc.id);
       if (result.success) {
+        invalidateDmsDocuments(queryClient);
+        invalidateDmsDashboard(queryClient);
+        invalidateDmsExpiry(queryClient);
         toast.success("Document restored to All Documents");
-        router.refresh();
       } else {
         toast.error(result.error ?? "Failed to restore document");
       }
@@ -238,7 +234,7 @@ export function DmsArchiveTable({
       });
     }
     return c;
-  }, [filterReason, filterType, filterCategory, typeOptions, categoryOptions]);
+  }, [filterReason, filterType, filterCategory, typeOptions, categoryOptions, setFilterReason, setFilterType, setFilterCategory]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -265,7 +261,7 @@ export function DmsArchiveTable({
         </div>
 
         <div className="text-xs text-muted-foreground ml-auto">
-          {filtered.length} document{filtered.length !== 1 ? "s" : ""}
+          {total===undefined?"Count unavailable":`${total} document${total!==1?"s":""}`}
         </div>
       </div>
 
@@ -343,6 +339,8 @@ export function DmsArchiveTable({
 
       {/* Table */}
       <DmsListTools view={listView} />
+      {archiveRead.isBusy && <p role="status">Loading matching archived documents…</p>}
+      {archiveRead.isError && <div role="alert">Archived documents could not be loaded. <Button onClick={()=>void archiveRead.refetch()}>Retry archive</Button></div>}
 <div className="rounded-md border border-border overflow-hidden">
         <div role="region" aria-label="archive table" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{ minWidth: listView.visible.reduce((sum, column) => sum + column.width, 0) }}><colgroup>{listView.visible.map(column => <col key={column.id} style={{ width: column.width }} />)}</colgroup>
           <thead>
@@ -398,7 +396,7 @@ export function DmsArchiveTable({
                   colSpan={listView.visible.length}
                   className="px-4 py-12 text-center text-sm text-muted-foreground"
                 >
-                  {filtered.length === 0 && initialDocuments.length === 0
+                  {archiveRead.isError || archiveRead.isBusy ? "Results are not yet verified." : total === 0 && !search && !filterReason && !filterType && !filterCategory && !Object.values(viewState.filters).some(Boolean)
                     ? "No archived or renewed documents yet."
                     : "No documents match the current filters."}
                 </td>

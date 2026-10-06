@@ -51,6 +51,8 @@ The UI keeps its approved columns/filter controls and memory-only preferences. S
 
 The dependency gate also identified GHSA-wq5f-xc86-pv6w. The lockfile updates only Sharp and its platform/libvips packages to the patched Sharp 0.35.5 family; unrelated dependency metadata is preserved. No deployment is implied.
 
+A later GitHub audit identified [GHSA-6qxp-vccf-f47h](https://github.com/advisories/GHSA-6qxp-vccf-f47h), added to the advisory database on 6 October. The transitive MCP SDK used by the shadcn CLI is locked to patched 1.31.0 instead of 1.29.0. Only that package's lock entry changes; all other resolved versions remain intact. Clean locked installation and SDK import checks pass. No ERP source/tooling OAuth-client integration was found; this dependency repair does not alter any live credentials, Codex installation or cloud setting. Final exact-head CI is required again, not inferred from the earlier audit pass.
+
 ## Verification
 
 Run the P04 Vitest configuration and its TypeScript project, the existing P01/P02/P03 suites, the complete remediation and unit suites, shipping/E2E types, lint, build and security gates. CI includes the P04 offline suite and local-harness typecheck.

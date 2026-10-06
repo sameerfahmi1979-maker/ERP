@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { isProtectedAppPath, safeAuthDestination } from "@/lib/auth/navigation";
+import { performanceFetch, traceSpan } from "@/lib/performance/trace";
 
 /** Session refresh/UX only. Actions, data access and RLS authorize independently. */
 export async function updateSession(request: NextRequest) {
@@ -8,7 +9,7 @@ export async function updateSession(request: NextRequest) {
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: {
+    { global: { fetch: performanceFetch }, cookies: {
       getAll: () => request.cookies.getAll(),
       setAll(cookiesToSet, headers) {
         cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
@@ -32,7 +33,7 @@ export async function updateSession(request: NextRequest) {
   let user = null;
   let unavailable = false;
   try {
-    const result = await supabase.auth.getUser();
+    const result = await traceSpan("auth.session", () => supabase.auth.getUser());
     user = result.error ? null : result.data.user;
     unavailable = !!result.error && result.error.status !== 400 && result.error.status !== 401 && result.error.status !== 403;
   } catch {

@@ -1,4 +1,5 @@
 "use server";
+import { traceRequest } from "@/lib/performance/request";
 import {saveWorkspaceRecord, type WorkspaceSaveResult} from "@/server/workspace-save";
 import type {WorkspaceSaveContract} from "@/lib/workspace/save-contract";
 import { workspaceValidationFailure } from "@/lib/workspace/field-errors";
@@ -61,7 +62,11 @@ function canManage(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
   return hasPermission(ctx, "common_md.manage") || hasPermission(ctx, "common_md.departments.manage");
 }
 
-export async function listDepartments(filters?: {
+export async function listDepartments(filters?: Parameters<typeof listDepartmentsImpl>[0]) {
+  return traceRequest("departments.list", () => listDepartmentsImpl(filters));
+}
+
+async function listDepartmentsImpl(filters?: {
   owner_company_id?: number;
   branch_id?: number;
   is_active?: boolean;
@@ -147,6 +152,10 @@ export async function softDeleteDepartment(id: number): Promise<ActionResult> {
 }
 
 export async function getDepartmentComboboxOptions(search?: string, owner_company_id?: number): Promise<ActionResult<{ value: string; label: string }[]>> {
+  return traceRequest("departments.lookup", () => departmentComboboxImpl(search, owner_company_id));
+}
+
+async function departmentComboboxImpl(search?: string, owner_company_id?: number): Promise<ActionResult<{ value: string; label: string }[]>> {
   try {
     const ctx = await getAuthContext();
     if (!canView(ctx)) return { success: false, error: "Permission denied" };

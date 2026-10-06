@@ -37,6 +37,18 @@ The three actual expiry-list, expiry-summary and renewal-list consumers now use 
 
 The complete renewal compatibility read still took about 9.4 seconds for all 1,107 joined rows in one diagnostic run. Therefore this repair is **not** acceptance of fast server-paged interactive renewal UI. Bounded interactive paging and the wider P04 adoption gates below remain open. Browser measurements remain deferred.
 
+### Follow-on: interactive renewal paging
+
+The renewal table now uses a dedicated private page reader instead of the complete-result compatibility route. Default pages contain 25 rows (maximum 100), with exact totals, deterministic sort ties, literal server search and all existing column filters. Requested document/assignee search identities are resolved under ordinary authorization with explicit completeness limits. Unfiltered pages do not perform those search lookups. Global search matches within each displayed searchable field; it no longer matches a phrase fabricated across adjacent column boundaries.
+
+Only the displayed page's document and person labels are fetched, in batches through the existing protected client. Hidden references stay null; malformed, extra, duplicate or incomplete references fail the read. This avoids repeatedly evaluating the protected document reader for every embedded renewal. No SQL or permission change is added by this follow-on.
+
+Native synthetic checks matched administrator pages and their complete projections to the original joined reader. First, tail, beyond-end, document-filter and renewal-search cases passed. A genuine beyond-end PostgREST 416 requires an independently rechecked exact count; it is never converted blindly to zero. Company and branch pages matched independent ordinary-caller IDs/counts and protected document fields, with 1,103 and 1,051 authorized renewals respectively. The no-role request returned 403 without data. A later legacy *complete joined-read* attempt for the company actor still failed; that compatibility path is not silently certified by the new page checks. The interactive consumer no longer uses it.
+
+The first 25-row synthetic page took 475 ms in the final native observation, versus about 4.1 seconds in an earlier per-row-embed diagnostic. This is neither a matched benchmark nor a browser/production guarantee. Browser validation stays owner-deferred. Local policy/function preimages were restored exactly and all test sessions signed out.
+
+The UI keeps its approved columns/filter controls and memory-only preferences. Search resets the page; shrinking counts revalidate earlier cached pages; existing renewal invalidation also refreshes this page family. Criteria changes, denial and removed capabilities retire mutation targets. A same-criteria refresh hides the completion dialog while retaining its unsaved local state. No mutations or draft storage contracts were changed. The prior paragraph's renewal-interactive adoption hold is superseded by this bounded implementation; expiry paging and full P04 closure remain open.
+
 The dependency gate also identified GHSA-wq5f-xc86-pv6w. The lockfile updates only Sharp and its platform/libvips packages to the patched Sharp 0.35.5 family; unrelated dependency metadata is preserved. No deployment is implied.
 
 ## Verification

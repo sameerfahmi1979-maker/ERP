@@ -19,6 +19,7 @@ import {getDmsRenewalRequests} from "@/server/actions/dms/renewals";
 import {POST as expiryRoute} from "@/app/api/reads/dms-expiring/route";
 import {POST as summaryRoute} from "@/app/api/reads/dms-expiry-summary/route";
 import {POST as renewalRoute} from "@/app/api/reads/dms-renewals/route";
+import {POST as renewalPageRoute} from "@/app/api/reads/dms-renewal-page/route";
 const clients=new Map<string,SupabaseClient>(),samples:Record<string,unknown>[]=[];
 const actualFetch=globalThis.fetch;
 let output="",signoutFailures=0;
@@ -103,6 +104,39 @@ it("expiry continuation preserves the complete admin identity set and rejects no
  }
  const renewalStart=performance.now(),renewals=await getDmsRenewalRequests({includeCompleted:true});samples.push({actor:"admin",resource:"renewals-all",success:renewals.success,total:renewals.data?.length,baseline:renewalTotal,elapsedMs:Math.round(performance.now()-renewalStart)});
  expect(renewals.success).toBe(true);expect(renewalTotal).toBeGreaterThan(200);expect(renewals.data!.map(row=>row.id).sort((a,b)=>a-b)).toEqual(renewalIds);
+ // The interactive reader must match independently counted/full authorized
+ // results without requiring the UI to download those complete rows.
+ const ordered=renewals.data!;
+ const lastPage=Math.ceil(ordered.length/25);
+ const chosen=ordered.find(row=>row.document?.title&&row.renewal_no)!;
+ expect(chosen).toBeTruthy();
+ const pageCases=[
+  {name:"first",params:{includeCompleted:true,page:1},expected:ordered.slice(0,25),total:ordered.length},
+  {name:"tail",params:{includeCompleted:true,page:lastPage},expected:ordered.slice((lastPage-1)*25),total:ordered.length},
+  {name:"outside",params:{includeCompleted:true,page:lastPage+1},expected:[],total:ordered.length},
+  {name:"document-filter",params:{includeCompleted:true,columnFilters:{document:chosen.document!.title}},expected:ordered.filter(row=>row.document?.title.toLowerCase().includes(chosen.document!.title.toLowerCase())).slice(0,25),total:ordered.filter(row=>row.document?.title.toLowerCase().includes(chosen.document!.title.toLowerCase())).length},
+  {name:"renewal-search",params:{includeCompleted:true,search:chosen.renewal_no!},expected:ordered.filter(row=>[row.renewal_no,row.status,row.priority,row.document?.document_no,row.document?.title,row.assignee?.full_name].some(value=>value?.toLowerCase().includes(chosen.renewal_no!.toLowerCase()))).slice(0,25),total:ordered.filter(row=>[row.renewal_no,row.status,row.priority,row.document?.document_no,row.document?.title,row.assignee?.full_name].some(value=>value?.toLowerCase().includes(chosen.renewal_no!.toLowerCase()))).length},
+ ];
+ for(const testCase of pageCases){
+  const start=performance.now();
+  const response=await renewalPageRoute(new Request("http://127.0.0.1:16801/api/reads/dms-renewal-page",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(testCase.params)}));
+  expect(response.status,testCase.name).toBe(200);expect(response.headers.get("cache-control")).toBe("private, no-store, max-age=0");
+  const body=await response.json();expect(body.data.totalCount,testCase.name).toBe(testCase.total);expect(body.data.rows,testCase.name).toEqual(testCase.expected);
+  samples.push({actor:"admin",resource:"renewal-page-"+testCase.name,success:true,total:testCase.total,rows:body.data.rows.length,elapsedMs:Math.round(performance.now()-start),qualification:"Native handler/SDK observation, not browser timing or production guarantee"});
+ }
+ for(const actor of ["company","branch"]){
+  state.client=clients.get(actor)!;
+  const prior=await state.client.from("dms_renewal_requests").select("id",{count:"exact"}).is("deleted_at",null).order("created_at",{ascending:false}).order("id").range(0,24);
+  expect(prior.error).toBeNull();expect(prior.count).not.toBeNull();
+  const response=await renewalPageRoute(new Request("http://127.0.0.1:16801/api/reads/dms-renewal-page",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({includeCompleted:true})}));
+  const body=await response.json();expect(response.status).toBe(200);expect(body.data.totalCount).toBe(prior.count);expect(body.data.rows.map((row:{id:number})=>row.id)).toEqual(prior.data!.map(row=>row.id));
+  const docIds=[...new Set(body.data.rows.map((row:{document_id:number})=>row.document_id))] as number[];
+  const documents=await state.client.from("dms_documents").select("id,document_no,title,expiry_date,document_type_id",{count:"exact"}).in("id",docIds).order("id").range(0,docIds.length-1);
+  expect(documents.error).toBeNull();expect(documents.data!.length).toBe(documents.count);
+  const docMap=new Map(documents.data!.map(row=>[row.id,row]));for(const row of body.data.rows)expect(row.document).toEqual(docMap.get(row.document_id)??null);
+  samples.push({actor,resource:"renewal-page-scope-and-document-projection",status:response.status,authorizedTotal:prior.count,positiveScopeAcceptance:Boolean(prior.count),qualification:"Independent ordinary-caller IDs/count/protected document fields; not legacy full joined-reader acceptance"});
+ }
+ state.client=clients.get("admin")!;
  // Execute the actual route handlers with the same ordinary caller-backed reads.
  // This is native route composition, not an HTTP-server/browser measurement.
  const routes=[{name:"expiry",run:expiryRoute,params:{view:"all"},ids},{name:"summary",run:summaryRoute,params:{}},{name:"renewals",run:renewalRoute,params:{includeCompleted:true},ids:renewalIds}];
@@ -115,6 +149,8 @@ it("expiry continuation preserves the complete admin identity set and rejects no
   samples.push({actor:"admin",resource:"native-route-"+route.name,success:true,total:route.ids?.length,qualification:"Actual handler plus SDK-backed reads, not HTTP/browser timing"});
  }
  state.client=clients.get("none")!;
+ const deniedPage=await renewalPageRoute(new Request("http://127.0.0.1:16801/api/reads/dms-renewal-page",{method:"POST",headers:{"content-type":"application/json"},body:"{}"}));
+ expect(deniedPage.status).toBe(403);expect((await deniedPage.json()).data).toBeUndefined();samples.push({actor:"none",resource:"renewal-page",status:403});
  for(const denied of [await getDmsExpiringDocuments(),await getDmsExpiryDashboardStats(),await getDmsRenewalRequests()]){samples.push({actor:"none",resource:"expiry-denial",success:denied.success});expect(denied.success).toBe(false);expect(denied.data).toBeUndefined();}
  for(const route of routes){
   const response=await route.run(new Request("http://127.0.0.1:16801/api/reads/test",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(route.params)}));

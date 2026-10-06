@@ -2,13 +2,22 @@
 
 ## Scope and status
 
-This tooling-only candidate does not change ERP application code, permissions,
+This tooling and dependency-patch candidate does not change ERP application code, permissions,
 database schema, workers or deployment configuration. No merge or production
 deployment is authorized by this pull request.
 
-Browser baseline measurements remain **NOT RUN**. The owner requested work on
-the non-browser items while that permission gate remains unresolved. Neither
-publication nor a green tooling check closes full P00 browser acceptance.
+Browser baseline measurements remain **NOT RUN / OWNER-DEFERRED**. On 6 October
+2026 the owner explicitly moved them out of P00 closeout to cloud validation
+after the performance phases. No browser access restriction has been bypassed.
+P00 may close under this revised scope only after its remaining non-browser
+gates pass. This is not cloud release approval or a performance acceptance claim.
+
+The deferred gate includes Employees, Departments and DMS; admin and scoped
+synthetic users; cold route, warm navigation, reload, workspace return and
+search/filter scenarios. Preserve the frozen baseline and controlled fixture
+manifest. The cloud follow-up must use supported browser access, record build,
+data, actor and network conditions, keep all samples and compare equivalent
+environments. It must not claim an improvement from unlike local/cloud timings.
 
 On 6 October 2026 the owner approved **synthetic laboratory-only workload scope**.
 Production volumes, concurrency and real-device/network distributions remain
@@ -68,3 +77,20 @@ database dumps or runtime environment files belong in this public candidate.
 - Passing native file-link and ordinary repository checks on the published commit.
 - Actual browser measurements, separately deferred by the owner.
 - Fresh identical schema/fixture/build binding when paired measurement resumes.
+
+## Dependency remediation — 6 October 2026
+
+Two targeted upstream patch updates are included: proxy-addr 2.0.7 to 2.0.8
+and source-map-js 1.2.1 to 1.2.2. Application dependency declarations and framework
+versions are unchanged; unrelated lockfile platform metadata is preserved.
+Regression cases exercise trust boundaries, ordinary mappings and invalid or
+excessive source-map offsets. No production changes are made by this PR.
+
+The audit gate remains blocking: braces and sprintf-js have no patched version
+listed by their advisories as checked on 6 October. No forced major downgrade,
+dependency alias, audit suppression or threshold relaxation is used.
+
+References: [proxy-addr patch](https://github.com/advisories/GHSA-jqcg-44mw-7w3h),
+[source-map-js patch](https://github.com/advisories/GHSA-68fv-2mgg-jv7q),
+[braces advisory](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm),
+[sprintf-js advisory](https://github.com/advisories/GHSA-hp3w-g68c-fv3c).

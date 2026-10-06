@@ -6,4 +6,5 @@ export default defineConfig({test:{environment:'node',fileParallelism:false,incl
   'tests/performance/inventory-semantics.test.ts',
   'tests/performance/adoption-dependency-hashes.test.ts',
   'tests/performance/export-review.test.ts',
+  'tests/performance/dependency-security.test.ts',
 ]}});

@@ -12,7 +12,15 @@
  *   invalidateLookupCategory(qc, "CUSTOMER_TYPES");
  */
 
-import type { QueryClient } from "@tanstack/react-query";
+import { notifyManager, type QueryClient } from "@tanstack/react-query";
+/** Retire initial/disabled/observerless reads before marking the family stale. */
+export function invalidateAuthorizedRead(queryClient: QueryClient, resource: string): void {
+  const queryKey = ["read", resource];
+  notifyManager.batch(() => {
+    void queryClient.cancelQueries({ queryKey }, { revert: true });
+    void queryClient.invalidateQueries({ queryKey, refetchType: "active" }, { cancelRefetch: true });
+  });
+}
 
 // ── Lookup values ─────────────────────────────────────────────────────────────
 
@@ -21,6 +29,18 @@ export function invalidateLookupCategory(
   queryClient: QueryClient,
   categoryCode: string
 ): void {
+  const matches = { predicate: (q: {queryKey: readonly unknown[]}) => {
+    const code = categoryCode.trim().toUpperCase();
+    if(q.queryKey[0] === "authorized-lookup") return q.queryKey[1] === "values" ? q.queryKey[2] === code :
+      q.queryKey[1] === "batch" && Array.isArray(q.queryKey[2]) && q.queryKey[2].includes(code);
+    if(q.queryKey[0] === "read" && q.queryKey[1] === "lookup-search") {
+      try { return String(JSON.parse(String(q.queryKey[2])).categoryCode).trim().toUpperCase() === code; }
+      catch { return true; } // Unknown identity must revalidate, not retain an obsolete choice.
+    }
+    return false;
+  } };
+  void queryClient.cancelQueries(matches);
+  void queryClient.invalidateQueries(matches);
   void queryClient.invalidateQueries({
     queryKey: ["lookup", "values", categoryCode.toUpperCase()],
   });
@@ -30,6 +50,9 @@ export function invalidateLookupCategory(
 
 /** Invalidate all lookup value caches. */
 export function invalidateAllLookups(queryClient: QueryClient): void {
+  invalidateAuthorizedRead(queryClient, "lookup-search");
+  void queryClient.cancelQueries({ queryKey: ["authorized-lookup"] });
+  void queryClient.invalidateQueries({ queryKey: ["authorized-lookup"] });
   void queryClient.invalidateQueries({ queryKey: ["lookup"] });
 }
 
@@ -206,6 +229,7 @@ export function invalidateAllDmsAdmin(queryClient: QueryClient): void {
 // ── DMS Documents (DMS.4) ─────────────────────────────────────────────────────
 
 export function invalidateDmsDocuments(queryClient: QueryClient): void {
+  invalidateAuthorizedRead(queryClient, "dms-documents");
   void queryClient.invalidateQueries({ queryKey: ["dms", "documents"] });
 }
 
@@ -365,10 +389,13 @@ export function invalidateDmsFileOcr(queryClient: QueryClient, fileId: number): 
 // ── COMMON MD.1 — Common Master Data ─────────────────────────────────────────
 
 export function invalidateCommonMdDepartments(queryClient: QueryClient): void {
+  invalidateAuthorizedRead(queryClient, "employee-filter-departments");
+  invalidateAuthorizedRead(queryClient, "employee-filter-designations");
   void queryClient.invalidateQueries({ queryKey: ["common_md", "departments"] });
 }
 
 export function invalidateCommonMdDesignations(queryClient: QueryClient): void {
+  invalidateAuthorizedRead(queryClient, "employee-filter-designations");
   void queryClient.invalidateQueries({ queryKey: ["common_md", "designations"] });
 }
 
@@ -636,6 +663,7 @@ export function invalidateDataQualityFinding(queryClient: QueryClient, id: numbe
 
 /** Invalidate all HR employee list caches. */
 export function invalidateHrEmployees(queryClient: QueryClient): void {
+  invalidateAuthorizedRead(queryClient, "employees");
   void queryClient.invalidateQueries({ queryKey: ["hr", "employees", "list"] });
 }
 

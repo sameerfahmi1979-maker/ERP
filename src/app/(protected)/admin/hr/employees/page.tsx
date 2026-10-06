@@ -2,7 +2,7 @@ import { LoadError } from "@/components/erp/load-error";
 import { redirect } from "next/navigation";
 import { getAuthContext } from "@/lib/rbac/check";
 import { canBrowseEmployees } from "@/lib/rbac/employee-access";
-import { listEmployees } from "@/server/actions/hr/employees";
+import { readEmployees } from "@/server/reads/employees";
 import { EmployeesTable } from "@/features/hr/employees/employees-table";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { HrReportsMenu } from "@/components/erp/hr-reports-menu";
@@ -20,7 +20,7 @@ export default async function EmployeesPage() {
     redirect("/access-denied");
   }
 
-  const result = await listEmployees({ page: 1, pageSize: 25 });
+  const result = await readEmployees({ page: 1, pageSize: 25 }, authContext);
   if (!result.success) return <LoadError title="HR records" retryHref="/admin/hr/employees" />;
   const rows = result.success && result.data ? result.data.rows : [];
   const totalCount = result.success && result.data ? result.data.totalCount : 0;
@@ -51,6 +51,7 @@ export default async function EmployeesPage() {
       <EmployeesTable
         initialRows={rows}
         initialTotal={totalCount}
+        initialUpdatedAt={result.data?.updatedAt??0}
         authContext={authContext}
         documentWizardEnabled={documentWizardEnabled}
       />

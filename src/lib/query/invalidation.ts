@@ -59,6 +59,7 @@ export function invalidateAllLookups(queryClient: QueryClient): void {
 // ── Geography ─────────────────────────────────────────────────────────────────
 
 export function invalidateCountries(queryClient: QueryClient): void {
+  invalidateAuthorizedRead(queryClient, "employee-filter-countries");
   void queryClient.invalidateQueries({ queryKey: ["master", "countries"] });
 }
 
@@ -80,6 +81,7 @@ export function invalidatePorts(queryClient: QueryClient): void {
 
 /** Invalidate all geography tables (countries → emirates → cities → areas → ports). */
 export function invalidateGeography(queryClient: QueryClient): void {
+  invalidateAuthorizedRead(queryClient, "employee-filter-countries");
   void queryClient.invalidateQueries({ queryKey: ["master", "countries"] });
   void queryClient.invalidateQueries({ queryKey: ["master", "emirates"] });
   void queryClient.invalidateQueries({ queryKey: ["master", "cities"] });
@@ -125,6 +127,7 @@ export function invalidateUom(queryClient: QueryClient): void {
 
 /** Invalidate owner companies and branches. */
 export function invalidateOrganizations(queryClient: QueryClient): void {
+  invalidateAuthorizedRead(queryClient, "employee-filter-companies");
   void queryClient.invalidateQueries({ queryKey: ["master", "owner_companies"] });
   void queryClient.invalidateQueries({ queryKey: ["master", "branches"] });
 }

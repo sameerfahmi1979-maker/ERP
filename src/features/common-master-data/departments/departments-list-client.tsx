@@ -20,13 +20,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { DepartmentRow } from "@/server/actions/common-master-data/departments";
+import type { DepartmentListRow as DepartmentRow } from "@/server/reads/departments";
 import { softDeleteDepartment, updateDepartment } from "@/server/actions/common-master-data/departments";
 import { MoreHorizontal, Pencil, Power, PowerOff, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
+import {useQueryClient} from "@tanstack/react-query";
+import {invalidateCommonMdDepartments} from "@/lib/query/invalidation";
 
 interface Props {
   departments: DepartmentRow[];
@@ -35,6 +37,7 @@ interface Props {
 
 export function DepartmentsListClient({ departments: initial, canManage }: Props) {
   const router = useRouter();
+  const queryClient=useQueryClient();
   const [departments, setDepartments] = useState(initial);
   const [snapshot, setSnapshot] = useState(initial);
   if (snapshot !== initial) { setSnapshot(initial); setDepartments(initial); }
@@ -46,6 +49,7 @@ export function DepartmentsListClient({ departments: initial, canManage }: Props
     try {
       const result = await updateDepartment({ id: dept.id, is_active: !dept.is_active }, {operationId:crypto.randomUUID(),revision:String(dept.workspace_revision)});
       if (result.success) {
+        invalidateCommonMdDepartments(queryClient);
         setDepartments((prev) =>
           prev.map((d) => (d.id === dept.id ? { ...d, is_active: !d.is_active } : d))
         );
@@ -65,6 +69,7 @@ export function DepartmentsListClient({ departments: initial, canManage }: Props
     try {
       const result = await softDeleteDepartment(deleteTarget.id);
       if (result.success) {
+        invalidateCommonMdDepartments(queryClient);
         setDepartments((prev) => prev.filter((d) => d.id !== deleteTarget.id));
         toast.success("Department deleted");
         router.refresh();

@@ -1,0 +1,6 @@
+import { z } from "zod";
+export const dmsReadSchema=z.object({
+  page:z.number().int().min(1).max(100000).default(1),pageSize:z.number().int().min(1).max(100).default(25),
+  sortKey:z.enum(["created_at","document_no","title","document_type","status","expiry_date","tags"]).default("created_at"),sortDir:z.enum(["asc","desc"]).default("desc"),
+  filters:z.object({search:z.string().max(200).optional(),searchMode:z.enum(["quick","safe_fts","content"]).optional(),document_type_id:z.number().int().positive().optional(),category_id:z.number().int().positive().optional(),status:z.string().max(40).optional(),confidentiality:z.enum(["internal","company","hr","finance","legal","executive"]).optional(),is_archived:z.boolean().optional(),excludeArchived:z.boolean().optional(),has_files:z.boolean().optional(),expiry_from:z.iso.date().optional(),expiry_to:z.iso.date().optional(),expiring_soon:z.boolean().optional(),expired:z.boolean().optional(),riskLevel:z.enum(["none","low","medium","high","critical"]).optional(),completenessMin:z.number().min(0).max(1).optional(),completenessMax:z.number().min(0).max(1).optional(),hasMissingFields:z.boolean().optional(),hasAiSummary:z.boolean().optional(),hasExtractedText:z.boolean().optional(),expiryState:z.enum(["expired","expiring_soon","valid","missing_expiry"]).optional()}).strict().default({}),
+}).strict();

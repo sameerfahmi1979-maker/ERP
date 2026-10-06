@@ -1,4 +1,5 @@
 "use server";
+import { traceRequest } from "@/lib/performance/request";
 import {saveWorkspaceRecord, type WorkspaceSaveResult} from "@/server/workspace-save";
 import type {WorkspaceSaveContract} from "@/lib/workspace/save-contract";
 import { workspaceValidationFailure } from "@/lib/workspace/field-errors";
@@ -184,7 +185,11 @@ export type EmployeeListParams = z.infer<typeof employeeListParamsSchema>;
 // listEmployees
 // ============================================================================
 
-export async function listEmployees(params?: Partial<EmployeeListParams>): Promise<
+export async function listEmployees(params?: Partial<EmployeeListParams>) {
+  return traceRequest("employees.list", () => listEmployeesImpl(params));
+}
+
+async function listEmployeesImpl(params?: Partial<EmployeeListParams>): Promise<
   ActionResult<{ rows: EmployeeListRow[]; totalCount: number; page: number; pageSize: number }>
 > {
   try {

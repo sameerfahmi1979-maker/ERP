@@ -1,0 +1,6 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": { "incremental": false, "noEmit": true },
+  "include": ["p01-*.test.ts", "p01.local.test.ts", "p01.overhead.test.ts"],
+  "exclude": ["../../node_modules"]
+}

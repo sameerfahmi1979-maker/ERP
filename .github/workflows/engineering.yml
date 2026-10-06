@@ -29,6 +29,10 @@ jobs:
       - run: npm run security:vendor
       - run: npm test
       - run: npm run test:remediation
+      - name: P01 privacy, isolation and instrumentation regression tests
+        run: node node_modules/vitest/vitest.mjs run --config tests/performance/p01.config.mts
+      - name: Typecheck P01 tests including opt-in laboratory harness
+        run: node node_modules/typescript/bin/tsc --project tests/performance/p01.tsconfig.json --noEmit
       - run: npm run typecheck:e2e
       - run: npm run test:e2e -- --list
       - run: npm run build

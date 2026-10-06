@@ -1,4 +1,5 @@
 "use server";
+import { traceRequest } from "@/lib/performance/request";
 
 import { zNullableDateString } from "@/lib/dms/date-validators";
 import { logger } from "@/lib/logger";
@@ -227,6 +228,12 @@ async function insertDmsEvent(
 // ── getDmsDocuments ────────────────────────────────────────────────────────────
 
 export async function getDmsDocuments(
+  filters?: DmsDocumentFilters
+): Promise<ActionResult<DmsDocumentRow[]>> {
+  return traceRequest("documents.list", () => getDmsDocumentsImpl(filters));
+}
+
+async function getDmsDocumentsImpl(
   filters?: DmsDocumentFilters
 ): Promise<ActionResult<DmsDocumentRow[]>> {
   try {

@@ -1,4 +1,6 @@
 import "server-only";
+import { traceRequest } from "@/lib/performance/request";
+import { traceSpan } from "@/lib/performance/trace";
 
 import type { UserProfile } from "@/types/domain";
 import { createClient } from "@/lib/supabase/server";
@@ -42,11 +44,15 @@ export class AccountDisabledError extends Error {
 // ── getAuthContext ────────────────────────────────────────────────────────────
 
 export async function getAuthContext(): Promise<AuthContext> {
+  return traceRequest("auth.context", getAuthContextImpl);
+}
+
+async function getAuthContextImpl(): Promise<AuthContext> {
   const supabase = await createClient();
   const {
     data: { user },
     error: authError,
-  } = await supabase.auth.getUser();
+  } = await traceSpan("auth.session", () => supabase.auth.getUser());
 
   if (authError || !user) {
     return { profile: null, email: null, roleCodes: [], permissionCodes: [], accountStatus: "none", isAccountActive: false };
@@ -68,7 +74,7 @@ export async function getAuthContext(): Promise<AuthContext> {
     return { profile: null, email: user.email ?? null, roleCodes: [], permissionCodes: [], accountStatus: "none", isAccountActive: false };
   }
 
-  return buildAuthContext(profile as UserProfile, user.email ?? null);
+  return traceSpan("auth.permissions", () => buildAuthContext(profile as UserProfile, user.email ?? null));
 }
 
 /** Internal worker entry point. Never expose this through a Server Action. */

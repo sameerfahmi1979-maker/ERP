@@ -7,7 +7,7 @@ import { GET } from "@/app/api/auth/session/route";
 beforeEach(() => {
   vi.stubEnv("ALGT_PERF_ENABLED", "true"); vi.stubEnv("ALGT_PERF_LOG_RETENTION_DAYS", "1"); vi.stubEnv("ALGT_PERF_SAMPLE_PERCENT", "100");
   state.headers.mockReset().mockResolvedValue(new Headers({ "x-algt-perf-correlation": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "x-algt-perf-route": "/api/auth/session" }));
-  state.auth.mockReset().mockResolvedValue({ profile: { auth_user_id: "PRIVATE", must_change_password: true }, isAccountActive: true });
+  state.auth.mockReset().mockResolvedValue({ profile: { auth_user_id: "PRIVATE", must_change_password: true }, isAccountActive: true, permissionCodes: [], roleCodes: [] });
   vi.spyOn(console, "info").mockImplementation(() => {});
 });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
@@ -27,7 +27,7 @@ it("non-request context preserves result with a fresh correlation", async () => 
 });
 it("preserves actual session response and no-store without logging private response data", async () => {
   const response = await GET(); expect(response.status).toBe(200); expect(response.headers.get("cache-control")).toBe("private, no-store");
-  expect(await response.json()).toEqual({ authUserId: "PRIVATE", active: true, requiredChange: true });
+  expect(await response.json()).toEqual({ authUserId: "PRIVATE", active: true, requiredChange: true, scopeVersion: expect.stringMatching(/^[a-f0-9]{64}$/) });
   const logs = JSON.stringify(vi.mocked(console.info).mock.calls); expect(logs).toContain("response.json"); expect(logs).not.toContain("PRIVATE");
   expect(response.headers.has("server-timing")).toBe(false); expect(response.headers.has("x-algt-perf-correlation")).toBe(false);
 });

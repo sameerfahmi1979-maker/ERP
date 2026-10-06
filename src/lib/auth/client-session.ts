@@ -1,5 +1,7 @@
+import { clearPrivateCaches } from "@/lib/query/private-cache";
 /** UX invalidation only. Server/RLS checks remain the authorization boundary. */
 export function clearIdentityWorkspace() {
+  clearPrivateCaches();
   try {
     const keys = Object.keys(localStorage).filter(key => key.startsWith("algt_erp_workspace_"));
     keys.forEach(key => localStorage.removeItem(key));

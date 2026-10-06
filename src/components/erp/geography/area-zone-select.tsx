@@ -8,6 +8,7 @@
 
 import type { AreaZoneSelectProps } from "@/features/master-data/geography/types";
 import { ERPCombobox } from "@/components/erp/combobox";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import { useAreasQuery } from "@/hooks/lookups";
 
 export function AreaZoneSelect({
@@ -26,11 +27,12 @@ export function AreaZoneSelect({
   name,
   error,
 }: AreaZoneSelectProps) {
-  const { options, isLoading, error: fetchError } = useAreasQuery({
+  const choiceRead = useAreasQuery({
     cityId: cityId ?? null,
     areaTypeCode: areaTypeCode ?? null,
     includeInactive,
-  });
+   selectedId: value ?? null });
+  const { options, isLoading, error: fetchError } = choiceRead;
 
   const handleValueChange = (newValue: string | number | null) => {
     if (!onValueChange) return;
@@ -47,7 +49,7 @@ export function AreaZoneSelect({
   const effectiveEmptyText = cityId ? "No areas/zones available" : "Select a city first";
 
   return (
-    <ERPCombobox
+    <QueryReadBoundary queries={[choiceRead]}><ERPCombobox
       value={value ?? null}
       onValueChange={handleValueChange}
       options={options}
@@ -65,6 +67,6 @@ export function AreaZoneSelect({
       noResultsText="No results found"
       className={className}
       name={name}
-    />
+    /></QueryReadBoundary>
   );
 }

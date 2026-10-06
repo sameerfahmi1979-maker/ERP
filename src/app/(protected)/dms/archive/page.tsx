@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
-import { getArchivedDocuments, getDmsNewDocumentDefaults } from "@/server/actions/dms/documents";
+import { readDmsListChoices } from "@/server/reads/dms-list-choices";
+import { readDmsArchivePage } from "@/server/reads/dms-archive";
 import { DmsArchiveTable } from "@/features/dms/archive/dms-archive-table";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { DmsLoadError } from "@/features/dms/documents/dms-load-error";
@@ -19,11 +20,11 @@ export default async function DmsArchivePage() {
   }
 
   const [docsResult, defaultsResult] = await Promise.all([
-    getArchivedDocuments(),
-    getDmsNewDocumentDefaults(),
+    readDmsArchivePage({},authContext),
+    readDmsListChoices(authContext),
   ]);
 
-  const documents = docsResult.data ?? [];
+  const documents = docsResult.data?.rows ?? [];
   const categories = defaultsResult.data?.categories ?? [];
   const documentTypes = defaultsResult.data?.documentTypes ?? [];
 
@@ -42,6 +43,8 @@ export default async function DmsArchivePage() {
 
       {!docsResult.success || !defaultsResult.success ? <DmsLoadError /> : <DmsArchiveTable
         initialDocuments={documents}
+        initialTotal={docsResult.data?.totalCount??0}
+        initialUpdatedAt={docsResult.data?.updatedAt??0}
         categories={categories}
         documentTypes={documentTypes}
         canUnarchive={canUnarchive}

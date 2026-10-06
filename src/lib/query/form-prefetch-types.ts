@@ -22,7 +22,7 @@ export interface MasterQueryDescriptor<TData = unknown> {
   /** Exact TanStack key the consuming hook reads — must come from `queryKeys`. */
   readonly queryKey: QueryKey;
   /** Shared fetcher (from `src/lib/lookups/master-data-fetchers.ts`). */
-  readonly queryFn: () => Promise<TData>;
+  readonly queryFn: (signal?: AbortSignal) => Promise<TData>;
   /** Optional per-query staleTime override (ms). */
   readonly staleTime?: number;
 }

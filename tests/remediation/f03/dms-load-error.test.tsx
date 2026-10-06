@@ -10,6 +10,7 @@ vi.mock("@/lib/rbac/check", () => ({ getAuthContext: async () => ({}), hasPermis
 vi.mock("@/server/actions/dms/documents", () => ({ getDmsDocuments: async () => state.docs, getArchivedDocuments: async () => state.docs, getDmsNewDocumentDefaults: async () => state.defaults }));
 vi.mock("@/server/reads/dms-documents",()=>({readDmsDocumentPage:async()=>({...state.docs,data:{rows:state.docs.data,totalCount:state.docs.data.length}})}));
 vi.mock("@/server/reads/dms-list-choices",()=>({readDmsListChoices:async()=>state.defaults}));
+vi.mock("@/server/reads/dms-archive",()=>({readDmsArchivePage:async()=>({...state.docs,data:{rows:state.docs.data,totalCount:state.docs.data.length}})}));
 vi.mock("@/components/erp/page-header", () => ({ ERPPageHeader: () => null }));
 vi.mock("@/features/dms/documents/dms-documents-table", () => ({ DmsDocumentsTable: () => <p>No documents found</p> }));
 vi.mock("@/features/dms/archive/dms-archive-table", () => ({ DmsArchiveTable: () => <p>No archived documents found</p> }));

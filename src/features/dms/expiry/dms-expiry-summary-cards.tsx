@@ -4,7 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { CalendarX, AlertTriangle, Clock, HelpCircle, Bell, RefreshCw, CheckCircle2, EyeOff } from "lucide-react";
 import { queryKeys } from "@/lib/query/query-keys";
-import { getDmsExpiryDashboardStats } from "@/server/actions/dms/expiry-reminders";
+import type { ActionResult, DmsExpiryDashboardStats } from "@/server/actions/dms/expiry-reminders";
+import {readJson,retryAuthorizedRead} from "@/lib/reads/client";
 
 interface CardProps {
   label: string;
@@ -31,30 +32,27 @@ function StatCard({ label, count, icon: Icon, iconClass, cardClass }: CardProps)
 export function DmsExpirySummaryCards() {
   const { data: stats, isLoading, isError, refetch } = useQuery({
     queryKey: queryKeys.dms.expiryDashboardStats(),
-    queryFn: async () => {
-      const result = await getDmsExpiryDashboardStats();
-      if (!result.success) throw new Error(result.error);
-      return result.data!;
+    queryFn: async ({signal}) => {
+      const result = await readJson<ActionResult<DmsExpiryDashboardStats>>("dms-expiry-summary",{},signal);
+      if (!result.success || !result.data) throw new Error("Expiry totals are unavailable");
+      return result.data;
     },
     staleTime: 60_000,
+    retry: retryAuthorizedRead,
   });
 
   if (isLoading) {
     return (
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
-        {Array.from({ length: 9 }).map((_, i) => (
+        {Array.from({ length: 10 }).map((_, i) => (
           <div key={i} className="rounded-lg border border-border p-4 h-20 animate-pulse bg-muted/20" />
         ))}
       </div>
     );
   }
 
-  if (isError) return <div role="alert">Expiry totals are unavailable, not zero. <Button onClick={() => void refetch()}>Retry expiry totals</Button></div>;
-  const s = stats ?? {
-    expired: 0, expiring_7: 0, expiring_30: 0, expiring_60: 0, expiring_90: 0,
-    missing_expiry: 0, pending_reminders: 0, dismissed_reminders: 0, open_renewals: 0,
-    expiry_ignored: 0,
-  };
+  if (isError || !stats) return <div role="alert">Expiry totals are unavailable, not zero. <Button onClick={() => void refetch()}>Retry expiry totals</Button></div>;
+  const s = stats;
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">

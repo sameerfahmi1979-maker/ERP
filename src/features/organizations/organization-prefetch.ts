@@ -31,8 +31,8 @@ export const ORGANIZATION_FORM_PREFETCH = {
   // Countries and currencies are the two slow-loading comboboxes in the
   // Organization drawer and benefit most from open-time prefetch.
   masterQueries: [
-    { queryKey: queryKeys.countries(false, false), queryFn: () => fetchCountries(false, false) },
-    { queryKey: queryKeys.currencies(false), queryFn: () => fetchCurrencies(false) },
+    { queryKey: queryKeys.countries(false, false), queryFn: (signal) => fetchCountries(false, false, signal) },
+    { queryKey: queryKeys.currencies(false), queryFn: (signal) => fetchCurrencies(false, signal) },
   ],
 
   // Organization has no child CRUD tables; contacts/bank details are on sub-entities.

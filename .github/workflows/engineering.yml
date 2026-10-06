@@ -26,6 +26,7 @@ jobs:
       - run: npm install --global npm@10.9.8
       - run: npm ci
       - run: npm run security:secrets
+      - run: npm run security:vendor
       - run: npm test
       - run: npm run test:remediation
       - run: npm run typecheck:e2e

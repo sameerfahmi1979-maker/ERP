@@ -88,3 +88,8 @@ CODEX_AUDIT_13_09_2026/IMPLEMENTATION/F02_CLOSEOUT/
 # F05 private screen evidence, synthetic credentials and isolated builds.
 # Only reviewed source/tests and docs/remediation/F05 summaries may be published.
 /CODEX_AUDIT_13_09_2026/IMPLEMENTATION/F05/
+
+# Performance laboratory data, credentials and generated evidence remain private.
+/.performance/
+/p00-results.json
+/CODEX_AUDIT_13_09_2026/IMPLEMENTATION/PERFORMANCE/

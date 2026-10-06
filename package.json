@@ -17,6 +17,7 @@
     "test": "vitest run",
     "test:f01": "vitest run --config tests/remediation/f01/vitest.config.mts",
     "security:secrets": "node tooling/security/scan-secrets.cjs",
+    "security:vendor": "node tooling/security/verify-vendor-patches.cjs",
     "test:remediation": "vitest run --config tests/remediation/vitest.config.mts",
     "schema:types": "node tooling/schema/generate-types.cjs",
     "test:watch": "vitest",
@@ -27,6 +28,8 @@
     "test:e2e:headed": "cross-env NODE_OPTIONS=--use-system-ca playwright test --headed"
   },
   "dependencies": {
+    "braces": "file:vendor/braces",
+    "sprintf-js": "file:vendor/sprintf-js",
     "@base-ui/react": "^1.5.0",
     "@fluentui/react-components": "9.74.9",
     "@fluentui/react-icons": "2.0.343",
@@ -73,6 +76,8 @@
     "zod": "^4.4.3"
   },
   "overrides": {
+    "braces": "$braces",
+    "sprintf-js": "$sprintf-js",
     "@fluentui/react-tabster": {
       "tabster": "8.8.0"
     },

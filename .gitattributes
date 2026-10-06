@@ -1,0 +1,2 @@
+# Reviewed security-patch digests must survive Windows/Linux checkouts unchanged.
+vendor/** text eol=lf

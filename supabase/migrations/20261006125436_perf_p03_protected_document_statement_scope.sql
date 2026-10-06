@@ -5,6 +5,8 @@ SET LOCAL statement_timeout='30s';
 DO $preimage$
 BEGIN
  IF (SELECT md5(prosrc) FROM pg_proc WHERE oid='erp_private.read_documents()'::regprocedure)<>'2ea4362a721e786fef594900e3c62bbe'
+ OR (SELECT md5(prosrc) FROM pg_proc WHERE oid='erp_private.document_permission(bigint,text)'::regprocedure)<>'2190943612f7b95620a97b76fb50fc84'
+ OR (SELECT md5(prosrc) FROM pg_proc WHERE oid='erp_private.permission_in_scope(text,bigint,bigint)'::regprocedure)<>'ce520fb29b4a68564fcbf9285a4a741e'
  OR (SELECT md5(prosrc) FROM pg_proc WHERE oid='erp_private.hr_document_evidence_allowed(bigint)'::regprocedure)<>'892d03dde992a824f8575f11e62765b3'
  OR (SELECT md5(prosrc) FROM pg_proc WHERE oid='erp_private.recruitment_document_evidence_allowed(bigint)'::regprocedure)<>'dd2c040f3ebccaedc9092fc5c887d4e2'
  OR (SELECT md5(prosrc) FROM pg_proc WHERE oid='erp_private.candidate_permission(bigint,text)'::regprocedure)<>'86b6f4eedf17781f8af8cd5ed773cc22'

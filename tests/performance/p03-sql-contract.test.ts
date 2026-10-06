@@ -4,7 +4,7 @@ const read=(name:string)=>fs.readFileSync(`supabase/migrations/${name}.sql`,"utf
 const source=read("20261006125436_perf_p03_protected_document_statement_scope");
 const computed=read("20261006123609_perf_p03_document_tag_count");
 it("guards reviewed security preimages and preserves statement-local authorization",()=>{
- for(const name of ["read_documents()","hr_document_evidence_allowed(bigint)","recruitment_document_evidence_allowed(bigint)","candidate_permission(bigint,text)","readable_employee_ids()"])
+ for(const name of ["read_documents()","document_permission(bigint,text)","permission_in_scope(text,bigint,bigint)","hr_document_evidence_allowed(bigint)","recruitment_document_evidence_allowed(bigint)","candidate_permission(bigint,text)","readable_employee_ids()"])
   expect(source).toContain(`'erp_private.${name}'::regprocedure`);
  expect(source).toContain("RAISE EXCEPTION");expect(source).toContain("principal AS MATERIALIZED");
  expect(source).toContain("actor.uid IS NOT NULL AND actor.active");

@@ -74,3 +74,14 @@ it("metadata editor hides its portal on a denied recheck and restores the retain
  denied=false;fireEvent.click(screen.getByRole("button",{name:/Retry/}));
  await screen.findByRole("dialog");expect((screen.getByLabelText("Reference",{selector:"input"}) as HTMLInputElement).value).toBe("Synthetic retained draft");
 });
+it("empty tag polling stops after a denied read instead of repeating indefinitely",async()=>{
+ vi.useFakeTimers();
+ try{
+  render(wrap(<DmsDocumentTagsSection documentId={9} isViewing/>));
+  await act(async()=>{await vi.advanceTimersByTimeAsync(100);});
+  expect(calls).toHaveLength(3);
+  expect(client.getQueryCache().getAll().every(q=>q.state.status==="error")).toBe(true);
+  await act(async()=>{await vi.advanceTimersByTimeAsync(60000);});
+  expect(calls).toHaveLength(3);
+ }finally{vi.useRealTimers();}
+});

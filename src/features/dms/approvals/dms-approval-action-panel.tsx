@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {useDmsSectionQuery as useQuery} from "@/features/dms/documents/section-activity";
+import {readDmsSection} from "@/features/dms/documents/section-read";
+import { useQueryClient } from "@tanstack/react-query";
 import { format, parseISO, differenceInDays } from "date-fns";
 import {
   Loader2, ShieldCheck, AlertCircle, RefreshCw, Send, CheckCircle2, XCircle, Undo2, Clock,
@@ -15,10 +17,7 @@ import {
   DmsApprovalActionDialog,
   type ApprovalDialogMode,
 } from "./dms-approval-action-dialog";
-import {
-  getDocumentApprovalState,
-  getDocumentApprovalHistory,
-} from "@/server/actions/dms/document-approvals";
+
 
 interface DmsApprovalActionPanelProps {
   documentId: number;
@@ -30,8 +29,8 @@ export function DmsApprovalActionPanel({ documentId }: DmsApprovalActionPanelPro
 
   const stateQuery = useQuery({
     queryKey: ["dms", "approval-state", documentId] as const,
-    queryFn: async () => {
-      const r = await getDocumentApprovalState(documentId);
+    queryFn: async ({signal}) => {
+      const r = await readDmsSection("getDocumentApprovalState",[documentId],signal);
       if (!r.success) throw new Error(r.error ?? "Failed to load approval state");
       return r.data!;
     },
@@ -42,8 +41,8 @@ export function DmsApprovalActionPanel({ documentId }: DmsApprovalActionPanelPro
   const historyQuery = useQuery({
     queryKey: ["dms", "approval-history", documentId] as const,
     enabled: stateQuery.data?.canViewHistory === true,
-    queryFn: async () => {
-      const r = await getDocumentApprovalHistory(documentId);
+    queryFn: async ({signal}) => {
+      const r = await readDmsSection("getDocumentApprovalHistory",[documentId],signal);
       if (!r.success) throw new Error("Approval history is unavailable");
       return r.data ?? [];
     },

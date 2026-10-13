@@ -1,5 +1,6 @@
 "use client";
-import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
+import {readDmsSection} from "@/features/dms/documents/section-read";
+import { QueryReadBoundary } from "@/features/dms/documents/section-read-boundary";
 
 /**
  * ERP COMMON AI.2 — Document Understanding Section
@@ -26,8 +27,8 @@ import type {
 } from "@/lib/dms/understanding/types";
 import { queryKeys } from "@/lib/query/query-keys";
 import { cn } from "@/lib/utils";
-import { getDmsDocumentUnderstanding } from "@/server/actions/dms/document-understanding";
-import { useQuery } from "@tanstack/react-query";
+
+import {useDmsSectionQuery as useQuery} from "@/features/dms/documents/section-activity";
 import {
   AlertCircle,
   Brain,
@@ -174,7 +175,7 @@ export function DmsDocumentUnderstandingSection({
 }: DmsDocumentUnderstandingSectionProps) {
   const uiRead1 = useQuery({
     queryKey: queryKeys.dms.documentUnderstanding(documentId ?? 0),
-    queryFn: () => getDmsDocumentUnderstanding(documentId!),
+    queryFn: ({signal}) => readDmsSection("getDmsDocumentUnderstanding", [documentId!], signal),
     enabled: !!documentId,
     staleTime: 60_000,
   });
@@ -202,7 +203,7 @@ export function DmsDocumentUnderstandingSection({
   if (!result?.success) {
     const isDisabled = result?.code === "FEATURE_DISABLED";
     return (
-      <QueryReadBoundary queries={[uiRead1]}><div className="py-6">
+      <QueryReadBoundary queries={isDisabled?[]:[uiRead1]}><div className="py-6">
         {isDisabled ? (
           <Alert className="border-slate-200 bg-slate-50">
             <Brain className="h-4 w-4 text-slate-500" />

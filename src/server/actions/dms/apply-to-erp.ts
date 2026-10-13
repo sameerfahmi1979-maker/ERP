@@ -1,4 +1,5 @@
 "use server";
+import {readAllPages} from "@/server/reads/all-pages";
 
 /**
  * ERP DMS AI Phase 16 — Apply-to-ERP Server Actions
@@ -1061,7 +1062,7 @@ export async function getDmsApplyToErpRun(
 ): Promise<ActionResult<DmsErpApplyRun>> {
   try {
     const ctx = await getAuthContext();
-    if (!ctx.profile?.id) {
+    if (!ctx.profile?.id||!ctx.isAccountActive||ctx.profile.must_change_password) {
       return { success: false, error: "Not authenticated", errorCode: "not_authenticated" };
     }
 
@@ -1094,11 +1095,11 @@ export async function getDmsApplyToErpRun(
       return { success: false, error: "Apply run not found", errorCode: "run_not_found" };
     }
 
-    const { data: itemRows } = await db
+    const itemRows=await readAllPages(async(from,to)=>await db
       .from("dms_ai_erp_apply_items")
-      .select("*")
+      .select("*",{count:"exact"})
       .eq("apply_run_id", runId)
-      .order("id");
+      .order("id").range(from,to),{identity:row=>row.id,maxRows:10000});
 
     const run = mapRunRow(runRow as Record<string, unknown>, (itemRows ?? []) as Record<string, unknown>[]);
     return { success: true, data: run };
@@ -1119,7 +1120,7 @@ export async function listDmsApplyToErpRuns(filters?: {
 }): Promise<ActionResult<{ runs: DmsErpApplyRun[]; total: number }>> {
   try {
     const ctx = await getAuthContext();
-    if (!ctx.profile?.id) {
+    if (!ctx.profile?.id||!ctx.isAccountActive||ctx.profile.must_change_password) {
       return { success: false, error: "Not authenticated", errorCode: "not_authenticated" };
     }
 
@@ -1137,7 +1138,8 @@ export async function listDmsApplyToErpRuns(filters?: {
 
     const db = await createClient();
     const page = filters?.page ?? 1;
-    const pageSize = Math.min(filters?.pageSize ?? 20, 100);
+    const pageSize = filters?.pageSize ?? 20;
+    if(!Number.isSafeInteger(page)||page<1||page>100000||!Number.isSafeInteger(pageSize)||pageSize<1||pageSize>100)return {success:false,error:"Invalid history page"};
     const from = (page - 1) * pageSize;
 
     let query = db
@@ -1151,11 +1153,13 @@ export async function listDmsApplyToErpRuns(filters?: {
       query = query.eq("status", filters.status);
     }
 
-    query = query.order("created_at", { ascending: false }).range(from, from + pageSize - 1);
+    query = query.order("created_at", { ascending: false }).order("id").range(from, from + pageSize - 1);
 
-    const { data, error, count } = await query;
+    let result=await query;
+    if(result.status===416&&result.error?.code==="PGRST103"){const c=await query.range(0,0);if(!c.error&&c.count!==null&&Number.isSafeInteger(c.count)&&c.count>=0&&from>=c.count&&c.data?.length===Math.min(1,c.count))result={...c,data:[]};}
+    const {data,error,count}=result;
 
-    if (error) {
+    if (error||count===null||!Number.isSafeInteger(count)||!Array.isArray(data)||data.length!==Math.min(pageSize,Math.max(0,count-from))) {
       return { success: false, error: "Failed to list apply runs" };
     }
 

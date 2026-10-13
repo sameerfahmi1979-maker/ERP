@@ -1,4 +1,8 @@
 "use client";
+import {useState,useEffect,useRef} from "react";
+import {useQueryClient} from "@tanstack/react-query";
+import {useServerPage,canonicalReadParams} from "@/hooks/use-server-page";
+import {DmsLoadError} from "@/features/dms/dms-load-error";
 
 import { DmsListTools, useDmsListView, type DmsListField } from "@/features/dms/dms-list-view";
 import { ConfiguredRow } from "@/components/erp/table/list-controls";
@@ -29,6 +33,7 @@ interface DmsUploadSessionTableProps {
   onCancel: (session: DmsUploadSessionRow) => void;
   onAiFill?: (session: DmsUploadSessionRow) => void;
   isSubmitting?: boolean;
+  onReadAvailable?: (available:boolean)=>void;
 }
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
@@ -67,7 +72,8 @@ const DMS_LIST_FIELDS: DmsListField[] = [
     "id": "is_duplicate",
     "label": "Duplicate",
     "path": "is_duplicate",
-    "type": "text",
+    "type": "select",
+    "options": [{value:"true",label:"Yes"},{value:"false",label:"No"}],
     "width": 160
   },
   {
@@ -99,10 +105,27 @@ export function DmsUploadSessionTable({
   onCancel,
   onAiFill,
   isSubmitting,
+  onReadAvailable,
 }: DmsUploadSessionTableProps) {
-  const listView = useDmsListView("upload-sessions", sessions, DMS_LIST_FIELDS);
+  const qc=useQueryClient();
+  const view=useDmsListView("upload-sessions",[],DMS_LIST_FIELDS,{serverFiltered:true});
+  const criteria=canonicalReadParams({search:view.search,columnFilters:view.filters});
+  const [position,setPosition]=useState({criteria,page:1});
+  const page=position.criteria===criteria?position.page:1;
+  const read=useServerPage<DmsUploadSessionRow>({resource:"dms-inbox",params:{...JSON.parse(criteria),page,pageSize:25},seedParams:{},seed:{rows:[],totalCount:0,page:1,pageSize:25},updatedAt:0,keyPrefix:["dms","inbox","sessions"]});
+  const ready=!read.isBusy&&!read.isError&&!!read.data;
+  useEffect(()=>{onReadAvailable?.(!read.isError);},[onReadAvailable,read.isError]);
+  const total=ready?read.data!.totalCount:undefined;
+  const pages=Math.max(1,Math.ceil((total??0)/25));
+  if(ready&&page>pages)setPosition({criteria,page:pages});
+  // Confirmed uploads/cancels change the parent's synthetic row array. Retire
+  // the counted page rather than treating the local array as a complete inbox.
+  const priorSessions=useRef(sessions);
+  useEffect(()=>{if(priorSessions.current===sessions)return;priorSessions.current=sessions;void qc.invalidateQueries({queryKey:["dms","inbox","sessions"]});},[qc,sessions]);
+  const listView={...view,rows:ready?read.data!.rows:[],totalCount:total};
   const now = useClock();
-  if (sessions.length === 0) {
+  if (read.isError) return <DmsLoadError subject="upload sessions" pending={read.isBusy} retry={()=>read.refetch()} />;
+  if (ready && total === 0 && !view.search && !Object.values(view.filters).some(Boolean)) {
     return (
       <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
         <Copy className="h-8 w-8 opacity-30" />
@@ -113,7 +136,9 @@ export function DmsUploadSessionTable({
   }
 
   return (
-    <><DmsListTools view={listView} search /><div className="rounded-md border border-border overflow-auto">
+    <><DmsListTools view={listView} search /><p className="text-xs text-muted-foreground">Search file name, session code or status. Date filters use UTC dates.</p>
+    {read.isBusy&&<p role="status">Loading upload sessions…</p>}
+    <div className="flex items-center gap-2 mb-2"><Button variant="outline" disabled={!ready||page<=1} onClick={()=>setPosition({criteria,page:page-1})}>Previous</Button><span>Page {page}{ready?` of ${pages}`:""}</span><Button variant="outline" disabled={!ready||page>=pages} onClick={()=>setPosition({criteria,page:page+1})}>Next</Button><Button variant="outline" disabled={read.isBusy} onClick={()=>read.refetch()}>Refresh sessions</Button></div><div className="rounded-md border border-border overflow-auto">
       <div role="region" aria-label="upload-sessions table" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{ minWidth: listView.visible.reduce((sum, column) => sum + column.width, 0) }}><colgroup>{listView.visible.map(column => <col key={column.id} style={{ width: column.width }} />)}</colgroup>
         <thead>
           <ConfiguredRow columns={listView.columns} className="border-b border-border bg-muted/30">

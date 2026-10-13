@@ -5,13 +5,11 @@ import { hasPermission } from "@/lib/rbac/check";
 import { getReadAuthContext } from "./read-context";
 import { readAllPages } from "./all-pages";
 import { literalContains, literalLike } from "@/lib/reads/search";
-import { renewalFilterSchema, renewalRowsSchema } from "./dms-renewal-contract";
+import { renewalFilterSchema } from "./dms-renewal-contract";
 import type { ActionResult, DmsRenewalRequestRow } from "@/server/actions/dms/renewals";
 
 const text = z.string().trim().max(200);
-const baseRowsSchema = z.array(renewalRowsSchema.element.omit({ document: true, requester: true, assignee: true }));
-const documentRowsSchema = z.array(renewalRowsSchema.element.shape.document.unwrap());
-const profileRowsSchema = z.array(z.object({ id: z.number().int().positive(), full_name: z.string().nullable() }));
+import { renewalBaseRowsSchema as baseRowsSchema, hydrateRenewalReferences } from "./dms-renewal-references";
 export const renewalPageSchema = renewalFilterSchema.extend({
   page: z.number().int().min(1).max(100000).default(1),
   pageSize: z.number().int().min(1).max(100).default(25),
@@ -111,21 +109,7 @@ export async function readDmsRenewalPage(input: unknown): Promise<ActionResult<R
     // Hydrate only this page in batches. Per-row embedded protected document
     // readers repeatedly evaluate their visible set; no need to do that N times.
     // Ordinary RLS/masking still owns each relation. Denied relations remain null.
-    const documentIds = [...new Set(rows.data.map(row => row.document_id))];
-    const profileIds = [...new Set(rows.data.flatMap(row => [row.requested_by, row.assigned_to]).filter((id): id is number => id !== null))];
-    const [documents, profiles] = await Promise.all([
-      documentIds.length ? db.from("dms_documents").select("id, document_no, title, expiry_date, document_type_id", { count: "exact" }).in("id", documentIds).order("id").range(0, documentIds.length - 1) : Promise.resolve({ data: [], count: 0, error: null }),
-      profileIds.length ? db.from("user_profiles").select("id, full_name", { count: "exact" }).in("id", profileIds).order("id").range(0, profileIds.length - 1) : Promise.resolve({ data: [], count: 0, error: null }),
-    ]);
-    const docs = documentRowsSchema.parse(documents.data), people = profileRowsSchema.parse(profiles.data);
-    for (const [response, values, requested] of [[documents, docs, documentIds], [profiles, people, profileIds]] as const) {
-      if (response.error || response.count !== values.length || new Set(values.map(row => row.id)).size !== values.length || values.some(row => !requested.includes(row.id))) {
-        return { success: false, error: "Renewal references could not be verified. Please retry." };
-      }
-    }
-    const docMap = new Map(docs.map(row => [row.id, row]));
-    const personMap = new Map(people.map(row => [row.id, { full_name: row.full_name }]));
-    const hydrated = rows.data.map(row => ({ ...row, document: docMap.get(row.document_id) ?? null, requester: row.requested_by === null ? null : personMap.get(row.requested_by) ?? null, assignee: row.assigned_to === null ? null : personMap.get(row.assigned_to) ?? null }));
+    const hydrated = await hydrateRenewalReferences(db, rows.data);
     return { success: true, data: { rows: hydrated, totalCount: result.count, page: p.page, pageSize: p.pageSize } };
   } catch {
     return { success: false, error: "Renewal requests could not be loaded. Refine the filters or retry." };

@@ -1,21 +1,19 @@
 "use client";
+import type {DmsTagSuggestionRow} from "@/server/actions/dms/ai-tags";
+import {DmsLoadError} from "@/features/dms/dms-load-error";
+import {readDmsSection} from "@/features/dms/documents/section-read";
 
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import {useDmsSectionQuery as useQuery} from "@/features/dms/documents/section-activity";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Loader2, X, Tag, Sparkles, Check, AlertCircle } from "lucide-react";
-import { saveDmsDocumentTags, type DmsDocumentTagRow } from "@/server/actions/dms/document-tags";
-import { getDmsTags } from "@/server/actions/dms/tags";
+import { saveDmsDocumentTags } from "@/server/actions/dms/document-tags";
+
 import { queryKeys } from "@/lib/query/query-keys";
-import {
-  suggestDmsDocumentTags,
-  applyDmsTagSuggestions,
-  rejectDmsTagSuggestions,
-  createAndApplyDmsTagSuggestion,
-  type DmsTagSuggestionRow,
-} from "@/server/actions/dms/ai-tags";
+import { suggestDmsDocumentTags, applyDmsTagSuggestions, rejectDmsTagSuggestions, createAndApplyDmsTagSuggestion } from "@/server/actions/dms/ai-tags";
 
 interface DmsDocumentTagsSectionProps {
   documentId: number | null;
@@ -33,16 +31,13 @@ export function DmsDocumentTagsSection({ documentId, isViewing }: DmsDocumentTag
   // WORKSPACE.PERF.1 UAT fix: interval-polled queries must use plain GET
   // fetches, NOT server actions — an in-flight server action reverts any
   // router.push made while it's pending (the "tab snaps back" bug family).
-  const { data: docTags = [], isLoading: loadingDocTags } = useQuery({
+  const { data: docTags = [], isLoading: loadingDocTags, isError: docTagsError, refetch: retryDocTags } = useQuery({
     queryKey: queryKeys.dms.documentTags(documentId ?? 0),
-    queryFn: async () => {
-      if (!documentId) return [];
-      const res = await fetch(`/api/dms/poll?kind=documentTags&documentId=${documentId}`, {
-        cache: "no-store",
-      });
-      if (!res.ok) return [];
-      const json = (await res.json()) as { data?: DmsDocumentTagRow[] };
-      return json.data ?? [];
+    queryFn: async ({signal}) => {
+      if(!documentId)return [];
+      const r=await readDmsSection("getDmsDocumentTags",[documentId],signal);
+      if(!r.success||!r.data)throw new Error("Document tags unavailable");
+      return r.data;
     },
     enabled: !!documentId,
     staleTime: 30 * 1000,
@@ -57,25 +52,23 @@ export function DmsDocumentTagsSection({ documentId, isViewing }: DmsDocumentTag
     },
   });
 
-  const { data: allTags = [], isLoading: loadingAllTags } = useQuery({
+  const { data: allTags = [], isLoading: loadingAllTags, isError: allTagsError, refetch: retryAllTags } = useQuery({
     queryKey: queryKeys.dms.tags(),
-    queryFn: async () => {
-      const r = await getDmsTags();
-      return r.data ?? [];
+    queryFn: async ({signal}) => {
+      const r = await readDmsSection("getDmsTags", [], signal);
+      if(!r.success||!r.data)throw new Error("Tags unavailable");
+      return r.data;
     },
     staleTime: 5 * 60 * 1000,
   });
 
-  const { data: tagSuggestions = [], refetch: refetchSuggestions } = useQuery({
+  const { data: tagSuggestions = [], refetch: refetchSuggestions, isError: suggestionsError } = useQuery({
     queryKey: queryKeys.dms.documentTagSuggestions(documentId ?? 0),
-    queryFn: async () => {
-      if (!documentId) return [];
-      const res = await fetch(`/api/dms/poll?kind=tagSuggestions&documentId=${documentId}`, {
-        cache: "no-store",
-      });
-      if (!res.ok) return [];
-      const json = (await res.json()) as { data?: DmsTagSuggestionRow[] };
-      return json.data ?? [];
+    queryFn: async ({signal}) => {
+      if(!documentId)return [];
+      const r=await readDmsSection("getDmsTagSuggestions",[documentId],signal);
+      if(!r.success||!r.data)throw new Error("Document tags unavailable");
+      return r.data;
     },
     enabled: !!documentId,
     staleTime: 30 * 1000,
@@ -194,6 +187,7 @@ export function DmsDocumentTagsSection({ documentId, isViewing }: DmsDocumentTag
     );
   }
 
+  if(docTagsError||allTagsError||suggestionsError) return <DmsLoadError subject="document tags" retry={()=>Promise.all([retryDocTags(),retryAllTags(),refetchSuggestions()])} />;
   const activeTags = allTags.filter((t) => t.is_active && !t.deleted_at);
 
   return (

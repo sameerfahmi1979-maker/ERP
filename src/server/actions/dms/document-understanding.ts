@@ -16,6 +16,7 @@
  */
 
 import { z } from "zod";
+import {readAllPages} from "@/server/reads/all-pages";
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import {
@@ -100,7 +101,7 @@ export async function getDmsDocumentUnderstanding(
 
     // 2. Auth
     const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated." };
+    if (!ctx.isAccountActive || ctx.profile?.must_change_password || !ctx.profile) return { success: false, error: "Not authenticated." };
 
     const isAdmin =
       hasPermission(ctx, "dms.admin") || ctx.roleCodes.includes("system_admin");
@@ -160,11 +161,11 @@ export async function getDmsDocumentUnderstanding(
     const category = doc.category as { name_en?: string } | null;
 
     // 7. OCR file status — derive from files, not document flag alone
-    const { data: fileRows } = await supabase
+    const fileRows=await readAllPages(async(from,to)=>await supabase
       .from("dms_document_files")
-      .select("id, ocr_status, ocr_text, ocr_completed_at")
+      .select("id, ocr_status, ocr_text, ocr_completed_at",{count:"exact"})
       .eq("document_id", documentId)
-      .is("deleted_at", null);
+      .is("deleted_at", null).order("id").range(from,to),{identity:row=>row.id,maxRows:10000});
 
     const files = (fileRows ?? []) as Array<{
       id: number;
@@ -178,7 +179,7 @@ export async function getDmsDocumentUnderstanding(
       .from("dms_document_content")
       .select("char_count, is_truncated, content_text_source")
       .eq("document_id", documentId)
-      .maybeSingle();
+      .maybeSingle().throwOnError();
 
     const content = contentRow as {
       char_count?: number | null;
@@ -194,7 +195,7 @@ export async function getDmsDocumentUnderstanding(
       .select("ai_status, classification_score, classification_reason, field_confidence_json, raw_ocr_text, created_at")
       .eq("document_id", documentId)
       .order("created_at", { ascending: false })
-      .limit(1);
+      .limit(1).throwOnError();
 
     const latestExtract = ((extractRows ?? []) as Array<Record<string, unknown>>)[0] ?? null;
     const hasRawOcrInExtract =
@@ -224,37 +225,39 @@ export async function getDmsDocumentUnderstanding(
       .from("dms_document_metadata_values")
       .select("id", { count: "exact", head: true })
       .eq("document_id", documentId)
-      .not("value", "is", null);
+      .is("deleted_at",null).or("value_text.not.is.null,value_number.not.is.null,value_date.not.is.null,value_datetime.not.is.null,value_boolean.not.is.null,value_json.not.is.null").throwOnError();
+    if(metadataFilled===null)throw Error("Understanding count unavailable");
 
     const { count: metadataTotal } = await supabase
       .from("dms_document_metadata_values")
       .select("id", { count: "exact", head: true })
-      .eq("document_id", documentId);
+      .eq("document_id", documentId).is("deleted_at",null).throwOnError();
+    if(metadataTotal===null)throw Error("Understanding count unavailable");
 
     // 11. Tags
-    const { data: tagRows } = await supabase
+    const tagRows=await readAllPages(async(from,to)=>await supabase
       .from("dms_document_tags")
-      .select("tag:dms_tags(tag_name)")
-      .eq("document_id", documentId);
+      .select("tag_id,tag:dms_tags(tag_name)",{count:"exact"})
+      .eq("document_id", documentId).order("tag_id").range(from,to),{identity:row=>row.tag_id,maxRows:10000});
 
     const tagNames = ((tagRows ?? []) as Array<{ tag?: { tag_name?: string } | null }>)
       .map((r) => r.tag?.tag_name ?? "")
-      .filter(Boolean)
-      .slice(0, 10);
+      .filter(Boolean);
 
     // 12. Pending tag suggestions
     const { count: pendingTagCount } = await supabase
       .from("dms_ai_tag_suggestions")
       .select("id", { count: "exact", head: true })
       .eq("document_id", documentId)
-      .eq("status", "pending");
+      .eq("status", "pending").throwOnError();
+    if(pendingTagCount===null)throw Error("Understanding count unavailable");
 
     // 13. Accepted entity links + entity display names
-    const { data: linkRows } = await supabase
+    const linkRows=await readAllPages(async(from,to)=>await supabase
       .from("dms_document_links")
-      .select("entity_type, entity_id, is_primary")
+      .select("id,entity_type, entity_id, is_primary",{count:"exact"})
       .eq("document_id", documentId)
-      .is("deleted_at", null);
+      .is("deleted_at", null).order("id").range(from,to),{identity:row=>row.id,maxRows:10000});
 
     const links = (linkRows ?? []) as Array<{
       entity_type: string;
@@ -284,7 +287,8 @@ export async function getDmsDocumentUnderstanding(
       .from("dms_ai_link_suggestions")
       .select("id", { count: "exact", head: true })
       .eq("document_id", documentId)
-      .eq("status", "pending");
+      .eq("status", "pending").throwOnError();
+    if(pendingLinkCount===null)throw Error("Understanding count unavailable");
 
     // 15. ORCH.1 orchestration status
     const { data: sessionRow } = await supabase
@@ -294,7 +298,7 @@ export async function getDmsDocumentUnderstanding(
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
       .limit(1)
-      .maybeSingle();
+      .maybeSingle().throwOnError();
 
     const session = sessionRow as Record<string, unknown> | null;
     const orchSteps = (session?.orchestration_steps_json as Array<{ step: string; status: string; durationMs?: number | null }> | null) ?? [];
@@ -328,17 +332,18 @@ export async function getDmsDocumentUnderstanding(
           .eq("entity_type", primaryStage1Link.entityType)
           .eq("entity_id", primaryStage1Link.entityId)
           .eq("status", "pending")
-          .is("deleted_at", null);
+          .is("deleted_at", null).throwOnError();
+    if(pendingSuggCount===null)throw Error("Understanding count unavailable");
 
         // Get pending suggestion IDs by field
-        const { data: pendingSuggRows } = await supabase
+        const pendingSuggRows=await readAllPages(async(from,to)=>await supabase
           .from("erp_ai_field_suggestions")
-          .select("id, target_field")
+          .select("id, target_field",{count:"exact"})
           .eq("entity_type", primaryStage1Link.entityType)
           .eq("entity_id", primaryStage1Link.entityId)
           .eq("status", "pending")
           .is("deleted_at", null)
-          .limit(20);
+          .order("id").range(from,to),{identity:row=>row.id,maxRows:10000});
 
         const pendingByField = new Map(
           ((pendingSuggRows ?? []) as Array<{ id: number; target_field: string }>).map(
@@ -397,7 +402,8 @@ export async function getDmsDocumentUnderstanding(
           `source_document_id.eq.${parsed.data},` +
             `and(entity_type_a.eq.dms_document,entity_id_a.eq.${parsed.data}),` +
             `and(entity_type_b.eq.dms_document,entity_id_b.eq.${parsed.data})`
-        );
+        ).throwOnError();
+    if(dupCount===null)throw Error("Understanding count unavailable");
       duplicatePendingCount = dupCount ?? 0;
     }
 
@@ -410,7 +416,8 @@ export async function getDmsDocumentUnderstanding(
         .select("id", { count: "exact", head: true })
         .eq("document_id", parsed.data)
         .eq("status", "open")
-        .is("deleted_at", null);
+        .is("deleted_at", null).throwOnError();
+    if(compCount===null)throw Error("Understanding count unavailable");
       complianceOpenCount = compCount ?? 0;
 
       const { count: critCount } = await supabase
@@ -419,7 +426,8 @@ export async function getDmsDocumentUnderstanding(
         .eq("document_id", parsed.data)
         .eq("status", "open")
         .eq("severity", "critical")
-        .is("deleted_at", null);
+        .is("deleted_at", null).throwOnError();
+    if(critCount===null)throw Error("Understanding count unavailable");
       complianceCriticalCount = critCount ?? 0;
     }
 
@@ -444,7 +452,7 @@ export async function getDmsDocumentUnderstanding(
         .eq("entity_id", primaryRiskEntity.entityId)
         .is("deleted_at", null)
         .not("status", "in", '("superseded","failed")')
-        .maybeSingle();
+        .maybeSingle().throwOnError();
 
       if (riskRow) {
         const r = riskRow as Record<string, unknown>;
@@ -544,7 +552,7 @@ export async function getDmsDocumentUnderstanding(
 
       tagsLinks: {
         tagCount: tagNames.length,
-        tagNames,
+        tagNames:tagNames.slice(0,10),
         pendingTagSuggestions: pendingTagCount ?? 0,
         linkCount: links.length,
         linkedEntities,

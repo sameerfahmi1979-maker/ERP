@@ -1,0 +1,20 @@
+import {beforeEach,expect,it,vi} from "vitest";
+const s=vi.hoisted(()=>({allowed:true,active:true,forced:false,total:1107,mode:"ok",ops:[] as [string,unknown[]][]}));
+vi.mock("@/lib/rbac/check",()=>({getAuthContext:async()=>({profile:{id:9,must_change_password:s.forced},isAccountActive:s.active}),hasPermission:()=>s.allowed}));
+vi.mock("@/lib/logger",()=>({logger:{warn:vi.fn()}}));
+vi.mock("@/lib/supabase/server",()=>({createClient:async()=>({from:()=>{const q=new Proxy({}, {get:(_,key)=>key==="then"?(resolve:(value:unknown)=>unknown)=>{
+ const [from,to]=(s.ops.filter(([op])=>op==="range").at(-1)?.[1]??[0,24]) as number[];
+ const rows=Array.from({length:Math.min(to-from+1,Math.max(0,s.total-from))},(_,i)=>({id:from+i+1,session_code:`SYN-${from+i+1}`,original_filename:"Synthetic.pdf",status:"uploaded"}));
+ if(s.mode==="416"&&from>=s.total)return Promise.resolve({data:null,count:null,status:416,error:{code:"PGRST103"}}).then(resolve);
+ return Promise.resolve({data:s.mode==="short"?rows.slice(0,1):s.mode==="duplicate"?rows.map(()=>rows[0]):s.mode==="malformed"?[{id:0}]:rows,count:s.mode==="null"?null:s.total,error:s.mode==="error"?{message:"secret backend"}:null}).then(resolve);
+ }:(...args:unknown[])=>{s.ops.push([String(key),args]);return q;}});return q;}})}));
+import {readDmsInboxPage} from "@/server/reads/dms-inbox";
+import {POST} from "@/app/api/reads/dms-inbox/route";
+beforeEach(()=>Object.assign(s,{allowed:true,active:true,forced:false,total:1107,mode:"ok",ops:[]}));
+it("returns only the requested stable counted page",async()=>{const r=await readDmsInboxPage({page:3});expect(r.data?.rows.map(x=>x.id)).toEqual(Array.from({length:25},(_,i)=>i+51));expect(r.data?.totalCount).toBe(1107);expect(s.ops).toContainEqual(["range",[50,74]]);expect(s.ops).toContainEqual(["order",["id",{ascending:true}]]);});
+it("applies literal search and all supported filters before range",async()=>{expect((await readDmsInboxPage({search:"%_",columnFilters:{original_filename:"%_",status:"up",file_size_bytes:"1024",is_duplicate:"true",uploaded_at:"2026-10-13",expires_at:"2026-10-14"}})).success).toBe(true);expect(s.ops).toContainEqual(["ilike",["original_filename","%\\%\\_%"]]);expect(s.ops).toContainEqual(["eq",["is_duplicate",true]]);expect(s.ops).toContainEqual(["gte",["uploaded_at","2026-10-13T00:00:00.000Z"]]);expect(s.ops).toContainEqual(["lt",["expires_at","2026-10-15T00:00:00.000Z"]]);});
+it.each(["short","duplicate","malformed","null","error"])("fails closed on %s",async mode=>{s.mode=mode;const r=await readDmsInboxPage({});expect(r.success).toBe(false);expect(r.data).toBeUndefined();expect(r.error).not.toContain("secret");});
+it.each([{page:0},{pageSize:101},{companyId:2},{columnFilters:{file_size_bytes:"999999999999999999"}},{columnFilters:{uploaded_at:"2026-02-30"}},{columnFilters:{is_duplicate:"yes"}}])("rejects invalid criteria %j without reads",async p=>{expect((await readDmsInboxPage(p)).success).toBe(false);expect(s.ops).toHaveLength(0);});
+it("distinguishes counted empty and out-of-range from failure",async()=>{s.total=0;expect((await readDmsInboxPage({})).data).toMatchObject({rows:[],totalCount:0});s.total=1107;s.mode="416";expect((await readDmsInboxPage({page:46})).data).toMatchObject({rows:[],totalCount:1107});});
+it.each(["active","forced","allowed"])("denies %s before data access",async mode=>{s.active=mode!=="active";s.forced=mode==="forced";s.allowed=mode!=="allowed";expect((await readDmsInboxPage({})).error).toBe("Permission denied");expect(s.ops).toHaveLength(0);});
+it("route is private and denial is not retried as an empty result",async()=>{const req=()=>new Request("http://localhost/api/reads/dms-inbox",{method:"POST",headers:{"content-type":"application/json"},body:"{}"});const r=await POST(req());expect(r.status).toBe(200);expect(r.headers.get("cache-control")).toContain("no-store");s.allowed=false;expect((await POST(req())).status).toBe(403);});

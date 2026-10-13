@@ -67,7 +67,9 @@ export async function readDmsArchivePage(input:unknown={},context?:AuthContext):
   if(typeIds)query=query.in("document_type_id",typeIds);
   const column=p.sortKey==="document_type"?"document_type(name_en)":p.sortKey;
   const from=(p.page-1)*p.pageSize;
-  const result=await query.order(column,{ascending:p.sortDir==="asc",nullsFirst:false}).order("id",{ascending:true}).range(from,from+p.pageSize-1);
+  const ordered=query.order(column,{ascending:p.sortDir==="asc",nullsFirst:false}).order("id",{ascending:true}).range(from,from+p.pageSize-1);
+  let result=await ordered;
+  if(result.status===416&&result.error?.code==="PGRST103"){const c=await ordered.range(0,0);if(!c.error&&c.count!==null&&Number.isSafeInteger(c.count)&&c.count>=0&&from>=c.count&&c.data?.length===Math.min(1,c.count))result={...c,data:[]};}
   if(result.error||result.count===null||!Number.isSafeInteger(result.count)||result.count<0)return{success:false,error:"Archived documents could not be completely loaded. Please retry."};
   const parsedRows=archiveRowsSchema.safeParse(result.data);
   if(!parsedRows.success || parsedRows.data.length!==Math.min(p.pageSize,Math.max(0,result.count-from)) || new Set(parsedRows.data.map(row=>row.id)).size!==parsedRows.data.length)return{success:false,error:"Archived document rows could not be verified. Please retry."};

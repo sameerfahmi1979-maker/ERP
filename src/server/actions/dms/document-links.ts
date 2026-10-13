@@ -1,4 +1,5 @@
 "use server";
+import {readAllPages} from "@/server/reads/all-pages";
 
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
@@ -56,7 +57,7 @@ export async function searchDmsLinkEntityOptions(
 ): Promise<ActionResult<DmsLinkEntityOption[]>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "dms.documents.view") && !hasPermission(ctx, "dms.admin")) {
+    if (!ctx.profile || !ctx.isAccountActive || ctx.profile.must_change_password || (!hasPermission(ctx, "dms.documents.view") && !hasPermission(ctx, "dms.admin"))) {
       return { success: false, error: "Permission denied" };
     }
 
@@ -88,14 +89,16 @@ export async function getDmsDocumentLinks(
     }
 
     const supabase = await createClient();
-    const { data, error } = await supabase
+    const data = await readAllPages(async (from,to) => {
+      const result = await supabase
       .from("dms_document_links")
-      .select("id, document_id, entity_type, entity_id, link_role, is_primary, notes, linked_at, created_at")
+      .select("id, document_id, entity_type, entity_id, link_role, is_primary, notes, linked_at, created_at", {count:"exact"})
       .eq("document_id", documentId)
       .is("deleted_at", null)
-      .order("linked_at");
+      .order("linked_at").order("id",{ascending:true}).range(from,to);
+      return result;
+    }, {identity:row=>row.id,maxRows:10000});
 
-    if (error) return { success: false, error: error.message };
 
     const rows = (data ?? []) as Omit<
       DmsDocumentLinkRow,

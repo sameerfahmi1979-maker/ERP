@@ -10,7 +10,7 @@
 
 import { DraftRestoredNotice } from "@/components/workspace/draft-restored-notice";
 import type { ERPRecordSection } from "@/components/workspace/erp-record-section-nav";
-import { ERPRecordSectionPanel, ERPRecordWorkspaceForm } from "@/components/workspace/erp-record-workspace-form";
+import { ERPRecordSectionPanel as BaseSectionPanel, ERPRecordWorkspaceForm } from "@/components/workspace/erp-record-workspace-form";
 import { useWorkspaceFormDirty as useFormDirty } from "@/hooks/use-workspace-form-dirty";
 import { useWorkspaceFormNavigation as useWorkspace } from "@/hooks/use-workspace-form-navigation";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
@@ -40,8 +40,12 @@ import {
   Tag,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, type ComponentProps } from "react";
 import { toast } from "sonner";
+import {DmsSectionActivity} from "./section-activity";
+function ERPRecordSectionPanel(props:ComponentProps<typeof BaseSectionPanel>){
+ return <BaseSectionPanel {...props}><DmsSectionActivity value={props.id===props.activeId}>{props.children}</DmsSectionActivity></BaseSectionPanel>;
+}
 import { DmsDocumentAiSection } from "./sections/dms-document-ai-section";
 import { DmsDocumentAiSummarySection } from "./sections/dms-document-ai-summary-section";
 import { DmsDocumentApprovalsSection } from "./sections/dms-document-approvals-section";

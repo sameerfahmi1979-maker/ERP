@@ -1,12 +1,13 @@
 "use client";
 import { RecordCollection } from "@/components/erp/table/record-collection";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState } from "react";
 import { History, ChevronDown, ChevronRight, RefreshCw, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DmsApplyRunStatusBadge, DmsApplyItemStatusBadge } from "./dms-apply-status-badge";
-import { listDmsApplyToErpRuns, getDmsApplyToErpRun } from "@/server/actions/dms/apply-to-erp";
-import type { DmsErpApplyRun, DmsErpApplyItem } from "@/lib/dms/apply-to-erp/types";
+import {readDmsSection} from "@/features/dms/documents/section-read";
+import {useDmsSectionQuery} from "@/features/dms/documents/section-activity";
+import type { DmsErpApplyItem } from "@/lib/dms/apply-to-erp/types";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { DmsApplyCorrectionDrawer } from "@/features/dms/apply-correction/dms-apply-correction-drawer";
 
@@ -30,64 +31,23 @@ export function DmsApplyToErpRunHistory(props: Props) {
 }
 
 function RunHistorySession({ documentId, className, correctionEnabled }: Props) {
-  const [runs, setRuns] = useState<DmsErpApplyRun[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
-  const latest = useRef(0);
-  const latestDetail = useRef(0);
-  const [expandedRunId, setExpandedRunId] = useState<number | null>(null);
-  const [expandedRun, setExpandedRun] = useState<DmsErpApplyRun | null>(null);
-  const [loadingDetail, setLoadingDetail] = useState(false);
-
-  // Phase 17 — Propose Correction drawer state
-  const [correctionItemId, setCorrectionItemId] = useState<number | null>(null);
-
-  const load = useCallback(async () => {
-    const request = ++latest.current;
-    setLoading(true);
-    setFailed(false);
-    try {
-      const result = await listDmsApplyToErpRuns({ documentId, pageSize: 20 });
-      if (request !== latest.current) return;
-      if (!result.success || !result.data) throw new Error("Read unavailable");
-      setRuns(result.data.runs);
-      setTotal(result.data.total);
-    } catch {
-      if (request === latest.current) { setRuns([]); setFailed(true); }
-    } finally {
-      if (request === latest.current) setLoading(false);
-    }
-  }, [documentId]);
-
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { const requests = latest, details = latestDetail; void load(); return () => { requests.current++; details.current++; }; }, [load]);
-
-  const handleExpand = async (runId: number) => {
-    const request = ++latestDetail.current;
-    if (expandedRunId === runId) {
-      setExpandedRunId(null);
-      setExpandedRun(null);
-      return;
-    }
-    setExpandedRunId(runId);
-    setExpandedRun(null);
-    setLoadingDetail(true);
-    try {
-      const result = await getDmsApplyToErpRun(runId);
-      if (request !== latestDetail.current) return;
-      if (!result.success || !result.data) throw new Error("Read unavailable");
-      setExpandedRun(result.data);
-    } catch {
-      if (request === latestDetail.current) setExpandedRun(null);
-    } finally {
-      if (request === latestDetail.current) setLoadingDetail(false);
-    }
-  };
-
+  const [page,setPage]=useState(1);
+  const [expandedRunId,setExpandedRunId]=useState<number|null>(null);
+  const [correctionItemId,setCorrectionItemId]=useState<number|null>(null);
+  const query=useDmsSectionQuery({queryKey:["dms","apply-runs",documentId??"all",page],queryFn:async({signal})=>{
+   const r=await readDmsSection("listDmsApplyToErpRuns",[{documentId,page,pageSize:20}],signal);if(!r.success||!r.data)throw Error("Apply history unavailable");return r.data;
+  }});
+  const detail=useDmsSectionQuery({queryKey:["dms","apply-run",expandedRunId],enabled:!!expandedRunId&&query.isSuccess&&!query.isFetching,queryFn:async({signal})=>{
+   const r=await readDmsSection("getDmsApplyToErpRun",[expandedRunId!],signal);if(!r.success||!r.data)throw Error("Run details unavailable");return r.data;
+  }});
+  const runs=query.isError?[]:query.data?.runs??[],total=query.data?.total??0;
+  const loading=query.isFetching||query.isLoading,failed=query.isError;
+  const expandedRun=detail.isError||detail.isFetching?null:detail.data,loadingDetail=detail.isFetching;
+  const load=async()=>{const refreshed=await query.refetch();if(expandedRunId&&refreshed.isSuccess)await detail.refetch();};
+  const handleExpand=(id:number)=>setExpandedRunId(expandedRunId===id?null:id);
   if (failed) return <div className={className} role="alert"><p>Apply history could not be loaded. This is not an empty result.</p><Button onClick={load}>Retry history</Button></div>;
   if (loading) return <p role="status" className={className}>Loading apply history…</p>;
-  if (runs.length === 0) {
+  if (runs.length === 0 && page === 1) {
     return (
       <div className={className}>
         <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
@@ -113,6 +73,7 @@ function RunHistorySession({ documentId, className, correctionEnabled }: Props) 
         </Button>
       </div>
 
+      <div className="flex items-center gap-2"><Button disabled={page<=1||loading} onClick={()=>{setExpandedRunId(null);setPage(p=>p-1);}}>Previous runs</Button><span>Page {page} of {Math.max(1,Math.ceil(total/20))}</span><Button disabled={page>=Math.ceil(total/20)||loading} onClick={()=>{setExpandedRunId(null);setPage(p=>p+1);}}>Next runs</Button></div>
       {/* Phase 17 — Propose Correction drawer */}
       {correctionEnabled && correctionItemId && (
         <DmsApplyCorrectionDrawer

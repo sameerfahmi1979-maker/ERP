@@ -19,7 +19,7 @@ import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, AlertTriangle, Pencil } from "lucide-react";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
+import { ERPChildDialogForm } from "@/features/dms/documents/section-read-boundary";
 import { DmsApplyCorrectionSourceCard } from "./dms-apply-correction-source-card";
 import { DmsApplyCorrectionProposalForm } from "./dms-apply-correction-proposal-form";
 import { DmsApplyCorrectionConfirmDialog } from "./dms-apply-correction-confirm-dialog";

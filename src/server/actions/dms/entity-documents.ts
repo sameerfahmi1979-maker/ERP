@@ -1,4 +1,5 @@
 "use server";
+import {readAllPages} from "@/server/reads/all-pages";
 
 import {
   countMissingRequiredDocuments,
@@ -82,13 +83,15 @@ export async function getDmsDocumentsByEntity(
 ): Promise<ActionResult<DmsEntityDocumentRow[]>> {
   try {
     const ctx = await getAuthContext();
+    if(!isValidDmsEntityType(entityType)||!Number.isSafeInteger(entityId)||entityId<1)return {success:false,error:"Invalid linked entity"};
+    if (!ctx.profile||!ctx.isAccountActive||ctx.profile.must_change_password)return {success:false,error:"Permission denied"};
     if (!hasPermission(ctx, "dms.documents.view") && !hasPermission(ctx, "dms.admin")) {
       return { success: false, error: "Permission denied" };
     }
 
     const supabase = await createClient();
 
-    const { data, error } = await supabase
+    const data = await readAllPages(async(from,to)=>await supabase
       .from("dms_document_links")
       .select(`
         id,
@@ -115,35 +118,24 @@ export async function getDmsDocumentsByEntity(
           updated_at,
           document_type:dms_document_types(type_code, name_en)
         )
-      `)
+      `,{count:"exact"})
       .eq("entity_type", entityType)
       .eq("entity_id", entityId)
       .is("deleted_at", null)
-      .order("linked_at", { ascending: false });
-
-    if (error) return { success: false, error: error.message };
+      .order("linked_at", { ascending: false }).order("id").range(from,to),{identity:row=>row.id,maxRows:10000});
 
     const isAdmin = hasPermission(ctx, "dms.admin");
     const CONFIDENTIAL_LEVELS = ["hr", "legal", "executive"];
 
-    const documentIds = (data ?? [])
+    const documentIds = [...new Set((data ?? [])
       .map((link) => link.document_id)
-      .filter((id): id is number => id != null);
+      .filter((id): id is number => id != null))];
 
     const filesCountByDocId = new Map<number, number>();
-    if (documentIds.length > 0) {
-      const { data: fileRows, error: fileError } = await supabase
-        .from("dms_document_files")
-        .select("document_id")
-        .in("document_id", documentIds)
-        .is("deleted_at", null);
-
-      if (fileError) return { success: false, error: fileError.message };
-
-      for (const row of fileRows ?? []) {
-        const docId = row.document_id as number;
-        filesCountByDocId.set(docId, (filesCountByDocId.get(docId) ?? 0) + 1);
-      }
+    for(let offset=0;offset<documentIds.length;offset+=100){
+      const fileRows=await readAllPages(async(from,to)=>await supabase.from("dms_document_files")
+        .select("id,document_id",{count:"exact"}).in("document_id",documentIds.slice(offset,offset+100)).is("deleted_at",null).order("id").range(from,to),{identity:row=>row.id,maxRows:10000});
+      for(const row of fileRows)filesCountByDocId.set(row.document_id,(filesCountByDocId.get(row.document_id)??0)+1);
     }
 
     const rows: DmsEntityDocumentRow[] = [];
@@ -183,7 +175,7 @@ export async function getDmsDocumentsByEntity(
         ai_summary:
           isConfidential && !isAdmin
             ? null
-            : (doc.ai_summary as string | null),
+            : null,
         ai_risk_level: doc.ai_risk_level as string | null,
         ai_risk_score:
           doc.ai_risk_score != null ? Number(doc.ai_risk_score) : null,

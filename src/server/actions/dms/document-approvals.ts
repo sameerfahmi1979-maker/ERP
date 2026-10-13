@@ -1,4 +1,5 @@
 "use server";
+import {readAllPages} from "@/server/reads/all-pages";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -813,7 +814,7 @@ export async function getDocumentApprovalHistory(
     }
 
     const supabase = await createClient();
-    const { data, error } = await supabase
+    const data=await readAllPages(async(from,to)=>await supabase
       .from("dms_document_approvals")
       .select(`
         id, document_id, action, actioned_by, actioned_at,
@@ -821,11 +822,9 @@ export async function getDocumentApprovalHistory(
         workflow_id, step_id, created_at,
         actioned_by_profile:user_profiles!actioned_by(display_name),
         submitted_by_profile:user_profiles!submitted_by(display_name)
-      `)
+      `,{count:"exact"})
       .eq("document_id", documentId)
-      .order("created_at", { ascending: false });
-
-    if (error) return { success: false, error: error.message };
+      .order("created_at", { ascending: false }).order("id").range(from,to),{identity:row=>row.id,maxRows:10000});
 
     const rows: ApprovalHistoryRow[] = (data ?? []).map((r) => {
       const row = r as unknown as {

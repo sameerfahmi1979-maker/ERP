@@ -1,21 +1,20 @@
 "use client";
+import {readDmsSection} from "@/features/dms/documents/section-read";
 
-import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import {useDmsSectionQuery as useQuery} from "@/features/dms/documents/section-activity";
 import { toast } from "sonner";
 import { GitBranchPlus, Inbox as InboxIcon, ExternalLink } from "lucide-react";
 import Link from "next/link";
+import {DmsLoadError} from "@/features/dms/dms-load-error";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
+import { ERPChildDialogForm } from "@/features/dms/documents/section-read-boundary";
 import { ERPCombobox } from "@/components/erp/combobox";
 import type { ERPComboboxOption } from "@/components/erp/combobox";
-import {
-  attachUploadToExistingDocument,
-  getEligibleUploadSessionsForVersionLink,
-  type EligibleVersionLinkCandidate,
-} from "@/server/actions/dms/document-upload-attach";
+import { attachUploadToExistingDocument, type EligibleVersionLinkCandidate } from "@/server/actions/dms/document-upload-attach";
 import {
   invalidateDmsDocumentFiles,
   invalidateDmsDocumentVersions,
@@ -43,10 +42,11 @@ export function DmsLinkVersionDialog({
   const [changeNotes, setChangeNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { data: candidates = [], isLoading: loadingCandidates } = useQuery({
+  const flight=useRef(false);
+  const candidateQuery = useQuery({
     queryKey: ["dms", "documents", documentId, "version-link-candidates"],
-    queryFn: async () => {
-      const result = await getEligibleUploadSessionsForVersionLink(documentId);
+    queryFn: async ({signal}) => {
+      const result = await readDmsSection("getEligibleUploadSessionsForVersionLink", [documentId], signal);
       if (!result.success) throw new Error(result.error);
       return result.data ?? [];
     },
@@ -54,6 +54,9 @@ export function DmsLinkVersionDialog({
     staleTime: 10_000,
   });
 
+  const loadingCandidates=candidateQuery.isFetching;
+  const candidates=candidateQuery.isError?[]:candidateQuery.data??[];
+  const ready=candidateQuery.isSuccess&&!candidateQuery.isFetching;
   const reset = () => {
     setUploadSessionId(null);
     setVersionLabel("");
@@ -68,11 +71,12 @@ export function DmsLinkVersionDialog({
   };
 
   const handleSubmit = async () => {
-    if (!uploadSessionId) {
+    if(flight.current||!ready)return;
+    if (!uploadSessionId || !candidates.some(c=>c.id===uploadSessionId&&c.eligible)) {
       toast.error("Select an uploaded file to link as the new version");
       return;
     }
-    setIsSubmitting(true);
+    flight.current=true;setIsSubmitting(true);
     try {
       const result = await attachUploadToExistingDocument({
         uploadSessionId,
@@ -93,8 +97,9 @@ export function DmsLinkVersionDialog({
       invalidateDmsDocumentFileStorage(queryClient, documentId);
       handleClose(false);
       onSuccess?.();
+    } catch { toast.error("The link could not be confirmed. Your input has been retained.");
     } finally {
-      setIsSubmitting(false);
+      flight.current=false;setIsSubmitting(false);
     }
   };
 
@@ -132,10 +137,12 @@ export function DmsLinkVersionDialog({
       mode="add"
       size="md"
       isSubmitting={isSubmitting}
+      isDirty={!!uploadSessionId||!!versionLabel||!!changeNotes}
       onSubmit={handleSubmit}
       submitLabel="Link Version"
     >
       <div className="space-y-4">
+        {candidateQuery.isError&&<DmsLoadError subject="eligible uploads" retry={()=>candidateQuery.refetch()} pending={loadingCandidates}/>}
         <div className="rounded-md bg-muted/20 border border-border p-3 text-xs text-muted-foreground">
           <p>
             Files must be uploaded and completed <span className="font-medium">AI Fill</span> in the Inbox
@@ -155,6 +162,7 @@ export function DmsLinkVersionDialog({
             placeholder="Search AI-reviewed inbox files…"
             searchPlaceholder="Search by filename…"
             loading={loadingCandidates}
+            disabled={!ready}
             allowClear
             emptyText="No AI-reviewed files available yet."
             noResultsText="No matching files found"

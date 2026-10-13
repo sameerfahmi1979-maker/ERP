@@ -5,6 +5,7 @@ import {
   getDmsUploadBatchDrafts,
 } from "@/server/actions/dms/batch-intake";
 import { DmsBatchReviewQueueClient } from "@/features/dms/upload/dms-batch-review-queue-client";
+import { DmsLoadError } from "@/features/dms/documents/dms-load-error";
 import { ERPPageHeader } from "@/components/erp/page-header";
 
 export const dynamic = "force-dynamic";
@@ -47,7 +48,7 @@ export default async function DmsBatchReviewPage({ params }: BatchPageProps) {
         ]}
       />
 
-      <DmsBatchReviewQueueClient batch={batch} initialDrafts={drafts} />
+      {!draftsResult.success ? <DmsLoadError /> : <DmsBatchReviewQueueClient batch={batch} initialDrafts={drafts} initialUpdatedAt={draftsResult.updatedAt} />}
     </div>
   );
 }

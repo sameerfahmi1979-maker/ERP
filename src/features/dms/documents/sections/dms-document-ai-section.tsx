@@ -1,7 +1,8 @@
 "use client";
+import {readDmsSection} from "@/features/dms/documents/section-read";
 import { ERPDataTable } from "@/components/erp/table/erp-data-table";
 import { loadedListValue } from "@/components/erp/table/loaded-list-view";
-import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
+import { QueryReadBoundary } from "@/features/dms/documents/section-read-boundary";
 
 /**
  * DMS.10 / Phase 6 — DmsDocumentAiSection
@@ -17,50 +18,18 @@ import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
  */
 
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+ AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { ErpMappingPreviewPanel } from "@/features/dms/documents/sections/dms-erp-mapping-preview-panel";
 import { invalidateDmsAiAnalysis } from "@/lib/query/invalidation";
 import { queryKeys } from "@/lib/query/query-keys";
+import { applyAiAnalysisToMetadata, markDmsAiResultSuperseded, retryDmsAiAnalysisJob, runDmsAiAnalysisForDocument, type ApplyAiMetadataSelection, type DmsAiMetadataApplyHistoryRun, type DmsAiResultRow } from "@/server/actions/dms/ai-analysis";
+
+import { useQueryClient } from "@tanstack/react-query";
+import {useDmsSectionQuery as useQuery} from "@/features/dms/documents/section-activity";
 import {
-  applyAiAnalysisToMetadata,
-  getDmsAiAnalysisStatus,
-  getDmsAiExtractionResults,
-  getDmsAiMetadataApplyHistory,
-  markDmsAiResultSuperseded,
-  retryDmsAiAnalysisJob,
-  runDmsAiAnalysisForDocument,
-  type ApplyAiMetadataSelection,
-  type DmsAiMetadataApplyHistoryRun,
-  type DmsAiResultRow,
-} from "@/server/actions/dms/ai-analysis";
-import { getApplyCorrectionAccess } from "@/server/actions/dms/apply-correction";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  AlertCircle,
-  AlertTriangle,
-  Brain,
-  Check,
-  CheckCircle2,
-  ChevronDown,
-  ChevronUp,
-  History,
-  Info,
-  Loader2,
-  MinusCircle,
-  RefreshCw,
-  RotateCcw,
-  Wand2,
-  XCircle,
-} from "lucide-react";
+  AlertCircle, AlertTriangle, Brain, Check, CheckCircle2, ChevronDown, ChevronUp, History, Info, Loader2, MinusCircle, RefreshCw, RotateCcw, Wand2, XCircle, } from "lucide-react";
+import { AlertDialog } from "@/features/dms/documents/section-read-boundary";
 import { useState } from "react";
 import { toast } from "sonner";
 // Phase 16 — Apply-to-ERP history (DMS document field runs)
@@ -68,15 +37,9 @@ import { DmsAiConfidenceBadge } from "@/features/dms/ai/dms-ai-confidence-badge"
 import { DmsApplyToErpRunHistory } from "@/features/dms/apply-to-erp";
 import type { DmsMetadataDefinitionBase } from "@/lib/dms/metadata/metadata-definition-shared";
 import {
-  buildMetadataDiff,
-  type ConfidenceEntry,
-  type CurrentMetadataValueRow,
-  type MetadataDiffState
+  buildMetadataDiff, type ConfidenceEntry, type CurrentMetadataValueRow, type MetadataDiffState
 } from "@/lib/dms/metadata/metadata-diff";
-import {
-  getDmsDocumentMetadataValues,
-  getMetadataDefinitionsForType,
-} from "@/server/actions/dms/document-metadata-values";
+
 import { format, parseISO } from "date-fns";
 
 // ── Props ────────────────────────────────────────────────────────────────────
@@ -105,8 +68,8 @@ export function DmsDocumentAiSection({
 
   const uiRead1 = useQuery({
     queryKey: ["dms", "apply-correction-access"],
-    queryFn: async () => {
-      const r = await getApplyCorrectionAccess();
+    queryFn: async ({signal}) => {
+      const r = await readDmsSection("getApplyCorrectionAccess", [], signal);
       return r.data ?? { proposalsEnabled: false, restorePreviousEnabled: false };
     },
     staleTime: 60_000,
@@ -119,8 +82,8 @@ export function DmsDocumentAiSection({
 
   const uiRead2 = useQuery({
     queryKey: queryKeys.dms.documentAiStatus(documentId),
-    queryFn: async () => {
-      const r = await getDmsAiAnalysisStatus(documentId);
+    queryFn: async ({signal}) => {
+      const r = await readDmsSection("getDmsAiAnalysisStatus", [documentId], signal);
       if (!r.success) throw new Error(r.error);
       return r.data!;
     },
@@ -130,8 +93,8 @@ export function DmsDocumentAiSection({
 
   const uiRead3 = useQuery({
     queryKey: queryKeys.dms.documentAiResults(documentId),
-    queryFn: async () => {
-      const r = await getDmsAiExtractionResults(documentId);
+    queryFn: async ({signal}) => {
+      const r = await readDmsSection("getDmsAiExtractionResults", [documentId], signal);
       if (!r.success) throw new Error(r.error);
       return r.data ?? [];
     },
@@ -589,8 +552,8 @@ function AiMetadataDiffSection({ documentId, documentTypeId, result, onApplied }
   // Load definitions and current values
   const uiRead1 = useQuery({
     queryKey: queryKeys.dms.documentMetadataDefs(documentTypeId),
-    queryFn: async () => {
-      const r = await getMetadataDefinitionsForType(documentTypeId, "all");
+    queryFn: async ({signal}) => {
+      const r = await readDmsSection("getMetadataDefinitionsForType", [documentTypeId, "all"], signal);
       return (r.data ?? []) as DmsMetadataDefinitionBase[];
     },
     staleTime: 5 * 60 * 1000,
@@ -599,8 +562,8 @@ function AiMetadataDiffSection({ documentId, documentTypeId, result, onApplied }
 
   const uiRead2 = useQuery({
     queryKey: queryKeys.dms.documentMetadata(documentId),
-    queryFn: async () => {
-      const r = await getDmsDocumentMetadataValues(documentId);
+    queryFn: async ({signal}) => {
+      const r = await readDmsSection("getDmsDocumentMetadataValues", [documentId], signal);
       return r.data ?? [];
     },
     staleTime: 30 * 1000,
@@ -891,8 +854,8 @@ function ApplyHistoryPanel({ documentId, aiResultId }: ApplyHistoryPanelProps) {
 
   const uiRead1 = useQuery({
     queryKey: queryKeys.dms.documentAiApplyHistory(documentId),
-    queryFn: async () => {
-      const r = await getDmsAiMetadataApplyHistory(documentId);
+    queryFn: async ({signal}) => {
+      const r = await readDmsSection("getDmsAiMetadataApplyHistory", [documentId], signal);
       if (!r.success) throw new Error(r.error);
       return r.data ?? [];
     },

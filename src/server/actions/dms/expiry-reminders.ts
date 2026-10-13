@@ -456,7 +456,7 @@ export async function getDmsExpiryReminders(
     const supabase = await createClient();
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canViewExpiry(ctx)) return { success: false, error: "Permission denied" };
+    if (!ctx.isAccountActive || ctx.profile.must_change_password || !canViewExpiry(ctx)) return { success: false, error: "Permission denied" };
 
     let query = supabase
       .from("dms_expiry_reminders")
@@ -467,10 +467,10 @@ export async function getDmsExpiryReminders(
          assigned_to, department_code, recipients_json, created_at, updated_at,
          document:dms_documents!document_id(id, document_no, title, expiry_date),
          dismisser:user_profiles!dismissed_by(full_name),
-         assignee:user_profiles!assigned_to(full_name)`
+         assignee:user_profiles!assigned_to(full_name)`,{count:"exact"}
       )
       .order("reminder_date", { ascending: true })
-      .limit(500);
+      .order("id");
 
     if (filter.documentId) query = query.eq("document_id", filter.documentId);
     if (filter.status) query = query.eq("status", filter.status);
@@ -479,8 +479,7 @@ export async function getDmsExpiryReminders(
       query = query.lte("reminder_date", today).eq("status", "pending");
     }
 
-    const { data, error } = await query;
-    if (error) return { success: false, error: error.message };
+    const data=await readAllPages(async(from,to)=>await query.range(from,to),{identity:row=>row.id,maxRows:10000});
     return { success: true, data: (data as unknown as DmsExpiryReminderRow[]) ?? [] };
   } catch (e) {
     return { success: false, error: String(e) };

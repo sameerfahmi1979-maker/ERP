@@ -16,7 +16,7 @@
 
 import { useState } from "react";
 import { AlertTriangle, ShieldCheck } from "lucide-react";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
+import { ERPChildDialogForm } from "@/features/dms/documents/section-read-boundary";
 import { cn } from "@/lib/utils";
 import type { CorrectionProposalRow } from "@/lib/dms/apply-correction/types";
 import { applyCorrectionProposal } from "@/server/actions/dms/apply-correction";

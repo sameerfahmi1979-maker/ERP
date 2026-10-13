@@ -8,6 +8,7 @@ import { DmsReviewQueuePageClient } from '@/features/dms/review-queue/dms-review
 import { DmsReviewQueueItemDrawer } from '@/features/dms/review-queue/dms-review-queue-item-drawer';
 import type { ReviewQueueItem } from '@/server/actions/dms/review-queue';
 const mocks=vi.hoisted(()=>({list:vi.fn(),counts:vi.fn(),detail:vi.fn(),action:vi.fn()}));
+vi.mock('@/lib/reads/client',()=>({readJson:(_resource:string,p:{kind:string;filters:unknown;id:number})=>p.kind==='list'?mocks.list(p.filters):p.kind==='counts'?mocks.counts():mocks.detail(p.id)}));
 vi.mock('@/server/actions/dms/review-queue',()=>({getDmsReviewQueueItems:mocks.list,getDmsReviewQueueCounts:mocks.counts,getDmsReviewQueueItem:mocks.detail,assignDmsReviewQueueItem:mocks.action,startDmsReviewQueueItem:mocks.action,resolveDmsReviewQueueItem:mocks.action,dismissDmsReviewQueueItem:mocks.action}));
 vi.mock('@/server/actions/dms/validation',()=>({reviewDmsValidationFinding:mocks.action,markDmsValidationFindingFalsePositive:mocks.action}));
 vi.mock('@/server/actions/dms/entity-matching',()=>({reviewDmsEntityMatchCandidate:mocks.action}));

@@ -67,6 +67,24 @@ Native loopback checks compare complete row projections/counts against the compa
 
 Offline tests also generate actual CSV, XLSX and multi-page PDF email attachments and parse all 1,107 synthetic identities, plus complete print markup. They test dispatch preparation using a mocked provider, not inbox delivery or browser/device layout. This step adds no migration. Remaining DMS reviews, inbox, record sections, linked-record selectors, populated archive/restore acceptance and the scoped legacy joined renewal reader remain separate open work.
 
+## Item 2: remaining DMS reads
+
+This continuation supersedes the earlier scoped legacy-renewal failure and the review/inbox/record-section/linked-selector/populated-archive holds. Whole P04 remains open. It adds no production migration or business mutation implementation.
+
+- The complete renewal compatibility reader now hydrates ordinary-caller document/person references in counted batches. Scoped full identity sets are independently verified; hidden references remain null.
+- Review queue list/detail/summary reads use a private cancelable endpoint, stable server pages, explicit failures, confidential-parent filtering before count/paging and safe beyond-end handling. Mutations and authority checks are retained.
+- Upload inbox uses counted 25-row pages (100 maximum), whole-result search/filters and lazy document choices. Batch drafts and batch/session totals are complete rather than capped at 100. Invalidated server seeds cannot overwrite newer cache/error state.
+- All 18 document sections are reconciled: 16 data-bearing sections use the active-section read contract, directly or via approval/reminder children. Overview retains its existing parent-owned form; Ask AI remains explicit provider work, not an automatic read. No provider is invoked by these tests.
+- A strict 32-operation read allowlist validates inputs, checks the live principal, performs protected-parent checks where applicable and retains each business reader's authorization. Downloads/signed URLs and mutations remain outside this transport. Read-side audit logging remains where it already existed.
+- Complete child collections use counted stable batches with a 10,000-row ceiling and explicit failure on incomplete/changed results. OCR recent jobs and Understanding labels remain explicitly bounded previews, not complete-history claims. Missing/failed Understanding counts no longer become zero.
+- Linked selectors preserve selected labels, ordinary scopes, literal search, cancellation, denial/retry and retired-account response fencing. The shared entity-document compatibility reader and file totals are complete; this does not certify the separate entity-tab/attach interface.
+- Failed protected rechecks hide stale data and pause child portals while preserving drafts. Inactive sections stop reads/polling and hide their dialogs. Existing F04 submission safeguards and F05 list controls remain.
+- Populated native synthetic archive tests cover company/branch/admin visibility, no-role denial, replacement confidentiality, beyond-end paging and approved-document restore. Registered fixtures/grants are removed and prerequisite function definitions restored exactly.
+
+Verification includes 645 P04 tests; final wider checks and exact published-head CI are recorded in the private acceptance register. Nine extra native section schema-contract reads use empty child sets, not positive child workflows. Two legacy history relations are absent from the restored lab: their exact historical table definitions were installed temporarily with service-only grants and forced RLS, then removed after verification. This is a schema-contract fixture, not historical-policy or final release-schema acceptance. Historical failed receipts are retained.
+
+Browser/device journeys and timings remain owner-deferred, NOT RUN. Server/component tests do not establish a production latency guarantee. No main merge, deployment, emails or provider activation.
+
 ## Verification
 
 Run the P04 Vitest configuration and its TypeScript project, the existing P01/P02/P03 suites, the complete remediation and unit suites, shipping/E2E types, lint, build and security gates. CI includes the P04 offline suite and local-harness typecheck.
@@ -79,7 +97,7 @@ Component/query tests are not browser measurements. No production latency or who
 
 - Nonempty native archive/replacement/restore fixtures and exact intended release-schema integration.
 - Immutable F06 integration, including the known positive scoped common-master access gate.
-- Remaining administration collections and DMS reviews/inbox/record/linked-entity consumers, plus scoped legacy joined renewal acceptance.
+- Remaining administration collections and independent DMS Browser, entity-tab/attach interface, approvals-queue and dashboard consumers require their own current-source reconciliation. Item 2 does not certify these separate surfaces by association.
 - HR/recruitment/time/payroll/operations consumers and their preserved form/permission/failure contracts.
 - Report criteria/history, notification/delivery reads, dashboards/search/advisory/audit residuals, aligned with owning phases. Do not activate deferred F09 delivery work.
 - Complete per-consumer inventory reconciliation. Shared-selector tests do not certify every parent screen.

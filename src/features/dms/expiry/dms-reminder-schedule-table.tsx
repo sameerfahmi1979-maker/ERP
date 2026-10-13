@@ -5,14 +5,15 @@ import { ConfiguredRow } from "@/components/erp/table/list-controls";
 import { useSortPaginate } from "@/hooks/use-sort-paginate";
 import { TablePagination } from "@/components/erp/table/table-pagination";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {readDmsSection} from "@/features/dms/documents/section-read";
+import {useDmsSectionQuery as useQuery} from "@/features/dms/documents/section-activity";
+import { useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, XCircle } from "lucide-react";
 import { queryKeys } from "@/lib/query/query-keys";
 import {
-  getDmsExpiryReminders,
   dismissDmsExpiryReminder,
   markDmsExpiryReminderHandled,
   type DmsExpiryReminderRow,
@@ -62,11 +63,12 @@ export function DmsReminderScheduleTable({ documentId, canManage = false }: DmsR
 
   const { data: reminders = [], isLoading, isError, refetch } = useQuery({
     queryKey: queryKeys.dms.documentExpiryReminders(documentId),
-    queryFn: async () => {
-      const result = await getDmsExpiryReminders({ documentId });
+    queryFn: async ({signal}) => {
+      const result = await readDmsSection("getDmsExpiryReminders",[{ documentId }],signal);
       if (!result.success) throw new Error(result.error);
       return result.data ?? [];
     },
+    enabled:documentId>0,
     staleTime: 30_000,
   });
 

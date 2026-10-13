@@ -1,8 +1,11 @@
 "use client";
+import {useQuery,useQueryClient} from "@tanstack/react-query";
+import {readJson,retryAuthorizedRead} from "@/lib/reads/client";
+import {DmsLoadError} from "@/features/dms/dms-load-error";
 import { DmsListTools, useDmsListView, type DmsListField } from "@/features/dms/dms-list-view";
 import { ConfiguredRow } from "@/components/erp/table/list-controls";
 
-import { useState, useTransition, useCallback, useRef } from "react";
+import { useState, useTransition, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/use-workspace";
@@ -41,6 +44,7 @@ import { Sparkles } from "lucide-react";
 interface Props {
   batch: DmsUploadBatchRow;
   initialDrafts: DmsBatchDraftRow[];
+  initialUpdatedAt?: number;
 }
 
 const BATCH_STATUS_STYLES: Record<string, string> = {
@@ -121,11 +125,26 @@ function SortableTh({
 
 const BATCH_FIELDS: DmsListField[] = [{"id":"selection","label":"Selection","required":true,"width":48},{"id":"index","label":"Row","width":48},{"id":"title","label":"File / AI title","path":"searchTitle","required":true,"width":260},{"id":"docNo","label":"Document number","path":"documentNo","width":160},{"id":"type","label":"Type","path":"documentTypeName","width":160},{"id":"confidence","label":"Confidence","path":"confidenceLabel","width":140},{"id":"status","label":"Status","path":"searchStatus","width":160},{"id":"actions","label":"Actions","required":true,"width":180}];
 
-export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
+export function DmsBatchReviewQueueClient(props:Props){return <BatchReviewSession key={props.batch.id} {...props} />;}
+function BatchReviewSession({ batch, initialDrafts, initialUpdatedAt=0 }: Props) {
   const router = useRouter();
   const { openTab } = useWorkspace();
   const batchReviewRoute = `/dms/inbox/batch/${batch.batch_code}`;
-  const drafts = initialDrafts;
+  const qc=useQueryClient();
+  const read=useQuery({queryKey:["dms","batch-drafts",batch.id],queryFn:async({signal})=>{
+   const r=await readJson<{success:true;data:DmsBatchDraftRow[]}>("dms-batch-drafts",{batchId:batch.id},signal);return r.data;
+  },initialData:()=>initialUpdatedAt>0&&qc.getQueryState(["dms","batch-drafts",batch.id])===undefined?initialDrafts:undefined,initialDataUpdatedAt:initialUpdatedAt,staleTime:15000,retry:retryAuthorizedRead});
+  const seed=useRef(initialDrafts);
+  useEffect(()=>{if(seed.current===initialDrafts)return;seed.current=initialDrafts;
+   const key=["dms","batch-drafts",batch.id],state=qc.getQueryState(key);
+   if(initialUpdatedAt<=0||state?.status==="error"||(state?.data===undefined&&(state?.errorUpdateCount??0)>0)||(state?.dataUpdatedAt??0)>=initialUpdatedAt)return;
+   const verify=state?.isInvalidated||state?.fetchStatus==="fetching";
+   if(verify)void qc.cancelQueries({queryKey:key,exact:true});
+   qc.setQueryData(key,initialDrafts,{updatedAt:initialUpdatedAt});
+   if(verify)void qc.invalidateQueries({queryKey:key,exact:true,refetchType:"active"});
+  },[initialDrafts,initialUpdatedAt,batch.id,qc]);
+  const ready=read.isSuccess&&!read.isFetching;
+  const drafts=ready?read.data:[];
   const listView = useDmsListView(`batch-review:${batch.id}`, drafts.map(d => ({ ...d, searchTitle: `${d.aiTitle ?? ""} ${d.originalFilename}`, searchStatus: draftStatusSortLabel(d) })), BATCH_FIELDS);
   const [isPending, startTransition] = useTransition();
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -135,7 +154,7 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
 
   // ── Sorting (click column header) ──────────────────────────────────────
   const draftsTable = useSortPaginate(listView.rows, {
-    defaultPageSize: 1000,
+    defaultPageSize: 25,
     comparators: {
       title: (a, b) => (a.aiTitle ?? a.originalFilename).localeCompare(b.aiTitle ?? b.originalFilename),
       docNo: (a, b) => (a.documentNo ?? "").localeCompare(b.documentNo ?? ""),
@@ -168,11 +187,11 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
   const [isOrchRunning, setIsOrchRunning] = useState(false);
 
   const refresh = useCallback(() => {
-    startTransition(() => router.refresh());
-  }, [router]);
+    startTransition(async () => {await qc.invalidateQueries({queryKey:["dms","batch-drafts",batch.id]});router.refresh();});
+  }, [router,qc,batch.id]);
 
   const handleRunBatchOrchestration = useCallback(async () => {
-    if (flight.current) return;
+    if (!ready || flight.current) return;
     flight.current = true; setFailure(null);
     setIsOrchRunning(true);
     try {
@@ -195,7 +214,7 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
       setIsOrchRunning(false);
       flight.current = false;
     }
-  }, [batch.batch_code, refresh]);
+  }, [batch.batch_code, refresh, ready]);
 
   const toggleOne = useCallback((sessionId: number, checked: boolean) => {
     setSelected((prev) => {
@@ -312,9 +331,12 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
     });
   }, [router]);
 
+  if(read.isError)return <DmsLoadError subject="batch drafts" pending={read.isFetching} retry={()=>read.refetch()} />;
+  if(!ready)return <p role="status">Loading batch drafts…</p>;
   return (
     <div className="space-y-5">
       {failure && <p role="alert" className="rounded-sm border border-destructive p-3 text-sm text-destructive">{failure}</p>}
+      <div className="flex items-center gap-2"><Button variant="outline" disabled={draftsTable.page<=1} onClick={()=>draftsTable.setPage(draftsTable.page-1)}>Previous</Button><span>Page {draftsTable.page} of {draftsTable.totalPages}</span><Button variant="outline" disabled={draftsTable.page>=draftsTable.totalPages} onClick={()=>draftsTable.setPage(draftsTable.page+1)}>Next</Button></div>
       {/* Header / counts */}
       <div className="rounded-xl border bg-card p-4 space-y-3">
         <div className="flex items-center justify-between gap-3 flex-wrap">

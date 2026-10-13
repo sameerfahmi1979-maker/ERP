@@ -1,5 +1,7 @@
 "use client";
 
+import {DmsReadReady} from "@/features/dms/documents/section-read-boundary";
+import {useQueryClient} from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { DmsAdminFileStoragePanel } from "@/features/dms/admin/dms-admin-file-storage-panel";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
@@ -74,6 +76,8 @@ type UploadMode = "single" | "batch";
 
 export function DmsUploadInboxPageClient({ initialSessions, documents, documentTypes, entityContext, isAdmin = false, batchEnabled = false, autoStartEnabled = false }: Props) {
   const router = useRouter();
+  const qc=useQueryClient();
+  const [inboxReadAvailable,setInboxReadAvailable]=useState(true);
   const [sessions, setSessions] = useState<DmsUploadSessionRow[]>(initialSessions);
   const [uploadState, setUploadState] = useState<UploadState>({ phase: "idle" });
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -394,18 +398,15 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    router.refresh();
-    setTimeout(() => setIsRefreshing(false), 1000);
+    try {await qc.invalidateQueries({queryKey:["dms","inbox","sessions"]});router.refresh();} finally {setIsRefreshing(false);}
   };
 
   const handleAttachSuccess = () => {
+    void qc.invalidateQueries({queryKey:["dms","inbox","sessions"]});
     setUploadState({ phase: "idle" });
     router.refresh();
   };
 
-  const activeSessions = sessions.filter(
-    (s) => s.status !== "cancelled" && s.status !== "expired"
-  );
 
   const batchRunning = batchState.phase === "running";
 
@@ -428,7 +429,7 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
           <Inbox className="h-5 w-5 text-muted-foreground" />
           <h2 className="text-base font-semibold">Upload Inbox</h2>
           <span className="text-xs text-muted-foreground">
-            ({activeSessions.length} active session{activeSessions.length !== 1 ? "s" : ""})
+            Counted, searchable active sessions
           </span>
         </div>
         <Button
@@ -630,6 +631,7 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
         <h3 className="text-sm font-medium mb-3">Upload Sessions</h3>
         <DmsUploadSessionTable
           sessions={sessions}
+          onReadAvailable={setInboxReadAvailable}
           onAttach={handleAttach}
           onCreateDocument={handleCreateDocument}
           onCancel={handleCancelSession}
@@ -643,7 +645,8 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
       {/* File storage inspector (admin only) */}
       {isAdmin && <DmsAdminFileStoragePanel />}
 
-      {/* Dialogs */}
+      {/* Keep drafts mounted but retire portal actions after a failed inbox recheck. */}
+      <DmsReadReady value={inboxReadAvailable}>
       <DmsUploadAttachDialog
         open={attachDialogOpen}
         onOpenChange={setAttachDialogOpen}
@@ -660,6 +663,7 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
         entityContext={entityContext}
         onSuccess={handleAttachSuccess}
       />
+      </DmsReadReady>
     </div>
   );
 }

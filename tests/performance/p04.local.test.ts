@@ -3,16 +3,23 @@ import {afterAll,beforeAll,expect,it,vi} from "vitest";
 import fs from "node:fs";
 import crypto from "node:crypto";
 import {createClient as sdk,type SupabaseClient} from "@supabase/supabase-js";
-const state=vi.hoisted(()=>({client:null as unknown as SupabaseClient,admin:null as unknown as SupabaseClient}));
+const state=vi.hoisted(()=>({client:null as unknown as SupabaseClient,admin:null as unknown as SupabaseClient,writeIds: new Set<number>()}));
 vi.mock("@/lib/supabase/server",()=>({createClient:async()=>state.client}));
 vi.mock("@/lib/supabase/client",()=>({createClient:()=>state.client}));
 vi.mock("@/lib/supabase/admin",()=>({createAdminClient:()=>state.admin}));
 vi.mock("next/cache",()=>({revalidatePath:()=>{}}));
 vi.mock("next/headers",()=>({headers:async()=>new Headers()}));
 vi.mock("@/server/actions/email",()=>({sendExportEmail:()=>{throw Error("Delivery forbidden in read-only lab");}}));
-vi.mock("@/server/actions/audit",()=>({logAudit:()=>{throw Error("Business writes forbidden in read-only lab");}}));
+vi.mock("@/server/actions/audit",()=>({logAudit:(entry:{entity_id?:number})=>{if(!entry.entity_id||!state.writeIds.has(entry.entity_id))throw Error("Only registered synthetic archive fixtures may be audited");}}));
+vi.mock("@/lib/dms/review-queue/review-queue-upsert",()=>({isDmsAiReviewEnabled:async()=>true,createDmsReviewQueueNotification:()=>{throw Error("No delivery");},upsertDmsReviewQueueItem:()=>{throw Error("No queue mutation");}}));
+import {readDmsSection} from "@/server/reads/dms-section";
+import {getAuthContext,hasPermission} from "@/lib/rbac/check";
+import {getDmsReviewQueueItems,getDmsReviewQueueCounts,getDmsReviewQueueItem} from "@/server/actions/dms/review-queue";
+import {readDmsInboxPage} from "@/server/reads/dms-inbox";
+import {getDmsUploadBatchDrafts,listDmsUploadBatches} from "@/server/actions/dms/batch-intake";
 import {withDocumentReadPolicy} from "@/lib/supabase/document-read-policy";
 import {fetchConfigurationChoices,type ConfigurationResource} from "@/lib/lookups/configuration-fetchers";
+import {archiveDmsDocument,unarchiveDmsDocument} from "@/server/actions/dms/documents";
 import {readDmsArchivePage} from "@/server/reads/dms-archive";
 import {getDmsExpiringDocuments,getDmsExpiryDashboardStats} from "@/server/actions/dms/expiry-reminders";
 import {getDmsRenewalRequests} from "@/server/actions/dms/renewals";
@@ -48,7 +55,7 @@ beforeAll(async()=>{
 afterAll(async()=>{
  for(const client of clients.values()){try{if((await client.auth.signOut({scope:"local"})).error)signoutFailures++;}catch{signoutFailures++;}}
  vi.unstubAllGlobals();
- if(output)fs.writeFileSync(output,JSON.stringify({at:new Date().toISOString(),kind:"P04_NATIVE_READ_ONLY",samples,signoutFailures,qualification:"Current synthetic lab, not exact shipping-schema or production evidence. Configuration RLS is unchanged. Empty sets do not establish positive role access. No browser measurements."},null,2),{flag:"wx"});
+ if(output)fs.writeFileSync(output,JSON.stringify({at:new Date().toISOString(),kind:"P04_NATIVE_SYNTHETIC_READS_AND_REGISTERED_LIFECYCLE",samples,signoutFailures,qualification:"Current synthetic lab, not exact shipping-schema or production evidence. Configuration RLS is unchanged. Empty sets do not establish positive role access. No browser measurements."},null,2),{flag:"wx"});
  expect(signoutFailures).toBe(0);
 });
 const resources:[ConfigurationResource,string,string][]=[
@@ -172,6 +179,10 @@ it("expiry continuation preserves the complete admin identity set and rejects no
   const documents=await state.client.from("dms_documents").select("id,document_no,title,expiry_date,document_type_id",{count:"exact"}).in("id",docIds).order("id").range(0,docIds.length-1);
   expect(documents.error).toBeNull();expect(documents.data!.length).toBe(documents.count);
   const docMap=new Map(documents.data!.map(row=>[row.id,row]));for(const row of body.data.rows)expect(row.document).toEqual(docMap.get(row.document_id)??null);
+  const fullIds:number[]=[];
+  for(let offset=0;offset<prior.count!;offset+=100){const r=await state.client.from("dms_renewal_requests").select("id",{count:"exact"}).is("deleted_at",null).order("created_at",{ascending:false}).order("id").range(offset,offset+99);expect(r.error).toBeNull();expect(r.count).toBe(prior.count);fullIds.push(...r.data!.map(row=>row.id as number));}
+  const fullStart=performance.now(),full=await getDmsRenewalRequests({includeCompleted:true});expect(full.success).toBe(true);expect(full.data!.map(row=>row.id)).toEqual(fullIds);expect(full.data!.slice(0,25)).toEqual(body.data.rows);
+  samples.push({actor,resource:"renewals-full-scoped",count:full.data!.length,elapsedMs:Math.round(performance.now()-fullStart),completeIdsVerified:true});
   samples.push({actor,resource:"renewal-page-scope-and-document-projection",status:response.status,authorizedTotal:prior.count,positiveScopeAcceptance:Boolean(prior.count),qualification:"Independent ordinary-caller IDs/count/protected document fields; not legacy full joined-reader acceptance"});
  }
  state.client=clients.get("admin")!;
@@ -195,3 +206,90 @@ it("expiry continuation preserves the complete admin identity set and rejects no
   expect(response.status).toBe(403);expect((await response.json()).data).toBeUndefined();samples.push({actor:"none",resource:"native-route-"+route.name,status:403});
  }
 });
+
+it("DMS item 2 populated archive replacement restore and cleanup",async()=>{
+ const stamp="PERF-P04-S2-"+Date.now(),registered:number[]=[];let testRole:number|null=null;const supportIds:Record<string,number[]>={};
+ const register=(ids:number[])=>{registered.push(...ids);ids.forEach(id=>state.writeIds.add(id));fs.writeFileSync(output+".fixtures.json",JSON.stringify({marker:stamp,project:"algt-perf-local",ids:registered,supportIds,status:"REGISTERED",productionWrites:0},null,2));};
+ try{
+  state.client=clients.get("branch")!;
+  const basis=await state.client.from("dms_documents").select("id,document_type_id,category_id,owning_company_id,owning_branch_id").is("deleted_at",null).eq("confidentiality_level","internal").order("id").limit(1);
+  expect(basis.error).toBeNull();expect(basis.data).toHaveLength(1);
+  const {id:_basisId,...scope}=basis.data![0];
+  register([]); // Register the unique marker before inserting generated identities.
+  const made=await state.admin.from("dms_documents").insert([
+   {...scope,document_no:stamp+"-A",title:stamp+" archived approved",status:"active",is_archived:false,approval_status:"approved",confidentiality_level:"internal"},
+   {...scope,document_no:stamp+"-R",title:stamp+" replacement",status:"active",is_archived:false,confidentiality_level:"internal"},
+   {...scope,document_no:stamp+"-O",title:stamp+" old",status:"superseded",is_archived:true,confidentiality_level:"internal"}
+  ]).select("id,document_no").order("document_no");
+  expect(made.error,made.error?.message).toBeNull();expect(made.data).toHaveLength(3);
+  register(made.data!.map(row=>row.id));
+  const a=made.data!.find(row=>row.document_no.endsWith("-A"))!.id,o=made.data!.find(row=>row.document_no.endsWith("-O"))!.id,replacement=made.data!.find(row=>row.document_no.endsWith("-R"))!.id;
+  expect((await state.admin.from("dms_documents").update({superseded_by_document_id:replacement}).eq("id",o)).error).toBeNull();
+  state.client=clients.get("none")!;expect((await archiveDmsDocument(a)).success).toBe(false);expect((await unarchiveDmsDocument(a)).success).toBe(false);
+  state.client=clients.get("admin")!;expect((await archiveDmsDocument(a)).success).toBe(true);
+  for(const actor of ["admin","company","branch"]){
+   state.client=clients.get(actor)!;const page=await readDmsArchivePage({search:stamp});
+   expect(page.success,actor).toBe(true);expect(page.data!.totalCount).toBe(2);expect(page.data!.rows.map(row=>row.id).sort()).toEqual([a,o].sort());
+   expect(page.data!.rows.find(row=>row.id===o)?.superseded_by?.id).toBe(replacement);
+   const filtered=await readDmsArchivePage({search:stamp,reason:"archived"});expect(filtered.data!.rows.map(row=>row.id)).toEqual([a]);
+   const tail=await readDmsArchivePage({search:stamp,page:3,pageSize:1});expect(tail.success).toBe(true);expect(tail.data!.totalCount).toBe(2);expect(tail.data!.rows).toEqual([]);
+   samples.push({actor,resource:"archive-populated",count:2,replacementVerified:true,outOfRangeVerified:true});
+  }
+  state.client=clients.get("branch")!;const testOwner=(await getAuthContext()).profile!.id;
+  const role=await state.admin.from("roles").insert({role_code:stamp,role_name:stamp,is_system_role:false}).select("id").single();expect(role.error).toBeNull();testRole=role.data!.id;supportIds.roles=[role.data!.id];register([]);
+  const permissionCodes=["dms.documents.upload","dms.documents.review_ai","dms.review_queue.view"];
+  const existing=await state.admin.from("permissions").select("permission_code").in("permission_code",permissionCodes);expect(existing.error).toBeNull();
+  const missing=permissionCodes.filter(code=>!existing.data!.some(p=>p.permission_code===code));
+  if(missing.length){const added=await state.admin.from("permissions").insert(missing.map(code=>({permission_code:code,permission_name:stamp,module_code:"DMS",action_code:code.split(".").at(-1)}))).select("id");expect(added.error).toBeNull();supportIds.permissions=added.data!.map(p=>p.id);register([]);}
+  const permissions=await state.admin.from("permissions").select("id").in("permission_code",["dms.documents.upload","dms.documents.review_ai","dms.review_queue.view"]).eq("is_active",true);expect(permissions.error).toBeNull();expect(permissions.data).toHaveLength(3);
+  const grants=await state.admin.from("role_permissions").insert(permissions.data!.map(p=>({role_id:testRole,permission_id:p.id}))).select("id");expect(grants.error).toBeNull();supportIds.role_permissions=grants.data!.map(r=>r.id);register([]);
+  const assignment=await state.admin.from("user_roles").insert({user_profile_id:testOwner,role_id:testRole,owner_company_id:scope.owning_company_id,branch_id:scope.owning_branch_id}).select("id");expect(assignment.error).toBeNull();supportIds.user_roles=assignment.data!.map(r=>r.id);register([]);
+  // Native queue visibility uses real RLS/permissions. Only the optional feature flag is enabled in the test adapter.
+  const queued=await state.admin.from("dms_review_queue").insert([{document_id:a,review_type:"ocr_failure_review",status:"open",idempotency_key:stamp+"-review",reason_message:stamp}]).select("id");
+  expect(queued.error,queued.error?.message).toBeNull();expect(queued.data).toHaveLength(1);supportIds.review_queue=queued.data!.map(r=>r.id);register([]);
+  for(const actor of ["admin","company","branch","none"]){
+   state.client=clients.get(actor)!;const ctx=await getAuthContext();const canReview=["dms.review_queue.view","dms.review_queue.manage","dms.documents.review_ai","dms.admin"].some(p=>hasPermission(ctx,p))||ctx.roleCodes.includes("system_admin");
+   const reviewed=await getDmsReviewQueueItems({documentId:a,pageSize:1});
+   if(canReview){expect(reviewed.success,actor+" review "+reviewed.error).toBe(true);expect(reviewed.data!.total).toBe(1);expect((await getDmsReviewQueueItem(queued.data![0].id)).success).toBe(true);const summary=await getDmsReviewQueueCounts();if(!summary.success){const d=await state.client.from("dms_review_queue").select("id,document:dms_documents!document_id()",{count:"exact"}).or("document_id.not.is.null,upload_session_id.not.is.null").eq("status","open").is("deleted_at",null).limit(1);samples.push({actor,resource:"review-count-diagnostic",error:d.error,count:d.count});}expect(summary.success,summary.error).toBe(true);}
+   else expect(reviewed.success).toBe(false);
+   samples.push({actor,resource:"review-native",canReview,success:reviewed.success,total:reviewed.data?.total,featureFlag:"test-adapter-only"});
+  }
+  state.client=clients.get("branch")!;const owner=(await getAuthContext()).profile!.id;
+  const batch=await state.admin.from("dms_upload_batches").insert({batch_code:stamp,created_by:owner,total_files:3}).select("id").single();expect(batch.error,batch.error?.message).toBeNull();supportIds.batches=[batch.data!.id];register([]);
+  const uploads=await state.admin.from("dms_upload_sessions").insert([0,1,2].map(i=>({session_code:stamp+"-"+i,original_filename:stamp+"-"+i+".pdf",mime_type:"application/pdf",file_size_bytes:12,uploaded_by:owner,owning_company_id:scope.owning_company_id,owning_branch_id:scope.owning_branch_id,batch_id:batch.data!.id,status:i===2?"completed":"uploaded",intake_status:"failed"}))).select("id");expect(uploads.error,uploads.error?.message).toBeNull();supportIds.uploads=uploads.data!.map(r=>r.id);register([]);
+  for(const actor of ["admin","branch"]){state.client=clients.get(actor)!;
+   const page=await readDmsInboxPage({search:stamp,pageSize:1,page:2});expect(page.success,actor+" inbox "+page.error).toBe(true);expect(page.data!.rows).toHaveLength(1);expect(page.data!.totalCount).toBe(2);
+   const drafts=await getDmsUploadBatchDrafts(batch.data!.id);expect(drafts.success,drafts.error).toBe(true);expect(drafts.data).toHaveLength(3);
+   const batches=await listDmsUploadBatches();expect(batches.success,batches.error).toBe(true);expect(batches.data?.find(r=>r.id===batch.data!.id)?.failedCount).toBe(3);
+   samples.push({actor,resource:"inbox-batch-native",inboxCount:2,batchDrafts:3,summaryFailedCount:3});
+  }
+  state.client=clients.get("none")!;expect((await readDmsInboxPage({search:stamp})).success).toBe(false);expect((await getDmsUploadBatchDrafts(batch.data!.id)).success).toBe(false);
+  state.client=clients.get("admin")!;
+  for(const kind of ["getDmsDocumentComments","getDmsDocumentFiles","getDmsDocumentVersions","getDmsDocumentMetadataValues","getDmsDocumentTags","getDmsDocumentLinks","getDmsAiMetadataApplyHistory","getEligibleUploadSessionsForVersionLink","getDocumentApprovalHistory"]){
+   const result=await readDmsSection({kind,args:[a]});expect(result.success,kind+" "+result.error).toBe(true);samples.push({actor:"admin",resource:"native-section-contract",kind,success:true,fixture:"registered synthetic document"});
+  }
+  // A replacement losing visibility must not leak its title through the old record.
+  expect((await state.admin.from("dms_documents").update({confidentiality_level:"executive"}).eq("id",replacement)).error).toBeNull();
+  state.client=clients.get("branch")!;const hidden=await readDmsArchivePage({search:stamp});expect(hidden.success).toBe(true);expect(hidden.data!.rows.find(row=>row.id===o)?.superseded_by).toBeNull();
+  state.client=clients.get("admin")!;expect((await unarchiveDmsDocument(a)).success).toBe(true);
+  const restored=await state.admin.from("dms_documents").select("status,is_archived,approval_status").eq("id",a).single();
+  expect(restored.error).toBeNull();expect(restored.data).toEqual({status:"approved",is_archived:false,approval_status:"approved"});
+  expect((await readDmsArchivePage({search:stamp})).data!.rows.map(row=>row.id)).toEqual([o]);
+  samples.push({resource:"approved-archive-restore",noRoleDenied:true,restoredStatus:"approved",hiddenReplacementNull:true});
+ }finally{
+  if(testRole!==null){for(const table of ["user_roles","role_permissions"]){expect((await state.admin.from(table).delete().eq("role_id",testRole)).error).toBeNull();expect((await state.admin.from(table).select("id",{count:"exact"}).eq("role_id",testRole)).count).toBe(0);}expect((await state.admin.from("roles").delete().eq("id",testRole).eq("role_code",stamp)).error).toBeNull();expect((await state.admin.from("roles").select("id",{count:"exact"}).eq("id",testRole)).count).toBe(0);}
+  if(supportIds.permissions?.length){expect((await state.admin.from("permissions").delete().in("id",supportIds.permissions).eq("permission_name",stamp)).error).toBeNull();expect((await state.admin.from("permissions").select("id",{count:"exact"}).in("id",supportIds.permissions)).count).toBe(0);}
+  if(registered.length){
+   expect((await state.admin.from("dms_review_queue").delete().eq("idempotency_key",stamp+"-review")).error).toBeNull();
+   expect((await state.admin.from("dms_upload_sessions").delete().like("session_code",stamp+"-%")).error).toBeNull();
+   expect((await state.admin.from("dms_upload_batches").delete().eq("batch_code",stamp)).error).toBeNull();
+   for(const [table,column,marker] of [["dms_review_queue","idempotency_key",stamp+"-review"],["dms_upload_sessions","session_code",stamp+"-%"],["dms_upload_batches","batch_code",stamp]]){const remaining=await state.admin.from(table).select("id",{count:"exact"}).like(column,marker);expect(remaining.error).toBeNull();expect(remaining.count).toBe(0);}
+   expect((await state.admin.from("dms_document_events").delete().in("document_id",registered)).error).toBeNull();
+   expect((await state.admin.from("dms_documents").delete().in("id",registered).like("document_no",stamp+"%")).error).toBeNull();
+   const remains=await state.admin.from("dms_documents").select("id",{count:"exact"}).in("id",registered);
+   expect(remains.error).toBeNull();expect(remains.count).toBe(0);
+   fs.writeFileSync(output+".fixtures.json",JSON.stringify({marker:stamp,project:"algt-perf-local",ids:registered,status:"REMOVED_VERIFIED",productionWrites:0},null,2));
+   state.writeIds.clear();samples.push({resource:"archive-fixture-cleanup",registered:registered.length,remaining:0});
+  }
+ }
+},180000);

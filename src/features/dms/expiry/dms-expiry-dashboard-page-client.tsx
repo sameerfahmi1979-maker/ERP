@@ -1,26 +1,20 @@
 "use client";
 
-import { ERPExportMenu } from "@/components/erp/export/erp-export-menu";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DmsRenewalRequestsTable } from "@/features/dms/renewals/dms-renewal-requests-table";
-import { DmsStartRenewalDialog } from "@/features/dms/renewals/dms-start-renewal-dialog";
-import type { ERPExportColumn } from "@/lib/export";
 import { invalidateDmsExpiry, invalidateDmsNotifications, invalidateEmailQueue } from "@/lib/query/invalidation";
 import {
   bridgeDueDmsNotificationsToGlobal,
   processDmsExpiryEmailQueue,
 } from "@/server/actions/dms/dms-email-bridge";
-import type { DmsExpiringDocumentRow } from "@/server/actions/dms/expiry-reminders";
 import { generateDmsExpiryRemindersBulk } from "@/server/actions/dms/expiry-reminders";
 import { generateDmsExpiryNotifications } from "@/server/actions/dms/notifications";
 import { useQueryClient } from "@tanstack/react-query";
-import { format } from "date-fns";
-import { GitMerge, Mail, RefreshCw, Send, Zap } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { GitMerge, RefreshCw, Send, Zap } from "lucide-react";
+import { useState, useRef } from "react";
 import { toast } from "sonner";
 import { DmsExpiringDocumentsTable } from "./dms-expiring-documents-table";
-import { DmsExpiryEmailDialog } from "./dms-expiry-email-dialog";
 import { DmsExpiryFilterBar, type ExpiryAdvancedFilter } from "./dms-expiry-filter-bar";
 import { DmsExpirySummaryCards } from "./dms-expiry-summary-cards";
 
@@ -30,24 +24,6 @@ interface DmsExpiryDashboardPageClientProps {
   canRenew?: boolean;
 }
 
-const EXPIRY_EXPORT_COLUMNS: ERPExportColumn<DmsExpiringDocumentRow>[] = [
-  { key: "document_no", header: "Doc No", width: 14 },
-  { key: "title", header: "Title", width: 30 },
-  { key: "document_type", header: "Type", width: 20 },
-  { key: "category", header: "Category", width: 18 },
-  { key: "expiry_date", header: "Expiry Date", width: 14 },
-  { key: "days_remaining", header: "Days Remaining", width: 14 },
-  { key: "status", header: "Status", width: 12 },
-];
-
-const TAB_TITLES: Record<string, string> = {
-  expired: "Expired Documents",
-  expiring: "Expiring Soon",
-  missing: "Missing Expiry",
-  renewals: "Renewal Requests",
-  ignored: "Ignored Documents",
-};
-
 export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false, canRenew = false }: DmsExpiryDashboardPageClientProps) {
   const queryClient = useQueryClient();
   const [bulkGenerating, setBulkGenerating] = useState(false);
@@ -55,38 +31,12 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false, canRe
   const [bridging, setBridging] = useState(false);
   const [processing, setProcessing] = useState(false);
   const actionFlight = useRef(false);
-  const [startRenewalDoc, setStartRenewalDoc] = useState<DmsExpiringDocumentRow | null>(null);
 
   // Active tab
   const [activeTab, setActiveTab] = useState("expired");
 
   // Advanced filter (shared across tabs)
   const [advancedFilter, setAdvancedFilter] = useState<ExpiryAdvancedFilter>({});
-  // Debounce filter changes; use JSON comparison to avoid spurious state updates
-  const filterDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastFilterJson = useRef("{}");
-  const handleFilterChange = useCallback((f: ExpiryAdvancedFilter) => {
-    if (filterDebounceRef.current) clearTimeout(filterDebounceRef.current);
-    filterDebounceRef.current = setTimeout(() => {
-      const json = JSON.stringify(f);
-      if (json !== lastFilterJson.current) {
-        lastFilterJson.current = json;
-        setAdvancedFilter(f);
-      }
-    }, 300);
-  }, []);
-
-  // Current tab's rows (for export and email)
-  const [currentRows, setCurrentRows] = useState<DmsExpiringDocumentRow[]>([]);
-  const handleRowsLoaded = useCallback((rows: DmsExpiringDocumentRow[]) => {
-    setCurrentRows(rows);
-  }, []);
-
-  // Email dialog
-  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
-
-  const exportTitle = `${TAB_TITLES[activeTab] ?? "Documents"} — ${format(new Date(), "dd MMM yyyy")}`;
-  const exportFilename = `${(TAB_TITLES[activeTab] ?? "documents").toLowerCase().replace(/\s+/g, "-")}-${format(new Date(), "yyyy-MM-dd")}`;
 
   const handleBulkGenerate = async () => {
     if (!isAdmin || actionFlight.current) return;
@@ -226,7 +176,7 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false, canRe
       <DmsExpirySummaryCards />
 
       {/* Filter Bar */}
-      <DmsExpiryFilterBar onChange={handleFilterChange} />
+      <DmsExpiryFilterBar onChange={setAdvancedFilter} />
 
       {/* Tabs */}
       <Tabs
@@ -234,7 +184,6 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false, canRe
         value={activeTab}
         onValueChange={(v) => {
           setActiveTab(v);
-          setCurrentRows([]); // reset while new tab loads
         }}
       >
         <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -246,32 +195,6 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false, canRe
             <TabsTrigger value="ignored">Ignored</TabsTrigger>
           </TabsList>
 
-          {/* Export + Email toolbar — hidden for Renewals tab */}
-          {activeTab !== "renewals" && (
-            <div className="flex items-center gap-2">
-              <ERPExportMenu
-                title={exportTitle}
-                filename={exportFilename}
-                data={currentRows}
-                columns={EXPIRY_EXPORT_COLUMNS}
-                moduleCode="DMS"
-                exportMode="filtered"
-                orientation="landscape"
-                size="sm"
-                variant="outline"
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5"
-                disabled={currentRows.length === 0}
-                onClick={() => setEmailDialogOpen(true)}
-              >
-                <Mail className="h-4 w-4" />
-                Send by Email
-              </Button>
-            </div>
-          )}
         </div>
 
         <TabsContent value="expired" className="mt-4">
@@ -279,8 +202,7 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false, canRe
             view="expired"
             canManage={isAdmin}
             advancedFilter={advancedFilter}
-            onRowsLoaded={handleRowsLoaded}
-            onStartRenewal={canRenew ? (doc) => setStartRenewalDoc(doc) : undefined}
+            canRenew={canRenew}
           />
         </TabsContent>
 
@@ -289,8 +211,7 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false, canRe
             view="expiring"
             canManage={isAdmin}
             advancedFilter={advancedFilter}
-            onRowsLoaded={handleRowsLoaded}
-            onStartRenewal={canRenew ? (doc) => setStartRenewalDoc(doc) : undefined}
+            canRenew={canRenew}
           />
         </TabsContent>
 
@@ -299,7 +220,6 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false, canRe
             view="missing_expiry"
             canManage={isAdmin}
             advancedFilter={advancedFilter}
-            onRowsLoaded={handleRowsLoaded}
           />
         </TabsContent>
 
@@ -316,28 +236,10 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false, canRe
             view="ignored"
             canManage={isAdmin}
             advancedFilter={advancedFilter}
-            onRowsLoaded={handleRowsLoaded}
           />
         </TabsContent>
       </Tabs>
 
-      {startRenewalDoc && (
-        <DmsStartRenewalDialog
-          open
-          onOpenChange={(v) => { if (!v) setStartRenewalDoc(null); }}
-          documentId={startRenewalDoc.id}
-          documentNo={startRenewalDoc.document_no}
-          documentTitle={startRenewalDoc.title}
-          onSuccess={() => setStartRenewalDoc(null)}
-        />
-      )}
-
-      <DmsExpiryEmailDialog
-        open={emailDialogOpen}
-        onOpenChange={setEmailDialogOpen}
-        docs={currentRows}
-        tabTitle={TAB_TITLES[activeTab] ?? "Documents"}
-      />
     </div>
   );
 }

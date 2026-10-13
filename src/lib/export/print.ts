@@ -40,25 +40,23 @@ function escapeAttr(url: string | null | undefined): string {
  * company name, theme colors, address block, footer text, and optional watermark.
  * Existing callers without branding continue to work unchanged.
  */
-export function exportToPrint<T>(options: ERPExportOptions<T>): ERPExportResult {
+export function exportToPrint<T>(options: ERPExportOptions<T>, reservedWindow?: Window | null): ERPExportResult {
   try {
     const html = generatePrintHTML(options);
-    const printWindow = window.open("", "_blank", "width=900,height=700");
+    const printWindow = reservedWindow === undefined ? window.open("", "_blank", "width=900,height=700") : reservedWindow;
 
-    if (!printWindow) {
+    if (!printWindow || printWindow.closed) {
       return {
         success: false,
         error: "Failed to open print window. Please allow popups for this site.",
       };
     }
 
+    printWindow.opener = null;
     printWindow.document.open();
+    printWindow.onload = () => { printWindow.print(); };
     printWindow.document.write(html);
     printWindow.document.close();
-
-    printWindow.onload = () => {
-      printWindow.print();
-    };
 
     return { success: true };
   } catch (error) {
@@ -133,7 +131,7 @@ function generatePrintHTML<T>(options: ERPExportOptions<T>): string {
   const headerCells = columns
     .map(
       (col) =>
-        `<th style="text-align:left; padding:8px; border-bottom:2px solid #ddd; background-color:${headerBg}; color:#fff;">${col.header}</th>`
+        `<th style="text-align:left; padding:8px; border-bottom:2px solid #ddd; background-color:${headerBg}; color:#fff;">${escapeHtml(col.header)}</th>`
     )
     .join("");
 
@@ -142,7 +140,7 @@ function generatePrintHTML<T>(options: ERPExportOptions<T>): string {
       const cells = columns
         .map((col) => {
           const value = getColumnValue(row, col);
-          return `<td style="padding:8px; border-bottom:1px solid #eee;">${value}</td>`;
+          return `<td style="padding:8px; border-bottom:1px solid #eee;">${escapeHtml(String(value ?? ""))}</td>`;
         })
         .join("");
       const bgColor = index % 2 === 0 ? "#ffffff" : "#fafafa";

@@ -37,7 +37,7 @@ import { sendExportEmail } from "@/server/actions/email";
 import { useLegacyEmailAccess } from "@/hooks/use-legacy-email-access";
 import { format } from "date-fns";
 import { Download, FileDown, FileSpreadsheet, FileText, Loader2, MailPlus, Printer } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 export interface ERPExportMenuProps<T = unknown> {
@@ -47,6 +47,10 @@ export interface ERPExportMenuProps<T = unknown> {
   filename: string;
   /** Data to export */
   data: T[];
+  /** Complete authorized output on demand. Never pass just the visible page.
+   * Callers fence obsolete responses. Generic email is disabled for this mode;
+   * the owning module must prepare and reverify its complete email result. */
+  loadData?: () => Promise<T[]>;
   /** Column definitions */
   columns: ERPExportColumn<T>[];
   /** Optional subtitle */
@@ -91,6 +95,7 @@ export function ERPExportMenu<T = unknown>({
   title,
   filename,
   data,
+  loadData,
   columns,
   subtitle,
   filters,
@@ -110,14 +115,16 @@ export function ERPExportMenu<T = unknown>({
 }: ERPExportMenuProps<T>) {
   const [isExporting, setIsExporting] = useState(false);
   const [exportType, setExportType] = useState<string | null>(null);
+  const exportFlight = useRef(false);
   
   // Email dialog state (Phase 002E.3D)
   const [isEmailDialogOpen, setIsEmailDialogOpen] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
-  const canEmail = useLegacyEmailAccess();
+  const legacyEmailAllowed = useLegacyEmailAccess();
+  const canEmail = legacyEmailAllowed && !loadData;
 
   // Check if data is available
-  const hasData = data && data.length > 0;
+  const hasData = !!loadData || (data && data.length > 0);
   const isDisabled = disabled || !hasData || isExporting || isSendingEmail;
 
   /**
@@ -126,7 +133,7 @@ export function ERPExportMenu<T = unknown>({
    * (pdf / print / excel / email), we block and call onRequireTemplateSelection instead.
    */
   const handleExport = async (type: "csv" | "excel" | "pdf" | "print") => {
-    if (isDisabled) return;
+    if (isDisabled || exportFlight.current) return;
 
     // REPORT.3: block branded exports when template selection is required
     const templateRequiredFormats: Array<typeof type> = ["pdf", "print", "excel"];
@@ -135,23 +142,35 @@ export function ERPExportMenu<T = unknown>({
       return;
     }
 
+    exportFlight.current = true;
     setIsExporting(true);
     setExportType(type);
 
+    let printWindow: Window | null = null;
     try {
+      // Reserve the popup during the click, before an on-demand network read
+      // loses browser user activation. Failed/retired reads close the blank tab.
+      if (loadData && type === "print") {
+        printWindow = window.open("", "_blank", "width=900,height=700");
+        if (!printWindow) throw Error("Please allow popups for this site.");
+        printWindow.opener = null;
+        printWindow.document.title = "Preparing complete report…";
+      }
+      const completeData = loadData ? await loadData() : data;
+      if (!completeData.length) throw Error("No matching documents to export.");
       // Prepare export options (branding forwarded if present)
       const options: ERPExportOptions<T> = {
         title,
         subtitle,
         filename,
         columns,
-        data,
+        data: completeData,
         generatedBy,
         generatedAt: new Date(),
         filters,
         orientation,
         exportMode,
-        rowCount: data.length,
+        rowCount: completeData.length,
         branding: resolvedTemplate ? { ...resolvedTemplate, reportCode } : undefined,
       };
 
@@ -168,7 +187,7 @@ export function ERPExportMenu<T = unknown>({
           result = await exportToPDF(options);
           break;
         case "print":
-          result = exportToPrint(options);
+          result = exportToPrint(options, loadData ? printWindow : undefined);
           break;
       }
 
@@ -180,12 +199,15 @@ export function ERPExportMenu<T = unknown>({
           toast.success(`${type.toUpperCase()} file downloaded: ${result.filename}`);
         }
       } else {
+        printWindow?.close();
         toast.error(result.error || `Failed to export ${type.toUpperCase()}`);
       }
     } catch (error) {
+      printWindow?.close();
       console.error(`Export error (${type}):`, error);
       toast.error(`An error occurred during ${type.toUpperCase()} export`);
     } finally {
+      exportFlight.current = false;
       setIsExporting(false);
       setExportType(null);
     }
@@ -329,11 +351,11 @@ export function ERPExportMenu<T = unknown>({
                 setIsEmailDialogOpen(true);
               }}
               disabled={isExporting || isSendingEmail || !canEmail}
-              title={!canEmail ? "Legacy Email Export temporarily requires global sending authority" : undefined}
+              title={loadData ? "Use the module's Send by Email action to verify all matching documents" : !canEmail ? "Legacy Email Export temporarily requires global sending authority" : undefined}
               className="cursor-pointer"
             >
               <MailPlus className="mr-2 h-4 w-4" />
-              <span>{canEmail ? "Send by Email" : "Email — global senders only"}</span>
+              <span>{loadData ? "Use module email action" : canEmail ? "Send by Email" : "Email — global senders only"}</span>
             </DropdownMenuItem>
           </DropdownMenuGroup>
         </DropdownMenuContent>

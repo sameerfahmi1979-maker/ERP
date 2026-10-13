@@ -20,6 +20,9 @@ import {POST as expiryRoute} from "@/app/api/reads/dms-expiring/route";
 import {POST as summaryRoute} from "@/app/api/reads/dms-expiry-summary/route";
 import {POST as renewalRoute} from "@/app/api/reads/dms-renewals/route";
 import {POST as renewalPageRoute} from "@/app/api/reads/dms-renewal-page/route";
+import {POST as expiryPageRoute} from "@/app/api/reads/dms-expiry-page/route";
+import {POST as expiryOutputRoute} from "@/app/api/reads/dms-expiry-output/route";
+import {expiryDocumentRowsSchema} from "@/server/reads/dms-expiry-contract";
 const clients=new Map<string,SupabaseClient>(),samples:Record<string,unknown>[]=[];
 const actualFetch=globalThis.fetch;
 let output="",signoutFailures=0;
@@ -52,6 +55,41 @@ const resources:[ConfigurationResource,string,string][]=[
  ["currencies","currencies","is_active"],["banks","banks","is_active"],["paymentTerms","payment_terms","is_active"],["taxTypes","tax_types","is_active"],["uomCategories","uom_categories","is_active"],["unitsOfMeasure","units_of_measure","is_active"],
  ["ownerCompanies","owner_companies","status"],["branches","branches","status"],["costCenters","cost_centers","is_active"],["profitCenters","profit_centers","is_active"],["countries","countries","is_active"],["emirates","emirates","is_active"],["cities","cities","is_active"],["areas","areas_zones","is_active"],["ports","ports","is_active"],
 ];
+it("expiry paging and complete outputs preserve scoped full sets, views, filters and tails",async()=>{
+ const call=async(route:typeof expiryPageRoute,params:unknown)=>{
+  const start=performance.now();const response=await route(new Request("http://127.0.0.1:16801/api/reads/expiry",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(params)}));
+  const body=await response.json();expect(response.headers.get("cache-control")).toBe("private, no-store, max-age=0");
+  return {status:response.status,body,elapsedMs:Math.round(performance.now()-start)};
+ };
+ for(const actor of ["admin","company","branch"]){
+  state.client=clients.get(actor)!;
+  for(const view of actor==="admin"?["all","expired","expiring","missing_expiry","ignored"] as const:["all"] as const){
+   const baseline=await getDmsExpiringDocuments({view});
+   if(!baseline.success){
+    const diagnostic=await state.client.from("dms_documents").select("id,document_no,title,expiry_date,issue_date,status,confidentiality:confidentiality_level,expiry_tracking_override,expiry_override_reason,document_type:dms_document_types!document_type_id(name_en,is_renewable),category:dms_document_types!document_type_id(category:dms_document_categories!category_id(name_en))",{count:"exact"}).is("deleted_at",null).neq("status","superseded").order("expiry_date",{ascending:true,nullsFirst:false}).order("id").range(0,24);
+    const shape=expiryDocumentRowsSchema.safeParse(diagnostic.data);
+    samples.push({actor,resource:"expiry-reference-diagnostic",status:diagnostic.status,count:diagnostic.count,error:diagnostic.error?{code:diagnostic.error.code,message:diagnostic.error.message}:null,shape:shape.success?"valid":shape.error.issues.map(i=>({path:i.path,code:i.code})),candidateStatus:(await call(expiryPageRoute,{view})).status});
+   }
+   expect(baseline.success,`${actor}/${view} reference`).toBe(true);
+   const rows=baseline.data!,first=await call(expiryPageRoute,{view});expect(first.status,`${actor}/${view} first`).toBe(200);expect(first.body.data.rows).toEqual(rows.slice(0,25));expect(first.body.data.totalCount).toBe(rows.length);
+   const complete=await call(expiryOutputRoute,{view});expect(complete.status,`${actor}/${view} complete`).toBe(200);expect(complete.body.data.rows).toEqual(rows);expect(complete.body.data.totalCount).toBe(rows.length);
+   samples.push({actor,resource:"expiry-page-output",view,total:rows.length,firstRows:first.body.data.rows.length,pageMs:first.elapsedMs,completeMs:complete.elapsedMs});
+   if(view==="all"){
+    expect(rows.length,`${actor} positive scope beyond backend cap`).toBeGreaterThan(1000);
+    const last=Math.ceil(rows.length/25),tail=await call(expiryPageRoute,{view,page:last}),outside=await call(expiryPageRoute,{view,page:last+1});
+    expect(tail.status).toBe(200);expect(tail.body.data.rows).toEqual(rows.slice((last-1)*25));expect(outside.status).toBe(200);expect(outside.body.data).toMatchObject({rows:[],totalCount:rows.length});
+    const search=rows[0].document_no,filtered=rows.filter(r=>[r.document_no,r.title,r.status,r.document_type??"",r.category??"",r.expiry_override_reason??""].some(v=>v.toLowerCase().includes(search.toLowerCase())));
+    const found=await call(expiryOutputRoute,{view,search});expect(found.status).toBe(200);expect(found.body.data.rows.map((r:{id:number})=>r.id)).toEqual(filtered.map(r=>r.id));
+    const column=rows[0].title,byTitle=await call(expiryOutputRoute,{view,columnFilters:{document_no:column}});expect(byTitle.status).toBe(200);expect(byTitle.body.data.rows).toEqual(rows.filter(r=>r.title.toLowerCase().includes(column.toLowerCase())));
+    const sorted=await call(expiryPageRoute,{view,sortKey:"document_type",sortDir:"asc"});expect(sorted.status,`${actor} relation sort`).toBe(200);expect(sorted.body.data.totalCount).toBe(rows.length);
+    samples.push({actor,resource:"expiry-tail-filter-sort",last,tail:tail.body.data.rows.length,searchCount:filtered.length,relationSort:true});
+   }
+  }
+ }
+ state.client=clients.get("none")!;
+ for(const route of [expiryPageRoute,expiryOutputRoute]){const denied=await call(route,{view:"all"});expect(denied.status).toBe(403);expect(denied.body.data).toBeUndefined();}
+ samples.push({actor:"none",resource:"expiry-page-output",denied:true});
+},180000);
 it("15 configuration families preserve the same actor's complete active identity sets",async()=>{
  for(const actor of ["admin","company","branch"]){
   state.client=clients.get(actor)!;

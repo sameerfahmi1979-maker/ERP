@@ -53,6 +53,20 @@ The dependency gate also identified GHSA-wq5f-xc86-pv6w. The lockfile updates on
 
 A later GitHub audit identified [GHSA-6qxp-vccf-f47h](https://github.com/advisories/GHSA-6qxp-vccf-f47h), added to the advisory database on 6 October. The transitive MCP SDK used by the shadcn CLI is locked to patched 1.31.0 instead of 1.29.0. Only that package's lock entry changes; all other resolved versions remain intact. Clean locked installation and SDK import checks pass. No ERP source/tooling OAuth-client integration was found; this dependency repair does not alter any live credentials, Codex installation or cloud setting. Final exact-head CI is required again, not inferred from the earlier audit pass.
 
+### Follow-on: expiry paging and complete outputs
+
+The four expiry UI tabs now use `dms-expiry-page`: 25 rows by default, at most 100, with server-side criteria/search/column filters, allowlisted sorting, stable ID ties and exact counts. The existing complete-result action remains available to compatibility callers. The earlier expiry-interactive hold is superseded by this implementation, not by a claim that all DMS work is finished.
+
+`dms-expiry-output` is a separate explicit complete-output read. CSV, Excel, PDF, Print and module email preparation no longer reuse the visible page or the parent's old row buffer. Both paths share the same authorized query definition. The output reader checks every 500-row batch, identities and exact counts, then compares a second complete pass. A changed, failed, duplicate, partial, oversized or denied result is rejected, not returned as a successful partial file. The safety ceilings are 10,000 rows and 6 MB of encoded rows; larger sets require narrower filters. Two matching observations are not a transactional database snapshot.
+
+Criteria/tab/principal retirement aborts and fences obsolete output reads. Read failures hide stale actions without claiming zero results. Same-criteria background verification preserves unsent email, ignore and renewal drafts while hiding their submission controls. Hidden tab-specific filters are not applied to other tabs. Confirmed mutations invalidate the existing expiry family. Final email submission rechecks the complete-result fingerprint and current email capability; duplicate clicks coalesce. The legacy global-sender restriction remains, and browser-prepared delivery is **not** reclassified as F08 server-verified delivery. No email/provider is invoked by acceptance tests.
+
+On-demand printing reserves a blank window during the user's click, before asynchronous retrieval loses popup activation. Failed retrieval closes that window. Print cells/headers are escaped; closing the reserved window does not create a second asynchronous popup. Existing supplied-data export callers retain their behavior.
+
+Native loopback checks compare complete row projections/counts against the compatibility reader: 2,214 admin, 2,208 company and 2,155 branch documents, with tail pages, filters, relation sort and no-role denial. All five API views are exercised; expired/missing/ignored were genuinely empty in this fixture snapshot, not positive business-workflow coverage. One observed admin page was 299 ms and its complete output 1,479 ms; company/branch pages were 422/412 ms. These are synthetic handler/SDK observations, not browser measurements or production guarantees. The existing P03 prerequisite is necessary: the restored older reader timed out for scoped callers before replay. Replay restored exact function definitions/owners/ACLs and all synthetic sessions signed out.
+
+Offline tests also generate actual CSV, XLSX and multi-page PDF email attachments and parse all 1,107 synthetic identities, plus complete print markup. They test dispatch preparation using a mocked provider, not inbox delivery or browser/device layout. This step adds no migration. Remaining DMS reviews, inbox, record sections, linked-record selectors, populated archive/restore acceptance and the scoped legacy joined renewal reader remain separate open work.
+
 ## Verification
 
 Run the P04 Vitest configuration and its TypeScript project, the existing P01/P02/P03 suites, the complete remediation and unit suites, shipping/E2E types, lint, build and security gates. CI includes the P04 offline suite and local-harness typecheck.
@@ -65,7 +79,7 @@ Component/query tests are not browser measurements. No production latency or who
 
 - Nonempty native archive/replacement/restore fixtures and exact intended release-schema integration.
 - Immutable F06 integration, including the known positive scoped common-master access gate.
-- Remaining administration collections and DMS expiry/reviews/inbox/record/linked-entity consumers.
+- Remaining administration collections and DMS reviews/inbox/record/linked-entity consumers, plus scoped legacy joined renewal acceptance.
 - HR/recruitment/time/payroll/operations consumers and their preserved form/permission/failure contracts.
 - Report criteria/history, notification/delivery reads, dashboards/search/advisory/audit residuals, aligned with owning phases. Do not activate deferred F09 delivery work.
 - Complete per-consumer inventory reconciliation. Shared-selector tests do not certify every parent screen.

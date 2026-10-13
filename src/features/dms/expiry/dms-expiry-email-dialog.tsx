@@ -21,6 +21,8 @@ export interface DmsExpiryEmailDialogProps {
   onOpenChange: (open: boolean) => void;
   docs: DmsExpiringDocumentRow[];
   tabTitle: string;
+  suspended?: boolean;
+  loadDocs?: () => Promise<DmsExpiringDocumentRow[]>;
 }
 
 type RecipientChip = { label: string; email: string };
@@ -38,13 +40,20 @@ function ExpiryEmailSession({
   onOpenChange,
   docs,
   tabTitle,
+  suspended = false,
+  loadDocs,
 }: DmsExpiryEmailDialogProps) {
   const [recipients, setRecipients] = useState<RecipientChip[]>([]);
   const [rawEmailInput, setRawEmailInput] = useState("");
-  const [subject, setSubject] = useState(() => `${tabTitle} — ${format(new Date(), "dd MMM yyyy")}`);
-  const [body, setBody] = useState(() => `Please find attached the ${tabTitle} document list.\n\nTotal records: ${docs.length}\nGenerated: ${format(new Date(), "dd MMM yyyy HH:mm")}`);
+  const [initial] = useState(() => ({
+    subject: `${tabTitle} — ${format(new Date(), "dd MMM yyyy")}`,
+    body: `Please find attached the ${tabTitle} document list.\n\nTotal records: ${docs.length}\nGenerated: ${format(new Date(), "dd MMM yyyy HH:mm")}`,
+  }));
+  const [subject, setSubject] = useState(initial.subject);
+  const [body, setBody] = useState(initial.body);
   const [attachmentFormat, setAttachmentFormat] = useState<AttachmentFormat>("pdf");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const sendFlight = useRef(false);
 
   // Employee search combobox
   const [searchQuery, setSearchQuery] = useState("");
@@ -53,7 +62,7 @@ function ExpiryEmailSession({
 
   // Re-search when user types in the combobox
   useEffect(() => {
-    if (!open) return;
+    if (!open || suspended) return;
     let cancelled = false;
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
     searchTimeout.current = setTimeout(async () => {
@@ -66,7 +75,7 @@ function ExpiryEmailSession({
       cancelled = true;
       if (searchTimeout.current) clearTimeout(searchTimeout.current);
     };
-  }, [searchQuery, open]);
+  }, [searchQuery, open, suspended]);
 
   const addRecipient = useCallback((chip: RecipientChip) => {
     setRecipients((prev) => {
@@ -115,6 +124,7 @@ function ExpiryEmailSession({
   }, [rawEmailInput, flushRawEmail]);
 
   const handleSubmit = useCallback(async () => {
+    if (suspended || sendFlight.current) return;
     // Build final recipients list — include any email typed but not yet chip-ified
     let finalRecipients = [...recipients];
     const rawEmail = rawEmailInput.trim().replace(/[,;]+$/, "");
@@ -144,8 +154,11 @@ function ExpiryEmailSession({
       return;
     }
 
+    sendFlight.current = true;
     setIsSubmitting(true);
     try {
+      const completeDocs = loadDocs ? await loadDocs() : docs;
+      if (!completeDocs.length) throw Error("No matching documents to send.");
       const toEmails = finalRecipients.map((r) => r.email);
 
       // Generate attachment server-side to avoid exceeding the 10 MB server action body limit.
@@ -155,7 +168,7 @@ function ExpiryEmailSession({
         subject: subject.trim(),
         body: body.trim() || `Please find the ${tabTitle} list attached.`,
         attachmentFormat,
-        docs: docs.map((r) => ({
+        docs: completeDocs.map((r) => ({
           document_no: r.document_no,
           title: r.title,
           document_type: r.document_type ?? null,
@@ -176,9 +189,10 @@ function ExpiryEmailSession({
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to send email");
     } finally {
+      sendFlight.current = false;
       setIsSubmitting(false);
     }
-  }, [recipients, rawEmailInput, subject, body, docs, attachmentFormat, tabTitle, onOpenChange, addRecipient]);
+  }, [recipients, rawEmailInput, subject, body, docs, attachmentFormat, tabTitle, onOpenChange, addRecipient, loadDocs, suspended]);
 
   const FORMAT_OPTIONS: { value: AttachmentFormat; label: string }[] = [
     { value: "pdf", label: "PDF" },
@@ -189,7 +203,8 @@ function ExpiryEmailSession({
 
   return (
     <ERPChildDialogForm
-      open={open}
+      open={open && !suspended}
+      isDirty={recipients.length > 0 || rawEmailInput.length > 0 || subject !== initial.subject || body !== initial.body || attachmentFormat !== "pdf"}
       onOpenChange={onOpenChange}
       title="Send Document List by Email"
       subtitle={`${tabTitle} — ${docs.length} document${docs.length !== 1 ? "s" : ""}`}

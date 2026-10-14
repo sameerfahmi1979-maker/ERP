@@ -10,9 +10,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
-import { useQuery } from "@tanstack/react-query";
+import {QueryClient, QueryClientProvider, useQueryClient} from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import { format, formatDistanceToNow } from "date-fns";
 import {
@@ -23,31 +22,10 @@ import {
   RefreshCw,
   XCircle,
 } from "lucide-react";
-import { useState } from "react";
+import {useEffect, useRef, useState} from "react";
+import {useReportHistory, type ReportHistoryProps} from "@/hooks/use-report-history";
+import {reportHistoryIdentity, type ReportHistoryDetail, type ReportHistoryRow} from "@/lib/reads/report-history-schema";
 import { ReportDeliveryLogPanel } from "./report-delivery-log-page";
-
-interface ReportRun {
-  id: number;
-  report_code: string;
-  run_status: "success" | "failed" | "cancelled" | "running";
-  output_format: string;
-  row_count: number | null;
-  sensitive_data_included: boolean;
-  was_multi_company: boolean;
-  started_at: string;
-  completed_at: string | null;
-  duration_ms: number | null;
-  error_message: string | null;
-  redaction_summary_json: Record<string, unknown> | null;
-  owner_company_ids: number[];
-  selected_template_id: number | null;
-  template_selected_manually: boolean;
-  run_by: number;
-  run_reference: string | null;
-  filters_json: Record<string, unknown>;
-  report?: { report_name_en: string; module_code: string };
-  runner?: { display_name: string | null };
-}
 
 const STATUS_CONFIG = {
   success: { label: "Success", icon: CheckCircle2, color: "text-emerald-600" },
@@ -56,27 +34,20 @@ const STATUS_CONFIG = {
   running: { label: "Running", icon: Clock, color: "text-blue-600" },
 };
 
-export function ReportHistoryPage() {
-  const [detailRun, setDetailRun] = useState<ReportRun | null>(null);
+export function ReportHistoryPage(props: ReportHistoryProps) {
+  const identity = reportHistoryIdentity(props.authContext), qc = useQueryClient(), previous = useRef(identity);
+  useEffect(() => {
+    if (previous.current !== identity) {
+      const queryKey = ["report-history", previous.current]; void qc.cancelQueries({queryKey}); qc.removeQueries({queryKey}); previous.current = identity;
+    }
+  }, [identity, qc]);
+  return <ReportHistoryView key={identity} {...props} identity={identity} />;
+}
 
-  const { data: runs = [], isFetching: isLoading, refetch, error } = useQuery({
-    queryKey: ["report-history"],
-    queryFn: async () => {
-      const db = createClient();
-      const { data, error } = await db
-        .from("erp_report_runs")
-        .select(`*, report:erp_report_registry(report_name_en, module_code), runner:user_profiles!run_by(display_name)`)
-        .order("started_at", { ascending: false })
-        .limit(500);
-      if (error) throw new Error(error.message);
-      return (data ?? []) as ReportRun[];
-    },
-    retry: false, gcTime: 0, refetchOnWindowFocus: false,
-  });
-  const loadRuns = () => refetch();
-  if (error) return <div role="alert">Could not load report history. <Button onClick={loadRuns}>Retry</Button></div>;
-
-  const columns: ColumnDef<ReportRun>[] = [
+function ReportHistoryView(props: ReportHistoryProps & {identity: string}) {
+  const read = useReportHistory(props, props.identity), runs = read.rows, isLoading = read.busy, detailRun = read.detail;
+  if (read.denied) return <div role="alert">Your access to report history could not be verified. Sign in again or contact your administrator.</div>;
+  const columns: ColumnDef<ReportHistoryRow>[] = [
     {
       id: "report",
       header: "Report",
@@ -112,7 +83,7 @@ export function ReportHistoryPage() {
       header: "Status",
       size: 110,
       cell: ({ row }) => {
-        const cfg = STATUS_CONFIG[row.original.run_status] ?? STATUS_CONFIG.failed;
+        const cfg = STATUS_CONFIG[row.original.run_status ?? "failed"] ?? STATUS_CONFIG.failed;
         return (
           <div className={cn("flex items-center gap-1.5 text-xs", cfg.color)}>
             <cfg.icon className="h-3.5 w-3.5 shrink-0" />
@@ -169,12 +140,12 @@ export function ReportHistoryPage() {
       cell: ({ row }) => (
         <span
           className="text-xs text-muted-foreground"
-          title={row.original.started_at}
+          title={row.original.started_at ?? undefined}
         >
-          {formatDistanceToNow(new Date(row.original.started_at), { addSuffix: true })}
+          {row.original.started_at ? formatDistanceToNow(new Date(row.original.started_at), { addSuffix: true }) : "—"}
         </span>
       ),
-      meta: { exportValue: (row) => format(new Date(row.started_at), "dd MMM yyyy HH:mm") },
+      meta: { exportValue: (row) => row.started_at ? format(new Date(row.started_at), "dd MMM yyyy HH:mm") : "" },
     },
     {
       id: "flags",
@@ -205,7 +176,8 @@ export function ReportHistoryPage() {
           size="icon"
           className="h-7 w-7"
           title="View Run Details"
-          onClick={() => setDetailRun(row.original)}
+          aria-label={`View run ${row.original.run_reference ?? row.original.id} details`}
+          onClick={() => read.select(row.original.id)}
         >
           <Eye className="h-3.5 w-3.5" />
         </Button>
@@ -227,8 +199,8 @@ export function ReportHistoryPage() {
         ]}
         actions={
           <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="text-xs">{runs.length} runs</Badge>
-            <Button variant="outline" size="sm" onClick={loadRuns} disabled={isLoading}>
+            <Badge variant="secondary" className="text-xs">{read.totalCount === null ? "Count unavailable" : `${read.totalCount} runs`}</Badge>
+            <Button variant="outline" size="sm" onClick={() => void read.refresh()} disabled={isLoading}>
               <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", isLoading && "animate-spin")} />
               Refresh
             </Button>
@@ -236,11 +208,15 @@ export function ReportHistoryPage() {
         }
       />
 
+      <p className="text-xs text-muted-foreground">Search and filters cover all permitted history, including rows, duration and dates. Sort any data column; hold Shift to sort by multiple columns. Report and Run By use case-insensitive natural ordering, with record IDs breaking ties.</p>
+      {(read.error || read.invalid) && <div role="alert">Could not load report history. <Button onClick={() => void read.retry()}>Retry report history</Button></div>}
       <div className="rounded-md border border-border overflow-hidden">
         <ERPDataTable
           tableId="admin.reports.history"
           columns={columns}
           data={runs}
+          serverRead={read.serverRead}
+          isLoading={isLoading}
           searchPlaceholder="Search by report, reference, user..."
           emptyMessage={isLoading ? "Loading history..." : "No report runs found."}
           enableSorting
@@ -255,21 +231,23 @@ export function ReportHistoryPage() {
       </div>
 
       {/* Run detail dialog */}
-      <Dialog open={!!detailRun} onOpenChange={(open) => { if (!open) setDetailRun(null); }}>
+      <Dialog open={read.selectedId !== null} onOpenChange={(open) => { if (!open) read.select(null); }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>
-              {detailRun?.report?.report_name_en ?? detailRun?.report_code} — Run Details
+              {detailRun?.report?.report_name_en ?? detailRun?.report_code ?? "Report"} — Run Details
             </DialogTitle>
           </DialogHeader>
-          {detailRun && <RunDetailPanel run={detailRun} />}
+          {read.detailBusy && <div role="status">Loading run details...</div>}
+          {!read.detailBusy && !!read.detailError && <div role="alert">Could not load complete run details. <Button onClick={() => void read.retryDetail()}>Retry run details</Button></div>}
+          {detailRun && <RunDetailPanel key={`${props.identity}:${detailRun.id}`} run={detailRun} />}
         </DialogContent>
       </Dialog>
     </>
   );
 }
 
-function RunDetailPanel({ run }: { run: ReportRun }) {
+function RunDetailPanel({ run }: { run: ReportHistoryDetail }) {
   const redactionSummary = run.redaction_summary_json as {
     wasRedacted?: boolean;
     totalFieldsRedacted?: number;
@@ -287,7 +265,7 @@ function RunDetailPanel({ run }: { run: ReportRun }) {
           </div>
           <div className="flex justify-between gap-2">
             <span className="text-muted-foreground">Started</span>
-            <span>{format(new Date(run.started_at), "dd MMM yyyy HH:mm:ss")}</span>
+            <span>{run.started_at ? format(new Date(run.started_at), "dd MMM yyyy HH:mm:ss") : "—"}</span>
           </div>
           {run.completed_at && (
             <div className="flex justify-between gap-2">
@@ -325,8 +303,16 @@ function RunDetailPanel({ run }: { run: ReportRun }) {
 
       <div className="col-span-4 space-y-2">
         <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Email Deliveries</div>
-        <ReportDeliveryLogPanel runId={run.id} />
+        <PrivateDeliveryPanel runId={run.id} />
       </div>
     </div>
   );
+}
+
+/** This unchanged F09 child still has a legacy unscoped query key. Give each
+ * selected run/principal mount an ephemeral cache; never share it across users. */
+function PrivateDeliveryPanel({runId}: {runId: number}) {
+  const [client] = useState(() => new QueryClient());
+  useEffect(() => () => {void client.cancelQueries(); client.clear();}, [client]);
+  return <QueryClientProvider client={client}><ReportDeliveryLogPanel runId={runId} /></QueryClientProvider>;
 }

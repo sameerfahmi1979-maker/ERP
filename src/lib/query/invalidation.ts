@@ -16,6 +16,25 @@ import { notifyManager, type QueryClient } from "@tanstack/react-query";
 import {COMPLIANCE_KINDS, type ComplianceKind} from "@/lib/reads/hr-compliance-records-schema";
 import {TIME_RECORD_KINDS, type TimeRecordKind} from "@/lib/reads/hr-time-records-schema";
 import type {HrSearchCategory} from "@/lib/hr/search/types";
+import {REPORT_CRITERION_KEYS, type ReportCriterionKey} from "@/lib/reads/report-criteria-schema";
+
+const pendingReportCriterionRefresh = new WeakMap<QueryClient, Set<ReportCriterionKey>>();
+/** Confirmed writes retire matching choice pages and selected values, including
+ * in-flight observerless requests. Only active authorized owners refetch. */
+function invalidateReportCriterionReads(queryClient: QueryClient, keys: readonly ReportCriterionKey[]): void {
+  const family = (fields: ReadonlySet<ReportCriterionKey>) => ({queryKey: ["reports", "criteria"],
+    predicate: (query: {queryKey: readonly unknown[]}) => fields.has(query.queryKey[4] as ReportCriterionKey)});
+  void queryClient.invalidateQueries({...family(new Set(keys)), refetchType: "none"});
+  const queued = pendingReportCriterionRefresh.get(queryClient);
+  if (queued) {for (const key of keys) queued.add(key); return;}
+  const pending = new Set(keys); pendingReportCriterionRefresh.set(queryClient, pending);
+  queueMicrotask(() => {
+    pendingReportCriterionRefresh.delete(queryClient);
+    const filters = family(pending);
+    void queryClient.cancelQueries(filters);
+    void queryClient.invalidateQueries({...filters, refetchType: "active"}, {cancelRefetch: true});
+  });
+}
 
 type TimeOption = "calendars" | "shifts" | "leave-types";
 type TimeRefreshTarget = {kind: TimeRecordKind; employeeId: number | null} | {option: TimeOption; calendarId: number | null};
@@ -223,6 +242,7 @@ export function invalidateUom(queryClient: QueryClient): void {
 
 /** Invalidate owner companies and branches. */
 export function invalidateOrganizations(queryClient: QueryClient): void {
+  invalidateReportCriterionReads(queryClient, REPORT_CRITERION_KEYS);
   invalidateComplianceReads(queryClient, ["identity"]);
   invalidateAuthorizedRead(queryClient, "employee-filter-companies");
   void queryClient.invalidateQueries({ queryKey: ["master", "owner_companies"] });
@@ -490,17 +510,20 @@ export function invalidateDmsFileOcr(queryClient: QueryClient, fileId: number): 
 // ── COMMON MD.1 — Common Master Data ─────────────────────────────────────────
 
 export function invalidateCommonMdDepartments(queryClient: QueryClient): void {
+  invalidateReportCriterionReads(queryClient, ["department_id", "designation_id", "employee_id"]);
   invalidateAuthorizedRead(queryClient, "employee-filter-departments");
   invalidateAuthorizedRead(queryClient, "employee-filter-designations");
   void queryClient.invalidateQueries({ queryKey: ["common_md", "departments"] });
 }
 
 export function invalidateCommonMdDesignations(queryClient: QueryClient): void {
+  invalidateReportCriterionReads(queryClient, ["designation_id"]);
   invalidateAuthorizedRead(queryClient, "employee-filter-designations");
   void queryClient.invalidateQueries({ queryKey: ["common_md", "designations"] });
 }
 
 export function invalidateCommonMdWorkSites(queryClient: QueryClient): void {
+  invalidateReportCriterionReads(queryClient, ["work_site_id"]);
   invalidateComplianceReads(queryClient, ["cards"]);
   void queryClient.invalidateQueries({ queryKey: ["common_md", "work_sites"] });
 }
@@ -767,6 +790,7 @@ export function invalidateDataQualityFinding(queryClient: QueryClient, id: numbe
 
 /** Invalidate all HR employee list caches. */
 export function invalidateHrEmployees(queryClient: QueryClient): void {
+  invalidateReportCriterionReads(queryClient, ["employee_id"]);
   invalidatePayrollInquiryReads(queryClient, "global-salary-profiles");
   invalidatePayrollInquiryReads(queryClient, "global-wps-readiness");
   invalidateAuthorizedRead(queryClient, "employees");
@@ -775,6 +799,7 @@ export function invalidateHrEmployees(queryClient: QueryClient): void {
 
 /** Invalidate a single employee detail cache. */
 export function invalidateHrEmployee(queryClient: QueryClient, id: number): void {
+  invalidateReportCriterionReads(queryClient, ["employee_id"]);
   invalidatePayrollInquiryReads(queryClient, "global-salary-profiles");
   invalidatePayrollInquiryReads(queryClient, "global-wps-readiness");
   invalidateTimeReads(queryClient, TIME_RECORD_KINDS, id);
@@ -789,6 +814,7 @@ export function invalidateHrEmployeeOverview(queryClient: QueryClient, id: numbe
 
 /** Invalidate a single employee status history cache. */
 export function invalidateHrEmployeeStatusHistory(queryClient: QueryClient, id: number): void {
+  invalidateReportCriterionReads(queryClient, ["employee_id"]);
   invalidateTimeReads(queryClient, TIME_RECORD_KINDS, id);
   invalidateComplianceReads(queryClient, COMPLIANCE_KINDS, id);
   void queryClient.invalidateQueries({ queryKey: ["hr", "employees", "status-history", id] });
@@ -1425,6 +1451,7 @@ export function invalidateHrSearchSuggestions(queryClient: QueryClient): void {
 
 /** Invalidate the full report registry list. */
 export function invalidateReportsRegistry(queryClient: QueryClient): void {
+  invalidateReportCriterionReads(queryClient, REPORT_CRITERION_KEYS);
   void queryClient.invalidateQueries({ queryKey: ["reports", "registry"] });
 }
 

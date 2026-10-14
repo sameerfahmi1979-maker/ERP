@@ -20,10 +20,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { ReportTemplateForSelection } from "@/server/actions/reports/templates";
-import { listReportTemplatesForSelection } from "@/server/actions/reports/templates";
-import { useQuery } from "@tanstack/react-query";
+import type { AuthContext } from "@/lib/rbac/check";
+import { reportTemplateSelectionIdentity } from "@/lib/reads/report-template-selection-schema";
+import { useReportTemplateSelection } from "@/hooks/use-report-template-selection";
 import { CheckCircle2, FileText, Layers, Loader2, Palette } from "lucide-react";
 import { useState } from "react";
 
@@ -32,12 +34,17 @@ import { useState } from "react";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface ReportTemplateSelectDialogProps {
+  authContext: AuthContext;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Called when the user confirms a template selection */
   onSelect: (templateId: number, template: ReportTemplateForSelection) => void;
   /** Pre-filter: only show templates usable for these owner company IDs */
   ownerCompanyIds?: number[];
+  /** Existing authorized inactive metadata remains visible, never newly usable. */
+  selectedTemplateId?: number | null;
+  issuableOnly?: boolean;
+  readGeneration?: string;
   /** Title shown in the dialog header */
   dialogTitle?: string;
   /** Description shown below the title */
@@ -60,7 +67,8 @@ const profileTypeBadge: Record<string, { label: string; variant: "default" | "se
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function ReportTemplateSelectDialog(props: ReportTemplateSelectDialogProps) {
-  return props.open ? <ReportTemplateSelection key={props.ownerCompanyIds?.join(",") ?? "all"} {...props} /> : null;
+  const identity = JSON.stringify([reportTemplateSelectionIdentity(props.authContext), [...new Set(props.ownerCompanyIds ?? [])].sort((a, b) => a - b), props.issuableOnly ?? false, props.readGeneration ?? ""]);
+  return props.open ? <ReportTemplateSelection key={identity} {...props} /> : null;
 }
 
 function ReportTemplateSelection({
@@ -68,25 +76,22 @@ function ReportTemplateSelection({
   onOpenChange,
   onSelect,
   ownerCompanyIds,
+  authContext,
+  selectedTemplateId,
+  issuableOnly,
+  readGeneration,
   dialogTitle = "Select Report Template",
   dialogDescription = "Choose the branding template to use for this export.",
 }: ReportTemplateSelectDialogProps) {
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-  const { data: templates = [], isPending: isLoading, error } = useQuery({
-    queryKey: ["report-templates-for-selection", ownerCompanyIds],
-    queryFn: async () => {
-      const result = await listReportTemplatesForSelection({ ownerCompanyIds });
-      if (!result.success) throw new Error(result.error ?? "Failed to load templates");
-      return result.data ?? [];
-    },
-    retry: false, gcTime: 0, refetchOnWindowFocus: false,
-  });
+  const [selectedId, setSelectedId] = useState<number | null>(selectedTemplateId ?? null);
+  const read = useReportTemplateSelection(authContext, {ownerCompanyIds, issuableOnly, selectedId, enabled: open, generation: readGeneration});
+  const templates = [...read.rows, ...(read.selected && !read.rows.some(row => row.id === read.selected!.id) ? [read.selected] : [])];
+  const isLoading = read.busy;
 
   const handleConfirm = () => {
-    if (!selectedId || error || isLoading) return;
-    const template = templates.find((t) => t.id === selectedId);
+    const template = read.getSelectedNow();
     if (!template) return;
-    onSelect(selectedId, template);
+    onSelect(template.id, template);
     onOpenChange(false);
   };
 
@@ -102,15 +107,16 @@ function ReportTemplateSelection({
         </DialogHeader>
 
         <div className="py-2">
-          {error ? <p role="alert">Could not load report templates. Close this dialog and try again.</p> : isLoading ? (
+          <Input aria-label="Search report templates" value={read.search} onChange={event => read.setSearch(event.target.value)} placeholder="Search templates…" className="mb-3" disabled={read.denied} />
+          {read.denied ? <p role="alert">Your access to report templates could not be verified.</p> : read.invalid ? <p role="alert">Template search is too long or its criteria are invalid.</p> : read.error ? <div role="alert"><p>Could not load report templates.</p><Button variant="outline" onClick={read.retry}>Retry templates</Button></div> : isLoading ? (
             <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
               <Loader2 className="h-5 w-5 animate-spin" />
               <span>Loading templates…</span>
             </div>
-          ) : templates.length === 0 ? (
+          ) : read.ready && templates.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
               <FileText className="h-8 w-8 opacity-40" />
-              <p className="text-sm">No active templates found.</p>
+              <p className="text-sm">No active templates match these choices.</p>
             </div>
           ) : (
             <ScrollArea className="max-h-80">
@@ -123,6 +129,7 @@ function ReportTemplateSelection({
                     <button
                       key={tpl.id}
                       type="button"
+                      disabled={!tpl.selectable}
                       onClick={() => setSelectedId(tpl.id)}
                       className={cn(
                         "flex items-start gap-3 rounded-md border p-3 text-left text-sm transition-colors w-full",
@@ -153,6 +160,7 @@ function ReportTemplateSelection({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium">{tpl.template_name}</span>
+                          {!tpl.selectable && <Badge variant="outline">Unavailable for new output</Badge>}
                           {tpl.is_default && (
                             <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
                               Default
@@ -180,13 +188,19 @@ function ReportTemplateSelection({
               </div>
             </ScrollArea>
           )}
+          {read.selectionUnavailable && <p role="status" className="mt-2 text-sm">The previous template is unavailable or no longer authorized. Choose another template.</p>}
+          {read.totalCount !== null && <div className="mt-3 flex items-center justify-between gap-2 text-sm">
+            <Button variant="outline" disabled={!read.ready || read.page <= 1} onClick={() => read.move(read.page - 1)}>Previous</Button>
+            <span>{read.totalCount} templates · Page {read.page}</span>
+            <Button variant="outline" disabled={!read.ready || read.page * read.pageSize >= read.totalCount} onClick={() => read.move(read.page + 1)}>Next</Button>
+          </div>}
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleConfirm} disabled={!selectedId || isLoading || !!error}>
+          <Button onClick={handleConfirm} disabled={!read.ready || !read.selected?.selectable}>
             Use Template
           </Button>
         </DialogFooter>

@@ -1,5 +1,8 @@
 "use client";
-import { useQuery } from "@tanstack/react-query";
+import {reportCriteriaIdentity} from "@/lib/reads/report-criteria-schema";
+import {useReportViewState} from "./use-report-view-state";
+import {useReportSavedFilters} from "@/hooks/use-report-saved-filters";
+import type {ReportSavedFilterRow} from "@/lib/reads/report-saved-filters-schema";
 import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
 import { useWorkspaceFormOwner } from "@/hooks/use-workspace-form-owner";
 
@@ -18,18 +21,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { exportToExcel } from "@/lib/export/excel";
-import type { ExportBrandingContext } from "@/lib/export/export-types";
 import { exportToPDF } from "@/lib/export/pdf";
 import { exportToPrint } from "@/lib/export/print";
 import type { ReportRegistryEntry, ReportRunResult } from "@/lib/report-center/types";
-import { getReportFilterLookups } from "@/server/actions/reports/filter-lookups";
+import type {AuthContext} from "@/lib/rbac/check";
+import {useReportCriteria} from "@/hooks/use-report-criteria";
 import { runReportAction } from "@/server/actions/reports/runner";
 import {
   createSavedFilter,
   deleteSavedFilter,
-  listSavedFilters,
   setDefaultSavedFilter,
-  type SavedFilter,
 } from "@/server/actions/reports/saved-filters";
 import { resolveTemplatePreview } from "@/server/actions/reports/templates";
 import {
@@ -44,10 +45,9 @@ import {
   Trash2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ReportExportToolbar } from "./report-export-toolbar";
-import type { FilterLookupMap } from "./report-filter-panel";
 import { ReportFilterPanel } from "./report-filter-panel";
 import { ReportResultsTable } from "./report-results-table";
 
@@ -64,93 +64,95 @@ type FilterLookupKey = (typeof ENTITY_FILTER_KEYS)[number];
 const LARGE_EXPORT_PDF_THRESHOLD = 500;
 
 interface ReportRunPageProps {
+  authContext: AuthContext;
   registryEntry: ReportRegistryEntry;
   initialFilters?: Record<string, string>;
 }
 
-export function ReportRunPage({ registryEntry, initialFilters = {} }: ReportRunPageProps) {
+export function ReportRunPage({ authContext, registryEntry, initialFilters = {} }: ReportRunPageProps) {
   const router = useRouter();
   const owner = useWorkspaceFormOwner();
-  const stateKey = owner ? `report-view:${owner.id}:${registryEntry.report_code}` : undefined;
+  const principal = JSON.stringify([authContext.profile?.id ?? null, authContext.profile?.auth_user_id ?? null]);
+  const stateKey = owner ? `report-view:${principal}:${owner.id}:${registryEntry.report_code}` : undefined;
   // Filters and repeated column selections survive a workspace switch, in this
   // principal's memory only. Report rows and resolved branding are never cached here.
-  const [filters, setFilters] = usePersistentUiState<Record<string, string>>(stateKey ? `${stateKey}:filters` : undefined, initialFilters);
-  const [isRunning, setIsRunning] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
-  const [runResult, setRunResult] = useState<ReportRunResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [showTemplateDialog, setShowTemplateDialog] = useState(false);
-  const [pendingExportFormat, setPendingExportFormat] = useState<"pdf" | "excel" | "csv" | "print" | null>(null);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<number | undefined>(undefined);
-  const [resolvedBranding, setResolvedBranding] = useState<ExportBrandingContext | undefined>(undefined);
+  const [storedFilters, setFilters] = usePersistentUiState<Record<string, string>>(stateKey ? `${stateKey}:filters` : undefined, initialFilters);
+  const [filterPrincipal, setFilterPrincipal] = useState(principal);
+  const [initialFiltersRetired, setInitialFiltersRetired] = useState(false);
+  const priorFilters = useRef({principal, setFilters});
+  const filters = filterPrincipal === principal ? storedFilters : {};
+  useEffect(() => {
+    if (priorFilters.current.principal !== principal) {
+      priorFilters.current.setFilters({}); setFilters({}); setFilterPrincipal(principal); setInitialFiltersRetired(true);
+    }
+    priorFilters.current = {principal, setFilters};
+  }, [principal, setFilters]);
 
-  // Saved filters
-  const [showSaveFilterDialog, setShowSaveFilterDialog] = useState(false);
-  const [saveFilterName, setSaveFilterName] = useState("");
-  const [isSavingFilter, setIsSavingFilter] = useState(false);
+  const schema = registryEntry.filter_schema_json as { filters?: string[] };
+  const entityKeys = ENTITY_FILTER_KEYS.filter(k => (schema.filters ?? []).includes(k)) as FilterLookupKey[];
+  const filterRevision = useRef(0), savedApplySequence = useRef(0);
+  const handleFilterChange = useCallback((key: string, value: string) => {
+    filterRevision.current++;
+    setFilters((prev) => {
+      const next = {...prev, [key]: value};
+      if (prev[key] === value) return next;
+      const downstream: Record<string, string[]> = {owner_company_id: ["branch_id", "department_id", "designation_id", "work_site_id", "employee_id"],
+        branch_id: ["employee_id"], department_id: ["designation_id", "employee_id"]};
+      for (const field of downstream[key] ?? []) delete next[field];
+      return next;
+    });
+  }, [setFilters]);
+  const criteria = useReportCriteria(authContext, registryEntry.report_code, entityKeys, filters, handleFilterChange);
+  const baseReadIdentity = JSON.stringify([reportCriteriaIdentity(authContext), registryEntry.report_code, registryEntry.required_permissions, registryEntry.filter_schema_json, criteria.ownerDenied]);
+  const savedFilterRead = useReportSavedFilters(authContext, registryEntry.report_code, {enabled: !criteria.ownerDenied, generation: baseReadIdentity});
+  const ownerDenied = criteria.ownerDenied || savedFilterRead.denied;
+  const readIdentity = JSON.stringify([baseReadIdentity, savedFilterRead.denied]);
+  const {values: reportView, setField: setViewField, isCurrent} = useReportViewState(readIdentity);
+  const {isRunning, isExporting, runResult, error, showTemplateDialog, pendingExportFormat, selectedTemplateId, resolvedBranding, showSaveFilterDialog, saveFilterName, isSavingFilter, isApplyingFilter} = reportView;
+  const runSequence = useRef(0);
+  const outputSequence = runSequence.current;
+  const canUseOutput = () => isCurrent() && !ownerDenied && !!runResult?.data && runSequence.current === outputSequence;
 
   // Column visibility
   const [visibleColumns, setVisibleColumns] = usePersistentUiState<string[] | null>(stateKey ? `${stateKey}:columns` : undefined, null);
 
-  // Entity lookup data for filter comboboxes
-  const savedFilterQuery = useQuery({
-    queryKey: ["report-saved-filters", registryEntry.report_code],
-    queryFn: async () => {
-      const result = await listSavedFilters(registryEntry.report_code);
-      if (!result.success) throw new Error(result.error ?? "Failed to load saved filters");
-      return result.data ?? [];
-    },
-    retry: false, gcTime: 0, refetchOnWindowFocus: false,
-  });
-  const savedFilters = savedFilterQuery.data ?? [];
-  const loadSavedFilters = () => savedFilterQuery.refetch();
-  const schema = registryEntry.filter_schema_json as { filters?: string[] };
-  const entityKeys = ENTITY_FILTER_KEYS.filter(k => (schema.filters ?? []).includes(k)) as FilterLookupKey[];
-  const lookupQuery = useQuery({
-    queryKey: ["report-filter-lookups", registryEntry.report_code, entityKeys],
-    enabled: entityKeys.length > 0,
-    queryFn: async () => {
-      const result = await getReportFilterLookups(entityKeys);
-      if (!result.success || !result.data) throw new Error(result.error ?? "Failed to load report filters");
-        const map: FilterLookupMap = {};
-        const d = result.data;
-        if (d.employees) map.employee_id = d.employees;
-        if (d.ownerCompanies) map.owner_company_id = d.ownerCompanies;
-        if (d.departments) map.department_id = d.departments;
-        if (d.branches) map.branch_id = d.branches;
-        if (d.designations) map.designation_id = d.designations;
-        if (d.workSites) map.work_site_id = d.workSites;
-      return map;
-    },
-    retry: false, gcTime: 0, refetchOnWindowFocus: false,
-  });
-  const lookups = lookupQuery.data ?? {};
-  const lookupsLoading = entityKeys.length > 0 && lookupQuery.isPending;
-  useEffect(() => {
-    const error = savedFilterQuery.error ?? lookupQuery.error;
-    if (error) toast.error(error.message);
-  }, [savedFilterQuery.error, lookupQuery.error]);
-
-  const handleFilterChange = useCallback((key: string, value: string) => {
-    setFilters((prev) => ({ ...prev, [key]: value }));
-  }, [setFilters]);
-
+  const savedFilters = ownerDenied ? [] : savedFilterRead.rows;
+  const loadSavedFilters = () => void savedFilterRead.refresh();
   const handleReset = useCallback(() => {
-    setFilters(initialFilters);
-    setRunResult(null);
-    setError(null);
+    if (!isCurrent()) return;
+    filterRevision.current++; savedApplySequence.current++;
+    setViewField("isApplyingFilter", false);
+    runSequence.current++;
+    setViewField("isRunning", false); setViewField("resolvedBranding", undefined);
+    setFilters(initialFiltersRetired || filterPrincipal !== principal ? {} : initialFilters);
+    setViewField("runResult", null);
+    setViewField("error", null);
     setVisibleColumns(null);
-  }, [initialFilters, setFilters, setVisibleColumns]);
+  }, [initialFilters, initialFiltersRetired, filterPrincipal, principal, setFilters, setVisibleColumns, isCurrent, setViewField]);
 
-  const handleApplySavedFilter = (filter: SavedFilter) => {
-    const f = filter.filters_json as Record<string, string>;
-    setFilters(f);
-    toast.success(`Loaded filter: ${filter.filter_name}`);
+  const handleApplySavedFilter = async (filter: ReportSavedFilterRow) => {
+    if (!isCurrent() || ownerDenied) return;
+    const sequence = ++savedApplySequence.current, revision = filterRevision.current;
+    setViewField("isApplyingFilter", true);
+    try {
+      const result = await savedFilterRead.loadFilter(filter.id);
+      if (!isCurrent() || sequence !== savedApplySequence.current || revision !== filterRevision.current) return;
+      if (!result.success) {
+        if (result.kind !== "retired") toast.error(result.kind === "unavailable" ? "This saved filter is no longer available." : "This saved filter could not be loaded. Try again.");
+        return;
+      }
+      filterRevision.current++;
+      setFilters(result.data.filters_json as Record<string, string>);
+      toast.success(`Loaded filter: ${result.data.filter_name}`);
+    } finally {
+      if (isCurrent() && sequence === savedApplySequence.current) setViewField("isApplyingFilter", false);
+    }
   };
 
   const handleSaveFilter = async () => {
+    if (!isCurrent() || ownerDenied) return;
     if (!saveFilterName.trim()) { toast.error("Filter name is required."); return; }
-    setIsSavingFilter(true);
+    setViewField("isSavingFilter", true);
     try {
       const result = await createSavedFilter({
         reportCode: registryEntry.report_code,
@@ -159,21 +161,24 @@ export function ReportRunPage({ registryEntry, initialFilters = {} }: ReportRunP
         isDefault: false,
         isShared: false,
       });
+      if (!isCurrent()) return;
       if (result.success) {
         toast.success("Filter saved.");
-        setSaveFilterName("");
-        setShowSaveFilterDialog(false);
+        setViewField("saveFilterName", "");
+        setViewField("showSaveFilterDialog", false);
         loadSavedFilters();
       } else {
         toast.error(result.error ?? "Save failed.");
       }
     } finally {
-      setIsSavingFilter(false);
+      setViewField("isSavingFilter", false);
     }
   };
 
   const handleDeleteSavedFilter = async (id: number) => {
+    if (!isCurrent() || ownerDenied) return;
     const result = await deleteSavedFilter(id);
+    if (!isCurrent()) return;
     if (result.success) {
       toast.success("Filter deleted.");
       loadSavedFilters();
@@ -183,7 +188,9 @@ export function ReportRunPage({ registryEntry, initialFilters = {} }: ReportRunP
   };
 
   const handleSetDefaultFilter = async (id: number) => {
+    if (!isCurrent() || ownerDenied) return;
     const result = await setDefaultSavedFilter(id);
+    if (!isCurrent()) return;
     if (result.success) {
       toast.success("Default filter set.");
       loadSavedFilters();
@@ -193,8 +200,12 @@ export function ReportRunPage({ registryEntry, initialFilters = {} }: ReportRunP
   };
 
   const runReport = async () => {
-    setIsRunning(true);
-    setError(null);
+    if (!isCurrent() || ownerDenied || !criteria.canRunNow()) return;
+    const sequence = ++runSequence.current;
+    const latest = () => isCurrent() && runSequence.current === sequence;
+    setViewField("runResult", null); setViewField("resolvedBranding", undefined);
+    setViewField("isRunning", true);
+    setViewField("error", null);
     try {
       const cleanFilters: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(filters)) {
@@ -209,21 +220,22 @@ export function ReportRunPage({ registryEntry, initialFilters = {} }: ReportRunP
         filters: cleanFilters,
         templateId: selectedTemplateId,
       });
+      if (!latest()) return;
 
       if (!result.success) {
-        setError(result.error ?? "Failed to run report");
+        setViewField("error", result.error ?? "Failed to run report");
         return;
       }
 
       const runResult = result.data as ReportRunResult;
 
       if (runResult.requiresManualTemplateSelection) {
-        setPendingExportFormat(null);
-        setShowTemplateDialog(true);
+        setViewField("pendingExportFormat", null);
+        setViewField("showTemplateDialog", true);
         return;
       }
 
-      setRunResult(runResult);
+      setViewField("runResult", runResult);
       setVisibleColumns(previous => previous?.filter(column => runResult.data?.columns.includes(column)) ?? null);
 
       // Resolve branding for export/preview if the run produced a template
@@ -233,27 +245,30 @@ export function ReportRunPage({ registryEntry, initialFilters = {} }: ReportRunP
           templateId,
           reportCode: registryEntry.report_code,
         }).then((brandingResult) => {
-          if (brandingResult.success && brandingResult.data) {
-            setResolvedBranding(brandingResult.data);
-          }
+          if (!latest()) return;
+          if (brandingResult.success && brandingResult.data) setViewField("resolvedBranding", brandingResult.data);
+          else setViewField("error", "Report branding is unavailable. Try running the report again.");
+        }).catch(() => {
+          if (latest()) setViewField("error", "Report branding is unavailable. Try running the report again.");
         });
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unexpected error");
+      if (latest()) setViewField("error", err instanceof Error ? err.message : "Unexpected error");
     } finally {
-      setIsRunning(false);
+      if (latest()) setViewField("isRunning", false);
     }
   };
 
   const handleExport = async (format: "pdf" | "excel" | "csv" | "print") => {
+    if (!canUseOutput()) return;
     if (!runResult?.data) {
       toast.error("Run the report first before exporting.");
       return;
     }
 
     if (runResult.requiresManualTemplateSelection && !selectedTemplateId) {
-      setPendingExportFormat(format);
-      setShowTemplateDialog(true);
+      setViewField("pendingExportFormat", format);
+      setViewField("showTemplateDialog", true);
       return;
     }
 
@@ -266,7 +281,7 @@ export function ReportRunPage({ registryEntry, initialFilters = {} }: ReportRunP
       );
     }
 
-    setIsExporting(true);
+    setViewField("isExporting", true);
     try {
       const { columns, rows } = runResult.data;
 
@@ -311,27 +326,31 @@ export function ReportRunPage({ registryEntry, initialFilters = {} }: ReportRunP
           branding: resolvedBranding,
         });
       }
-      if (format !== "csv") {
+      if (canUseOutput() && format !== "csv") {
         toast.success(`Exporting ${format.toUpperCase()}...`);
       }
     } catch (err) {
-      toast.error("Export failed: " + (err instanceof Error ? err.message : "Unknown error"));
+      if (canUseOutput()) toast.error("Export failed: " + (err instanceof Error ? err.message : "Unknown error"));
     } finally {
-      setIsExporting(false);
+      setViewField("isExporting", false);
     }
   };
 
   const handleTemplateSelected = (templateId: number) => {
-    setSelectedTemplateId(templateId);
-    setShowTemplateDialog(false);
+    if (!isCurrent() || ownerDenied) return;
+    setViewField("selectedTemplateId", templateId);
+    setViewField("showTemplateDialog", false);
     // Pre-resolve branding for the manually selected template
     resolveTemplatePreview({
       templateId,
       reportCode: registryEntry.report_code,
     }).then((brandingResult) => {
+      if (!isCurrent()) return;
       if (brandingResult.success && brandingResult.data) {
-        setResolvedBranding(brandingResult.data);
-      }
+        setViewField("resolvedBranding", brandingResult.data);
+      } else setViewField("error", "Report branding is unavailable. Try selecting the template again.");
+    }).catch(() => {
+      if (isCurrent()) setViewField("error", "Report branding is unavailable. Try selecting the template again.");
     });
     if (pendingExportFormat) {
       handleExport(pendingExportFormat);
@@ -411,14 +430,12 @@ export function ReportRunPage({ registryEntry, initialFilters = {} }: ReportRunP
             onReset={handleReset}
             isLoading={isRunning}
             fields={filterFields}
-            lookups={lookups}
-            lookupsLoading={lookupsLoading}
+            criteria={{...criteria, ownerDenied, canRun: criteria.canRun && !ownerDenied, canRunNow: () => !ownerDenied && criteria.canRunNow()}}
           />
         </div>
 
         {/* Saved filters dropdown */}
         <div className="flex items-center gap-1.5 mb-0 shrink-0">
-          {savedFilters.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 h-8 text-sm font-medium hover:bg-muted/50 transition-colors">
                 <BookmarkCheck className="h-3.5 w-3.5" />
@@ -428,7 +445,14 @@ export function ReportRunPage({ registryEntry, initialFilters = {} }: ReportRunP
               <DropdownMenuContent align="end" className="w-64">
                 <DropdownMenuGroup>
                   <DropdownMenuLabel className="text-xs">Saved Filters</DropdownMenuLabel>
+                  <Input aria-label="Search saved filters" placeholder="Search saved filters…" value={savedFilterRead.search}
+                    onChange={event => savedFilterRead.setSearch(event.target.value)} onKeyDown={event => event.stopPropagation()} disabled={ownerDenied} />
                   <DropdownMenuSeparator />
+                  {ownerDenied ? <p role="alert">Your access to saved filters could not be verified.</p>
+                    : savedFilterRead.invalid ? <p role="alert">Saved-filter search must be at most 200 characters.</p>
+                    : savedFilterRead.error ? <div role="alert"><p>Saved filters could not be loaded.</p><Button variant="outline" onClick={savedFilterRead.retry}>Retry saved filters</Button></div>
+                    : savedFilterRead.busy ? <p role="status">Loading saved filters…</p>
+                    : savedFilterRead.ready && savedFilters.length === 0 ? <p>No saved filters match this search.</p> : null}
                   {savedFilters.map((sf) => (
                     <DropdownMenuItem
                       key={sf.id}
@@ -457,16 +481,21 @@ export function ReportRunPage({ registryEntry, initialFilters = {} }: ReportRunP
                       </div>
                     </DropdownMenuItem>
                   ))}
+                  {savedFilterRead.totalCount !== null && <div className="flex items-center justify-between gap-2 text-xs">
+                    <Button variant="ghost" size="sm" aria-label="Previous saved filters" disabled={!savedFilterRead.ready || savedFilterRead.page <= 1} onClick={() => savedFilterRead.move(savedFilterRead.page - 1)}>Previous</Button>
+                    <span>{savedFilterRead.totalCount} filters · Page {savedFilterRead.page}</span>
+                    <Button variant="ghost" size="sm" aria-label="Next saved filters" disabled={!savedFilterRead.ready || savedFilterRead.page * savedFilterRead.pageSize >= savedFilterRead.totalCount} onClick={() => savedFilterRead.move(savedFilterRead.page + 1)}>Next</Button>
+                  </div>}
                 </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
-          )}
+          {isApplyingFilter && <span role="status" className="text-xs">Loading saved filter…</span>}
 
           <Button
             variant="outline"
             size="sm"
             className="gap-1.5"
-            onClick={() => setShowSaveFilterDialog(!showSaveFilterDialog)}
+            onClick={() => setViewField("showSaveFilterDialog", !showSaveFilterDialog)}
             title="Save current filters"
           >
             <Save className="h-3.5 w-3.5" />
@@ -482,14 +511,14 @@ export function ReportRunPage({ registryEntry, initialFilters = {} }: ReportRunP
             className="h-7 text-sm max-w-xs"
             placeholder="Filter name..."
             value={saveFilterName}
-            onChange={(e) => setSaveFilterName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") handleSaveFilter(); if (e.key === "Escape") setShowSaveFilterDialog(false); }}
+            onChange={(e) => setViewField("saveFilterName", e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleSaveFilter(); if (e.key === "Escape") setViewField("showSaveFilterDialog", false); }}
             autoFocus
           />
           <Button size="sm" className="h-7" onClick={handleSaveFilter} disabled={isSavingFilter}>
             Save
           </Button>
-          <Button variant="ghost" size="sm" className="h-7" onClick={() => setShowSaveFilterDialog(false)}>
+          <Button variant="ghost" size="sm" className="h-7" onClick={() => setViewField("showSaveFilterDialog", false)}>
             Cancel
           </Button>
         </div>
@@ -549,6 +578,7 @@ export function ReportRunPage({ registryEntry, initialFilters = {} }: ReportRunP
             registryEntry={registryEntry}
             data={runResult.data}
             onExport={handleExport}
+            canUseData={canUseOutput}
             rowCount={rowCount}
             isExporting={isExporting}
             runId={runResult.runId}
@@ -587,8 +617,11 @@ export function ReportRunPage({ registryEntry, initialFilters = {} }: ReportRunP
       )}
 
       <ReportTemplateSelectDialog
+        authContext={authContext}
+        readGeneration={readIdentity}
+        selectedTemplateId={selectedTemplateId}
         open={showTemplateDialog}
-        onOpenChange={setShowTemplateDialog}
+        onOpenChange={value => setViewField("showTemplateDialog", value)}
         ownerCompanyIds={[]}
         onSelect={(templateId) => handleTemplateSelected(templateId)}
       />

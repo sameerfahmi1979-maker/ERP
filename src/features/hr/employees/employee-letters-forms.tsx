@@ -1,5 +1,7 @@
 "use client";
 import { RecordCollection } from "@/components/erp/table/record-collection";
+import type { AuthContext } from "@/lib/rbac/check";
+import { reportTemplateSelectionIdentity } from "@/lib/reads/report-template-selection-schema";
 import { ERPDataTable } from "@/components/erp/table/erp-data-table";
 import { loadedListValue } from "@/components/erp/table/loaded-list-view";
 
@@ -65,6 +67,7 @@ import {
 import { generateOfficialDocument } from "@/server/actions/output/generate-official-document";
 
 interface EmployeeLettersFormsProps {
+  authContext: AuthContext;
   employeeId: number;
   employeeName?: string;
 }
@@ -138,10 +141,10 @@ function formatDate(value: string | null): string {
   });
 }
 
-export function EmployeeLettersForms({ employeeId, employeeName }: EmployeeLettersFormsProps) {
-  return <EmployeeLettersFormsSession key={employeeId} employeeId={employeeId} employeeName={employeeName} />;
+export function EmployeeLettersForms(props: EmployeeLettersFormsProps) {
+  return <EmployeeLettersFormsSession key={JSON.stringify([props.employeeId,reportTemplateSelectionIdentity(props.authContext)])} {...props} />;
 }
-function EmployeeLettersFormsSession({ employeeId, employeeName }: EmployeeLettersFormsProps) {
+function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: EmployeeLettersFormsProps) {
   const [historyError, setHistoryError] = useState(false);
   const [catalog, setCatalog] = useState<EmployeeOutputCatalogItem[]>([]);
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -962,6 +965,7 @@ function EmployeeLettersFormsSession({ employeeId, employeeName }: EmployeeLette
 
       {/* ── Preview dialog (quick print = watermarked draft) ────────────── */}
       <LetterPreviewDialog
+        authContext={authContext}
         open={!!preview}
         onOpenChange={(open) => !open && setPreview(null)}
         reportCode={preview?.outputCode ?? ""}

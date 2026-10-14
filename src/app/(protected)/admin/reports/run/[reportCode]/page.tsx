@@ -51,6 +51,7 @@ export default async function ReportRunRoutePage({ params, searchParams }: Props
   return (
     <div className="flex flex-col h-full p-6 gap-0">
       <ReportRunPage
+        authContext={ctx}
         registryEntry={registryEntry}
         initialFilters={initialFilters}
       />

@@ -4,6 +4,9 @@ import { ConfiguredRow } from "@/components/erp/table/list-controls";
 import { useSortPaginate } from "@/hooks/use-sort-paginate";
 import { TablePagination } from "@/components/erp/table/table-pagination";
 
+import {useState} from "react";
+import {readJson, retryAuthorizedRead} from "@/lib/reads/client";
+import {reportDeliveriesPageSchema} from "@/lib/reads/report-deliveries-schema";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
@@ -43,18 +46,25 @@ interface ReportDeliveryLogPanelProps {
   runId?: number;
 }
 
-export function ReportDeliveryLogPanel({ runId }: ReportDeliveryLogPanelProps) {
-  const { data: logs = [], isPending: isLoading, error, refetch } = useQuery({
-    queryKey: ["report-delivery-logs", runId],
-    enabled: !!runId,
-    queryFn: async () => {
-      const { data, error } = await createClient().from("erp_report_delivery_logs").select("*").eq("run_id", runId!).order("created_at", { ascending: false });
-      if (error) throw new Error(error.message);
-      return (data ?? []) as DeliveryLog[];
-    },
-    retry: false, gcTime: 0, refetchOnWindowFocus: false,
+export function ReportDeliveryLogPanel({runId}: ReportDeliveryLogPanelProps) {
+  if (!runId) return <div className="text-xs text-muted-foreground">No run selected.</div>;
+  return <ReportDeliveryRead key={runId} runId={runId}/>;
+}
+function ReportDeliveryRead({runId}: {runId: number}) {
+  const [page, setPage] = useState(1), [pageSize, setPageSize] = useState(25);
+  const read = useQuery({
+    queryKey: ["report-delivery-logs", runId, page, pageSize],
+    queryFn: async ({signal}) => {
+      const response = await readJson<{success: true; data: unknown}>("report-deliveries", {runId, page, pageSize}, signal);
+      signal.throwIfAborted();
+      const data = reportDeliveriesPageSchema.parse(response.data);
+      if (data.page !== page || data.pageSize !== pageSize || data.rows.some(row => row.run_id !== runId)) throw Error("Unverified delivery page");
+      return data;
+    }, retry: retryAuthorizedRead, gcTime: 0, staleTime: 0,
   });
-
+  const {error, refetch} = read, isLoading = read.isFetching || read.isPending;
+  const data = error || isLoading ? undefined : read.data, logs = data?.rows ?? [];
+  if (data) {const maximum = Math.max(1, Math.ceil(data.totalCount / pageSize)); if (page > maximum) setPage(maximum);}
   if (!runId) return <div className="text-xs text-muted-foreground">No run selected.</div>;
   if (error) return <div role="alert">Could not load delivery history. <Button onClick={() => void refetch()}>Retry delivery history</Button></div>;
   if (isLoading) return <div className="text-xs text-muted-foreground">Loading...</div>;
@@ -69,8 +79,9 @@ export function ReportDeliveryLogPanel({ runId }: ReportDeliveryLogPanelProps) {
 
   return (
     <div className="space-y-2">
+      {data && <TablePagination page={page} pageSize={pageSize} totalPages={Math.max(1, Math.ceil(data.totalCount / pageSize))} total={data.totalCount} onPage={setPage} onPageSize={size => {setPage(1); setPageSize(size);}}/>}
       {logs.map((log) => {
-        const statusCfg = STATUS_ICONS[log.delivery_status] ?? STATUS_ICONS.failed;
+        const statusCfg = log.delivery_status ? STATUS_ICONS[log.delivery_status] : {icon: Clock, color: "text-muted-foreground", label: "Status not recorded"};
         const StatusIcon = statusCfg.icon;
 
         return (
@@ -102,7 +113,7 @@ export function ReportDeliveryLogPanel({ runId }: ReportDeliveryLogPanelProps) {
                 {format(new Date(log.sent_at), "dd MMM yyyy HH:mm:ss")}
               </div>
             )}
-            {log.error_message && (
+            {log.hasError && (
               <div className="text-destructive">Delivery failed. Ask an authorized administrator to inspect the delivery record.</div>
             )}
           </div>

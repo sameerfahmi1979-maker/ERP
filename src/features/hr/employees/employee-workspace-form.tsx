@@ -444,6 +444,7 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext }: Props) {
           {employee ? (
             <div className="p-4">
               <EmployeeLettersForms
+                authContext={authContext}
                 employeeId={employee.id}
                 employeeName={employee.full_name_en ?? undefined}
               />

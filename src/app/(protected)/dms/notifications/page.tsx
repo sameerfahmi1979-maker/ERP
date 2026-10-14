@@ -14,11 +14,5 @@ export default async function DmsNotificationsPage() {
 
   if (!canView) redirect("/access-denied");
 
-  const isAdmin = hasPermission(ctx, "dms.admin") || hasPermission(ctx, "dms.notifications.manage");
-  const canBridge =
-    hasPermission(ctx, "dms.admin") ||
-    (hasPermission(ctx, "dms.notifications.manage") &&
-      hasPermission(ctx, "notifications.email_queue.manage"));
-
-  return <DmsNotificationsPageClient isAdmin={isAdmin} canBridge={canBridge} />;
+  return <DmsNotificationsPageClient authContext={ctx} />;
 }

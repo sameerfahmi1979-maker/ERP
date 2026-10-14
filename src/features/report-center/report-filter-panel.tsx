@@ -4,28 +4,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Search, RotateCcw } from "lucide-react";
-import { ERPCombobox } from "@/components/erp/combobox";
-import type { ERPComboboxOption } from "@/components/erp/combobox";
 import { ValidatedTaskForm } from "@/components/workspace/validated-task-form";
-
-export interface FilterLookupOption {
-  value: number;
-  label: string;
-  code?: string;
-}
-
-/** Lookup data map keyed by filter field key */
-export type FilterLookupMap = Partial<
-  Record<
-    | "employee_id"
-    | "owner_company_id"
-    | "department_id"
-    | "branch_id"
-    | "designation_id"
-    | "work_site_id",
-    FilterLookupOption[]
-  >
->;
+import type {ReportCriteriaControl} from "@/hooks/use-report-criteria";
+import {ReportCriterionPicker} from "./report-criterion-picker";
+import {reportCriterionKeySchema} from "@/lib/reads/report-criteria-schema";
 
 interface FilterField {
   key: string;
@@ -41,29 +23,8 @@ interface ReportFilterPanelProps {
   onReset: () => void;
   isLoading: boolean;
   fields?: FilterField[];
-  /** Lookup options for entity ID fields (employee_id, owner_company_id, etc.) */
-  lookups?: FilterLookupMap;
-  lookupsLoading?: boolean;
+  criteria?: ReportCriteriaControl;
 }
-
-/** Entity filter keys that support combobox lookup */
-const ENTITY_KEYS = new Set<string>([
-  "employee_id",
-  "owner_company_id",
-  "department_id",
-  "branch_id",
-  "designation_id",
-  "work_site_id",
-]);
-
-const LOOKUP_KEY_MAP: Record<string, keyof FilterLookupMap> = {
-  employee_id: "employee_id",
-  owner_company_id: "owner_company_id",
-  department_id: "department_id",
-  branch_id: "branch_id",
-  designation_id: "designation_id",
-  work_site_id: "work_site_id",
-};
 
 const DEFAULT_FIELDS: FilterField[] = [
   { key: "date_from", label: "Date From", type: "date" },
@@ -78,11 +39,11 @@ export function ReportFilterPanel({
   onReset,
   isLoading,
   fields = DEFAULT_FIELDS,
-  lookups,
-  lookupsLoading = false,
+  criteria,
 }: ReportFilterPanelProps) {
+  const missingCriteria = fields.some(field => {const key = reportCriterionKeySchema.safeParse(field.key); return key.success && !criteria?.fields[key.data];});
   return (
-    <ValidatedTaskForm className="border rounded-sm bg-card p-4" onSubmit={async()=>{ if(!isLoading&&!lookupsLoading) onRun(); }}>
+    <ValidatedTaskForm className="border rounded-sm bg-card p-4" onSubmit={async()=>{ if(!isLoading&&!missingCriteria&&(!criteria||criteria.canRunNow())) onRun(); }}>
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-foreground">Filters</h3>
         <Button
@@ -100,64 +61,10 @@ export function ReportFilterPanel({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-4">
         {fields.map((field) => {
-          const lookupKey = LOOKUP_KEY_MAP[field.key];
-          const lookupOptions = lookupKey ? (lookups?.[lookupKey] ?? null) : null;
-          const isEntityField = ENTITY_KEYS.has(field.key);
-
-          // Entity field with lookup data → ERPCombobox
-          if (isEntityField && lookupOptions !== null) {
-            const comboOptions: ERPComboboxOption[] = lookupOptions.map((o) => ({
-              value: o.value,
-              label: o.label,
-              code: o.code ?? null,
-            }));
-
-            return (
-              <div key={field.key} className="space-y-1">
-                <Label className="text-xs text-muted-foreground">
-                  {field.label}
-                </Label>
-                <ERPCombobox
-                  ariaLabel={field.label}
-                  value={filters[field.key] ? Number(filters[field.key]) : null}
-                  onValueChange={(v) =>
-                    onFilterChange(field.key, v !== null ? String(v) : "")
-                  }
-                  options={comboOptions}
-                  placeholder={`Select ${field.label.toLowerCase()}...`}
-                  allowClear
-                  loading={lookupsLoading}
-                  showCode
-                  maxVisibleOptions={50}
-                />
-              </div>
-            );
-          }
-
-          // Entity field without lookup data yet → text input as fallback
-          if (isEntityField) {
-            return (
-              <div key={field.key} className="space-y-1">
-                <Label className="text-xs text-muted-foreground">
-                  {field.label}
-                  {lookupsLoading && (
-                    <span className="ml-1 text-[9px] text-muted-foreground">
-                      (loading…)
-                    </span>
-                  )}
-                </Label>
-                <Input
-                  aria-label={field.label}
-                  type="text"
-                  value={filters[field.key] ?? ""}
-                  onChange={(e) => onFilterChange(field.key, e.target.value)}
-                  placeholder="ID…"
-                  className="h-8 text-xs"
-                  disabled={lookupsLoading}
-                />
-              </div>
-            );
-          }
+          const lookupKey = reportCriterionKeySchema.safeParse(field.key);
+          const control = lookupKey.success && criteria?.fields[lookupKey.data];
+          if (control) return <ReportCriterionPicker key={field.key} label={field.label} control={control} hasValue={!!filters[field.key]} disabled={isLoading} />;
+          if (lookupKey.success) return <div key={field.key}><Label>{field.label}</Label><p role="alert">Choices are unavailable. Reload this report.</p></div>;
 
           // Standard select field
           if (field.type === "select") {
@@ -208,7 +115,7 @@ export function ReportFilterPanel({
         })}
       </div>
 
-      <Button type="submit" size="sm" disabled={isLoading || lookupsLoading} className="gap-1.5">
+      <Button type="submit" size="sm" disabled={isLoading || missingCriteria || !!criteria && !criteria.canRun} className="gap-1.5">
         <Search className="h-3.5 w-3.5" />
         {isLoading ? "Running…" : "Run Report"}
       </Button>

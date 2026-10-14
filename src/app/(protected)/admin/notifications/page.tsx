@@ -1,29 +1,16 @@
-import { Metadata } from "next";
-import { redirect } from "next/navigation";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { getAllNotifications } from "@/server/actions/notifications/notifications";
-import { AdminNotificationsPageClient } from "@/features/notifications/admin/admin-notifications-page-client";
-
+import type {Metadata} from "next";
+import {redirect} from "next/navigation";
+import {getAuthContext, hasPermission} from "@/lib/rbac/check";
+import {readNotifications} from "@/server/reads/notifications";
+import {notificationReadIdentity} from "@/lib/reads/notifications-schema";
+import {AdminNotificationsPageClient} from "@/features/notifications/admin/admin-notifications-page-client";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-export const metadata: Metadata = {
-  title: "Notification Center | ERP Admin",
-  description: "All ERP in-app and email notifications.",
-};
-
+export const metadata: Metadata = {title: "Notification Center | ERP Admin", description: "All permitted ERP notifications."};
 export default async function AdminNotificationsPage() {
   const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "notifications.admin") && !hasPermission(ctx, "notifications.manage")) {
-    redirect("/access-denied");
-  }
-
-  const result = await getAllNotifications({ limit: 300 });
-  const notifications = result.success ? (result.data ?? []) : [];
-
-  return (
-    <div className="p-6 space-y-4">
-      <AdminNotificationsPageClient initialNotifications={notifications} initialError={!result.success} />
-    </div>
-  );
+  if (!hasPermission(ctx, "notifications.admin") && !hasPermission(ctx, "notifications.manage")) redirect("/access-denied");
+  const result = await readNotifications({audience: "admin"}, ctx);
+  return <div className="p-6 space-y-4"><AdminNotificationsPageClient authContext={ctx} audience="admin"
+    initialIdentity={notificationReadIdentity(ctx)} initialUpdatedAt={result.success ? result.updatedAt : undefined} initialPage={result.success ? result.data : undefined}/></div>;
 }

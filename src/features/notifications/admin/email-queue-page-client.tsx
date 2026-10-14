@@ -1,72 +1,38 @@
 "use client";
-
-import { Button } from "@/components/ui/button";
-import type { EmailQueueRow } from "@/server/actions/notifications/email-queue";
-import { getEmailQueue } from "@/server/actions/notifications/email-queue";
-import { Mail, RefreshCw } from "lucide-react";
-import { useCallback, useState, useTransition } from "react";
-import { EmailQueueProcessPanel } from "./email-queue-process-panel";
-import { EmailQueueTable } from "./email-queue-table";
-
-interface EmailQueuePageClientProps {
-  initialItems: EmailQueueRow[];
-  canManage: boolean;
-  canProcess: boolean;
+import {Button} from "@/components/ui/button";
+import {useQuery} from "@tanstack/react-query";
+import {useCountedTableRead} from "@/hooks/use-counted-table-read";
+import {emailQueueCriteriaSchema, emailQueuePageSchema, emailQueueIdentity, EMAIL_QUEUE_STATUSES, type EmailQueueReadPage} from "@/lib/reads/email-queue-schema";
+import {unreadCountSchema} from "@/lib/reads/notifications-schema";
+import {readJson, retryAuthorizedRead} from "@/lib/reads/client";
+import {hasPermission} from "@/lib/rbac/scope";
+import type {AuthContext} from "@/lib/rbac/check";
+import {EmailQueueTable} from "./email-queue-table";
+import {EmailQueueProcessPanel} from "./email-queue-process-panel";
+export type EmailQueuePageProps = {authContext: AuthContext; initialPage?: EmailQueueReadPage; initialIdentity?: string; initialUpdatedAt?: number};
+export function EmailQueuePageClient(props: EmailQueuePageProps) {
+  const identity = emailQueueIdentity(props.authContext);
+  return <EmailQueueView key={identity} {...props} identity={identity}/>;
 }
-
-export function EmailQueuePageClient({ initialItems, canManage, canProcess }: EmailQueuePageClientProps) {
-  const [items, setItems] = useState(initialItems);
-  const [loading, startTransition] = useTransition();
-  const [filter, setFilter] = useState<string>("all");
-
-  const refresh = useCallback(() => {
-    startTransition(async () => {
-      const result = await getEmailQueue({ limit: 200 });
-      if (result.success && result.data) setItems(result.data);
-    });
-  }, []);
-
-  const filtered = filter === "all" ? items : items.filter((i) => i.status === filter);
-  const pendingCount = items.filter((i) => i.status === "pending").length;
-
-  const statusCounts = ["pending", "processing", "sent", "failed", "cancelled"].reduce((acc, s) => {
-    acc[s] = items.filter((i) => i.status === s).length;
-    return acc;
-  }, {} as Record<string, number>);
-
-  return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Mail className="h-6 w-6 text-primary" />
-          <div>
-            <h1 className="text-xl font-semibold">Email Queue</h1>
-            <p className="text-sm text-muted-foreground">
-              Global ERP outbound email queue — {items.length} total, {pendingCount} pending
-            </p>
-          </div>
-        </div>
-        <Button variant="ghost" size="icon" onClick={refresh} disabled={loading} title="Refresh">
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-        </Button>
-      </div>
-
-      {canProcess && <EmailQueueProcessPanel pendingCount={pendingCount} onRefresh={refresh} />}
-
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {["all", ...Object.keys(statusCounts)].map((s) => (
-          <button
-            key={s}
-            onClick={() => setFilter(s)}
-            className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors border
-              ${filter === s ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground border-border hover:bg-muted"}`}
-          >
-            {s === "all" ? `All (${items.length})` : `${s} (${statusCounts[s] ?? 0})`}
-          </button>
-        ))}
-      </div>
-
-      <EmailQueueTable items={filtered} onRefresh={refresh} />
-    </div>
-  );
+function EmailQueueView(props: EmailQueuePageProps & {identity: string}) {
+  const allowed = ["notifications.email_queue.view", "notifications.email_queue.manage", "notifications.admin"].some(code => hasPermission(props.authContext, code));
+  const canManage = ["notifications.email_queue.manage", "notifications.admin"].some(code => hasPermission(props.authContext, code));
+  const canProcess = ["notifications.email_queue.process", "notifications.admin"].some(code => hasPermission(props.authContext, code));
+  const read = useCountedTableRead({resource: "email-queue", prefix: ["notifications", "email-queue"], identity: props.identity, allowed,
+    seed: props.initialPage, seedIdentity: props.initialIdentity, seedUpdatedAt: props.initialUpdatedAt, defaultSort: [{id: "id", desc: true}],
+    parseCriteria: input => {const parsed = emailQueueCriteriaSchema.safeParse(input); return parsed.success ? parsed.data : null;},
+    parsePage: input => emailQueuePageSchema.parse(input),
+    filters: [{id: "status", label: "Status", type: "select", options: EMAIL_QUEUE_STATUSES.map(value => ({value, label: value}))},
+      {id: "priority", label: "Priority", type: "select", options: ["low", "normal", "high", "urgent"].map(value => ({value, label: value}))}, {id: "sourceModule", label: "Module", type: "text"}],
+  });
+  const pending = useQuery({queryKey: ["notifications", "email-queue", props.identity, "pending-count"], enabled: allowed && !read.denied && canProcess, staleTime: 30000, gcTime: 0, retry: retryAuthorizedRead,
+    queryFn: async ({signal}) => {const result = await readJson<{success: true; data: unknown}>("email-pending-count", {}, signal); return unreadCountSchema.parse(result.data).count;}});
+  if (read.denied) return <p role="alert">Email queue access could not be verified.</p>;
+  return <div className="space-y-4"><div className="flex flex-wrap items-center justify-between gap-2"><h1 className="text-xl font-semibold">Email Queue</h1><Button variant="outline" onClick={read.refresh}>Refresh queue</Button></div>
+    <p className="text-sm text-muted-foreground">Filters and search cover all permitted entries. Delivery status is not proof of inbox receipt. Message bodies, CC/BCC and raw provider errors are not loaded into this list.</p>
+    {read.failed && <p role="alert">Email queue could not be verified. Use Refresh queue to retry.</p>}
+    {canProcess && (read.canAct() && pending.isSuccess && !pending.isFetching ? <EmailQueueProcessPanel pendingCount={pending.data} onRefresh={read.refresh} canQueue={canManage}/> : <p>Queue processing unavailable until the list and pending count are verified.</p>)}
+    <EmailQueueTable items={read.rows} onRefresh={read.refresh} canManage={canManage} canProcess={canProcess} canAct={read.canAct} disabled={read.busy || read.failed}
+      serverRead={read.serverRead}/>
+  </div>;
 }

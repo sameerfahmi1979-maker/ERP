@@ -115,6 +115,70 @@ Application and database changes must be released together only under a separate
 
 ## Verification
 
+### Item 4 continuation: reporting and notification reads — not closed
+
+This draft adds counted, ordinary-caller reads for report criteria, saved filters,
+history/detail and delivery history; own/admin notifications; email queues;
+notification delivery logs/templates; and DMS notifications. List search, filters,
+sorting and totals apply to the authorized result set, not the loaded page. Large
+report outputs are not replaced by list pages. Metadata lists exclude saved-filter
+bodies, notification template wording and email bodies; authorized wording/detail
+is fetched for one explicitly selected record. Diagnostic text is reduced to safe
+indicators. Provider acceptance is not represented as proof of inbox receipt.
+
+The notification bell reads a head-only unread count and fetches its ten-row
+preview only while opened. Protected page/query lifetimes retire stale results,
+disable actions on failed/denied reads and fence late account-bound callbacks.
+Queue processing, scheduling, business notifications and provider delivery remain
+the existing mutation implementation. F09 stays disabled.
+
+Both Report Center and Employee Letters use the counted template-picker contract.
+**Positive native template-selection acceptance is blocked:** its invoker view
+requires the separately reviewed F06 branding projection and ownership helper.
+The SQL in `tooling/performance/contracts/report-template-selection-proposal.sql`
+is deliberately inert. Do not execute it, substitute a privileged/raw-branding
+fallback, deploy this draft, or treat a missing-view 503 test as positive acceptance.
+An immutable F06 handoff and exact schema composition are required before closure.
+
+Five executable item-4 migrations introduce metadata projections,
+statement-constant permission evaluation and a guarded DMS notification subject
+set. Existing protected document readers remain unchanged. The original ALL
+notification write/subject policies are split into command-specific policies:
+the original INSERT/UPDATE/DELETE predicates are retained exactly, while SELECT
+uses the same authorized document set. This set includes authorized documents
+without notifications, preserving INSERT/UPDATE RETURNING behavior. Restrictive
+principal policies, roles and grants remain. Exact function/policy preimages are
+mandatory. Labels point-read the same caller-RLS document table once per distinct
+authorized notification parent; they do not use privileged labels.
+Native tests use tracked synthetic records and must restore exact schema/data and
+revoke their own sessions. SQL/route-handler measurements are not browser timings.
+
+Apply the five item-4 migrations in timestamp order only after reconciling the
+reviewed prerequisite schema. For backout, first restore the matching prior app;
+drop only the added projections, restore the captured nine original policy
+expressions and four original DMS notification policies, then remove the two
+new private read helpers. Do not alter existing protected reader functions or
+use CASCADE. This is a candidate/backout contract, not deployment authorization.
+
+Unrouted `ReportDeliveryLogFullPage` remains an explicitly capped legacy component,
+not an adopted route. Legacy list actions with no current UI consumers remain
+compatibility code, not an additional optimized API guarantee. Template/branding
+administration belongs to F06; final document generation to F08; scheduling and
+delivery redesign to deferred F09. These are not silently counted as item-4 passes.
+
+Status and source-bound test/publication evidence are maintained in the private
+acceptance register. Publication of this draft is not item-4 closure or release
+approval. No main merge, deployment or production mutation is authorized.
+
+The item-4 laboratory checkpoint passes 629 focused tests, 12 native
+PostgREST/in-process route-handler cases, eight-actor before/after read and write
+parity, and 18 migration guard cases plus exact composition rollback. The wider
+remediation run passes 838 tests. These are distinct source-bound receipts, not
+one combined test run. Native fixtures are restored and own test sessions revoked.
+The native missing-F06-view case is a negative fail-closed assertion only. Final
+exact-head engineering checks belong to the draft PR; they cannot satisfy the
+still-open positive F06 template-selection integration gate.
+
 Run the P04 Vitest configuration and its TypeScript project, the existing P01/P02/P03 suites, the complete remediation and unit suites, shipping/E2E types, lint, build and security gates. CI includes the P04 offline suite and local-harness typecheck.
 
 The p04.local.config.mts suite is opt-in only. It requires a fresh, explicitly admitted synthetic loopback lab with providers/workers disabled, a matching environment hash and synthetic accounts. It refuses other destinations and never runs in ordinary CI. It compares all fifteen active configuration identity sets for three actors and checks archive access for four actors. Empty archive results do not establish nonempty replacement or restore acceptance.

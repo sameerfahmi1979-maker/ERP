@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useTransition, useRef } from "react";
+import { useState, useTransition, useRef, useLayoutEffect } from "react";
+import type {ERPTableServerRead} from "@/components/erp/table/erp-table-types";
+import {TablePagination} from "@/components/erp/table/table-pagination";
 import Link from "next/link";
 import { ERPDataTable } from "@/components/erp/table/erp-data-table";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -360,22 +362,28 @@ interface MyNotificationsTableProps {
   onRefresh: () => void;
   activeTab: string;
   disabled?: boolean;
+  serverRead?: ERPTableServerRead<NotificationRowData>;
+  canAct?: () => boolean;
 }
 
-export function MyNotificationsTable({ notifications, onRefresh, activeTab, disabled = false }: MyNotificationsTableProps) {
+export function MyNotificationsTable({ notifications, onRefresh, activeTab, disabled = false, serverRead, canAct }: MyNotificationsTableProps) {
   const [isPending, startTransition] = useTransition();
   const [actingId, setActingId] = useState<number | null>(null);
   const flight = useRef(false);
+  const lifetime = useRef(false), current = useRef(canAct);
+  useLayoutEffect(() => {lifetime.current = true; return () => {lifetime.current = false;};}, []);
+  useLayoutEffect(() => {current.current = canAct;});
   const queryClient = useQueryClient();
   const [view, setView] = usePersistentUiState<"list" | "cards">("notifications:view", "list");
 
   const handleAction = (id: number, fn: () => Promise<{ success: boolean; error?: string }>, label: string) => {
-    if (flight.current || disabled) return;
+    if (flight.current || disabled || !lifetime.current || current.current && !current.current() || !notifications.some(n => n.id === id)) return;
     flight.current = true;
     setActingId(id);
     startTransition(async () => {
       try {
       const result = await fn();
+      if (!lifetime.current) return;
       if (result.success) {
         toast.success(label);
         invalidateMyNotifications(queryClient);
@@ -383,8 +391,8 @@ export function MyNotificationsTable({ notifications, onRefresh, activeTab, disa
       } else {
         toast.error(result.error ?? "Action failed");
       }
-      } catch { toast.error("The change could not be confirmed. Refresh notifications before retrying."); }
-      finally { setActingId(null); flight.current = false; }
+      } catch { if (lifetime.current) toast.error("The change could not be confirmed. Refresh notifications before retrying."); }
+      finally { if (lifetime.current) setActingId(null); flight.current = false; }
     });
   };
 
@@ -403,8 +411,13 @@ export function MyNotificationsTable({ notifications, onRefresh, activeTab, disa
       </div>;
     }},
   ];
-  const viewControls=<div className="flex flex-wrap items-center gap-2"><Button variant={view==="list"?"default":"outline"} aria-pressed={view==="list"} onClick={()=>setView("list")}>List</Button><Button variant={view==="cards"?"default":"outline"} aria-pressed={view==="cards"} onClick={()=>setView("cards")}>Cards</Button><span className="text-xs text-muted-foreground">Use List to search, edit columns and filter loaded notifications.</span></div>;
-  if(view==="list")return <div className="space-y-3">{viewControls}<ERPDataTable tableId="notifications.my" data={notifications} columns={columns} enableRowSelection={false} searchPlaceholder="Search loaded notifications…" emptyMessage="No loaded notifications match this view."/></div>;
+  const viewControls=<div className="space-y-2"><div className="flex flex-wrap items-center gap-2"><Button variant={view==="list"?"default":"outline"} aria-pressed={view==="list"} onClick={()=>setView("list")}>List</Button><Button variant={view==="cards"?"default":"outline"} aria-pressed={view==="cards"} onClick={()=>setView("cards")}>Cards</Button><span className="text-xs text-muted-foreground">Use List to search, edit columns and filter {serverRead ? "all permitted" : "loaded"} notifications. Cards group only this page.</span></div>
+    {view === "cards" && serverRead && <><label className="block text-sm">Search notifications<input className="ml-2 rounded border p-2" value={serverRead.globalFilter} onChange={event => serverRead.onGlobalFilterChange(event.target.value)} /></label>
+      {serverRead.totalCount !== null && !disabled ? <TablePagination page={serverRead.pagination.pageIndex + 1} pageSize={serverRead.pagination.pageSize} total={serverRead.totalCount} totalPages={Math.max(1, Math.ceil(serverRead.totalCount / serverRead.pagination.pageSize))}
+        onPage={page => serverRead.onPaginationChange({...serverRead.pagination, pageIndex: page - 1})} onPageSize={pageSize => serverRead.onPaginationChange({pageIndex: 0, pageSize})}/> : <p>Page count unavailable</p>}</>}
+  </div>;
+  if(view==="list")return <div className="space-y-3">{viewControls}<ERPDataTable tableId="notifications.my" data={notifications} columns={columns} serverRead={serverRead} isLoading={disabled} enableRowSelection={false} searchPlaceholder={serverRead ? "Search notifications…" : "Search loaded notifications…"} emptyMessage="No notifications match this view."/></div>;
+  if (disabled) return <div className="space-y-3">{viewControls}<p>Notifications could not yet be verified. Check the read status or retry.</p></div>;
   if (notifications.length === 0) return <div className="space-y-3">{viewControls}<EmptyState tab={activeTab}/></div>;
 
   // Pull critical/urgent unread items out as spotlight

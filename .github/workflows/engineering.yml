@@ -11,7 +11,8 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Full P01-P04 and remediation coverage can exceed 20m on slower runners.
+    timeout-minutes: 35
     env:
       # Build placeholders only; never connect CI to the production database.
       NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:16421

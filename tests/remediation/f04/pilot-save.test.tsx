@@ -25,7 +25,22 @@ vi.mock("@/hooks/use-workspace", () => ({ useWorkspace: () => ({
   closeTab:mock.closeTab, markDirty:mock.markDirty, updateTabRoute:mock.updateTabRoute, isTabActive: (id:string) => id === mock.active,
 })}));
 vi.mock("sonner", () => ({ toast: {error:mock.error, success:vi.fn()} }));
-vi.mock("@tanstack/react-query", () => ({useQuery: () => ({data: undefined})}));
+// Controller regression tests stub successful read admission; P04 tests cover
+// the real hooks, failure/denial and cache-lifetime behavior independently.
+vi.mock('@tanstack/react-query', async importOriginal => {
+ const actual = await importOriginal<typeof import('@tanstack/react-query')>();
+ const client = new actual.QueryClient();
+ return {...actual, useQuery: () => ({data:undefined}), useQueryClient: () => client};
+});
+vi.mock('@/hooks/use-hr-candidate-record',()=>({
+ candidateRecordKey:(id:number,identity:string)=>['hr','recruitment','candidate',id,identity],
+ useHrCandidateRecord:(id:number|null)=>({identity:'f04-controller-fixture',owner:'f04-controller-fixture:'+id,
+  denied:false,verified:!!id,evidenceUpdatedAt:1,retire:()=>{},query:{isError:false,isFetching:false},
+  data:id?{candidate:{id,workspace_revision:1,full_name_en:'Saved',candidate_status:'new',requisition_id:null},
+   salaryAccess:{canView:false,canManage:false,canManageCandidate:true}}:undefined}),
+ useCandidateSalaryAccess:()=>({denied:false,query:{isError:false,isFetching:false},
+  data:{canView:false,canManage:false,canManageCandidate:true}}),
+}));
 vi.mock("@/server/actions/common-master-data/departments", () => ({createDepartment:mock.create, updateDepartment:mock.update}));
 vi.mock("@/server/actions/hr/employees", () => ({createEmployee:mock.create, updateEmployee:mock.update}));
 vi.mock("@/server/actions/hr/recruitment", () => ({createCandidate:mock.create, updateCandidate:mock.update, getRecruitmentSalaryAccess:vi.fn()}));
@@ -81,7 +96,7 @@ import { DepartmentWorkspaceForm } from "@/features/common-master-data/departmen
 import { CandidateWorkspaceForm } from "@/features/hr/recruitment/candidate-workspace-form";
 import { EmployeeWorkspaceForm } from "@/features/hr/employees/employee-workspace-form";
 
-const auth = {permissionCodes:["hr.recruitment.manage"], roleCodes:[]} as AuthContext;
+const auth = {profile:{id:1,auth_user_id:'f04-synthetic',must_change_password:false},accountStatus:'active',isAccountActive:true,permissionCodes:['hr.recruitment.manage'],roleCodes:[]} as AuthContext;
 beforeEach(() => {
   vi.clearAllMocks();
   mock.store = createWorkspaceDraftStore();

@@ -13,6 +13,25 @@ vi.mock("@/server/actions/email",()=>({sendExportEmail:()=>{throw Error("Deliver
 vi.mock("@/server/actions/audit",()=>({logAudit:(entry:{entity_id?:number})=>{if(!entry.entity_id||!state.writeIds.has(entry.entity_id))throw Error("Only registered synthetic archive fixtures may be audited");}}));
 vi.mock("@/lib/dms/review-queue/review-queue-upsert",()=>({isDmsAiReviewEnabled:async()=>true,createDmsReviewQueueNotification:()=>{throw Error("No delivery");},upsertDmsReviewQueueItem:()=>{throw Error("No queue mutation");}}));
 import {readDmsSection} from "@/server/reads/dms-section";
+import {POST as hrOperationsRoute} from "@/app/api/reads/hr-operations/route";
+import {HR_OPERATIONS_CONFIG, HR_OPERATIONS_KINDS} from "@/lib/reads/hr-operations-schema";
+import {POST as hrTimeRoute} from "@/app/api/reads/hr-time/route";
+import {HR_TIME_CONFIG, HR_TIME_KINDS} from "@/lib/reads/hr-time-schema";
+import {readPayrollInquiry} from "@/server/reads/hr-payroll-inquiries";
+import {readPayrollPoint, readPayrollRecords} from "@/server/reads/hr-payroll-records";
+import {readHrOperationRecords} from "@/server/reads/hr-operation-records";
+import {readHrActionRecords} from "@/server/reads/hr-action-records";
+import {readHrComplianceRecords} from "@/server/reads/hr-compliance-records";
+import {readHrTimeRecords} from "@/server/reads/hr-time-records";
+import {readEmployeeOverview} from "@/server/reads/employee-overview";
+import {readRecruitmentInquiry} from "@/server/reads/hr-recruitment-inquiries";
+import {readCandidateChildren} from "@/server/reads/hr-candidate-children";
+import {readCandidateRecord} from "@/server/reads/hr-candidate-record";
+import {readCandidateSummary} from "@/server/reads/hr-recruitment-summary";
+import {readHrLinkedDocuments} from "@/server/reads/hr-linked-documents";
+import {readHrDocumentChoices} from "@/server/reads/hr-document-choices";
+import {readHrRecordChoices} from "@/server/reads/hr-record-choices";
+import {readHrTimeChoices} from "@/server/reads/hr-time-choices";
 import {getAuthContext,hasPermission} from "@/lib/rbac/check";
 import {getDmsReviewQueueItems,getDmsReviewQueueCounts,getDmsReviewQueueItem} from "@/server/actions/dms/review-queue";
 import {readDmsInboxPage} from "@/server/reads/dms-inbox";
@@ -34,6 +53,104 @@ const clients=new Map<string,SupabaseClient>(),samples:Record<string,unknown>[]=
 const actualFetch=globalThis.fetch;
 let output="",signoutFailures=0;
 const required=(key:string)=>{const v=process.env[key];if(!v)throw Error("Explicit local admission required");return v;};
+it("HR item 3 compliance linked documents and dependent medical masking are populated and scoped",async()=>{
+ const marker="PERF-P04-HR-LINK-"+Date.now(),journal=output+".hr-linked-fixtures.json";
+ let documents:number[]=[],roleId:number|null=null;
+ const save=(status:string)=>fs.writeFileSync(journal,JSON.stringify({marker,project:"algt-perf-local",documents,roleId,status,productionWrites:0},null,2));
+ save("REGISTERED_BEFORE_CREATE");
+ try{
+  const employee=await state.admin.from("employees").select("id,owner_company_id,branch_id").eq("id",880301).single();expect(employee.error).toBeNull();
+  const dependent=await state.admin.from("employee_dependents").select("id").eq("id",1214001).eq("employee_id",880301).single();expect(dependent.error).toBeNull();
+  const basis=await state.admin.from("dms_documents").select("document_type_id,category_id").is("deleted_at",null).eq("owning_company_id",employee.data!.owner_company_id).order("id").limit(1);expect(basis.error).toBeNull();expect(basis.data).toHaveLength(1);
+  const collision=await state.admin.from("dms_documents").select("id",{count:"exact"}).like("document_no",marker+"-%");expect(collision.error).toBeNull();expect(collision.count).toBe(0);
+  const made=await state.admin.from("dms_documents").insert(["A","B","C"].map(suffix=>({...basis.data![0],document_no:marker+"-"+suffix,title:marker+" "+suffix,status:"active",confidentiality_level:suffix==="C"?"executive":"internal",owning_company_id:employee.data!.owner_company_id,owning_branch_id:employee.data!.branch_id}))).select("id,document_no").order("document_no");
+  expect(made.error,made.error?.message).toBeNull();expect(made.data).toHaveLength(3);documents=made.data!.map(row=>row.id);save("DOCUMENTS_CREATED");
+  const links=await state.admin.from("dms_document_links").insert(documents.map((id,index)=>({document_id:id,entity_type:index===1?"employee_dependent":"employee",entity_id:index===1?1214001:880301,notes:marker}))).select("id");expect(links.error,links.error?.message).toBeNull();expect(links.data).toHaveLength(3);save("LINKS_CREATED");
+  for(const actor of ["admin","company","branch","none"]){
+   state.client=clients.get(actor)!;
+   const linked=await readHrLinkedDocuments({employeeId:880301});
+   if(actor==="none"){expect(linked.success).toBe(false);continue;}
+   expect(linked.success,actor+":"+linked.error).toBe(true);
+   expect(linked.data!.rows.some(row=>row.document_id===documents[0])).toBe(true);
+   expect(linked.data!.rows.some(row=>row.document_id===documents[2])).toBe(actor==="admin");
+   expect(linked.data!.rows.some(row=>row.document_id===documents[1])).toBe(false);
+   const child=await readHrLinkedDocuments({employeeId:880301,dependentId:1214001});expect(child.success,child.error).toBe(true);
+   expect(child.data!.rows.filter(row=>documents.includes(row.document_id)).map(row=>row.document_id)).toEqual([documents[1]]);
+   expect((await readHrLinkedDocuments({employeeId:880302,dependentId:1214001})).success).toBe(false);
+   samples.push({actor,resource:"populated-employee-dependent-links",visibleEmployee:true,dependentBound:true,executiveVisible:actor==="admin"});
+  }
+  // Give only this synthetic no-role actor scoped HR/compliance read access.
+  // No medical permission is assigned; existing assignments remain untouched.
+  state.client=clients.get("none")!;const profileId=(await getAuthContext()).profile!.id;
+  const permissions=await state.admin.from("permissions").select("id,permission_code").in("permission_code",["hr.employees.view","hr.compliance.view"]).eq("is_active",true);expect(permissions.error).toBeNull();expect(permissions.data).toHaveLength(2);
+  const role=await state.admin.from("roles").insert({role_code:marker,role_name:marker,is_system_role:false}).select("id").single();expect(role.error).toBeNull();roleId=role.data!.id;save("MEDICAL_MASK_ROLE_CREATED");
+  const reservedGrants=[1229001,1229002];const priorGrants=await state.admin.from("role_permissions").select("id",{count:"exact"}).in("id",reservedGrants);expect(priorGrants.error).toBeNull();expect(priorGrants.count).toBe(0);
+  expect((await state.admin.from("role_permissions").insert(permissions.data!.map((p,index)=>({id:reservedGrants[index],role_id:roleId,permission_id:p.id})))).error).toBeNull();
+  expect((await state.admin.from("user_roles").insert({user_profile_id:profileId,role_id:roleId,owner_company_id:employee.data!.owner_company_id,branch_id:employee.data!.branch_id})).error).toBeNull();save("SCOPED_NONMEDICAL_ROLE_ASSIGNED");
+  const masked=await readHrComplianceRecords({kind:"dependents",employeeId:880301,operation:"detail",recordId:1214001});expect(masked.success,masked.success?undefined:masked.error).toBe(true);
+  if(!masked.success||!('row'in masked.data))throw Error("Expected populated dependent detail");
+  expect(masked.data.access.medicalView).toBe(false);
+  for(const key of ["medical_insurance_provider","medical_insurance_policy","medical_insurance_card","medical_insurance_expiry"])expect((masked.data.row as Record<string,unknown>)[key]).toBeNull();
+  expect(JSON.stringify(masked)).not.toContain("PRIVATE_SYNTHETIC_MEDICAL");
+  state.client=clients.get("company")!;const visible=await readHrComplianceRecords({kind:"dependents",employeeId:880301,operation:"detail",recordId:1214001});expect(visible.success).toBe(true);
+  if(!visible.success||!('row'in visible.data))throw Error("Expected medical-authorized dependent detail");
+  expect(visible.data.access.medicalView).toBe(true);expect((visible.data.row as Record<string,unknown>).medical_insurance_provider).toBe("PRIVATE_SYNTHETIC_MEDICAL_PROVIDER");
+  samples.push({resource:"dependent-medical-mask",nonmedicalFieldsNull:true,medicalAuthorizedPositive:true});
+ }finally{
+  // Recover only the registered unique marker if an insert response was lost.
+  const ownedRoles=await state.admin.from("roles").select("id").eq("role_code",marker);expect(ownedRoles.error).toBeNull();expect(ownedRoles.data!.length).toBeLessThanOrEqual(1);
+  for(const role of ownedRoles.data!){for(const table of ["user_roles","role_permissions"]){expect((await state.admin.from(table).delete().eq("role_id",role.id)).error).toBeNull();expect((await state.admin.from(table).select("id",{count:"exact"}).eq("role_id",role.id)).count).toBe(0);}expect((await state.admin.from("roles").delete().eq("id",role.id).eq("role_code",marker)).error).toBeNull();}
+  expect((await state.admin.from("roles").select("id",{count:"exact"}).eq("role_code",marker)).count).toBe(0);
+  const owned=await state.admin.from("dms_documents").select("id").like("document_no",marker+"-%");expect(owned.error).toBeNull();expect(owned.data!.length).toBeLessThanOrEqual(3);documents=owned.data!.map(row=>row.id);
+  if(documents.length){
+   expect((await state.admin.from("dms_document_links").delete().in("document_id",documents).eq("notes",marker)).error).toBeNull();
+   expect((await state.admin.from("dms_document_links").select("id",{count:"exact"}).in("document_id",documents)).count).toBe(0);
+   expect((await state.admin.from("dms_document_events").delete().in("document_id",documents)).error).toBeNull();
+   expect((await state.admin.from("dms_documents").delete().in("id",documents).like("document_no",marker+"-%")).error).toBeNull();
+  }
+  expect((await state.admin.from("dms_documents").select("id",{count:"exact"}).like("document_no",marker+"-%")).count).toBe(0);save("REMOVED_VERIFIED");
+ }
+},180000);
+it("HR item 3 compliance populated pages and overview preserve complete counts",async()=>{
+ for(const actor of ["admin","company","branch","none"]){
+  state.client=clients.get(actor)!;
+  if(actor==="admin"){
+   const started=performance.now(),raw=await state.client.from("employee_identity_documents").select("id",{count:"exact"}).eq("employee_id",880301).is("deleted_at",null).order("id").range(0,99);
+   samples.push({actor,resource:"compliance-identity-minimal-diagnostic",success:!raw.error,count:raw.count,error:raw.error,elapsedMs:Math.round(performance.now()-started)});
+  }
+  for(const kind of ["identity","insurance","dependents","cards","training","medical"]){
+   const start=performance.now(),first=await readHrComplianceRecords({kind,employeeId:880301,operation:"page",pageSize:100});
+   samples.push({actor,resource:"compliance-populated",kind,success:first.success,error:first.success?undefined:first.error,elapsedMs:Math.round(performance.now()-start)});
+   if(actor==="none"){expect(first.success).toBe(false);continue;}
+   expect(first.success,JSON.stringify(first)).toBe(true);if(!first.success)throw Error(first.error);expect(first.data).toMatchObject({totalCount:1107});
+   const last=await readHrComplianceRecords({kind,employeeId:880301,operation:"page",pageSize:100,page:12});expect(last.success,JSON.stringify(last)).toBe(true);if(!last.success)throw Error(last.error);expect(last.data).toMatchObject({totalCount:1107});
+   if(last.success&&"rows"in last.data!){expect(last.data.rows).toHaveLength(7);expect(last.data.rows.every(r=>r.employee_id===880301)).toBe(true);}
+  }
+  if(actor==="none")continue;
+  const summary=await readEmployeeOverview({employeeId:880301,sections:["compliance"]});expect(summary.success,summary.error).toBe(true);expect(summary.data?.sections.compliance?.status).toBe("ready");
+  const section=summary.data?.sections.compliance;if(section?.status==="ready")expect(section.data).toMatchObject({identityDocuments:{total:1107},medicalInsurances:{total:1107},dependents:{total:1107},accessCards:{total:1107},trainingCertificates:{total:1107}});
+  if(actor==="company"||actor==="branch")expect((await readHrComplianceRecords({kind:"identity",employeeId:881407,operation:"page"})).success).toBe(false);
+ }
+},240000);
+it("HR item 3 native schema smoke verifies every employee read family without writes",async()=>{
+ state.client=clients.get("admin")!;
+ const calls:(readonly [string,()=>Promise<{success:boolean;error?:string;data?:unknown}>])[]=[
+  ...["assignments","requirements","readiness","blocks","assets","ppe","accommodation"].map(kind=>[`operations:${kind}`,()=>readHrOperationRecords({kind,employeeId:880301})]as const),
+  ...["pro","actions","performance","disciplinary","notes","approvals","eos"].map(kind=>[`actions:${kind}`,()=>readHrActionRecords({kind,employeeId:880301})]as const),
+  ...["identity","insurance","dependents","cards","training","medical"].map(kind=>[`compliance:${kind}`,()=>readHrComplianceRecords({kind,employeeId:880301,operation:"page"})]as const),
+  ...["daily","punches","shifts","leave","balances","overtime"].map(kind=>[`time:${kind}`,()=>readHrTimeRecords({kind,employeeId:880301,operation:"page"})]as const),
+  ...["requisitions","candidates","interviews","offers","onboarding"].map(kind=>[`recruitment:${kind}`,()=>readRecruitmentInquiry({kind})]as const),
+  ...["identity-types","relationships","access-card-types","training-categories","training-types","medical-types"].map(kind=>[`catalog:${kind}`,()=>readHrRecordChoices({kind})]as const),
+  ...["calendars","shifts","leave-types"].map(kind=>[`time-choice:${kind}`,()=>readHrTimeChoices({kind})]as const),
+  ["linked-documents:employee",()=>readHrLinkedDocuments({employeeId:880301})],
+  ["document-choices:library",()=>readHrDocumentChoices({employeeId:880301,mode:"library"})],
+  ["document-choices:wizard",()=>readHrDocumentChoices({employeeId:880301,mode:"wizard"})],
+  ["overview",()=>readEmployeeOverview({employeeId:880301})],
+ ];
+ const failed:string[]=[];
+ for(const [resource,run]of calls){const start=performance.now(),result=await run();samples.push({actor:"admin",resource,success:result.success,error:result.error,elapsedMs:Math.round(performance.now()-start),qualification:"Schema smoke only; empty collections do not prove populated behavior"});if(!result.success)failed.push(resource+":"+result.error);if(resource==="overview"&&result.success){const sections=(result.data as {sections:Record<string,{status:string}>}).sections;for(const [name,section]of Object.entries(sections))if(section.status==="failed")failed.push("overview:"+name);}}
+ expect(failed).toEqual([]);
+},240000);
 beforeAll(async()=>{
  if(process.env.PERF_P04_LOCAL!=="approved-synthetic-only")throw Error("Local admission required");
  const admission=JSON.parse(fs.readFileSync(required("PERF_P04_ADMISSION"),"utf8"));
@@ -62,6 +179,121 @@ const resources:[ConfigurationResource,string,string][]=[
  ["currencies","currencies","is_active"],["banks","banks","is_active"],["paymentTerms","payment_terms","is_active"],["taxTypes","tax_types","is_active"],["uomCategories","uom_categories","is_active"],["unitsOfMeasure","units_of_measure","is_active"],
  ["ownerCompanies","owner_companies","status"],["branches","branches","status"],["costCenters","cost_centers","is_active"],["profitCenters","profit_centers","is_active"],["countries","countries","is_active"],["emirates","emirates","is_active"],["cities","cities","is_active"],["areas","areas_zones","is_active"],["ports","ports","is_active"],
 ];
+it("HR item 3 payroll preserves complete aggregates, scoped pages and confidential fields", async () => {
+ for (const actor of ["admin", "company", "branch", "none"]) {
+  state.client = clients.get(actor)!;
+  for (const kind of ["salary", "wps"] as const) {
+   const started = performance.now();
+   const first = await readPayrollInquiry({kind});
+   samples.push({actor, resource: "hr-payroll", kind, success: first.success, total: first.data?.totalCount, elapsedMs: Math.round(performance.now()-started), error: first.error});
+   if(!first.success && actor!=="none") {
+    const diagnostic=await state.client.rpc("perf_hr_payroll_inquiry",{p_kind:kind,p_page:1,p_page_size:25,p_search:"",p_employee_search:"",p_owner_company_id:null,p_branch_id:null,p_status:null,p_active_hold_only:false,p_column_filters:{},p_sorting:[{id:"full_name_en",desc:false}]});
+    samples.push({actor,resource:"hr-payroll-diagnostic",code:diagnostic.error?.code,message:diagnostic.error?.message,details:diagnostic.error?.details});
+   }
+   if (actor === "none") {expect(first).toMatchObject({success:false,error:"Permission denied"});continue;}
+   expect(first.success, actor+"/"+kind+"/"+first.error).toBe(true);
+   expect(first.data?.totalCount).toBe(actor === "admin" ? 1107 : actor === "company" ? 1103 : 1051);
+   expect(first.data?.rows).toHaveLength(25);
+   const tail = await readPayrollInquiry({kind,page:12,pageSize:100});
+   expect(tail.success,tail.error).toBe(true);expect(tail.data?.rows).toHaveLength(actor==="admin"?7:actor==="company"?3:0);
+   const outside = await readPayrollInquiry({kind,ownerCompanyId:880102});
+   expect(outside.success,outside.error).toBe(true);expect(outside.data?.totalCount).toBe(actor==="admin"?4:0);
+   if(actor==="admin") {
+    const sorted = await readPayrollInquiry({kind,sorting:[{id:kind==="salary"?"gross_salary":"has_active_hold",desc:true}]});
+    expect(sorted.success,sorted.error).toBe(true);
+    if(sorted.data?.kind==="salary") {
+     const point=await readPayrollPoint({kind:"salary-totals",employeeId:880301});expect(point.success,point.error).toBe(true);
+     expect(sorted.data.rows[0]).toMatchObject({employee_id:880301,gross_salary:(point.data?.value as {gross:number}).gross});
+     expect(sorted.data.rows[0].gross_salary).toBeGreaterThanOrEqual(1005);expect(sorted.data.rows[0].gross_salary).toBeLessThan(2000);
+     samples.push({actor,resource:"hr-payroll-complete-total",gross:sorted.data.rows[0].gross_salary});
+    }
+    else expect(sorted.data?.rows[0]).toMatchObject({employee_id:881352,has_active_hold:true,readiness_status:"on_hold"});
+   }
+   expect(JSON.stringify(first.data)).not.toMatch(/SYNTHETIC_PRIVATE|account_number|iban/);
+  }
+  const totals = await readPayrollPoint({kind:"salary-totals",employeeId:880301});
+  if(actor==="none") expect(totals).toMatchObject({success:false,error:"Permission denied"});
+  else {
+   expect(totals.success,totals.error).toBe(true);
+   // If settings RLS hides component kind, the existing calculator's earning
+   // fallback is preserved; independently compare the global and point views.
+   const subject = await state.client.from("employees").select("employee_code").eq("id",880301).single();
+   expect(subject.error).toBeNull();
+   const salary=await readPayrollInquiry({kind:"salary",employeeSearch:subject.data!.employee_code});
+   expect(salary.success,salary.error).toBe(true);
+   expect(salary.data?.rows).toHaveLength(1);
+   expect(salary.data?.rows[0]).toMatchObject({employee_id:880301,gross_salary:(totals.data?.value as {gross:number}).gross});
+   const components=await readPayrollRecords({kind:"salary-components",employeeId:880301,page:11,pageSize:100});
+   expect(components.success,components.error).toBe(true);
+   expect(components.data).toMatchObject({totalCount:1007,page:11});expect(components.data?.rows).toHaveLength(7);
+   const wps=await readPayrollPoint({kind:"wps",employeeId:880301});expect(wps.success,wps.error).toBe(true);
+   expect(JSON.stringify(wps.data)).not.toContain("SYNTHETIC_PRIVATE");
+   if(actor!=="admin") expect(await readPayrollPoint({kind:"profile",employeeId:881404})).toMatchObject({success:false,error:"Permission denied"});
+  }
+ }
+},300000);
+it("HR item 3 time preserves scoped counts, tails, dates and protected labels", async () => {
+ for (const actor of ["admin", "company", "branch", "none"]) {
+  state.client = clients.get(actor)!;
+  for (const kind of HR_TIME_KINDS) {
+   const config = HR_TIME_CONFIG[kind];
+   for (const criteria of [{kind, page: 1}, {kind, page: 5}, {kind, page: 6}, {kind, search: "PERF-E"}, {kind, employeeId: 881404}, {kind, dateFrom: "2026-01-01", dateTo: "2026-01-31"}]) {
+    const response = await hrTimeRoute(new Request("http://127.0.0.1:16801/api/reads/hr-time", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify(criteria)}));
+    const body = await response.json();
+    if (actor === "none" && kind === "leave") {expect(response.status).toBe(403);expect(body.data).toBeUndefined();continue;}
+    expect(response.status, actor + "/" + JSON.stringify(criteria)).toBe(200);
+    const ref = state.client.from(config.table).select("id", {count: "exact"});
+    if (kind !== "attendance") ref.is("deleted_at", null);
+    if (criteria.employeeId) ref.eq("employee_id", criteria.employeeId);
+    if (criteria.dateFrom) ref.gte(config.sort, criteria.dateFrom).lte(kind === "leave" ? "end_date" : config.sort, criteria.dateTo!);
+    const page = criteria.page ?? 1;
+    const independent = await ref.order(config.sort, {ascending: false, nullsFirst: false}).order("id", {ascending: true}).range((page - 1) * 25, page * 25 - 1);
+    if (page <= 5 || actor === "none") {
+     if (independent.status !== 416) {expect(independent.error).toBeNull();expect(body.data.rows.map((r: {id: number}) => r.id)).toEqual(independent.data?.map(r => r.id));expect(body.data.totalCount).toBe(independent.count);}
+    }
+    if (!criteria.employeeId && !criteria.dateFrom) expect(body.data.totalCount).toBe(actor === "none" ? 0 : actor === "admin" ? 110 : actor === "company" ? 108 : 105);
+    if (page === 6) expect(body.data.rows).toEqual([]);
+    if (criteria.employeeId && actor !== "admin") expect(body.data).toMatchObject({rows: [], totalCount: 0});
+    expect(response.headers.get("cache-control")).toBe("private, no-store, max-age=0");
+    samples.push({actor,resource: "hr-time",criteria,status:response.status,total:body.data.totalCount,rows:body.data.rows.length});
+   }
+  }
+ }
+}, 180000);
+it("HR item 3 operations preserve independent authorized counts and page identities", async () => {
+ for (const actor of ["admin", "company", "branch", "none"]) {
+  state.client = clients.get(actor)!;
+  for (const kind of HR_OPERATIONS_KINDS) {
+   const config = HR_OPERATIONS_CONFIG[kind];
+   const started = performance.now();
+   const response = await hrOperationsRoute(new Request("http://127.0.0.1:16801/api/reads/hr-operations", {
+    method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({kind}),
+   }));
+   const body = await response.json();
+   samples.push({actor, resource: "hr-operations", kind, status: response.status, total: body.data?.totalCount, elapsedMs: Math.round(performance.now() - started)});
+   if (actor === "none") { expect(response.status).toBe(403); expect(body.data).toBeUndefined(); continue; }
+   expect(response.status, actor + "/" + kind).toBe(200);
+   const independent = await state.client.from(config.table).select("id", {count: "exact"}).is("deleted_at", null)
+    .order(config.sort, {ascending: false, nullsFirst: false}).order("id", {ascending: true}).range(0, 24);
+   expect(independent.error).toBeNull(); expect(body.data.totalCount).toBe(independent.count);
+   expect(body.data.rows.map((r: {id: number}) => r.id)).toEqual(independent.data?.map(r => r.id));
+   expect(independent.count).toBe(actor === "admin" ? 110 : actor === "company" ? 108 : 105);
+   for (const params of [{kind, page: 5}, {kind, page: 6}, {kind, search: "Synthetic"}, {kind, columnFilters: {employee_id: "881404"}}]) {
+    const checked = await hrOperationsRoute(new Request("http://127.0.0.1:16801/api/reads/hr-operations", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify(params)}));
+    const result = await checked.json(); expect(checked.status, actor + "/" + JSON.stringify(params)).toBe(200);
+    if (typeof params.page === "number") {
+     const ref = await state.client.from(config.table).select("id", {count: "exact"}).is("deleted_at", null).order(config.sort, {ascending: false, nullsFirst: false}).order("id", {ascending: true}).range((params.page - 1) * 25, params.page * 25 - 1);
+     if (params.page === 6) expect(result.data.rows).toEqual([]);
+     else {expect(ref.error).toBeNull();expect(result.data.rows.map((r: {id: number}) => r.id)).toEqual(ref.data?.map(r => r.id));}
+     expect(result.data.totalCount).toBe(independent.count);
+    }
+    if ("columnFilters" in params && actor !== "admin") expect(result.data).toMatchObject({rows: [], totalCount: 0});
+    samples.push({actor,resource: "hr-operations-tail-search-scope",kind,params,status:checked.status,total:result.data.totalCount});
+   }
+   expect(response.headers.get("cache-control")).toBe("private, no-store, max-age=0");
+  }
+ }
+}, 180000);
 it("expiry paging and complete outputs preserve scoped full sets, views, filters and tails",async()=>{
  const call=async(route:typeof expiryPageRoute,params:unknown)=>{
   const start=performance.now();const response=await route(new Request("http://127.0.0.1:16801/api/reads/expiry",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(params)}));
@@ -293,3 +525,62 @@ it("DMS item 2 populated archive replacement restore and cleanup",async()=>{
   }
  }
 },180000);
+it("HR item 3 candidate native record and child reads bind subjects and preserve masked salary",async()=>{
+ state.client=clients.get("admin")!;
+ const first=await state.client.from("hr_candidates").select("id,requisition_id").is("deleted_at",null).order("id").limit(1);
+ expect(first.error).toBeNull();expect(first.data?.length).toBe(1);const candidateId=Number(first.data![0].id);
+ for(const actor of ["admin","company","branch","none"]){
+  state.client=clients.get(actor)!;
+  const start=performance.now(),record=await readCandidateRecord({kind:"record",candidateId});
+  samples.push({actor,resource:"candidate-record",success:record.success,error:record.success?undefined:record.error,elapsedMs:Math.round(performance.now()-start)});
+  if(actor==="none"){expect(record.success).toBe(false);continue;}
+  expect(record.success,JSON.stringify(record)).toBe(true);
+  if(record.success&&record.data?.kind==="record"&&!record.data.salaryAccess.canView)expect(record.data.candidate.expected_salary).toBeNull();
+  const summary=await readCandidateSummary({candidateId});
+  if(!summary.success)for(const table of ["hr_interviews","hr_offers","hr_candidate_documents","hr_onboarding_tasks"]){const r=await state.client.from(table).select("id",{count:"exact",head:true}).eq("candidate_id",candidateId).is("deleted_at",null);samples.push({actor,resource:"candidate-summary-diagnostic",table,count:r.count,error:r.error});}
+  expect(summary.success,JSON.stringify(summary)).toBe(true);
+  for(const [kind,table]of [["documents","hr_candidate_documents"],["interviews","hr_interviews"],["offers","hr_offers"],["onboarding","hr_onboarding_tasks"]]){
+   const expected=await state.client.from(table).select("id",{count:"exact"}).eq("candidate_id",candidateId).is("deleted_at",null).order("id").range(0,99);
+   expect(expected.error).toBeNull();
+   const actual=await readCandidateChildren({candidateId,kind,operation:"page",pageSize:100});
+   samples.push({actor,resource:"candidate-child",kind,success:actual.success,error:actual.success?undefined:actual.error});
+   expect(actual.success,JSON.stringify(actual)).toBe(true);
+   if(actual.success&&actual.data?.operation==="page"){
+    expect(actual.data.totalCount).toBe(expected.count);
+    expect(new Set(actual.data.rows.map(row=>row.id)).size).toBe(actual.data.rows.length);
+    const lastPage=Math.max(1,Math.ceil(Number(expected.count)/100));
+    const tail=await readCandidateChildren({candidateId,kind,operation:"page",pageSize:100,page:lastPage});
+    expect(tail.success,JSON.stringify(tail)).toBe(true);
+    if(tail.success&&tail.data.operation==="page"){
+     expect(tail.data.totalCount).toBe(expected.count);
+     expect(tail.data.rows).toHaveLength(Number(expected.count)-(lastPage-1)*100);
+     if(lastPage>1)expect(tail.data.rows.some(row=>actual.data.operation==="page"&&actual.data.rows.some(firstRow=>firstRow.id===row.id))).toBe(false);
+    }
+    const beyond=await readCandidateChildren({candidateId,kind,operation:"page",pageSize:100,page:lastPage+1});
+    expect(beyond.success,JSON.stringify(beyond)).toBe(true);
+    if(beyond.success&&beyond.data.operation==="page"){expect(beyond.data.totalCount).toBe(expected.count);expect(beyond.data.rows).toEqual([]);}
+    samples.push({actor,resource:"candidate-child-tail",kind,totalCount:expected.count,lastPage,verified:true});
+    if(kind==="documents"&&actual.data.rows.length){
+     const firstRow=actual.data.rows[0];
+     if("dms_document"in firstRow&&firstRow.dms_document?.document_title){
+      const title=firstRow.dms_document.document_title;
+      for(const criteria of [{search:title},{columnFilters:{dms_document_document_title:title}},{sortKey:"dms_document_document_title",sortDir:"asc"}]){
+       const filtered=await readCandidateChildren({candidateId,kind,operation:"page",pageSize:100,...criteria});
+       expect(filtered.success,JSON.stringify(filtered)).toBe(true);
+       if(filtered.success&&filtered.data.operation==="page"){
+        expect(filtered.data.totalCount).toBeGreaterThan(0);
+        if("columnFilters"in criteria)expect(filtered.data.rows.every(row=>"dms_document"in row&&row.dms_document?.document_title?.includes(title))).toBe(true);
+       }
+       samples.push({actor,resource:"candidate-document-title-criteria",criteria:Object.keys(criteria),success:true});
+      }
+     }
+    }
+   }
+   if(expected.data?.length){
+    const detail=await readCandidateChildren({candidateId,kind,operation:"detail",recordId:expected.data[0].id});
+    expect(detail.success,JSON.stringify(detail)).toBe(true);
+   }
+  }
+  expect((await readCandidateRecord({kind:"record",candidateId:1999999999})).success).toBe(false);
+ }
+},240000);

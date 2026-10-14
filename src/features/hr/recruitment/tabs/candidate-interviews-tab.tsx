@@ -2,6 +2,7 @@
 import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
 import { RecordCollection } from "@/components/erp/table/record-collection";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
+import {CandidateChildReadPause, useCandidateChildReadAdmission, type CandidateChildAdmissionProps} from "../candidate-child-read-admission";
 
 import { ERPCombobox } from "@/components/erp/combobox";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
@@ -9,17 +10,18 @@ import { RequiredLabel } from "@/components/erp/required-label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { invalidateRecruitmentCandidateReadModels } from "@/lib/query/invalidation";
 import { queryKeys } from "@/lib/query/query-keys";
-import type { InterviewRow } from "@/server/actions/hr/recruitment";
-import { archiveInterview, createInterview, listCandidateInterviews, updateInterview } from "@/server/actions/hr/recruitment";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type {CandidateChildDetailMap, CandidateChildRowMap} from "@/lib/reads/hr-candidate-children-schema";
+import {useHrCandidateChildren, type CandidateChildReadProps} from "@/hooks/use-hr-candidate-children";
+import { archiveInterview, createInterview, updateInterview } from "@/server/actions/hr/recruitment";
+import { useQueryClient } from "@tanstack/react-query";
 import { Calendar, Pencil, Plus, Trash2 } from "lucide-react";
-import { useState} from "react";
+import { useEffect, useRef, useState} from "react";
 import { toast } from "sonner";
 
-type Props = {
+type Props = CandidateChildAdmissionProps & CandidateChildReadProps & {
   candidateId: number;
   canManage: boolean;
   onChildOpen?: (open: boolean) => void;
@@ -86,29 +88,41 @@ const EMPTY_FORM: InterviewForm = {
   next_step: "",
 };
 
-export function CandidateInterviewsTab({ candidateId, canManage, onChildOpen }: Props) {
+export function CandidateInterviewsTab({ candidateId, canManage, authContext, onReadDenied, onChildOpen, mutationAdmitted = true, onRetryMutationAdmission }: Props) {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<InterviewRow | null>(null);
+  const [editing, setEditing] = useState<CandidateChildDetailMap["interviews"] | null>(null);
   const [form, setForm] = useState<InterviewForm>(EMPTY_FORM);
+  const [editorVersion, setEditorVersion] = useState(0);
+  const editorGeneration = useRef(0);
+  const [unavailableEditor, setUnavailableEditor] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.recruitment.candidateInterviews(candidateId),
-    queryFn: () => listCandidateInterviews(candidateId),
-    staleTime: 30_000,
-  });
-  const { data: res, isLoading } = uiRead1;
-  const interviews = Array.isArray(res?.data) ? res.data : [];
+  const read = useHrCandidateChildren("interviews", candidateId, {authContext, onReadDenied});
+  const interviews = read.rows;
+  const mutation = useCandidateChildReadAdmission({canManage, mutationAdmitted, reads: read.reads, onRetryMutationAdmission});
+  const {detailUnavailable, closeDetail} = read;
+  useEffect(() => {
+    if (!detailUnavailable) return;
+    setEditorVersion(++editorGeneration.current); setEditing(null); setForm(EMPTY_FORM);
+    setDialogOpen(false); setUnavailableEditor(true); closeDetail(); onChildOpen?.(false);
+  }, [detailUnavailable, closeDetail, onChildOpen]);
 
   function openAdd() {
+    if (!mutation.canDispatch()) return;
+    setEditorVersion(++editorGeneration.current); setUnavailableEditor(false);
+    read.closeDetail();
     setEditing(null);
     setForm(EMPTY_FORM);
     setDialogOpen(true);
     onChildOpen?.(true);
   }
 
-  function openEdit(interview: InterviewRow) {
+  async function openEdit(row: CandidateChildRowMap["interviews"]) {
+    if (!mutation.canDispatch()) return;
+    const interview = await read.loadDetail(row.id);
+    if (!interview) return;
+    setEditorVersion(++editorGeneration.current); setUnavailableEditor(false);
     setEditing(interview);
     setForm({
       interview_round: interview.interview_round,
@@ -125,6 +139,9 @@ export function CandidateInterviewsTab({ candidateId, canManage, onChildOpen }: 
   }
 
   function closeDialog() {
+    if (editorVersion !== editorGeneration.current) return;
+    setEditorVersion(++editorGeneration.current);
+    read.closeDetail();
     setDialogOpen(false);
     onChildOpen?.(false);
   }
@@ -132,7 +149,9 @@ export function CandidateInterviewsTab({ candidateId, canManage, onChildOpen }: 
   const set = (key: keyof InterviewForm, value: string) => setForm((p) => ({ ...p, [key]: value }));
 
   function handleSave() {
+    if (!dialogOpen || editorVersion !== editorGeneration.current || !mutation.canDispatch()) return;
     startTransition(async () => {
+      if (!dialogOpen || editorVersion !== editorGeneration.current || !mutation.canDispatch()) return;
       const payload = {
         interview_round: form.interview_round as "screening" | "first" | "second" | "technical" | "final" | "other",
         interview_datetime: form.interview_datetime || null,
@@ -151,6 +170,7 @@ export function CandidateInterviewsTab({ candidateId, canManage, onChildOpen }: 
       if (res.success) {
         toast.success(editing ? "Interview updated" : "Interview scheduled");
         void queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateInterviews(candidateId) });
+        invalidateRecruitmentCandidateReadModels(queryClient, candidateId, "interviews");
         closeDialog();
       } else {
         toast.error(res.error ?? "Failed to save interview");
@@ -159,38 +179,37 @@ export function CandidateInterviewsTab({ candidateId, canManage, onChildOpen }: 
   }
 
   function handleArchive(id: number) {
+    if (!mutation.canDispatch()) return;
     startTransition(async () => {
+      if (!mutation.canDispatch()) return;
       const res = await archiveInterview(id);
       if (res.success) {
         toast.success("Interview removed");
         void queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateInterviews(candidateId) });
+        invalidateRecruitmentCandidateReadModels(queryClient, candidateId, "interviews");
       } else {
         toast.error(res.error ?? "Failed to remove");
       }
     });
   }
 
+  if (read.denied) return <p role="alert">Candidate interview access is no longer available.</p>;
   return (
-    <QueryReadBoundary queries={[uiRead1]}><div className="p-6">
+    <QueryReadBoundary queries={read.reads}><div className="p-6">
+      {unavailableEditor && <p role="alert" className="mb-3 text-sm text-destructive">This child record is no longer available. Its private editor entries were removed; your candidate draft is unchanged.</p>}
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Interviews</h3>
         {canManage && (
-          <Button size="sm" onClick={openAdd}>
+          <Button size="sm" onClick={openAdd} disabled={!mutation.ready}>
             <Plus className="h-4 w-4 mr-1" /> Schedule Interview
           </Button>
         )}
       </div>
 
-      {isLoading ? (
-        <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 rounded" />)}</div>
-      ) : interviews.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground text-sm">
-          <Calendar className="h-8 w-8 mx-auto mb-2 opacity-40" />
-          No interviews scheduled yet.
-        </div>
-      ) : (
+      {read.detailPending && <p role="status">Loading complete interview…</p>}
+      {
         <div className="divide-y border rounded-lg">
-          <RecordCollection id="hr.candidate-interviews-tab.CandidateInterviewsTab.interviews" rows={interviews} fields={[{"id":"interview_round","path":"interview_round","label":"Interview Round"},{"id":"interview_status","path":"interview_status","label":"Interview Status"},{"id":"interview_datetime","path":"interview_datetime","label":"Interview Datetime"}]} renderRecord={(interview) => (
+<RecordCollection id="hr.candidate-interviews-tab.CandidateInterviewsTab.interviews" rows={interviews} serverRead={read.serverRead} isLoading={read.busy} message={read.validationMessage} userProfileId={String(authContext.profile?.id ?? "")} fields={[{"id":"interview_round","path":"interview_round","label":"Interview Round"},{"id":"interview_status","path":"interview_status","label":"Interview Status"},{"id":"interview_datetime","path":"interview_datetime","label":"Interview Datetime (UTC)"}]} renderRecord={(interview) => (
             <div key={interview.id} className="flex items-center gap-3 p-3">
               <Calendar className="h-4 w-4 text-slate-400 flex-shrink-0" />
               <div className="flex-1 min-w-0">
@@ -213,14 +232,14 @@ export function CandidateInterviewsTab({ candidateId, canManage, onChildOpen }: 
               </div>
               {canManage && (
                 <div className="flex gap-1">
-                  <Button aria-label="Edit record" size="sm" variant="ghost" onClick={() => openEdit(interview)}><Pencil className="h-4 w-4" /></Button>
-                  <Button aria-label="Archive record" size="sm" variant="ghost" onClick={() => handleArchive(interview.id)} disabled={isPending}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                  <Button aria-label="Edit record" size="sm" variant="ghost" onClick={() => openEdit(interview)} disabled={!mutation.ready}><Pencil className="h-4 w-4" /></Button>
+                  <Button aria-label="Archive record" size="sm" variant="ghost" onClick={() => handleArchive(interview.id)} disabled={isPending || !mutation.ready}><Trash2 className="h-4 w-4 text-red-500" /></Button>
                 </div>
               )}
             </div>
           )} />
         </div>
-      )}
+      }
 
       <ERPChildDialogForm
         open={dialogOpen}
@@ -231,8 +250,10 @@ export function CandidateInterviewsTab({ candidateId, canManage, onChildOpen }: 
         mode={editing ? "edit" : "add"}
         size="lg"
         isSubmitting={isPending}
+        submitDisabled={!mutation.ready}
         onSubmit={handleSave}
       >
+        <CandidateChildReadPause admission={mutation} canManage={canManage} />
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12 md:col-span-6">
             <RequiredLabel required>Interview Round</RequiredLabel>

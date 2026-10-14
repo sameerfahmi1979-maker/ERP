@@ -2,6 +2,10 @@
 import { redirect } from "next/navigation";
 import { HrProProcessesPageClient } from "@/features/hr/actions/hr-pro-processes-page-client";
 
+import {readHrActionInquiry} from "@/server/reads/hr-action-inquiries";
+import {hrActionInquiryIdentity} from "@/lib/reads/hr-action-inquiries-schema";
+import {LoadError} from "@/components/erp/load-error";
+
 export const dynamic = "force-dynamic";
 
 export default async function HrProProcessesPage() {
@@ -9,6 +13,8 @@ export default async function HrProProcessesPage() {
   if (!ctx || !hasPermission(ctx, "hr.actions.view")) {
     redirect("/access-denied");
   }
-  return <HrProProcessesPageClient authContext={ctx} />;
+  const result = await readHrActionInquiry({kind: "pro"}, ctx);
+  if (!result.success || result.data?.kind !== "pro") return <LoadError title="HR records" retryHref="/admin/hr/actions/pro" />;
+  return <HrProProcessesPageClient authContext={ctx} initialPage={result.data} initialUpdatedAt={result.updatedAt} initialReadIdentity={hrActionInquiryIdentity(ctx)} />;
 }
 

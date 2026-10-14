@@ -48,7 +48,9 @@ import {
   Zap,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { invalidateHrEmployee, invalidateHrEmployees } from "@/lib/query/invalidation";
 import { toast } from "sonner";
 import { EmployeeComplianceTab } from "./tabs/employee-compliance-tab";
 import { EmployeeHrActionsTab } from "./tabs/employee-hr-actions-tab";
@@ -185,9 +187,19 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext }: Props) {
   const { closeTab, markDirty, updateTabRoute, isTabActive } = useWorkspace();
   const owner = useWorkspaceFormOwner();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSection, setActiveSection] = useWorkspaceFormSection(FORM_ID, "overview", SECTION_IDS);
   const [childDialogOpen, setChildDialogOpen] = useState(false);
+  const [complianceChildLeases, setComplianceChildLeases] = useState<Set<object>>(() => new Set());
+  const handleComplianceChildLease = useCallback((token: object, open: boolean) => {
+    setComplianceChildLeases(previous => {
+      if (previous.has(token) === open) return previous;
+      const next = new Set(previous);
+      if (open) next.add(token); else next.delete(token);
+      return next;
+    });
+  }, []);
   const [admission] = useState(createSaveAdmission);
   const saveSession = useWorkspaceSaveSession(FORM_ID, employee?.id ?? null, employee?.workspace_revision);
   const recordId = useRef(saveSession.id);
@@ -247,6 +259,8 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext }: Props) {
         recordId.current = id;
         setSavedId(id);
       }
+      invalidateHrEmployees(queryClient);
+      invalidateHrEmployee(queryClient, recordId.current!);
       const unchanged = acceptSaved(submitted);
       const route = `/admin/hr/employees/record/${recordId.current}?mode=edit`;
       if (owner) { markDirty(owner.id, !unchanged); updateTabRoute(owner.id, route, recordId.current!, "edit"); }
@@ -301,7 +315,7 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext }: Props) {
       onSaveAndClose={isViewing ? undefined : () => handleSave(true)}
       onRequestClose={handleRequestClose}
       isSubmitting={isSubmitting}
-      isChildDialogOpen={childDialogOpen}
+      isChildDialogOpen={childDialogOpen || complianceChildLeases.size > 0}
     >
       <form
         id={FORM_ID}
@@ -313,17 +327,12 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext }: Props) {
         {/* WS.3: visible signal that unsaved values from a previous visit were restored */}
         <DraftRestoredNotice visible={!isViewing && restoredFromDraft} className="mb-3" />
 
-        {/* Overview — lazyMount: many useQuery hooks; mounts on first paint (default section) */}
+        {/* Overview — one authorized read composition; retained after its first mount. */}
         <ERPRecordSectionPanel id="overview" activeId={activeSection} title="Overview" lazyMount>
           {employee ? (
             <EmployeeOverviewTab
               employee={employee}
-              canViewCompliance={checkPermission(authContext, "hr.compliance.view")}
-              canViewTime={checkPermission(authContext, "hr.attendance.view")}
-              canViewPayroll={checkPermission(authContext, "hr.payroll.view")}
-              canViewOperations={checkPermission(authContext, "hr.assignments.view")}
-              canViewHrActions={checkPermission(authContext, "hr.actions.view")}
-              canViewRecruitment={checkPermission(authContext, "hr.recruitment.view") || checkPermission(authContext, "hr.recruitment.manage")}
+              authContext={authContext}
             />
           ) : (
             <div className="flex items-center justify-center py-24 text-muted-foreground text-sm">
@@ -343,7 +352,7 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext }: Props) {
             <EmployeeComplianceTab
               employeeId={employee.id}
               authContext={authContext}
-              onChildOpen={setChildDialogOpen}
+              onChildLeaseChange={handleComplianceChildLease}
             />
           ) : (
             <div className="flex items-center justify-center py-24 text-muted-foreground text-sm">

@@ -13,6 +13,98 @@
  */
 
 import { notifyManager, type QueryClient } from "@tanstack/react-query";
+import {COMPLIANCE_KINDS, type ComplianceKind} from "@/lib/reads/hr-compliance-records-schema";
+import {TIME_RECORD_KINDS, type TimeRecordKind} from "@/lib/reads/hr-time-records-schema";
+import type {HrSearchCategory} from "@/lib/hr/search/types";
+
+type TimeOption = "calendars" | "shifts" | "leave-types";
+type TimeRefreshTarget = {kind: TimeRecordKind; employeeId: number | null} | {option: TimeOption; calendarId: number | null};
+const pendingTimeRefresh = new WeakMap<QueryClient, Map<string, TimeRefreshTarget>>();
+/** Confirmed writes retire all affected page/detail/option variants, including
+ * observerless in-flight reads. Only active owners refetch; drafts stay intact. */
+function invalidateTimeTargets(queryClient: QueryClient, targets: readonly TimeRefreshTarget[]): void {
+  const family = (selected: Iterable<TimeRefreshTarget>) => ({queryKey: ["hr"],
+    predicate: (query: {queryKey: readonly unknown[]}) => [...selected].some(target => {
+      if ("kind" in target) return query.queryKey[1] === "time-records" && query.queryKey[3] === target.kind
+        && (target.employeeId === null || query.queryKey[2] === target.employeeId);
+      return query.queryKey[1] === "time-records-options" && query.queryKey[3] === target.option
+        && (target.option !== "shifts" || target.calendarId === null || query.queryKey[4] === target.calendarId);
+    })});
+  void queryClient.invalidateQueries({...family(targets), refetchType: "none"});
+  const queued = pendingTimeRefresh.get(queryClient);
+  if (queued) {for (const target of targets) queued.set(JSON.stringify(target), target); return;}
+  const pending = new Map(targets.map(target => [JSON.stringify(target), target]));
+  pendingTimeRefresh.set(queryClient, pending);
+  queueMicrotask(() => {
+    pendingTimeRefresh.delete(queryClient);
+    // Materialize once; a reused Map.values iterator would be exhausted after
+    // checking the first query and leave later owners stale.
+    const filters = family([...pending.values()]);
+    void queryClient.cancelQueries(filters);
+    void queryClient.invalidateQueries({...filters, refetchType: "active"}, {cancelRefetch: true});
+  });
+}
+function invalidateTimeReads(queryClient: QueryClient, kinds: readonly TimeRecordKind[], employeeId: number | null = null): void {
+  invalidateTimeTargets(queryClient, kinds.map(kind => ({kind, employeeId})));
+}
+function invalidateTimeOptions(queryClient: QueryClient, options: readonly TimeOption[], calendarId: number | null = null): void {
+  invalidateTimeTargets(queryClient, options.map(option => ({option, calendarId})));
+}
+type HrSearchRefresh = {categories: Set<HrSearchCategory>; suggestions: boolean};
+const pendingHrSearchRefresh = new WeakMap<QueryClient, HrSearchRefresh>();
+/** Refresh dependent search caches without starting reads for inactive owners.
+ * Recognizes both the existing object key and the identity-qualified read key. */
+function invalidateHrSearchReads(queryClient: QueryClient, categories: readonly HrSearchCategory[], suggestions = false): void {
+  const family = (target: HrSearchRefresh) => ({queryKey: ["hr", "search"], predicate: (query: {queryKey: readonly unknown[]}) => {
+    if (query.queryKey[2] === "suggestions") return target.suggestions;
+    if (query.queryKey[2] !== "results") return false;
+    try {
+      const input = typeof query.queryKey[3] === "object" && query.queryKey[3] !== null
+        ? query.queryKey[3] : JSON.parse(String(query.queryKey[4]));
+      const selected: unknown = (input as {categories?: unknown}).categories;
+      return !Array.isArray(selected) || selected.length === 0 || selected.some(category => target.categories.has(category));
+    } catch {return true;}
+  }});
+  const next = {categories: new Set(categories), suggestions};
+  void queryClient.invalidateQueries({...family(next), refetchType: "none"});
+  const queued = pendingHrSearchRefresh.get(queryClient);
+  if (queued) {for (const category of categories) queued.categories.add(category); queued.suggestions ||= suggestions; return;}
+  pendingHrSearchRefresh.set(queryClient, next);
+  queueMicrotask(() => {
+    pendingHrSearchRefresh.delete(queryClient);
+    const filters = family(next);
+    void queryClient.cancelQueries(filters);
+    void queryClient.invalidateQueries({...filters, refetchType: "active"}, {cancelRefetch: true});
+  });
+}
+type ComplianceRefresh = Map<number | null, Set<ComplianceKind>>;
+const pendingComplianceRefresh = new WeakMap<QueryClient, ComplianceRefresh>();
+/** Invalidate dependent rows and selected details together, but not drafts.
+ * Null employee means a shared label changed. Only mounted owners refetch. */
+function invalidateComplianceReads(queryClient: QueryClient, kinds: readonly ComplianceKind[], employeeId: number | null = null): void {
+  const family = (targets: ComplianceRefresh) => ({queryKey: ["hr", "compliance-records"],
+    predicate: (query: {queryKey: readonly unknown[]}) => {
+      const kind = query.queryKey[3] as ComplianceKind;
+      return targets.get(null)?.has(kind) === true || targets.get(query.queryKey[2] as number)?.has(kind) === true;
+    }});
+  void queryClient.invalidateQueries({...family(new Map([[employeeId, new Set(kinds)]])), refetchType: "none"});
+  const queued = pendingComplianceRefresh.get(queryClient);
+  if (queued) {
+    const selected = queued.get(employeeId) ?? new Set<ComplianceKind>();
+    for (const kind of kinds) selected.add(kind);
+    queued.set(employeeId, selected);
+    return;
+  }
+  const pending: ComplianceRefresh = new Map([[employeeId, new Set(kinds)]]);
+  pendingComplianceRefresh.set(queryClient, pending);
+  queueMicrotask(() => {
+    pendingComplianceRefresh.delete(queryClient);
+    const filters = family(pending);
+    // Include initial and observerless details: neither may commit an old read.
+    void queryClient.cancelQueries(filters);
+    void queryClient.invalidateQueries({...filters, refetchType: "active"}, {cancelRefetch: true});
+  });
+}
 /** Retire initial/disabled/observerless reads before marking the family stale. */
 export function invalidateAuthorizedRead(queryClient: QueryClient, resource: string): void {
   const queryKey = ["read", resource];
@@ -59,15 +151,18 @@ export function invalidateAllLookups(queryClient: QueryClient): void {
 // ── Geography ─────────────────────────────────────────────────────────────────
 
 export function invalidateCountries(queryClient: QueryClient): void {
+  invalidateComplianceReads(queryClient, ["identity", "dependents"]);
   invalidateAuthorizedRead(queryClient, "employee-filter-countries");
   void queryClient.invalidateQueries({ queryKey: ["master", "countries"] });
 }
 
 export function invalidateEmirates(queryClient: QueryClient): void {
+  invalidateComplianceReads(queryClient, ["identity"]);
   void queryClient.invalidateQueries({ queryKey: ["master", "emirates"] });
 }
 
 export function invalidateCities(queryClient: QueryClient): void {
+  invalidateComplianceReads(queryClient, ["identity"]);
   void queryClient.invalidateQueries({ queryKey: ["master", "cities"] });
 }
 
@@ -81,6 +176,7 @@ export function invalidatePorts(queryClient: QueryClient): void {
 
 /** Invalidate all geography tables (countries → emirates → cities → areas → ports). */
 export function invalidateGeography(queryClient: QueryClient): void {
+  invalidateComplianceReads(queryClient, ["identity", "dependents"]);
   invalidateAuthorizedRead(queryClient, "employee-filter-countries");
   void queryClient.invalidateQueries({ queryKey: ["master", "countries"] });
   void queryClient.invalidateQueries({ queryKey: ["master", "emirates"] });
@@ -127,6 +223,7 @@ export function invalidateUom(queryClient: QueryClient): void {
 
 /** Invalidate owner companies and branches. */
 export function invalidateOrganizations(queryClient: QueryClient): void {
+  invalidateComplianceReads(queryClient, ["identity"]);
   invalidateAuthorizedRead(queryClient, "employee-filter-companies");
   void queryClient.invalidateQueries({ queryKey: ["master", "owner_companies"] });
   void queryClient.invalidateQueries({ queryKey: ["master", "branches"] });
@@ -404,10 +501,13 @@ export function invalidateCommonMdDesignations(queryClient: QueryClient): void {
 }
 
 export function invalidateCommonMdWorkSites(queryClient: QueryClient): void {
+  invalidateComplianceReads(queryClient, ["cards"]);
   void queryClient.invalidateQueries({ queryKey: ["common_md", "work_sites"] });
 }
 
 export function invalidateCommonMdWorkCalendars(queryClient: QueryClient, calendarId?: number): void {
+  invalidateTimeReads(queryClient, ["shifts"]);
+  invalidateTimeOptions(queryClient, ["calendars", "shifts"], calendarId ?? null);
   void queryClient.invalidateQueries({ queryKey: ["common_md", "work_calendars"] });
   if (calendarId) {
     void queryClient.invalidateQueries({ queryKey: ["common_md", "work_shifts", calendarId] });
@@ -667,12 +767,18 @@ export function invalidateDataQualityFinding(queryClient: QueryClient, id: numbe
 
 /** Invalidate all HR employee list caches. */
 export function invalidateHrEmployees(queryClient: QueryClient): void {
+  invalidatePayrollInquiryReads(queryClient, "global-salary-profiles");
+  invalidatePayrollInquiryReads(queryClient, "global-wps-readiness");
   invalidateAuthorizedRead(queryClient, "employees");
   void queryClient.invalidateQueries({ queryKey: ["hr", "employees", "list"] });
 }
 
 /** Invalidate a single employee detail cache. */
 export function invalidateHrEmployee(queryClient: QueryClient, id: number): void {
+  invalidatePayrollInquiryReads(queryClient, "global-salary-profiles");
+  invalidatePayrollInquiryReads(queryClient, "global-wps-readiness");
+  invalidateTimeReads(queryClient, TIME_RECORD_KINDS, id);
+  invalidateComplianceReads(queryClient, COMPLIANCE_KINDS, id);
   void queryClient.invalidateQueries({ queryKey: ["hr", "employees", "detail", id] });
 }
 
@@ -683,6 +789,8 @@ export function invalidateHrEmployeeOverview(queryClient: QueryClient, id: numbe
 
 /** Invalidate a single employee status history cache. */
 export function invalidateHrEmployeeStatusHistory(queryClient: QueryClient, id: number): void {
+  invalidateTimeReads(queryClient, TIME_RECORD_KINDS, id);
+  invalidateComplianceReads(queryClient, COMPLIANCE_KINDS, id);
   void queryClient.invalidateQueries({ queryKey: ["hr", "employees", "status-history", id] });
 }
 
@@ -690,6 +798,9 @@ export function invalidateHrEmployeeStatusHistory(queryClient: QueryClient, id: 
 
 /** Invalidate all HR settings caches. */
 export function invalidateHrSettings(queryClient: QueryClient): void {
+  invalidateTimeReads(queryClient, ["leave", "balances"]);
+  invalidateTimeOptions(queryClient, ["leave-types"]);
+  invalidateComplianceReads(queryClient, COMPLIANCE_KINDS);
   void queryClient.invalidateQueries({ queryKey: ["hr", "settings"] });
 }
 
@@ -703,31 +814,45 @@ export function invalidateHrGrades(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: ["hr", "settings", "grades"] });
 }
 export function invalidateHrIdentityDocumentTypes(queryClient: QueryClient): void {
+  invalidateComplianceReads(queryClient, ["identity"]);
   void queryClient.invalidateQueries({ queryKey: ["hr", "settings", "identity-document-types"] });
 }
 export function invalidateHrAccessCardTypes(queryClient: QueryClient): void {
+  invalidateComplianceReads(queryClient, ["cards"]);
   void queryClient.invalidateQueries({ queryKey: ["hr", "settings", "access-card-types"] });
 }
 export function invalidateHrTrainingCategories(queryClient: QueryClient): void {
+  invalidateComplianceReads(queryClient, ["training"]);
   void queryClient.invalidateQueries({ queryKey: ["hr", "settings", "training-categories"] });
 }
 export function invalidateHrTrainingTypes(queryClient: QueryClient): void {
+  invalidateComplianceReads(queryClient, ["training"]);
   void queryClient.invalidateQueries({ queryKey: ["hr", "settings", "training-types"] });
 }
 export function invalidateHrMedicalRecordTypes(queryClient: QueryClient): void {
+  invalidateComplianceReads(queryClient, ["medical"]);
   void queryClient.invalidateQueries({ queryKey: ["hr", "settings", "medical-record-types"] });
 }
 export function invalidateHrLeaveTypes(queryClient: QueryClient): void {
+  invalidateTimeReads(queryClient, ["leave", "balances"]);
+  invalidateTimeOptions(queryClient, ["leave-types"]);
   void queryClient.invalidateQueries({ queryKey: ["hr", "settings", "leave-types"] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "time", "active-leave-types"] });
 }
 export function invalidateHrRelationshipTypes(queryClient: QueryClient): void {
+  invalidateComplianceReads(queryClient, ["dependents"]);
   void queryClient.invalidateQueries({ queryKey: ["hr", "settings", "relationship-types"] });
 }
 export function invalidateHrSalaryComponentTypes(queryClient: QueryClient): void {
+  for (const field of ["salary-components", "gross-salary", "wps-readiness"] as const) invalidatePayrollSettingDependentRead(queryClient, ["hr", "payroll", field]);
+  invalidatePayrollSettingDependentRead(queryClient, ["hr", "employees", "overview"]);
+  invalidatePayrollInquiryReads(queryClient, "global-salary-profiles");
+  invalidatePayrollInquiryReads(queryClient, "global-wps-readiness");
   void queryClient.invalidateQueries({ queryKey: ["hr", "settings", "salary-component-types"] });
 }
 export function invalidateHrPayrollGroups(queryClient: QueryClient): void {
+  invalidatePayrollSettingDependentRead(queryClient, ["hr", "payroll", "profile"]);
+  invalidatePayrollInquiryReads(queryClient, "global-salary-profiles");
   void queryClient.invalidateQueries({ queryKey: ["hr", "settings", "payroll-groups"] });
 }
 export function invalidateHrMohreEstablishments(queryClient: QueryClient): void {
@@ -756,6 +881,8 @@ export function invalidateHrEmployeeCompliance(
   queryClient: QueryClient,
   employeeId: number
 ): void {
+  invalidateComplianceReads(queryClient, COMPLIANCE_KINDS, employeeId);
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "compliance", "identity-documents", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "compliance", "medical-insurances", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "compliance", "dependents", employeeId] });
@@ -770,6 +897,7 @@ export function invalidateHrEmployeeComplianceSummary(
   queryClient: QueryClient,
   employeeId: number
 ): void {
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "compliance", "summary", employeeId] });
 }
 
@@ -777,6 +905,9 @@ export function invalidateHrEmployeeIdentityDocuments(
   queryClient: QueryClient,
   employeeId: number
 ): void {
+  invalidateHrSearchReads(queryClient, ["compliance"]);
+  invalidateComplianceReads(queryClient, ["identity"], employeeId);
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "compliance", "identity-documents", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "compliance", "summary", employeeId] });
 }
@@ -785,6 +916,8 @@ export function invalidateHrEmployeeMedicalInsurances(
   queryClient: QueryClient,
   employeeId: number
 ): void {
+  invalidateComplianceReads(queryClient, ["insurance"], employeeId);
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "compliance", "medical-insurances", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "compliance", "summary", employeeId] });
 }
@@ -793,6 +926,8 @@ export function invalidateHrEmployeeDependents(
   queryClient: QueryClient,
   employeeId: number
 ): void {
+  invalidateComplianceReads(queryClient, ["dependents"], employeeId);
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "compliance", "dependents", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "compliance", "summary", employeeId] });
 }
@@ -801,6 +936,9 @@ export function invalidateHrEmployeeAccessCards(
   queryClient: QueryClient,
   employeeId: number
 ): void {
+  invalidateHrSearchReads(queryClient, ["compliance"]);
+  invalidateComplianceReads(queryClient, ["cards"], employeeId);
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "compliance", "access-cards", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "compliance", "summary", employeeId] });
 }
@@ -809,6 +947,9 @@ export function invalidateHrEmployeeTrainingCertificates(
   queryClient: QueryClient,
   employeeId: number
 ): void {
+  invalidateHrSearchReads(queryClient, ["compliance"]);
+  invalidateComplianceReads(queryClient, ["training"], employeeId);
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "compliance", "training-certificates", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "compliance", "summary", employeeId] });
 }
@@ -817,6 +958,9 @@ export function invalidateHrEmployeeMedicalRecords(
   queryClient: QueryClient,
   employeeId: number
 ): void {
+  invalidateHrSearchReads(queryClient, ["compliance"]);
+  invalidateComplianceReads(queryClient, ["medical"], employeeId);
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "compliance", "medical-records", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "compliance", "summary", employeeId] });
 }
@@ -824,10 +968,17 @@ export function invalidateHrEmployeeMedicalRecords(
 // ── HR Time (HR.4) ────────────────────────────────────────────────────────────
 
 /** Invalidate all HR time data for an employee. */
+export function invalidateHrEmployeeTimeSummary(queryClient: QueryClient, employeeId: number): void {
+  void queryClient.invalidateQueries({queryKey: ["hr", "time", "summary", employeeId]});
+  invalidateHrEmployeeOverview(queryClient, employeeId);
+}
+
 export function invalidateHrEmployeeTime(
   queryClient: QueryClient,
   employeeId: number
 ): void {
+  invalidateTimeReads(queryClient, TIME_RECORD_KINDS, employeeId);
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "time", "attendance-punches", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "time", "attendance-summary", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "time", "shift-assignments", employeeId] });
@@ -841,6 +992,9 @@ export function invalidateHrEmployeeAttendance(
   queryClient: QueryClient,
   employeeId: number
 ): void {
+  invalidateTimeReads(queryClient, ["daily", "punches", "corrections"], employeeId);
+  invalidateHrDailyAttendance(queryClient);
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "time", "attendance-punches", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "time", "attendance-summary", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "time", "summary", employeeId] });
@@ -854,6 +1008,9 @@ export function invalidateHrEmployeeShiftAssignments(
   queryClient: QueryClient,
   employeeId: number
 ): void {
+  invalidateTimeReads(queryClient, ["shifts"], employeeId);
+  void queryClient.invalidateQueries({queryKey: ["hr", "time", "global-shift-assignments", "counted-page"]});
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "time", "shift-assignments", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "time", "global-shift-assignments"] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "time", "summary", employeeId] });
@@ -863,6 +1020,9 @@ export function invalidateHrEmployeeLeave(
   queryClient: QueryClient,
   employeeId: number
 ): void {
+  invalidateTimeReads(queryClient, ["leave", "balances"], employeeId);
+  invalidateHrGlobalLeaveRequests(queryClient);
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "time", "leave-requests", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "time", "leave-balances", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "time", "summary", employeeId] });
@@ -876,16 +1036,72 @@ export function invalidateHrEmployeeOvertime(
   queryClient: QueryClient,
   employeeId: number
 ): void {
+  invalidateTimeReads(queryClient, ["overtime"], employeeId);
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "time", "overtime-records", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "time", "summary", employeeId] });
 }
 
 // ── HR Payroll & WPS (HR.5) ──────────────────────────────────────────────────
 
+type PayrollSettingDependentKey = readonly ["hr", "payroll", "profile" | "salary-components" | "gross-salary" | "wps-readiness"]
+  | readonly ["hr", "employees", "overview"];
+const pendingPayrollSettingRefresh = new WeakMap<QueryClient, Set<string>>();
+/** A setting can change embedded labels or calculations for any employee.
+ * Preserve existing caches/drafts, but retire matching pre-change requests,
+ * including observerless on-demand component details. Only active observers
+ * refetch; cached inactive principals stay stale without being fetched. */
+function invalidatePayrollSettingDependentRead(queryClient: QueryClient, queryKey: PayrollSettingDependentKey): void {
+  void queryClient.invalidateQueries({queryKey, refetchType: "none"});
+  const prefix = queryKey.join(":");
+  let pending = pendingPayrollSettingRefresh.get(queryClient);
+  if (!pending) {pending = new Set(); pendingPayrollSettingRefresh.set(queryClient, pending);}
+  if (pending.has(prefix)) return;
+  pending.add(prefix);
+  queueMicrotask(() => {
+    pending.delete(prefix);
+    if (pending.size === 0) pendingPayrollSettingRefresh.delete(queryClient);
+    // Cancellation retires the retryer synchronously. Active-only cancellation
+    // would miss fetchQuery detail reads; refetch is still active-only.
+    void queryClient.cancelQueries({queryKey});
+    void queryClient.invalidateQueries({queryKey, refetchType: "active"}, {cancelRefetch: true});
+  });
+}
+
+const pendingPayrollInquiryRefresh = new WeakMap<QueryClient, Set<string>>();
+/** Global payroll pages retain their principal-qualified keys. A successful
+ * mutation retires active pre-mutation requests, including initial reads with
+ * no data; inactive principals are only marked stale, never fetched. */
+function invalidatePayrollInquiryReads(
+  queryClient: QueryClient,
+  prefix: "global-salary-profiles" | "global-wps-readiness",
+): void {
+  const queryKey = ["hr", "payroll", prefix];
+  void queryClient.invalidateQueries({queryKey, refetchType: "none"});
+  let pending = pendingPayrollInquiryRefresh.get(queryClient);
+  if (!pending) {pending = new Set(); pendingPayrollInquiryRefresh.set(queryClient, pending);}
+  if (pending.has(prefix)) return;
+  pending.add(prefix);
+  queueMicrotask(() => {
+    pending.delete(prefix);
+    if (pending.size === 0) pendingPayrollInquiryRefresh.delete(queryClient);
+    // Disabled/observerless requests can still publish. Wait for cancellation
+    // completion so even an already-fulfilled retryer publishes before staling.
+    void queryClient.cancelQueries({queryKey}).then(() => {
+      void queryClient.invalidateQueries({queryKey, refetchType: "active"}, {cancelRefetch: true});
+    });
+  });
+}
+
+
+
 export function invalidateHrEmployeePayroll(
   queryClient: QueryClient,
   employeeId: number
 ): void {
+  invalidatePayrollInquiryReads(queryClient, "global-salary-profiles");
+  invalidatePayrollInquiryReads(queryClient, "global-wps-readiness");
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "profile", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "salary-components", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "gross-salary", employeeId] });
@@ -900,18 +1116,21 @@ export function invalidateHrEmployeeSalaryComponents(
   queryClient: QueryClient,
   employeeId: number
 ): void {
+  invalidatePayrollInquiryReads(queryClient, "global-salary-profiles");
+  invalidatePayrollInquiryReads(queryClient, "global-wps-readiness");
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "salary-components", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "gross-salary", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "basic-salary", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "summary", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "wps-readiness", employeeId] });
-  void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "global-salary-profiles"] });
 }
 
 export function invalidateHrEmployeeSalaryRevisions(
   queryClient: QueryClient,
   employeeId: number
 ): void {
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "salary-revisions", employeeId] });
 }
 
@@ -919,6 +1138,8 @@ export function invalidateHrEmployeePayrollHolds(
   queryClient: QueryClient,
   employeeId: number
 ): void {
+  invalidatePayrollInquiryReads(queryClient, "global-wps-readiness");
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "holds", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "wps-readiness", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "summary", employeeId] });
@@ -928,23 +1149,28 @@ export function invalidateHrEmployeeWps(
   queryClient: QueryClient,
   employeeId: number
 ): void {
+  invalidatePayrollInquiryReads(queryClient, "global-wps-readiness");
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "wps-profile", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "wps-readiness", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "summary", employeeId] });
-  void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "global-wps-readiness"] });
 }
 
 export function invalidateHrGlobalPayroll(queryClient: QueryClient): void {
-  void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "global-salary-profiles"] });
+  invalidatePayrollInquiryReads(queryClient, "global-salary-profiles");
 }
 
 export function invalidateHrGlobalWpsReadiness(queryClient: QueryClient): void {
-  void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "global-wps-readiness"] });
+  invalidatePayrollInquiryReads(queryClient, "global-wps-readiness");
 }
 
 // ── HR Operations & Readiness (HR.6) ────────────────────────────────────────
 
 export function invalidateHrEmployeeOperations(queryClient: QueryClient, employeeId: number): void {
+  invalidateHrEmployeeOverview(queryClient, employeeId);
+  invalidateHrGlobalAssignments(queryClient);
+  invalidateHrGlobalReadiness(queryClient);
+  invalidateHrGlobalBlocks(queryClient);
   void queryClient.invalidateQueries({ queryKey: ["hr", "operations", "assignments", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "operations", "role-requirements", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "operations", "site-readiness", employeeId] });
@@ -957,43 +1183,55 @@ export function invalidateHrEmployeeOperations(queryClient: QueryClient, employe
 }
 
 export function invalidateHrEmployeeAssignments(queryClient: QueryClient, employeeId: number): void {
+  invalidateHrEmployeeOverview(queryClient, employeeId);
+  invalidateHrGlobalAssignments(queryClient);
   void queryClient.invalidateQueries({ queryKey: ["hr", "operations", "assignments", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "operations", "summary", employeeId] });
 }
 
 export function invalidateHrGlobalAssignments(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: ["hr", "operations", "assignments", "counted-page"] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "operations", "global-assignments"] });
 }
 
 export function invalidateHrEmployeeReadiness(queryClient: QueryClient, employeeId: number): void {
+  invalidateHrEmployeeOverview(queryClient, employeeId);
+  invalidateHrGlobalReadiness(queryClient);
   void queryClient.invalidateQueries({ queryKey: ["hr", "operations", "site-readiness", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "operations", "readiness-summary", employeeId] });
 }
 
 export function invalidateHrGlobalReadiness(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: ["hr", "operations", "readiness", "counted-page"] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "operations", "global-readiness"] });
 }
 
 export function invalidateHrEmployeeBlocks(queryClient: QueryClient, employeeId: number): void {
+  invalidateHrEmployeeOverview(queryClient, employeeId);
+  invalidateHrGlobalBlocks(queryClient);
   void queryClient.invalidateQueries({ queryKey: ["hr", "operations", "blocks", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "operations", "readiness-summary", employeeId] });
 }
 
 export function invalidateHrGlobalBlocks(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: ["hr", "operations", "blocks", "counted-page"] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "operations", "global-blocks"] });
 }
 
 export function invalidateHrEmployeeAssets(queryClient: QueryClient, employeeId: number): void {
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "operations", "assets", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "operations", "summary", employeeId] });
 }
 
 export function invalidateHrEmployeePpe(queryClient: QueryClient, employeeId: number): void {
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "operations", "ppe", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "operations", "summary", employeeId] });
 }
 
 export function invalidateHrEmployeeAccommodation(queryClient: QueryClient, employeeId: number): void {
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "operations", "accommodation", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "operations", "summary", employeeId] });
 }
@@ -1006,6 +1244,7 @@ export function invalidateHrEmployeeActions(queryClient: QueryClient, employeeId
 }
 
 export function invalidateHrEmployeeProProcesses(queryClient: QueryClient, employeeId: number): void {
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "actions", "pro-processes", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "actions", "summary", employeeId] });
 }
@@ -1015,16 +1254,19 @@ export function invalidateHrGlobalProProcesses(queryClient: QueryClient): void {
 }
 
 export function invalidateHrEmployeeHrActions(queryClient: QueryClient, employeeId: number): void {
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "actions", "hr-actions", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "actions", "summary", employeeId] });
 }
 
 export function invalidateHrEmployeePerformance(queryClient: QueryClient, employeeId: number): void {
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "actions", "performance", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "actions", "summary", employeeId] });
 }
 
 export function invalidateHrEmployeeDisciplinary(queryClient: QueryClient, employeeId: number): void {
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "actions", "disciplinary", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "actions", "summary", employeeId] });
 }
@@ -1034,10 +1276,12 @@ export function invalidateHrGlobalDisciplinary(queryClient: QueryClient): void {
 }
 
 export function invalidateHrEmployeeNotes(queryClient: QueryClient, employeeId: number): void {
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "actions", "notes", employeeId] });
 }
 
 export function invalidateHrEmployeeApprovals(queryClient: QueryClient, employeeId: number): void {
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "actions", "approvals", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "actions", "summary", employeeId] });
 }
@@ -1047,6 +1291,7 @@ export function invalidateHrGlobalApprovals(queryClient: QueryClient): void {
 }
 
 export function invalidateHrEmployeeEos(queryClient: QueryClient, employeeId: number): void {
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "actions", "eos-cases", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "actions", "summary", employeeId] });
 }
@@ -1056,6 +1301,7 @@ export function invalidateHrGlobalEos(queryClient: QueryClient): void {
 }
 
 export function invalidateHrEmployeeClearance(queryClient: QueryClient, eosCaseId: number, employeeId: number): void {
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "actions", "clearance-items", eosCaseId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "actions", "eos-cases", employeeId] });
 }
@@ -1064,6 +1310,21 @@ export function invalidateHrEmployeeClearance(queryClient: QueryClient, eosCaseI
 
 export function invalidateHrRecruitment(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: ["hr", "recruitment"] });
+}
+
+/** A changed requirement also affects derived readiness, without clearing drafts. */
+export function invalidateHrEmployeeRoleRequirements(queryClient: QueryClient, employeeId: number): void {
+  void queryClient.invalidateQueries({queryKey: ["hr", "operations", "role-requirements", employeeId]});
+  invalidateHrEmployeeReadiness(queryClient, employeeId);
+}
+
+/** Confirmed candidate child mutations refresh their scoped read models. */
+export function invalidateRecruitmentCandidateReadModels(queryClient: QueryClient, candidateId: number, kind: "documents" | "interviews" | "offers" | "onboarding"): void {
+  void queryClient.invalidateQueries({queryKey: ["hr", "recruitment", "candidate", candidateId], predicate: query => query.queryKey.length === 6 && query.queryKey[5] === "counts"});
+  if (kind !== "documents") {
+    void queryClient.invalidateQueries({queryKey: ["hr", "recruitment", `global-${kind}`]});
+    void queryClient.invalidateQueries({queryKey: ["hr", "recruitment", "summary"]});
+  }
 }
 
 export function invalidateHrRequisitions(queryClient: QueryClient): void {
@@ -1125,6 +1386,7 @@ export function invalidateHrGlobalOnboarding(queryClient: QueryClient): void {
 }
 
 export function invalidateHrEmployeeRecruitmentLink(queryClient: QueryClient, employeeId: number): void {
+  invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "recruitment", "employee-link", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "recruitment", "candidates"] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "recruitment", "summary"] });

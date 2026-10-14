@@ -1,8 +1,9 @@
 import { LoadError } from "@/components/erp/load-error";
 import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { listLeaveRequests } from "@/server/actions/hr/time";
+import { readHrTime } from "@/server/reads/hr-time";
 import { HrLeavePageClient } from "@/features/hr/time/leave/hr-leave-page-client";
+import { hrTimeReadIdentity } from "@/lib/reads/hr-time-schema";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Plane } from "lucide-react";
 
@@ -19,10 +20,9 @@ export default async function GlobalLeavePage() {
     redirect("/admin/hr/time");
   }
 
-  const result = await listLeaveRequests({ page: 1, page_size: 50, approval_status: "pending" });
-  if (!result.success) return <LoadError title="HR records" retryHref="/admin/hr/time/leave" />;
-  const rows = result.success && result.data ? result.data.data : [];
-  const count = result.success && result.data ? result.data.count : 0;
+  const result = await readHrTime({kind: "leave", status: "pending"}, authContext);
+  if (!result.success || result.data?.kind !== "leave") return <LoadError title="HR records" retryHref="/admin/hr/time/leave" />;
+  const rows = result.data.rows, count = result.data.totalCount;
 
   return (
     <div className="container mx-auto py-6 space-y-6">
@@ -43,6 +43,8 @@ export default async function GlobalLeavePage() {
             initialRows={rows}
             initialCount={count}
             authContext={authContext}
+            initialReadIdentity={hrTimeReadIdentity(authContext)}
+            initialUpdatedAt={result.updatedAt}
           />
         </CardContent>
       </Card>

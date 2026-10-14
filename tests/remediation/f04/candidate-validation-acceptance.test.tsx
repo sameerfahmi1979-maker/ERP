@@ -8,7 +8,22 @@ vi.mock('next/navigation',()=>({usePathname:()=>'/admin/hr/recruitment/candidate
 vi.mock('@/components/workspace/workspace-provider',()=>({useWorkspaceContext:()=>null}));
 vi.mock('@/components/workspace/workspace-draft-provider',()=>({useWorkspaceDraftStoreContext:()=>null}));
 vi.mock('@/hooks/use-workspace',()=>({useWorkspace:()=>({closeTab:vi.fn(),markDirty:vi.fn(),updateTabRoute:vi.fn(),isTabActive:()=>true})}));
-vi.mock('@tanstack/react-query',()=>({useQuery:()=>({data:undefined})}));
+// Controller regression tests stub successful read admission; P04 tests cover
+// the real hooks, failure/denial and cache-lifetime behavior independently.
+vi.mock('@tanstack/react-query', async importOriginal => {
+ const actual = await importOriginal<typeof import('@tanstack/react-query')>();
+ const client = new actual.QueryClient();
+ return {...actual, useQuery: () => ({data:undefined}), useQueryClient: () => client};
+});
+vi.mock('@/hooks/use-hr-candidate-record',()=>({
+ candidateRecordKey:(id:number,identity:string)=>['hr','recruitment','candidate',id,identity],
+ useHrCandidateRecord:(id:number|null)=>({identity:'f04-controller-fixture',owner:'f04-controller-fixture:'+id,
+  denied:false,verified:!!id,evidenceUpdatedAt:1,retire:()=>{},query:{isError:false,isFetching:false},
+  data:id?{candidate:{id,workspace_revision:1,full_name_en:'Saved',candidate_status:'new',requisition_id:null},
+   salaryAccess:{canView:false,canManage:false,canManageCandidate:true}}:undefined}),
+ useCandidateSalaryAccess:()=>({denied:false,query:{isError:false,isFetching:false},
+  data:{canView:false,canManage:false,canManageCandidate:true}}),
+}));
 vi.mock('sonner',()=>({toast:{error:mocks.error,success:vi.fn()}}));
 vi.mock('@/server/actions/hr/recruitment',()=>({createCandidate:mocks.create,updateCandidate:mocks.update,getRecruitmentSalaryAccess:vi.fn(),listJobRequisitions:vi.fn()}));
 vi.mock('@/features/hr/recruitment/tabs/candidate-conversion-tab',()=>({CandidateConversionTab:()=>null}));
@@ -18,7 +33,7 @@ vi.mock('@/features/hr/recruitment/tabs/candidate-offers-tab',()=>({CandidateOff
 vi.mock('@/features/hr/recruitment/tabs/candidate-onboarding-tab',()=>({CandidateOnboardingTab:()=>null}));
 vi.mock('@/features/hr/recruitment/tabs/candidate-overview-tab',()=>({CandidateOverviewTab:()=>null}));
 import {CandidateWorkspaceForm} from '@/features/hr/recruitment/candidate-workspace-form';
-const auth={permissionCodes:['hr.recruitment.manage'],roleCodes:[]} as AuthContext;
+const auth = {profile:{id:1,auth_user_id:'f04-synthetic',must_change_password:false},accountStatus:'active',isAccountActive:true,permissionCodes:['hr.recruitment.manage'],roleCodes:[]} as AuthContext;
 beforeEach(()=>vi.clearAllMocks());
 afterEach(cleanup);
 const mount=()=>render(<CandidateWorkspaceForm mode="add" authContext={auth}/>);

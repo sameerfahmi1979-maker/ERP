@@ -1,6 +1,7 @@
 "use client";
 import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
+import {CandidateChildReadPause, useCandidateChildReadAdmission, type CandidateChildAdmissionProps} from "../candidate-child-read-admission";
 
 import { ERPCombobox } from "@/components/erp/combobox";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
@@ -20,7 +21,7 @@ import Link from "next/link";
 import { useState} from "react";
 import { toast } from "sonner";
 
-type Props = {
+type Props = CandidateChildAdmissionProps & {
   candidate: CandidateRow;
   canManage: boolean;
   canCreateEmployee: boolean;
@@ -60,7 +61,7 @@ const EMPLOYEE_STATUS_OPTIONS = [
   { value: "probation", label: "Probation" },
 ];
 
-export function CandidateConversionTab({ candidate, canManage, canCreateEmployee, onChildOpen }: Props) {
+export function CandidateConversionTab({ candidate, canManage, canCreateEmployee, onChildOpen, mutationAdmitted = true, onRetryMutationAdmission }: Props) {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<ConversionForm>(EMPTY_FORM);
@@ -87,8 +88,12 @@ export function CandidateConversionTab({ candidate, canManage, canCreateEmployee
 
   const alreadyConverted = prepRes?.data?.already_converted ?? false;
   const latestOffer = prepRes?.data?.latest_offer;
+  // The disabled legacy link placeholder is not an active prerequisite read.
+  const mutation = useCandidateChildReadAdmission({canManage: canManage && canCreateEmployee, mutationAdmitted,
+    prerequisitesMet: !alreadyConverted && !conversionResult, reads: [uiRead2], onRetryMutationAdmission});
 
   function openDialog() {
+    if (!mutation.canDispatch()) return;
     const newForm = { ...EMPTY_FORM };
     if (latestOffer) {
       newForm.offer_id = latestOffer.id;
@@ -117,10 +122,12 @@ export function CandidateConversionTab({ candidate, canManage, canCreateEmployee
   };
 
   function handleConvert() {
+    if (!mutation.canDispatch()) return;
     if (!form.owner_company_id) { toast.error("Owner company is required"); return; }
     if (!form.joining_date) { toast.error("Joining date is required"); return; }
 
     startTransition(async () => {
+      if (!mutation.canDispatch()) return;
       const res = await convertCandidateToEmployee(candidate.id, {
         owner_company_id: form.owner_company_id!,
         branch_id: form.branch_id,
@@ -155,15 +162,15 @@ export function CandidateConversionTab({ candidate, canManage, canCreateEmployee
   return (
     <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="p-6 space-y-6">
       <div>
-        <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-4">Candidate Conversion</h3>
+        <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide mb-4">Candidate Conversion</h3>
 
         {alreadyConverted ? (
-          <Card className="shadow-none border border-green-200 bg-green-50">
+          <Card className="shadow-none border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
             <CardContent className="p-4 flex items-start gap-3">
-              <CheckCircle className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
+              <CheckCircle className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0 dark:text-green-300" />
               <div>
-                <p className="text-sm font-medium text-green-800">Candidate has been converted to an employee.</p>
-                <p className="text-xs text-green-700 mt-0.5">This candidate has already been converted. To view the employee profile, search for this candidate&apos;s name in the Employees module.</p>
+                <p className="text-sm font-medium text-green-800 dark:text-green-200">Candidate has been converted to an employee.</p>
+                <p className="text-xs text-green-700 mt-0.5 dark:text-green-200">This candidate has already been converted. To view the employee profile, search for this candidate&apos;s name in the Employees module.</p>
               </div>
             </CardContent>
           </Card>
@@ -172,7 +179,7 @@ export function CandidateConversionTab({ candidate, canManage, canCreateEmployee
             <Card className="shadow-none border">
               <CardContent className="p-4">
                 <div className="flex items-start gap-3">
-                  <AlertTriangle className="h-5 w-5 text-amber-500 mt-0.5 flex-shrink-0" />
+                  <AlertTriangle className="h-5 w-5 text-amber-500 mt-0.5 flex-shrink-0 dark:text-amber-300" />
                   <div className="flex-1">
                     <p className="text-sm font-medium">Convert Candidate to Employee</p>
                     <p className="text-xs text-muted-foreground mt-1">
@@ -190,13 +197,13 @@ export function CandidateConversionTab({ candidate, canManage, canCreateEmployee
                         className="mt-3"
                         size="sm"
                         onClick={openDialog}
-                        disabled={isPending}
+                        disabled={isPending || !mutation.ready}
                       >
                         <UserCheck className="h-4 w-4 mr-2" />
                         Convert to Employee
                       </Button>
                     ) : (
-                      <p className="mt-3 text-xs text-amber-700 font-medium">
+                      <p className="mt-3 text-xs text-amber-700 font-medium dark:text-amber-200">
                         Requires both <code>hr.recruitment.manage</code> and <code>hr.employees.create</code> permissions.
                       </p>
                     )}
@@ -208,13 +215,13 @@ export function CandidateConversionTab({ candidate, canManage, canCreateEmployee
         )}
 
         {conversionResult && (
-          <Card className="shadow-none border border-blue-200 bg-blue-50 mt-4">
+          <Card className="shadow-none border border-blue-200 bg-blue-50 mt-4 dark:border-blue-800 dark:bg-blue-950">
             <CardContent className="p-4 flex items-center gap-3">
-              <CheckCircle className="h-5 w-5 text-blue-600 flex-shrink-0" />
+              <CheckCircle className="h-5 w-5 text-blue-600 flex-shrink-0 dark:text-blue-300" />
               <div className="flex-1">
-                <p className="text-sm font-medium text-blue-800">Employee created: {conversionResult.employee_code}</p>
+                <p className="text-sm font-medium text-blue-800 dark:text-blue-200">Employee created: {conversionResult.employee_code}</p>
               </div>
-              <Link href={`/admin/hr/employees/record/${conversionResult.employee_id}`} className="text-blue-600 hover:underline text-sm flex items-center gap-1">
+              <Link href={`/admin/hr/employees/record/${conversionResult.employee_id}`} className="text-blue-600 hover:underline text-sm flex items-center gap-1 dark:text-blue-300">
                 View Employee <ExternalLink className="h-3.5 w-3.5" />
               </Link>
             </CardContent>
@@ -231,12 +238,15 @@ export function CandidateConversionTab({ candidate, canManage, canCreateEmployee
         mode="add"
         size="lg"
         isSubmitting={isPending}
+        submitDisabled={!mutation.ready}
         onSubmit={handleConvert}
         submitLabel="Confirm Conversion"
       >
+        <CandidateChildReadPause admission={mutation} canManage={canManage && canCreateEmployee}
+          blockedReason={alreadyConverted || conversionResult ? "This candidate has already been converted. Your entries are retained; cancel this dialog rather than create another employee." : undefined} />
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
-            <div className="bg-amber-50 border border-amber-200 rounded p-3 text-sm text-amber-800">
+            <div className="bg-amber-50 border border-amber-200 rounded p-3 text-sm text-amber-800 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-200">
               <strong>Review carefully.</strong> A new employee record will be created from <strong>{candidate.full_name_en}</strong>. You must provide owner company and joining date.
             </div>
           </div>

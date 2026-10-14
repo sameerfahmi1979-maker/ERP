@@ -1,7 +1,7 @@
 "use client";
 import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
 import { RecordCollection } from "@/components/erp/table/record-collection";
-import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
+import { QueryReadBoundary, readHasFailed } from "@/components/erp/query-read-boundary";
 
 import { ERPCombobox } from "@/components/erp/combobox";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
@@ -10,18 +10,22 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { invalidateRecruitmentCandidateReadModels } from "@/lib/query/invalidation";
 import { queryKeys } from "@/lib/query/query-keys";
-import { archiveCandidateDocument, linkCandidateDmsDocument, listCandidateDocuments, verifyCandidateDocument } from "@/server/actions/hr/recruitment";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { archiveCandidateDocument, linkCandidateDmsDocument, verifyCandidateDocument } from "@/server/actions/hr/recruitment";
+import { useQueryClient } from "@tanstack/react-query";
+import {useHrCandidateChildren, type CandidateChildReadProps} from "@/hooks/use-hr-candidate-children";
 import { CheckCircle, FileText, Link2, Trash2 } from "lucide-react";
-import { useState} from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-type Props = {
+type Props = CandidateChildReadProps & {
   candidateId: number;
   canManage: boolean;
+  /** Transient parent read admission, separate from business permission. */
+  mutationAdmitted?: boolean;
+  onRetryMutationAdmission?: () => Promise<unknown>;
   onChildOpen?: (open: boolean) => void;
 };
 
@@ -40,24 +44,43 @@ const VERIFICATION_COLORS: Record<string, string> = {
   failed: "bg-red-100 text-red-700",
 };
 
-export function CandidateDocumentsTab({ candidateId, canManage, onChildOpen }: Props) {
+export function CandidateDocumentsTab({ candidateId, canManage, authContext, onReadDenied, mutationAdmitted = true, onRetryMutationAdmission, onChildOpen }: Props) {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [retryingReads, setRetryingReads] = useState(false);
+  const retryFlight = useRef(false);
 
   const [dmsDocId, setDmsDocId] = useState("");
   const [purpose, setPurpose] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
 
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.recruitment.candidateDocuments(candidateId),
-    queryFn: () => listCandidateDocuments(candidateId),
-    staleTime: 30_000,
-  });
-  const { data: docsRes, isLoading } = uiRead1;
-  const docs = Array.isArray(docsRes?.data) ? docsRes.data : [];
+  const read = useHrCandidateChildren("documents", candidateId, {authContext, onReadDenied});
+  const uiRead1 = read.query, docsRes = uiRead1.data, docs = read.rows;
+  const documentReadAdmitted = uiRead1.isSuccess && docsRes?.success === true && !uiRead1.isFetching && !readHasFailed(uiRead1);
+  const mutationReady = canManage && mutationAdmitted && documentReadAdmitted && !retryingReads;
+  // A retained callback must consult the latest committed admission, including
+  // after terminal parent unmount. A portal does not inherit its parent's inert.
+  const mutationAdmission = useRef(false);
+  useLayoutEffect(() => {
+    mutationAdmission.current = mutationReady;
+    return () => { mutationAdmission.current = false; };
+  }, [mutationReady]);
+
+  async function retryReads() {
+    if (retryFlight.current) return;
+    retryFlight.current = true;
+    setRetryingReads(true);
+    try {
+      await Promise.allSettled([
+        Promise.resolve().then(() => onRetryMutationAdmission?.()),
+        uiRead1.refetch({cancelRefetch: false}),
+      ]);
+    } finally { retryFlight.current = false; setRetryingReads(false); }
+  }
 
   function openDialog() {
+    if (!mutationAdmission.current) return;
     setDmsDocId("");
     setPurpose(null);
     setNotes("");
@@ -71,9 +94,11 @@ export function CandidateDocumentsTab({ candidateId, canManage, onChildOpen }: P
   }
 
   function handleLink() {
+    if (!mutationAdmission.current) return;
     const docId = parseInt(dmsDocId);
     if (!docId) { toast.error("Enter a valid DMS document ID"); return; }
     startTransition(async () => {
+      if (!mutationAdmission.current) return;
       const res = await linkCandidateDmsDocument(candidateId, {
         dms_document_id: docId,
         document_purpose: purpose as "cv" | "passport" | "certificate" | "offer" | "photo" | "other" | null | undefined,
@@ -82,6 +107,7 @@ export function CandidateDocumentsTab({ candidateId, canManage, onChildOpen }: P
       if (res.success) {
         toast.success("Document linked");
         void queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateDocuments(candidateId) });
+        invalidateRecruitmentCandidateReadModels(queryClient, candidateId, "documents");
         closeDialog();
       } else {
         toast.error(res.error ?? "Failed to link document");
@@ -90,11 +116,14 @@ export function CandidateDocumentsTab({ candidateId, canManage, onChildOpen }: P
   }
 
   function handleVerify(id: number) {
+    if (!mutationAdmission.current) return;
     startTransition(async () => {
+      if (!mutationAdmission.current) return;
       const res = await verifyCandidateDocument(id);
       if (res.success) {
         toast.success("Document verified");
         void queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateDocuments(candidateId) });
+        invalidateRecruitmentCandidateReadModels(queryClient, candidateId, "documents");
       } else {
         toast.error(res.error ?? "Failed to verify");
       }
@@ -102,40 +131,35 @@ export function CandidateDocumentsTab({ candidateId, canManage, onChildOpen }: P
   }
 
   function handleArchive(id: number) {
+    if (!mutationAdmission.current) return;
     startTransition(async () => {
+      if (!mutationAdmission.current) return;
       const res = await archiveCandidateDocument(id);
       if (res.success) {
         toast.success("Document removed");
         void queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateDocuments(candidateId) });
+        invalidateRecruitmentCandidateReadModels(queryClient, candidateId, "documents");
       } else {
         toast.error(res.error ?? "Failed to remove");
       }
     });
   }
 
+  if (read.denied) return <p role="alert">Candidate document access is no longer available.</p>;
   return (
     <QueryReadBoundary queries={[uiRead1]}><div className="p-6">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Documents</h3>
         {canManage && (
-          <Button size="sm" onClick={openDialog}>
+          <Button size="sm" onClick={openDialog} disabled={!mutationReady}>
             <Link2 className="h-4 w-4 mr-1" /> Link DMS Document
           </Button>
         )}
       </div>
 
-      {isLoading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-14 rounded" />)}
-        </div>
-      ) : docs.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground text-sm">
-          <FileText className="h-8 w-8 mx-auto mb-2 opacity-40" />
-          No documents linked yet.
-        </div>
-      ) : (
+      {
         <div className="divide-y border rounded-lg">
-          <RecordCollection id="hr.candidate-documents-tab.CandidateDocumentsTab.docs" rows={docs} fields={[{"id":"dms_document_document_title","path":"dms_document.document_title","label":"Document Title"},{"id":"document_purpose","path":"document_purpose","label":"Document Purpose"}]} renderRecord={(doc) => (
+<RecordCollection id="hr.candidate-documents-tab.CandidateDocumentsTab.docs" rows={docs} serverRead={read.serverRead} isLoading={read.busy} message={read.validationMessage} userProfileId={String(authContext.profile?.id ?? "")} fields={[{"id":"dms_document_document_title","path":"dms_document.document_title","label":"Document Title"},{"id":"document_purpose","path":"document_purpose","label":"Document Purpose"}]} renderRecord={(doc) => (
             <div key={doc.id} className="flex items-center gap-3 p-3">
               <FileText className="h-4 w-4 text-slate-400 flex-shrink-0" />
               <div className="flex-1 min-w-0">
@@ -152,11 +176,11 @@ export function CandidateDocumentsTab({ candidateId, canManage, onChildOpen }: P
               {canManage && (
                 <div className="flex items-center gap-1">
                   {doc.verification_status !== "verified" && (
-                    <Button aria-label="Mark verified" size="sm" variant="ghost" onClick={() => handleVerify(doc.id)} disabled={isPending} title="Mark verified">
+                    <Button aria-label="Mark verified" size="sm" variant="ghost" onClick={() => handleVerify(doc.id)} disabled={isPending || !mutationReady} title="Mark verified">
                       <CheckCircle className="h-4 w-4 text-green-600" />
                     </Button>
                   )}
-                  <Button aria-label="Remove link" size="sm" variant="ghost" onClick={() => handleArchive(doc.id)} disabled={isPending} title="Remove link">
+                  <Button aria-label="Remove link" size="sm" variant="ghost" onClick={() => handleArchive(doc.id)} disabled={isPending || !mutationReady} title="Remove link">
                     <Trash2 className="h-4 w-4 text-red-500" />
                   </Button>
                 </div>
@@ -164,7 +188,7 @@ export function CandidateDocumentsTab({ candidateId, canManage, onChildOpen }: P
             </div>
           )} />
         </div>
-      )}
+      }
 
       <ERPChildDialogForm
         open={dialogOpen}
@@ -175,9 +199,17 @@ export function CandidateDocumentsTab({ candidateId, canManage, onChildOpen }: P
         mode="add"
         size="md"
         isSubmitting={isPending}
+        submitDisabled={!mutationReady}
         onSubmit={handleLink}
         submitLabel="Link Document"
       >
+        {!mutationReady && <div role="alert" className="mb-4 rounded-sm border border-destructive p-3 text-sm" aria-busy={retryingReads || undefined}>
+          <p>{canManage
+            ? "Document changes are paused until access and document details are verified. Your entries are retained. Retry the checks or cancel this dialog."
+            : "You do not have permission to change candidate documents. Your entries are retained; cancel this dialog."}</p>
+          {canManage && <Button type="button" variant="outline" className="mt-2" disabled={retryingReads}
+            onClick={() => void retryReads()}>{retryingReads ? "Retrying document checks…" : "Retry document checks"}</Button>}
+        </div>}
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <RequiredLabel required>DMS Document ID</RequiredLabel>

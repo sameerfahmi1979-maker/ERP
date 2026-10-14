@@ -2,6 +2,7 @@
 import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
 import { RecordCollection } from "@/components/erp/table/record-collection";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
+import {CandidateChildReadPause, useCandidateChildReadAdmission, type CandidateChildAdmissionProps} from "../candidate-child-read-admission";
 
 import { ERPCombobox } from "@/components/erp/combobox";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
@@ -9,17 +10,18 @@ import { RequiredLabel } from "@/components/erp/required-label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { invalidateRecruitmentCandidateReadModels } from "@/lib/query/invalidation";
 import { queryKeys } from "@/lib/query/query-keys";
-import type { OnboardingTaskRow } from "@/server/actions/hr/recruitment";
-import { archiveOnboardingTask, completeOnboardingTask, createOnboardingTask, listCandidateOnboardingTasks, updateOnboardingTask } from "@/server/actions/hr/recruitment";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type {CandidateChildDetailMap, CandidateChildRowMap} from "@/lib/reads/hr-candidate-children-schema";
+import {useHrCandidateChildren, type CandidateChildReadProps} from "@/hooks/use-hr-candidate-children";
+import { archiveOnboardingTask, completeOnboardingTask, createOnboardingTask, updateOnboardingTask } from "@/server/actions/hr/recruitment";
+import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle, CheckSquare, Pencil, Plus, Trash2 } from "lucide-react";
-import { useState} from "react";
+import { useEffect, useRef, useState} from "react";
 import { toast } from "sonner";
 
-type Props = {
+type Props = CandidateChildAdmissionProps & CandidateChildReadProps & {
   candidateId: number;
   canManage: boolean;
   onChildOpen?: (open: boolean) => void;
@@ -66,29 +68,41 @@ type TaskForm = {
 
 const EMPTY_FORM: TaskForm = { task_title: "", task_category: "", task_status: "pending", due_date: "", notes: "" };
 
-export function CandidateOnboardingTab({ candidateId, canManage, onChildOpen }: Props) {
+export function CandidateOnboardingTab({ candidateId, canManage, authContext, onReadDenied, onChildOpen, mutationAdmitted = true, onRetryMutationAdmission }: Props) {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<OnboardingTaskRow | null>(null);
+  const [editing, setEditing] = useState<CandidateChildDetailMap["onboarding"] | null>(null);
   const [form, setForm] = useState<TaskForm>(EMPTY_FORM);
+  const [editorVersion, setEditorVersion] = useState(0);
+  const editorGeneration = useRef(0);
+  const [unavailableEditor, setUnavailableEditor] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.recruitment.candidateOnboarding(candidateId),
-    queryFn: () => listCandidateOnboardingTasks(candidateId),
-    staleTime: 30_000,
-  });
-  const { data: res, isLoading } = uiRead1;
-  const tasks = Array.isArray(res?.data) ? res.data : [];
+  const read = useHrCandidateChildren("onboarding", candidateId, {authContext, onReadDenied});
+  const tasks = read.rows;
+  const mutation = useCandidateChildReadAdmission({canManage, mutationAdmitted, reads: read.reads, onRetryMutationAdmission});
+  const {detailUnavailable, closeDetail} = read;
+  useEffect(() => {
+    if (!detailUnavailable) return;
+    setEditorVersion(++editorGeneration.current); setEditing(null); setForm(EMPTY_FORM);
+    setDialogOpen(false); setUnavailableEditor(true); closeDetail(); onChildOpen?.(false);
+  }, [detailUnavailable, closeDetail, onChildOpen]);
 
   function openAdd() {
+    if (!mutation.canDispatch()) return;
+    setEditorVersion(++editorGeneration.current); setUnavailableEditor(false);
+    read.closeDetail();
     setEditing(null);
     setForm(EMPTY_FORM);
     setDialogOpen(true);
     onChildOpen?.(true);
   }
 
-  function openEdit(task: OnboardingTaskRow) {
+  async function openEdit(row: CandidateChildRowMap["onboarding"]) {
+    if (!mutation.canDispatch()) return;
+    const task = await read.loadDetail(row.id);
+    if (!task) return;
+    setEditorVersion(++editorGeneration.current); setUnavailableEditor(false);
     setEditing(task);
     setForm({
       task_title: task.task_title,
@@ -102,6 +116,9 @@ export function CandidateOnboardingTab({ candidateId, canManage, onChildOpen }: 
   }
 
   function closeDialog() {
+    if (editorVersion !== editorGeneration.current) return;
+    setEditorVersion(++editorGeneration.current);
+    read.closeDetail();
     setDialogOpen(false);
     onChildOpen?.(false);
   }
@@ -109,7 +126,9 @@ export function CandidateOnboardingTab({ candidateId, canManage, onChildOpen }: 
   const set = (key: keyof TaskForm, value: string) => setForm((p) => ({ ...p, [key]: value }));
 
   function handleSave() {
+    if (!dialogOpen || editorVersion !== editorGeneration.current || !mutation.canDispatch()) return;
     startTransition(async () => {
+      if (!dialogOpen || editorVersion !== editorGeneration.current || !mutation.canDispatch()) return;
       const payload = {
         task_title: form.task_title,
         task_category: (form.task_category as "document" | "medical" | "visa" | "training" | "site_access" | "payroll" | "it" | "operations" | "hr" | "other") || null,
@@ -126,6 +145,7 @@ export function CandidateOnboardingTab({ candidateId, canManage, onChildOpen }: 
       if (res.success) {
         toast.success(editing ? "Task updated" : "Task created");
         void queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateOnboarding(candidateId) });
+        invalidateRecruitmentCandidateReadModels(queryClient, candidateId, "onboarding");
         closeDialog();
       } else {
         toast.error(res.error ?? "Failed to save task");
@@ -134,11 +154,14 @@ export function CandidateOnboardingTab({ candidateId, canManage, onChildOpen }: 
   }
 
   function handleComplete(id: number) {
+    if (!mutation.canDispatch()) return;
     startTransition(async () => {
+      if (!mutation.canDispatch()) return;
       const res = await completeOnboardingTask(id);
       if (res.success) {
         toast.success("Task completed");
         void queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateOnboarding(candidateId) });
+        invalidateRecruitmentCandidateReadModels(queryClient, candidateId, "onboarding");
       } else {
         toast.error(res.error ?? "Failed to complete task");
       }
@@ -146,46 +169,44 @@ export function CandidateOnboardingTab({ candidateId, canManage, onChildOpen }: 
   }
 
   function handleArchive(id: number) {
+    if (!mutation.canDispatch()) return;
     startTransition(async () => {
+      if (!mutation.canDispatch()) return;
       const res = await archiveOnboardingTask(id);
       if (res.success) {
         toast.success("Task removed");
         void queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateOnboarding(candidateId) });
+        invalidateRecruitmentCandidateReadModels(queryClient, candidateId, "onboarding");
       } else {
         toast.error(res.error ?? "Failed to remove task");
       }
     });
   }
 
-  const pendingCount = tasks.filter((t) => t.task_status === "pending" || t.task_status === "in_progress").length;
   const completedCount = tasks.filter((t) => t.task_status === "completed").length;
 
+  if (read.denied) return <p role="alert">Candidate onboarding access is no longer available.</p>;
   return (
-    <QueryReadBoundary queries={[uiRead1]}><div className="p-6">
+    <QueryReadBoundary queries={read.reads}><div className="p-6">
+      {unavailableEditor && <p role="alert" className="mb-3 text-sm text-destructive">This child record is no longer available. Its private editor entries were removed; your candidate draft is unchanged.</p>}
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Onboarding Tasks</h3>
           {tasks.length > 0 && (
-            <p className="text-xs text-muted-foreground mt-0.5">{completedCount}/{tasks.length} completed</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{completedCount}/{tasks.length} completed on this page</p>
           )}
         </div>
         {canManage && (
-          <Button size="sm" onClick={openAdd}>
+          <Button size="sm" onClick={openAdd} disabled={!mutation.ready}>
             <Plus className="h-4 w-4 mr-1" /> Add Task
           </Button>
         )}
       </div>
 
-      {isLoading ? (
-        <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-14 rounded" />)}</div>
-      ) : tasks.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground text-sm">
-          <CheckSquare className="h-8 w-8 mx-auto mb-2 opacity-40" />
-          No onboarding tasks yet.
-        </div>
-      ) : (
+      {read.detailPending && <p role="status">Loading complete onboarding task…</p>}
+      {
         <div className="divide-y border rounded-lg">
-          <RecordCollection id="hr.candidate-onboarding-tab.CandidateOnboardingTab.tasks" rows={tasks} fields={[{"id":"task_title","path":"task_title","label":"Task Title"},{"id":"task_status","path":"task_status","label":"Task Status"},{"id":"due_date","path":"due_date","label":"Due Date"}]} renderRecord={(task) => (
+<RecordCollection id="hr.candidate-onboarding-tab.CandidateOnboardingTab.tasks" rows={tasks} serverRead={read.serverRead} isLoading={read.busy} message={read.validationMessage} userProfileId={String(authContext.profile?.id ?? "")} fields={[{"id":"task_title","path":"task_title","label":"Task Title"},{"id":"task_status","path":"task_status","label":"Task Status"},{"id":"due_date","path":"due_date","label":"Due Date"}]} renderRecord={(task) => (
             <div key={task.id} className="flex items-center gap-3 p-3">
               <CheckSquare className={`h-4 w-4 flex-shrink-0 ${task.task_status === "completed" ? "text-green-500" : "text-slate-400"}`} />
               <div className="flex-1 min-w-0">
@@ -203,18 +224,18 @@ export function CandidateOnboardingTab({ candidateId, canManage, onChildOpen }: 
               {canManage && (
                 <div className="flex gap-1">
                   {task.task_status !== "completed" && task.task_status !== "not_applicable" && (
-                    <Button aria-label="Mark complete" size="sm" variant="ghost" onClick={() => handleComplete(task.id)} disabled={isPending} title="Mark complete">
+                    <Button aria-label="Mark complete" size="sm" variant="ghost" onClick={() => handleComplete(task.id)} disabled={isPending || !mutation.ready} title="Mark complete">
                       <CheckCircle className="h-4 w-4 text-green-600" />
                     </Button>
                   )}
-                  <Button aria-label="Edit record" size="sm" variant="ghost" onClick={() => openEdit(task)}><Pencil className="h-4 w-4" /></Button>
-                  <Button aria-label="Archive record" size="sm" variant="ghost" onClick={() => handleArchive(task.id)} disabled={isPending}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                  <Button aria-label="Edit record" size="sm" variant="ghost" onClick={() => openEdit(task)} disabled={!mutation.ready}><Pencil className="h-4 w-4" /></Button>
+                  <Button aria-label="Archive record" size="sm" variant="ghost" onClick={() => handleArchive(task.id)} disabled={isPending || !mutation.ready}><Trash2 className="h-4 w-4 text-red-500" /></Button>
                 </div>
               )}
             </div>
           )} />
         </div>
-      )}
+      }
 
       <ERPChildDialogForm
         open={dialogOpen}
@@ -225,8 +246,10 @@ export function CandidateOnboardingTab({ candidateId, canManage, onChildOpen }: 
         mode={editing ? "edit" : "add"}
         size="md"
         isSubmitting={isPending}
+        submitDisabled={!mutation.ready}
         onSubmit={handleSave}
       >
+        <CandidateChildReadPause admission={mutation} canManage={canManage} />
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <RequiredLabel required>Task Title</RequiredLabel>

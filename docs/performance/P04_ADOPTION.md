@@ -86,6 +86,33 @@ Verification includes 646 P04 tests; final wider checks and exact published-head
 
 Browser/device journeys and timings remain owner-deferred, NOT RUN. Server/component tests do not establish a production latency guarantee. No main merge, deployment, emails or provider activation.
 
+## Item 3 — HR and operational read adoption
+
+This addition is an isolated implementation candidate. Final publication/check acceptance is recorded separately; whole P04 remains open.
+
+- Adopt counted server reads for operational assignments/readiness/blocks, attendance/shifts/leave, HR actions, recruitment and salary/WPS inquiries. Search, filters and sorting run before paging; unavailable counts are not successful zeroes.
+- Adopt private active-section reads for employee overview, compliance, time, payroll, operations and actions, plus candidate record/summary/children. Exact parent checks, minimal DTOs, selected historical values, cancellation, identity retirement and explicit failed-read recovery remain required.
+- Preserve ordinary caller authorization and F03 confidentiality. Salary/banking/medical/document access remains separately scoped. No role widening, privileged business client, business mutation replacement or cross-request authorization cache is introduced.
+- Preserve F04 drafts and unconfirmed-save identity while retiring inaccessible private payloads; F05 list controls and existing mutation authorization remain. Failed read admission cannot authorize a write, and a stale child-dialog callback cannot borrow a later opening's permission.
+- Candidate document metadata uses a minimal security-invoker view over live child RLS and the existing protected document projection. Offer labels are hydrated only for the bounded authorized page. Both remove repeated expensive joined authorization without silently dropping records.
+- Native synthetic evidence covers populated payroll/compliance/recruitment pages, tail/beyond-end pages, candidate title criteria, linked employee/dependent documents, medical masking, old/new child row-set parity, and role/link/revocation boundaries. Empty schema smoke is identified separately and does not establish populated workflow acceptance.
+- Browser/device measurements remain owner-deferred, NOT RUN. Synthetic server timings are not a production performance guarantee. F06 integration and F09 delivery ownership remain separate.
+
+### Item-3 migration order and release limits
+
+After the reviewed P03/P04 prerequisites, preserve timestamp order:
+
+1. `20261013110056_perf_hr_payroll_counted_inquiry.sql`
+2. `20261013115541_perf_recruitment_scope_tuple_reads.sql`
+3. `20261013124718_perf_recruitment_child_select_sets.sql`
+4. `20261013125825_perf_hr_compliance_read_subjects.sql`
+5. `20261014030458_perf_candidate_document_subject_set.sql`
+6. `20261014040457_perf_candidate_document_read_projection.sql`
+
+These are read optimizations, not HR business-rule or grant repairs. Strict source/policy/metadata preconditions intentionally refuse unexpected schemas and replay. Do not weaken the guards to fit F06 or production. Reconcile the exact reviewed release schema first. The six migrations compose in the synthetic lab and roll back to exact catalog preimages; this is not full historical-chain or hosted-schema acceptance.
+
+Application and database changes must be released together only under a separately approved release. The candidate-document reader requires the new view. For backout, restore the matching prior app, remove the added read-only view/APIs and restore captured original SELECT policies/private read-function definitions in dependency-safe reverse order. Retain all original write/principal policies, ACLs and business data. Never use `CASCADE` or reset a database to perform this backout. No merge or deployment is authorized here.
+
 ## Verification
 
 Run the P04 Vitest configuration and its TypeScript project, the existing P01/P02/P03 suites, the complete remediation and unit suites, shipping/E2E types, lint, build and security gates. CI includes the P04 offline suite and local-harness typecheck.
@@ -96,10 +123,10 @@ Component/query tests are not browser measurements. No production latency or who
 
 ## Remaining acceptance and adoption
 
-- Nonempty native archive/replacement/restore fixtures and exact intended release-schema integration.
+- Exact intended release-schema integration; populated archive/replacement/restore evidence is recorded under item 2.
 - Immutable F06 integration, including the known positive scoped common-master access gate.
 - Remaining administration collections and independent DMS Browser, entity-tab/attach interface, approvals-queue and dashboard consumers require their own current-source reconciliation. Item 2 does not certify these separate surfaces by association.
-- HR/recruitment/time/payroll/operations consumers and their preserved form/permission/failure contracts.
+- Final item-3 combined quality and exact-head publication acceptance; its HR/recruitment/time/payroll/operations implementation does not certify separate dashboards, reports or business workflows.
 - Report criteria/history, notification/delivery reads, dashboards/search/advisory/audit residuals, aligned with owning phases. Do not activate deferred F09 delivery work.
 - Complete per-consumer inventory reconciliation. Shared-selector tests do not certify every parent screen.
 - Owner-deferred browser/device/journey measurements, explicitly NOT RUN.

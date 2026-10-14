@@ -2,6 +2,10 @@
 import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
 import { RecordCollection } from "@/components/erp/table/record-collection";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
+import {PayrollReadScope, usePayrollPoint, usePayrollRecords} from "@/hooks/use-hr-payroll-records";
+import {hrPayrollReadIdentity, hasPayrollReadCapability} from "@/lib/reads/hr-payroll-records-schema";
+import {PayrollChoicePicker} from "@/features/hr/payroll/payroll-choice-picker";
+import {hasPermission} from "@/lib/rbac/scope";
 
 /**
  * ERP HR.5 — Employee Payroll & WPS Tab
@@ -42,32 +46,20 @@ import {
   invalidateHrEmployeeSalaryRevisions,
   invalidateHrEmployeeWps,
 } from "@/lib/query/invalidation";
-import { queryKeys } from "@/lib/query/query-keys";
 import type { AuthContext } from "@/lib/rbac/check";
 import {
   archiveEmployeePayrollHold,
   archiveEmployeeSalaryComponent,
-  calculateEmployeeBasicSalary,
-  calculateEmployeeGrossSalary,
   createEmployeeSalaryComponent,
   createEmployeeSalaryRevision,
   createOrUpdateEmployeePayrollProfile,
   createOrUpdateEmployeeWpsProfile,
-  getEmployeePayrollProfile,
-  getEmployeeWpsProfile,
-  getEmployeeWpsReadiness,
-  listEmployeePayrollHolds,
-  listEmployeeSalaryComponents,
-  listEmployeeSalaryRevisions,
-  listHrMohreEstablishmentsForPayroll,
-  listHrPayrollGroupsForPayroll,
-  listHrSalaryComponentTypesForPayroll,
   placeEmployeePayrollHold,
   releaseEmployeePayrollHold,
   updateEmployeeSalaryComponent,
   type SalaryComponentRow
 } from "@/server/actions/hr/payroll";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
   AlertTriangle,
@@ -80,7 +72,7 @@ import {
   PauseCircle,
   Plus
 } from "lucide-react";
-import { useState} from "react";
+import {useCallback, useEffect, useRef, useState} from "react";
 import { toast } from "sonner";
 
 // ── Props ──────────────────────────────────────────────────────────────────────
@@ -94,11 +86,7 @@ type Props = {
 // ── Permission helper ──────────────────────────────────────────────────────────
 
 function checkPerm(ctx: AuthContext, code: string): boolean {
-  return (
-    ctx.permissionCodes.includes(code) ||
-    ctx.roleCodes.includes("system_admin") ||
-    ctx.roleCodes.includes("group_admin")
-  );
+  return hasPermission(ctx, code);
 }
 
 // ── Format helpers ─────────────────────────────────────────────────────────────
@@ -125,10 +113,30 @@ function payrollStatusBadgeVariant(status: string | null): "default" | "secondar
 // ── Main Tab Component ─────────────────────────────────────────────────────────
 
 export function EmployeePayrollTab({ employeeId, authContext, onChildOpen }: Props) {
-  const canView = checkPerm(authContext, "hr.payroll.view");
+  const identity = hrPayrollReadIdentity(authContext), qc = useQueryClient(), previous = useRef(identity);
+  useEffect(() => {
+    if (previous.current !== identity) {
+      const retired = previous.current;
+      const filters = {queryKey: ["hr"], predicate: (query: {queryKey: readonly unknown[]}) => (query.queryKey[1] === "payroll" || query.queryKey.includes("payroll-picker")) && query.queryKey.includes(retired)};
+      void qc.cancelQueries(filters); qc.removeQueries(filters); previous.current = identity;
+    }
+  }, [identity, qc]);
+  return <PayrollSession key={`${employeeId}:${identity}`} employeeId={employeeId} authContext={authContext} onChildOpen={onChildOpen} identity={identity} />;
+}
+function PayrollSession({employeeId, authContext, onChildOpen, identity}: Props & {identity: string}) {
+  const [denied, setDenied] = useState(false), qc = useQueryClient();
+  const onDenied = useCallback(() => setDenied(true), []);
+  useEffect(() => () => onChildOpen?.(false), [onChildOpen]);
+  useEffect(() => {
+    if (denied) {
+      const filters = {queryKey: ["hr"], predicate: (query: {queryKey: readonly unknown[]}) => (query.queryKey[1] === "payroll" || query.queryKey.includes("payroll-picker")) && query.queryKey.includes(identity)};
+      void qc.cancelQueries(filters); qc.removeQueries(filters); onChildOpen?.(false);
+    }
+  }, [denied, identity, qc, onChildOpen]);
+  const canView = hasPayrollReadCapability(authContext, "hr.payroll.view");
   const canManage = checkPerm(authContext, "hr.payroll.manage");
 
-  if (!canView) {
+  if (!canView || denied) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-20 text-muted-foreground">
         <Lock className="h-8 w-8" />
@@ -139,13 +147,13 @@ export function EmployeePayrollTab({ employeeId, authContext, onChildOpen }: Pro
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <PayrollReadScope identity={identity} onDenied={onDenied}><div className="space-y-6 p-6">
       <SalaryProfileSection employeeId={employeeId} canManage={canManage} onChildOpen={onChildOpen} />
       <SalaryComponentsSection employeeId={employeeId} canManage={canManage} onChildOpen={onChildOpen} />
       <SalaryRevisionSection employeeId={employeeId} canManage={canManage} onChildOpen={onChildOpen} />
-      <WpsSection employeeId={employeeId} canManage={canManage} onChildOpen={onChildOpen} />
+      {hasPayrollReadCapability(authContext, "hr.banking.view") ? <WpsSection employeeId={employeeId} canManage={canManage && checkPerm(authContext, "hr.banking.manage")} onChildOpen={onChildOpen} /> : <p role="status">WPS and banking details are restricted. Separate banking access is required.</p>}
       <PayrollHoldsSection employeeId={employeeId} canManage={canManage} onChildOpen={onChildOpen} />
-    </div>
+    </div></PayrollReadScope>
   );
 }
 
@@ -155,6 +163,7 @@ function SalaryProfileSection({ employeeId, canManage, onChildOpen }: { employee
   const qc = useQueryClient();
   const [isPending, startTransition] = useTransition();
   const [dialogOpen, setDialogOpenState] = useState(false);
+  const [choicesBlocked, setChoicesBlocked] = useState(false);
 
   const setDialogOpen = (open: boolean) => {
     setDialogOpenState(open);
@@ -169,23 +178,12 @@ function SalaryProfileSection({ employeeId, canManage, onChildOpen }: { employee
     notes: "",
   });
 
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.payroll.profile(employeeId),
-    queryFn: () => getEmployeePayrollProfile(employeeId),
-  });
+  const uiRead1 = usePayrollPoint("profile", employeeId);
   const { data: profile, isLoading } = uiRead1;
 
-  const uiRead2 = useQuery({
-    queryKey: queryKeys.hr.payroll.grossSalary(employeeId),
-    queryFn: () => calculateEmployeeGrossSalary(employeeId),
-  });
+  const uiRead2 = usePayrollPoint("salary-totals", employeeId);
   const { data: grossRes } = uiRead2;
 
-  const uiRead3 = useQuery({
-    queryKey: queryKeys.hr.payrollGroups(),
-    queryFn: () => listHrPayrollGroupsForPayroll(),
-  });
-  const { data: payrollGroups } = uiRead3;
 
   const profileData = profile?.data ?? null;
 
@@ -206,26 +204,27 @@ function SalaryProfileSection({ employeeId, canManage, onChildOpen }: { employee
 
   const handleSubmit = () => {
     startTransition(async () => {
+      if (!canManage || !uiRead1.canDispatch()) return;
       const res = await createOrUpdateEmployeePayrollProfile(employeeId, {
         ...form,
         payroll_group_id: form.payroll_group_id ? Number(form.payroll_group_id) : null,
       });
       if (res.success) {
+        invalidateHrEmployeePayroll(qc, employeeId);
+        if (!uiRead1.canDispatch()) return;
         toast.success("Payroll profile saved");
         setDialogOpen(false);
-        invalidateHrEmployeePayroll(qc, employeeId);
-      } else {
+      } else if (uiRead1.canDispatch()) {
         toast.error(res.error ?? "Failed to save");
       }
     });
   };
 
-  const gross = grossRes?.data?.gross ?? 0;
+  const gross = grossRes?.data?.gross ?? null;
   const currency = profileData?.currency ?? "AED";
-  const groups = payrollGroups?.data ?? [];
 
   return (
-    <QueryReadBoundary queries={[uiRead1,uiRead2,uiRead3]}><div className="rounded-xl border bg-card p-5 space-y-4">
+    <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="rounded-xl border bg-card p-5 space-y-4">
       <div className="flex flex-wrap gap-2 items-center justify-between">
         <div className="flex items-center gap-2">
           <DollarSign className="h-5 w-5 text-primary" />
@@ -237,7 +236,7 @@ function SalaryProfileSection({ employeeId, canManage, onChildOpen }: { employee
           )}
         </div>
         {canManage && (
-          <Button size="sm" variant="outline" onClick={openEdit}>
+          <Button size="sm" variant="outline" onClick={openEdit} disabled={uiRead1.isFetching || uiRead2.isFetching}>
             <Edit2 className="h-3.5 w-3.5 mr-1.5" />
             {profileData ? "Edit Profile" : "Setup Profile"}
           </Button>
@@ -251,7 +250,7 @@ function SalaryProfileSection({ employeeId, canManage, onChildOpen }: { employee
           <div><span className="text-muted-foreground">Payroll Group:</span> <span className="font-medium">{profileData.payroll_group?.name_en ?? "—"}</span></div>
           <div><span className="text-muted-foreground">Effective Date:</span> <span className="font-medium">{fmtDate(profileData.effective_date)}</span></div>
           <div><span className="text-muted-foreground">Currency:</span> <span className="font-medium">{profileData.currency}</span></div>
-          <div><span className="text-muted-foreground">Calculated Gross:</span> <span className="font-medium text-green-700">{fmtMoney(gross, currency)}</span></div>
+          <div><span className="text-muted-foreground">Calculated Gross:</span> <span className="font-medium text-green-700">{uiRead2.isError ? "Salary unavailable" : uiRead2.isLoading || uiRead2.isFetching ? "Loading salary…" : fmtMoney(gross, currency)}</span></div>
           {profileData.notes && <div className="col-span-2"><span className="text-muted-foreground">Notes:</span> <span>{profileData.notes}</span></div>}
         </div>
       ) : (
@@ -266,17 +265,15 @@ function SalaryProfileSection({ employeeId, canManage, onChildOpen }: { employee
         icon={<DollarSign className="h-5 w-5" />}
         mode={profileData ? "edit" : "add"}
         isSubmitting={isPending}
+        submitDisabled={!uiRead1.ready || choicesBlocked || uiRead1.isFetching || uiRead2.isFetching}
         onSubmit={handleSubmit}
       >
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <Label>Payroll Group</Label>
-            <ERPCombobox ariaLabel="Payroll Group"
+            <PayrollChoicePicker kind="payroll-groups" employeeId={employeeId} enabled={dialogOpen} onReadState={setChoicesBlocked} ariaLabel="Payroll Group"
               value={form.payroll_group_id ? Number(form.payroll_group_id) : null}
               onValueChange={(v) => setForm(f => ({ ...f, payroll_group_id: String(v ?? "") }))}
-              options={groups.map(g => ({ value: g.id, label: g.name_en, code: g.code }))}
-              placeholder="Select payroll group..."
-              allowClear
             />
           </div>
           <div className="col-span-6">
@@ -326,6 +323,7 @@ function SalaryComponentsSection({ employeeId, canManage, onChildOpen }: { emplo
   const [isPending, startTransition] = useTransition();
   const [dialogOpen, setDialogOpenState] = useState(false);
   const [editing, setEditing] = useState<SalaryComponentRow | null>(null);
+  const [choicesBlocked, setChoicesBlocked] = useState(false);
 
   const setDialogOpen = (open: boolean) => {
     setDialogOpenState(open);
@@ -343,20 +341,11 @@ function SalaryComponentsSection({ employeeId, canManage, onChildOpen }: { emplo
 
   const [form, setForm] = useState<SalaryComponentForm>(emptyForm);
 
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.payroll.salaryComponents(employeeId),
-    queryFn: () => listEmployeeSalaryComponents(employeeId),
-  });
-  const { data: compsRes, isLoading } = uiRead1;
+  const uiRead1 = usePayrollRecords("salary-components", employeeId);
+  const { data: compsRes } = uiRead1;
 
-  const uiRead2 = useQuery({
-    queryKey: queryKeys.hr.salaryComponentTypes(),
-    queryFn: () => listHrSalaryComponentTypesForPayroll(),
-  });
-  const { data: typesRes } = uiRead2;
 
   const components = Array.isArray(compsRes?.data) ? compsRes.data : [];
-  const types = Array.isArray(typesRes?.data) ? typesRes.data : [];
 
   const openAdd = () => {
     setEditing(null);
@@ -364,7 +353,9 @@ function SalaryComponentsSection({ employeeId, canManage, onChildOpen }: { emplo
     setDialogOpen(true);
   };
 
-  const openEdit = (comp: SalaryComponentRow) => {
+  const openEdit = async (record: {id: number}) => {
+    const comp = await uiRead1.loadComponentDetail(record.id);
+    if (!comp) return;
     setEditing(comp);
     setForm({
       component_type_id: comp.component_type_id.toString(),
@@ -379,6 +370,7 @@ function SalaryComponentsSection({ employeeId, canManage, onChildOpen }: { emplo
 
   const handleSubmit = () => {
     startTransition(async () => {
+      if (!canManage || !uiRead1.canDispatch()) return;
       const payload = {
         component_type_id: Number(form.component_type_id),
         amount: parseFloat(form.amount),
@@ -393,10 +385,11 @@ function SalaryComponentsSection({ employeeId, canManage, onChildOpen }: { emplo
         : await createEmployeeSalaryComponent(employeeId, payload);
 
       if (res.success) {
+        invalidateHrEmployeeSalaryComponents(qc, employeeId);
+        if (!uiRead1.canDispatch()) return;
         toast.success(editing ? "Component updated" : "Component added");
         setDialogOpen(false);
-        invalidateHrEmployeeSalaryComponents(qc, employeeId);
-      } else {
+      } else if (uiRead1.canDispatch()) {
         toast.error(res.error ?? "Failed to save");
       }
     });
@@ -404,23 +397,25 @@ function SalaryComponentsSection({ employeeId, canManage, onChildOpen }: { emplo
 
   const handleArchive = (id: number) => {
     startTransition(async () => {
+      if (!canManage || !uiRead1.canDispatch()) return;
       const res = await archiveEmployeeSalaryComponent(id);
       if (res.success) {
-        toast.success("Component archived");
         invalidateHrEmployeeSalaryComponents(qc, employeeId);
-      } else {
+        if (!uiRead1.canDispatch()) return;
+        toast.success("Component archived");
+      } else if (uiRead1.canDispatch()) {
         toast.error(res.error ?? "Failed to archive");
       }
     });
   };
 
   return (
-    <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="rounded-xl border bg-card p-5 space-y-4">
+    <QueryReadBoundary queries={[uiRead1]}><div className="rounded-xl border bg-card p-5 space-y-4">
       <div className="flex flex-wrap gap-2 items-center justify-between">
         <div className="flex items-center gap-2">
           <DollarSign className="h-5 w-5 text-primary" />
           <h3 className="font-semibold text-base">Salary Components</h3>
-          <Badge variant="outline">{components.length}</Badge>
+          <Badge variant="outline">{uiRead1.collection.serverRead.totalCount ?? "…"}</Badge>
         </div>
         {canManage && (
           <Button size="sm" onClick={openAdd}>
@@ -430,13 +425,8 @@ function SalaryComponentsSection({ employeeId, canManage, onChildOpen }: { emplo
         )}
       </div>
 
-      {isLoading ? (
-        <div className="space-y-2">{[...Array(2)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
-      ) : components.length === 0 ? (
-        <p className="text-sm text-muted-foreground italic">No salary components configured.</p>
-      ) : (
         <div className="divide-y text-sm">
-          <RecordCollection id="hr.employee-payroll-tab.SalaryComponentsSection.components" rows={components} fields={[{"id":"component_type_name_en","path":"component_type.name_en","label":"Component"},{"id":"effective_from","path":"effective_from","label":"Effective From"},{"id":"effective_to","path":"effective_to","label":"Effective To"}]} renderRecord={(comp) => (
+          <RecordCollection {...uiRead1.collection} id="hr.employee-payroll-tab.SalaryComponentsSection.components" rows={components} fields={[{"id":"component_type_name_en","path":"component_type.name_en","label":"Component"},{"id":"effective_from","path":"effective_from","label":"Effective From"},{"id":"effective_to","path":"effective_to","label":"Effective To"}]} renderRecord={(comp) => (
             <div key={comp.id} className="flex items-center justify-between py-2.5 gap-4">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -455,7 +445,7 @@ function SalaryComponentsSection({ employeeId, canManage, onChildOpen }: { emplo
               </div>
               {canManage && (
                 <div className="flex items-center gap-1 shrink-0">
-                  <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(comp)}>
+                  <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" disabled={uiRead1.detailPending} onClick={() => void openEdit(comp)}>
                     <Edit2 className="h-3.5 w-3.5" />
                   </Button>
                   <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleArchive(comp.id)}>
@@ -466,7 +456,6 @@ function SalaryComponentsSection({ employeeId, canManage, onChildOpen }: { emplo
             </div>
           )} />
         </div>
-      )}
 
       <ERPChildDialogForm
         open={dialogOpen}
@@ -476,16 +465,15 @@ function SalaryComponentsSection({ employeeId, canManage, onChildOpen }: { emplo
         icon={<DollarSign className="h-5 w-5" />}
         mode={editing ? "edit" : "add"}
         isSubmitting={isPending}
+        submitDisabled={!uiRead1.ready || choicesBlocked}
         onSubmit={handleSubmit}
       >
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <Label>Component Type <span className="text-destructive">*</span></Label>
-            <ERPCombobox ariaLabel="Component Type"
+            <PayrollChoicePicker kind="salary-component-types" employeeId={employeeId} enabled={dialogOpen} onReadState={setChoicesBlocked} ariaLabel="Component Type"
               value={form.component_type_id ? Number(form.component_type_id) : null}
               onValueChange={(v) => setForm(f => ({ ...f, component_type_id: String(v ?? "") }))}
-              options={types.map(t => ({ value: t.id, label: t.name_en, code: t.code, extra: t.component_kind }))}
-              placeholder="Select component type..."
               required
             />
           </div>
@@ -537,17 +525,10 @@ function SalaryRevisionSection({ employeeId, canManage, onChildOpen }: { employe
     apply_to_components: true,
   });
 
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.payroll.salaryRevisions(employeeId),
-    queryFn: () => listEmployeeSalaryRevisions(employeeId),
-  });
-  const { data: revisionsRes, isLoading } = uiRead1;
+  const uiRead1 = usePayrollRecords("salary-revisions", employeeId);
+  const { data: revisionsRes } = uiRead1;
 
-  const uiRead2 = useQuery({
-    queryKey: queryKeys.hr.payroll.basicSalary(employeeId),
-    queryFn: () => calculateEmployeeBasicSalary(employeeId),
-    enabled: dialogOpen,
-  });
+  const uiRead2 = usePayrollPoint("salary-totals", employeeId, dialogOpen);
   const { data: basicRes, isLoading: isBasicLoading } = uiRead2;
 
   const revisions = Array.isArray(revisionsRes?.data) ? revisionsRes.data : [];
@@ -565,6 +546,7 @@ function SalaryRevisionSection({ employeeId, canManage, onChildOpen }: { employe
     }
 
     startTransition(async () => {
+      if (!canManage || !uiRead1.canDispatch() || !uiRead2.canDispatch()) return;
       const res = await createEmployeeSalaryRevision(employeeId, {
         effective_date: form.effective_date,
         revision_reason: form.revision_reason || null,
@@ -572,17 +554,17 @@ function SalaryRevisionSection({ employeeId, canManage, onChildOpen }: { employe
         apply_to_components: form.apply_to_components,
       });
       if (res.success) {
+        invalidateHrEmployeeSalaryRevisions(qc, employeeId);
+        if (form.apply_to_components) invalidateHrEmployeeSalaryComponents(qc, employeeId);
+        if (!uiRead1.canDispatch()) return;
         toast.success(
           form.apply_to_components
             ? "Salary revision recorded and basic salary updated"
             : "Salary revision recorded (history only)"
         );
         setDialogOpen(false);
-        invalidateHrEmployeeSalaryRevisions(qc, employeeId);
-        if (form.apply_to_components) {
-          invalidateHrEmployeeSalaryComponents(qc, employeeId);
-        }
-      } else {
+
+      } else if (uiRead1.canDispatch()) {
         toast.error(res.error ?? "Failed to save");
       }
     });
@@ -594,7 +576,7 @@ function SalaryRevisionSection({ employeeId, canManage, onChildOpen }: { employe
         <div className="flex items-center gap-2">
           <History className="h-5 w-5 text-primary" />
           <h3 className="font-semibold text-base">Salary Revision History</h3>
-          <Badge variant="outline">{revisions.length}</Badge>
+          <Badge variant="outline">{uiRead1.collection.serverRead.totalCount ?? "…"}</Badge>
         </div>
         {canManage && (
           <Button size="sm" onClick={() => { setForm({ effective_date: new Date().toISOString().slice(0, 10), revision_reason: "", new_basic: "", apply_to_components: true }); setDialogOpen(true); }}>
@@ -608,13 +590,8 @@ function SalaryRevisionSection({ employeeId, canManage, onChildOpen }: { employe
         <Lock className="h-3 w-3" /> Append-only history — records cannot be edited or deleted.
       </div>
 
-      {isLoading ? (
-        <div className="space-y-2">{[...Array(2)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
-      ) : revisions.length === 0 ? (
-        <p className="text-sm text-muted-foreground italic">No salary revisions recorded.</p>
-      ) : (
         <div className="divide-y text-sm">
-          <RecordCollection id="hr.employee-payroll-tab.SalaryRevisionSection.revisions" rows={revisions} fields={[{"id":"effective_date","path":"effective_date","label":"Effective Date"},{"id":"revision_reason","path":"revision_reason","label":"Revision Reason"}]} renderRecord={(rev) => (
+          <RecordCollection {...uiRead1.collection} id="hr.employee-payroll-tab.SalaryRevisionSection.revisions" rows={revisions} fields={[{"id":"effective_date","path":"effective_date","label":"Effective Date"},{"id":"revision_reason","path":"revision_reason","label":"Revision Reason"}]} renderRecord={(rev) => (
             <div key={rev.id} className="py-2.5 grid grid-cols-4 gap-2">
               <div><span className="text-muted-foreground">Date:</span> <span className="font-medium">{fmtDate(rev.effective_date)}</span></div>
               <div><span className="text-muted-foreground">Old Basic:</span> <span>{fmtMoney(rev.old_gross)}</span></div>
@@ -624,7 +601,6 @@ function SalaryRevisionSection({ employeeId, canManage, onChildOpen }: { employe
             </div>
           )} />
         </div>
-      )}
 
       <ERPChildDialogForm
         open={dialogOpen}
@@ -634,6 +610,7 @@ function SalaryRevisionSection({ employeeId, canManage, onChildOpen }: { employe
         icon={<History className="h-5 w-5" />}
         mode="add"
         isSubmitting={isPending}
+        submitDisabled={!uiRead1.ready || !uiRead2.ready || isBasicLoading || uiRead2.isError}
         onSubmit={handleSubmit}
         submitLabel="Record"
       >
@@ -702,6 +679,7 @@ function WpsSection({ employeeId, canManage, onChildOpen }: { employeeId: number
   const qc = useQueryClient();
   const [isPending, startTransition] = useTransition();
   const [dialogOpen, setDialogOpenState] = useState(false);
+  const [choicesBlocked, setChoicesBlocked] = useState(false);
 
   const setDialogOpen = (open: boolean) => {
     setDialogOpenState(open);
@@ -723,27 +701,13 @@ function WpsSection({ employeeId, canManage, onChildOpen }: { employeeId: number
     salary_effective_date: "",
   });
 
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.payroll.wpsProfile(employeeId),
-    queryFn: () => getEmployeeWpsProfile(employeeId),
-  });
+  const uiRead1 = usePayrollPoint("wps", employeeId);
   const { data: wpsRes, isLoading } = uiRead1;
 
-  const uiRead2 = useQuery({
-    queryKey: queryKeys.hr.payroll.wpsReadiness(employeeId),
-    queryFn: () => getEmployeeWpsReadiness(employeeId),
-  });
-  const { data: readinessRes } = uiRead2;
 
-  const uiRead3 = useQuery({
-    queryKey: queryKeys.hr.mohreEstablishments(),
-    queryFn: () => listHrMohreEstablishmentsForPayroll(),
-  });
-  const { data: mohreRes } = uiRead3;
 
-  const wps = wpsRes?.data ?? null;
-  const readiness = readinessRes?.data ?? null;
-  const mohreOptions = Array.isArray(mohreRes?.data) ? mohreRes.data : [];
+  const wps = wpsRes?.data?.profile ?? null;
+  const readiness = wpsRes?.data?.readiness ?? null;
 
   const openEdit = () => {
     setForm({
@@ -765,6 +729,7 @@ function WpsSection({ employeeId, canManage, onChildOpen }: { employeeId: number
 
   const handleSubmit = () => {
     startTransition(async () => {
+      if (!canManage || !uiRead1.canDispatch()) return;
       const payload = {
         ...form,
         account_number: form.account_number || undefined,
@@ -776,10 +741,11 @@ function WpsSection({ employeeId, canManage, onChildOpen }: { employeeId: number
       };
       const res = await createOrUpdateEmployeeWpsProfile(employeeId, payload);
       if (res.success) {
+        invalidateHrEmployeeWps(qc, employeeId);
+        if (!uiRead1.canDispatch()) return;
         toast.success("WPS profile saved");
         setDialogOpen(false);
-        invalidateHrEmployeeWps(qc, employeeId);
-      } else {
+      } else if (uiRead1.canDispatch()) {
         toast.error(res.error ?? "Failed to save");
       }
     });
@@ -795,7 +761,7 @@ function WpsSection({ employeeId, canManage, onChildOpen }: { employeeId: number
   };
 
   return (
-    <QueryReadBoundary queries={[uiRead1,uiRead2,uiRead3]}><div className="rounded-xl border bg-card p-5 space-y-4">
+    <QueryReadBoundary queries={[uiRead1]}><div className="rounded-xl border bg-card p-5 space-y-4">
       <div className="flex flex-wrap gap-2 items-center justify-between">
         <div className="flex items-center gap-2">
           <Landmark className="h-5 w-5 text-primary" />
@@ -808,7 +774,7 @@ function WpsSection({ employeeId, canManage, onChildOpen }: { employeeId: number
           )}
         </div>
         {canManage && (
-          <Button size="sm" variant="outline" onClick={openEdit}>
+          <Button size="sm" variant="outline" onClick={openEdit} disabled={uiRead1.isFetching}>
             <Edit2 className="h-3.5 w-3.5 mr-1.5" />
             {wps ? "Edit WPS Profile" : "Setup WPS Profile"}
           </Button>
@@ -859,6 +825,7 @@ function WpsSection({ employeeId, canManage, onChildOpen }: { employeeId: number
         mode={wps ? "edit" : "add"}
         size="xl"
         isSubmitting={isPending}
+        submitDisabled={!uiRead1.ready || choicesBlocked || uiRead1.isFetching}
         onSubmit={handleSubmit}
       >
         <div className="grid grid-cols-12 gap-4">
@@ -940,12 +907,9 @@ function WpsSection({ employeeId, canManage, onChildOpen }: { employeeId: number
           </div>
           <div className="col-span-6">
             <Label>MOHRE Establishment</Label>
-            <ERPCombobox ariaLabel="MOHRE Establishment"
+            <PayrollChoicePicker kind="mohre-establishments" employeeId={employeeId} enabled={dialogOpen} onReadState={setChoicesBlocked} ariaLabel="MOHRE Establishment"
               value={form.mohre_establishment_id}
               onValueChange={(v) => setForm(f => ({ ...f, mohre_establishment_id: v ? Number(v) : null }))}
-              options={mohreOptions.map(m => ({ value: m.id, label: m.establishment_name, code: m.establishment_number }))}
-              placeholder="Select MOHRE establishment..."
-              allowClear
             />
           </div>
           <div className="col-span-6">
@@ -976,27 +940,26 @@ function PayrollHoldsSection({ employeeId, canManage, onChildOpen }: { employeeI
     notes: "",
   });
 
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.payroll.holds(employeeId),
-    queryFn: () => listEmployeePayrollHolds(employeeId),
-  });
-  const { data: holdsRes, isLoading } = uiRead1;
+  const uiRead1 = usePayrollRecords("holds", employeeId);
+  const { data: holdsRes } = uiRead1;
 
   const holds = Array.isArray(holdsRes?.data) ? holdsRes.data : [];
 
   const handleSubmit = () => {
     startTransition(async () => {
+      if (!canManage || !uiRead1.canDispatch()) return;
       const res = await placeEmployeePayrollHold(employeeId, {
         hold_reason: form.hold_reason,
         hold_date: form.hold_date,
         notes: form.notes || null,
       });
       if (res.success) {
-        toast.success("Payroll hold placed");
-        setDialogOpen(false);
         invalidateHrEmployeePayrollHolds(qc, employeeId);
         invalidateHrEmployeePayroll(qc, employeeId);
-      } else {
+        if (!uiRead1.canDispatch()) return;
+        toast.success("Payroll hold placed");
+        setDialogOpen(false);
+      } else if (uiRead1.canDispatch()) {
         toast.error(res.error ?? "Failed to place hold");
       }
     });
@@ -1004,12 +967,14 @@ function PayrollHoldsSection({ employeeId, canManage, onChildOpen }: { employeeI
 
   const handleRelease = (id: number) => {
     startTransition(async () => {
+      if (!canManage || !uiRead1.canDispatch()) return;
       const res = await releaseEmployeePayrollHold(id);
       if (res.success) {
-        toast.success("Payroll hold released");
         invalidateHrEmployeePayrollHolds(qc, employeeId);
         invalidateHrEmployeePayroll(qc, employeeId);
-      } else {
+        if (!uiRead1.canDispatch()) return;
+        toast.success("Payroll hold released");
+      } else if (uiRead1.canDispatch()) {
         toast.error(res.error ?? "Failed to release hold");
       }
     });
@@ -1017,17 +982,18 @@ function PayrollHoldsSection({ employeeId, canManage, onChildOpen }: { employeeI
 
   const handleArchive = (id: number) => {
     startTransition(async () => {
+      if (!canManage || !uiRead1.canDispatch()) return;
       const res = await archiveEmployeePayrollHold(id);
       if (res.success) {
-        toast.success("Hold archived");
         invalidateHrEmployeePayrollHolds(qc, employeeId);
-      } else {
+        if (!uiRead1.canDispatch()) return;
+        toast.success("Hold archived");
+      } else if (uiRead1.canDispatch()) {
         toast.error(res.error ?? "Failed to archive");
       }
     });
   };
 
-  const activeHolds = holds.filter(h => h.is_active);
 
   return (
     <QueryReadBoundary queries={[uiRead1]}><div className="rounded-xl border bg-card p-5 space-y-4">
@@ -1035,9 +1001,8 @@ function PayrollHoldsSection({ employeeId, canManage, onChildOpen }: { employeeI
         <div className="flex items-center gap-2">
           <PauseCircle className="h-5 w-5 text-primary" />
           <h3 className="font-semibold text-base">Payroll Holds</h3>
-          {activeHolds.length > 0 && (
-            <Badge variant="destructive">{activeHolds.length} Active</Badge>
-          )}
+          {uiRead1.activeHoldCount !== null && uiRead1.activeHoldCount > 0 && <Badge variant="destructive">{uiRead1.activeHoldCount} Active</Badge>}
+          <Badge variant="outline">{uiRead1.collection.serverRead.totalCount ?? "…"} matching holds</Badge>
         </div>
         {canManage && (
           <Button size="sm" variant="outline" onClick={() => { setForm({ hold_reason: "", hold_date: new Date().toISOString().slice(0, 10), notes: "" }); setDialogOpen(true); }}>
@@ -1047,13 +1012,8 @@ function PayrollHoldsSection({ employeeId, canManage, onChildOpen }: { employeeI
         )}
       </div>
 
-      {isLoading ? (
-        <div className="space-y-2">{[...Array(2)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
-      ) : holds.length === 0 ? (
-        <p className="text-sm text-muted-foreground italic">No payroll holds recorded.</p>
-      ) : (
         <div className="divide-y text-sm">
-          <RecordCollection id="hr.employee-payroll-tab.PayrollHoldsSection.holds" rows={holds} fields={[{"id":"hold_reason","path":"hold_reason","label":"Hold Reason"},{"id":"is_active","path":"is_active","label":"Is Active"},{"id":"hold_date","path":"hold_date","label":"Hold Date"}]} renderRecord={(hold) => (
+          <RecordCollection {...uiRead1.collection} id="hr.employee-payroll-tab.PayrollHoldsSection.holds" rows={holds} fields={[{"id":"hold_reason","path":"hold_reason","label":"Hold Reason"},{"id":"is_active","path":"is_active","label":"Is Active"},{"id":"hold_date","path":"hold_date","label":"Hold Date"}]} renderRecord={(hold) => (
             <div key={hold.id} className="flex items-start justify-between py-2.5 gap-4">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -1086,7 +1046,6 @@ function PayrollHoldsSection({ employeeId, canManage, onChildOpen }: { employeeI
             </div>
           )} />
         </div>
-      )}
 
       <ERPChildDialogForm
         open={dialogOpen}
@@ -1097,6 +1056,7 @@ function PayrollHoldsSection({ employeeId, canManage, onChildOpen }: { employeeI
         mode="add"
         isSubmitting={isPending}
         onSubmit={handleSubmit}
+        submitDisabled={!uiRead1.ready}
         submitLabel="Place Hold"
       >
         <div className="grid grid-cols-12 gap-4">

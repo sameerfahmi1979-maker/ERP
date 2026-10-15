@@ -1,114 +1,23 @@
 "use client";
-import { RecordCollection } from "@/components/erp/table/record-collection";
-import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
-
-import { ERPCombobox } from "@/components/erp/combobox";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { queryKeys } from "@/lib/query/query-keys";
-import type { AuthContext } from "@/lib/rbac/check";
-import { listGlobalOnboardingTasks } from "@/server/actions/hr/recruitment";
-import { useQuery } from "@tanstack/react-query";
-import { CheckSquare } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
-
-type Props = { authContext: AuthContext };
-
-const STATUS_OPTIONS = [
-  { value: "pending", label: "Pending" },
-  { value: "in_progress", label: "In Progress" },
-  { value: "completed", label: "Completed" },
-  { value: "blocked", label: "Blocked" },
-  { value: "not_applicable", label: "Not Applicable" },
-  { value: "cancelled", label: "Cancelled" },
-];
-
-const CATEGORY_OPTIONS = [
-  { value: "document", label: "Document" },
-  { value: "medical", label: "Medical" },
-  { value: "visa", label: "Visa" },
-  { value: "training", label: "Training" },
-  { value: "site_access", label: "Site Access" },
-  { value: "payroll", label: "Payroll" },
-  { value: "it", label: "IT" },
-  { value: "operations", label: "Operations" },
-  { value: "hr", label: "HR" },
-  { value: "other", label: "Other" },
-];
-
-const STATUS_COLORS: Record<string, string> = {
-  pending: "bg-slate-100 text-slate-700",
-  in_progress: "bg-blue-100 text-blue-700",
-  completed: "bg-green-100 text-green-700",
-  blocked: "bg-red-100 text-red-700",
-  not_applicable: "bg-gray-100 text-gray-500",
-  cancelled: "bg-gray-100 text-gray-500",
-};
-
-export function GlobalOnboardingPageClient({ authContext }: Props) {
-  const [statusFilter, setStatusFilter] = useState<string | null>(null);
-
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.recruitment.globalOnboarding({ status: statusFilter }),
-    queryFn: () => listGlobalOnboardingTasks({ status: statusFilter ?? undefined, pageSize: 100 }),
-    staleTime: 30_000,
-  });
-  const { data: res, isLoading } = uiRead1;
-
-  const rows = Array.isArray(res?.data?.rows) ? res.data.rows : [];
-
-  return (
-    <QueryReadBoundary queries={[uiRead1]}><div className="p-6 max-w-5xl mx-auto space-y-4">
-      <div className="flex flex-wrap gap-2 items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900">Onboarding Tasks</h1>
-          <p className="text-sm text-muted-foreground">{res?.data?.totalCount ?? 0} total</p>
-        </div>
-      </div>
-
-      <div className="flex gap-2 flex-wrap">
-        <ERPCombobox ariaLabel="Filter by status"
-          value={statusFilter}
-          onValueChange={(v) => setStatusFilter(v ? String(v) : null)}
-          options={[{ value: "", label: "All Statuses" }, ...STATUS_OPTIONS]}
-          placeholder="Filter by status"
-        />
-      </div>
-
-      {isLoading ? (
-        <div className="space-y-2">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-14 rounded" />)}</div>
-      ) : rows.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground text-sm">
-          <CheckSquare className="h-10 w-10 mx-auto mb-2 opacity-40" />
-          No onboarding tasks found.
-        </div>
-      ) : (
-        <div className="border rounded-lg divide-y">
-          <RecordCollection id="hr.global-onboarding-page-client.GlobalOnboardingPageClient.rows" rows={rows} fields={[{"id":"candidate_full_name_en","path":"candidate.full_name_en","label":"Full Name En"},{"id":"task_title","path":"task_title","label":"Task Title"},{"id":"task_status","path":"task_status","label":"Task Status"}]} renderRecord={(row) => (
-            <div key={row.id} className="flex items-center gap-3 p-4">
-              <CheckSquare className={`h-4 w-4 flex-shrink-0 ${row.task_status === "completed" ? "text-green-500" : "text-slate-400"}`} />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className={`text-sm font-medium ${row.task_status === "completed" ? "line-through text-muted-foreground" : ""}`}>{row.task_title}</span>
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[row.task_status]}`}>{row.task_status.replace(/_/g, " ")}</span>
-                  {row.task_category && <span className="text-xs text-muted-foreground capitalize">{row.task_category}</span>}
-                </div>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {row.candidate && `Candidate: ${row.candidate.full_name_en}`}
-                  {row.due_date && ` · Due: ${row.due_date}`}
-                  {row.assigned_user && ` · Assigned to: ${row.assigned_user.full_name_en ?? `User #${row.assigned_user.id}`}`}
-                </p>
-              </div>
-              {row.candidate_id && (
-                <Link href={`/admin/hr/recruitment/candidates/record/${row.candidate_id}`}>
-                  <Button size="sm" variant="outline">View Candidate</Button>
-                </Link>
-              )}
-            </div>
-          )} />
-        </div>
-      )}
-    </div></QueryReadBoundary>
-  );
+import {useRecruitmentInquiry, useRecruitmentInquiryIdentity, type RecruitmentInquiryProps} from "@/hooks/use-hr-recruitment-inquiry";
+import {RecruitmentInquiryTable} from "./recruitment-inquiry-table";
+export function GlobalOnboardingPageClient(props: RecruitmentInquiryProps) {
+  const identity = useRecruitmentInquiryIdentity("onboarding", props.authContext);
+  return <OnboardingSession key={identity} {...props} identity={identity} />;
+}
+function OnboardingSession(props: RecruitmentInquiryProps & {identity: string}) {
+  const read = useRecruitmentInquiry("onboarding", props, props.identity);
+  return <div className="p-6 max-w-7xl mx-auto space-y-4"><h1 className="text-xl font-semibold">Onboarding Tasks</h1>
+    <RecruitmentInquiryTable kind="onboarding" identity={props.identity} read={read} columns={[
+      {id: "task_title", header: "Task", accessorKey: "task_title", enableHiding: false, size: 240},
+      {id: "candidate_name", header: "Candidate", accessorFn: row => row.candidate?.full_name_en ?? "Restricted or unavailable", size: 200},
+      {id: "candidate_code", header: "Candidate code", accessorFn: row => row.candidate?.candidate_code ?? "—", size: 150},
+      {id: "task_status", header: "Status", accessorKey: "task_status", size: 150},
+      {id: "task_category", header: "Category", accessorFn: row => row.task_category ?? "—", size: 150},
+      {id: "due_date", header: "Due date", accessorFn: row => row.due_date ?? "—", size: 150},
+      {id: "assigned_user", header: "Assigned to", accessorFn: row => row.assigned_user?.full_name_en ?? "Restricted or unavailable", enableSorting: false, size: 200},
+      {id: "actions", header: "Actions", enableSorting: false, cell: ({row}) => row.original.candidate && <Link prefetch={false} className="text-primary underline" href={`/admin/hr/recruitment/candidates/record/${row.original.candidate_id}`}>View Candidate</Link>},
+    ]} />
+  </div>;
 }

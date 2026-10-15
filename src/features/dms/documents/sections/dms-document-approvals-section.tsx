@@ -2,12 +2,14 @@
 
 import { ShieldCheck } from "lucide-react";
 import { DmsApprovalActionPanel } from "@/features/dms/approvals/dms-approval-action-panel";
+import type {AuthContext} from "@/lib/rbac/check";
 
 interface DmsDocumentApprovalsSectionProps {
   documentId: number | null;
+  authContext: AuthContext;
 }
 
-export function DmsDocumentApprovalsSection({ documentId }: DmsDocumentApprovalsSectionProps) {
+export function DmsDocumentApprovalsSection({ documentId, authContext }: DmsDocumentApprovalsSectionProps) {
   if (!documentId) {
     return (
       <div className="flex flex-col items-center gap-3 py-8 text-muted-foreground">
@@ -22,5 +24,5 @@ export function DmsDocumentApprovalsSection({ documentId }: DmsDocumentApprovals
     );
   }
 
-  return <DmsApprovalActionPanel documentId={documentId} />;
+  return <DmsApprovalActionPanel documentId={documentId} authContext={authContext} />;
 }

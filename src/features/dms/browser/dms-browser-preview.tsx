@@ -22,6 +22,9 @@ import type { DmsBrowserDocument, DmsBrowserFile } from "@/server/actions/dms/br
 
 interface DmsBrowserPreviewProps {
   document: DmsBrowserDocument | null;
+  canPreview?: boolean;
+  canDownload?: boolean;
+  totalFiles?: number;
 }
 
 function formatBytes(bytes: number | null): string {
@@ -38,7 +41,7 @@ function previewKind(mimeType: string | null): "pdf" | "image" | "other" {
   return "other";
 }
 
-export function DmsBrowserPreview({ document: doc }: DmsBrowserPreviewProps) {
+export function DmsBrowserPreview({ document: doc, canPreview = true, canDownload = true, totalFiles }: DmsBrowserPreviewProps) {
   const { openTab } = useWorkspace();
   const [activeFileIndex, setActiveFileIndex] = useState(0);
 
@@ -66,8 +69,8 @@ export function DmsBrowserPreview({ document: doc }: DmsBrowserPreviewProps) {
   }
 
   const kind = activeFile ? previewKind(activeFile.mimeType) : null;
-  const inlineUrl = activeFile ? `/api/dms/file?fileId=${activeFile.id}&disposition=inline` : null;
-  const downloadUrl = activeFile ? `/api/dms/file?fileId=${activeFile.id}&disposition=attachment` : null;
+  const inlineUrl = activeFile && canPreview ? `/api/dms/file?fileId=${activeFile.id}&disposition=inline` : null;
+  const downloadUrl = activeFile && canDownload ? `/api/dms/file?fileId=${activeFile.id}&disposition=attachment` : null;
 
   const handleOpenFullRecord = () => {
     openTab({
@@ -102,7 +105,7 @@ export function DmsBrowserPreview({ document: doc }: DmsBrowserPreviewProps) {
         <div className="flex items-center gap-4 text-[11px] text-muted-foreground flex-wrap">
           {doc.issueDate && <span>Issue: {format(new Date(doc.issueDate), "dd MMM yyyy")}</span>}
           {doc.expiryDate && <span>Expiry: {format(new Date(doc.expiryDate), "dd MMM yyyy")}</span>}
-          <span>{doc.files.length} file{doc.files.length !== 1 ? "s" : ""}</span>
+          <span>{totalFiles ?? doc.files.length} file{(totalFiles ?? doc.files.length) !== 1 ? "s" : ""}</span>
         </div>
 
         <div className="flex items-center gap-2 pt-1">
@@ -150,6 +153,8 @@ export function DmsBrowserPreview({ document: doc }: DmsBrowserPreviewProps) {
             <FileIcon className="h-8 w-8 opacity-25" />
             <p className="text-xs text-center">This document has no files attached.</p>
           </div>
+        ) : !canPreview ? (
+          <div className="p-6 text-sm text-muted-foreground">Your current access does not allow inline preview.</div>
         ) : kind === "pdf" ? (
           <iframe
             key={activeFile.id}

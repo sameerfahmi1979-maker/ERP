@@ -2,6 +2,8 @@
 import { RecordCollection } from "@/components/erp/table/record-collection";
 import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
+import {ComplianceReadPause, useComplianceReadAdmission, type ComplianceMutationAdmission} from "../compliance/compliance-read-admission";
+import {useReadLifetime} from "@/hooks/use-read-lifetime";
 
 /**
  * HR.14B — Document-to-Record Wizard
@@ -42,13 +44,13 @@ import {
   createDependentFromDms,
   createIdentityDocumentFromDms,
   createMedicalInsuranceFromDms,
-  getDmsDocumentsForEmployeeRecord,
 } from "@/server/actions/hr/document-to-record";
 import type { HrIdentityDocTypeRow, HrSettingsRow } from "@/server/actions/hr/settings";
 import {
   listHrIdentityDocumentTypes,
   listHrRelationshipTypes,
-} from "@/server/actions/hr/settings";
+} from "@/lib/reads/hr-record-choice-client";
+import {useHrDocumentChoices,HrDocumentChoicePages,useHrDocumentChoiceOwner} from "@/hooks/use-hr-document-choices";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -68,6 +70,7 @@ import { toast } from "sonner";
 // ─────────────────────────────────────────────────────────────────────────────
 
 type Props = {
+  admission?: ComplianceMutationAdmission;
   employeeId: number;
   targetType: Hr14bTargetType;
   open: boolean;
@@ -118,6 +121,7 @@ function PickerStep({
   onToggle,
   onNext,
   isAggregating,
+  admission,
 }: {
   employeeId: number;
   targetType: Hr14bTargetType;
@@ -125,29 +129,20 @@ function PickerStep({
   onToggle: (doc: HrDmsDocForRecord) => void;
   onNext: () => void;
   isAggregating: boolean;
+  admission: ComplianceMutationAdmission;
 }) {
   const [search, setSearch] = useState("");
-  const [accessError, setAccessError] = useState<string | null>(null);
-
-  const uiRead1 = useQuery({
-    queryKey: ["hr14b", "dms-docs-for-record", employeeId, targetType, search],
-    queryFn: async () => {
-      const r = await getDmsDocumentsForEmployeeRecord(employeeId, { search, targetType, limit: 60 });
-      if (!r.success) {
-        setAccessError("Documents could not be loaded. Retry or check your access.");
-        throw new Error("Document read failed");
-      }
-      setAccessError(null);
-      return r.data ?? [];
-    },
-    staleTime: 30_000,
-  });
-  const { data: docs = [], isLoading } = uiRead1;
+  const documents = useHrDocumentChoices(employeeId,"wizard",search,admission.ready,admission.generation);
+  const uiRead1 = documents;
+  const docs = documents.rows;
+  const isLoading = documents.isLoading;
+  const accessError = documents.isError ? "Documents could not be loaded. Retry or check your access." : null;
 
   const allowMultiple = targetType === "dependent";
 
   return (
     <QueryReadBoundary queries={[uiRead1]}><div className="space-y-4">
+      <HrDocumentChoicePages read={documents} />
       <div className="relative">
         <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
         <Input aria-label="Search documents by title"
@@ -188,7 +183,7 @@ function PickerStep({
                 key={doc.id}
                 type="button"
                 aria-pressed={selected}
-                onClick={() => onToggle(doc)}
+                onClick={() => {if(documents.ready&&documents.isCurrent())onToggle(doc);}}
                 className={cn(
                   "w-full flex items-start gap-3 p-2.5 rounded-lg border text-left transition-colors",
                   selected
@@ -250,8 +245,8 @@ function PickerStep({
       <div className="flex justify-end pt-2">
         <Button
           size="sm"
-          onClick={onNext}
-          disabled={selectedIds.length === 0 || isAggregating || !!accessError}
+          onClick={()=>{if(documents.ready&&documents.isCurrent())onNext();}}
+          disabled={selectedIds.length === 0 || isAggregating || !documents.ready}
         >
           {isAggregating ? "Loading..." : "Review Draft"}
         </Button>
@@ -269,21 +264,29 @@ function IdentityDocReview({
   onSubmit,
   onBack,
   isSubmitting,
+  admission,
+  owner,
 }: {
   draft: HrIdentityDocDraft;
   onSubmit: (form: HrIdentityDocDraft) => void;
   onBack: () => void;
   isSubmitting: boolean;
+  admission: ComplianceMutationAdmission;
+  owner: string;
 }) {
   const [form, setForm] = useState<HrIdentityDocDraft>({ ...draft });
 
   const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.identityDocumentTypes(),
-    queryFn: async () => {
-      const r = await listHrIdentityDocumentTypes({ is_active: true, page: 1, page_size: 100 });
+    queryKey: [owner,...queryKeys.hr.identityDocumentTypes(),draft.documentId,form.document_type_id],
+    queryFn: async ({signal}) => {
+      const r = await listHrIdentityDocumentTypes({selectedId:form.document_type_id,signal});
       if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success && r.data ? (r.data.data as HrIdentityDocTypeRow[]) : [];
     },
+    enabled:admission.ready,
+    gcTime:0,
+    retry:false,
   });
+  const readAdmission=useComplianceReadAdmission(true,[uiRead1],owner,admission);
   const { data: docTypes } = uiRead1;
 
   const docTypeOptions = (docTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }));
@@ -291,7 +294,7 @@ function IdentityDocReview({
   const isValid = !!form.document_type_id && form.document_number.trim().length > 0;
 
   return (
-    <QueryReadBoundary queries={[uiRead1]}><div className="space-y-4">
+    <QueryReadBoundary queries={[uiRead1]}><div className="space-y-4"><ComplianceReadPause admission={readAdmission} />
       <div className="rounded-lg bg-muted/30 border px-3 py-2">
         <p className="text-[11px] text-muted-foreground">
           Source: <span className="font-medium text-foreground">{draft.documentTitle}</span>
@@ -407,7 +410,7 @@ function IdentityDocReview({
 
       <div className="flex justify-between pt-2">
         <Button variant="outline" size="sm" onClick={onBack}>Back</Button>
-        <Button size="sm" onClick={() => onSubmit(form)} disabled={!isValid || isSubmitting}>
+        <Button size="sm" onClick={() => {if(readAdmission.canDispatch())onSubmit(form);}} disabled={!isValid || isSubmitting || !readAdmission.ready}>
           {isSubmitting ? "Saving..." : "Save Identity Document"}
         </Button>
       </div>
@@ -513,21 +516,29 @@ function DependentReview({
   onSubmit,
   onBack,
   isSubmitting,
+  admission,
+  owner,
 }: {
   draft: HrDependentDraft;
   onSubmit: (form: HrDependentDraft) => void;
   onBack: () => void;
   isSubmitting: boolean;
+  admission: ComplianceMutationAdmission;
+  owner: string;
 }) {
   const [form, setForm] = useState<HrDependentDraft>({ ...draft });
 
   const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.relationshipTypes(),
-    queryFn: async () => {
-      const r = await listHrRelationshipTypes({ is_active: true, page: 1, page_size: 100 });
+    queryKey: [owner,...queryKeys.hr.relationshipTypes(),draft.documentIds,form.relationship_type_id],
+    queryFn: async ({signal}) => {
+      const r = await listHrRelationshipTypes({selectedId:form.relationship_type_id,signal});
       if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success && r.data ? (r.data.data as HrSettingsRow[]) : [];
     },
+    enabled:admission.ready,
+    gcTime:0,
+    retry:false,
   });
+  const readAdmission=useComplianceReadAdmission(true,[uiRead1],owner,admission);
   const { data: relTypes } = uiRead1;
 
   const relTypeOptions = (relTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }));
@@ -535,7 +546,7 @@ function DependentReview({
   const isValid = form.dependent_name_en.trim().length > 0 && !!form.relationship_type_id;
 
   return (
-    <QueryReadBoundary queries={[uiRead1]}><div className="space-y-4">
+    <QueryReadBoundary queries={[uiRead1]}><div className="space-y-4"><ComplianceReadPause admission={readAdmission} />
       <div className="rounded-lg bg-muted/30 border px-3 py-2">
         <p className="text-[11px] text-muted-foreground">
           Sources: <span className="font-medium text-foreground">{draft.documentTitles.join(", ")}</span>
@@ -605,7 +616,7 @@ function DependentReview({
 
       <div className="flex justify-between pt-2">
         <Button variant="outline" size="sm" onClick={onBack}>Back</Button>
-        <Button size="sm" onClick={() => onSubmit(form)} disabled={!isValid || isSubmitting}>
+        <Button size="sm" onClick={() => {if(readAdmission.canDispatch())onSubmit(form);}} disabled={!isValid || isSubmitting || !readAdmission.ready}>
           {isSubmitting ? "Saving..." : "Save Dependent"}
         </Button>
       </div>
@@ -617,18 +628,28 @@ function DependentReview({
 // Main Wizard Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function HrDocumentToRecordWizard({
+export function HrDocumentToRecordWizard(props:Props){
+  const owner=useHrDocumentChoiceOwner(props.employeeId,props.admission?.generation);
+  return <HrDocumentToRecordWizardSession key={owner} {...props} owner={owner}/>;
+}
+function HrDocumentToRecordWizardSession({
   employeeId,
   targetType,
   open,
   onOpenChange,
   onSaved,
   onChildOpen,
-}: Props) {
+  admission: parentAdmission,
+  owner,
+}: Props & {owner:string}) {
+  const admission = useComplianceReadAdmission(open, [], String(employeeId), parentAdmission);
+  const opening = useReadLifetime(JSON.stringify([employeeId, targetType, open]));
+  const isParentCurrent=admission.isCurrent;
+  const current = useCallback(() => opening.active && isParentCurrent(), [opening, isParentCurrent]);
+  const canDispatch = () => current() && admission.canDispatch();
   const qc = useQueryClient();
   const [step, setStep] = useState<Step>("pick");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [selectedDoc, setSelectedDoc] = useState<HrDmsDocForRecord | null>(null);
   const [identityDraft, setIdentityDraft] = useState<HrIdentityDocDraft | null>(null);
   const [insuranceDraft, setInsuranceDraft] = useState<HrInsuranceDraft | null>(null);
   const [dependentDraft, setDependentDraft] = useState<HrDependentDraft | null>(null);
@@ -636,17 +657,17 @@ export function HrDocumentToRecordWizard({
   const [isSubmitting, startSubmit] = useTransition();
 
   const handleOpenChange = useCallback((next: boolean) => {
+    if (!current()) return;
     if (!next) {
       setStep("pick");
       setSelectedIds([]);
-      setSelectedDoc(null);
       setIdentityDraft(null);
       setInsuranceDraft(null);
       setDependentDraft(null);
     }
     onOpenChange(next);
     onChildOpen?.(next);
-  }, [onOpenChange, onChildOpen]);
+  }, [onOpenChange, onChildOpen, current]);
 
   const toggleDoc = (doc: HrDmsDocForRecord) => {
     if (targetType === "dependent") {
@@ -655,16 +676,17 @@ export function HrDocumentToRecordWizard({
       );
     } else {
       setSelectedIds([doc.id]);
-      setSelectedDoc(doc);
     }
   };
 
   const handleNext = () => {
-    if (selectedIds.length === 0) return;
+    if (selectedIds.length === 0 || !canDispatch()) return;
 
     startAggregate(async () => {
+      if (!canDispatch()) return;
       if (targetType === "identity_document") {
         const r = await aggregateIdentityDocumentFromDms(employeeId, selectedIds[0]!);
+        if (!current()) return;
         if (r.success && r.data) {
           setIdentityDraft(r.data);
           setStep("review");
@@ -673,6 +695,7 @@ export function HrDocumentToRecordWizard({
         }
       } else if (targetType === "medical_insurance") {
         const r = await aggregateMedicalInsuranceFromDms(employeeId, selectedIds[0]!);
+        if (!current()) return;
         if (r.success && r.data) {
           setInsuranceDraft(r.data);
           setStep("review");
@@ -681,6 +704,7 @@ export function HrDocumentToRecordWizard({
         }
       } else if (targetType === "dependent") {
         const r = await aggregateDependentFromDms(employeeId, selectedIds);
+        if (!current()) return;
         if (r.success && r.data) {
           setDependentDraft(r.data);
           setStep("review");
@@ -692,7 +716,9 @@ export function HrDocumentToRecordWizard({
   };
 
   const handleIdentitySubmit = (form: HrIdentityDocDraft) => {
+    if (!canDispatch()) return;
     startSubmit(async () => {
+      if (!canDispatch()) return;
       const r = await createIdentityDocumentFromDms({
         employee_id: employeeId,
         dms_document_id: form.documentId,
@@ -716,19 +742,22 @@ export function HrDocumentToRecordWizard({
       });
 
       if (r.success) {
-        toast.success("Identity document created from DMS document");
         void qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.identityDocuments(employeeId) });
         invalidateDmsEntityDocuments(qc, "employee", employeeId);
         onSaved();
+        if (!current()) return;
+        toast.success("Identity document created from DMS document");
         handleOpenChange(false);
-      } else {
+      } else if (current()) {
         toast.error(r.error ?? "Failed to save");
       }
     });
   };
 
   const handleInsuranceSubmit = (form: HrInsuranceDraft) => {
+    if (!canDispatch()) return;
     startSubmit(async () => {
+      if (!canDispatch()) return;
       const r = await createMedicalInsuranceFromDms({
         employee_id: employeeId,
         dms_document_id: form.documentId,
@@ -748,19 +777,22 @@ export function HrDocumentToRecordWizard({
       });
 
       if (r.success) {
-        toast.success("Medical insurance created from DMS document");
         void qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.medicalInsurances(employeeId) });
         invalidateDmsEntityDocuments(qc, "employee", employeeId);
         onSaved();
+        if (!current()) return;
+        toast.success("Medical insurance created from DMS document");
         handleOpenChange(false);
-      } else {
+      } else if (current()) {
         toast.error(r.error ?? "Failed to save");
       }
     });
   };
 
   const handleDependentSubmit = (form: HrDependentDraft) => {
+    if (!canDispatch()) return;
     startSubmit(async () => {
+      if (!canDispatch()) return;
       const r = await createDependentFromDms({
         employee_id: employeeId,
         dms_document_ids: form.documentIds,
@@ -786,12 +818,13 @@ export function HrDocumentToRecordWizard({
       });
 
       if (r.success) {
-        toast.success("Dependent created from DMS documents");
         void qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.dependents(employeeId) });
         invalidateDmsEntityDocuments(qc, "employee", employeeId);
         onSaved();
+        if (!current()) return;
+        toast.success("Dependent created from DMS documents");
         handleOpenChange(false);
-      } else {
+      } else if (current()) {
         toast.error(r.error ?? "Failed to save");
       }
     });
@@ -815,6 +848,7 @@ export function HrDocumentToRecordWizard({
       submitLabel={undefined}
       onSubmit={undefined}
     >
+      <ComplianceReadPause admission={admission} />
       {step === "pick" && (
         <PickerStep
           employeeId={employeeId}
@@ -822,12 +856,13 @@ export function HrDocumentToRecordWizard({
           selectedIds={selectedIds}
           onToggle={toggleDoc}
           onNext={handleNext}
+          admission={admission}
           isAggregating={isAggregating}
         />
       )}
 
       {step === "review" && targetType === "identity_document" && identityDraft && (
-        <IdentityDocReview
+        <IdentityDocReview admission={admission} owner={owner}
           draft={identityDraft}
           onSubmit={handleIdentitySubmit}
           onBack={() => setStep("pick")}
@@ -845,7 +880,7 @@ export function HrDocumentToRecordWizard({
       )}
 
       {step === "review" && targetType === "dependent" && dependentDraft && (
-        <DependentReview
+        <DependentReview admission={admission} owner={owner}
           draft={dependentDraft}
           onSubmit={handleDependentSubmit}
           onBack={() => setStep("pick")}

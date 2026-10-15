@@ -5,11 +5,8 @@ import { formatDistanceToNow, format, parseISO, differenceInDays } from "date-fn
 import { cn } from "@/lib/utils";
 import { Inbox, AlertTriangle, RefreshCw, ArrowRight, FileText, CheckCircle2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import type {
-  DmsInboxPendingRow,
-  DmsExpiringRow,
-  DmsRenewalRow,
-} from "@/server/actions/dms/dashboard";
+import type {DmsDashboard} from "@/lib/reads/dms-dashboard-schema";
+import {DmsDashboardSectionState} from "./dms-dashboard-section-state";
 
 function PanelShell({
   accent,
@@ -22,7 +19,7 @@ function PanelShell({
   accent: "amber" | "red" | "blue";
   icon: React.ReactNode;
   title: string;
-  count: number;
+  count?: number;
   href: string;
   children: React.ReactNode;
 }) {
@@ -32,9 +29,9 @@ function PanelShell({
     blue: "bg-blue-500",
   }[accent];
   const badgeCls = {
-    amber: "bg-amber-50 text-amber-700 border-amber-200",
-    red: "bg-red-50 text-red-700 border-red-200",
-    blue: "bg-blue-50 text-blue-700 border-blue-200",
+    amber: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800",
+    red: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-200 dark:border-red-800",
+    blue: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-200 dark:border-blue-800",
   }[accent];
 
   return (
@@ -44,18 +41,18 @@ function PanelShell({
         <div className="flex items-center gap-2 text-sm font-semibold">
           {icon}
           {title}
-          {count > 0 && (
+          {count !== undefined && count > 0 && (
             <Badge variant="outline" className={cn("text-[10px] font-semibold px-1.5", badgeCls)}>
               {count}
             </Badge>
           )}
         </div>
-        <Link
+        {count !== undefined && <Link
           href={href}
           className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
         >
           View all <ArrowRight className="h-3 w-3" />
-        </Link>
+        </Link>}
       </div>
       <div className="flex-1 divide-y divide-border overflow-y-auto">{children}</div>
     </div>
@@ -65,7 +62,7 @@ function PanelShell({
 function EmptyState({ label }: { label: string }) {
   return (
     <div className="flex flex-col items-center justify-center gap-1.5 py-8 text-center">
-      <CheckCircle2 className="h-5 w-5 text-emerald-500/70" />
+      <CheckCircle2 className="h-5 w-5 text-emerald-500/70 dark:text-emerald-300/70" />
       <p className="text-xs text-muted-foreground">{label}</p>
     </div>
   );
@@ -73,21 +70,21 @@ function EmptyState({ label }: { label: string }) {
 
 // ── Inbox Panel ────────────────────────────────────────────────────────────────
 
-type InboxPanelProps = { items: DmsInboxPendingRow[] };
+type InboxPanelProps = { panel: DmsDashboard["inbox_items"];onRetry?:()=>void };
 
-export function DmsInboxPanel({ items }: InboxPanelProps) {
+export function DmsInboxPanel({ panel,onRetry }: InboxPanelProps) {
   return (
     <PanelShell
       accent="amber"
-      icon={<Inbox className="h-4 w-4 text-amber-500" />}
+      icon={<Inbox className="h-4 w-4 text-amber-500 dark:text-amber-300" />}
       title="Inbox Needs Processing"
-      count={items.length}
+      count={panel.status==="ready"?panel.totalCount:undefined}
       href="/dms/inbox"
     >
-      {items.length === 0 ? (
-        <EmptyState label="Inbox is clear — nothing pending" />
+      {panel.status!=="ready"?<DmsDashboardSectionState status={panel.status} onRetry={onRetry}/>:panel.items.length === 0 ? (
+        <EmptyState label="No permitted pending intake" />
       ) : (
-        items.map((item) => (
+        panel.items.map((item) => (
           <Link
             key={item.id}
             href={`/dms/inbox`}
@@ -102,20 +99,21 @@ export function DmsInboxPanel({ items }: InboxPanelProps) {
             </div>
             <Badge
               variant="outline"
-              className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 shrink-0"
+              className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 shrink-0 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800"
             >
               {item.intake_status === "pending" ? "Pending" : "Processing"}
             </Badge>
           </Link>
         ))
       )}
+      {panel.status==="ready"&&panel.limited&&<p className="p-3 text-xs text-muted-foreground">Showing {panel.items.length} of {panel.totalCount} permitted items</p>}
     </PanelShell>
   );
 }
 
 // ── Expiring Panel ─────────────────────────────────────────────────────────────
 
-type ExpiringPanelProps = { items: DmsExpiringRow[] };
+type ExpiringPanelProps = { panel: DmsDashboard["expiring_items"];onRetry?:()=>void };
 
 function expiryBadge(dateStr: string) {
   const days = differenceInDays(parseISO(dateStr), new Date());
@@ -126,10 +124,10 @@ function expiryBadge(dateStr: string) {
       className={cn(
         "text-[10px] shrink-0",
         days <= 0
-          ? "bg-red-100 text-red-700 border-red-200"
+          ? "bg-red-100 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-200 dark:border-red-800"
           : days <= 3
-          ? "bg-orange-100 text-orange-700 border-orange-200"
-          : "bg-amber-50 text-amber-700 border-amber-200"
+          ? "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-200 dark:border-orange-800"
+          : "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800"
       )}
     >
       {label}
@@ -137,19 +135,19 @@ function expiryBadge(dateStr: string) {
   );
 }
 
-export function DmsExpiringPanel({ items }: ExpiringPanelProps) {
+export function DmsExpiringPanel({ panel,onRetry }: ExpiringPanelProps) {
   return (
     <PanelShell
       accent="red"
-      icon={<AlertTriangle className="h-4 w-4 text-red-500" />}
+      icon={<AlertTriangle className="h-4 w-4 text-red-500 dark:text-red-300" />}
       title="Expiring This Week"
-      count={items.length}
+      count={panel.status==="ready"?panel.totalCount:undefined}
       href="/dms/expiring"
     >
-      {items.length === 0 ? (
-        <EmptyState label="Nothing expiring this week" />
+      {panel.status!=="ready"?<DmsDashboardSectionState status={panel.status} onRetry={onRetry}/>:panel.items.length === 0 ? (
+        <EmptyState label="No permitted documents expiring this week" />
       ) : (
-        items.map((item) => (
+        panel.items.map((item) => (
           <Link
             key={item.id}
             href={`/dms/documents/record/${item.id}`}
@@ -167,6 +165,7 @@ export function DmsExpiringPanel({ items }: ExpiringPanelProps) {
           </Link>
         ))
       )}
+      {panel.status==="ready"&&panel.limited&&<p className="p-3 text-xs text-muted-foreground">Showing {panel.items.length} of {panel.totalCount} permitted items</p>}
     </PanelShell>
   );
 }
@@ -174,10 +173,10 @@ export function DmsExpiringPanel({ items }: ExpiringPanelProps) {
 // ── Renewals Panel ─────────────────────────────────────────────────────────────
 
 const PRIORITY_STYLES: Record<string, string> = {
-  urgent: "bg-red-100 text-red-700 border-red-200",
-  high: "bg-orange-100 text-orange-700 border-orange-200",
-  medium: "bg-amber-50 text-amber-700 border-amber-200",
-  low: "bg-slate-100 text-slate-600 border-slate-200",
+  urgent: "bg-red-100 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-200 dark:border-red-800",
+  high: "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-200 dark:border-orange-800",
+  medium: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800",
+  low: "bg-muted text-muted-foreground border-border",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -187,21 +186,21 @@ const STATUS_LABELS: Record<string, string> = {
   waiting_for_document: "Waiting",
 };
 
-type RenewalsPanelProps = { items: DmsRenewalRow[] };
+type RenewalsPanelProps = { panel: DmsDashboard["renewal_items"];onRetry?:()=>void };
 
-export function DmsRenewalsPanel({ items }: RenewalsPanelProps) {
+export function DmsRenewalsPanel({ panel,onRetry }: RenewalsPanelProps) {
   return (
     <PanelShell
       accent="blue"
-      icon={<RefreshCw className="h-4 w-4 text-blue-500" />}
+      icon={<RefreshCw className="h-4 w-4 text-blue-500 dark:text-blue-300" />}
       title="Active Renewals"
-      count={items.length}
+      count={panel.status==="ready"?panel.totalCount:undefined}
       href="/dms/renewals"
     >
-      {items.length === 0 ? (
-        <EmptyState label="No active renewals in progress" />
+      {panel.status!=="ready"?<DmsDashboardSectionState status={panel.status} onRetry={onRetry}/>:panel.items.length === 0 ? (
+        <EmptyState label="No permitted active renewals" />
       ) : (
-        items.map((item) => (
+        panel.items.map((item) => (
           <div key={item.id} className="flex items-center gap-3 px-4 py-2.5">
             <div className="flex-1 min-w-0">
               <p className="text-xs font-medium truncate">{item.document_title}</p>
@@ -215,7 +214,7 @@ export function DmsRenewalsPanel({ items }: RenewalsPanelProps) {
                 variant="outline"
                 className={cn(
                   "text-[10px] shrink-0 capitalize",
-                  PRIORITY_STYLES[item.priority] ?? "bg-slate-100 text-slate-600"
+                  PRIORITY_STYLES[item.priority] ?? "bg-muted text-muted-foreground"
                 )}
               >
                 {item.priority}
@@ -224,6 +223,7 @@ export function DmsRenewalsPanel({ items }: RenewalsPanelProps) {
           </div>
         ))
       )}
+      {panel.status==="ready"&&panel.limited&&<p className="p-3 text-xs text-muted-foreground">Showing {panel.items.length} of {panel.totalCount} permitted items</p>}
     </PanelShell>
   );
 }

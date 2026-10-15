@@ -1,11 +1,13 @@
 "use client";
+import {readDmsSection} from "@/features/dms/documents/section-read";
 
 import { DmsListTools, useDmsListView, type DmsListField } from "@/features/dms/dms-list-view";
 import { ConfiguredRow } from "@/components/erp/table/list-controls";
 
 import { useState } from "react";
 import { DmsLoadError } from "@/features/dms/dms-load-error";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import {useDmsSectionQuery as useQuery} from "@/features/dms/documents/section-activity";
 import { toast } from "sonner";
 import { format, parseISO } from "date-fns";
 import { Plus, Trash2, Loader2, Link2, Sparkles, Check, X, Pencil } from "lucide-react";
@@ -13,25 +15,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
+import { ERPChildDialogForm } from "@/features/dms/documents/section-read-boundary";
 import { ERPCombobox } from "@/components/erp/combobox";
-import {
-  getDmsDocumentLinks,
-  addDmsDocumentLink,
-  updateDmsDocumentLink,
-  removeDmsDocumentLink,
-  type DmsDocumentLinkRow,
-} from "@/server/actions/dms/document-links";
+import { addDmsDocumentLink, updateDmsDocumentLink, removeDmsDocumentLink, type DmsDocumentLinkRow } from "@/server/actions/dms/document-links";
 import { DmsLinkEntitySelect } from "@/features/dms/documents/dms-link-entity-select";
 import { queryKeys } from "@/lib/query/query-keys";
 import { DMS_ENTITY_TYPES, DMS_ENTITY_TYPE_LABELS } from "../dms-document-constants";
-import {
-  suggestDmsDocumentLinks,
-  getDmsLinkSuggestions,
-  applyDmsLinkSuggestions,
-  rejectDmsLinkSuggestions,
-  type DmsLinkSuggestionRow,
-} from "@/server/actions/dms/ai-links";
+import { suggestDmsDocumentLinks, applyDmsLinkSuggestions, rejectDmsLinkSuggestions, type DmsLinkSuggestionRow } from "@/server/actions/dms/ai-links";
 
 const ENTITY_TYPE_OPTIONS = DMS_ENTITY_TYPES.map((t) => ({
   value: t,
@@ -119,9 +109,9 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
 
   const { data: links = [], isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: queryKeys.dms.documentLinks(documentId ?? 0),
-    queryFn: async () => {
+    queryFn: async ({signal}) => {
       if (!documentId) return [];
-      const r = await getDmsDocumentLinks(documentId);
+      const r = await readDmsSection("getDmsDocumentLinks", [documentId], signal);
       if (!r.success) throw new Error("Could not load document links");
       return r.data ?? [];
     },
@@ -131,9 +121,9 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
 
   const { data: linkSuggestions = [], refetch: refetchLinkSuggestions } = useQuery({
     queryKey: queryKeys.dms.documentLinkSuggestions(documentId ?? 0),
-    queryFn: async () => {
+    queryFn: async ({signal}) => {
       if (!documentId) return [];
-      const r = await getDmsLinkSuggestions(documentId);
+      const r = await readDmsSection("getDmsLinkSuggestions", [documentId], signal);
       return r.data ?? [];
     },
     enabled: !!documentId,

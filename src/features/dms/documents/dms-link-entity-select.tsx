@@ -4,7 +4,8 @@ import { useEffect, useId, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ERPCombobox } from "@/components/erp/combobox";
 import type { ERPComboboxOption } from "@/components/erp/combobox";
-import { searchDmsLinkEntityOptions } from "@/server/actions/dms/document-links";
+import type { DmsLinkEntityOption } from "@/lib/dms/search-link-entity-options";
+import { readJson, retryAuthorizedRead } from "@/lib/reads/client";
 import { getDmsLinkEntitySearchPlaceholder } from "@/lib/dms/search-link-entity-options";
 import { getDmsEntityTypeLabel } from "@/lib/dms/dms-entity-types";
 
@@ -49,18 +50,19 @@ export function DmsLinkEntitySelect({
     setDebouncedSearch("");
   }
 
-  const { data: options = [], isLoading, isError } = useQuery({
+  const { data: options = [], isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: ["dms", "link-entity-options", entityType, debouncedSearch],
-    queryFn: async () => {
-      const result = await searchDmsLinkEntityOptions(entityType, debouncedSearch || undefined);
-      if (!result.success) throw new Error(result.error ?? "Failed to load entities");
+    queryFn: async ({ signal }) => {
+      const result = await readJson<{success:true; data:DmsLinkEntityOption[]}>("dms-link-entities", {entityType, search:debouncedSearch || undefined}, signal);
       return result.data ?? [];
     },
     enabled: !!entityType && !disabled,
     staleTime: 30_000,
+    retry: retryAuthorizedRead,
   });
 
   const comboboxOptions: ERPComboboxOption[] = useMemo(() => {
+    if (isError) return [];
     const mapped = options.map((opt) => ({
       value: opt.id,
       label: opt.label,
@@ -84,16 +86,17 @@ export function DmsLinkEntitySelect({
     }
 
     return mapped;
-  }, [options, pinnedOption, value]);
+  }, [options, pinnedOption, value, isError]);
 
   const typeLabel = getDmsEntityTypeLabel(entityType);
   const showInitialLoading = isLoading && comboboxOptions.length === 0;
 
   return (
-    <ERPCombobox
+    <><ERPCombobox
       name={`entity_${fieldId}`} ariaLabel={`Linked ${typeLabel.toLowerCase()}`}
       value={value}
       onValueChange={(v) => {
+        if (isError || isFetching || searchQuery !== debouncedSearch) return;
         const id = v !== null ? Number(v) : null;
         onValueChange(id);
         if (onOptionSelected) {
@@ -109,9 +112,9 @@ export function DmsLinkEntitySelect({
       placeholder={`Select ${typeLabel.toLowerCase()}...`}
       searchPlaceholder={getDmsLinkEntitySearchPlaceholder(entityType)}
       showCode
-      disabled={disabled}
+      disabled={disabled || isError}
       required={required}
-      loading={showInitialLoading}
+      loading={showInitialLoading || isFetching || searchQuery !== debouncedSearch}
       error={isError ? "Could not load permitted entities. Try the search again." : undefined}
       allowClear
       className={className}
@@ -121,6 +124,6 @@ export function DmsLinkEntitySelect({
       filterFn={() => true}
       onSearchQueryChange={setSearchQuery}
       maxVisibleOptions={50}
-    />
+    />{isError&&<button type="button" onClick={()=>void refetch()} disabled={isFetching}>Retry entity search</button>}</>
   );
 }

@@ -7,6 +7,7 @@
 
 import type { FinanceBasicsSelectProps } from "@/features/master-data/finance-basics/types";
 import { ERPCombobox } from "@/components/erp/combobox";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import { useCostCentersQuery } from "@/hooks/lookups";
 
 export interface CostCenterSelectProps extends FinanceBasicsSelectProps {
@@ -30,10 +31,11 @@ export function CostCenterSelect({
   name,
   error,
 }: CostCenterSelectProps) {
-  const { options: allOptions, isLoading, error: fetchError } = useCostCentersQuery({
+  const choiceRead = useCostCentersQuery({
     ownerCompanyId: ownerCompanyId ?? null,
     includeInactive,
-  });
+   selectedId: value ?? null });
+  const { options: allOptions, isLoading, error: fetchError } = choiceRead;
 
   // Exclude specific entry (e.g. when editing a parent-child relation)
   const options = excludeId
@@ -51,7 +53,7 @@ export function CostCenterSelect({
   };
 
   return (
-    <ERPCombobox
+    <QueryReadBoundary queries={[choiceRead]}><ERPCombobox
       value={value ?? null}
       onValueChange={handleValueChange}
       options={options}
@@ -69,6 +71,6 @@ export function CostCenterSelect({
       noResultsText="No results found"
       className={className}
       name={name}
-    />
+    /></QueryReadBoundary>
   );
 }

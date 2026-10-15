@@ -24,6 +24,7 @@
  */
 
 import * as React from "react";
+import {RecordReadActivity} from "@/hooks/use-record-read-active";
 import { toast } from "sonner";
 import { FormErrorSummary, mergeFieldIssues, useInlineFieldFeedback } from "./form-feedback";
 import { collectWorkspaceFieldIssues, resolveWorkspaceFieldIssues, type WorkspaceFieldIssue } from "@/lib/workspace/form-validation";
@@ -366,7 +367,7 @@ export function ERPRecordSectionPanel({
           {title}
         </h3>
       )}
-      {children}
+      <RecordReadActivity active={isActive}>{children}</RecordReadActivity>
     </div>
   );
 }

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
+import { ERPChildDialogForm } from "@/features/dms/documents/section-read-boundary";
 import { ERPCombobox } from "@/components/erp/combobox/erp-combobox";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { Label } from "@/components/ui/label";

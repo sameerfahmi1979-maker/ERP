@@ -1,7 +1,5 @@
 import { redirect } from "next/navigation";
-import { LoadError } from "@/components/erp/load-error";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { getDmsDashboardStats } from "@/server/actions/dms/dashboard";
 import { DmsDashboardPageClient } from "@/features/dms/dashboard/dms-dashboard-page-client";
 
 export const dynamic = "force-dynamic";
@@ -17,30 +15,10 @@ export default async function DmsDashboardPage() {
     redirect("/access-denied");
   }
 
-  const statsResult = await getDmsDashboardStats(30);
-  if (!statsResult.success || !statsResult.data) return <LoadError title="Document dashboard" retryHref="/dms" />;
-  const initialStats = statsResult.success && statsResult.data
-    ? statsResult.data
-    : {
-        total_documents: 0,
-        added_this_month: 0,
-        added_last_month: 0,
-        inbox_pending: 0,
-        expiring_30_days: 0,
-        review_queue_pending: 0,
-        storage_bytes: 0,
-        documents_by_day: [],
-        documents_by_category: [],
-        ai_pipeline: [],
-        expiry_buckets: [],
-        inbox_items: [],
-        expiring_items: [],
-        renewal_items: [],
-      };
-
   return (
     <div className="p-6 space-y-2">
-      <DmsDashboardPageClient initialStats={initialStats} />
+      {/* One cancellable client read; no duplicate SSR read or retained seed. */}
+      <DmsDashboardPageClient authContext={authContext} />
     </div>
   );
 }

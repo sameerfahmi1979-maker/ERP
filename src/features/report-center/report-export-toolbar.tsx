@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +30,8 @@ interface ReportExportToolbarProps {
   registryEntry: ReportRegistryEntry;
   data: ReportDataResult;
   onExport: (format: "pdf" | "excel" | "csv" | "print") => void;
+  /** Rechecks the exact current report result, not just its mounting identity. */
+  canUseData: () => boolean;
   rowCount: number;
   isExporting?: boolean;
   runId?: number;
@@ -40,6 +42,7 @@ export function ReportExportToolbar({
   registryEntry,
   data,
   onExport,
+  canUseData,
   rowCount,
   isExporting,
   runId,
@@ -47,6 +50,13 @@ export function ReportExportToolbar({
 }: ReportExportToolbarProps) {
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const canEmail = useLegacyEmailAccess();
+  const currentEmailAccess = useRef(false);
+  useLayoutEffect(() => {
+    currentEmailAccess.current = canEmail;
+    return () => {currentEmailAccess.current = false;};
+  }, [canEmail]);
+  const canUseEmail = () => canUseData() && canEmail && currentEmailAccess.current;
+  const unavailable = "This report is no longer available. Run it again before exporting.";
 
   const formats = registryEntry.default_output_formats;
   const hasPdf = formats.includes("pdf");
@@ -78,6 +88,7 @@ export function ReportExportToolbar({
   };
 
   const handleCsvDownload = () => {
+    if (!canUseData()) return;
     const { columns, rows } = data;
     const header = columns.join(",");
     const rowLines = rows.map((row) =>
@@ -100,24 +111,35 @@ export function ReportExportToolbar({
     URL.revokeObjectURL(url);
   };
 
+  // A closed/retired dialog may still retain a generation promise or callback.
+  // Do not hand attachment bytes back to it after the report owner changes.
+  const prepareAttachment = async (format: "pdf" | "excel" | "csv") => {
+    if (!canUseEmail()) throw new Error(unavailable);
+    const options = buildExportOptions();
+    const attachment = await (format === "pdf" ? generatePDFAttachment(options)
+      : format === "excel" ? generateExcelAttachment(options) : generateCSVAttachment(options));
+    if (!canUseEmail()) throw new Error(unavailable);
+    return attachment;
+  };
+
   const attachmentOptions = [
     ...(hasPdf ? [{
       type: "pdf" as const,
       label: "PDF",
       filename: filenameBase,
-      generateAttachment: () => generatePDFAttachment(buildExportOptions()),
+      generateAttachment: () => prepareAttachment("pdf"),
     }] : []),
     ...(hasExcel ? [{
       type: "excel" as const,
       label: "Excel",
       filename: filenameBase,
-      generateAttachment: () => generateExcelAttachment(buildExportOptions()),
+      generateAttachment: () => prepareAttachment("excel"),
     }] : []),
     ...(hasCsv ? [{
       type: "csv" as const,
       label: "CSV",
       filename: filenameBase,
-      generateAttachment: () => generateCSVAttachment(buildExportOptions()),
+      generateAttachment: () => prepareAttachment("csv"),
     }] : []),
   ];
 
@@ -144,7 +166,7 @@ export function ReportExportToolbar({
             </Button>
           )}
           {hasPrint && (
-            <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => onExport("print")} disabled={isExporting}>
+            <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => {if (canUseData()) onExport("print");}} disabled={isExporting}>
               <Printer className="h-3 w-3" />
               Print
             </Button>
@@ -161,7 +183,7 @@ export function ReportExportToolbar({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 {hasPdf && (
-                  <DropdownMenuItem onClick={() => onExport("pdf")}>
+                  <DropdownMenuItem onClick={() => {if (canUseData()) onExport("pdf");}}>
                     <FileText className="mr-2 h-3.5 w-3.5" />
                     Export as PDF
                   </DropdownMenuItem>
@@ -169,7 +191,7 @@ export function ReportExportToolbar({
                 {hasExcel && (
                   <>
                     {hasPdf && <DropdownMenuSeparator />}
-                    <DropdownMenuItem onClick={() => onExport("excel")}>
+                    <DropdownMenuItem onClick={() => {if (canUseData()) onExport("excel");}}>
                       <FileSpreadsheet className="mr-2 h-3.5 w-3.5" />
                       Export as Excel
                     </DropdownMenuItem>
@@ -178,12 +200,12 @@ export function ReportExportToolbar({
               </DropdownMenuContent>
             </DropdownMenu>
           )}
-          {hasEmail && attachmentOptions.length > 0 && (
+          {hasEmail && (hasPdf || hasExcel || hasCsv) && (
             <Button
               variant="outline"
               size="sm"
               className="h-7 text-xs gap-1"
-              onClick={() => setShowEmailDialog(true)}
+              onClick={() => {if (canUseEmail()) setShowEmailDialog(true);}}
               disabled={isExporting || !canEmail}
               title={!canEmail ? "Legacy Email Export temporarily requires global sending authority" : undefined}
             >
@@ -205,6 +227,7 @@ export function ReportExportToolbar({
           recordCount={rowCount}
           moduleCode="REPORTS"
           onPreparedSend={async (input) => {
+            if (!canUseEmail()) return {success: false, error: unavailable};
             if (!input.attachment) {
               return { success: false, error: "Attachment not ready." };
             }
@@ -220,6 +243,9 @@ export function ReportExportToolbar({
               attachmentSizeBytes: input.attachment.sizeBytes,
               context: { moduleCode: "REPORTS", recordCount: rowCount },
             });
+            // An already-dispatched server mutation may have committed. Keep
+            // its outcome truthful but do not announce it to another owner.
+            if (!canUseEmail()) return result;
             if (result.success) {
               toast.success("Report emailed successfully.");
             } else {

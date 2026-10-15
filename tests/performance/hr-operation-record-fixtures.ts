@@ -1,0 +1,9 @@
+import type {HrOperationRecordKind} from "@/lib/reads/hr-operation-records-schema";
+/** Public regression fixtures contain synthetic values only. */
+export function operationRecordRow(kind: HrOperationRecordKind, id = 1) {
+  const common = {id, assignment_type: "primary", assignment_status: "active", effective_from: "2026-01-01", effective_to: null, departments: null, designations: null, work_sites: {id: 9001, name_en: `Synthetic record ${id}`}, readiness_status: "ready", checked_at: "2026-01-01T00:00:00Z", requirement_type: "document", requirement_name: `Synthetic record ${id}`, is_required: true, is_met: false, expiry_date: null, block_type: "other", block_status: "active", block_reason: `Synthetic record ${id}`, created_at: "2026-01-01T00:00:00Z", asset_type: "other", asset_reference: "TEST-REF", asset_description: `Synthetic record ${id}`, issued_date: "2026-01-01", return_due_date: null, returned_date: null, ppe_item: `Synthetic record ${id}`, standard_or_size: "Synthetic size", expiry_or_replacement_date: null, quantity: 1.5, accommodation_type: "other", accommodation_location: `Synthetic record ${id}`, room_or_bed_no: "TEST-BED", assigned_from: "2026-01-01", assigned_to: null};
+  return {...common, status: kind === "requirements" ? "missing" : kind === "assets" || kind === "ppe" ? "issued" : "active"};
+}
+export function operationRecordDetail(kind: HrOperationRecordKind, id = 1) {
+  return {...operationRecordRow(kind, id), notes: "Synthetic original editor notes", updated_at: "2026-01-01T00:00:00Z", owner_companies: null, branches: null, reporting_manager: null, supervisor: null, waived_at: null, waiver_reason: null, met_record_type: null, met_record_id: null, missing_requirements_json: null, hr_access_card_types: null, released_at: null, release_reason: null, related_record_type: null, condition_on_issue: "Synthetic original condition", condition_on_return: null};
+}

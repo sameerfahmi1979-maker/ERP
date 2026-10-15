@@ -8,6 +8,7 @@
 
 import type { FinanceBasicsSelectProps } from "@/features/master-data/finance-basics/types";
 import { ERPCombobox } from "@/components/erp/combobox";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import { usePaymentTermsQuery } from "@/hooks/lookups";
 
 export function PaymentTermSelect({
@@ -25,11 +26,12 @@ export function PaymentTermSelect({
   ariaLabel = "Payment term",
   error,
 }: FinanceBasicsSelectProps) {
+  const choiceRead = usePaymentTermsQuery({ includeInactive , selectedId: value ?? null});
   const {
     options,
     isLoading: loading,
     error: fetchError,
-  } = usePaymentTermsQuery({ includeInactive });
+  } = choiceRead;
 
   const handleValueChange = (newValue: string | number | null) => {
     if (!onValueChange) return;
@@ -38,19 +40,8 @@ export function PaymentTermSelect({
     onValueChange(!isNaN(numValue) ? numValue : null);
   };
 
-  if (fetchError) {
-    return (
-      <div className={className}>
-        <div className="flex items-center justify-center h-10 px-3 border border-destructive rounded-md bg-destructive/10">
-          <span className="text-sm text-destructive">{fetchError}</span>
-        </div>
-        {error && <p className="text-sm text-destructive mt-1">{error}</p>}
-      </div>
-    );
-  }
-
   return (
-    <ERPCombobox
+    <QueryReadBoundary queries={[choiceRead]}><ERPCombobox
       ariaLabel={ariaLabel}
       value={value ?? null}
       onValueChange={handleValueChange}
@@ -63,12 +54,12 @@ export function PaymentTermSelect({
       readOnly={false}
       required={required}
       loading={loading}
-      error={error}
+      error={fetchError ?? error}
       allowClear={allowClear}
       emptyText="No payment terms available"
       noResultsText="No results found"
       className={className}
       name={name}
-    />
+    /></QueryReadBoundary>
   );
 }

@@ -1,4 +1,5 @@
 "use server";
+import {readAllPages} from "@/server/reads/all-pages";
 
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
@@ -39,14 +40,16 @@ export async function getDmsDocumentComments(
     }
 
     const supabase = await createClient();
-    const { data, error } = await supabase
+    const data = await readAllPages(async (from,to) => {
+      const result = await supabase
       .from("dms_document_comments")
-      .select("id, document_id, comment_text, created_by, created_at, updated_by, updated_at, deleted_at, author:user_profiles!created_by(display_name)")
+      .select("id, document_id, comment_text, created_by, created_at, updated_by, updated_at, deleted_at, author:user_profiles!created_by(display_name)", {count:"exact"})
       .eq("document_id", documentId)
       .is("deleted_at", null)
-      .order("created_at");
+      .order("created_at").order("id",{ascending:true}).range(from,to);
+      return result;
+    }, {identity:row=>row.id,maxRows:10000});
 
-    if (error) return { success: false, error: error.message };
 
     return { success: true, data: (data ?? []) as unknown as DmsDocumentCommentRow[] };
   } catch (err) {

@@ -1,36 +1,29 @@
 "use client";
-import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
-
 import { useRef, useState, useEffect } from "react";
 import { Search, X, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useQuery } from "@tanstack/react-query";
-import { getHrSearchSuggestions } from "@/server/actions/hr/search";
-import type { HrSearchSuggestion } from "@/lib/hr/search/types";
+import type { AuthContext } from "@/lib/rbac/check";
+import { useHrSearchSuggestions } from "@/hooks/use-hr-search-read";
 import { HR_SEARCH_CATEGORY_LABELS } from "@/lib/hr/search/types";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 type Props = {
+  authContext: AuthContext;
   value: string;
   onChange: (v: string) => void;
   onSearch: () => void;
   isSearching?: boolean;
 };
 
-export function HrSearchBar({ value, onChange, onSearch, isSearching }: Props) {
+export function HrSearchBar({ authContext, value, onChange, onSearch, isSearching }: Props) {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const uiRead1 = useQuery<HrSearchSuggestion[]>({
-    queryKey: ["hr", "search", "suggestions", value],
-    queryFn: () => getHrSearchSuggestions(value),
-    enabled: value.length >= 2,
-    staleTime: 10_000,
-  });
- const { data: suggestions } = uiRead1;
+  const read = useHrSearchSuggestions(authContext, value, showSuggestions);
+  const suggestions = read.data?.rows;
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -53,10 +46,11 @@ export function HrSearchBar({ value, onChange, onSearch, isSearching }: Props) {
   };
 
   return (
-    <QueryReadBoundary queries={[uiRead1]}><div ref={containerRef} className="relative w-full">
+    <div ref={containerRef} className="relative w-full">
       <div className="relative flex items-center">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
         <Input
+          aria-label="HR search"
           ref={inputRef}
           value={value}
           onChange={(e) => {
@@ -76,6 +70,7 @@ export function HrSearchBar({ value, onChange, onSearch, isSearching }: Props) {
               variant="ghost"
               size="sm"
               className="h-7 w-7 p-0"
+              aria-label="Clear search text"
               onClick={() => {
                 onChange("");
                 inputRef.current?.focus();
@@ -99,8 +94,13 @@ export function HrSearchBar({ value, onChange, onSearch, isSearching }: Props) {
         </div>
       </div>
 
-      {showSuggestions && (suggestions?.length ?? 0) > 0 && (
+      {showSuggestions && value.length >= 2 && !read.denied && (
         <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border rounded-md shadow-md overflow-hidden">
+          <p className="px-3 py-2 text-xs text-muted-foreground">Quick suggestions (up to 8). Use Search for all matching results.</p>
+          {read.busy && <p role="status" className="px-3 py-2 text-sm">Loading suggestions…</p>}
+          {read.invalid && <p role="alert" className="px-3 py-2 text-sm">{read.issue}</p>}
+          {read.failed && <div role="alert" className="px-3 py-2 text-sm">Suggestions are unavailable. You can still use Search. <Button type="button" variant="ghost" onClick={read.retry}>Retry suggestions</Button></div>}
+          {read.ready && suggestions?.length === 0 && <p className="px-3 py-2 text-sm">No quick suggestions.</p>}
           {(suggestions ?? []).map((s, i) => (
             <Link
               key={i}
@@ -124,6 +124,6 @@ export function HrSearchBar({ value, onChange, onSearch, isSearching }: Props) {
           ))}
         </div>
       )}
-    </div></QueryReadBoundary>
+    </div>
   );
 }

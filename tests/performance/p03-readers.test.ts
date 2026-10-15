@@ -95,6 +95,10 @@ it("rejects truncated page success",async()=>{
  responses=[{data:[{id:1}],count:100,error:null}];expect((await readEmployees({})).success).toBe(false);
  responses=[{data:[{id:1}],count:100,error:null}];expect((await readDmsDocumentPage({})).success).toBe(false);
 });
+it("rejects duplicate document identities even when the page count is exact",async()=>{
+ responses=[{data:[{id:1},{id:1}],count:2,error:null}];
+ expect((await readDmsDocumentPage({})).success).toBe(false);
+});
 it("file/content existence filters stay in the database and strip child metadata",async()=>{
  responses=[{data:[{id:1,content_match:[{document_id:1}],perf_document_has_files:true,perf_document_has_extracted_text:true}],count:1,error:null}];
  const r=await readDmsDocumentPage({filters:{hasExtractedText:true,has_files:true}});

@@ -7,17 +7,19 @@ import { RecordCollection } from "@/components/erp/table/record-collection";
  * Sources (labelled per row): DMS links, HR identity docs (D2), dependent links (D1).
  */
 
-import { FileText, FolderOpen, IdCard, Loader2, Paperclip } from "lucide-react";
+import { FileText, FolderOpen, IdCard } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { DmsDocumentStatusBadge } from "@/features/dms/documents/dms-document-status-badge";
 import { DmsExpiryBadge } from "@/features/dms/documents/dms-expiry-badge";
-import type { HrDocBrowserDocument } from "@/server/actions/hr/doc-browser";
+import type { HrBrowserDocument } from "@/lib/reads/hr-document-browser-schema";
+import type { ERPTableServerRead } from "@/components/erp/table/erp-table-types";
 import type { BrowserEntitySelection } from "./hr-doc-browser-types";
 
 interface HrDocBrowserDocListProps {
   entity: BrowserEntitySelection | null;
-  documents: HrDocBrowserDocument[];
+  documents: HrBrowserDocument[];
+  serverRead: ERPTableServerRead<HrBrowserDocument>;
   isLoading: boolean;
   /** Index-based selection — identity rows can have a null document id */
   selectedIndex: number | null;
@@ -30,6 +32,7 @@ export function HrDocBrowserDocList({
   isLoading,
   selectedIndex,
   onSelect,
+  serverRead,
 }: HrDocBrowserDocListProps) {
   if (!entity) {
     return (
@@ -37,15 +40,6 @@ export function HrDocBrowserDocList({
         icon={<FolderOpen className="h-8 w-8 opacity-25" />}
         text="Select an employee or dependent to see their documents."
       />
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-2 text-muted-foreground">
-        <Loader2 className="h-5 w-5 animate-spin" />
-        <p className="text-xs">Loading documents…</p>
-      </div>
     );
   }
 
@@ -57,22 +51,22 @@ export function HrDocBrowserDocList({
         <p className="text-[11px] text-muted-foreground truncate">
           {entity.subtitle}
           {" · "}
-          {documents.length} document{documents.length !== 1 ? "s" : ""}
+          {serverRead.totalCount === null ? "Document total unverified" : `${serverRead.totalCount} document${serverRead.totalCount !== 1 ? "s" : ""}`}
         </p>
       </div>
 
       {/* Document rows */}
       <div className="flex-1 min-h-0 overflow-y-auto pb-2">
-        {documents.length === 0 ? (
+        {documents.length === 0 && serverRead.totalCount === 0 && !serverRead.globalFilter && serverRead.columnFilters.length === 0 ? (
           <p className="px-4 py-8 text-center text-xs text-muted-foreground">
             No documents linked yet. Link documents from the {entity.type === "employee" ? "employee profile" : "dependent record"}.
           </p>
         ) : (
-          <RecordCollection id={`special.hr-doc-browser-doc-list-${entity.type}-${entity.id}`} rows={documents} fields={[{"id":"title","path":"title","label":"Document"},{"id":"typeNameEn","path":"typeNameEn","label":"Type"},{"id":"source","path":"source","label":"Source"}]} renderRecord={(doc, index) => {
+          <RecordCollection id={`special.hr-doc-browser-doc-list-${entity.type}-${entity.id}`} rows={documents} serverRead={serverRead} isLoading={isLoading} fields={[{"id":"title","path":"title","label":"Document"},{"id":"typeNameEn","path":"typeNameEn","label":"Type"},{"id":"source","path":"source","label":"Source"}]} renderRecord={(doc, index) => {
             const isSelected = selectedIndex === index;
             return (
               <button
-                key={`${doc.source}-${doc.id ?? "hr"}-${index}`}
+                key={doc.key}
                 type="button"
                 aria-pressed={isSelected}
                 onClick={() => onSelect(index)}
@@ -109,12 +103,6 @@ export function HrDocBrowserDocList({
                   )}
                   {doc.status && <DmsDocumentStatusBadge status={doc.status} />}
                   <DmsExpiryBadge expiryDate={doc.expiryDate} />
-                  {doc.files.length > 0 && (
-                    <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground ml-auto">
-                      <Paperclip className="h-2.5 w-2.5" />
-                      {doc.files.length}
-                    </span>
-                  )}
                 </div>
               </button>
             );

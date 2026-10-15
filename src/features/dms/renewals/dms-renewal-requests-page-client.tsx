@@ -3,7 +3,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DmsRenewalRequestsTable } from "./dms-renewal-requests-table";
 
-export function DmsRenewalRequestsPageClient() {
+export function DmsRenewalRequestsPageClient({canManage=false}:{canManage?:boolean}) {
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -21,15 +21,15 @@ export function DmsRenewalRequestsPageClient() {
         </TabsList>
 
         <TabsContent value="open" className="mt-4">
-          <DmsRenewalRequestsTable filter={{ includeCompleted: false }} />
+          <DmsRenewalRequestsTable canManage={canManage} filter={{ includeCompleted: false }} />
         </TabsContent>
 
         <TabsContent value="completed" className="mt-4">
-          <DmsRenewalRequestsTable filter={{ includeCompleted: true, status: "renewed" }} />
+          <DmsRenewalRequestsTable canManage={canManage} filter={{ includeCompleted: true, status: "renewed" }} />
         </TabsContent>
 
         <TabsContent value="all" className="mt-4">
-          <DmsRenewalRequestsTable filter={{ includeCompleted: true }} />
+          <DmsRenewalRequestsTable canManage={canManage} filter={{ includeCompleted: true }} />
         </TabsContent>
       </Tabs>
     </div>

@@ -23,10 +23,16 @@ import {
   type DmsReviewPriority
 } from "@/lib/dms/review-queue/review-queue-upsert";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
+
+const reviewFiltersSchema=z.object({
+ status:z.array(z.string().min(1).max(80)).max(20).optional(), reviewType:z.array(z.string().min(1).max(80)).max(30).optional(), priority:z.array(z.string().min(1).max(30)).max(10).optional(),
+ assignedTo:z.union([z.literal("me"),z.literal("unassigned"),z.number().int().positive()]).optional(), documentId:z.number().int().positive().optional(),uploadSessionId:z.number().int().positive().optional(),sourceType:z.string().min(1).max(80).optional(),
+ createdAfter:z.string().datetime({offset:true}).optional(),createdBefore:z.string().datetime({offset:true}).optional(),dueBefore:z.string().datetime({offset:true}).optional(),page:z.number().int().min(1).max(100000).default(1),pageSize:z.number().int().min(1).max(50).default(25)
+}).strict();
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -282,10 +288,14 @@ export async function getDmsReviewQueueItems(
     const supabase = await createClient();
     const ctx      = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canViewQueue(ctx)) return { success: false, error: "Permission denied" };
+    if (!ctx.isAccountActive || ctx.profile.must_change_password || !canViewQueue(ctx)) return { success: false, error: "Permission denied" };
 
-    const pageSize = Math.min(filters.pageSize ?? 25, 50);
-    const page     = Math.max(filters.page ?? 1, 1);
+    const parsed=reviewFiltersSchema.safeParse(filters);
+    if(!parsed.success) return {success:false,error:"Invalid review criteria"};
+    filters=parsed.data;
+    const restricted=!canViewConfidential(ctx);
+    const pageSize = parsed.data.pageSize;
+    const page = parsed.data.page;
     const from     = (page - 1) * pageSize;
     const to       = from + pageSize - 1;
 
@@ -295,9 +305,10 @@ export async function getDmsReviewQueueItems(
       .is("deleted_at", null)
       // Hide orphaned items where both source FKs were nullified (e.g. document hard-deleted)
       .or("document_id.not.is.null,upload_session_id.not.is.null")
-      .order("queued_at", { ascending: true })
+      .order("queued_at", { ascending: true }).order("id", {ascending:true})
       .range(from, to);
 
+    if(restricted)query=query.not("document.confidentiality_level","in",'("hr","legal","executive")').or("document_id.is.null,document.not.is.null");
     // Apply filters
     if (filters.status?.length) {
       query = query.in("status", filters.status);
@@ -322,8 +333,13 @@ export async function getDmsReviewQueueItems(
       query = query.eq("assigned_to", filters.assignedTo);
     }
 
-    const { data, error, count } = await query;
-    if (error) return { success: false, error: error.message };
+    let result=await query;
+    if(result.status===416&&result.error?.code==="PGRST103") {
+     const check=await query.range(0,0);
+     if(!check.error&&Number.isSafeInteger(check.count)&&check.count!==null&&check.count>=0&&from>=check.count&&check.data?.length===Math.min(1,check.count)) result={...check,data:[]};
+    }
+    const { data, error, count } = result;
+    if (error || count===null || !Number.isSafeInteger(count) || count<0 || !Array.isArray(data) || data.length!==Math.min(pageSize,Math.max(0,count-from)) || new Set(data.map(row=>row.id)).size!==data.length) return { success: false, error: "Review rows or count could not be verified" };
 
     const rows = (data ?? []) as unknown as Record<string, unknown>[];
 
@@ -336,6 +352,7 @@ export async function getDmsReviewQueueItems(
           return !RESTRICTED_CONFIDENTIALITY.has(doc.confidentiality_level ?? "");
         });
 
+    if(filtered.length!==rows.length) return {success:false,error:"Review visibility changed. Please retry."};
     return {
       success: true,
       data: {
@@ -360,22 +377,25 @@ export async function getDmsReviewQueueCounts(): Promise<ActionResult<ReviewQueu
     const supabase = await createClient();
     const ctx      = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canViewQueue(ctx)) return { success: false, error: "Permission denied" };
+    if (!ctx.isAccountActive || ctx.profile.must_change_password || !canViewQueue(ctx)) return { success: false, error: "Permission denied" };
 
+    const restricted=!canViewConfidential(ctx);
+    const counted=()=>{let q=supabase.from("dms_review_queue").select("id,document:dms_documents!document_id(id,confidentiality_level)",{count:"exact",head:true}).or("document_id.not.is.null,upload_session_id.not.is.null");if(restricted)q=q.not("document.confidentiality_level","in",'("hr","legal","executive")').or("document_id.is.null,document.not.is.null");return q;};
     const now = new Date().toISOString();
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
     const [openRes, assignedRes, inReviewRes, assignedToMeRes, urgentHighRes, overdueRes, resolvedTodayRes] = await Promise.all([
-      supabase.from("dms_review_queue").select("id", { count: "exact", head: true }).eq("status", "open").is("deleted_at", null),
-      supabase.from("dms_review_queue").select("id", { count: "exact", head: true }).eq("status", "assigned").is("deleted_at", null),
-      supabase.from("dms_review_queue").select("id", { count: "exact", head: true }).eq("status", "in_review").is("deleted_at", null),
-      supabase.from("dms_review_queue").select("id", { count: "exact", head: true }).eq("assigned_to", ctx.profile.id).in("status", ["open", "assigned", "in_review"]).is("deleted_at", null),
-      supabase.from("dms_review_queue").select("id", { count: "exact", head: true }).in("priority", ["urgent", "high"]).in("status", ["open", "assigned", "in_review"]).is("deleted_at", null),
-      supabase.from("dms_review_queue").select("id", { count: "exact", head: true }).lte("due_at", now).in("status", ["open", "assigned", "in_review"]).is("deleted_at", null),
-      supabase.from("dms_review_queue").select("id", { count: "exact", head: true }).in("status", ["resolved", "dismissed"]).gte("resolved_at", todayStart.toISOString()).is("deleted_at", null),
+      counted().eq("status", "open").is("deleted_at", null),
+      counted().eq("status", "assigned").is("deleted_at", null),
+      counted().eq("status", "in_review").is("deleted_at", null),
+      counted().eq("assigned_to", ctx.profile.id).in("status", ["open", "assigned", "in_review"]).is("deleted_at", null),
+      counted().in("priority", ["urgent", "high"]).in("status", ["open", "assigned", "in_review"]).is("deleted_at", null),
+      counted().lte("due_at", now).in("status", ["open", "assigned", "in_review"]).is("deleted_at", null),
+      counted().in("status", ["resolved", "dismissed"]).gte("resolved_at", todayStart.toISOString()).is("deleted_at", null),
     ]);
 
+    if([openRes,assignedRes,inReviewRes,assignedToMeRes,urgentHighRes,overdueRes,resolvedTodayRes].some(r=>r.error||r.count===null||!Number.isSafeInteger(r.count)||r.count<0)) return {success:false,error:"Review summary could not be verified"};
     return {
       success: true,
       data: {
@@ -406,7 +426,7 @@ export async function getDmsReviewQueueItem(
     const supabase = await createClient();
     const ctx      = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canViewQueue(ctx)) return { success: false, error: "Permission denied" };
+    if (!ctx.isAccountActive || ctx.profile.must_change_password || !canViewQueue(ctx)) return { success: false, error: "Permission denied" };
 
     const { data, error } = await supabase
       .from("dms_review_queue")
@@ -427,18 +447,21 @@ export async function getDmsReviewQueueItem(
       }
     }
 
+    if((row.document_id&&!doc)||(!row.document_id&&!row.upload_session_id))return {success:false,error:"Permission denied"};
     const item = mapRow(row);
 
-    // Phase 13 — load linked validation finding (safe fields only, non-fatal)
+    // Ordinary caller RLS must also authorize each linked detail, not just the queue row.
+    // Linked detail must belong to this source, not merely be independently readable.
     if (item.validationFindingId) {
       try {
-        const adminDb = createAdminClient();
-        const { data: findingData } = await adminDb
+        const { data: findingData, error: findingError } = await supabase
           .from("dms_ai_validation_findings")
           .select(FINDING_DETAIL_SELECT)
           .eq("id", item.validationFindingId)
+          .or(item.documentId?`document_id.eq.${item.documentId}`:`upload_session_id.eq.${item.uploadSessionId}`)
           .is("deleted_at", null)
           .single();
+        if (findingError) return {success:false,error:"Review finding unavailable"};
         if (findingData) {
           const f = findingData as Record<string, unknown>;
           item.validationFinding = {
@@ -455,19 +478,20 @@ export async function getDmsReviewQueueItem(
             confidence:           (f.confidence as number | null) ?? null,
           };
         }
-      } catch { /* non-fatal */ }
+      } catch { return {success:false,error:"Review detail unavailable"}; }
     }
 
-    // Phase 13 — load linked entity match candidate (safe fields only, non-fatal)
+    // Preserve the same source boundary for entity matching.
     if (item.entityMatchCandidateId) {
       try {
-        const adminDb = createAdminClient();
-        const { data: candidateData } = await adminDb
+        const { data: candidateData, error: candidateError } = await supabase
           .from("dms_ai_entity_match_candidates")
           .select(CANDIDATE_DETAIL_SELECT)
           .eq("id", item.entityMatchCandidateId)
+          .or(item.documentId?`document_id.eq.${item.documentId}`:`upload_session_id.eq.${item.uploadSessionId}`)
           .is("deleted_at", null)
           .single();
+        if (candidateError) return {success:false,error:"Review candidate unavailable"};
         if (candidateData) {
           const c = candidateData as Record<string, unknown>;
           item.entityMatchCandidate = {
@@ -482,7 +506,7 @@ export async function getDmsReviewQueueItem(
             status:            c.status as string,
           };
         }
-      } catch { /* non-fatal */ }
+      } catch { return {success:false,error:"Review detail unavailable"}; }
     }
 
     return { success: true, data: item };

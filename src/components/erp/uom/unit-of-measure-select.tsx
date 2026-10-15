@@ -53,6 +53,7 @@ export function UnitOfMeasureSelect({
   const { data, options: baseOptions, isLoading, isFetching, error: fetchError, refetch } = useUnitsOfMeasureQuery({
     categoryId: categoryId ?? null,
     includeInactive,
+    selectedId: value ?? null,
   });
 
   // When showSymbol is true, rebuild options with symbol appended to label

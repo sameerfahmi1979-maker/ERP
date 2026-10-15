@@ -1,5 +1,6 @@
 "use client";
-import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
+import {readDmsSection} from "@/features/dms/documents/section-read";
+import { QueryReadBoundary } from "@/features/dms/documents/section-read-boundary";
 
 /**
  * DMS 12.5 — DmsDocumentSemanticSection
@@ -14,7 +15,8 @@ import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
  */
 
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import {useDmsSectionQuery as useQuery} from "@/features/dms/documents/section-activity";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -32,16 +34,8 @@ import { format, parseISO } from "date-fns";
 import { queryKeys } from "@/lib/query/query-keys";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { DmsRiskBadge } from "../dms-risk-badge";
-import {
-  getDmsDocumentEmbeddingStatus,
-  generateDmsDocumentEmbedding,
-  regenerateDmsDocumentEmbedding,
-  findSimilarDmsDocuments,
-} from "@/server/actions/dms/semantic-search";
-import {
-  getDmsDocumentSemanticIndexStatus,
-  enqueueDmsDocumentSemanticIndex,
-} from "@/server/actions/dms/intelligence-admin";
+import { generateDmsDocumentEmbedding, regenerateDmsDocumentEmbedding, findSimilarDmsDocuments } from "@/server/actions/dms/semantic-search";
+import { enqueueDmsDocumentSemanticIndex } from "@/server/actions/dms/intelligence-admin";
 import type {
   DmsDocumentEmbeddingStatusRow,
   DmsEmbeddingStatus,
@@ -88,8 +82,8 @@ export function DmsDocumentSemanticSection({
 
   const uiRead1 = useQuery<DmsDocumentEmbeddingStatusRow | null>({
     queryKey: queryKeys.dms.documentEmbedding(documentId),
-    queryFn: async () => {
-      const r = await getDmsDocumentEmbeddingStatus(documentId);
+    queryFn: async ({signal}) => {
+      const r = await readDmsSection("getDmsDocumentEmbeddingStatus", [documentId], signal);
       if (!r.success) throw new Error(r.error ?? "Failed to load embedding status");
       return r.data ?? null;
     },
@@ -106,8 +100,8 @@ export function DmsDocumentSemanticSection({
   // Phase 11 — semantic chunk index status
   const uiRead2 = useQuery({
     queryKey: ["dms", "documents", documentId, "chunk-index"] as const,
-    queryFn: async () => {
-      const r = await getDmsDocumentSemanticIndexStatus(documentId);
+    queryFn: async ({signal}) => {
+      const r = await readDmsSection("getDmsDocumentSemanticIndexStatus", [documentId], signal);
       if (!r.success) throw new Error("Records could not be loaded."); return r.success ? (r.data ?? null) : null;
     },
     staleTime: 30_000,

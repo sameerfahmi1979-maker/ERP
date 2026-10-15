@@ -16,6 +16,7 @@ import { OpenWorkspaces } from "@/components/workspace/open-workspaces";
 import { useWorkspaceContext } from "@/components/workspace/workspace-provider";
 
 type AppHeaderProps = {
+  notificationIdentity?: string;
   displayName?: string | null;
   email?: string | null;
   appName?: string;
@@ -23,7 +24,7 @@ type AppHeaderProps = {
   onOpenNavigation?: () => void;
 };
 
-export function AppHeader({ displayName, email, appName = "ALGT ERP", canSearch = false, onOpenNavigation }: AppHeaderProps) {
+export function AppHeader({ notificationIdentity, displayName, email, appName = "ALGT ERP", canSearch = false, onOpenNavigation }: AppHeaderProps) {
   const workspace = useWorkspaceContext();
   const activeTab = workspace?.state.tabs.find(tab => tab.id === workspace.state.activeTabId);
   const isHydrated = workspace?.state.isHydrated ?? false;
@@ -46,7 +47,7 @@ export function AppHeader({ displayName, email, appName = "ALGT ERP", canSearch 
       {canSearch && <Link href="/search" aria-label="Search ERP" className="inline-flex items-center gap-2 p-2 text-sm"><Search20Regular /><span className="hidden lg:inline">Search</span></Link>}
       {workspace && <OpenWorkspaces />}
       <ThemeToggle className="h-10 w-10 p-0 [&_svg]:h-4 [&_svg]:w-4" />
-      <NotificationBell />
+      <NotificationBell key={notificationIdentity} identity={notificationIdentity} />
       <DropdownMenu>
         <DropdownMenuTrigger render={<Button variant="ghost" size="sm" aria-label={`Account menu for ${displayName ?? email ?? "user"}`} className="h-10 px-2">
           <Avatar className="h-7 w-7"><AvatarFallback className="text-xs font-semibold bg-white/15 text-white">{initials}</AvatarFallback></Avatar>

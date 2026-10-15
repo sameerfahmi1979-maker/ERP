@@ -1,9 +1,8 @@
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AuditFiltersBar } from "@/features/audit/audit-filters-bar";
-import { AuditLogsTable } from "@/features/audit/audit-logs-table";
+import { AuditPageClient } from "@/features/audit/audit-page-client";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { listAuditLogs } from "@/server/queries/audit";
 import { Suspense } from "react";
 
 type AuditPageProps = {
@@ -45,17 +44,14 @@ export default async function AdminAuditPage({ searchParams }: AuditPageProps) {
 
   const actorId = params.actor ? parseInt(params.actor, 10) : undefined;
 
-  const auditLogs = await listAuditLogs({
-    limit: 300,
+  const filters = {
     module: params.module || undefined,
     action: params.action || undefined,
     date_from: params.date_from || undefined,
     date_to: params.date_to || undefined,
     search: params.search || undefined,
-    actor_user_profile_id: actorId && !isNaN(actorId) ? actorId : undefined,
-  });
-
-  const hasFilters = params.action || params.module || params.date_from || params.date_to || params.search || params.actor;
+    actor: actorId && !isNaN(actorId) ? actorId : undefined,
+  };
 
   return (
     <div className="p-6 space-y-4">
@@ -71,16 +67,7 @@ export default async function AdminAuditPage({ searchParams }: AuditPageProps) {
       <Suspense>
         <AuditFiltersBar />
       </Suspense>
-      <AuditLogsTable 
-        data={auditLogs}
-        userProfileId={ctx.profile?.id || "default"}
-        exportConfig={{
-          title: "Audit Logs Report",
-          subtitle: "System activity and change history",
-          filename: "audit_logs",
-          generatedBy: ctx.profile?.full_name || ctx.profile?.display_name || "System User",
-        }}
-      />
+      <AuditPageClient authContext={ctx} filters={filters}/>
     </div>
   );
 }

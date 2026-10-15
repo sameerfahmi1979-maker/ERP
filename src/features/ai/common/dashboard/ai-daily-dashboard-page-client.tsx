@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { RefreshCw, LayoutDashboard, ShieldAlert } from "lucide-react";
 import type { DailyDashboardScope, DailyDashboardSummary } from "@/lib/ai/common/dashboard/types";
 import { getAiDailyDashboard } from "@/server/actions/ai/common/dashboard";
@@ -21,6 +21,7 @@ export function AiDailyDashboardPageClient({ initialData }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const latest = useRef(0);
+  useEffect(()=>()=>{latest.current++;},[]);
 
   const load = useCallback(async (newScope: DailyDashboardScope) => {
     const request = ++latest.current;

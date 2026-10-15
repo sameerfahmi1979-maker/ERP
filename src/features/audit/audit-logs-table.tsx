@@ -102,6 +102,9 @@ function CopyAuditIdButton({ id }: { id: string }) {
 
 type AuditLogsTableProps = {
   data: AuditLog[];
+  serverRead?: import("@/components/erp/table/erp-table-types").ERPTableServerRead<AuditLog>;
+  isLoading?: boolean;
+  renderDetails?: (row: AuditLog) => React.ReactNode;
   userProfileId?: number | string;
   exportConfig?: {
     title: string;
@@ -113,6 +116,7 @@ type AuditLogsTableProps = {
 
 export function AuditLogsTable({
   data,
+  serverRead, isLoading, renderDetails,
   userProfileId,
   exportConfig,
 }: AuditLogsTableProps) {
@@ -194,7 +198,7 @@ export function AuditLogsTable({
       header: "Details",
       size: 180,
       cell: ({ row }) => (
-        <PayloadViewer payload={row.original.new_values ?? row.original.old_values} />
+        renderDetails ? renderDetails(row.original) : <PayloadViewer payload={row.original.new_values ?? row.original.old_values} />
       ),
     },
   ];
@@ -204,6 +208,8 @@ export function AuditLogsTable({
       tableId="admin.audit_logs"
       columns={columns}
       data={data}
+      serverRead={serverRead}
+      isLoading={isLoading}
       userProfileId={userProfileId}
       searchPlaceholder="Search audit logs..."
       emptyMessage="No audit logs found."

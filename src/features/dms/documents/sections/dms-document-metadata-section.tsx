@@ -1,7 +1,9 @@
 "use client";
+import {readDmsSection} from "@/features/dms/documents/section-read";
 
 import { useId, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import {useDmsSectionQuery as useQuery} from "@/features/dms/documents/section-activity";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -9,12 +11,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
+import { ERPChildDialogForm } from "@/features/dms/documents/section-read-boundary";
 import { FormErrorSummary, useInlineFieldFeedback } from "@/components/workspace/form-feedback";
 import { DmsLoadError } from "@/features/dms/dms-load-error";
 import type { WorkspaceFieldIssue } from "@/lib/workspace/form-validation";
-import { getMetadataDefinitionsForType, getDmsDocumentMetadataValues, saveDmsDocumentMetadataValues,
-  type DmsMetadataDefinitionRow, type DmsMetadataValueRow, type DmsMetadataValueInput } from "@/server/actions/dms/document-metadata-values";
+import { saveDmsDocumentMetadataValues, type DmsMetadataDefinitionRow, type DmsMetadataValueRow, type DmsMetadataValueInput } from "@/server/actions/dms/document-metadata-values";
 import { queryKeys } from "@/lib/query/query-keys";
 
 type Props = { documentId: number | null; documentTypeId: number | null; isViewing: boolean };
@@ -30,27 +31,30 @@ function MetadataSection({ documentId, documentTypeId, isViewing }: Props) {
   const [editing, setEditing] = useState<EditSnapshot | null>(null);
   const definitions = useQuery({
     queryKey: [...queryKeys.dms.documentMetadataDefs(documentTypeId ?? 0), "detail", documentId],
-    queryFn: async () => {
-      const r = await getMetadataDefinitionsForType(documentTypeId!, "detail", documentId ?? undefined);
+    queryFn: async ({signal}) => {
+      const r = await readDmsSection("getMetadataDefinitionsForType", [documentTypeId!, "detail", documentId ?? undefined], signal);
       if (!r.success || !r.data) throw new Error("Metadata definitions unavailable");
       return r.data;
     }, enabled: !!documentTypeId, staleTime: 300_000,
   });
   const values = useQuery({
     queryKey: queryKeys.dms.documentMetadata(documentId ?? 0),
-    queryFn: async () => {
-      const r = await getDmsDocumentMetadataValues(documentId!);
+    queryFn: async ({signal}) => {
+      const r = await readDmsSection("getDmsDocumentMetadataValues", [documentId!], signal);
       if (!r.success || !r.data) throw new Error("Metadata values unavailable");
       return r.data;
     }, enabled: !!documentId, staleTime: 30_000,
   });
   if (!documentTypeId) return <p className="py-6 text-sm text-muted-foreground">Select a document type to see its metadata fields.</p>;
-  if (definitions.isLoading || values.isLoading) return <p role="status" className="py-6 text-sm text-muted-foreground">Loading metadata…</p>;
-  if (definitions.isError || values.isError) return <DmsLoadError subject="document metadata" pending={definitions.isFetching || values.isFetching} retry={() => Promise.all([definitions.refetch(), documentId ? values.refetch() : Promise.resolve()])} />;
+  if (!editing && (definitions.isLoading || values.isLoading)) return <p role="status" className="py-6 text-sm text-muted-foreground">Loading metadata…</p>;
+  const failed=definitions.isError||values.isError;
+  const ready=!failed&&!definitions.isFetching&&!values.isFetching;
   const defs = definitions.data ?? [];
-  if (!defs.length) return <p className="py-6 text-sm text-muted-foreground">No metadata fields are configured for this document type.</p>;
+  if (!defs.length&&!failed&&!editing) return <p className="py-6 text-sm text-muted-foreground">No metadata fields are configured for this document type.</p>;
   const current = initialMetadata(defs, values.data ?? []);
   return <div className="space-y-4">
+    {failed&&<DmsLoadError subject="document metadata" pending={definitions.isFetching||values.isFetching} retry={()=>Promise.all([definitions.refetch(),values.refetch()])}/>}
+    <div hidden={!ready}>
     <p className="text-sm text-muted-foreground">Metadata is saved separately from the document details. Dates with a time use this device’s timezone.</p>
     <dl className="grid min-w-0 gap-4 sm:grid-cols-2">
       {defs.map(def => <div key={def.id} className="min-w-0 border-b border-border pb-3">
@@ -60,7 +64,8 @@ function MetadataSection({ documentId, documentTypeId, isViewing }: Props) {
     </dl>
     {!isViewing && documentId && <Button type="button" variant="outline" onClick={() => setEditing({ definitions: defs, values: values.data ?? [] })}>Edit metadata</Button>}
     {!documentId && <p className="text-sm text-muted-foreground">Save the document first to add metadata.</p>}
-    {editing && documentId && <MetadataEditor documentId={documentId} snapshot={editing} onClose={() => setEditing(null)} onSaved={() => {
+    </div>
+    {editing && documentId && <MetadataEditor ready={ready} documentId={documentId} snapshot={editing} onClose={() => setEditing(null)} onSaved={() => {
       setEditing(null);
       void queryClient.invalidateQueries({ queryKey: queryKeys.dms.documentMetadata(documentId) });
     }} />}
@@ -83,7 +88,7 @@ function initialMetadata(defs: DmsMetadataDefinitionRow[], rows: DmsMetadataValu
   }));
 }
 
-function MetadataEditor({ documentId, snapshot, onClose, onSaved }: { documentId: number; snapshot: EditSnapshot; onClose: () => void; onSaved: () => void }) {
+function MetadataEditor({ ready, documentId, snapshot, onClose, onSaved }: { ready:boolean; documentId: number; snapshot: EditSnapshot; onClose: () => void; onSaved: () => void }) {
   const prefix = useId(), body = useRef<HTMLDivElement>(null);
   const [initial] = useState(() => initialMetadata(snapshot.definitions, snapshot.values));
   const [values, setValues] = useState(initial);
@@ -92,6 +97,7 @@ function MetadataEditor({ documentId, snapshot, onClose, onSaved }: { documentId
   useInlineFieldFeedback(issues);
   const isDirty = Object.keys(values).some(id => values[Number(id)] !== initial[Number(id)]);
   const save = async () => {
+    if(!ready)return;
     const invalid: WorkspaceFieldIssue[] = [];
     const payload: DmsMetadataValueInput[] = snapshot.definitions.map(def => {
       const raw = values[def.id] ?? "", value: DmsMetadataValueInput = { definition_id: def.id };
@@ -113,7 +119,7 @@ function MetadataEditor({ documentId, snapshot, onClose, onSaved }: { documentId
       toast.success("Metadata saved"); onSaved();
     } catch { setFailure("The save could not be confirmed. Your entries are still here. Check the document before retrying."); }
   };
-  return <ERPChildDialogForm open onOpenChange={open => { if (!open) onClose(); }} mode="edit" title="Edit document metadata" isDirty={isDirty} onSubmit={save}>
+  return <ERPChildDialogForm open={ready} onOpenChange={open => { if (!open) onClose(); }} mode="edit" title="Edit document metadata" isDirty={isDirty} onSubmit={save}>
     <div ref={body} className="space-y-4">
       <FormErrorSummary issues={issues} onReveal={issue => issue.control?.focus()} />
       {failure && <p role="alert" className="text-sm text-destructive">{failure}</p>}

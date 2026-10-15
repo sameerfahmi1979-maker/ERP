@@ -12,8 +12,9 @@ import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
  *     show a progress / results screen. No per-document review in batch mode.
  */
 
-import { useCallback, useState} from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useCallback, useLayoutEffect, useRef, useState} from "react";
+import {ComplianceReadPause, useComplianceReadAdmission, type ComplianceMutationAdmission} from "./compliance-read-admission";
+import {useHrDocumentChoices,HrDocumentChoicePages} from "@/hooks/use-hr-document-choices";
 import { toast } from "sonner";
 import {
   FileText, FolderOpen, PenLine, Loader2, ChevronRight, Search,
@@ -25,11 +26,9 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { DmsDocumentStatusBadge } from "@/features/dms/documents/dms-document-status-badge";
-import { queryKeys } from "@/lib/query/query-keys";
+import {useHrLinkedDocuments} from "@/hooks/use-hr-linked-documents";
+import {type HrLinkedDocument} from "@/lib/reads/hr-linked-documents-schema";
 import {
-  getDmsDocumentsByEntity,
-  getAvailableDmsDocumentsForLink,
-  type DmsEntityDocumentRow,
   type AvailableDmsDocumentOption,
 } from "@/server/actions/dms/entity-documents";
 import { createEmployeeIdentityDocument } from "@/server/actions/hr/compliance";
@@ -55,6 +54,7 @@ type BatchResultItem = {
 
 type Props = {
   open: boolean;
+  admission?: ComplianceMutationAdmission;
   onOpenChange: (open: boolean) => void;
   employeeId: number;
   docTypes: HrIdentityDocTypeRow[];
@@ -67,6 +67,7 @@ export function IdentityDocumentAddDialog({
   employeeId,
   docTypes,
   onSaved,
+  admission: parentAdmission,
 }: Props) {
   const [step, setStep] = useState<Step>("source");
   const [pickMode, setPickMode] = useState<PickMode>("employee");
@@ -103,34 +104,32 @@ export function IdentityDocumentAddDialog({
     setBatchDone(false);
   }, []);
 
-  const handleOpenChange = useCallback((next: boolean) => {
-    if (!next) resetState();
-    onOpenChange(next);
-  }, [onOpenChange, resetState]);
-
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.dms.entityDocuments("employee", employeeId),
-    queryFn: async () => {
-      const r = await getDmsDocumentsByEntity("employee", employeeId);
-      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? [] : [];
-    },
-    enabled: open && step === "pick-dms" && pickMode === "employee",
-  });
+  const uiRead1=useHrLinkedDocuments(employeeId,null,open && step === "pick-dms" && pickMode === "employee" && (parentAdmission?.ready ?? true),parentAdmission?.generation);
   const { data: employeeDocs, isLoading: employeeDocsLoading } = uiRead1;
 
-  const uiRead2 = useQuery({
-    queryKey: queryKeys.dms.attachableDocuments("employee", employeeId, dmsSearch),
-    queryFn: async () => {
-      const r = await getAvailableDmsDocumentsForLink("employee", employeeId, dmsSearch);
-      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? [] : [];
-    },
-    enabled: open && step === "pick-dms" && pickMode === "dms",
-  });
-  const { data: libraryDocs, isLoading: libraryDocsLoading } = uiRead2;
+  const documentChoices = useHrDocumentChoices(employeeId,"library",dmsSearch,open && step === "pick-dms" && pickMode === "dms" && (parentAdmission?.ready ?? true),parentAdmission?.generation);
+  const uiRead2 = {...documentChoices,data:documentChoices.data?.rows};
+  const libraryDocs = uiRead2.data?.map(row=>({...row,document_no:row.document_no??""}));
+  const libraryDocsLoading = uiRead2.isLoading;
+  const admission = useComplianceReadAdmission(open, step === "pick-dms" ? [pickMode === "employee" ? uiRead1 : uiRead2] : [], String(employeeId), parentAdmission);
+  const [editorGeneration, setEditorGeneration] = useState(admission.generation);
+  if (editorGeneration !== admission.generation) {
+    setEditorGeneration(admission.generation);
+    resetState();
+  }
+  const isCurrent = admission.isCurrent;
+  const handleOpenChange = useCallback((next: boolean) => {
+    if (!isCurrent()) return;
+    if (!next) resetState();
+    onOpenChange(next);
+  }, [isCurrent, onOpenChange, resetState]);
+  const savedCallback = useRef(onSaved);
+  useLayoutEffect(() => {savedCallback.current = onSaved;});
 
   const docTypeOptions = docTypes.map((t) => ({ value: t.id, label: t.name_en }));
 
   const toggleDoc = (id: number) => {
+    if (!admission.isCurrent()) return;
     setSelectedDmsIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -140,6 +139,7 @@ export function IdentityDocumentAddDialog({
   };
 
   const handleBack = () => {
+    if (!admission.isCurrent()) return;
     if (step === "pick-dms") {
       setStep("source");
       setSelectedDmsIds(new Set());
@@ -157,6 +157,7 @@ export function IdentityDocumentAddDialog({
   };
 
   const handleManual = () => {
+    if (!admission.isCurrent()) return;
     setForm(createEmptyIdentityDocumentForm());
     setPrefillMeta(null);
     setFieldConfidence({});
@@ -164,11 +165,13 @@ export function IdentityDocumentAddDialog({
   };
 
   const handleDmsSource = () => {
+    if (!admission.isCurrent()) return;
     setPickMode("employee");
     setStep("pick-dms");
   };
 
   const handleContinueFromDms = () => {
+    if (!admission.canDispatch()) return;
     if (selectedDmsIds.size === 0) {
       toast.error("Select at least one document");
       return;
@@ -179,7 +182,9 @@ export function IdentityDocumentAddDialog({
     if (ids.length === 1) {
       // Single document: existing prefill → review flow
       startPrefill(async () => {
+        if (!admission.canDispatch()) return;
         const result = await prefillIdentityDocumentFromDms(employeeId, ids[0]);
+        if (!admission.isCurrent()) return;
         if (!result.success) {
           toast.error(result.error ?? "Failed to prefill from document");
           return;
@@ -208,57 +213,67 @@ export function IdentityDocumentAddDialog({
       ];
 
       startSubmit(async () => {
+        const notifySaved = savedCallback.current;
         const results: BatchResultItem[] = [];
         let savedCount = 0;
         let dmsLinked = false;
 
-        for (let i = 0; i < ids.length; i++) {
-          const docId = ids[i];
-          setBatchProgress({ current: i + 1, total: ids.length });
+        try {
+          for (let i = 0; i < ids.length; i++) {
+            if (!admission.canDispatch()) break;
+            const docId = ids[i];
+            setBatchProgress({ current: i + 1, total: ids.length });
 
-          const docInfo = allDocs.find((d) => d.id === docId);
-          const docLabel = docInfo?.title ?? `Document ${docId}`;
-          const docNo = docInfo?.no ?? `#${docId}`;
+            const docInfo = allDocs.find((d) => d.id === docId);
+            const docLabel = docInfo?.title ?? `Document ${docId}`;
+            const docNo = docInfo?.no ?? `#${docId}`;
 
-          try {
-            const prefillRes = await prefillIdentityDocumentFromDms(employeeId, docId);
-            if (!prefillRes.success) {
-              results.push({ documentNo: docNo, title: docLabel, status: "error", error: prefillRes.error ?? "Prefill failed" });
-              continue;
+            try {
+              const prefillRes = await prefillIdentityDocumentFromDms(employeeId, docId);
+              if (!admission.isCurrent()) return;
+              if (!prefillRes.success) {
+                results.push({ documentNo: docNo, title: docLabel, status: "error", error: prefillRes.error ?? "Prefill failed" });
+                continue;
+              }
+
+              const filledForm = prefillRes.data.form;
+
+              // Validate
+              if (!filledForm.document_type_id) {
+                results.push({ documentNo: docNo, title: docLabel, status: "error", error: "Could not determine document type — add manually" });
+                continue;
+              }
+              if (!filledForm.document_number?.trim()) {
+                results.push({ documentNo: docNo, title: docLabel, status: "error", error: "Document number not found — add manually" });
+                continue;
+              }
+
+              const payload = identityDocumentFormToPayload(filledForm);
+              if (!admission.canDispatch()) break;
+              const saveRes = await createEmployeeIdentityDocument(employeeId, payload);
+              if (!saveRes.success) {
+                results.push({ documentNo: docNo, title: docLabel, status: "error", error: saveRes.error ?? "Save failed" });
+                continue;
+              }
+
+              if (saveRes.data?.dmsLinkCreated) dmsLinked = true;
+              savedCount++;
+              results.push({ documentNo: docNo, title: docLabel, status: "ok" });
+            } catch (err) {
+              results.push({ documentNo: docNo, title: docLabel, status: "error", error: String(err) });
             }
-
-            const filledForm = prefillRes.data.form;
-
-            // Validate
-            if (!filledForm.document_type_id) {
-              results.push({ documentNo: docNo, title: docLabel, status: "error", error: "Could not determine document type — add manually" });
-              continue;
-            }
-            if (!filledForm.document_number?.trim()) {
-              results.push({ documentNo: docNo, title: docLabel, status: "error", error: "Document number not found — add manually" });
-              continue;
-            }
-
-            const payload = identityDocumentFormToPayload(filledForm);
-            const saveRes = await createEmployeeIdentityDocument(employeeId, payload);
-            if (!saveRes.success) {
-              results.push({ documentNo: docNo, title: docLabel, status: "error", error: saveRes.error ?? "Save failed" });
-              continue;
-            }
-
-            if (saveRes.data?.dmsLinkCreated) dmsLinked = true;
-            savedCount++;
-            results.push({ documentNo: docNo, title: docLabel, status: "ok" });
-          } catch (err) {
-            results.push({ documentNo: docNo, title: docLabel, status: "error", error: String(err) });
           }
+        } finally {
+          // Confirmed writes belong to the captured employee/cache lease even
+          // after this editor retires. Flush once, never between batch items.
+          if (savedCount > 0) notifySaved({dmsLinkCreated: dmsLinked, hasDmsDocument: true});
         }
 
+        if (!admission.isCurrent()) return;
         setBatchResults(results);
         setBatchDone(true);
 
         if (savedCount > 0) {
-          onSaved({ dmsLinkCreated: dmsLinked, hasDmsDocument: true });
           toast.success(
             savedCount === ids.length
               ? `${savedCount} Legal Document${savedCount !== 1 ? "s" : ""} created`
@@ -270,6 +285,7 @@ export function IdentityDocumentAddDialog({
   };
 
   const handleSave = () => {
+    if (!admission.canDispatch()) return;
     if (!form.document_type_id) {
       toast.error("Document type is required");
       return;
@@ -279,15 +295,18 @@ export function IdentityDocumentAddDialog({
       return;
     }
     startSubmit(async () => {
+      if (!admission.canDispatch()) return;
       const payload = identityDocumentFormToPayload(form);
+      const notifySaved = savedCallback.current;
       const result = await createEmployeeIdentityDocument(employeeId, payload);
+      if (result.success) notifySaved({dmsLinkCreated: result.data?.dmsLinkCreated, hasDmsDocument: !!payload.dms_document_id});
+      if (!admission.isCurrent()) return;
       if (result.success) {
         if (result.data?.dmsLinkCreated) {
           toast.success("Legal document saved and linked to employee Documents tab");
         } else {
           toast.success("Legal document saved");
         }
-        onSaved({ dmsLinkCreated: result.data?.dmsLinkCreated, hasDmsDocument: !!form.dms_document_id });
         handleOpenChange(false);
       } else {
         toast.error(result.error ?? "Failed to save document");
@@ -312,7 +331,7 @@ export function IdentityDocumentAddDialog({
         : "Search DMS — tick one or more documents to link and process"
     : step === "batch"
       ? batchDone
-        ? `Processed ${selectedCount} document${selectedCount !== 1 ? "s" : ""}`
+        ? `${batchResults.length} processed · ${selectedCount - batchResults.length} not submitted`
         : "Running AI prefill and saving each record…"
     : "Confirm all fields before saving to the compliance record";
 
@@ -331,6 +350,7 @@ export function IdentityDocumentAddDialog({
       mode="add"
       size="xl"
       isSubmitting={(isSubmitting && step !== "batch") || isPrefilling}
+      submitDisabled={!showClose && !admission.ready}
       onSubmit={
         showSubmit ? handleSave
         : showContinue ? handleContinueFromDms
@@ -350,6 +370,7 @@ export function IdentityDocumentAddDialog({
       }
       cancelLabel={step === "batch" && !batchDone ? undefined : "Cancel"}
     >
+      <ComplianceReadPause admission={admission} />
       {(step === "pick-dms" || step === "review") && (
         <div className="mb-4">
           <Button type="button" variant="ghost" size="sm" className="-ml-2 h-8" onClick={handleBack} disabled={isPrefilling || isSubmitting}>
@@ -447,7 +468,7 @@ export function IdentityDocumentAddDialog({
             </div>
           )}
 
-          {!docsLoading && pickMode === "employee" && (!employeeDocs || employeeDocs.length === 0) && (
+          {!docsLoading && uiRead1.isSuccess && !uiRead1.isError && pickMode === "employee" && (!employeeDocs || employeeDocs.length === 0) && (
             <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
               <p>No documents on this employee&apos;s Documents tab yet.</p>
               <p className="mt-2">Switch to <strong>Search DMS</strong> to pick an existing file — it will be linked to this employee when you save.</p>
@@ -467,7 +488,8 @@ export function IdentityDocumentAddDialog({
             </div>
           )}
 
-          {!docsLoading && pickMode === "dms" && (!libraryDocs || libraryDocs.length === 0) && (
+          {pickMode === "dms" && <HrDocumentChoicePages read={documentChoices} />}
+          {!docsLoading && uiRead2.isSuccess && !uiRead2.isError && pickMode === "dms" && (!libraryDocs || libraryDocs.length === 0) && (
             <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
               {dmsSearch.trim() ? "No matching DMS documents found." : "Type to search DMS documents not yet on this employee."}
             </div>
@@ -563,7 +585,8 @@ export function IdentityDocumentAddDialog({
 
           {batchDone && (
             <p className="text-xs text-muted-foreground">
-              {batchResults.filter((r) => r.status === "ok").length} created · {batchResults.filter((r) => r.status === "error").length} failed.
+              {batchResults.filter((r) => r.status === "ok").length} created · {batchResults.filter((r) => r.status === "error").length} failed · {selectedCount - batchResults.length} not submitted.
+              {batchResults.length < selectedCount && " No further records were submitted after required checks paused. Check the recorded results before starting a new batch."}
               {batchResults.some((r) => r.status === "error") && " Failed records could not be auto-filled — add them manually using the single-document flow."}
             </p>
           )}
@@ -597,7 +620,7 @@ function EmployeeDocPickRow({
   selected,
   onToggle,
 }: {
-  doc: DmsEntityDocumentRow;
+  doc: HrLinkedDocument;
   selected: boolean;
   onToggle: () => void;
 }) {
@@ -618,7 +641,7 @@ function EmployeeDocPickRow({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-medium text-sm truncate">{doc.title || doc.document_no}</span>
-          <DmsDocumentStatusBadge status={doc.status} />
+          <DmsDocumentStatusBadge status={doc.status??"unknown"} />
           <Badge variant="secondary" className="text-xs">On employee file</Badge>
           {doc.document_type_name && (
             <Badge variant="outline" className="text-xs">{doc.document_type_name}</Badge>

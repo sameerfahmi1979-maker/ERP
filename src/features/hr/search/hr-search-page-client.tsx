@@ -1,13 +1,12 @@
 "use client";
-import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
-
 import { useState, useCallback, useTransition } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { RefreshCw, SearchX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { searchHr } from "@/server/actions/hr/search";
-import type { HrSearchCategory, HrSearchInput, HrSearchOutput } from "@/lib/hr/search/types";
+import type { HrSearchCategory, HrSearchInput } from "@/lib/hr/search/types";
+import type { AuthContext } from "@/lib/rbac/check";
+import { useHrSearchResults } from "@/hooks/use-hr-search-read";
+import { hrSearchReadIdentity, type HrSearchFullCriteria } from "@/lib/reads/hr-search-read-schema";
 import { HR_SEARCH_CATEGORY_ORDER } from "@/lib/hr/search/types";
 import { HrSearchBar } from "./hr-search-bar";
 import { HrSearchFilters } from "./hr-search-filters";
@@ -29,6 +28,7 @@ export type HrSearchPermissions = {
 
 type Props = {
   permissions: HrSearchPermissions;
+  authContext: AuthContext;
 };
 
 function getAvailableCategories(p: HrSearchPermissions): HrSearchCategory[] {
@@ -43,29 +43,28 @@ function getAvailableCategories(p: HrSearchPermissions): HrSearchCategory[] {
   return cats;
 }
 
-export function HrSearchPageClient({ permissions }: Props) {
+export function HrSearchPageClient(props: Props) {
+  return <HrSearchSession key={hrSearchReadIdentity(props.authContext)} {...props}/>;
+}
+
+function HrSearchSession({ permissions, authContext }: Props) {
   const [queryText, setQueryText] = useState("");
-  const [committedInput, setCommittedInput] = useState<HrSearchInput | null>(null);
+  const [committedInput, setCommittedInput] = useState<Partial<HrSearchFullCriteria> | null>(null);
   const [filters, setFilters] = useState<HrSearchInput>({});
   const [, startTransition] = useTransition();
 
   const availableCategories = getAvailableCategories(permissions);
 
-  const uiRead1 = useQuery<HrSearchOutput>({
-    queryKey: ["hr", "search", "results", committedInput],
-    queryFn: () => searchHr(committedInput!),
-    enabled: committedInput !== null,
-    staleTime: 30_000,
-  });
- const { data, isFetching, refetch } = uiRead1;
+  const read = useHrSearchResults(authContext, committedInput);
+  const {data, busy: isFetching} = read;
 
   const handleSearch = useCallback(() => {
     startTransition(() => {
       setCommittedInput({
         query: queryText,
         ...filters,
-        limit: 100,
-        offset: 0,
+        pageSize: 50,
+        page: 1,
       });
     });
   }, [queryText, filters]);
@@ -82,7 +81,7 @@ export function HrSearchPageClient({ permissions }: Props) {
 
   const hasSearched = committedInput !== null;
   const hasResults = (data?.results.length ?? 0) > 0;
-  const hasFilters = !!(filters.status || filters.dateFrom || filters.dateTo || (filters.categories?.length ?? 0) > 0);
+  const hasFilters = !!(committedInput?.status || committedInput?.dateFrom || committedInput?.dateTo || (committedInput?.categories?.length ?? 0) > 0);
 
   const groupedResults = (() => {
     if (!data) return [];
@@ -92,7 +91,7 @@ export function HrSearchPageClient({ permissions }: Props) {
         groups[r.category] = { category: r.category, count: 0, results: [] };
       }
       groups[r.category].results.push(r);
-      groups[r.category].count++;
+      groups[r.category].count = data.groupCounts[r.category] ?? 0;
     }
     return HR_SEARCH_CATEGORY_ORDER
       .filter((cat) => groups[cat])
@@ -120,12 +119,12 @@ export function HrSearchPageClient({ permissions }: Props) {
     setQueryText(searchText);
     setFilters(merged);
     startTransition(() => {
-      setCommittedInput({ query: searchText, ...merged, limit: 100, offset: 0 });
+      setCommittedInput({ query: searchText, ...merged, pageSize: 50, page: 1 });
     });
   };
 
   return (
-    <QueryReadBoundary queries={[uiRead1]}><div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6">
       {/* AI Search Assist */}
       {permissions.canAiUse && (
         <HrAiSearchAssist
@@ -137,6 +136,7 @@ export function HrSearchPageClient({ permissions }: Props) {
       {/* Search bar */}
       <div className="bg-card border rounded-xl p-5 shadow-sm space-y-4">
         <HrSearchBar
+          authContext={authContext}
           value={queryText}
           onChange={setQueryText}
           onSearch={handleSearch}
@@ -160,13 +160,13 @@ export function HrSearchPageClient({ permissions }: Props) {
               <SearchX className="h-3.5 w-3.5" />
               Clear Search
             </Button>
-            {hasResults && (
+            {data && (
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
                 className="h-7 text-xs gap-1.5 text-muted-foreground"
-                onClick={() => refetch()}
+                onClick={read.retry}
                 disabled={isFetching}
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
@@ -177,15 +177,22 @@ export function HrSearchPageClient({ permissions }: Props) {
         )}
       </div>
 
+      {hasSearched && read.invalid && <div role="alert" className="border rounded-lg p-4 text-sm">{read.issue}</div>}
+      {read.denied && <div role="alert" className="border rounded-lg p-4 text-sm">Your HR search access could not be verified. Sign in again or contact your administrator.</div>}
+      {read.failed && <div role="alert" className="border rounded-lg p-4 text-sm space-y-2">
+        <p>HR search could not be completely loaded. No total or partial results are shown.</p>
+        <Button type="button" variant="outline" onClick={read.retry}>Retry search</Button>
+      </div>}
+
       {/* Results summary */}
       {hasSearched && data && (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm text-muted-foreground">
-            {hasResults ? (
+            {data.totalCount > 0 ? (
               <>
                 <span className="font-medium text-foreground">{data.totalCount}</span>{" "}
                 result{data.totalCount !== 1 ? "s" : ""} found
-                {data.query ? <> for <span className="font-medium text-foreground">&quot;{data.query}&quot;</span></> : ""}
+                {data.criteria.query ? <> for <span className="font-medium text-foreground">&quot;{data.criteria.query}&quot;</span></> : ""}
               </>
             ) : (
               "No results"
@@ -230,9 +237,10 @@ export function HrSearchPageClient({ permissions }: Props) {
       )}
 
       {/* Results */}
-      {!isFetching && hasSearched && !hasResults && (
-        <HrSearchEmptyState query={data?.query} hasFilters={hasFilters} />
+      {data && data.totalCount === 0 && (
+        <HrSearchEmptyState query={data.criteria.query} hasFilters={hasFilters} />
       )}
+      {data && data.totalCount > 0 && !hasResults && <p className="text-sm text-muted-foreground">No results on this page. Return to an earlier page or refresh the search.</p>}
 
       {!isFetching && hasResults && (
         <div className="space-y-3">
@@ -248,10 +256,18 @@ export function HrSearchPageClient({ permissions }: Props) {
         </div>
       )}
 
+      {data && data.totalCount > 0 && <nav aria-label="HR search result pages" className="flex flex-wrap items-center justify-between gap-3 border-t pt-3 text-sm">
+        <p className="text-muted-foreground">Page {data.criteria.page} of {Math.max(1, Math.ceil(data.totalCount / data.criteria.pageSize))}. Groups show full matching counts; cards show this page only. Ordered by area, record type and record ID.</p>
+        <div className="flex gap-2">
+          <Button type="button" variant="outline" disabled={data.criteria.page <= 1} onClick={() => {if (read.isCurrent()) setCommittedInput({...data.criteria, page: data.criteria.page - 1});}}>Previous results</Button>
+          <Button type="button" variant="outline" disabled={!data.hasMore} onClick={() => {if (read.isCurrent()) setCommittedInput({...data.criteria, page: data.criteria.page + 1});}}>Next results</Button>
+        </div>
+      </nav>}
+
       {/* Initial empty state (before first search) */}
-      {!hasSearched && !isFetching && (
+      {!hasSearched && !read.denied && !isFetching && (
         <HrSearchEmptyState />
       )}
-    </div></QueryReadBoundary>
+    </div>
   );
 }

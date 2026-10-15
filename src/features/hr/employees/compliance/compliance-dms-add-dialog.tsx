@@ -18,8 +18,9 @@ import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
  *     compliance record per document using AI prefill, show a results screen.
  */
 
-import { useCallback, useState, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {ComplianceReadPause, useComplianceReadAdmission, type ComplianceMutationAdmission} from "./compliance-read-admission";
+import {useHrDocumentChoices,HrDocumentChoicePages} from "@/hooks/use-hr-document-choices";
 import { toast } from "sonner";
 import {
   FolderOpen, PenLine, Loader2, ChevronRight, Search, FileText,
@@ -31,11 +32,9 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { DmsDocumentStatusBadge } from "@/features/dms/documents/dms-document-status-badge";
-import { queryKeys } from "@/lib/query/query-keys";
+import {useHrLinkedDocuments} from "@/hooks/use-hr-linked-documents";
+import {type HrLinkedDocument} from "@/lib/reads/hr-linked-documents-schema";
 import {
-  getDmsDocumentsByEntity,
-  getAvailableDmsDocumentsForLink,
-  type DmsEntityDocumentRow,
   type AvailableDmsDocumentOption,
 } from "@/server/actions/dms/entity-documents";
 import { prefillComplianceRecordFromDms } from "@/server/actions/hr/compliance-dms-prefill";
@@ -65,6 +64,10 @@ type BatchResultItem = {
 
 type Props<TForm extends { dms_document_id?: number | null }> = {
   open: boolean;
+  admission?: ComplianceMutationAdmission;
+  /** Verified field-view loss only. Transport pauses must not change this revision. */
+  privacyRevision?: string | number;
+  redactForm?: (form: TForm) => TForm;
   onOpenChange: (open: boolean) => void;
   employeeId: number;
   recordKind: ComplianceDmsRecordKind;
@@ -74,7 +77,8 @@ type Props<TForm extends { dms_document_id?: number | null }> = {
   size?: "lg" | "xl";
   createEmptyForm: () => TForm;
   validate: (form: TForm) => string | null;
-  save: (form: TForm) => Promise<SaveResult>;
+  /** A composite save may confirm its primary write before a later link stage fails. */
+  save: (form: TForm, observePrimary?: (result: SaveResult) => void) => Promise<SaveResult>;
   onSaved: (opts?: { dmsLinkCreated?: boolean; hasDmsDocument?: boolean }) => void;
   renderReview: (props: {
     form: TForm;
@@ -97,6 +101,9 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
   save,
   onSaved,
   renderReview,
+  admission: parentAdmission,
+  privacyRevision,
+  redactForm,
 }: Props<TForm>) {
   const [step, setStep] = useState<Step>("source");
   const [pickMode, setPickMode] = useState<PickMode>("employee");
@@ -114,7 +121,7 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
   const [batchDone, setBatchDone] = useState(false);
 
   // Snapshot of employee/library docs used during batch (for labels)
-  const [employeeDocsSnapshot, setEmployeeDocsSnapshot] = useState<DmsEntityDocumentRow[]>([]);
+  const [employeeDocsSnapshot, setEmployeeDocsSnapshot] = useState<HrLinkedDocument[]>([]);
   const [libraryDocsSnapshot, setLibraryDocsSnapshot] = useState<AvailableDmsDocumentOption[]>([]);
 
   const resetState = useCallback(() => {
@@ -131,32 +138,36 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
     setLibraryDocsSnapshot([]);
   }, [createEmptyForm]);
 
-  const handleOpenChange = useCallback((next: boolean) => {
-    if (!next) resetState();
-    onOpenChange(next);
-  }, [onOpenChange, resetState]);
-
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.dms.entityDocuments("employee", employeeId),
-    queryFn: async () => {
-      const r = await getDmsDocumentsByEntity("employee", employeeId);
-      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? [] : [];
-    },
-    enabled: open && step === "pick-dms" && pickMode === "employee",
-  });
+  const uiRead1=useHrLinkedDocuments(employeeId,null,open && step === "pick-dms" && pickMode === "employee" && (parentAdmission?.ready ?? true),parentAdmission?.generation);
   const { data: employeeDocs, isLoading: employeeDocsLoading } = uiRead1;
 
-  const uiRead2 = useQuery({
-    queryKey: queryKeys.dms.attachableDocuments("employee", employeeId, dmsSearch),
-    queryFn: async () => {
-      const r = await getAvailableDmsDocumentsForLink("employee", employeeId, dmsSearch);
-      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? [] : [];
-    },
-    enabled: open && step === "pick-dms" && pickMode === "dms",
-  });
-  const { data: libraryDocs, isLoading: libraryDocsLoading } = uiRead2;
+  const documentChoices = useHrDocumentChoices(employeeId,"library",dmsSearch,open && step === "pick-dms" && pickMode === "dms" && (parentAdmission?.ready ?? true),parentAdmission?.generation);
+  const uiRead2 = {...documentChoices,data:documentChoices.data?.rows};
+  const libraryDocs = uiRead2.data?.map(row=>({...row,document_no:row.document_no??""}));
+  const libraryDocsLoading = uiRead2.isLoading;
+  const admission = useComplianceReadAdmission(open, step === "pick-dms" ? [pickMode === "employee" ? uiRead1 : uiRead2] : [], String(employeeId), parentAdmission);
+  const [editorGeneration, setEditorGeneration] = useState(admission.generation);
+  if (editorGeneration !== admission.generation) {
+    setEditorGeneration(admission.generation);
+    resetState();
+  }
+  const isCurrent = admission.isCurrent;
+  const handleOpenChange = useCallback((next: boolean) => {
+    if (!isCurrent()) return;
+    if (!next) resetState();
+    onOpenChange(next);
+  }, [isCurrent, onOpenChange, resetState]);
+  const latest = useRef({save, onSaved, redactForm, form, validate});
+  useLayoutEffect(() => {latest.current = {save, onSaved, redactForm, form, validate};});
+  const [seenPrivacyRevision, setSeenPrivacyRevision] = useState(privacyRevision);
+  if (seenPrivacyRevision !== privacyRevision) {
+    setSeenPrivacyRevision(privacyRevision);
+    if (redactForm) setForm(previous => redactForm(previous));
+  }
+  const sanitize = (value: TForm) => latest.current.redactForm?.(value) ?? value;
 
   const toggleDoc = (id: number) => {
+    if (!admission.isCurrent()) return;
     setSelectedDmsIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -166,6 +177,7 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
   };
 
   const handleBack = () => {
+    if (!admission.isCurrent()) return;
     if (step === "pick-dms") {
       setStep("source");
       setSelectedDmsIds(new Set());
@@ -178,12 +190,14 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
   };
 
   const handleManual = () => {
+    if (!admission.isCurrent()) return;
     setForm(createEmptyForm());
     setPrefillMeta(null);
     setStep("review");
   };
 
   const handleDmsSource = () => {
+    if (!admission.isCurrent()) return;
     setPickMode("employee");
     setStep("pick-dms");
   };
@@ -191,6 +205,7 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
   // Single doc: prefill → review step
   // Multiple docs: batch create flow
   const handleContinueFromDms = () => {
+    if (!admission.canDispatch()) return;
     if (selectedDmsIds.size === 0) {
       toast.error("Select at least one document");
       return;
@@ -201,12 +216,14 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
     if (ids.length === 1) {
       // Original single-document flow: prefill → review
       startPrefill(async () => {
+        if (!admission.canDispatch()) return;
         const result = await prefillComplianceRecordFromDms(employeeId, ids[0], recordKind);
+        if (!admission.isCurrent()) return;
         if (!result.success || !result.data) {
           toast.error(result.error ?? "Failed to prefill from document");
           return;
         }
-        setForm(mergeComplianceDmsPrefill(createEmptyForm(), result.data));
+        setForm(sanitize(mergeComplianceDmsPrefill(createEmptyForm(), result.data)));
         setPrefillMeta(prefillMetaFromResult(result.data));
         setStep("review");
       });
@@ -220,53 +237,70 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
       setBatchDone(false);
 
       startSubmit(async () => {
+        const {save: dispatchSave, onSaved: notifySaved} = latest.current;
         const results: BatchResultItem[] = [];
-          let savedCount = 0;
-          let dmsLinked = false;
+        let savedCount = 0, confirmedCount = 0;
+        let dmsLinked = false;
 
-        for (let i = 0; i < ids.length; i++) {
-          const docId = ids[i];
-          setBatchProgress({ current: i + 1, total: ids.length });
+        try {
+          for (let i = 0; i < ids.length; i++) {
+            if (!admission.canDispatch()) break; // No new dispatch; prior actual outcomes remain intact.
+            const docId = ids[i];
+            setBatchProgress({ current: i + 1, total: ids.length });
 
-          // Resolve label from in-memory snapshots (two different shapes)
-          const empMatch = employeeDocsSnapshot.find((d) => d.document_id === docId);
-          const libMatch = libraryDocsSnapshot.find((d) => d.id === docId);
-          const docLabel = empMatch?.title ?? libMatch?.title ?? `Document ${docId}`;
-          const docNo = empMatch?.document_no ?? libMatch?.document_no ?? `#${docId}`;
+            // Resolve label from in-memory snapshots (two different shapes)
+            const empMatch = employeeDocsSnapshot.find((d) => d.document_id === docId);
+            const libMatch = libraryDocsSnapshot.find((d) => d.id === docId);
+            const docLabel = empMatch?.title ?? libMatch?.title ?? `Document ${docId}`;
+            const docNo = empMatch?.document_no ?? libMatch?.document_no ?? `#${docId}`;
 
-          try {
-            const prefillRes = await prefillComplianceRecordFromDms(employeeId, docId, recordKind);
-            if (!prefillRes.success || !prefillRes.data) {
-              results.push({ documentNo: docNo, title: docLabel, status: "error", error: prefillRes.error ?? "Prefill failed" });
-              continue;
+            try {
+              const prefillRes = await prefillComplianceRecordFromDms(employeeId, docId, recordKind);
+              if (!prefillRes.success || !prefillRes.data) {
+                results.push({ documentNo: docNo, title: docLabel, status: "error", error: prefillRes.error ?? "Prefill failed" });
+                continue;
+              }
+
+              if (!admission.isCurrent()) return;
+              const filledForm = sanitize(mergeComplianceDmsPrefill(createEmptyForm(), prefillRes.data));
+              const validErr = validate(filledForm);
+              if (validErr) {
+                results.push({ documentNo: docNo, title: docLabel, status: "error", error: `Validation: ${validErr}` });
+                continue;
+              }
+
+              if (!admission.canDispatch()) break;
+              let confirmed = false;
+              const observePrimary = (result: SaveResult) => {
+                if (!result.success || confirmed) return;
+                confirmed = true; confirmedCount++;
+                if (result.data?.dmsLinkCreated) dmsLinked = true;
+              };
+              const saveRes = await dispatchSave(sanitize(filledForm), observePrimary);
+              observePrimary(saveRes);
+              if (!saveRes.success) {
+                results.push({ documentNo: docNo, title: docLabel, status: "error", error: saveRes.error ?? "Save failed" });
+                continue;
+              }
+
+              if (saveRes.data?.dmsLinkCreated) dmsLinked = true;
+              savedCount++;
+              results.push({ documentNo: docNo, title: docLabel, status: "ok" });
+            } catch (err) {
+              results.push({ documentNo: docNo, title: docLabel, status: "error", error: String(err) });
             }
-
-            const filledForm = mergeComplianceDmsPrefill(createEmptyForm(), prefillRes.data);
-            const validErr = validate(filledForm);
-            if (validErr) {
-              results.push({ documentNo: docNo, title: docLabel, status: "error", error: `Validation: ${validErr}` });
-              continue;
-            }
-
-            const saveRes = await save(filledForm);
-            if (!saveRes.success) {
-              results.push({ documentNo: docNo, title: docLabel, status: "error", error: saveRes.error ?? "Save failed" });
-              continue;
-            }
-
-            if (saveRes.data?.dmsLinkCreated) dmsLinked = true;
-            savedCount++;
-            results.push({ documentNo: docNo, title: docLabel, status: "ok" });
-          } catch (err) {
-            results.push({ documentNo: docNo, title: docLabel, status: "error", error: String(err) });
           }
+        } finally {
+          // Keep known primary commits even when the link stage throws or the
+          // owner retires; active reads resume only after the whole batch settles.
+          if (confirmedCount > 0) notifySaved({dmsLinkCreated: dmsLinked, hasDmsDocument: true});
         }
 
+        if (!admission.isCurrent()) return;
         setBatchResults(results);
         setBatchDone(true);
 
         if (savedCount > 0) {
-          onSaved({ dmsLinkCreated: dmsLinked, hasDmsDocument: true });
           toast.success(
             savedCount === ids.length
               ? `${savedCount} ${recordLabel} records created`
@@ -278,20 +312,36 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
   };
 
   const handleSave = () => {
-    const validationError = validate(form);
+    if (!admission.canDispatch()) return;
+    const validationError = latest.current.validate(sanitize(latest.current.form));
     if (validationError) {
       toast.error(validationError);
       return;
     }
     startSubmit(async () => {
-      const result = await save(form);
+      if (!admission.canDispatch()) return;
+      const submitted = sanitize(latest.current.form);
+      const {save: dispatchSave, onSaved: notifySaved} = latest.current;
+      let confirmed = false, dmsLinkCreated = false;
+      const observePrimary = (result: SaveResult) => {
+        if (!result.success || confirmed) return;
+        confirmed = true; dmsLinkCreated = !!result.data?.dmsLinkCreated;
+      };
+      let result: SaveResult;
+      try {
+        result = await dispatchSave(submitted, observePrimary);
+        observePrimary(result);
+      } finally {
+        // No optimistic fact is invented for a rejected/unknown primary call.
+        if (confirmed) notifySaved({dmsLinkCreated, hasDmsDocument: !!submitted.dms_document_id});
+      }
+      if (!admission.isCurrent()) return;
       if (result.success) {
         if (result.data?.dmsLinkCreated) {
           toast.success(`${recordLabel} saved and linked to employee Documents tab`);
         } else {
           toast.success(`${recordLabel} saved`);
         }
-        onSaved({ dmsLinkCreated: result.data?.dmsLinkCreated, hasDmsDocument: !!form.dms_document_id });
         handleOpenChange(false);
       } else {
         toast.error(result.error ?? "Failed to save");
@@ -316,7 +366,7 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
         : "Search DMS — tick one or more documents to link and process"
     : step === "batch"
       ? batchDone
-        ? `Processed ${selectedCount} document${selectedCount !== 1 ? "s" : ""}`
+        ? `${batchResults.length} processed · ${selectedCount - batchResults.length} not submitted`
         : "Running AI prefill and saving each record…"
     : "Confirm all fields before saving to the compliance record";
 
@@ -334,6 +384,7 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
       mode="add"
       size={size}
       isSubmitting={(isSubmitting && step !== "batch") || isPrefilling}
+      submitDisabled={!showClose && !admission.ready}
       onSubmit={
         showSubmit ? handleSave
         : showContinue ? handleContinueFromDms
@@ -355,6 +406,7 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
       }
       cancelLabel={step === "batch" && !batchDone ? undefined : "Cancel"}
     >
+      <ComplianceReadPause admission={admission} />
       {(step === "pick-dms" || step === "review") && (
         <div className="mb-4">
           <Button type="button" variant="ghost" size="sm" className="-ml-2 h-8" onClick={handleBack} disabled={isPrefilling || isSubmitting}>
@@ -450,7 +502,7 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
             </div>
           )}
 
-          {!docsLoading && pickMode === "employee" && (!employeeDocs || employeeDocs.length === 0) && (
+          {!docsLoading && uiRead1.isSuccess && !uiRead1.isError && pickMode === "employee" && (!employeeDocs || employeeDocs.length === 0) && (
             <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
               <p>No documents on this employee&apos;s Documents tab yet.</p>
               <p className="mt-2">Switch to <strong>Search DMS</strong> to pick an existing file — it will be linked to this employee when you save.</p>
@@ -470,7 +522,8 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
             </div>
           )}
 
-          {!docsLoading && pickMode === "dms" && (!libraryDocs || libraryDocs.length === 0) && (
+          {pickMode === "dms" && <HrDocumentChoicePages read={documentChoices} />}
+          {!docsLoading && uiRead2.isSuccess && !uiRead2.isError && pickMode === "dms" && (!libraryDocs || libraryDocs.length === 0) && (
             <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
               {dmsSearch.trim() ? "No matching DMS documents found." : "Type to search DMS documents not yet on this employee."}
             </div>
@@ -558,7 +611,8 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
 
           {batchDone && (
             <p className="text-xs text-muted-foreground">
-              {batchResults.filter((r) => r.status === "ok").length} created · {batchResults.filter((r) => r.status === "error").length} failed.
+              {batchResults.filter((r) => r.status === "ok").length} created · {batchResults.filter((r) => r.status === "error").length} failed · {selectedCount - batchResults.length} not submitted.
+              {batchResults.length < selectedCount && " No further records were submitted after required checks paused. Check the recorded results before starting a new batch."}
               {batchResults.some((r) => r.status === "error") && " Failed records may need missing required fields — try adding them manually."}
             </p>
           )}
@@ -575,7 +629,7 @@ function EmployeeDocPickRow({
   selected,
   onToggle,
 }: {
-  doc: DmsEntityDocumentRow;
+  doc: HrLinkedDocument;
   selected: boolean;
   onToggle: () => void;
 }) {
@@ -596,7 +650,7 @@ function EmployeeDocPickRow({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-medium text-sm truncate">{doc.title || doc.document_no}</span>
-          <DmsDocumentStatusBadge status={doc.status} />
+          <DmsDocumentStatusBadge status={doc.status??"unknown"} />
           <Badge variant="secondary" className="text-xs">On employee file</Badge>
           {doc.document_type_name && (
             <Badge variant="outline" className="text-xs">{doc.document_type_name}</Badge>

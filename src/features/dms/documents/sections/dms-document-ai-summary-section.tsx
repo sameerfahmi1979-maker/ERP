@@ -1,5 +1,6 @@
 "use client";
-import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
+import {readDmsSection} from "@/features/dms/documents/section-read";
+import { QueryReadBoundary } from "@/features/dms/documents/section-read-boundary";
 
 /**
  * DMS 12.2 — DmsDocumentAiSummarySection
@@ -14,19 +15,14 @@ import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
  */
 
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import {useDmsSectionQuery as useQuery} from "@/features/dms/documents/section-activity";
 import { toast } from "sonner";
 import { Brain, RefreshCw, Sparkles, AlertTriangle, Lock, Clock, AlertCircle, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { queryKeys } from "@/lib/query/query-keys";
-import {
-  getDmsAiSummaryStatus,
-  generateAndSaveDmsAiSummary,
-  regenerateDmsAiSummary,
-  type AiSummaryStatus,
-  type DocumentAiSummaryRow,
-} from "@/server/actions/dms/ai-summary";
+import { generateAndSaveDmsAiSummary, regenerateDmsAiSummary, type AiSummaryStatus, type DocumentAiSummaryRow } from "@/server/actions/dms/ai-summary";
 import { format, parseISO } from "date-fns";
 
 // ── Status badge ──────────────────────────────────────────────────────────────
@@ -62,8 +58,8 @@ export function DmsDocumentAiSummarySection({
 
   const uiRead1 = useQuery<DocumentAiSummaryRow | null>({
     queryKey: queryKeys.dms.documentAiSummary(documentId),
-    queryFn: async () => {
-      const r = await getDmsAiSummaryStatus(documentId);
+    queryFn: async ({signal}) => {
+      const r = await readDmsSection("getDmsAiSummaryStatus", [documentId], signal);
       if (!r.success) throw new Error(r.error ?? "Failed to load summary");
       return r.data ?? null;
     },

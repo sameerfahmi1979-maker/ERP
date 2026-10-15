@@ -1,35 +1,16 @@
-import { Metadata } from "next";
-import { getAuthContext } from "@/lib/rbac/check";
-import { getMyNotifications, getUnreadNotificationCount } from "@/server/actions/notifications/notifications";
-import { NotificationsPageClient } from "@/features/notifications/notifications-page-client";
-
+import type {Metadata} from "next";
+import {getAuthContext} from "@/lib/rbac/check";
+import {canUseApplication} from "@/lib/rbac/scope";
+import {readNotifications} from "@/server/reads/notifications";
+import {notificationReadIdentity} from "@/lib/reads/notifications-schema";
+import {NotificationsPageClient} from "@/features/notifications/notifications-page-client";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-export const metadata: Metadata = {
-  title: "Notifications | ERP",
-  description: "Your ERP in-app notifications.",
-};
-
+export const metadata: Metadata = {title: "Notifications | ERP", description: "Your ERP in-app notifications."};
 export default async function NotificationsPage() {
   const ctx = await getAuthContext();
-  if (!ctx.profile) return null;
-
-  const [notifsResult, countResult] = await Promise.all([
-    getMyNotifications({ limit: 200 }),
-    getUnreadNotificationCount(),
-  ]);
-
-  const notifications = notifsResult.success ? (notifsResult.data ?? []) : [];
-  const unreadCount = countResult.success ? (countResult.data?.count ?? 0) : 0;
-
-  return (
-    <div className="p-6 space-y-4">
-      <NotificationsPageClient
-        initialNotifications={notifications}
-        unreadCount={unreadCount}
-        initialError={!notifsResult.success || !countResult.success}
-      />
-    </div>
-  );
+  if (!canUseApplication(ctx)) return null;
+  const result = await readNotifications({}, ctx);
+  return <div className="p-6 space-y-4"><NotificationsPageClient authContext={ctx}
+    initialIdentity={notificationReadIdentity(ctx)} initialUpdatedAt={result.success ? result.updatedAt : undefined} initialPage={result.success ? result.data : undefined}/></div>;
 }

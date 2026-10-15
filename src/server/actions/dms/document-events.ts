@@ -1,4 +1,5 @@
 "use server";
+import {readAllPages} from "@/server/reads/all-pages";
 
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
@@ -31,14 +32,15 @@ export async function getDmsDocumentEvents(
     }
 
     const supabase = await createClient();
-    const { data, error } = await supabase
+    const data = await readAllPages(async (from,to) => {
+      const result = await supabase
       .from("dms_document_events")
-      .select("id, document_id, event_type, description, performed_by, performed_at, metadata_json, performer:user_profiles!performed_by(display_name)")
+      .select("id, document_id, event_type, description, performed_by, performed_at, metadata_json, performer:user_profiles!performed_by(display_name)", {count:"exact"})
       .eq("document_id", documentId)
-      .order("performed_at", { ascending: false })
-      .limit(100);
+      .order("performed_at", { ascending: false }).order("id",{ascending:true}).range(from,to);
+      return result;
+    }, {identity:row=>row.id,maxRows:10000});
 
-    if (error) return { success: false, error: error.message };
 
     return { success: true, data: (data ?? []) as unknown as DmsDocumentEventRow[] };
   } catch (err) {

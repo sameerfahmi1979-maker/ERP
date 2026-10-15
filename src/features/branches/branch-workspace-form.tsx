@@ -39,7 +39,7 @@ export function BranchWorkspaceForm(props: BranchWorkspaceFormProps) {
   return <BranchWorkspaceFormFields key={props.branch?.id ?? "new"} {...props} />;
 }
 
-function BranchWorkspaceFormFields({ branch, companies = [], mode }: BranchWorkspaceFormProps) {
+function BranchWorkspaceFormFields({ branch, companies = [], mode, authContext }: BranchWorkspaceFormProps) {
   const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -396,6 +396,7 @@ function BranchWorkspaceFormFields({ branch, companies = [], mode }: BranchWorks
           <p className="text-sm text-muted-foreground">Save the branch first to manage documents.</p>
         ) : (
           <DmsEntityDocumentsTab
+            authContext={authContext}
             entityType="branch"
             entityId={branch.id}
             entityLabel="Branch"

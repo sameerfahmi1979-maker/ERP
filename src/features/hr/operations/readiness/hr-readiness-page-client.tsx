@@ -1,140 +1,21 @@
 "use client";
-import { RecordCollection } from "@/components/erp/table/record-collection";
-import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
-
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
-import { ShieldCheck, Search } from "lucide-react";
+import {Badge} from "@/components/ui/badge";
+import {Button} from "@/components/ui/button";
+import {ShieldCheck} from "lucide-react";
 import Link from "next/link";
-import { queryKeys } from "@/lib/query/query-keys";
-import { listGlobalSiteReadiness } from "@/server/actions/hr/operations";
-import { getReadinessStatusBadge } from "@/lib/hr/operations/status";
-import { format } from "date-fns";
-
-const PAGE_SIZE = 50;
-
-export function HrReadinessPageClient() {
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [page, setPage] = useState(0);
-
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.operations.globalReadiness({ status: statusFilter, page }),
-    queryFn: () =>
-      listGlobalSiteReadiness({
-        status: statusFilter || undefined,
-        limit: PAGE_SIZE,
-        offset: page * PAGE_SIZE,
-      }),
-  });
-  const { data, isLoading } = uiRead1;
-
-  const result = data?.success ? data.data : { data: [], count: 0 };
-  const records = result.data as Record<string, unknown>[];
-  const count = result.count;
-  const totalPages = Math.ceil(count / PAGE_SIZE);
-
-  const filtered = search
-    ? records.filter((r) => {
-        const emp = r.employees as Record<string, unknown> | null;
-        const site = r.work_sites as Record<string, unknown> | null;
-        return (
-          String(emp?.full_name_en ?? "").toLowerCase().includes(search.toLowerCase()) ||
-          String(emp?.employee_code ?? "").toLowerCase().includes(search.toLowerCase()) ||
-          String(site?.name_en ?? "").toLowerCase().includes(search.toLowerCase())
-        );
-      })
-    : records;
-
-  return (
-    <QueryReadBoundary queries={[uiRead1]}><div className="p-6 max-w-7xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <ShieldCheck className="h-6 w-6" />
-          Readiness Monitor
-        </h1>
-        <p className="text-muted-foreground mt-1">Employee site readiness status across all work sites</p>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input aria-label="Search by name, code, or site"
-            placeholder="Search by name, code, or site..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-8"
-          />
-        </div>
-        <div className="flex gap-2">
-          {["", "ready", "not_ready", "blocked", "expired", "needs_review"].map((s) => (
-            <Button
-              key={s}
-              size="sm"
-              variant={statusFilter === s ? "default" : "outline"}
-              onClick={() => { setStatusFilter(s); setPage(0); }}
-            >
-              {s ? s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "All"}
-            </Button>
-          ))}
-        </div>
-      </div>
-
-      {isLoading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">No readiness records found</div>
-      ) : (
-        <div className="rounded-lg border divide-y">
-          <RecordCollection id="hr.hr-readiness-page-client.HrReadinessPageClient.filtered" rows={filtered} fields={[{"id":"employees_full_name_en","path":"employees.full_name_en","label":"Full Name En"},{"id":"readiness_status","path":"readiness_status","label":"Readiness Status"}]} renderRecord={(r) => {
-            const emp = r.employees as Record<string, unknown> | null;
-            const site = r.work_sites as Record<string, unknown> | null;
-            const badge = getReadinessStatusBadge(r.readiness_status as string);
-            return (
-              <div key={r.id as number} className="flex items-center justify-between px-4 py-3 hover:bg-muted/30">
-                <div className="flex items-center gap-4 min-w-0">
-                  <Badge variant={badge.variant} className="shrink-0">{badge.label}</Badge>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">
-                      {String(emp?.full_name_en ?? "—")}
-                      <span className="text-muted-foreground ml-2 text-xs">{String(emp?.employee_code ?? "")}</span>
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      Site: {String(site?.name_en ?? "—")}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4 shrink-0">
-                  <span className="text-xs text-muted-foreground">
-                    {r.checked_at ? format(new Date(r.checked_at as string), "dd MMM yyyy") : "—"}
-                  </span>
-                  <Link href={`/admin/hr/employees/record/${(emp as Record<string, unknown>)?.id}`}>
-                    <Button size="sm" variant="ghost">View</Button>
-                  </Link>
-                </div>
-              </div>
-            );
-          }} />
-        </div>
-      )}
-
-      {totalPages > 1 && (
-        <div className="flex flex-wrap gap-2 items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            {count} total · Page {page + 1} of {totalPages}
-          </p>
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>Previous</Button>
-            <Button size="sm" variant="outline" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)}>Next</Button>
-          </div>
-        </div>
-      )}
-    </div></QueryReadBoundary>
-  );
+import {getReadinessStatusBadge} from "@/lib/hr/operations/status";
+import {formatTimeInquiryDate} from "@/lib/hr/time/date-utils";
+import {HrOperationsReadList, type HrOperationsReadProps} from "../hr-operations-read-list";
+export function HrReadinessPageClient(props: HrOperationsReadProps) {
+  return <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div><h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><ShieldCheck className="h-6 w-6" />Readiness Monitor</h1><p className="text-muted-foreground mt-1">Employee site readiness status across all work sites</p></div>
+    <HrOperationsReadList {...props} kind="readiness" renderRecord={row => {
+      if (!("readiness_status" in row)) return null;
+      const badge = getReadinessStatusBadge(row.readiness_status), employee = row.employee;
+      return <div className="flex flex-wrap items-center justify-between gap-3 py-2">
+        <div className="min-w-0"><Badge variant={badge.variant}>{badge.label}</Badge><p className="text-sm font-medium">{employee?.full_name_en ?? "—"}<span className="text-muted-foreground ml-2 text-xs">{employee?.employee_code ?? ""}</span></p><p className="text-xs text-muted-foreground">Site: {row.site?.name_en ?? "—"}</p></div>
+        <div className="flex flex-wrap gap-3 items-center"><span className="text-xs text-muted-foreground">{formatTimeInquiryDate(row.checked_at)}</span>{employee && <Link prefetch={false} href={"/admin/hr/employees/record/" + employee.id}><Button size="sm" variant="ghost">View</Button></Link>}</div>
+      </div>;
+    }} />
+  </div>;
 }

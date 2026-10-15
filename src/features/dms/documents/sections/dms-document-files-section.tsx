@@ -1,4 +1,5 @@
 "use client";
+import {readDmsSection} from "@/features/dms/documents/section-read";
 
 import { DmsListTools, useDmsListView, type DmsListField } from "@/features/dms/dms-list-view";
 import { ConfiguredRow } from "@/components/erp/table/list-controls";
@@ -12,14 +13,10 @@ import { FileSize } from "@/features/dms/upload/dms-file-size";
 import { FileTypeIcon, getMimeTypeLabel } from "@/features/dms/upload/dms-file-type-icon";
 import { invalidateDmsDocumentFiles, invalidateDmsOcr } from "@/lib/query/invalidation";
 import { queryKeys } from "@/lib/query/query-keys";
-import {
-  adminDeleteDmsDocumentFile,
-  getDmsDocumentFiles,
-  getDmsDocumentFileSignedUrl,
-  type DmsDocumentFileRow,
-} from "@/server/actions/dms/document-files";
+import { adminDeleteDmsDocumentFile, getDmsDocumentFileSignedUrl, type DmsDocumentFileRow } from "@/server/actions/dms/document-files";
 import { triggerDmsOcrForFile } from "@/server/actions/dms/ocr";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import {useDmsSectionQuery as useQuery} from "@/features/dms/documents/section-activity";
 import { format, parseISO } from "date-fns";
 import {
   AlertTriangle,
@@ -313,8 +310,8 @@ export function DmsDocumentFilesSection({
 
   const { data: files = [], isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: queryKeys.dms.documentFiles(documentId),
-    queryFn: async () => {
-      const result = await getDmsDocumentFiles(documentId);
+    queryFn: async ({signal}) => {
+      const result = await readDmsSection("getDmsDocumentFiles", [documentId], signal);
       if (!result.success) throw new Error(result.error);
       return result.data ?? [];
     },

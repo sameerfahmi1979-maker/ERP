@@ -8,6 +8,7 @@
 
 import type { FinanceBasicsSelectProps } from "@/features/master-data/finance-basics/types";
 import { ERPCombobox } from "@/components/erp/combobox";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import type { ERPComboboxOption } from "@/components/erp/combobox";
 import { useTaxTypesQuery } from "@/hooks/lookups";
 import type { TaxTypeRow } from "@/lib/lookups/option-mappers";
@@ -27,11 +28,12 @@ export function TaxTypeSelect({
   ariaLabel = "Tax type",
   error,
 }: FinanceBasicsSelectProps) {
+  const choiceRead = useTaxTypesQuery({ includeInactive , selectedId: value ?? null});
   const {
     options,
     isLoading: loading,
     error: fetchError,
-  } = useTaxTypesQuery({ includeInactive });
+  } = choiceRead;
 
   const handleValueChange = (newValue: string | number | null) => {
     if (!onValueChange) return;
@@ -52,19 +54,8 @@ export function TaxTypeSelect({
     );
   };
 
-  if (fetchError) {
-    return (
-      <div className={className}>
-        <div className="flex items-center justify-center h-10 px-3 border border-destructive rounded-md bg-destructive/10">
-          <span className="text-sm text-destructive">{fetchError}</span>
-        </div>
-        {error && <p className="text-sm text-destructive mt-1">{error}</p>}
-      </div>
-    );
-  }
-
   return (
-    <ERPCombobox
+    <QueryReadBoundary queries={[choiceRead]}><ERPCombobox
       ariaLabel={ariaLabel}
       value={value ?? null}
       onValueChange={handleValueChange}
@@ -77,13 +68,13 @@ export function TaxTypeSelect({
       readOnly={false}
       required={required}
       loading={loading}
-      error={error}
+      error={fetchError ?? error}
       allowClear={allowClear}
       emptyText="No tax types available"
       noResultsText="No results found"
       className={className}
       name={name}
       renderOption={renderOption}
-    />
+    /></QueryReadBoundary>
   );
 }

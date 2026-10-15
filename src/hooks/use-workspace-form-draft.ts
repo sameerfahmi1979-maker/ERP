@@ -24,7 +24,7 @@
  * Draft is never written to localStorage or sessionStorage.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWorkspaceContext } from "@/components/workspace/workspace-provider";
 import { useWorkspaceDraftStoreContext } from "@/components/workspace/workspace-draft-provider";
 import { buildWorkspaceDraftKey, isDraftFieldAllowed } from "@/lib/workspace/workspace-draft-types";
@@ -82,6 +82,9 @@ export type UseWorkspaceFormDraftReturn = {
   writeDraftField: (fieldName: string, value: string | number | boolean | null | undefined) => void;
   /** Clear the draft for this form. Call after successful save. */
   clearDraft: () => void;
+  /** Opt-in privacy retirement; does not remove save receipts or other forms. */
+  retireDraft: () => void;
+  redactDraft: (fields: Record<string, string>) => void;
 };
 
 export function useWorkspaceFormDraft({
@@ -119,10 +122,12 @@ export function useWorkspaceFormDraft({
   // By freezing once, defaultValue is stable — the frozen snapshot is always the
   // correct draft value because by the time the form mounts, the workspace has
   // already set activeTabId (SET_ACTIVE_TAB + router.push happen together).
-  const [frozenDefaults] = useState<Record<string, string>>(() =>
+  const [frozenDefaults, setFrozenDefaults] = useState<Record<string, string>>(() =>
     enabled && draftStore ? { ...draftStore.getDraft(draftKey) } : {}
   );
   const [restorationAcknowledged, setRestorationAcknowledged] = useState(false);
+  const retired = useRef(false);
+  const redactedFields = useRef<Record<string, string>>({});
 
   // ── Restore dirty indicator on remount if draft exists ───────────────────
   useEffect(() => {
@@ -137,6 +142,8 @@ export function useWorkspaceFormDraft({
 
   const getDraftDefault = useCallback(
     (fieldName: string, serverFallback?: string | number | null | undefined): string => {
+      if (retired.current) return "";
+      if (Object.hasOwn(redactedFields.current, fieldName)) return redactedFields.current[fieldName];
       if (!enabled || !isDraftFieldAllowed(fieldName)) {
         return serverFallback != null ? String(serverFallback) : "";
       }
@@ -151,6 +158,8 @@ export function useWorkspaceFormDraft({
 
   const getDraftBoolean = useCallback(
     (fieldName: string, serverFallback = false): boolean => {
+      if (retired.current) return false;
+      if (Object.hasOwn(redactedFields.current, fieldName)) return ["true", "on"].includes(redactedFields.current[fieldName]);
       if (!enabled) return serverFallback;
       // Read from the frozen snapshot — stable across all renders of this instance.
       const frozen = frozenDefaults;
@@ -165,15 +174,15 @@ export function useWorkspaceFormDraft({
   );
 
   const syncDraft = useCallback(() => {
-    if (!enabled || !draftStore) return;
+    if (retired.current || !enabled || !draftStore) return;
     const snapshot = snapshotFormData(formId);
-    if (Object.keys(snapshot).length > 0) draftStore.patchDraft(draftKey, snapshot);
+    if (Object.keys(snapshot).length > 0) draftStore.patchDraft(draftKey, {...snapshot, ...redactedFields.current});
   }, [enabled, draftStore, draftKey, formId]);
 
   const writeDraftField = useCallback(
     (fieldName: string, value: string | number | boolean | null | undefined) => {
-      if (!enabled || !draftStore || !isDraftFieldAllowed(fieldName)) return;
-      const str = value != null ? String(value) : "";
+      if (retired.current || !enabled || !draftStore || !isDraftFieldAllowed(fieldName)) return;
+      const str = Object.hasOwn(redactedFields.current, fieldName) ? redactedFields.current[fieldName] : value != null ? String(value) : "";
       draftStore.writeField(draftKey, fieldName, str);
     },
     [enabled, draftStore, draftKey]
@@ -184,6 +193,15 @@ export function useWorkspaceFormDraft({
     draftStore.clearDraft(draftKey);
     setRestorationAcknowledged(true);
   }, [draftStore, draftKey]);
+  const retireDraft = useCallback(() => {
+    retired.current = true; clearDraft(); setFrozenDefaults({});
+  }, [clearDraft]);
+  const redactDraft = useCallback((fields: Record<string, string>) => {
+    if (retired.current) return;
+    redactedFields.current = {...redactedFields.current, ...fields};
+    setFrozenDefaults(previous => Object.fromEntries(Object.entries(previous).map(([field, value]) => [field, fields[field] ?? value])));
+    if (draftStore?.hasDraft(draftKey)) draftStore.patchDraft(draftKey, fields);
+  }, [draftKey, draftStore]);
 
   const hasDraft = draftStore?.hasDraft(draftKey) ?? false;
   const hasDraftField = useCallback((fieldName: string) =>
@@ -211,5 +229,7 @@ export function useWorkspaceFormDraft({
     syncDraft,
     writeDraftField,
     clearDraft,
+    retireDraft,
+    redactDraft,
   };
 }

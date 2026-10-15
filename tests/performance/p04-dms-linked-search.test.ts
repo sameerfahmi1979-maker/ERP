@@ -1,0 +1,12 @@
+import {beforeEach,expect,it,vi} from "vitest";
+import type {SupabaseClient} from "@supabase/supabase-js";
+const s=vi.hoisted(()=>({fail:false,ops:[] as [string,unknown[]][]}));
+vi.mock("@/lib/logger",()=>({logger:{warn:vi.fn()}}));
+import {searchDmsLinkEntityOptionsForType} from "@/lib/dms/search-link-entity-options";
+const client={from:(table:string)=>{s.ops.push(["from",[table]]);const q=new Proxy({}, {get:(_,key)=>key==="then"?(resolve:(x:unknown)=>unknown)=>Promise.resolve({data:[],error:s.fail?{message:"private"}:null}).then(resolve):(...args:unknown[])=>{s.ops.push([String(key),args]);return q;}});return q;}} as unknown as SupabaseClient;
+beforeEach(()=>{s.fail=false;s.ops=[];});
+const types=["employee","employee_compliance","employee_contract","employee_leave_request","party","party_license","party_tax_registration","company","branch","bank","site","employee_dependent","employee_identity_document","employee_medical_insurance","employee_access_card","employee_medical_record"];
+it.each(types)("%s uses ordinary scoped stable bounded choices and propagates errors",async type=>{expect(await searchDmsLinkEntityOptionsForType(client,type,"%_",25)).toEqual([]);expect(s.ops).toContainEqual(["limit",[25]]);expect(s.ops).toContainEqual(["order",["id",{ascending:true}]]);expect(JSON.stringify(s.ops)).toContain("\\\\%");s.fail=true;await expect(searchDmsLinkEntityOptionsForType(client,type)).rejects.toThrow("unavailable");});
+it.each([0,51,-1,1.5,NaN])("rejects invalid limit %s",async limit=>{await expect(searchDmsLinkEntityOptionsForType(client,"employee","",limit)).rejects.toThrow();expect(s.ops).toHaveLength(0);});
+it("does not silently truncate search strings",async()=>{await expect(searchDmsLinkEntityOptionsForType(client,"employee","a".repeat(201))).rejects.toThrow();expect(s.ops).toHaveLength(0);});
+it.each(["vehicle","fleet_asset"])("%s stays explicitly unsupported without database reads",async type=>{expect(await searchDmsLinkEntityOptionsForType(client,type)).toEqual([]);expect(s.ops).toHaveLength(0);});

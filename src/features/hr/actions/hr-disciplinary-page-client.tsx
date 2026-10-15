@@ -1,8 +1,5 @@
 "use client";
-import { ERPDataTable } from "@/components/erp/table/erp-data-table";
-import { loadedListValue } from "@/components/erp/table/loaded-list-view";
 import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
-import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import {
@@ -19,22 +16,19 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { queryKeys } from "@/lib/query/query-keys";
-import type { AuthContext } from "@/lib/rbac/check";
+import {useHrActionInquiry, useHrActionInquiryIdentity, type HrActionInquiryProps} from "@/hooks/use-hr-action-inquiry";
+import type {HrActionInquiryRowMap, HrDisciplinaryInquiryDetail as DisciplinaryRow} from "@/lib/reads/hr-action-inquiries-schema";
+import {HrActionInquiryTable} from "./hr-action-inquiry-table";
 import {
   archiveEmployeeDisciplinaryRecord,
-  listGlobalDisciplinaryRecords,
-  updateEmployeeDisciplinaryRecord,
-  type DisciplinaryRow
+  updateEmployeeDisciplinaryRecord
 } from "@/server/actions/hr/actions";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Eye, Pencil,
-  RefreshCw,
-  Search,
   Trash2
 } from "lucide-react";
 import { useState} from "react";
@@ -42,7 +36,7 @@ import { toast } from "sonner";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type Props = { authContext: AuthContext };
+type Props = HrActionInquiryProps;
 
 type EditForm = {
   disciplinary_type: string;
@@ -60,17 +54,17 @@ type EditForm = {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const SEVERITY_BADGE: Record<string, string> = {
-  low:      "bg-slate-100 text-slate-600 border-slate-200",
-  medium:   "bg-amber-100 text-amber-700 border-amber-200",
-  high:     "bg-orange-100 text-orange-700 border-orange-200",
-  critical: "bg-red-100 text-red-700 border-red-200",
+  low:      "bg-muted text-muted-foreground border-border",
+  medium:   "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800",
+  high:     "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-200 dark:border-orange-800",
+  critical: "bg-red-100 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-200 dark:border-red-800",
 };
 
 const STATUS_BADGE: Record<string, string> = {
-  open:         "bg-blue-100 text-blue-700 border-blue-200",
-  under_review: "bg-amber-100 text-amber-700 border-amber-200",
-  closed:       "bg-slate-100 text-slate-600 border-slate-200",
-  cancelled:    "bg-slate-100 text-slate-500 border-slate-200",
+  open:         "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-200 dark:border-blue-800",
+  under_review: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800",
+  closed:       "bg-muted text-muted-foreground border-border",
+  cancelled:    "bg-muted text-muted-foreground border-border",
 };
 
 const DISCIPLINARY_TYPES = [
@@ -128,14 +122,14 @@ function toForm(r: DisciplinaryRow | null): EditForm {
 }
 
 function DetailDialog(props: DetailDialogProps) {
-  return props.open ? <DetailDialogSession key={props.record?.id ?? "new"} {...props} /> : null;
+  return props.record ? <DetailDialogSession key={props.record.id} {...props} /> : null;
 }
 function DetailDialogSession({ record, open, mode, canManage, onClose, onEdit, onSaved }: DetailDialogProps) {
   const [form, setForm] = useState<EditForm>(() => toForm(record));
   const [isPending, startTransition] = useTransition();
 
   const handleSave = () => {
-    if (!record) return;
+    if (!record || !open || !canManage) return;
     startTransition(async () => {
       const result = await updateEmployeeDisciplinaryRecord(record.id, {
         disciplinary_type: form.disciplinary_type,
@@ -187,16 +181,16 @@ function DetailDialogSession({ record, open, mode, canManage, onClose, onEdit, o
             <Badge variant="outline" className={`text-[11px] font-semibold px-2 py-0.5 border ${STATUS_BADGE[record.status]}`}>
               {label(record.status)}
             </Badge>
-            <Badge variant="outline" className="text-[11px] font-semibold px-2 py-0.5 border bg-slate-50 text-slate-700 border-slate-200">
+            <Badge variant="outline" className="text-[11px] font-semibold px-2 py-0.5 border bg-muted text-foreground border-border">
               {label(record.disciplinary_type)}
             </Badge>
             {record.acknowledged_by_employee && (
-              <Badge variant="outline" className="text-[11px] font-semibold px-2 py-0.5 border bg-green-50 text-green-700 border-green-200">
+              <Badge variant="outline" className="text-[11px] font-semibold px-2 py-0.5 border bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-200 dark:border-green-800">
                 Acknowledged
               </Badge>
             )}
             {record.creates_operational_block && (
-              <Badge variant="outline" className="text-[11px] font-semibold px-2 py-0.5 border bg-red-50 text-red-700 border-red-200">
+              <Badge variant="outline" className="text-[11px] font-semibold px-2 py-0.5 border bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-200 dark:border-red-800">
                 Operational Block
               </Badge>
             )}
@@ -376,178 +370,81 @@ function DetailDialogSession({ record, open, mode, canManage, onClose, onEdit, o
 
 // ── Main Page Client ───────────────────────────────────────────────────────────
 
-export function HrDisciplinaryPageClient({ authContext }: Props) {
-  const qc = useQueryClient();
-  const [search, setSearch] = useState("");
+export function HrDisciplinaryPageClient(props: Props) {
+  const identity = useHrActionInquiryIdentity("disciplinary", props.authContext);
+  return <DisciplinarySession key={identity} {...props} identity={identity} />;
+}
+function DisciplinarySession(props: Props & {identity: string}) {
+  const {authContext} = props, qc = useQueryClient(), read = useHrActionInquiry("disciplinary", props, props.identity);
   const [selectedRecord, setSelectedRecord] = useState<DisciplinaryRow | null>(null);
-  const [dialogMode, setDialogMode] = useState<"view" | "edit">("view");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<DisciplinaryRow | null>(null);
+  const [dialogMode, setDialogMode] = useState<"view" | "edit">("view"), [dialogOpen, setDialogOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<HrActionInquiryRowMap["disciplinary"] | null>(null);
   const [isDeleting, startDeleteTransition] = useTransition();
+  const [selectedCriteria,setSelectedCriteria] = useState(read.criteriaIdentity);
+  const ready = !read.busy && !read.isError && !read.invalid && !read.denied;
+  if(selectedCriteria!==read.criteriaIdentity){
+    setSelectedCriteria(read.criteriaIdentity);setSelectedRecord(null);setDialogOpen(false);setDeleteTarget(null);
+  } else if(ready){
+    if(selectedRecord&&!read.data.some(row=>row.id===selectedRecord.id)){setSelectedRecord(null);setDialogOpen(false);}
+    if(deleteTarget&&!read.data.some(row=>row.id===deleteTarget.id))setDeleteTarget(null);
+  }
+  const canManage = authContext.permissionCodes.includes("hr.actions.manage") ||
+    authContext.roleCodes.includes("system_admin") || authContext.roleCodes.includes("group_admin");
 
-  const canManage =
-    authContext.permissionCodes.includes("hr.actions.manage") ||
-    authContext.roleCodes.includes("system_admin") ||
-    authContext.roleCodes.includes("group_admin");
-
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.actions.globalDisciplinary(),
-    queryFn: () => listGlobalDisciplinaryRecords(),
-  });
-  const { data: items = [], isLoading, refetch } = uiRead1;
-
-  const filtered = items.filter(item => {
-    if (!search.trim()) return true;
-    const q = search.toLowerCase();
-    return (
-      item.subject.toLowerCase().includes(q) ||
-      (item.employee?.full_name_en ?? "").toLowerCase().includes(q) ||
-      (item.employee?.employee_code ?? "").toLowerCase().includes(q) ||
-      item.disciplinary_type.toLowerCase().includes(q)
-    );
-  });
-
-  const openView = (record: DisciplinaryRow) => {
-    setSelectedRecord(record);
-    setDialogMode("view");
-    setDialogOpen(true);
+  const openRecord = async (record: HrActionInquiryRowMap["disciplinary"], mode: "view" | "edit") => {
+    const full = await read.loadDetail(record.id, record.employee_id);
+    if (full) {setSelectedRecord(full); setDialogMode(mode); setDialogOpen(true);}
   };
-
-  const openEdit = (record: DisciplinaryRow) => {
-    setSelectedRecord(record);
-    setDialogMode("edit");
-    setDialogOpen(true);
-  };
-
   const handleSaved = () => {
-    qc.invalidateQueries({ queryKey: queryKeys.hr.actions.globalDisciplinary() });
+    void qc.invalidateQueries({queryKey: queryKeys.hr.actions.globalDisciplinary()});
     setDialogOpen(false);
   };
-
   const handleDelete = () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || !ready || !canManage || !read.data.some(row => row.id === deleteTarget.id)) return;
     startDeleteTransition(async () => {
       const result = await archiveEmployeeDisciplinaryRecord(deleteTarget.id);
       if (result.success) {
         toast.success("Disciplinary record deleted");
-        qc.invalidateQueries({ queryKey: queryKeys.hr.actions.globalDisciplinary() });
+        void qc.invalidateQueries({queryKey: queryKeys.hr.actions.globalDisciplinary()});
         setDeleteTarget(null);
         if (selectedRecord?.id === deleteTarget.id) setDialogOpen(false);
-      } else {
-        toast.error(result.error ?? "Failed to delete");
-        setDeleteTarget(null);
-      }
+      } else {toast.error(result.error ?? "Failed to delete"); setDeleteTarget(null);}
     });
   };
-
-  return (
-    <QueryReadBoundary queries={[uiRead1]}><div className="p-6 space-y-4">
-      {/* Header */}
-      <div className="flex flex-wrap gap-2 items-center justify-between">
-        <div className="flex items-center gap-3">
-          <AlertTriangle className="h-5 w-5 text-primary" />
-          <div>
-            <h1 className="text-xl font-bold tracking-tight">Disciplinary & Warnings</h1>
-            <p className="text-muted-foreground text-xs">All employee disciplinary records and warnings.</p>
-          </div>
-        </div>
-        <Button aria-label="Refresh" variant="outline" size="sm" onClick={() => refetch()}>
-          <RefreshCw className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-        <Input aria-label="Search by employee, subject, type"
-          placeholder="Search by employee, subject, type..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="pl-8 h-8 text-sm"
-        />
-      </div>
-
-      {/* Table */}
-      {isLoading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground">
-          <AlertTriangle className="h-8 w-8 opacity-30 mx-auto mb-2" />
-          <p className="text-sm">{search ? "No records match your search." : "No disciplinary records found."}</p>
-        </div>
-      ) : (
-        <div className="rounded-md border border-border overflow-x-auto">
-          {/* UI04 explicit table: loaded authorized rows only */}<ERPDataTable tableId="hr.actions.hr-disciplinary-page-client" data={filtered} columns={[{id:"employee.full_name_en",header:"Employee",accessorFn:item=>loadedListValue(item,"employee.full_name_en"),enableHiding:false,size:240,cell:({row:{original:item}})=><><p className="font-medium truncate">{item.employee?.full_name_en ?? `Employee #${item.employee_id}`}</p><p className="text-muted-foreground truncate font-mono text-[10px]">{item.employee?.employee_code ?? ""}</p></>},{id:"subject",header:"Subject",accessorFn:item=>loadedListValue(item,"subject"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{item.subject}</>},{id:"disciplinary_type",header:"Type",accessorFn:item=>loadedListValue(item,"disciplinary_type"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{label(item.disciplinary_type)}</>},{id:"severity",header:"Severity",accessorFn:item=>loadedListValue(item,"severity"),enableHiding:true,size:160,cell:({row:{original:item}})=><><Badge variant="outline" className={`text-[10px] font-semibold px-1.5 py-0.5 border ${SEVERITY_BADGE[item.severity] ?? "bg-slate-100 text-slate-600 border-slate-200"}`}>
-                      {label(item.severity)}
-                    </Badge></>},{id:"status",header:"Status",accessorFn:item=>loadedListValue(item,"status"),enableHiding:true,size:160,cell:({row:{original:item}})=><><Badge variant="outline" className={`text-[10px] font-semibold px-1.5 py-0.5 border ${STATUS_BADGE[item.status] ?? "bg-slate-100 text-slate-600 border-slate-200"}`}>
-                      {label(item.status)}
-                    </Badge></>},{id:"record_date",header:"Date",accessorFn:item=>loadedListValue(item,"record_date"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{item.record_date}</>},{id:"actions",header:"Actions",enableHiding:true,size:200,enableSorting:false,meta:{exportable:false},cell:({row:{original:item}})=><><div className="flex items-center gap-1 justify-end">
-                      <Button aria-label="View details" size="icon" variant="ghost" className="h-6 w-6" title="View details" onClick={() => openView(item)}>
-                        <Eye className="h-3 w-3" />
-                      </Button>
-                      {canManage && (
-                        <>
-                          <Button aria-label="Edit" size="icon" variant="ghost" className="h-6 w-6" title="Edit" onClick={() => openEdit(item)}>
-                            <Pencil className="h-3 w-3" />
-                          </Button>
-                          <Button aria-label="Delete"
-                            size="icon"
-                            variant="ghost"
-                            className="h-6 w-6 text-destructive hover:text-destructive"
-                            title="Delete"
-                            onClick={() => setDeleteTarget(item)}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </>
-                      )}
-                    </div></>}]} enableRowSelection={false} initialPageSize={25} searchPlaceholder="Search loaded records…"/>
-        </div>
-      )}
-
-      {/* Result count */}
-      {!isLoading && items.length > 0 && (
-        <p className="text-xs text-muted-foreground">
-          Showing {filtered.length} of {items.length} records
-        </p>
-      )}
-
-      {/* Detail / Edit Dialog */}
-      <DetailDialog
-        record={selectedRecord}
-        open={dialogOpen}
-        mode={dialogMode}
-        canManage={canManage}
-        onClose={() => setDialogOpen(false)}
-        onEdit={() => setDialogMode("edit")}
-        onSaved={handleSaved}
-      />
-
-      {/* Delete Confirmation */}
-      <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Disciplinary Record?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently remove the record <strong>&quot;{deleteTarget?.subject}&quot;</strong> for{" "}
-              <strong>{deleteTarget?.employee?.full_name_en ?? `Employee #${deleteTarget?.employee_id}`}</strong>.
-              This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              disabled={isDeleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {isDeleting ? "Deleting…" : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div></QueryReadBoundary>
-  );
+  if (read.denied) return <p role="alert">HR records are unavailable for this session. Sign in again or refresh after permitted access is restored.</p>;
+  return <div className="p-6 space-y-4">
+    <div className="flex flex-wrap gap-2 items-center justify-between">
+      <div className="flex items-center gap-3"><AlertTriangle className="h-5 w-5 text-primary" /><div>
+        <h1 className="text-xl font-bold tracking-tight">Disciplinary &amp; Warnings</h1>
+        <p className="text-muted-foreground text-xs">All employee disciplinary records and warnings.</p>
+      </div></div>
+    </div>
+    <HrActionInquiryTable kind="disciplinary" identity={props.identity} read={read} columns={[
+      {id: "employee_name", header: "Employee", accessorFn: item => item.employee?.full_name_en ?? item.employee?.full_name_ar ?? "", enableHiding: false, size: 240,
+        cell: ({row: {original: item}}) => <><p className="font-medium truncate">{item.employee?.full_name_en ?? `Employee #${item.employee_id}`}</p><p className="text-muted-foreground truncate font-mono text-[10px]">{item.employee?.employee_code ?? ""}</p></>},
+      {id: "subject", header: "Subject", accessorKey: "subject", size: 200},
+      {id: "disciplinary_type", header: "Type", accessorFn: item => label(item.disciplinary_type), size: 160},
+      {id: "severity", header: "Severity", accessorKey: "severity", size: 160, cell: ({row}) => <Badge variant="outline" className={`text-[10px] font-semibold px-1.5 py-0.5 border ${SEVERITY_BADGE[row.original.severity] ?? "bg-muted text-muted-foreground border-border"}`}>{label(row.original.severity)}</Badge>},
+      {id: "status", header: "Status", accessorKey: "status", size: 160, cell: ({row}) => <Badge variant="outline" className={`text-[10px] font-semibold px-1.5 py-0.5 border ${STATUS_BADGE[row.original.status] ?? "bg-muted text-muted-foreground border-border"}`}>{label(row.original.status)}</Badge>},
+      {id: "record_date", header: "Date", accessorKey: "record_date", size: 160},
+      {id: "actions", header: "Actions", enableSorting: false, size: 200, meta: {exportable: false}, cell: ({row: {original: item}}) => <div className="flex items-center gap-1 justify-end">
+        <Button aria-label="View details" size="icon" variant="ghost" className="h-6 w-6" title="View details" disabled={read.detailPending} onClick={() => void openRecord(item, "view")}><Eye className="h-3 w-3" /></Button>
+        {canManage && <><Button aria-label="Edit" size="icon" variant="ghost" className="h-6 w-6" title="Edit" disabled={read.detailPending} onClick={() => void openRecord(item, "edit")}><Pencil className="h-3 w-3" /></Button>
+          <Button aria-label="Delete" size="icon" variant="ghost" className="h-6 w-6 text-destructive hover:text-destructive" title="Delete" onClick={() => setDeleteTarget(item)}><Trash2 className="h-3 w-3" /></Button></>}
+      </div>},
+    ]} />
+    <DetailDialog record={selectedRecord} open={dialogOpen && ready} mode={dialogMode} canManage={canManage}
+      onClose={() => {if (ready) {setDialogOpen(false); setSelectedRecord(null);}}} onEdit={() => setDialogMode("edit")} onSaved={handleSaved} />
+    <AlertDialog open={!!deleteTarget && ready} onOpenChange={open => {if (!open && ready) setDeleteTarget(null);}}>
+      <AlertDialogContent>
+        <AlertDialogHeader><AlertDialogTitle>Delete Disciplinary Record?</AlertDialogTitle>
+          <AlertDialogDescription>This will permanently remove the record <strong>&quot;{deleteTarget?.subject}&quot;</strong> for{" "}
+            <strong>{deleteTarget?.employee?.full_name_en ?? `Employee #${deleteTarget?.employee_id}`}</strong>. This action cannot be undone.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter><AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={handleDelete} disabled={isDeleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">{isDeleting ? "Deleting…" : "Delete"}</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  </div>;
 }

@@ -1,4 +1,5 @@
 "use server";
+import {readAllPages} from "@/server/reads/all-pages";
 
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
@@ -34,12 +35,10 @@ export async function getDmsDocumentTags(
     }
 
     const supabase = await createClient();
-    const { data, error } = await supabase
+    const data=await readAllPages(async(from,to)=>await supabase
       .from("dms_document_tags")
-      .select("document_id, tag_id, created_at, tag:dms_tags(id, tag_code, tag_name, color_hex)")
-      .eq("document_id", documentId);
-
-    if (error) return { success: false, error: error.message };
+      .select("document_id, tag_id, created_at, tag:dms_tags(id, tag_code, tag_name, color_hex)",{count:"exact"})
+      .eq("document_id", documentId).order("tag_id").range(from,to),{identity:row=>row.tag_id,maxRows:10000});
 
     return { success: true, data: (data ?? []) as unknown as DmsDocumentTagRow[] };
   } catch (err) {

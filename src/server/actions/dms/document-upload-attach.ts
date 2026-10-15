@@ -3,6 +3,7 @@
 import { clampToValidDate, zOptionalDateString } from "@/lib/dms/date-validators";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { readAllPages } from "@/server/reads/all-pages";
 import { createClient } from "@/lib/supabase/server";
 import { checkDocumentConfidentialityAccess } from "@/lib/dms/document-access";
 import { logAudit } from "@/server/actions/audit";
@@ -349,7 +350,7 @@ export async function getEligibleUploadSessionsForVersionLink(
     const supabase = await createClient();
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canAttach(ctx)) return { success: false, error: "Permission denied" };
+    if (!ctx.isAccountActive || ctx.profile.must_change_password || !canAttach(ctx)) return { success: false, error: "Permission denied" };
 
     const { data: document, error: docError } = await supabase
       .from("dms_documents")
@@ -360,17 +361,16 @@ export async function getEligibleUploadSessionsForVersionLink(
 
     if (docError || !document) return { success: false, error: "Document not found" };
 
-    const { data: sessions, error: sessionsError } = await supabase
+    const sessions = await readAllPages(async(from,to)=>await supabase
       .from("dms_upload_sessions")
-      .select("id, session_code, original_filename, mime_type, file_size_bytes, uploaded_at, ai_result_id")
+      .select("id, session_code, original_filename, mime_type, file_size_bytes, uploaded_at, ai_result_id",{count:"exact"})
       .eq("status", "uploaded")
       .eq("intake_status", "review_pending")
       .is("document_id", null)
       .is("deleted_at", null)
       .order("uploaded_at", { ascending: false })
-      .limit(50);
+      .order("id").range(from,to),{identity:row=>row.id,maxRows:10000});
 
-    if (sessionsError) return { success: false, error: sessionsError.message };
 
     const resultIds = (sessions ?? [])
       .map((s) => s.ai_result_id as number | null)
@@ -386,14 +386,14 @@ export async function getEligibleUploadSessionsForVersionLink(
       }
     >();
 
-    if (resultIds.length > 0) {
-      const { data: aiResults } = await supabase
+    for(let offset=0;offset<resultIds.length;offset+=100) {
+      const aiResults = await readAllPages(async(from,to)=>await supabase
         .from("dms_ai_extraction_results")
         .select(
           `id, suggested_document_type_id, classification_confidence, expiry_date_suggestion,
-           suggested_document_type:dms_document_types!suggested_document_type_id(name_en)`
+           suggested_document_type:dms_document_types!suggested_document_type_id(name_en)`,{count:"exact"}
         )
-        .in("id", resultIds);
+        .in("id", resultIds.slice(offset,offset+100)).order("id").range(from,to),{identity:row=>row.id,maxRows:10000});
 
       for (const r of aiResults ?? []) {
         resultsById.set(r.id as number, {

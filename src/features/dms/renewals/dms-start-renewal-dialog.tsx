@@ -50,6 +50,7 @@ export function DmsStartRenewalDialog({
   };
 
   const handleSubmit = async () => {
+    if (!open || isSubmitting) return;
     setIsSubmitting(true);
     try {
       const result = await createDmsRenewalRequest({
@@ -83,6 +84,7 @@ export function DmsStartRenewalDialog({
       mode="add"
       size="md"
       isSubmitting={isSubmitting}
+      isDirty={priority !== "normal" || targetDate.length > 0 || notes.length > 0}
       onSubmit={handleSubmit}
       submitLabel="Create Renewal Request"
     >

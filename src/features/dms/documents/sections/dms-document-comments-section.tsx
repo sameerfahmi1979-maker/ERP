@@ -1,13 +1,16 @@
 "use client";
+import {DmsLoadError} from "@/features/dms/dms-load-error";
+import {readDmsSection} from "@/features/dms/documents/section-read";
 
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import {useDmsSectionQuery as useQuery} from "@/features/dms/documents/section-activity";
 import { toast } from "sonner";
 import { format, parseISO } from "date-fns";
 import { Loader2, Send, Trash2, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { getDmsDocumentComments, addDmsDocumentComment, deleteDmsDocumentComment } from "@/server/actions/dms/document-comments";
+import { addDmsDocumentComment, deleteDmsDocumentComment } from "@/server/actions/dms/document-comments";
 import { queryKeys } from "@/lib/query/query-keys";
 
 interface DmsDocumentCommentsSectionProps {
@@ -20,12 +23,13 @@ export function DmsDocumentCommentsSection({ documentId, currentUserId }: DmsDoc
   const [newComment, setNewComment] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const { data: comments = [], isLoading } = useQuery({
+  const { data: comments = [], isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: queryKeys.dms.documentComments(documentId ?? 0),
-    queryFn: async () => {
+    queryFn: async ({signal}) => {
       if (!documentId) return [];
-      const r = await getDmsDocumentComments(documentId);
-      return r.data ?? [];
+      const r = await readDmsSection("getDmsDocumentComments", [documentId], signal);
+      if(!r.success || !r.data) throw new Error("Document section unavailable");
+      return r.data;
     },
     enabled: !!documentId,
     staleTime: 15 * 1000,
@@ -65,6 +69,7 @@ export function DmsDocumentCommentsSection({ documentId, currentUserId }: DmsDoc
     );
   }
 
+  if (isError) return <DmsLoadError subject="comments" pending={isFetching} retry={()=>refetch()} />;
   if (isLoading) {
     return (
       <div className="flex items-center gap-2 py-4 text-muted-foreground text-sm">

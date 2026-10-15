@@ -10,6 +10,7 @@ vi.mock("@/lib/rbac/check", () => ({ getAuthContext: async () => ({}), hasPermis
 vi.mock("@/server/actions/dms/documents", () => ({ getDmsDocuments: async () => state.docs, getArchivedDocuments: async () => state.docs, getDmsNewDocumentDefaults: async () => state.defaults }));
 vi.mock("@/server/reads/dms-documents",()=>({readDmsDocumentPage:async()=>({...state.docs,data:{rows:state.docs.data,totalCount:state.docs.data.length}})}));
 vi.mock("@/server/reads/dms-list-choices",()=>({readDmsListChoices:async()=>state.defaults}));
+vi.mock("@/server/reads/dms-archive",()=>({readDmsArchivePage:async()=>({...state.docs,data:{rows:state.docs.data,totalCount:state.docs.data.length}})}));
 vi.mock("@/components/erp/page-header", () => ({ ERPPageHeader: () => null }));
 vi.mock("@/features/dms/documents/dms-documents-table", () => ({ DmsDocumentsTable: () => <p>No documents found</p> }));
 vi.mock("@/features/dms/archive/dms-archive-table", () => ({ DmsArchiveTable: () => <p>No archived documents found</p> }));
@@ -23,7 +24,7 @@ import InboxPage from "@/app/(protected)/dms/inbox/page";
 const Inbox = () => InboxPage({ searchParams: Promise.resolve({}) });
 beforeEach(() => { state.allowed = true; state.refresh.mockClear(); state.docs = { success: true, data: [], error: undefined }; state.defaults.success = true; state.sessions.success = true; });
 afterEach(cleanup);
-it.each([DocumentsPage, ArchivePage, Inbox])("shows safe failure, not an empty list, and supports retry", async (Page) => {
+it.each([DocumentsPage, ArchivePage])("shows safe failure, not an empty list, and supports retry", async (Page) => {
   state.docs = { success: false, data: [], error: "private database diagnostic 57014" };
   render(await Page());
   expect(screen.getByRole("alert").textContent).toContain("Documents could not be loaded");
@@ -41,6 +42,6 @@ it.each([DocumentsPage, ArchivePage, Inbox])("keeps legitimate empty results sep
 it.each([DocumentsPage, ArchivePage, Inbox])("does not replace permission denial with retry", async (Page) => {
   state.allowed = false; await expect(Page()).rejects.toThrow("denied");
 });
-it("does not hide failed upload-session loading", async () => {
-  state.sessions.success = false; render(await Inbox()); expect(screen.getByRole("alert")).toBeTruthy();
+it("inbox shell no longer downloads full sessions or documents; the paged consumer owns its failure state", async () => {
+  state.sessions.success=false;state.docs.success=false;render(await Inbox());expect(screen.queryByRole("alert")).toBeNull();
 });

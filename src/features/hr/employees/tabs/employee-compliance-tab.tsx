@@ -2,6 +2,9 @@
 import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
 import { RecordCollection } from "@/components/erp/table/record-collection";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
+import {useHrComplianceRecords} from "@/hooks/use-hr-compliance-records";
+import {complianceReadIdentity, DEPENDENT_MEDICAL_FIELDS} from "@/lib/reads/hr-compliance-records-schema";
+import {ComplianceReadPause, useComplianceReadAdmission, type ComplianceMutationAdmission} from "../compliance/compliance-read-admission";
 
 /**
  * ERP HR.3 — Employee Compliance Tab
@@ -47,7 +50,15 @@ import {
   identityDocumentFormToPayload,
   type IdentityDocumentFormState,
 } from "@/lib/hr/compliance/identity-document-form";
-import { invalidateDmsEntityDocuments } from "@/lib/query/invalidation";
+import {
+  invalidateDmsEntityDocuments,
+  invalidateHrEmployeeIdentityDocuments,
+  invalidateHrEmployeeMedicalInsurances,
+  invalidateHrEmployeeDependents,
+  invalidateHrEmployeeAccessCards,
+  invalidateHrEmployeeTrainingCertificates,
+  invalidateHrEmployeeMedicalRecords,
+} from "@/lib/query/invalidation";
 import { queryKeys } from "@/lib/query/query-keys";
 import type { AuthContext } from "@/lib/rbac/check";
 import {
@@ -63,12 +74,6 @@ import {
   createEmployeeMedicalInsurance,
   createEmployeeMedicalRecord,
   createEmployeeTrainingCertificate,
-  listEmployeeAccessCards,
-  listEmployeeDependents,
-  listEmployeeIdentityDocuments,
-  listEmployeeMedicalInsurances,
-  listEmployeeMedicalRecords,
-  listEmployeeTrainingCertificates,
   updateEmployeeAccessCard,
   updateEmployeeDependent,
   updateEmployeeIdentityDocument,
@@ -87,18 +92,14 @@ import {
 } from "@/server/actions/hr/compliance";
 import { checkHrDocumentToRecordEnabled } from "@/server/actions/hr/document-to-record";
 import {
-  listHrAccessCardTypes,
-  listHrIdentityDocumentTypes,
-  listHrMedicalRecordTypes,
-  listHrRelationshipTypes,
-  listHrTrainingCategories,
-  listHrTrainingTypes,
   type HrAccessCardTypeRow,
   type HrIdentityDocTypeRow,
   type HrMedicalRecordTypeRow,
   type HrSettingsRow,
   type HrTrainingTypeRow,
 } from "@/server/actions/hr/settings";
+import { listHrAccessCardTypes, listHrIdentityDocumentTypes, listHrMedicalRecordTypes, listHrRelationshipTypes, listHrTrainingCategories, listHrTrainingTypes } from "@/lib/reads/hr-record-choice-client";
+import {useRecordReadActive} from "@/hooks/use-record-read-active";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
@@ -115,7 +116,7 @@ import {
   Shield,
   Users
 } from "lucide-react";
-import { useCallback, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { createContext, useContext, useCallback, useLayoutEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { toast } from "sonner";
 
 // ── Prop Types ────────────────────────────────────────────────────────────────
@@ -124,18 +125,45 @@ type ComplianceTabProps = {
   employeeId: number;
   authContext: AuthContext;
   onChildOpen?: (open: boolean) => void;
+  onChildLeaseChange?: (token: object, open: boolean) => void;
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+const ComplianceChildLeaseContext = createContext<ComplianceTabProps["onChildLeaseChange"]>(undefined);
+
+function useComplianceChildLease(admission: ComplianceMutationAdmission, fallback?: (open: boolean) => void) {
+  const sink = useContext(ComplianceChildLeaseContext);
+  const {generation, isCurrent} = admission;
+  useLayoutEffect(() => () => {
+    // Retire only this section's lease; a replacement editor may already be open.
+    if (sink) sink(generation, false); else fallback?.(false);
+  }, [generation, sink, fallback]);
+  return useCallback((open: boolean) => {
+    if (!isCurrent()) return;
+    if (sink) sink(generation, open); else fallback?.(open);
+  }, [generation, isCurrent, sink, fallback]);
+}
+
+function useComplianceDialogOpen(admission: ComplianceMutationAdmission, notify: (open: boolean) => void, setOpen: Dispatch<SetStateAction<boolean>>) {
+  const {isCurrent} = admission;
+  return useCallback((open: boolean) => {
+    if (!isCurrent()) return;
+    setOpen(open); notify(open);
+  }, [isCurrent, notify, setOpen]);
+}
 
 function canManage(ctx: AuthContext) {
   return ctx.permissionCodes?.includes("hr.compliance.manage") || ctx.permissionCodes?.includes("hr.admin") || ctx.roleCodes?.includes("system_admin") || ctx.roleCodes?.includes("group_admin");
 }
 function canView(ctx: AuthContext) {
-  return ctx.permissionCodes?.includes("hr.compliance.view") || canManage(ctx);
+  // These established F03 suffixes are request hints only. The counted reader
+  // still verifies this exact employee and kind through the ordinary client.
+  return ctx.isAccountActive && !ctx.profile?.must_change_password && (
+    ["hr.compliance.view", "hr.compliance.view.self", "hr.compliance.view.team"].some(code => ctx.permissionCodes.includes(code)) || canManage(ctx));
 }
 function canMedicalView(ctx: AuthContext) {
-  return ctx.isAccountActive && !ctx.profile?.must_change_password && (ctx.permissionCodes.includes("hr.medical.view") ||
+  return ctx.isAccountActive && !ctx.profile?.must_change_password && (["hr.medical.view", "hr.medical.view.self", "hr.medical.view.team"].some(code => ctx.permissionCodes.includes(code)) ||
     !!ctx.roleAssignments?.some(a => a.ownerCompanyId === null && a.branchId === null && ["system_admin", "group_admin"].includes(a.roleCode)));
 }
 function canMedicalManage(ctx: AuthContext) {
@@ -225,54 +253,67 @@ const VERIFICATION_OPTIONS = [
 
 // ── 1. IDENTITY DOCUMENTS SECTION ─────────────────────────────────────────────
 
-function IdentityDocumentsSection({ employeeId, canManageDoc, onChildOpen, documentWizardEnabled }: { employeeId: number; canManageDoc: boolean; onChildOpen?: (open: boolean) => void; documentWizardEnabled?: boolean }) {
+function IdentityDocumentsSection({ authContext, onSubjectDenied, employeeId, canManageDoc, onChildOpen, documentWizardEnabled }: { authContext: AuthContext; onSubjectDenied: () => void; employeeId: number; canManageDoc: boolean; onChildOpen?: (open: boolean) => void; documentWizardEnabled?: boolean }) {
   const qc = useQueryClient();
+  const sectionActive = useRecordReadActive();
+  const recordRead = useHrComplianceRecords("identity", employeeId, authContext, onSubjectDenied);
   const [addDialogOpen, setAddDialogOpenRaw] = useState(false);
   const [editDialogOpen, setEditDialogOpenRaw] = useState(false);
   const [dmsWizardOpen, setDmsWizardOpenRaw] = useState(false);
   const [editing, setEditing] = useState<EmployeeIdentityDocumentRow | null>(null);
   const [isSubmitting, startTransition] = useTransition();
 
-  const setAddDialogOpen = useCallback((open: boolean) => {
-    setAddDialogOpenRaw(open);
-    onChildOpen?.(open);
-  }, [onChildOpen]);
 
-  const setEditDialogOpen = useCallback((open: boolean) => {
-    setEditDialogOpenRaw(open);
-    onChildOpen?.(open);
-  }, [onChildOpen]);
 
-  const setDmsWizardOpen = useCallback((open: boolean) => {
-    setDmsWizardOpenRaw(open);
-    onChildOpen?.(open);
-  }, [onChildOpen]);
 
   const [form, setForm] = useState<IdentityDocumentFormState>(() => createEmptyIdentityDocumentForm());
 
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.compliance.identityDocuments(employeeId),
-    queryFn: async () => {
-      const r = await listEmployeeIdentityDocuments(employeeId);
-      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? [] : [];
-    },
-  });
-  const { data: docs, isLoading } = uiRead1;
+  const uiRead1 = recordRead.query;
+  const docs = recordRead.rows;
+  const isLoading = recordRead.busy;
+
 
   const uiRead2 = useQuery({
-    queryKey: queryKeys.hr.identityDocumentTypes(),
-    queryFn: async () => {
-      const r = await listHrIdentityDocumentTypes({ is_active: true, page: 1, page_size: 100 });
+    queryKey: [...queryKeys.hr.identityDocumentTypes(), recordRead.identity, form.document_type_id],
+    enabled: sectionActive && canManageDoc && recordRead.access.canManage,
+    queryFn: async ({signal}) => {
+      const r = await listHrIdentityDocumentTypes({ selectedId: form.document_type_id || null, signal });
       if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success && r.data ? r.data.data as HrIdentityDocTypeRow[] : [];
     },
   });
   const { data: docTypes } = uiRead2;
 
+  const admission = useComplianceReadAdmission(canManageDoc && recordRead.access.canManage, [...recordRead.reads, uiRead2], JSON.stringify([recordRead.owner, recordRead.denied, recordRead.restricted]));
+  const notifyChildOpen = useComplianceChildLease(admission, onChildOpen);
+  const setAddDialogOpen = useComplianceDialogOpen(admission, notifyChildOpen, setAddDialogOpenRaw);
+  const setEditDialogOpen = useComplianceDialogOpen(admission, notifyChildOpen, setEditDialogOpenRaw);
+  const setDmsWizardOpen = useComplianceDialogOpen(admission, notifyChildOpen, setDmsWizardOpenRaw);
+  const [editorGeneration, setEditorGeneration] = useState(admission.generation);
+  const generationChanged = editorGeneration !== admission.generation;
+  const retireEditor = recordRead.denied || recordRead.restricted || recordRead.detailUnavailable;
+  const [editorRetired, setEditorRetired] = useState(false);
+  if (generationChanged || retireEditor && !editorRetired) {
+    setEditorGeneration(admission.generation);
+    setEditorRetired(retireEditor);
+    setEditing(null); setForm(createEmptyIdentityDocumentForm()); setEditDialogOpenRaw(false);
+    if (generationChanged || recordRead.restricted || recordRead.denied) setAddDialogOpenRaw(false);
+    if (generationChanged || recordRead.restricted || recordRead.denied) setDmsWizardOpenRaw(false);
+  }
+  if (!retireEditor && editorRetired) setEditorRetired(false);
+  const closeRetiredDetail = recordRead.closeDetail;
+  useLayoutEffect(() => {
+    if (retireEditor) {notifyChildOpen(false); closeRetiredDetail();}
+  }, [retireEditor, closeRetiredDetail, notifyChildOpen]);
+
   const openAdd = () => {
+    if (!admission.canDispatch()) return;
     setAddDialogOpen(true);
   };
 
-  const openEdit = (doc: EmployeeIdentityDocumentRow) => {
+  const openEdit = async (selected: {id: number}) => {
+    if (!admission.canDispatch()) return;
+    const doc = await recordRead.loadDetail(selected.id);
+    if (!doc || !admission.isCurrent()) return;
     setEditing(doc);
     setForm({
       dms_document_id: doc.dms_document_id,
@@ -301,15 +342,16 @@ function IdentityDocumentsSection({ employeeId, canManageDoc, onChildOpen, docum
   };
 
   const handleEditSubmit = () => {
-    if (!editing) return;
+    if (!editing || !admission.canDispatch() || !recordRead.isDetailCurrent(editing.id)) return;
     startTransition(async () => {
+      if (!admission.canDispatch() || !recordRead.isDetailCurrent(editing.id)) return;
       const payload = identityDocumentFormToPayload(form);
       const result = await updateEmployeeIdentityDocument(editing.id, payload);
+      if (result.success) handleAddSaved({hasDmsDocument: !!payload.dms_document_id});
+      if (!admission.isCurrent() || !recordRead.isDetailCurrent(editing.id)) return;
       if (result.success) {
         toast.success("Document updated");
-        void qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.identityDocuments(employeeId) });
-        void qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.summary(employeeId) });
-        setEditDialogOpen(false);
+        recordRead.closeDetail(); setEditDialogOpen(false);
       } else {
         toast.error(result.error ?? "Failed to save document");
       }
@@ -317,41 +359,42 @@ function IdentityDocumentsSection({ employeeId, canManageDoc, onChildOpen, docum
   };
 
   const handleAddSaved = (opts?: { dmsLinkCreated?: boolean; hasDmsDocument?: boolean }) => {
-    void qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.identityDocuments(employeeId) });
-    void qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.summary(employeeId) });
-    if (opts?.hasDmsDocument) {
-      invalidateDmsEntityDocuments(qc, "employee", employeeId);
-    }
+    notifyComplianceWrite(qc, employeeId, invalidateHrEmployeeIdentityDocuments, opts);
   };
 
   const handleArchive = async (id: number) => {
+    if (!admission.canDispatch()) return;
     const result = await archiveEmployeeIdentityDocument(id);
+    if (result.success) handleAddSaved();
+    if (!admission.isCurrent()) return;
     if (result.success) {
       toast.success("Document archived");
-      qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.identityDocuments(employeeId) });
-      qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.summary(employeeId) });
     } else toast.error(result.error ?? "Failed to archive");
   };
 
   const handleVerify = async (id: number) => {
+    if (!admission.canDispatch()) return;
     const result = await verifyEmployeeIdentityDocument(id);
+    if (result.success) handleAddSaved();
+    if (!admission.isCurrent()) return;
     if (result.success) {
       toast.success("Document verified");
-      qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.identityDocuments(employeeId) });
     } else toast.error(result.error ?? "Failed to verify");
   };
 
   const docTypeOptions = (docTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }));
 
+  if (recordRead.restricted || recordRead.denied) return <div role="alert" className="mb-8 rounded border p-4">This compliance collection is not available with your current access.</div>;
+
   return (
-    <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="mb-8">
-      <SectionHeader icon={FileText} title="Legal Documents" count={docs?.length} onAdd={openAdd} canAdd={canManageDoc} onAddFromDocs={() => setDmsWizardOpen(true)} canAddFromDocs={canManageDoc && documentWizardEnabled} />
+    <QueryReadBoundary queries={[...recordRead.reads,uiRead2]}><div className="mb-8">
+      <SectionHeader icon={FileText} title="Legal Documents" count={recordRead.serverRead.totalCount ?? undefined} onAdd={openAdd} canAdd={admission.ready} onAddFromDocs={() => { if (admission.canDispatch()) setDmsWizardOpen(true); }} canAddFromDocs={admission.ready && documentWizardEnabled} />
 
       {isLoading && <Skeleton className="h-20 w-full" />}
-      {!isLoading && (!docs || docs.length === 0) && <EmptyState message="No identity documents added yet." />}
-      {!isLoading && docs && docs.length > 0 && (
+      {uiRead1.isSuccess && recordRead.serverRead.totalCount === 0 && !recordRead.invalid && <EmptyState message="No identity documents added yet." />}
+      {!recordRead.denied && !recordRead.restricted && (
         <div className="space-y-2">
-          <RecordCollection id="hr.employee-compliance-tab.IdentityDocumentsSection.docs" rows={docs} fields={[{"id":"document_number","path":"document_number","label":"Document Number"},{"id":"expiry_date","path":"expiry_date","label":"Expiry Date"}]} renderRecord={(doc) => (
+          <RecordCollection serverRead={recordRead.serverRead} isLoading={isLoading} message={recordRead.validationMessage ?? recordRead.detailError} userProfileId={authContext.profile?.id?.toString()} id="hr.employee-compliance-tab.IdentityDocumentsSection.docs" rows={docs} fields={[{"id":"document_number","path":"document_number","label":"Document Number"},{"id":"expiry_date","path":"expiry_date","label":"Expiry Date"}]} renderRecord={(doc) => (
             <div key={doc.id} className="flex items-start justify-between p-3 border rounded-lg bg-card hover:bg-muted/30 transition-colors">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -375,7 +418,7 @@ function IdentityDocumentsSection({ employeeId, canManageDoc, onChildOpen, docum
                   )}
                 </div>
               </div>
-              {canManageDoc && (
+              {canManageDoc && recordRead.access.canManage && (
                 <div className="flex items-center gap-1 ml-2 flex-shrink-0">
                   {doc.verification_status === "unverified" && (
                     <Button aria-label="Verify" size="sm" variant="ghost" onClick={() => handleVerify(doc.id)} type="button" title="Verify">
@@ -396,6 +439,7 @@ function IdentityDocumentsSection({ employeeId, canManageDoc, onChildOpen, docum
       )}
 
       <IdentityDocumentAddDialog
+        admission={admission}
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
         employeeId={employeeId}
@@ -405,15 +449,16 @@ function IdentityDocumentsSection({ employeeId, canManageDoc, onChildOpen, docum
 
       <ERPChildDialogForm
         open={editDialogOpen}
-        onOpenChange={setEditDialogOpen}
+        onOpenChange={(open) => { if (!admission.isCurrent()) return; if (!open) recordRead.closeDetail(); setEditDialogOpen(open); }}
         title="Edit Identity Document"
         subtitle="Legal and identity documents for this employee"
         icon={<FileText className="h-5 w-5" />}
         mode="edit"
         size="xl"
         isSubmitting={isSubmitting}
-        onSubmit={handleEditSubmit}
+        submitDisabled={!admission.ready} onSubmit={handleEditSubmit}
       >
+        <ComplianceReadPause admission={admission} />
         <IdentityDocumentFormFields
           form={form}
           setForm={setForm}
@@ -421,26 +466,26 @@ function IdentityDocumentsSection({ employeeId, canManageDoc, onChildOpen, docum
         />
       </ERPChildDialogForm>
 
-      <HrDocumentToRecordWizard
+      {(admission.ready || dmsWizardOpen) && <HrDocumentToRecordWizard
         employeeId={employeeId}
         targetType="identity_document"
+        admission={admission}
         open={dmsWizardOpen}
         onOpenChange={setDmsWizardOpen}
-        onSaved={() => void qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.identityDocuments(employeeId) })}
+        onSaved={() => handleAddSaved()}
         onChildOpen={onChildOpen}
-      />
+      />}
     </div></QueryReadBoundary>
   );
 }
 
-function handleComplianceAddSaved(
+function notifyComplianceWrite(
   qc: ReturnType<typeof useQueryClient>,
   employeeId: number,
-  queryKey: readonly unknown[],
+  notifyKind: (client: ReturnType<typeof useQueryClient>, employeeId: number) => void,
   opts?: { dmsLinkCreated?: boolean; hasDmsDocument?: boolean }
 ) {
-  void qc.invalidateQueries({ queryKey });
-  void qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.summary(employeeId) });
+  notifyKind(qc, employeeId);
   if (opts?.hasDmsDocument) {
     invalidateDmsEntityDocuments(qc, "employee", employeeId);
   }
@@ -448,28 +493,17 @@ function handleComplianceAddSaved(
 
 // ── 2. MEDICAL INSURANCE SECTION ──────────────────────────────────────────────
 
-function MedicalInsurancesSection({ employeeId, canManageDoc, onChildOpen, documentWizardEnabled }: { employeeId: number; canManageDoc: boolean; onChildOpen?: (open: boolean) => void; documentWizardEnabled?: boolean }) {
+function MedicalInsurancesSection({ authContext, onSubjectDenied, employeeId, canManageDoc, onChildOpen, documentWizardEnabled }: { authContext: AuthContext; onSubjectDenied: () => void; employeeId: number; canManageDoc: boolean; onChildOpen?: (open: boolean) => void; documentWizardEnabled?: boolean }) {
   const qc = useQueryClient();
+  const recordRead = useHrComplianceRecords("insurance", employeeId, authContext, onSubjectDenied);
   const [addDialogOpen, setAddDialogOpenRaw] = useState(false);
   const [editDialogOpen, setEditDialogOpenRaw] = useState(false);
   const [dmsWizardOpen, setDmsWizardOpenRaw] = useState(false);
   const [editing, setEditing] = useState<EmployeeMedicalInsuranceRow | null>(null);
   const [isSubmitting, startTransition] = useTransition();
 
-  const setAddDialogOpen = useCallback((open: boolean) => {
-    setAddDialogOpenRaw(open);
-    onChildOpen?.(open);
-  }, [onChildOpen]);
 
-  const setEditDialogOpen = useCallback((open: boolean) => {
-    setEditDialogOpenRaw(open);
-    onChildOpen?.(open);
-  }, [onChildOpen]);
 
-  const setDmsWizardOpen = useCallback((open: boolean) => {
-    setDmsWizardOpenRaw(open);
-    onChildOpen?.(open);
-  }, [onChildOpen]);
 
   const initialForm = () => ({
     dms_document_id: null as number | null,
@@ -493,17 +527,39 @@ function MedicalInsurancesSection({ employeeId, canManageDoc, onChildOpen, docum
 
   const [form, setForm] = useState(initialForm);
 
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.compliance.medicalInsurances(employeeId),
-    queryFn: async () => {
-      const r = await listEmployeeMedicalInsurances(employeeId);
-      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? [] : [];
-    },
-  });
-  const { data: records, isLoading } = uiRead1;
+  const uiRead1 = recordRead.query;
+  const records = recordRead.rows;
+  const isLoading = recordRead.busy;
 
-  const openAdd = () => setAddDialogOpen(true);
-  const openEdit = (r: EmployeeMedicalInsuranceRow) => {
+
+
+  const admission = useComplianceReadAdmission(canManageDoc && recordRead.access.canManage, [...recordRead.reads], JSON.stringify([recordRead.owner, recordRead.denied, recordRead.restricted]));
+  const notifyChildOpen = useComplianceChildLease(admission, onChildOpen);
+  const setAddDialogOpen = useComplianceDialogOpen(admission, notifyChildOpen, setAddDialogOpenRaw);
+  const setEditDialogOpen = useComplianceDialogOpen(admission, notifyChildOpen, setEditDialogOpenRaw);
+  const setDmsWizardOpen = useComplianceDialogOpen(admission, notifyChildOpen, setDmsWizardOpenRaw);
+  const [editorGeneration, setEditorGeneration] = useState(admission.generation);
+  const generationChanged = editorGeneration !== admission.generation;
+  const retireEditor = recordRead.denied || recordRead.restricted || recordRead.detailUnavailable;
+  const [editorRetired, setEditorRetired] = useState(false);
+  if (generationChanged || retireEditor && !editorRetired) {
+    setEditorGeneration(admission.generation);
+    setEditorRetired(retireEditor);
+    setEditing(null); setForm(initialForm()); setEditDialogOpenRaw(false);
+    if (generationChanged || recordRead.restricted || recordRead.denied) setAddDialogOpenRaw(false);
+    if (generationChanged || recordRead.restricted || recordRead.denied) setDmsWizardOpenRaw(false);
+  }
+  if (!retireEditor && editorRetired) setEditorRetired(false);
+  const closeRetiredDetail = recordRead.closeDetail;
+  useLayoutEffect(() => {
+    if (retireEditor) {notifyChildOpen(false); closeRetiredDetail();}
+  }, [retireEditor, closeRetiredDetail, notifyChildOpen]);
+  const openAdd = () => {
+    if (admission.canDispatch()) setAddDialogOpen(true); };
+  const openEdit = async (selected: {id: number}) => {
+    if (!admission.canDispatch()) return;
+    const r = await recordRead.loadDetail(selected.id);
+    if (!r || !admission.isCurrent()) return;
     setEditing(r);
     setForm({
       dms_document_id: r.dms_document_id,
@@ -543,44 +599,54 @@ function MedicalInsurancesSection({ employeeId, canManageDoc, onChildOpen, docum
   };
 
   const handleEditSubmit = () => {
-    if (!editing) return;
+    if (!editing || !admission.canDispatch() || !recordRead.isDetailCurrent(editing.id)) return;
     const err = validateMedicalInsurance(form);
     if (err) { toast.error(err); return; }
     startTransition(async () => {
-      const result = await updateEmployeeMedicalInsurance(editing.id, buildPayload(form));
+      if (!admission.canDispatch() || !recordRead.isDetailCurrent(editing.id)) return;
+      const payload = buildPayload(form);
+      const result = await updateEmployeeMedicalInsurance(editing.id, payload);
+      if (result.success) handleAddSaved({hasDmsDocument: !!payload.dms_document_id});
+      if (!admission.isCurrent() || !recordRead.isDetailCurrent(editing.id)) return;
       if (result.success) {
         toast.success("Insurance updated");
-        qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.medicalInsurances(employeeId) });
-        qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.summary(employeeId) });
-        setEditDialogOpen(false);
+        recordRead.closeDetail(); setEditDialogOpen(false);
       } else toast.error(result.error ?? "Failed to save");
     });
   };
 
   const handleAddSaved = (opts?: { dmsLinkCreated?: boolean; hasDmsDocument?: boolean }) => {
-    handleComplianceAddSaved(qc, employeeId, queryKeys.hr.compliance.medicalInsurances(employeeId), opts);
+    notifyComplianceWrite(qc, employeeId, invalidateHrEmployeeMedicalInsurances, opts);
   };
 
   const handleArchive = async (id: number) => {
+    if (!admission.canDispatch()) return;
     const result = await archiveEmployeeMedicalInsurance(id);
-    if (result.success) { toast.success("Insurance archived"); qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.medicalInsurances(employeeId) }); }
+    if (result.success) handleAddSaved();
+    if (!admission.isCurrent()) return;
+    if (result.success) { toast.success("Insurance archived"); }
     else toast.error(result.error ?? "Failed to archive");
   };
 
   const handleVerify = async (id: number) => {
+    if (!admission.canDispatch()) return;
     const result = await verifyEmployeeMedicalInsurance(id);
-    if (result.success) { toast.success("Verified"); qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.medicalInsurances(employeeId) }); }
+    if (result.success) handleAddSaved();
+    if (!admission.isCurrent()) return;
+    if (result.success) { toast.success("Verified"); }
     else toast.error(result.error ?? "Failed to verify");
   };
 
+  if (recordRead.restricted || recordRead.denied) return <div role="alert" className="mb-8 rounded border p-4">This compliance collection is not available with your current access.</div>;
+
   return (
-    <QueryReadBoundary queries={[uiRead1]}><div className="mb-8">
-      <SectionHeader icon={Heart} title="Medical Insurance" count={records?.length} onAdd={openAdd} canAdd={canManageDoc} onAddFromDocs={() => setDmsWizardOpen(true)} canAddFromDocs={canManageDoc && documentWizardEnabled} />
+    <QueryReadBoundary queries={[...recordRead.reads]}><div className="mb-8">
+      <SectionHeader icon={Heart} title="Medical Insurance" count={recordRead.serverRead.totalCount ?? undefined} onAdd={openAdd} canAdd={admission.ready} onAddFromDocs={() => { if (admission.canDispatch()) setDmsWizardOpen(true); }} canAddFromDocs={admission.ready && documentWizardEnabled} />
       {isLoading && <Skeleton className="h-16 w-full" />}
-      {!isLoading && (!records || records.length === 0) && <EmptyState message="No medical insurance records added yet." />}
-      {!isLoading && records && records.length > 0 && (
+      {uiRead1.isSuccess && recordRead.serverRead.totalCount === 0 && !recordRead.invalid && <EmptyState message="No medical insurance records added yet." />}
+      {!recordRead.denied && !recordRead.restricted && (
         <div className="space-y-2">
-          <RecordCollection id="hr.employee-compliance-tab.MedicalInsurancesSection.records" rows={records} fields={[{"id":"policy_number","path":"policy_number","label":"Policy Number"},{"id":"expiry_date","path":"expiry_date","label":"Expiry Date"}]} renderRecord={(r) => (
+          <RecordCollection serverRead={recordRead.serverRead} isLoading={isLoading} message={recordRead.validationMessage ?? recordRead.detailError} userProfileId={authContext.profile?.id?.toString()} id="hr.employee-compliance-tab.MedicalInsurancesSection.records" rows={records} fields={[{"id":"policy_number","path":"policy_number","label":"Policy Number"},{"id":"expiry_date","path":"expiry_date","label":"Expiry Date"}]} renderRecord={(r) => (
             <div key={r.id} className="flex items-start justify-between p-3 border rounded-lg bg-card hover:bg-muted/30">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -591,7 +657,7 @@ function MedicalInsurancesSection({ employeeId, canManageDoc, onChildOpen, docum
                 <div className="text-xs text-muted-foreground mt-0.5">Policy: {r.policy_number}{r.tpa ? ` · TPA: ${r.tpa}` : ""}</div>
                 <div className="mt-1"><ExpiryBadge expiryDate={r.expiry_date} /></div>
               </div>
-              {canManageDoc && (
+              {canManageDoc && recordRead.access.canManage && (
                 <div className="flex items-center gap-1 ml-2 flex-shrink-0">
                   {r.verification_status === "unverified" && <Button aria-label="Verify" size="sm" variant="ghost" type="button" onClick={() => handleVerify(r.id)} title="Verify"><CheckCircle className="h-3.5 w-3.5" /></Button>}
                   <Button aria-label="Edit record" size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
@@ -604,6 +670,7 @@ function MedicalInsurancesSection({ employeeId, canManageDoc, onChildOpen, docum
       )}
 
       <ComplianceDmsAddDialog
+        admission={admission}
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
         employeeId={employeeId}
@@ -613,7 +680,7 @@ function MedicalInsurancesSection({ employeeId, canManageDoc, onChildOpen, docum
         submitLabel="Save Medical Insurance"
         createEmptyForm={initialForm}
         validate={validateMedicalInsurance}
-        save={async (f) => createEmployeeMedicalInsurance(employeeId, buildPayload(f))}
+        save={async (f) => admission.canDispatch() ? createEmployeeMedicalInsurance(employeeId, buildPayload(f)) : {success: false, error: "Required record checks are not ready"}}
         onSaved={handleAddSaved}
         renderReview={({ form: addForm, setForm: setAddForm, prefillMeta }) => (
           <div className="grid grid-cols-12 gap-4">
@@ -636,7 +703,8 @@ function MedicalInsurancesSection({ employeeId, canManageDoc, onChildOpen, docum
         )}
       />
 
-      <ERPChildDialogForm open={editDialogOpen} onOpenChange={setEditDialogOpen} title="Edit Medical Insurance" icon={<Heart className="h-5 w-5" />} mode="edit" size="lg" isSubmitting={isSubmitting} onSubmit={handleEditSubmit}>
+      <ERPChildDialogForm open={editDialogOpen} onOpenChange={(open) => { if (!admission.isCurrent()) return; if (!open) recordRead.closeDetail(); setEditDialogOpen(open); }} title="Edit Medical Insurance" icon={<Heart className="h-5 w-5" />} mode="edit" size="lg" isSubmitting={isSubmitting} submitDisabled={!admission.ready} onSubmit={handleEditSubmit}>
+        <ComplianceReadPause admission={admission} />
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-6"><Label>Insurance Provider <span className="text-destructive">*</span></Label><Input aria-label="Insurance Provider" required value={form.insurance_provider} onChange={(e) => setForm((p) => ({ ...p, insurance_provider: e.target.value }))} /></div>
           <div className="col-span-6"><Label>TPA</Label><Input aria-label="TPA" value={form.tpa} onChange={(e) => setForm((p) => ({ ...p, tpa: e.target.value }))} placeholder="Third-party administrator" /></div>
@@ -655,31 +723,31 @@ function MedicalInsurancesSection({ employeeId, canManageDoc, onChildOpen, docum
         </div>
       </ERPChildDialogForm>
 
-      <HrDocumentToRecordWizard
+      {(admission.ready || dmsWizardOpen) && <HrDocumentToRecordWizard
         employeeId={employeeId}
         targetType="medical_insurance"
+        admission={admission}
         open={dmsWizardOpen}
         onOpenChange={setDmsWizardOpen}
-        onSaved={() => void qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.medicalInsurances(employeeId) })}
+        onSaved={() => handleAddSaved()}
         onChildOpen={onChildOpen}
-      />
+      />}
     </div></QueryReadBoundary>
   );
 }
 
 // ── 3. DEPENDENTS SECTION ─────────────────────────────────────────────────────
 
-function DependentsSection({ employeeId, canManageDoc, canManageMedical, onChildOpen, documentWizardEnabled }: { employeeId: number; canManageDoc: boolean; canManageMedical: boolean; onChildOpen?: (open: boolean) => void; documentWizardEnabled?: boolean }) {
+function DependentsSection({ authContext, onSubjectDenied, employeeId, canManageDoc, canManageMedical, onChildOpen, documentWizardEnabled }: { authContext: AuthContext; onSubjectDenied: () => void; employeeId: number; canManageDoc: boolean; canManageMedical: boolean; onChildOpen?: (open: boolean) => void; documentWizardEnabled?: boolean }) {
   const qc = useQueryClient();
+  const sectionActive = useRecordReadActive();
+  const recordRead = useHrComplianceRecords("dependents", employeeId, authContext, onSubjectDenied);
   const [addDialogOpen, setAddDialogOpenRaw] = useState(false);
   const [dmsWizardOpen, setDmsWizardOpenRaw] = useState(false);
   const [editDialogOpen, setEditDialogOpenRaw] = useState(false);
   const [editing, setEditing] = useState<EmployeeDependentRow | null>(null);
   const [isSubmitting, startTransition] = useTransition();
 
-  const setAddDialogOpen = useCallback((open: boolean) => { setAddDialogOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
-  const setEditDialogOpen = useCallback((open: boolean) => { setEditDialogOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
-  const setDmsWizardOpen = useCallback((open: boolean) => { setDmsWizardOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
 
   const initialForm = () => ({
     dms_document_id: null as number | null,
@@ -695,22 +763,58 @@ function DependentsSection({ employeeId, canManageDoc, canManageMedical, onChild
 
   const [form, setForm] = useState(initialForm);
 
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.compliance.dependents(employeeId),
-    queryFn: async () => { const r = await listEmployeeDependents(employeeId); if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? [] : []; },
-  });
-  const { data: records, isLoading } = uiRead1;
+  const uiRead1 = recordRead.query;
+  const records = recordRead.rows;
+  const isLoading = recordRead.busy;
+
 
   const uiRead2 = useQuery({
-    queryKey: queryKeys.hr.relationshipTypes(),
-    queryFn: async () => {
-      const r = await listHrRelationshipTypes({ is_active: true, page: 1, page_size: 100 });
+    queryKey: [...queryKeys.hr.relationshipTypes(), recordRead.identity, form.relationship_type_id],
+    enabled: sectionActive && canManageDoc && recordRead.access.canManage,
+    queryFn: async ({signal}) => {
+      const r = await listHrRelationshipTypes({ selectedId: form.relationship_type_id || null, signal });
       if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success && r.data ? r.data.data as HrSettingsRow[] : [];
     },
   });
   const { data: relTypes } = uiRead2;
 
+  const admission = useComplianceReadAdmission(canManageDoc && recordRead.access.canManage, [...recordRead.reads, uiRead2], JSON.stringify([recordRead.owner, recordRead.denied, recordRead.restricted]));
+  const notifyChildOpen = useComplianceChildLease(admission, onChildOpen);
+  const setAddDialogOpen = useComplianceDialogOpen(admission, notifyChildOpen, setAddDialogOpenRaw);
+  const setEditDialogOpen = useComplianceDialogOpen(admission, notifyChildOpen, setEditDialogOpenRaw);
+  const setDmsWizardOpen = useComplianceDialogOpen(admission, notifyChildOpen, setDmsWizardOpenRaw);
+  const [editorGeneration, setEditorGeneration] = useState(admission.generation);
+  const generationChanged = editorGeneration !== admission.generation;
+  const retireEditor = recordRead.denied || recordRead.restricted || recordRead.detailUnavailable;
+  const [editorRetired, setEditorRetired] = useState(false);
+  if (generationChanged || retireEditor && !editorRetired) {
+    setEditorGeneration(admission.generation);
+    setEditorRetired(retireEditor);
+    setEditing(null); setForm(initialForm()); setEditDialogOpenRaw(false);
+    if (generationChanged || recordRead.restricted || recordRead.denied) setAddDialogOpenRaw(false);
+    if (generationChanged || recordRead.restricted || recordRead.denied) setDmsWizardOpenRaw(false);
+  }
+  if (!retireEditor && editorRetired) setEditorRetired(false);
+  const closeRetiredDetail = recordRead.closeDetail;
+  useLayoutEffect(() => {
+    if (retireEditor) {notifyChildOpen(false); closeRetiredDetail();}
+  }, [retireEditor, closeRetiredDetail, notifyChildOpen]);
+
   const relTypeOptions = (relTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }));
+  const medicalAccess = useRef({view: false, manage: false, retired: false});
+  const currentDependentForm = useRef(form);
+  useLayoutEffect(() => {currentDependentForm.current = form;});
+  const medicalView = recordRead.access.medicalView;
+  const medicalManage = canManageMedical && recordRead.access.medicalManage;
+  useLayoutEffect(() => {medicalAccess.current = {view: medicalView, manage: medicalManage, retired: recordRead.medicalViewRetired};});
+  const redactMedicalForm = useCallback((value: DependentForm): DependentForm => recordRead.medicalViewRetired
+    ? {...value, medical_insurance_provider: "", medical_insurance_policy: "", medical_insurance_card: "", medical_insurance_expiry: ""} : value, [recordRead.medicalViewRetired]);
+  const [medicalRetired, setMedicalRetired] = useState(false);
+  if (recordRead.medicalViewRetired && !medicalRetired) {
+    setMedicalRetired(true); setForm(previous => redactMedicalForm(previous));
+    setEditing(previous => previous ? {...previous, medical_insurance_provider: null, medical_insurance_policy: null, medical_insurance_card: null, medical_insurance_expiry: null} : previous);
+  }
+  if (!recordRead.medicalViewRetired && medicalRetired) setMedicalRetired(false);
 
   const buildPayload = (f: DependentForm) => {
     const payload = ({
@@ -725,7 +829,7 @@ function DependentsSection({ employeeId, canManageDoc, canManageMedical, onChild
     medical_insurance_expiry: f.medical_insurance_expiry || null, sponsored_by: f.sponsored_by || null,
     notes: f.notes || null, dependent_name_ar: f.dependent_name_ar || null,
   });
-    if (!canManageMedical) for (const key of ["medical_insurance_provider", "medical_insurance_policy", "medical_insurance_card", "medical_insurance_expiry"] as const) delete (payload as Partial<typeof payload>)[key];
+    if (!medicalAccess.current.manage) for (const key of DEPENDENT_MEDICAL_FIELDS) delete (payload as Partial<typeof payload>)[key];
     return payload;
   };
 
@@ -754,13 +858,13 @@ function DependentsSection({ employeeId, canManageDoc, canManageMedical, onChild
       <div className="col-span-6"><Label>Emirates ID Expiry</Label><Input aria-label="Emirates ID Expiry" type="date" value={f.emirates_id_expiry} onChange={(e) => setF((p) => ({ ...p, emirates_id_expiry: e.target.value }))} /></div>
       <div className="col-span-6"><Label>Residence Visa Number</Label><Input aria-label="Residence Visa Number" value={f.residence_visa_number} onChange={(e) => setF((p) => ({ ...p, residence_visa_number: e.target.value }))} /></div>
       <div className="col-span-6"><Label>Residence Visa Expiry</Label><Input aria-label="Residence Visa Expiry" type="date" value={f.residence_visa_expiry} onChange={(e) => setF((p) => ({ ...p, residence_visa_expiry: e.target.value }))} /></div>
-      {canManageMedical && <>
+      {medicalView && <>
       <div className="col-span-12 border-t pt-3"><p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Medical Insurance</p></div>
+      <div className="col-span-6"><Label>Insurance Provider</Label><Input disabled={!medicalManage} aria-label="Insurance Provider" value={f.medical_insurance_provider} onChange={(e) => setF((p) => ({ ...p, medical_insurance_provider: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Insurance Policy</Label><Input disabled={!medicalManage} aria-label="Insurance Policy" value={f.medical_insurance_policy} onChange={(e) => setF((p) => ({ ...p, medical_insurance_policy: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Insurance Card</Label><Input disabled={!medicalManage} aria-label="Insurance Card" value={f.medical_insurance_card} onChange={(e) => setF((p) => ({ ...p, medical_insurance_card: e.target.value }))} /></div>
+      <div className="col-span-6"><Label>Insurance Expiry</Label><Input disabled={!medicalManage} aria-label="Insurance Expiry" type="date" value={f.medical_insurance_expiry} onChange={(e) => setF((p) => ({ ...p, medical_insurance_expiry: e.target.value }))} /></div>
       </>}
-      <div className="col-span-6"><Label>Insurance Provider</Label><Input aria-label="Insurance Provider" value={f.medical_insurance_provider} onChange={(e) => setF((p) => ({ ...p, medical_insurance_provider: e.target.value }))} /></div>
-      <div className="col-span-6"><Label>Insurance Policy</Label><Input aria-label="Insurance Policy" value={f.medical_insurance_policy} onChange={(e) => setF((p) => ({ ...p, medical_insurance_policy: e.target.value }))} /></div>
-      <div className="col-span-6"><Label>Insurance Card</Label><Input aria-label="Insurance Card" value={f.medical_insurance_card} onChange={(e) => setF((p) => ({ ...p, medical_insurance_card: e.target.value }))} /></div>
-      <div className="col-span-6"><Label>Insurance Expiry</Label><Input aria-label="Insurance Expiry" type="date" value={f.medical_insurance_expiry} onChange={(e) => setF((p) => ({ ...p, medical_insurance_expiry: e.target.value }))} /></div>
       <div className="col-span-6">
         <Label>Sponsored By</Label>
         <ERPCombobox ariaLabel="Sponsored By" value={f.sponsored_by || null} onValueChange={(v) => setF((p) => ({ ...p, sponsored_by: v ? String(v) : "" }))} options={[{ value: "employee", label: "Employee" }, { value: "company", label: "Company" }]} placeholder="Select..." />
@@ -772,26 +876,38 @@ function DependentsSection({ employeeId, canManageDoc, canManageMedical, onChild
 
   // HR.DOCLINK.1B — staged document link changes, applied on Save
   const depLinkChangesRef = useRef<DependentDocLinkChanges>(EMPTY_DEP_LINK_CHANGES);
+  const isCurrentDependent = admission.isCurrent;
+  useLayoutEffect(() => {depLinkChangesRef.current = EMPTY_DEP_LINK_CHANGES;}, [admission.generation]);
   const handleDepLinkChanges = useCallback((c: DependentDocLinkChanges) => {
+    if (!isCurrentDependent()) return;
     depLinkChangesRef.current = c;
-  }, []);
+  }, [isCurrentDependent]);
 
-  const applyStagedDocumentLinks = async (dependentId: number) => {
+  const applyStagedDocumentLinks = async (dependentId: number, isCurrentOpening: () => boolean = () => true) => {
+    if (!admission.isCurrent() || !isCurrentOpening()) return;
     const changes = depLinkChangesRef.current;
     if (changes.addDocumentIds.length === 0 && changes.removeDocumentIds.length === 0) return;
+    if (!admission.canDispatch()) {
+      toast.error("Dependent saved, but document links were not submitted because required checks are no longer ready");
+      return;
+    }
     const res = await applyEmployeeDependentDocumentLinks(dependentId, changes);
     if (res.success) {
       qc.invalidateQueries({ queryKey: ["hr", "dependent-doc-links"] });
-    } else {
+    } else if (admission.isCurrent() && isCurrentOpening()) {
       toast.error(res.error ?? "Dependent saved, but document links could not be updated");
     }
   };
 
   const openAdd = () => {
+    if (!admission.canDispatch()) return;
     depLinkChangesRef.current = EMPTY_DEP_LINK_CHANGES;
     setAddDialogOpen(true);
   };
-  const openEdit = (r: EmployeeDependentRow) => {
+  const openEdit = async (selected: {id: number}) => {
+    if (!admission.canDispatch()) return;
+    const r = await recordRead.loadDetail(selected.id);
+    if (!r || !admission.isCurrent()) return;
     depLinkChangesRef.current = EMPTY_DEP_LINK_CHANGES;
     setEditing(r);
     setForm({
@@ -810,39 +926,52 @@ function DependentsSection({ employeeId, canManageDoc, canManageMedical, onChild
   };
 
   const handleEditSubmit = () => {
-    if (!editing) return;
-    const err = validateDependent(form);
+    if (!editing || !admission.canDispatch() || !recordRead.isDetailCurrent(editing.id)) return;
+    const err = validateDependent(currentDependentForm.current);
     if (err) { toast.error(err); return; }
     startTransition(async () => {
-      const result = await updateEmployeeDependent(editing.id, buildPayload(form));
+      if (!admission.canDispatch() || !recordRead.isDetailCurrent(editing.id)) return;
+      const payload = buildPayload(currentDependentForm.current);
+      const result = await updateEmployeeDependent(editing.id, payload);
       if (result.success) {
-        await applyStagedDocumentLinks(editing.id);
+        try {
+          // Do not start a secondary write with a replacement opening's links.
+          await applyStagedDocumentLinks(editing.id, () => recordRead.isDetailCurrent(editing.id));
+        } finally {
+          // The primary commit is known even if the later link stage throws.
+          // Notify only at settlement, so refetch cannot pause our own link step.
+          handleAddSaved({hasDmsDocument: !!payload.dms_document_id});
+        }
+        if (!admission.isCurrent() || !recordRead.isDetailCurrent(editing.id)) return;
         toast.success("Dependent updated");
-        qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.dependents(employeeId) });
-        qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.summary(employeeId) });
-        setEditDialogOpen(false);
-      } else toast.error(result.error ?? "Failed to save");
+        recordRead.closeDetail(); setEditDialogOpen(false);
+      } else if (admission.isCurrent() && recordRead.isDetailCurrent(editing.id)) toast.error(result.error ?? "Failed to save");
     });
   };
 
   const handleAddSaved = (opts?: { dmsLinkCreated?: boolean; hasDmsDocument?: boolean }) => {
-    handleComplianceAddSaved(qc, employeeId, queryKeys.hr.compliance.dependents(employeeId), opts);
+    notifyComplianceWrite(qc, employeeId, invalidateHrEmployeeDependents, opts);
   };
 
   const handleArchive = async (id: number) => {
+    if (!admission.canDispatch()) return;
     const result = await archiveEmployeeDependent(id);
-    if (result.success) { toast.success("Archived"); qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.dependents(employeeId) }); }
+    if (result.success) handleAddSaved();
+    if (!admission.isCurrent()) return;
+    if (result.success) { toast.success("Archived"); }
     else toast.error(result.error);
   };
 
+  if (recordRead.restricted || recordRead.denied) return <div role="alert" className="mb-8 rounded border p-4">This compliance collection is not available with your current access.</div>;
+
   return (
-    <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="mb-8">
-      <SectionHeader icon={Users} title="Dependents" count={records?.length} onAdd={openAdd} canAdd={canManageDoc} onAddFromDocs={() => setDmsWizardOpen(true)} canAddFromDocs={canManageDoc && documentWizardEnabled} />
+    <QueryReadBoundary queries={[...recordRead.reads,uiRead2]}><div className="mb-8">
+      <SectionHeader icon={Users} title="Dependents" count={recordRead.serverRead.totalCount ?? undefined} onAdd={openAdd} canAdd={admission.ready} onAddFromDocs={() => { if (admission.canDispatch()) setDmsWizardOpen(true); }} canAddFromDocs={admission.ready && documentWizardEnabled} />
       {isLoading && <Skeleton className="h-16 w-full" />}
-      {!isLoading && (!records || records.length === 0) && <EmptyState message="No dependents added yet." />}
-      {!isLoading && records && records.length > 0 && (
+      {uiRead1.isSuccess && recordRead.serverRead.totalCount === 0 && !recordRead.invalid && <EmptyState message="No dependents added yet." />}
+      {!recordRead.denied && !recordRead.restricted && (
         <div className="space-y-2">
-          <RecordCollection id="hr.employee-compliance-tab.DependentsSection.records" rows={records} fields={[{"id":"dependent_name_en","path":"dependent_name_en","label":"Dependent Name En"}]} renderRecord={(r) => (
+          <RecordCollection serverRead={recordRead.serverRead} isLoading={isLoading} message={recordRead.validationMessage ?? recordRead.detailError} userProfileId={authContext.profile?.id?.toString()} id="hr.employee-compliance-tab.DependentsSection.records" rows={records} fields={[{"id":"dependent_name_en","path":"dependent_name_en","label":"Dependent Name En"}]} renderRecord={(r) => (
             <div key={r.id} className="flex items-start justify-between p-3 border rounded-lg bg-card hover:bg-muted/30">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -860,7 +989,7 @@ function DependentsSection({ employeeId, canManageDoc, canManageMedical, onChild
                   {r.residence_visa_expiry && <span className="text-xs text-muted-foreground">Visa exp: {formatDate(r.residence_visa_expiry)}</span>}
                 </div>
               </div>
-              {canManageDoc && (
+              {canManageDoc && recordRead.access.canManage && (
                 <div className="flex items-center gap-1 ml-2 flex-shrink-0">
                   <Button aria-label="Edit record" size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
                   <Button aria-label="Archive record" size="sm" variant="ghost" type="button" onClick={() => handleArchive(r.id)}><Archive className="h-3.5 w-3.5" /></Button>
@@ -872,18 +1001,23 @@ function DependentsSection({ employeeId, canManageDoc, canManageMedical, onChild
       )}
 
       <ComplianceDmsAddDialog
+        admission={admission}
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
         employeeId={employeeId}
         recordKind="dependent"
+        privacyRevision={recordRead.medicalViewRetired ? "medical-retired" : "medical-current"}
+        redactForm={redactMedicalForm}
         icon={<Users className="h-5 w-5" />}
         recordLabel="Dependent"
         submitLabel="Save Dependent"
         size="xl"
         createEmptyForm={initialForm}
         validate={validateDependent}
-        save={async (f) => {
+        save={async (f, observePrimary) => {
+          if (!admission.canDispatch()) return {success: false, error: "Required record checks are not ready"};
           const result = await createEmployeeDependent(employeeId, buildPayload(f));
+          if (result.success) observePrimary?.(result);
           // HR.DOCLINK.1B — link the staged documents to the new dependent
           if (result.success && result.data?.id) {
             await applyStagedDocumentLinks(result.data.id);
@@ -895,6 +1029,7 @@ function DependentsSection({ employeeId, canManageDoc, canManageMedical, onChild
           <>
             {renderDependentFields(addForm, setAddForm, prefillMeta)}
             <DependentDocumentLinksSection
+              employeeId={employeeId} admission={admission}
               dependentId={null}
               onChangesChange={handleDepLinkChanges}
             />
@@ -902,38 +1037,41 @@ function DependentsSection({ employeeId, canManageDoc, canManageMedical, onChild
         )}
       />
 
-      <ERPChildDialogForm open={editDialogOpen} onOpenChange={setEditDialogOpen} title="Edit Dependent" icon={<Users className="h-5 w-5" />} mode="edit" size="xl" isSubmitting={isSubmitting} onSubmit={handleEditSubmit}>
+      <ERPChildDialogForm open={editDialogOpen} onOpenChange={(open) => { if (!admission.isCurrent()) return; if (!open) recordRead.closeDetail(); setEditDialogOpen(open); }} title="Edit Dependent" icon={<Users className="h-5 w-5" />} mode="edit" size="xl" isSubmitting={isSubmitting} submitDisabled={!admission.ready} onSubmit={handleEditSubmit}>
+        <ComplianceReadPause admission={admission} />
         {renderDependentFields(form, setForm, null)}
         <DependentDocumentLinksSection
+              employeeId={employeeId} admission={admission}
           key={editing?.id ?? "none"}
           dependentId={editing?.id ?? null}
           onChangesChange={handleDepLinkChanges}
         />
       </ERPChildDialogForm>
 
-      <HrDocumentToRecordWizard
+      {(admission.ready || dmsWizardOpen) && <HrDocumentToRecordWizard
         employeeId={employeeId}
         targetType="dependent"
+        admission={admission}
         open={dmsWizardOpen}
         onOpenChange={setDmsWizardOpen}
-        onSaved={() => void qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.dependents(employeeId) })}
+        onSaved={() => handleAddSaved()}
         onChildOpen={onChildOpen}
-      />
+      />}
     </div></QueryReadBoundary>
   );
 }
 
 // ── 4. ACCESS CARDS SECTION ───────────────────────────────────────────────────
 
-function AccessCardsSection({ employeeId, canManageDoc, onChildOpen }: { employeeId: number; canManageDoc: boolean; onChildOpen?: (open: boolean) => void }) {
+function AccessCardsSection({ authContext, onSubjectDenied, employeeId, canManageDoc, onChildOpen }: { authContext: AuthContext; onSubjectDenied: () => void; employeeId: number; canManageDoc: boolean; onChildOpen?: (open: boolean) => void }) {
   const qc = useQueryClient();
+  const sectionActive = useRecordReadActive();
+  const recordRead = useHrComplianceRecords("cards", employeeId, authContext, onSubjectDenied);
   const [addDialogOpen, setAddDialogOpenRaw] = useState(false);
   const [editDialogOpen, setEditDialogOpenRaw] = useState(false);
   const [editing, setEditing] = useState<EmployeeAccessCardRow | null>(null);
   const [isSubmitting, startTransition] = useTransition();
 
-  const setAddDialogOpen = useCallback((open: boolean) => { setAddDialogOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
-  const setEditDialogOpen = useCallback((open: boolean) => { setEditDialogOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
 
   const initialForm = () => ({
     dms_document_id: null as number | null,
@@ -946,20 +1084,40 @@ function AccessCardsSection({ employeeId, canManageDoc, onChildOpen }: { employe
 
   const [form, setForm] = useState(initialForm);
 
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.compliance.accessCards(employeeId),
-    queryFn: async () => { const r = await listEmployeeAccessCards(employeeId); if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? [] : []; },
-  });
-  const { data: records, isLoading } = uiRead1;
+  const uiRead1 = recordRead.query;
+  const records = recordRead.rows;
+  const isLoading = recordRead.busy;
+
 
   const uiRead2 = useQuery({
-    queryKey: queryKeys.hr.accessCardTypes(),
-    queryFn: async () => {
-      const r = await listHrAccessCardTypes({ is_active: true, page: 1, page_size: 100 });
+    queryKey: [...queryKeys.hr.accessCardTypes(), recordRead.identity, form.access_type_id],
+    enabled: sectionActive && canManageDoc && recordRead.access.canManage,
+    queryFn: async ({signal}) => {
+      const r = await listHrAccessCardTypes({ selectedId: form.access_type_id || null, signal });
       if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success && r.data ? r.data.data as HrAccessCardTypeRow[] : [];
     },
   });
   const { data: cardTypes } = uiRead2;
+
+  const admission = useComplianceReadAdmission(canManageDoc && recordRead.access.canManage, [...recordRead.reads, uiRead2], JSON.stringify([recordRead.owner, recordRead.denied, recordRead.restricted]));
+  const notifyChildOpen = useComplianceChildLease(admission, onChildOpen);
+  const setAddDialogOpen = useComplianceDialogOpen(admission, notifyChildOpen, setAddDialogOpenRaw);
+  const setEditDialogOpen = useComplianceDialogOpen(admission, notifyChildOpen, setEditDialogOpenRaw);
+  const [editorGeneration, setEditorGeneration] = useState(admission.generation);
+  const generationChanged = editorGeneration !== admission.generation;
+  const retireEditor = recordRead.denied || recordRead.restricted || recordRead.detailUnavailable;
+  const [editorRetired, setEditorRetired] = useState(false);
+  if (generationChanged || retireEditor && !editorRetired) {
+    setEditorGeneration(admission.generation);
+    setEditorRetired(retireEditor);
+    setEditing(null); setForm(initialForm()); setEditDialogOpenRaw(false);
+    if (generationChanged || recordRead.restricted || recordRead.denied) setAddDialogOpenRaw(false);
+  }
+  if (!retireEditor && editorRetired) setEditorRetired(false);
+  const closeRetiredDetail = recordRead.closeDetail;
+  useLayoutEffect(() => {
+    if (retireEditor) {notifyChildOpen(false); closeRetiredDetail();}
+  }, [retireEditor, closeRetiredDetail, notifyChildOpen]);
 
   const cardTypeOptions = (cardTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }));
   const accessStatusOptions = [
@@ -1003,8 +1161,12 @@ function AccessCardsSection({ employeeId, canManageDoc, onChildOpen }: { employe
     </div>
   );
 
-  const openAdd = () => setAddDialogOpen(true);
-  const openEdit = (r: EmployeeAccessCardRow) => {
+  const openAdd = () => {
+    if (admission.canDispatch()) setAddDialogOpen(true); };
+  const openEdit = async (selected: {id: number}) => {
+    if (!admission.canDispatch()) return;
+    const r = await recordRead.loadDetail(selected.id);
+    if (!r || !admission.isCurrent()) return;
     setEditing(r);
     setForm({
       dms_document_id: r.dms_document_id,
@@ -1017,38 +1179,45 @@ function AccessCardsSection({ employeeId, canManageDoc, onChildOpen }: { employe
   };
 
   const handleEditSubmit = () => {
-    if (!editing) return;
+    if (!editing || !admission.canDispatch() || !recordRead.isDetailCurrent(editing.id)) return;
     const err = validateAccessCard(form);
     if (err) { toast.error(err); return; }
     startTransition(async () => {
-      const result = await updateEmployeeAccessCard(editing.id, buildPayload(form));
+      if (!admission.canDispatch() || !recordRead.isDetailCurrent(editing.id)) return;
+      const payload = buildPayload(form);
+      const result = await updateEmployeeAccessCard(editing.id, payload);
+      if (result.success) handleAddSaved({hasDmsDocument: !!payload.dms_document_id});
+      if (!admission.isCurrent() || !recordRead.isDetailCurrent(editing.id)) return;
       if (result.success) {
         toast.success("Updated");
-        qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.accessCards(employeeId) });
-        qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.summary(employeeId) });
-        setEditDialogOpen(false);
+        recordRead.closeDetail(); setEditDialogOpen(false);
       } else toast.error(result.error ?? "Failed to save");
     });
   };
 
   const handleAddSaved = (opts?: { dmsLinkCreated?: boolean; hasDmsDocument?: boolean }) => {
-    handleComplianceAddSaved(qc, employeeId, queryKeys.hr.compliance.accessCards(employeeId), opts);
+    notifyComplianceWrite(qc, employeeId, invalidateHrEmployeeAccessCards, opts);
   };
 
   const handleArchive = async (id: number) => {
+    if (!admission.canDispatch()) return;
     const r = await archiveEmployeeAccessCard(id);
-    if (r.success) { toast.success("Archived"); qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.accessCards(employeeId) }); }
+    if (r.success) handleAddSaved();
+    if (!admission.isCurrent()) return;
+    if (r.success) { toast.success("Archived"); }
     else toast.error(r.error);
   };
 
+  if (recordRead.restricted || recordRead.denied) return <div role="alert" className="mb-8 rounded border p-4">This compliance collection is not available with your current access.</div>;
+
   return (
-    <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="mb-8">
-      <SectionHeader icon={CreditCard} title="Access Cards & Passes" count={records?.length} onAdd={openAdd} canAdd={canManageDoc} />
+    <QueryReadBoundary queries={[...recordRead.reads,uiRead2]}><div className="mb-8">
+      <SectionHeader icon={CreditCard} title="Access Cards & Passes" count={recordRead.serverRead.totalCount ?? undefined} onAdd={openAdd} canAdd={admission.ready} />
       {isLoading && <Skeleton className="h-16 w-full" />}
-      {!isLoading && (!records || records.length === 0) && <EmptyState message="No access cards or passes added yet." />}
-      {!isLoading && records && records.length > 0 && (
+      {uiRead1.isSuccess && recordRead.serverRead.totalCount === 0 && !recordRead.invalid && <EmptyState message="No access cards or passes added yet." />}
+      {!recordRead.denied && !recordRead.restricted && (
         <div className="space-y-2">
-          <RecordCollection id="hr.employee-compliance-tab.AccessCardsSection.records" rows={records} fields={[{"id":"card_number","path":"card_number","label":"Card Number"},{"id":"expiry_date","path":"expiry_date","label":"Expiry Date"}]} renderRecord={(r) => (
+          <RecordCollection serverRead={recordRead.serverRead} isLoading={isLoading} message={recordRead.validationMessage ?? recordRead.detailError} userProfileId={authContext.profile?.id?.toString()} id="hr.employee-compliance-tab.AccessCardsSection.records" rows={records} fields={[{"id":"card_number","path":"card_number","label":"Card Number"},{"id":"expiry_date","path":"expiry_date","label":"Expiry Date"}]} renderRecord={(r) => (
             <div key={r.id} className="flex items-start justify-between p-3 border rounded-lg bg-card hover:bg-muted/30">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -1062,7 +1231,7 @@ function AccessCardsSection({ employeeId, canManageDoc, onChildOpen }: { employe
                 </div>
                 <div className="mt-1"><ExpiryBadge expiryDate={r.expiry_date} /></div>
               </div>
-              {canManageDoc && (
+              {canManageDoc && recordRead.access.canManage && (
                 <div className="flex items-center gap-1 ml-2 flex-shrink-0">
                   <Button aria-label="Edit record" size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
                   <Button aria-label="Archive record" size="sm" variant="ghost" type="button" onClick={() => handleArchive(r.id)}><Archive className="h-3.5 w-3.5" /></Button>
@@ -1074,6 +1243,7 @@ function AccessCardsSection({ employeeId, canManageDoc, onChildOpen }: { employe
       )}
 
       <ComplianceDmsAddDialog
+        admission={admission}
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
         employeeId={employeeId}
@@ -1083,12 +1253,13 @@ function AccessCardsSection({ employeeId, canManageDoc, onChildOpen }: { employe
         submitLabel="Save Access Card"
         createEmptyForm={initialForm}
         validate={validateAccessCard}
-        save={async (f) => createEmployeeAccessCard(employeeId, buildPayload(f))}
+        save={async (f) => admission.canDispatch() ? createEmployeeAccessCard(employeeId, buildPayload(f)) : {success: false, error: "Required record checks are not ready"}}
         onSaved={handleAddSaved}
         renderReview={({ form: addForm, setForm: setAddForm, prefillMeta }) => renderAccessCardFields(addForm, setAddForm, prefillMeta)}
       />
 
-      <ERPChildDialogForm open={editDialogOpen} onOpenChange={setEditDialogOpen} title="Edit Access Card" icon={<CreditCard className="h-5 w-5" />} mode="edit" size="lg" isSubmitting={isSubmitting} onSubmit={handleEditSubmit}>
+      <ERPChildDialogForm open={editDialogOpen} onOpenChange={(open) => { if (!admission.isCurrent()) return; if (!open) recordRead.closeDetail(); setEditDialogOpen(open); }} title="Edit Access Card" icon={<CreditCard className="h-5 w-5" />} mode="edit" size="lg" isSubmitting={isSubmitting} submitDisabled={!admission.ready} onSubmit={handleEditSubmit}>
+        <ComplianceReadPause admission={admission} />
         {renderAccessCardFields(form, setForm, null)}
       </ERPChildDialogForm>
     </div></QueryReadBoundary>
@@ -1097,15 +1268,15 @@ function AccessCardsSection({ employeeId, canManageDoc, onChildOpen }: { employe
 
 // ── 5. TRAINING CERTIFICATES SECTION ─────────────────────────────────────────
 
-function TrainingCertificatesSection({ employeeId, canManageDoc, onChildOpen }: { employeeId: number; canManageDoc: boolean; onChildOpen?: (open: boolean) => void }) {
+function TrainingCertificatesSection({ authContext, onSubjectDenied, employeeId, canManageDoc, onChildOpen }: { authContext: AuthContext; onSubjectDenied: () => void; employeeId: number; canManageDoc: boolean; onChildOpen?: (open: boolean) => void }) {
   const qc = useQueryClient();
+  const sectionActive = useRecordReadActive();
+  const recordRead = useHrComplianceRecords("training", employeeId, authContext, onSubjectDenied);
   const [addDialogOpen, setAddDialogOpenRaw] = useState(false);
   const [editDialogOpen, setEditDialogOpenRaw] = useState(false);
   const [editing, setEditing] = useState<EmployeeTrainingCertificateRow | null>(null);
   const [isSubmitting, startTransition] = useTransition();
 
-  const setAddDialogOpen = useCallback((open: boolean) => { setAddDialogOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
-  const setEditDialogOpen = useCallback((open: boolean) => { setEditDialogOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
 
   const initialForm = () => ({
     dms_document_id: null as number | null,
@@ -1119,29 +1290,50 @@ function TrainingCertificatesSection({ employeeId, canManageDoc, onChildOpen }: 
 
   const [form, setForm] = useState(initialForm);
 
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.compliance.trainingCertificates(employeeId),
-    queryFn: async () => { const r = await listEmployeeTrainingCertificates(employeeId); if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? [] : []; },
-  });
-  const { data: records, isLoading } = uiRead1;
+  const uiRead1 = recordRead.query;
+  const records = recordRead.rows;
+  const isLoading = recordRead.busy;
+
 
   const uiRead2 = useQuery({
-    queryKey: queryKeys.hr.trainingCategories(),
-    queryFn: async () => {
-      const r = await listHrTrainingCategories({ is_active: true, page: 1, page_size: 100 });
+    queryKey: [...queryKeys.hr.trainingCategories(), recordRead.identity, form.training_category_id],
+    enabled: sectionActive && canManageDoc && recordRead.access.canManage,
+    queryFn: async ({signal}) => {
+      const r = await listHrTrainingCategories({ selectedId: form.training_category_id || null, signal });
       if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success && r.data ? r.data.data as HrSettingsRow[] : [];
     },
   });
   const { data: trainCategories } = uiRead2;
 
   const uiRead3 = useQuery({
-    queryKey: queryKeys.hr.trainingTypes(),
-    queryFn: async () => {
-      const r = await listHrTrainingTypes({ is_active: true, page: 1, page_size: 100 });
+    queryKey: [...queryKeys.hr.trainingTypes(), recordRead.identity, form.training_type_id],
+    enabled: sectionActive && canManageDoc && recordRead.access.canManage,
+    queryFn: async ({signal}) => {
+      const r = await listHrTrainingTypes({ selectedId: form.training_type_id || null, signal });
       if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success && r.data ? r.data.data as HrTrainingTypeRow[] : [];
     },
   });
   const { data: trainTypes } = uiRead3;
+
+  const admission = useComplianceReadAdmission(canManageDoc && recordRead.access.canManage, [...recordRead.reads, uiRead2, uiRead3], JSON.stringify([recordRead.owner, recordRead.denied, recordRead.restricted]));
+  const notifyChildOpen = useComplianceChildLease(admission, onChildOpen);
+  const setAddDialogOpen = useComplianceDialogOpen(admission, notifyChildOpen, setAddDialogOpenRaw);
+  const setEditDialogOpen = useComplianceDialogOpen(admission, notifyChildOpen, setEditDialogOpenRaw);
+  const [editorGeneration, setEditorGeneration] = useState(admission.generation);
+  const generationChanged = editorGeneration !== admission.generation;
+  const retireEditor = recordRead.denied || recordRead.restricted || recordRead.detailUnavailable;
+  const [editorRetired, setEditorRetired] = useState(false);
+  if (generationChanged || retireEditor && !editorRetired) {
+    setEditorGeneration(admission.generation);
+    setEditorRetired(retireEditor);
+    setEditing(null); setForm(initialForm()); setEditDialogOpenRaw(false);
+    if (generationChanged || recordRead.restricted || recordRead.denied) setAddDialogOpenRaw(false);
+  }
+  if (!retireEditor && editorRetired) setEditorRetired(false);
+  const closeRetiredDetail = recordRead.closeDetail;
+  useLayoutEffect(() => {
+    if (retireEditor) {notifyChildOpen(false); closeRetiredDetail();}
+  }, [retireEditor, closeRetiredDetail, notifyChildOpen]);
 
   const catOptions = (trainCategories ?? []).map((t) => ({ value: t.id, label: t.name_en }));
   const typeOptions = (trainTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }));
@@ -1186,8 +1378,12 @@ function TrainingCertificatesSection({ employeeId, canManageDoc, onChildOpen }: 
     </div>
   );
 
-  const openAdd = () => setAddDialogOpen(true);
-  const openEdit = (r: EmployeeTrainingCertificateRow) => {
+  const openAdd = () => {
+    if (admission.canDispatch()) setAddDialogOpen(true); };
+  const openEdit = async (selected: {id: number}) => {
+    if (!admission.canDispatch()) return;
+    const r = await recordRead.loadDetail(selected.id);
+    if (!r || !admission.isCurrent()) return;
     setEditing(r);
     setForm({
       dms_document_id: r.dms_document_id,
@@ -1202,44 +1398,54 @@ function TrainingCertificatesSection({ employeeId, canManageDoc, onChildOpen }: 
   };
 
   const handleEditSubmit = () => {
-    if (!editing) return;
+    if (!editing || !admission.canDispatch() || !recordRead.isDetailCurrent(editing.id)) return;
     const err = validateTraining(form);
     if (err) { toast.error(err); return; }
     startTransition(async () => {
-      const result = await updateEmployeeTrainingCertificate(editing.id, buildPayload(form));
+      if (!admission.canDispatch() || !recordRead.isDetailCurrent(editing.id)) return;
+      const payload = buildPayload(form);
+      const result = await updateEmployeeTrainingCertificate(editing.id, payload);
+      if (result.success) handleAddSaved({hasDmsDocument: !!payload.dms_document_id});
+      if (!admission.isCurrent() || !recordRead.isDetailCurrent(editing.id)) return;
       if (result.success) {
         toast.success("Updated");
-        qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.trainingCertificates(employeeId) });
-        qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.summary(employeeId) });
-        setEditDialogOpen(false);
+        recordRead.closeDetail(); setEditDialogOpen(false);
       } else toast.error(result.error ?? "Failed to save");
     });
   };
 
   const handleAddSaved = (opts?: { dmsLinkCreated?: boolean; hasDmsDocument?: boolean }) => {
-    handleComplianceAddSaved(qc, employeeId, queryKeys.hr.compliance.trainingCertificates(employeeId), opts);
+    notifyComplianceWrite(qc, employeeId, invalidateHrEmployeeTrainingCertificates, opts);
   };
 
   const handleArchive = async (id: number) => {
+    if (!admission.canDispatch()) return;
     const r = await archiveEmployeeTrainingCertificate(id);
-    if (r.success) { toast.success("Archived"); qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.trainingCertificates(employeeId) }); }
+    if (r.success) handleAddSaved();
+    if (!admission.isCurrent()) return;
+    if (r.success) { toast.success("Archived"); }
     else toast.error(r.error);
   };
 
   const handleVerify = async (id: number) => {
+    if (!admission.canDispatch()) return;
     const r = await verifyEmployeeTrainingCertificate(id);
-    if (r.success) { toast.success("Verified"); qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.trainingCertificates(employeeId) }); }
+    if (r.success) handleAddSaved();
+    if (!admission.isCurrent()) return;
+    if (r.success) { toast.success("Verified"); }
     else toast.error(r.error);
   };
 
+  if (recordRead.restricted || recordRead.denied) return <div role="alert" className="mb-8 rounded border p-4">This compliance collection is not available with your current access.</div>;
+
   return (
-    <QueryReadBoundary queries={[uiRead1,uiRead2,uiRead3]}><div className="mb-8">
-      <SectionHeader icon={GraduationCap} title="Training & Certifications" count={records?.length} onAdd={openAdd} canAdd={canManageDoc} />
+    <QueryReadBoundary queries={[...recordRead.reads,uiRead2,uiRead3]}><div className="mb-8">
+      <SectionHeader icon={GraduationCap} title="Training & Certifications" count={recordRead.serverRead.totalCount ?? undefined} onAdd={openAdd} canAdd={admission.ready} />
       {isLoading && <Skeleton className="h-16 w-full" />}
-      {!isLoading && (!records || records.length === 0) && <EmptyState message="No training certificates added yet." />}
-      {!isLoading && records && records.length > 0 && (
+      {uiRead1.isSuccess && recordRead.serverRead.totalCount === 0 && !recordRead.invalid && <EmptyState message="No training certificates added yet." />}
+      {!recordRead.denied && !recordRead.restricted && (
         <div className="space-y-2">
-          <RecordCollection id="hr.employee-compliance-tab.TrainingCertificatesSection.records" rows={records} fields={[{"id":"certificate_number","path":"certificate_number","label":"Certificate Number"},{"id":"expiry_date","path":"expiry_date","label":"Expiry Date"}]} renderRecord={(r) => (
+          <RecordCollection serverRead={recordRead.serverRead} isLoading={isLoading} message={recordRead.validationMessage ?? recordRead.detailError} userProfileId={authContext.profile?.id?.toString()} id="hr.employee-compliance-tab.TrainingCertificatesSection.records" rows={records} fields={[{"id":"certificate_number","path":"certificate_number","label":"Certificate Number"},{"id":"expiry_date","path":"expiry_date","label":"Expiry Date"}]} renderRecord={(r) => (
             <div key={r.id} className="flex items-start justify-between p-3 border rounded-lg bg-card hover:bg-muted/30">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -1254,7 +1460,7 @@ function TrainingCertificatesSection({ employeeId, canManageDoc, onChildOpen }: 
                 </div>
                 <div className="mt-1"><ExpiryBadge expiryDate={r.expiry_date} /></div>
               </div>
-              {canManageDoc && (
+              {canManageDoc && recordRead.access.canManage && (
                 <div className="flex items-center gap-1 ml-2 flex-shrink-0">
                   {r.verification_status === "unverified" && <Button aria-label="Verify" size="sm" variant="ghost" type="button" onClick={() => handleVerify(r.id)} title="Verify"><CheckCircle className="h-3.5 w-3.5" /></Button>}
                   <Button aria-label="Edit record" size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
@@ -1267,6 +1473,7 @@ function TrainingCertificatesSection({ employeeId, canManageDoc, onChildOpen }: 
       )}
 
       <ComplianceDmsAddDialog
+        admission={admission}
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
         employeeId={employeeId}
@@ -1276,12 +1483,13 @@ function TrainingCertificatesSection({ employeeId, canManageDoc, onChildOpen }: 
         submitLabel="Save Certificate"
         createEmptyForm={initialForm}
         validate={validateTraining}
-        save={async (f) => createEmployeeTrainingCertificate(employeeId, buildPayload(f))}
+        save={async (f) => admission.canDispatch() ? createEmployeeTrainingCertificate(employeeId, buildPayload(f)) : {success: false, error: "Required record checks are not ready"}}
         onSaved={handleAddSaved}
         renderReview={({ form: addForm, setForm: setAddForm, prefillMeta }) => renderTrainingFields(addForm, setAddForm, prefillMeta)}
       />
 
-      <ERPChildDialogForm open={editDialogOpen} onOpenChange={setEditDialogOpen} title="Edit Certificate" icon={<GraduationCap className="h-5 w-5" />} mode="edit" size="lg" isSubmitting={isSubmitting} onSubmit={handleEditSubmit}>
+      <ERPChildDialogForm open={editDialogOpen} onOpenChange={(open) => { if (!admission.isCurrent()) return; if (!open) recordRead.closeDetail(); setEditDialogOpen(open); }} title="Edit Certificate" icon={<GraduationCap className="h-5 w-5" />} mode="edit" size="lg" isSubmitting={isSubmitting} submitDisabled={!admission.ready} onSubmit={handleEditSubmit}>
+        <ComplianceReadPause admission={admission} />
         {renderTrainingFields(form, setForm, null)}
       </ERPChildDialogForm>
     </div></QueryReadBoundary>
@@ -1290,15 +1498,15 @@ function TrainingCertificatesSection({ employeeId, canManageDoc, onChildOpen }: 
 
 // ── 6. MEDICAL RECORDS SECTION (RESTRICTED) ───────────────────────────────────
 
-function MedicalRecordsSection({ employeeId, canMedView, canMedManage, onChildOpen }: { employeeId: number; canMedView: boolean; canMedManage: boolean; onChildOpen?: (open: boolean) => void }) {
+function MedicalRecordsSection({ authContext, onSubjectDenied, employeeId, canMedView, canMedManage, onChildOpen }: { authContext: AuthContext; onSubjectDenied: () => void; employeeId: number; canMedView: boolean; canMedManage: boolean; onChildOpen?: (open: boolean) => void }) {
   const qc = useQueryClient();
+  const sectionActive = useRecordReadActive();
+  const recordRead = useHrComplianceRecords("medical", employeeId, authContext, onSubjectDenied);
   const [addDialogOpen, setAddDialogOpenRaw] = useState(false);
   const [editDialogOpen, setEditDialogOpenRaw] = useState(false);
   const [editing, setEditing] = useState<EmployeeMedicalRecordRow | null>(null);
   const [isSubmitting, startTransition] = useTransition();
 
-  const setAddDialogOpen = useCallback((open: boolean) => { setAddDialogOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
-  const setEditDialogOpen = useCallback((open: boolean) => { setEditDialogOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
 
   const initialForm = () => ({
     dms_document_id: null as number | null,
@@ -1313,22 +1521,40 @@ function MedicalRecordsSection({ employeeId, canMedView, canMedManage, onChildOp
 
   const [form, setForm] = useState(initialForm);
 
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.compliance.medicalRecords(employeeId),
-    enabled: canMedView,
-    queryFn: async () => { const r = await listEmployeeMedicalRecords(employeeId); if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? [] : []; },
-  });
-  const { data: records, isLoading } = uiRead1;
+  const uiRead1 = recordRead.query;
+  const records = recordRead.rows;
+  const isLoading = recordRead.busy;
+
 
   const uiRead2 = useQuery({
-    queryKey: queryKeys.hr.medicalRecordTypes(),
-    enabled: canMedView,
-    queryFn: async () => {
-      const r = await listHrMedicalRecordTypes({ is_active: true, page: 1, page_size: 100 });
+    queryKey: [...queryKeys.hr.medicalRecordTypes(), recordRead.identity, form.medical_record_type_id],
+    enabled: sectionActive && canMedManage && recordRead.access.canManage,
+    queryFn: async ({signal}) => {
+      const r = await listHrMedicalRecordTypes({ selectedId: form.medical_record_type_id || null, signal });
       if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success && r.data ? r.data.data as HrMedicalRecordTypeRow[] : [];
     },
   });
   const { data: recTypes } = uiRead2;
+
+  const admission = useComplianceReadAdmission(canMedManage && recordRead.access.canManage, [...recordRead.reads, uiRead2], JSON.stringify([recordRead.owner, recordRead.denied, recordRead.restricted]));
+  const notifyChildOpen = useComplianceChildLease(admission, onChildOpen);
+  const setAddDialogOpen = useComplianceDialogOpen(admission, notifyChildOpen, setAddDialogOpenRaw);
+  const setEditDialogOpen = useComplianceDialogOpen(admission, notifyChildOpen, setEditDialogOpenRaw);
+  const [editorGeneration, setEditorGeneration] = useState(admission.generation);
+  const generationChanged = editorGeneration !== admission.generation;
+  const retireEditor = recordRead.denied || recordRead.restricted || recordRead.detailUnavailable;
+  const [editorRetired, setEditorRetired] = useState(false);
+  if (generationChanged || retireEditor && !editorRetired) {
+    setEditorGeneration(admission.generation);
+    setEditorRetired(retireEditor);
+    setEditing(null); setForm(initialForm()); setEditDialogOpenRaw(false);
+    if (generationChanged || recordRead.restricted || recordRead.denied) setAddDialogOpenRaw(false);
+  }
+  if (!retireEditor && editorRetired) setEditorRetired(false);
+  const closeRetiredDetail = recordRead.closeDetail;
+  useLayoutEffect(() => {
+    if (retireEditor) {notifyChildOpen(false); closeRetiredDetail();}
+  }, [retireEditor, closeRetiredDetail, notifyChildOpen]);
 
   if (!canMedView) {
     return (
@@ -1342,8 +1568,12 @@ function MedicalRecordsSection({ employeeId, canMedView, canMedManage, onChildOp
     );
   }
 
-  const openAdd = () => setAddDialogOpen(true);
-  const openEdit = (r: EmployeeMedicalRecordRow) => {
+  const openAdd = () => {
+    if (admission.canDispatch()) setAddDialogOpen(true); };
+  const openEdit = async (selected: {id: number}) => {
+    if (!admission.canDispatch()) return;
+    const r = await recordRead.loadDetail(selected.id);
+    if (!r || !admission.isCurrent()) return;
     setEditing(r);
     setForm({
       dms_document_id: r.dms_document_id,
@@ -1377,27 +1607,32 @@ function MedicalRecordsSection({ employeeId, canMedView, canMedManage, onChildOp
   };
 
   const handleEditSubmit = () => {
-    if (!editing) return;
+    if (!editing || !admission.canDispatch() || !recordRead.isDetailCurrent(editing.id)) return;
     const err = validateMedicalRecord(form);
     if (err) { toast.error(err); return; }
     startTransition(async () => {
-      const result = await updateEmployeeMedicalRecord(editing.id, buildPayload(form));
+      if (!admission.canDispatch() || !recordRead.isDetailCurrent(editing.id)) return;
+      const payload = buildPayload(form);
+      const result = await updateEmployeeMedicalRecord(editing.id, payload);
+      if (result.success) handleAddSaved({hasDmsDocument: !!payload.dms_document_id});
+      if (!admission.isCurrent() || !recordRead.isDetailCurrent(editing.id)) return;
       if (result.success) {
         toast.success("Updated");
-        qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.medicalRecords(employeeId) });
-        qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.summary(employeeId) });
-        setEditDialogOpen(false);
+        recordRead.closeDetail(); setEditDialogOpen(false);
       } else toast.error(result.error ?? "Failed to save");
     });
   };
 
   const handleAddSaved = (opts?: { dmsLinkCreated?: boolean; hasDmsDocument?: boolean }) => {
-    handleComplianceAddSaved(qc, employeeId, queryKeys.hr.compliance.medicalRecords(employeeId), opts);
+    notifyComplianceWrite(qc, employeeId, invalidateHrEmployeeMedicalRecords, opts);
   };
 
   const handleArchive = async (id: number) => {
+    if (!admission.canDispatch()) return;
     const r = await archiveEmployeeMedicalRecord(id);
-    if (r.success) { toast.success("Archived"); qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.medicalRecords(employeeId) }); }
+    if (r.success) handleAddSaved();
+    if (!admission.isCurrent()) return;
+    if (r.success) { toast.success("Archived"); }
     else toast.error(r.error);
   };
 
@@ -1427,14 +1662,16 @@ function MedicalRecordsSection({ employeeId, canMedView, canMedManage, onChildOp
     </div>
   );
 
+  if (recordRead.restricted || recordRead.denied) return <div role="alert" className="mb-8 rounded border p-4">This compliance collection is not available with your current access.</div>;
+
   return (
-    <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="mb-8">
-      <SectionHeader icon={Activity} title="Medical & Health Records" count={records?.length} onAdd={canMedManage ? openAdd : undefined} canAdd={canMedManage} />
+    <QueryReadBoundary queries={[...recordRead.reads,uiRead2]}><div className="mb-8">
+      <SectionHeader icon={Activity} title="Medical & Health Records" count={recordRead.serverRead.totalCount ?? undefined} onAdd={canMedManage ? openAdd : undefined} canAdd={admission.ready} />
       {isLoading && <Skeleton className="h-16 w-full" />}
-      {!isLoading && (!records || records.length === 0) && <EmptyState message="No medical records added yet." />}
-      {!isLoading && records && records.length > 0 && (
+      {uiRead1.isSuccess && recordRead.serverRead.totalCount === 0 && !recordRead.invalid && <EmptyState message="No medical records added yet." />}
+      {!recordRead.denied && !recordRead.restricted && (
         <div className="space-y-2">
-          <RecordCollection id="hr.employee-compliance-tab.MedicalRecordsSection.records" rows={records} fields={[{"id":"examination_date","path":"examination_date","label":"Examination Date"}]} renderRecord={(r) => {
+          <RecordCollection serverRead={recordRead.serverRead} isLoading={isLoading} message={recordRead.validationMessage ?? recordRead.detailError} userProfileId={authContext.profile?.id?.toString()} id="hr.employee-compliance-tab.MedicalRecordsSection.records" rows={records} fields={[{"id":"examination_date","path":"examination_date","label":"Examination Date"}]} renderRecord={(r) => {
             const resultCfg = getMedicalResultBadge(r.result);
             return (
               <div key={r.id} className="flex items-start justify-between p-3 border rounded-lg bg-card hover:bg-muted/30">
@@ -1450,7 +1687,7 @@ function MedicalRecordsSection({ employeeId, canMedView, canMedManage, onChildOp
                   </div>
                   {r.next_examination_date && <div className="mt-1"><ExpiryBadge expiryDate={r.next_examination_date} /></div>}
                 </div>
-                {canMedManage && (
+                {canMedManage && recordRead.access.canManage && (
                   <div className="flex items-center gap-1 ml-2 flex-shrink-0">
                     <Button aria-label="Edit record" size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
                     <Button aria-label="Archive record" size="sm" variant="ghost" type="button" onClick={() => handleArchive(r.id)}><Archive className="h-3.5 w-3.5" /></Button>
@@ -1462,9 +1699,10 @@ function MedicalRecordsSection({ employeeId, canMedView, canMedManage, onChildOp
         </div>
       )}
 
-      {canMedManage && (
+      {(canMedManage || editDialogOpen || addDialogOpen) && (
         <>
           <ComplianceDmsAddDialog
+        admission={admission}
             open={addDialogOpen}
             onOpenChange={setAddDialogOpen}
             employeeId={employeeId}
@@ -1474,12 +1712,13 @@ function MedicalRecordsSection({ employeeId, canMedView, canMedManage, onChildOp
             submitLabel="Save Medical Record"
             createEmptyForm={initialForm}
             validate={validateMedicalRecord}
-            save={async (f) => createEmployeeMedicalRecord(employeeId, buildPayload(f))}
+            save={async (f) => admission.canDispatch() ? createEmployeeMedicalRecord(employeeId, buildPayload(f)) : {success: false, error: "Required record checks are not ready"}}
             onSaved={handleAddSaved}
             renderReview={({ form: addForm, setForm: setAddForm, prefillMeta }) => renderMedicalRecordFields(addForm, setAddForm, prefillMeta)}
           />
 
-          <ERPChildDialogForm open={editDialogOpen} onOpenChange={setEditDialogOpen} title="Edit Medical Record" icon={<Activity className="h-5 w-5" />} mode="edit" size="lg" isSubmitting={isSubmitting} onSubmit={handleEditSubmit}>
+          <ERPChildDialogForm open={editDialogOpen} onOpenChange={(open) => { if (!admission.isCurrent()) return; if (!open) recordRead.closeDetail(); setEditDialogOpen(open); }} title="Edit Medical Record" icon={<Activity className="h-5 w-5" />} mode="edit" size="lg" isSubmitting={isSubmitting} submitDisabled={!admission.ready} onSubmit={handleEditSubmit}>
+        <ComplianceReadPause admission={admission} />
             {renderMedicalRecordFields(form, setForm, null)}
           </ERPChildDialogForm>
         </>
@@ -1490,14 +1729,23 @@ function MedicalRecordsSection({ employeeId, canMedView, canMedManage, onChildOp
 
 // ── MAIN COMPLIANCE TAB ───────────────────────────────────────────────────────
 
-export function EmployeeComplianceTab({ employeeId, authContext, onChildOpen }: ComplianceTabProps) {
+export function EmployeeComplianceTab(props: ComplianceTabProps) {
+  const principal = JSON.stringify([props.employeeId, props.authContext.profile?.id, props.authContext.profile?.auth_user_id]);
+  return <ComplianceSession key={principal} {...props} />;
+}
+
+function ComplianceSession({ employeeId, authContext, onChildOpen, onChildLeaseChange }: ComplianceTabProps) {
+  const sectionActive = useRecordReadActive();
+  const [subjectDenied, setSubjectDenied] = useState(false);
+  const denySubject = useCallback(() => {setSubjectDenied(true); onChildOpen?.(false);}, [onChildOpen]);
   const manage = canManage(authContext);
   const medView = canMedicalView(authContext);
   const medManage = canMedicalManage(authContext);
 
   // HR.14B — check if document-to-record wizard is enabled for this user
   const uiRead1 = useQuery({
-    queryKey: ["hr14b", "wizard-enabled"],
+    queryKey: ["hr14b", "wizard-enabled", complianceReadIdentity(authContext)],
+    enabled: sectionActive && !subjectDenied && manage,
     queryFn: async () => {
       const r = await checkHrDocumentToRecordEnabled();
       return r.data?.enabled ?? false;
@@ -1507,7 +1755,7 @@ export function EmployeeComplianceTab({ employeeId, authContext, onChildOpen }: 
   const { data: wizardStatus } = uiRead1;
   const documentWizardEnabled = wizardStatus ?? false;
 
-  if (!canView(authContext) && !medView) {
+  if (subjectDenied || !canView(authContext) && !medView) {
     return (
       <div className="flex items-center gap-3 p-6 bg-muted/30 rounded-lg border">
         <Lock className="h-5 w-5 text-muted-foreground flex-shrink-0" />
@@ -1519,6 +1767,7 @@ export function EmployeeComplianceTab({ employeeId, authContext, onChildOpen }: 
   }
 
   return (
+    <ComplianceChildLeaseContext.Provider value={onChildLeaseChange}>
     <QueryReadBoundary queries={[uiRead1]}><div className="space-y-2">
       <div className="flex items-center gap-2 mb-6">
         <Shield className="h-5 w-5 text-primary" />
@@ -1526,12 +1775,13 @@ export function EmployeeComplianceTab({ employeeId, authContext, onChildOpen }: 
         <Badge variant="secondary" className="text-xs">HR.3</Badge>
       </div>
 
-      {canView(authContext) && <IdentityDocumentsSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} documentWizardEnabled={documentWizardEnabled} />}
-      {medView && <MedicalInsurancesSection employeeId={employeeId} canManageDoc={medManage} onChildOpen={onChildOpen} documentWizardEnabled={documentWizardEnabled} />}
-      {canView(authContext) && <DependentsSection employeeId={employeeId} canManageDoc={manage} canManageMedical={medManage} onChildOpen={onChildOpen} documentWizardEnabled={documentWizardEnabled} />}
-      {canView(authContext) && <AccessCardsSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} />}
-      {canView(authContext) && <TrainingCertificatesSection employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} />}
-      <MedicalRecordsSection employeeId={employeeId} canMedView={medView} canMedManage={medManage} onChildOpen={onChildOpen} />
+      {canView(authContext) && <IdentityDocumentsSection authContext={authContext} onSubjectDenied={denySubject} employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} documentWizardEnabled={documentWizardEnabled} />}
+      {medView && <MedicalInsurancesSection authContext={authContext} onSubjectDenied={denySubject} employeeId={employeeId} canManageDoc={medManage} onChildOpen={onChildOpen} documentWizardEnabled={documentWizardEnabled} />}
+      {canView(authContext) && <DependentsSection authContext={authContext} onSubjectDenied={denySubject} employeeId={employeeId} canManageDoc={manage} canManageMedical={medManage} onChildOpen={onChildOpen} documentWizardEnabled={documentWizardEnabled} />}
+      {canView(authContext) && <AccessCardsSection authContext={authContext} onSubjectDenied={denySubject} employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} />}
+      {canView(authContext) && <TrainingCertificatesSection authContext={authContext} onSubjectDenied={denySubject} employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} />}
+      <MedicalRecordsSection authContext={authContext} onSubjectDenied={denySubject} employeeId={employeeId} canMedView={medView} canMedManage={medManage} onChildOpen={onChildOpen} />
     </div></QueryReadBoundary>
+    </ComplianceChildLeaseContext.Provider>
   );
 }

@@ -195,7 +195,7 @@ export async function readDmsDocumentPage(input:unknown, context?:AuthContext):P
     const sortColumns={created_at:"created_at",document_no:"document_no",title:"title",document_type:"document_type(name_en)",status:"status",expiry_date:"expiry_date",tags:"perf_document_tag_count"};
     const from=(page.page-1)*page.pageSize;
     const { data, error, count } = await query.order(sortColumns[page.sortKey],{ascending:page.sortDir==="asc",nullsFirst:false}).order("id",{ascending:true}).range(from,from+page.pageSize-1).returns<DmsDocumentRow[]>();
-    if (error || count===null || !Number.isSafeInteger(count) || count < 0 || !Array.isArray(data) || data.length !== Math.min(page.pageSize, Math.max(0, count-from))) {
+    if (error || count===null || !Number.isSafeInteger(count) || count < 0 || !Array.isArray(data) || data.length !== Math.min(page.pageSize, Math.max(0, count-from)) || new Set(data.map(row=>row.id)).size!==data.length) {
       logger.error("DMS document list query failed", { code: error?.code??"COUNT_UNAVAILABLE" });
       return { success: false, error: "Documents could not be loaded. Please try again." };
     }

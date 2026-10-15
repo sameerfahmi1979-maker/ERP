@@ -3,6 +3,8 @@ import { act,cleanup,render,waitFor } from '@testing-library/react';
 import { QueryClient,QueryClientProvider } from '@tanstack/react-query';
 import { afterEach,expect,it,vi } from 'vitest';
 import { LetterPreviewDialog } from '@/features/report-center/letter-preview-dialog';
+import {syntheticAuthContext} from '../../performance/fixtures/auth-context';
+const authContext=syntheticAuthContext(['reports.view','reports.run']);
 const actions=vi.hoisted(()=>({run:vi.fn(),branding:vi.fn(),templates:vi.fn(),visual:vi.fn()}));
 vi.mock('@/server/actions/reports/runner',()=>({runReportAction:actions.run}));
 vi.mock('@/server/actions/reports/templates',()=>({resolveTemplatePreview:actions.branding,listReportTemplatesForSelection:actions.templates,renderVisualTemplateForLetterPreview:actions.visual}));
@@ -16,7 +18,7 @@ it('actual preview ignores a late response for the previous synthetic employee',
  let old!:(v:unknown)=>void;
  actions.run.mockImplementation(({filters})=>filters.employee_id==='90001'?new Promise(r=>{old=r;}):Promise.resolve(result('CURRENT_SYNTHETIC')));
  const client=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0}}});
- const page=(id:number)=><QueryClientProvider client={client}><LetterPreviewDialog open onOpenChange={vi.fn()} reportCode="test" reportLabel="Synthetic letter" employeeId={id}/></QueryClientProvider>;
+ const page=(id:number)=><QueryClientProvider client={client}><LetterPreviewDialog authContext={authContext} open onOpenChange={vi.fn()} reportCode="test" reportLabel="Synthetic letter" employeeId={id}/></QueryClientProvider>;
  const ui=render(page(90001));ui.rerender(page(90002));
  await waitFor(()=>expect(ui.getByText('CURRENT_SYNTHETIC')).toBeTruthy());
  await act(async()=>old(result('STALE_SYNTHETIC')));
@@ -25,7 +27,7 @@ it('actual preview ignores a late response for the previous synthetic employee',
 it('a returned report failure is visible and output buttons remain disabled',async()=>{
  actions.run.mockResolvedValue({success:false,error:'Synthetic report failure'});
  const client=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0}}});
- const ui=render(<QueryClientProvider client={client}><LetterPreviewDialog open onOpenChange={vi.fn()} reportCode="test" reportLabel="Synthetic letter" employeeId={90001}/></QueryClientProvider>);
+ const ui=render(<QueryClientProvider client={client}><LetterPreviewDialog authContext={authContext} open onOpenChange={vi.fn()} reportCode="test" reportLabel="Synthetic letter" employeeId={90001}/></QueryClientProvider>);
  await waitFor(()=>expect(ui.getByText('Synthetic report failure')).toBeTruthy());
  for(const button of ui.getAllByRole('button').filter(b=>/PDF|Print/.test(b.textContent??'')))expect((button as HTMLButtonElement).disabled).toBe(true);
  expect(actions.run).toHaveBeenCalledTimes(1);client.clear();

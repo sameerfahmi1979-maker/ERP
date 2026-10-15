@@ -1,220 +1,49 @@
 "use client";
-
-import { useState, useTransition } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { format, parseISO } from "date-fns";
-import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { ExternalLink, CheckCircle2, XCircle, Bell, Mail, GitMerge } from "lucide-react";
-import { queryKeys } from "@/lib/query/query-keys";
-import { useQuery } from "@tanstack/react-query";
-import {
-  getDmsNotifications,
-  markDmsNotificationRead,
-  dismissDmsNotification,
-  type DmsNotificationRow,
-  type DmsNotificationsFilter,
-} from "@/server/actions/dms/notifications";
-import { bridgeDmsNotificationToGlobal } from "@/server/actions/dms/dms-email-bridge";
-import { invalidateDmsNotifications, invalidateEmailQueue } from "@/lib/query/invalidation";
-import { DmsBridgeStatusBadge } from "./dms-bridge-status-badge";
-
-interface DmsNotificationsTableProps {
-  filter?: DmsNotificationsFilter;
-  showBridgeStatus?: boolean;
-}
-
-export function DmsNotificationsTable({ filter = {}, showBridgeStatus = false }: DmsNotificationsTableProps) {
-  const queryClient = useQueryClient();
-  const [bridgingId, setBridgingId] = useState<number | null>(null);
-  const [, startTransition] = useTransition();
-
-  const { data: notifications = [], isLoading } = useQuery({
-    queryKey: queryKeys.dms.notifications(filter as Record<string, unknown>),
-    queryFn: async () => {
-      const result = await getDmsNotifications(filter);
-      if (!result.success) throw new Error(result.error);
-      return result.data ?? [];
-    },
-    staleTime: 30_000,
-  });
-
-  const handleRead = async (id: number) => {
-    const result = await markDmsNotificationRead(id);
-    if (result.success) {
-      toast.success("Marked as read");
-      invalidateDmsNotifications(queryClient);
-    }
-  };
-
-  const handleDismiss = async (id: number) => {
-    const result = await dismissDmsNotification(id);
-    if (result.success) {
-      toast.success("Notification dismissed");
-      invalidateDmsNotifications(queryClient);
-    }
-  };
-
-  const handleBridge = (id: number) => {
-    setBridgingId(id);
-    startTransition(async () => {
-      const result = await bridgeDmsNotificationToGlobal(id);
-      if (result.success && result.data) {
-        if (result.data.skipped) {
-          toast.info(result.data.reason ?? "Already bridged");
-        } else {
-          toast.success(`Bridged → notif #${result.data.globalNotificationId}${result.data.globalEmailQueueId ? `, email queued #${result.data.globalEmailQueueId}` : ""}`);
-        }
-        invalidateDmsNotifications(queryClient);
-        invalidateEmailQueue(queryClient);
-      } else {
-        toast.error(result.error ?? "Bridge failed");
-      }
-      setBridgingId(null);
-    });
-  };
-
-  if (isLoading) {
-    return <div className="py-8 text-center text-sm text-muted-foreground">Loading…</div>;
-  }
-
-  if (notifications.length === 0) {
-    return (
-      <div className="py-8 text-center text-sm text-muted-foreground">No notifications found.</div>
-    );
-  }
-
-  const statusColors: Record<string, string> = {
-    pending: "border-amber-400 text-amber-700 dark:text-amber-400",
-    read: "border-slate-300 text-slate-500",
-    sent: "border-blue-400 text-blue-700",
-    dismissed: "border-slate-200 text-slate-400",
-    failed: "border-red-400 text-red-600",
-  };
-
-  return (
-    <div className="rounded-md border border-border overflow-hidden">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="bg-muted/20 border-b border-border">
-            <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground uppercase">Notification</th>
-            <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground uppercase">Document</th>
-            <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground uppercase">Channel</th>
-            <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground uppercase">Status</th>
-            {showBridgeStatus && (
-              <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground uppercase">Bridge</th>
-            )}
-            <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground uppercase">Scheduled</th>
-            <th className="px-3 py-2 w-32" />
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border/50">
-          {notifications.map((n: DmsNotificationRow) => {
-            const doc = n.document as Record<string, unknown> | null | undefined;
-            const isUnread = n.status === "pending" && !n.read_at;
-            return (
-              <tr
-                key={n.id}
-                className={`hover:bg-muted/10 transition-colors ${isUnread ? "font-medium" : "opacity-80"}`}
-              >
-                <td className="px-3 py-2">
-                  <div className="flex items-start gap-2">
-                    {isUnread && <div className="mt-1.5 h-2 w-2 rounded-full bg-primary flex-shrink-0" />}
-                    <div>
-                      <p className="text-sm truncate max-w-[280px]">{n.subject}</p>
-                      <p className="text-xs text-muted-foreground font-normal truncate max-w-[280px] mt-0.5">
-                        {n.message.slice(0, 100)}{n.message.length > 100 ? "…" : ""}
-                      </p>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-3 py-2">
-                  {doc ? (
-                    <div>
-                      <p className="font-mono text-xs text-muted-foreground">{doc.document_no as string}</p>
-                    </div>
-                  ) : "—"}
-                </td>
-                <td className="px-3 py-2">
-                  <Badge variant="outline" className="text-xs gap-1">
-                    {n.channel === "in_app" ? (
-                      <><Bell className="h-3 w-3" />In-App</>
-                    ) : (
-                      <><Mail className="h-3 w-3" />Email Ready</>
-                    )}
-                  </Badge>
-                </td>
-                <td className="px-3 py-2">
-                  <Badge variant="outline" className={`text-xs ${statusColors[n.status] ?? ""}`}>
-                    {n.status}
-                  </Badge>
-                </td>
-                {showBridgeStatus && (
-                  <td className="px-3 py-2">
-                    <DmsBridgeStatusBadge status={n.bridge_status} />
-                  </td>
-                )}
-                <td className="px-3 py-2 text-xs text-muted-foreground">
-                  {format(parseISO(n.scheduled_for), "dd MMM, HH:mm")}
-                </td>
-                <td className="px-3 py-2">
-                  <div className="flex items-center gap-1 justify-end">
-                    {doc && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0"
-                        onClick={() => window.open(`/dms/documents/record/${doc.id}`, "_blank")}
-                      >
-                        <ExternalLink className="h-3 w-3" />
-                      </Button>
-                    )}
-                    {showBridgeStatus && !n.global_notification_id && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0"
-                        title="Bridge to global"
-                        disabled={bridgingId === n.id}
-                        onClick={() => handleBridge(n.id)}
-                      >
-                        <GitMerge className={`h-3 w-3 text-blue-500 ${bridgingId === n.id ? "animate-spin" : ""}`} />
-                      </Button>
-                    )}
-                    {n.status === "pending" && (
-                      <>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 w-7 p-0"
-                          title="Mark as read"
-                          onClick={() => handleRead(n.id)}
-                        >
-                          <CheckCircle2 className="h-3 w-3 text-green-500" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 w-7 p-0"
-                          title="Dismiss"
-                          onClick={() => handleDismiss(n.id)}
-                        >
-                          <XCircle className="h-3 w-3 text-muted-foreground" />
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
+import {useLayoutEffect,useRef,useState} from "react";
+import Link from "next/link";
+import {toast} from "sonner";
+import {useQueryClient} from "@tanstack/react-query";
+import {Button} from "@/components/ui/button";
+import {ERPDataTable} from "@/components/erp/table/erp-data-table";
+import type {ColumnDef} from "@tanstack/react-table";
+import type {AuthContext} from "@/lib/rbac/check";
+import {hasPermission} from "@/lib/rbac/scope";
+import {useCountedTableRead} from "@/hooks/use-counted-table-read";
+import {dmsNotificationsCriteriaSchema,dmsNotificationPageSchema,dmsNotificationIdentity,type DmsNotificationReadRow} from "@/lib/reads/dms-notifications-schema";
+import {markDmsNotificationRead,dismissDmsNotification} from "@/server/actions/dms/notifications";
+import {bridgeDmsNotificationToGlobal} from "@/server/actions/dms/dms-email-bridge";
+import {invalidateDmsNotifications,invalidateEmailQueue} from "@/lib/query/invalidation";
+import {DmsBridgeStatusBadge} from "./dms-bridge-status-badge";
+type Props={authContext:AuthContext;tab:"my"|"all"|"unread"|"not_bridged";showBridgeStatus:boolean};
+export function DmsNotificationsTable(props:Props){const identity=dmsNotificationIdentity(props.authContext);return <DmsReadTable key={identity+props.tab} {...props} identity={identity}/>;}
+function DmsReadTable({authContext,tab,showBridgeStatus,identity}:Props&{identity:string}){
+ const qc=useQueryClient(),[acting,setActing]=useState(false),owner=useRef(false),flight=useRef(false);
+ useLayoutEffect(()=>{owner.current=true;return()=>{owner.current=false;};},[]);
+ const allowed=["dms.notifications.view","dms.notifications.manage","dms.admin"].some(c=>hasPermission(authContext,c))&&(!["all","not_bridged"].includes(tab)||["dms.notifications.manage","dms.admin"].some(c=>hasPermission(authContext,c)));
+ const read=useCountedTableRead({resource:"dms-notifications",prefix:["dms","notifications",tab],identity,allowed,defaultSort:[{id:"scheduled_for",desc:true}],
+ parseCriteria:input=>{const p=dmsNotificationsCriteriaSchema.safeParse({...input as Record<string,unknown>,audience:["all","not_bridged"].includes(tab)?"all":"my",unreadOnly:tab==="unread",...(tab==="not_bridged"?{bridgeStatus:"not_bridged"}:{})});return p.success?p.data:null;},
+ parsePage:i=>dmsNotificationPageSchema.parse(i),filters:[{id:"status",label:"Status",type:"text"},{id:"channel",label:"Channel",type:"select",options:[{value:"in_app",label:"In-App"},{value:"email_ready",label:"Email Ready"}]},...(showBridgeStatus&&tab!=="not_bridged"?[{id:"bridgeStatus",label:"Bridge status",type:"text" as const}]:[])]});
+ const canBridge=showBridgeStatus&&(hasPermission(authContext,"dms.admin")||hasPermission(authContext,"dms.notifications.manage")&&hasPermission(authContext,"notifications.email_queue.manage"));
+ async function action(row:DmsNotificationReadRow,kind:"read"|"dismiss"|"bridge"){
+  if(!owner.current||flight.current||!read.canAct()||kind==="bridge"&&!canBridge||!read.rows.some(r=>r.id===row.id))return;
+  flight.current=true;setActing(true);
+  try{const result=await(kind==="read"?markDmsNotificationRead(row.id):kind==="dismiss"?dismissDmsNotification(row.id):bridgeDmsNotificationToGlobal(row.id));
+   if(!owner.current)return;if(result.success){toast.success("Notification operation confirmed");invalidateDmsNotifications(qc);if(kind==="bridge")invalidateEmailQueue(qc);}else toast.error(result.error??"The operation could not be confirmed.");
+  }catch{if(owner.current)toast.error("The operation could not be confirmed. Refresh before retrying.");}
+  finally{flight.current=false;if(owner.current)setActing(false);}
+ }
+ const columns:ColumnDef<DmsNotificationReadRow>[]=[
+ {accessorKey:"subject",header:"Notification",size:300,cell:({row})=><div><p>{row.original.subject}</p><p className="text-xs text-muted-foreground line-clamp-2">{row.original.message}</p></div>},
+ {accessorKey:"document_no",header:"Document",size:150},{accessorKey:"channel",header:"Channel",size:110},{accessorKey:"status",header:"Status",size:110},
+ ...(showBridgeStatus?[{accessorKey:"bridge_status",header:"Bridge",size:130,cell:({row})=><DmsBridgeStatusBadge status={row.original.bridge_status}/>} satisfies ColumnDef<DmsNotificationReadRow>]:[]),
+ {accessorKey:"scheduled_for",header:"Scheduled",size:190,cell:({row})=>new Date(row.original.scheduled_for).toLocaleString()},
+ {id:"actions",header:"Actions",enableSorting:false,meta:{exportable:false},size:270,cell:({row})=><div className="flex flex-wrap gap-1">
+  {row.original.visible_document_id!==null&&<Link href={`/dms/documents/record/${row.original.visible_document_id}`}>Open document</Link>}
+  {canBridge&&!row.original.global_notification_id&&<Button size="sm" variant="outline" disabled={acting||!read.canAct()} onClick={()=>void action(row.original,"bridge")}>Bridge</Button>}
+  {row.original.status==="pending"&&<><Button size="sm" variant="outline" disabled={acting||!read.canAct()} onClick={()=>void action(row.original,"read")}>Mark read</Button><Button size="sm" variant="outline" disabled={acting||!read.canAct()} onClick={()=>void action(row.original,"dismiss")}>Dismiss</Button></>}
+ </div>}];
+ if(read.denied)return <p role="alert">Document notification access could not be verified.</p>;
+ return <div className="space-y-3"><Button variant="outline" onClick={read.refresh}>Refresh document notifications</Button>
+ {read.failed&&<p role="alert">Document notifications could not be verified. Refresh to retry.</p>}
+ <ERPDataTable tableId="dms.notifications" data={read.rows} columns={columns} serverRead={read.serverRead} isLoading={read.busy||read.failed} enableRowSelection={false} searchPlaceholder="Search document notifications…" emptyMessage="No document notifications match this view."/></div>;
 }

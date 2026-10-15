@@ -6,6 +6,7 @@
  */
 
 import { ERPCombobox } from "@/components/erp/combobox";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import { useBranchesQuery } from "@/hooks/lookups";
 
 interface BranchSelectProps {
@@ -39,10 +40,11 @@ export function BranchSelect({
   name,
   error,
 }: BranchSelectProps) {
-  const { options, isLoading, error: fetchError } = useBranchesQuery({
+  const choiceRead = useBranchesQuery({
     ownerCompanyId: ownerCompanyId ?? null,
     includeInactive,
-  });
+   selectedId: value ?? null });
+  const { options, isLoading, error: fetchError } = choiceRead;
 
   const handleValueChange = (newValue: string | number | null) => {
     if (!onValueChange) return;
@@ -58,7 +60,7 @@ export function BranchSelect({
   const effectiveEmptyText = ownerCompanyId ? "No branches available" : "Select a company first";
 
   return (
-    <ERPCombobox
+    <QueryReadBoundary queries={[choiceRead]}><ERPCombobox
       value={value ?? null}
       onValueChange={handleValueChange}
       options={options}
@@ -77,6 +79,6 @@ export function BranchSelect({
       className={className}
       name={name}
       ariaLabel="Branch"
-    />
+    /></QueryReadBoundary>
   );
 }

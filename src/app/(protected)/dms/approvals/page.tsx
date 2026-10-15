@@ -40,7 +40,7 @@ export default async function DmsApprovalsQueuePage() {
         description="Review pending document approvals and track your submissions."
         breadcrumbs={[{ label: "DMS", href: "/dms" }, { label: "Approval Queue" }]}
       />
-      <DmsApprovalsQueuePageClient canAct={canAct} isAdmin={isAdmin} />
+      <DmsApprovalsQueuePageClient authContext={ctx} canAct={canAct} isAdmin={isAdmin} />
     </div>
   );
 }

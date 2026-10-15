@@ -36,7 +36,13 @@ it('schema errors link to their field, restore descriptions and never store valu
  render(<Fixture/>);const input=screen.getByLabelText('Email');expect(input.getAttribute('aria-invalid')).toBe('true');fireEvent.click(screen.getByRole('button',{name:'Email: Enter a valid email address.'}));expect(document.activeElement).toBe(input);expect(screen.getByRole('alert').textContent).not.toContain('private-entry');fireEvent.click(screen.getByText('Correct'));await waitFor(()=>expect(input.hasAttribute('aria-invalid')).toBe(false));expect(input.getAttribute('aria-describedby')).toBe('hint');expect(localStorage.length+sessionStorage.length).toBe(0);
 });
 it('invalid recovery input gets linked summary without a request',async()=>{
- render(<ForgotPasswordForm/>);fireEvent.submit(screen.getByRole('button',{name:'Send reset link'}).closest('form')!);await screen.findByRole('alert');expect(mocks.reset).not.toHaveBeenCalled();expect(screen.getByLabelText(/^Email\s*\*$/).getAttribute('aria-invalid')).toBe('true');
+ render(<ForgotPasswordForm/>);fireEvent.submit(screen.getByRole('button',{name:'Send reset link'}).closest('form')!);await screen.findByRole('alert');
+ // The summary is rendered before useInlineFieldFeedback's effect annotates
+ // the input. Await that independent observable state, not a fixed delay.
+ const input=screen.getByLabelText(/^Email\s*\*$/);
+ await waitFor(()=>expect(input.getAttribute('aria-invalid')).toBe('true'));
+ expect(mocks.reset).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('button',{name:/^Email:/}));expect(document.activeElement).toBe(input);
 });
 it('generic recovery result hides eligibility and coalesces double submit',async()=>{
  let resolve!:()=>void;mocks.reset.mockImplementation(()=>new Promise<void>(r=>{resolve=r;}));render(<ForgotPasswordForm/>);fireEvent.change(screen.getByLabelText(/^Email\s*\*$/),{target:{value:'synthetic@example.invalid'}});const form=screen.getByRole('button',{name:'Send reset link'}).closest('form')!;fireEvent.submit(form);fireEvent.submit(form);await waitFor(()=>expect(mocks.reset).toHaveBeenCalledTimes(1));resolve();await screen.findByText('Check your email');expect(screen.getByText(/If your account is eligible/)).toBeTruthy();

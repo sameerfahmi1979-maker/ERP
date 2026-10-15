@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
 import { assertInternalActionUrl } from "@/lib/security/action-url";
+import {readUnreadNotificationCount} from "@/server/reads/notifications";
 
 const REVALIDATE_PATH = "/notifications";
 const REVALIDATE_ADMIN_PATH = "/admin/notifications";
@@ -156,23 +157,7 @@ export async function getAllNotifications(
 // ── getUnreadNotificationCount ────────────────────────────────────────────────
 
 export async function getUnreadNotificationCount(): Promise<ActionResult<{ count: number }>> {
-  try {
-    const supabase = await createClient();
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, data: { count: 0 } };
-
-    const { count, error } = await supabase
-      .from("erp_notifications")
-      .select("id", { count: "exact", head: true })
-      .eq("recipient_user_id", ctx.profile.id)
-      .eq("status", "unread")
-      .is("deleted_at", null);
-
-    if (error) return { success: true, data: { count: 0 } };
-    return { success: true, data: { count: count ?? 0 } };
-  } catch {
-    return { success: true, data: { count: 0 } };
-  }
+  return readUnreadNotificationCount();
 }
 
 // ── createNotification ────────────────────────────────────────────────────────

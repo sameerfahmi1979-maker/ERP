@@ -11,6 +11,7 @@
 
 import type { CountrySelectProps } from "@/features/master-data/geography/types";
 import { ERPCombobox } from "@/components/erp/combobox";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import { useCountriesQuery } from "@/hooks/lookups";
 
 export function CountrySelect({
@@ -28,11 +29,12 @@ export function CountrySelect({
   name,
   error,
 }: CountrySelectProps) {
+  const choiceRead = useCountriesQuery({ gccOnly, includeInactive, selectedId: value ?? null });
   const {
     options,
     isLoading: loading,
     error: fetchError,
-  } = useCountriesQuery({ gccOnly, includeInactive });
+  } = choiceRead;
 
   const handleValueChange = (newValue: string | number | null) => {
     if (!onValueChange) return;
@@ -41,19 +43,8 @@ export function CountrySelect({
     onValueChange(!isNaN(numValue) ? numValue : null);
   };
 
-  if (fetchError) {
-    return (
-      <div className={className}>
-        <div className="flex items-center justify-center h-10 px-3 border border-destructive rounded-md bg-destructive/10">
-          <span className="text-sm text-destructive">{fetchError}</span>
-        </div>
-        {error && <p className="text-sm text-destructive mt-1">{error}</p>}
-      </div>
-    );
-  }
-
   return (
-    <ERPCombobox
+    <QueryReadBoundary queries={[choiceRead]}><ERPCombobox
       value={value ?? null}
       onValueChange={handleValueChange}
       options={options}
@@ -65,13 +56,13 @@ export function CountrySelect({
       readOnly={false}
       required={required}
       loading={loading}
-      error={error}
+      error={fetchError ?? error}
       allowClear={allowClear}
       emptyText="No countries available"
       noResultsText="No results found"
       className={className}
       name={name}
       ariaLabel={name === "nationality_id" ? "Nationality" : "Country"}
-    />
+    /></QueryReadBoundary>
   );
 }

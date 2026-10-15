@@ -1,4 +1,5 @@
 "use server";
+import {readAllPages} from "@/server/reads/all-pages";
 
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
@@ -86,7 +87,8 @@ export async function getDmsDocumentFiles(
     const access = await checkDocumentConfidentialityAccess(supabase, documentId, ctx);
     if (!access.allowed) return { success: false, error: access.error ?? "Document access is restricted." };
 
-    const { data, error } = await supabase
+    const data = await readAllPages(async (from,to) => {
+      const result = await supabase
       .from("dms_document_files")
       .select(
         `id, document_id, version_id, file_role,
@@ -97,12 +99,13 @@ export async function getDmsDocumentFiles(
          created_by, created_at, deleted_at,
          version:dms_document_versions!version_id(version_number, version_label),
          creator:user_profiles!created_by(full_name)`
-      )
+      , {count:"exact"})
       .eq("document_id", documentId)
       .is("deleted_at", null)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false }).order("id",{ascending:true}).range(from,to);
+      return result;
+    }, {identity:row=>row.id,maxRows:10000});
 
-    if (error) return { success: false, error: error.message };
     return { success: true, data: (data as unknown as DmsDocumentFileRow[]) ?? [] };
   } catch (e) {
     return { success: false, error: String(e) };
@@ -124,17 +127,19 @@ export async function getDmsDocumentVersions(
     const access = await checkDocumentConfidentialityAccess(supabase, documentId, ctx);
     if (!access.allowed) return { success: false, error: access.error ?? "Document access is restricted." };
 
-    const { data, error } = await supabase
+    const data = await readAllPages(async (from,to) => {
+      const result = await supabase
       .from("dms_document_versions")
       .select(
         `id, document_id, version_number, version_label, change_notes, is_current,
          created_by, created_at,
          creator:user_profiles!created_by(full_name)`
-      )
+      , {count:"exact"})
       .eq("document_id", documentId)
-      .order("version_number", { ascending: false });
+      .order("version_number", { ascending: false }).order("id",{ascending:true}).range(from,to);
+      return result;
+    }, {identity:row=>row.id,maxRows:10000});
 
-    if (error) return { success: false, error: error.message };
     return { success: true, data: (data as unknown as DmsDocumentVersionRow[]) ?? [] };
   } catch (e) {
     return { success: false, error: String(e) };

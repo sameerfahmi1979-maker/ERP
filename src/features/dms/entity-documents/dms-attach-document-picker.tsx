@@ -4,6 +4,7 @@ import { FileText, Search, CheckCircle2, AlertCircle, Clock } from "lucide-react
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import {Button} from "@/components/ui/button";
 import type { AvailableDmsDocumentOption } from "@/server/actions/dms/entity-documents";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +20,10 @@ type DmsAttachDocumentPickerProps = {
   searchPlaceholder?: string;
   emptyMessage?: string;
   emptySearchMessage?: string;
+  errorMessage?:string;
+  onRetry?:()=>void;
+  disabled?:boolean;
+  page?:{offset:number;limit:number;totalCount:number;onOffsetChange:(offset:number)=>void};
 };
 
 export function DmsAttachDocumentPicker({
@@ -31,9 +36,10 @@ export function DmsAttachDocumentPicker({
   searchPlaceholder = "Search by document number or title...",
   emptyMessage = "No available documents found. All documents may already be linked to this record.",
   emptySearchMessage = "No matching documents found. Try a different search term.",
+  errorMessage,onRetry,disabled=false,page,
 }: DmsAttachDocumentPickerProps) {
   const trimmedSearch = search.trim();
-  const showEmpty = !isLoading && documents.length === 0;
+  const showEmpty = !isLoading && !errorMessage && documents.length === 0;
 
   return (
     <div className="flex flex-col gap-3 min-h-[420px]">
@@ -43,6 +49,7 @@ export function DmsAttachDocumentPicker({
           placeholder={searchPlaceholder}
           className="pl-9 h-10"
           value={search}
+          disabled={disabled}
           onChange={(e) => onSearchChange(e.target.value)}
           autoFocus
         />
@@ -64,13 +71,14 @@ export function DmsAttachDocumentPicker({
           </div>
         )}
 
+        {!isLoading&&errorMessage&&<div role="alert" className="p-4">{errorMessage}{onRetry&&<Button type="button" variant="outline" onClick={onRetry} disabled={disabled}>Retry available documents</Button>}</div>}
         {!isLoading && showEmpty && (
           <div className="flex flex-1 items-center justify-center p-8 text-center text-sm text-muted-foreground">
             {trimmedSearch ? emptySearchMessage : emptyMessage}
           </div>
         )}
 
-        {!isLoading && documents.length > 0 && (
+        {!isLoading && !errorMessage && documents.length > 0 && (
           <div className="flex-1 overflow-y-auto p-2 space-y-2 min-h-0">
             {documents.map((doc) => (
               <AttachDocumentPickRow
@@ -78,11 +86,13 @@ export function DmsAttachDocumentPicker({
                 doc={doc}
                 selected={selectedIds.includes(doc.id)}
                 onToggle={() => onToggle(doc.id)}
+                disabled={disabled}
               />
             ))}
           </div>
         )}
       </div>
+      {page&&!isLoading&&!errorMessage&&<div className="flex items-center gap-3 text-sm"><span>{page.totalCount} matching documents</span><Button type="button" variant="outline" disabled={disabled||page.offset===0} onClick={()=>page.onOffsetChange(Math.max(0,page.offset-page.limit))}>Previous choices</Button><Button type="button" variant="outline" disabled={disabled||page.offset+page.limit>=page.totalCount} onClick={()=>page.onOffsetChange(page.offset+page.limit)}>Next choices</Button></div>}
 
       {selectedIds.length > 0 && !isLoading && (
         <p className="text-xs text-muted-foreground shrink-0">
@@ -113,10 +123,11 @@ function extractionBadge(doc: AvailableDmsDocumentOption) {
   if (doc.has_ocr) {
     return (
       <Badge variant="outline" className="text-[10px] text-yellow-700 border-yellow-300">
-        <Clock className="h-2.5 w-2.5 mr-0.5" /> OCR only
+        <Clock className="h-2.5 w-2.5 mr-0.5" /> {doc.has_extraction===null?"OCR ready; AI restricted":"OCR only"}
       </Badge>
     );
   }
+  if(doc.has_extraction===null||doc.has_ocr===null)return <Badge variant="outline" className="text-[10px]">Extraction restricted</Badge>;
   return (
     <Badge variant="outline" className="text-[10px] text-muted-foreground">
       <AlertCircle className="h-2.5 w-2.5 mr-0.5" /> No extraction
@@ -128,10 +139,12 @@ function AttachDocumentPickRow({
   doc,
   selected,
   onToggle,
+  disabled,
 }: {
   doc: AvailableDmsDocumentOption;
   selected: boolean;
   onToggle: () => void;
+  disabled?:boolean;
 }) {
   const expired = isExpired(doc.expiry_date);
 
@@ -139,6 +152,7 @@ function AttachDocumentPickRow({
     <button
       type="button"
       onClick={onToggle}
+      disabled={disabled}
       aria-pressed={selected}
       className={cn(
         "w-full flex items-start gap-3 p-4 rounded-lg border text-left transition-colors",

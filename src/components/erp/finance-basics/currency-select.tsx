@@ -10,6 +10,7 @@
 
 import type { FinanceBasicsSelectProps } from "@/features/master-data/finance-basics/types";
 import { ERPCombobox } from "@/components/erp/combobox";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import type { ERPComboboxOption } from "@/components/erp/combobox";
 import { useCurrenciesQuery } from "@/hooks/lookups";
 import type { CurrencyRow } from "@/lib/lookups/option-mappers";
@@ -29,11 +30,12 @@ export function CurrencySelect({
   ariaLabel = "Currency",
   error,
 }: FinanceBasicsSelectProps) {
+  const choiceRead = useCurrenciesQuery({ includeInactive , selectedId: value ?? null});
   const {
     options,
     isLoading: loading,
     error: fetchError,
-  } = useCurrenciesQuery({ includeInactive });
+  } = choiceRead;
 
   const handleValueChange = (newValue: string | number | null) => {
     if (!onValueChange) return;
@@ -50,19 +52,8 @@ export function CurrencySelect({
     return <span>{code}{label}{symbol}</span>;
   };
 
-  if (fetchError) {
-    return (
-      <div className={className}>
-        <div className="flex items-center justify-center h-10 px-3 border border-destructive rounded-md bg-destructive/10">
-          <span className="text-sm text-destructive">{fetchError}</span>
-        </div>
-        {error && <p className="text-sm text-destructive mt-1">{error}</p>}
-      </div>
-    );
-  }
-
   return (
-    <ERPCombobox
+    <QueryReadBoundary queries={[choiceRead]}><ERPCombobox
       ariaLabel={ariaLabel}
       value={value ?? null}
       onValueChange={handleValueChange}
@@ -75,13 +66,13 @@ export function CurrencySelect({
       readOnly={false}
       required={required}
       loading={loading}
-      error={error}
+      error={fetchError ?? error}
       allowClear={allowClear}
       emptyText="No currencies available"
       noResultsText="No results found"
       className={className}
       name={name}
       renderOption={renderOption}
-    />
+    /></QueryReadBoundary>
   );
 }

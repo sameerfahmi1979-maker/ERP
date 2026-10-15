@@ -1,4 +1,5 @@
 "use server";
+import {readAllPages} from "@/server/reads/all-pages";
 
 /**
  * ERP DMS 13 — Multi-File Batch Upload → Draft Intake Queue (server actions)
@@ -1054,32 +1055,32 @@ export type DmsUploadBatchListRow = DmsUploadBatchRow & {
  * remain reachable from the Batch Intake list until every draft is resolved.
  */
 export async function listDmsUploadBatches(
-  limit = 100
+  limit?: number
 ): Promise<ActionResult<DmsUploadBatchListRow[]>> {
   try {
     const supabase = await createClient();
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canView(ctx)) return { success: false, error: "Permission denied" };
+    if (!ctx.isAccountActive || ctx.profile.must_change_password || !canView(ctx)) return { success: false, error: "Permission denied" };
 
-    const { data: batches, error } = await supabase
+    if(limit!==undefined&&(!Number.isInteger(limit)||limit<1||limit>200))return {success:false,error:"Invalid batch limit"};
+    const batches=await readAllPages(async(from,to)=>await supabase
       .from("dms_upload_batches")
-      .select("id, batch_code, status, total_files, processed_files, approved_files, failed_files, entity_type, entity_id, created_at")
+      .select("id, batch_code, status, total_files, processed_files, approved_files, failed_files, entity_type, entity_id, created_at",{count:"exact"})
       .is("deleted_at", null)
-      .order("created_at", { ascending: false })
-      .limit(Math.min(Math.max(limit, 1), 200));
-
-    if (error) return { success: false, error: error.message };
-    const batchRows = (batches ?? []) as DmsUploadBatchRow[];
+      .order("created_at", { ascending: false }).order("id").range(from,to),{identity:row=>row.id,maxRows:10000});
+    const batchRows = (limit===undefined?batches:batches.slice(0,limit)) as DmsUploadBatchRow[];
     if (batchRows.length === 0) return { success: true, data: [] };
 
     // Aggregate live per-draft counts (one query for all listed batches).
     const batchIds = batchRows.map((b) => b.id);
-    const { data: sessions } = await supabase
-      .from("dms_upload_sessions")
-      .select("batch_id, intake_status, document:dms_documents!document_id(status)")
-      .in("batch_id", batchIds)
-      .is("deleted_at", null);
+    const sessions=[];
+    for(let offset=0;offset<batchIds.length;offset+=100){
+      const part=await readAllPages(async(from,to)=>await supabase.from("dms_upload_sessions")
+        .select("id,batch_id,intake_status,document:dms_documents!document_id(status)",{count:"exact"})
+        .in("batch_id",batchIds.slice(offset,offset+100)).is("deleted_at",null).order("id").range(from,to),{identity:row=>row.id,maxRows:10000});
+      sessions.push(...part);
+    }
 
     const counts = new Map<number, { pending: number; approved: number; discarded: number; failed: number }>();
     for (const s of sessions ?? []) {
@@ -1138,23 +1139,26 @@ export async function getDmsUploadBatch(
 
 export async function getDmsUploadBatchDrafts(
   batchId: number
-): Promise<ActionResult<DmsBatchDraftRow[]>> {
+): Promise<ActionResult<DmsBatchDraftRow[]> & { updatedAt?: number }> {
   try {
     const supabase = await createClient();
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canView(ctx)) return { success: false, error: "Permission denied" };
+    if (!Number.isSafeInteger(batchId)||batchId<=0)return {success:false,error:"Invalid batch"};
+    if (!ctx.isAccountActive || ctx.profile.must_change_password || !canView(ctx)) return { success: false, error: "Permission denied" };
 
-    const { data: sessions, error } = await supabase
+    const parent=await supabase.from("dms_upload_batches").select("id").eq("id",batchId).is("deleted_at",null).maybeSingle();
+    if(parent.error)return {success:false,error:"Batch access unavailable"};
+    if(!parent.data)return {success:false,error:"Permission denied"};
+    const sessions = await readAllPages(async(from,to)=>{const r=await supabase
       .from("dms_upload_sessions")
       .select(`id, session_code, original_filename, intake_status, is_duplicate, document_id, ai_result_id,
                document:dms_documents!document_id(id, document_no, title, status, document_type:dms_document_types!document_type_id(name_en)),
-               ai_result:dms_ai_extraction_results!ai_result_id(classification_confidence)`)
+               ai_result:dms_ai_extraction_results!ai_result_id(classification_confidence)`,{count:"exact"})
       .eq("batch_id", batchId)
       .is("deleted_at", null)
-      .order("id", { ascending: true });
+      .order("id", { ascending: true }).range(from,to);return r;},{identity:row=>row.id,maxRows:10000});
 
-    if (error) return { success: false, error: error.message };
 
     const rows: DmsBatchDraftRow[] = (sessions ?? []).map((s) => {
       const sd = s as Record<string, unknown>;
@@ -1176,7 +1180,7 @@ export async function getDmsUploadBatchDrafts(
       };
     });
 
-    return { success: true, data: rows };
+    return { success: true, data: rows, updatedAt: Date.now() };
   } catch (e) {
     return { success: false, error: String(e) };
   }

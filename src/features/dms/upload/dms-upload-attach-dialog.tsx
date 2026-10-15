@@ -1,9 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import {useQuery} from "@tanstack/react-query";
+import {readJson,retryAuthorizedRead} from "@/lib/reads/client";
+import type {DmsReadPage} from "@/server/reads/dms-documents";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
+import { ERPChildDialogForm } from "@/features/dms/documents/section-read-boundary";
 import { ERPCombobox } from "@/components/erp/combobox/erp-combobox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,7 +34,6 @@ function UploadAttachSession({
   open,
   onOpenChange,
   session,
-  documents,
   onSuccess,
 }: DmsUploadAttachDialogProps) {
   const router = useRouter();
@@ -40,18 +42,24 @@ function UploadAttachSession({
   const [versionLabel, setVersionLabel] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const documentOptions = documents.map((d) => ({
-    value: d.id,
-    label: `${d.document_no} — ${d.title}`,
-  }));
+  const flight=useRef(false);
+  const [search,setSearch]=useState(""),[debounced,setDebounced]=useState("");
+  const [selected,setSelected]=useState<{value:number;label:string}|null>(null);
+  useEffect(()=>{const t=setTimeout(()=>setDebounced(search),250);return()=>clearTimeout(t);},[search]);
+  const targetQuery=useQuery({queryKey:["dms","attach-targets",session?.id,debounced],enabled:open&&!!session,queryFn:async({signal})=>{
+   const r=await readJson<{success:true;data:DmsReadPage}>("dms-documents",{page:1,pageSize:50,sortKey:"document_no",sortDir:"asc",filters:{search:debounced,excludeArchived:true}},signal);return r.data;
+  },retry:retryAuthorizedRead,staleTime:15000});
+  const targetReady=targetQuery.isSuccess&&!targetQuery.isFetching&&search===debounced;
+  const documentOptions=targetQuery.isError?[]:(targetQuery.data?.rows??[]).map(d=>({value:d.id,label:`${d.document_no} — ${d.title}`}));
+  if(selected&&!targetQuery.isError&&!documentOptions.some(row=>row.value===selected.value))documentOptions.unshift(selected);
 
   const handleSubmit = async () => {
-    if (!session) return;
+    if (!session || !targetReady || flight.current) return;
     if (!documentId) {
       toast.error("Please select a document");
       return;
     }
-    setIsSubmitting(true);
+    flight.current=true;setIsSubmitting(true);
     try {
       const result = await attachUploadToExistingDocument({
         uploadSessionId: session.id,
@@ -72,7 +80,7 @@ function UploadAttachSession({
       onSuccess?.(documentId);
       router.refresh();
     } finally {
-      setIsSubmitting(false);
+      flight.current=false;setIsSubmitting(false);
     }
   };
 
@@ -117,10 +125,15 @@ function UploadAttachSession({
           <Label className="mb-1.5 block">
             Target Document <span className="text-destructive">*</span>
           </Label>
+          <p className="text-xs text-muted-foreground">Shows up to 50 permitted matches. Search to find another document.</p>
           <ERPCombobox
             options={documentOptions}
             value={documentId}
-            onValueChange={(v) => setDocumentId(v as number | null)}
+            onValueChange={(v) => {if(!targetReady)return;setDocumentId(v as number | null);setSelected(documentOptions.find(row=>row.value===v)??null);}}
+            onSearchQueryChange={setSearch}
+            filterFn={()=>true}
+            loading={!targetReady&&!targetQuery.isError}
+            error={targetQuery.isError?"Document choices unavailable. Search again to retry.":undefined}
             placeholder="Search and select a document…"
             searchPlaceholder="Search by document number or title…"
           />

@@ -11,7 +11,8 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Full P01-P04 and remediation coverage can exceed 20m on slower runners.
+    timeout-minutes: 35
     env:
       # Build placeholders only; never connect CI to the production database.
       NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:16421
@@ -42,6 +43,10 @@ jobs:
         run: node node_modules/vitest/vitest.mjs run --config tests/performance/p03.config.mts
       - name: Typecheck P03 tests including opt-in laboratory harness
         run: node node_modules/typescript/bin/tsc --project tests/performance/p03.tsconfig.json --noEmit
+      - name: P04 consumer adoption regression tests
+        run: node node_modules/vitest/vitest.mjs run --config tests/performance/p04.config.mts
+      - name: Typecheck P04 tests including opt-in laboratory harness
+        run: node node_modules/typescript/bin/tsc --project tests/performance/p04.tsconfig.json --noEmit
       - run: npm run test:e2e -- --list
       - run: npm run build
       - run: npm run typecheck

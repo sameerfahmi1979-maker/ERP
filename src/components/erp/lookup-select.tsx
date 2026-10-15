@@ -14,7 +14,8 @@ import type { LookupSelectProps } from "@/features/master-data/lookups/types";
 import { ERPCombobox } from "@/components/erp/combobox";
 import type { ERPComboboxOption } from "@/components/erp/combobox";
 import { Badge } from "@/components/ui/badge";
-import type { LookupValue } from "@/features/master-data/lookups/types";
+import type { LookupChoice as LookupValue } from "@/lib/reads/lookup-contract";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 export function LookupSelect({
   categoryCode,
@@ -34,15 +35,14 @@ export function LookupSelect({
   name,
   error,
 }: LookupSelectProps) {
+  const choiceRead = useLookupValuesQuery(categoryCode, {
+    parentValueCode, includeInactive, enabled: !!categoryCode, selected: value ?? null, valueField,
+  });
   const {
     data: values,
     isLoading: loading,
     error: fetchError,
-  } = useLookupValuesQuery(categoryCode, {
-    parentValueCode,
-    includeInactive,
-    enabled: !!categoryCode,
-  });
+  } = choiceRead;
 
   // Map lookup values to ERPComboboxOption[]
   const options: ERPComboboxOption[] = values.map((item) => ({
@@ -112,19 +112,8 @@ export function LookupSelect({
     );
   };
 
-  if (fetchError) {
-    return (
-      <div className={className}>
-        <div className="flex items-center justify-center h-10 px-3 border border-destructive rounded-md bg-destructive/10">
-          <span className="text-sm text-destructive">{fetchError}</span>
-        </div>
-        {error && <p className="text-sm text-destructive mt-1">{error}</p>}
-      </div>
-    );
-  }
-
   return (
-    <ERPCombobox
+    <QueryReadBoundary queries={[{...choiceRead, isError: !!fetchError}]}><ERPCombobox
       value={value ?? null}
       onValueChange={handleValueChange}
       options={options}
@@ -136,13 +125,13 @@ export function LookupSelect({
       readOnly={false}
       required={required}
       loading={loading}
-      error={error}
+      error={fetchError ?? error}
       allowClear={allowClear}
       emptyText="No options available"
       noResultsText="No results found"
       className={className}
       name={name}
       renderOption={renderOption}
-    />
+    /></QueryReadBoundary>
   );
 }

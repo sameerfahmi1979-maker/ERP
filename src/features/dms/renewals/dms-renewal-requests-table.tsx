@@ -4,8 +4,8 @@ import { DmsListTools, useDmsListView, type DmsListField } from "@/features/dms/
 import { ConfiguredRow } from "@/components/erp/table/list-controls";
 import { DmsLoadError } from "@/features/dms/dms-load-error";
 
-import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -13,10 +13,9 @@ import { ExternalLink, CheckCircle2, XCircle } from "lucide-react";
 import { SortColHeader } from "@/components/erp/table/sort-col-header";
 import { TablePagination } from "@/components/erp/table/table-pagination";
 import { TableSearchInput } from "@/components/erp/table/table-search-input";
-import { useSortPaginate } from "@/hooks/use-sort-paginate";
-import { queryKeys } from "@/lib/query/query-keys";
+import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
+import { canonicalReadParams, useServerPage } from "@/hooks/use-server-page";
 import {
-  getDmsRenewalRequests,
   cancelDmsRenewalRequest,
   type DmsRenewalRequestRow,
   type RenewalRequestsFilter,
@@ -24,9 +23,11 @@ import {
 import { DmsRenewalStatusBadge } from "./dms-renewal-status-badge";
 import { DmsCompleteRenewalDialog } from "./dms-complete-renewal-dialog";
 import { invalidateDmsRenewals } from "@/lib/query/invalidation";
+import { ReadError } from "@/lib/reads/client";
 
 interface DmsRenewalRequestsTableProps {
   filter?: RenewalRequestsFilter;
+  canManage?: boolean;
 }
 
 const DMS_LIST_FIELDS: DmsListField[] = [
@@ -81,34 +82,59 @@ const DMS_LIST_FIELDS: DmsListField[] = [
   }
 ];
 
-export function DmsRenewalRequestsTable({ filter = {} }: DmsRenewalRequestsTableProps) {
+export function DmsRenewalRequestsTable({ filter = {}, canManage = false }: DmsRenewalRequestsTableProps) {
   const queryClient = useQueryClient();
-  const [completeDialog, setCompleteDialog] = useState<{ renewal: DmsRenewalRequestRow } | null>(null);
-
-  const { data: renewals = [], isLoading, isError, refetch, isFetching } = useQuery({
-    queryKey: queryKeys.dms.renewalRequests(filter as Record<string, unknown>),
-    queryFn: async () => {
-      const result = await getDmsRenewalRequests(filter);
-      if (!result.success) throw new Error(result.error);
-      return result.data ?? [];
-    },
-    staleTime: 30_000,
+  const [completeDialog, setCompleteDialog] = useState<{ renewal: DmsRenewalRequestRow; owner: string } | null>(null);
+  const viewState = useDmsListView<DmsRenewalRequestRow>("renewals", [], DMS_LIST_FIELDS, { serverFiltered: true });
+  const [search, setSearch] = usePersistentUiState("dms:renewals:search", "");
+  const [page, setPage] = usePersistentUiState("dms:renewals:page", 1);
+  const [pageSize, setPageSize] = usePersistentUiState("dms:renewals:size", 25);
+  const [sortKey, setSortKey] = usePersistentUiState("dms:renewals:sort", "created_at");
+  const [sortDir, setSortDir] = usePersistentUiState<"asc" | "desc">("dms:renewals:direction", "desc");
+  const criteria = { ...filter, search: search.trim(), columnFilters: viewState.filters };
+  const criteriaKey = canonicalReadParams(criteria);
+  const [appliedCriteria, setAppliedCriteria] = usePersistentUiState("dms:renewals:criteria", criteriaKey);
+  const effectivePage = criteriaKey === appliedCriteria ? page : 1;
+  const owner = canonicalReadParams({ ...criteria, page: effectivePage, pageSize, sortKey, sortDir });
+  useEffect(() => {
+    if (criteriaKey !== appliedCriteria) { setAppliedCriteria(criteriaKey); setPage(1); }
+  }, [criteriaKey, appliedCriteria, setAppliedCriteria, setPage]);
+  const read = useServerPage<DmsRenewalRequestRow>({
+    resource: "dms-renewal-page", keyPrefix: ["dms", "renewals", "page"],
+    params: { ...criteria, page: effectivePage, pageSize, sortKey, sortDir },
+    // No full-list SSR seed: fetch the first bounded page under current authority.
+    seedParams: {}, seed: { rows: [], totalCount: 0, page: 1, pageSize: 25 }, updatedAt: 0,
   });
-
-  const listView = useDmsListView("renewals", renewals, DMS_LIST_FIELDS);
-  const table = useSortPaginate(listView.rows, {
-    memoryKey: "dms:renewals",
-    defaultSortKey: "created_at",
-    defaultSortDir: "desc",
-    defaultPageSize: 25,
-    getSearchText: (r) => {
-      const doc = r.document as Record<string, unknown> | null | undefined;
-      const assignee = r.assignee as Record<string, unknown> | null | undefined;
-      return [r.renewal_no ?? "", String(doc?.document_no ?? ""), String(doc?.title ?? ""), r.status, r.priority, String(assignee?.full_name ?? "")].join(" ");
-    },
-  });
+  const { isError, refetch, isFetching } = read;
+  const isLoading = read.isBusy || read.isPending;
+  const visibleRenewals = isLoading || isError ? [] : read.data?.rows ?? [];
+  const total = isLoading || isError ? undefined : read.data?.totalCount;
+  const totalPages = Math.max(1, Math.ceil((total ?? 0) / pageSize));
+  useEffect(() => {
+    if (total !== undefined && effectivePage > totalPages) {
+      // A prior page's cached count is now known to be stale. Reverify it when
+      // moving back, instead of reviving an older count from the same account.
+      void queryClient.invalidateQueries({ queryKey: ["dms", "renewals", "page"], refetchType: "none" });
+      setPage(totalPages);
+    }
+  }, [total, effectivePage, totalPages, setPage, queryClient]);
+  const listView = { ...viewState, rows: visibleRenewals, loadedCount: visibleRenewals.length, totalCount: total };
+  const table = {
+    rows: visibleRenewals, total: total ?? 0, page: effectivePage, totalPages, pageSize, sortKey, sortDir,
+    query: search, setQuery: setSearch,
+    setPage: (value: number) => setPage(Math.max(1, Math.min(value, totalPages))),
+    setPageSize: (value: number) => { setPageSize(value); setPage(1); },
+    toggleSort: (key: string) => { if (key === sortKey) setSortDir(value => value === "asc" ? "desc" : "asc"); else { setSortKey(key); setSortDir("asc"); } setPage(1); },
+  };
+  // Retire targets when identity/criteria/authority change, not merely during a
+  // same-criteria background refresh. Keep that dialog mounted but hidden so a
+  // temporary read failure cannot destroy an entered, unsaved completion draft.
+  const denied = read.error instanceof ReadError && [401, 403].includes(read.error.status);
+  if (completeDialog && (completeDialog.owner !== owner || !canManage || denied ||
+      (!isLoading && !isError && !visibleRenewals.some(row => row.id === completeDialog.renewal.id && row.document_id === completeDialog.renewal.document_id)))) setCompleteDialog(null);
 
   const handleCancel = async (id: number) => {
+    if (!canManage || isError || isLoading || !visibleRenewals.some(row => row.id === id)) return;
     const result = await cancelDmsRenewalRequest(id, "Cancelled from dashboard");
     if (result.success) {
       toast.success("Renewal request cancelled");
@@ -118,24 +144,17 @@ export function DmsRenewalRequestsTable({ filter = {} }: DmsRenewalRequestsTable
     }
   };
 
-  if (isLoading) {
-    return <div className="py-8 text-center text-sm text-muted-foreground">Loading…</div>;
-  }
-
-  if (isError) return <DmsLoadError subject="renewal requests" retry={refetch} pending={isFetching} />;
-
   return (
     <>
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <p className="text-sm text-muted-foreground">
-            {table.total !== renewals.length
-              ? `${table.total} of ${renewals.length} renewal${renewals.length !== 1 ? "s" : ""}`
-              : `${renewals.length} renewal${renewals.length !== 1 ? "s" : ""}`}
+            {isError ? "Renewal count unavailable" : isLoading ? "Loading renewals…" : `${total} renewal${total !== 1 ? "s" : ""}`}
           </p>
           <TableSearchInput value={table.query} onChange={table.setQuery} placeholder="Search renewals…" className="w-52" />
         </div>
         <DmsListTools view={listView} />
+        {isError ? <DmsLoadError subject="renewal requests" retry={refetch} pending={isFetching} /> : isLoading ? <div role="status" className="py-8 text-center text-sm text-muted-foreground">Loading…</div> : <>
 <div className="rounded-md border border-border overflow-auto">
           <div role="region" aria-label="renewals table" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{ minWidth: listView.visible.reduce((sum, column) => sum + column.width, 0) }}><colgroup>{listView.visible.map(column => <col key={column.id} style={{ width: column.width }} />)}</colgroup>
             <thead>
@@ -196,14 +215,14 @@ export function DmsRenewalRequestsTable({ filter = {} }: DmsRenewalRequestsTable
                           <ExternalLink className="h-3 w-3" />
                         </Button>
                       )}
-                      {!["renewed", "cancelled", "rejected"].includes(r.status) && (
+                      {canManage && !["renewed", "cancelled", "rejected"].includes(r.status) && (
                         <>
                           <Button
                             type="button"
                             variant="outline"
                             size="sm"
                             className="h-7 text-xs gap-1"
-                            onClick={() => setCompleteDialog({ renewal: r })}
+                            onClick={() => setCompleteDialog({ renewal: r, owner })}
                           >
                             <CheckCircle2 className="h-3 w-3 text-green-500" />
                             Complete
@@ -213,6 +232,7 @@ export function DmsRenewalRequestsTable({ filter = {} }: DmsRenewalRequestsTable
                             variant="ghost"
                             size="sm"
                             className="h-7 text-xs gap-1 text-destructive hover:text-destructive"
+                            aria-label="Cancel renewal"
                             onClick={() => handleCancel(r.id)}
                           >
                             <XCircle className="h-3 w-3" />
@@ -235,11 +255,12 @@ export function DmsRenewalRequestsTable({ filter = {} }: DmsRenewalRequestsTable
               total={table.total}
             />
           </div>
+          </>}
         </div>
 
-      {completeDialog && (
+      {canManage && completeDialog && completeDialog.owner === owner && !denied && (
         <DmsCompleteRenewalDialog
-          open
+          open={!isError && !isLoading}
           onOpenChange={(v) => { if (!v) setCompleteDialog(null); }}
           renewalId={completeDialog.renewal.id}
           renewalNo={completeDialog.renewal.renewal_no ?? `#${completeDialog.renewal.id}`}

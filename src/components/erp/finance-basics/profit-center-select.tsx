@@ -7,6 +7,7 @@
 
 import type { FinanceBasicsSelectProps } from "@/features/master-data/finance-basics/types";
 import { ERPCombobox } from "@/components/erp/combobox";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import { useProfitCentersQuery } from "@/hooks/lookups";
 
 export interface ProfitCenterSelectProps extends FinanceBasicsSelectProps {
@@ -30,10 +31,11 @@ export function ProfitCenterSelect({
   name,
   error,
 }: ProfitCenterSelectProps) {
-  const { options: allOptions, isLoading, error: fetchError } = useProfitCentersQuery({
+  const choiceRead = useProfitCentersQuery({
     ownerCompanyId: ownerCompanyId ?? null,
     includeInactive,
-  });
+   selectedId: value ?? null });
+  const { options: allOptions, isLoading, error: fetchError } = choiceRead;
 
   const options = excludeId
     ? allOptions.filter((o) => o.value !== excludeId)
@@ -50,7 +52,7 @@ export function ProfitCenterSelect({
   };
 
   return (
-    <ERPCombobox
+    <QueryReadBoundary queries={[choiceRead]}><ERPCombobox
       value={value ?? null}
       onValueChange={handleValueChange}
       options={options}
@@ -68,6 +70,6 @@ export function ProfitCenterSelect({
       noResultsText="No results found"
       className={className}
       name={name}
-    />
+    /></QueryReadBoundary>
   );
 }

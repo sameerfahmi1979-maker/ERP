@@ -24,14 +24,14 @@ function admission():ComplianceMutationAdmission{const a={generation:{},ready:tr
 function view(a:ComplianceMutationAdmission){return <QueryClientProvider client={client}><HrDocumentToRecordWizard employeeId={7} targetType="identity_document" open onOpenChange={()=>{}} onSaved={()=>{}} admission={a}/></QueryClientProvider>;}
 async function review(){fireEvent.click(screen.getByRole("button",{name:/Test source/}));fireEvent.click(screen.getByRole("button",{name:"Review Draft"}));await screen.findByLabelText("Document Number");}
 it("pauses submission until selected historical catalog choices finish verification",async()=>{
- let resolve!:(r:unknown)=>void;s.catalog.mockImplementation(()=>new Promise(r=>{resolve=r;}));render(view(admission()));await review();const button=screen.getByRole("button",{name:"Save Identity Document"});expect(button).toHaveProperty("disabled",true);fireEvent.click(button);expect(s.save).not.toHaveBeenCalled();expect(s.catalog.mock.calls[0][0]).toMatchObject({selectedId:1,signal:expect.any(AbortSignal)});
+ let resolve!:(r:unknown)=>void;s.catalog.mockImplementation(()=>new Promise(r=>{resolve=r;}));render(view(admission()));await review();const button=screen.getByRole("button",{name:"Save Identity Document"});expect(button).toHaveProperty("disabled",true);fireEvent.click(button);expect(s.save).not.toHaveBeenCalled();await waitFor(()=>expect(s.catalog).toHaveBeenCalledTimes(1));expect(s.catalog.mock.calls[0][0]).toMatchObject({selectedId:1,signal:expect.any(AbortSignal)});
  await act(async()=>resolve({success:true,data:{data:[{id:1,name_en:"Archived selected type"}]}}));await waitFor(()=>expect(button).toHaveProperty("disabled",false));fireEvent.click(button);await waitFor(()=>expect(s.save).toHaveBeenCalledTimes(1));
 });
 it("retains draft but prevents saving when a required catalog read fails",async()=>{
  s.catalog.mockRejectedValue(new Error("Unavailable"));render(view(admission()));await review();await waitFor(()=>expect(s.catalog).toHaveBeenCalled());expect(screen.getByLabelText("Document Number")).toHaveProperty("value","PRIVATE-NUMBER");expect(screen.getByRole("button",{name:"Save Identity Document"})).toHaveProperty("disabled",true);expect(s.save).not.toHaveBeenCalled();
 });
 it("remounts private review state and aborts its catalog when the parent owner changes",async()=>{
- let resolve!:(r:unknown)=>void;s.catalog.mockImplementation(()=>new Promise(r=>{resolve=r;}));const a=admission(),r=render(view(a));await review();const signal=s.catalog.mock.calls[0][0].signal as AbortSignal;
+ let resolve!:(r:unknown)=>void;s.catalog.mockImplementation(()=>new Promise(r=>{resolve=r;}));const a=admission(),r=render(view(a));await review();await waitFor(()=>expect(s.catalog).toHaveBeenCalledTimes(1));const signal=s.catalog.mock.calls[0][0].signal as AbortSignal;
  r.rerender(view(admission()));expect(screen.queryByDisplayValue("PRIVATE-NUMBER")).toBeNull();expect(screen.getByRole("button",{name:"Review Draft"})).toHaveProperty("disabled",true);expect(signal.aborted).toBe(true);
  await act(async()=>resolve({success:true,data:{data:[{id:1,name_en:"OLD PRIVATE TYPE"}]}}));expect(screen.queryByText("OLD PRIVATE TYPE")).toBeNull();expect(s.save).not.toHaveBeenCalled();
 });

@@ -2,7 +2,8 @@
 // Read-only. No mutations. No raw OCR/content/prompt/AI response.
 // No future module tables.
 
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import {verifiedPreview} from "@/server/reads/verified-aggregate";
 import { buildSafeAuditDiff } from "./audit-sanitizer";
 import type { AuditExplainerScope, AuditTimelineItem } from "./types";
 
@@ -26,12 +27,12 @@ export async function collectAuditLogEntries(
   entityId?: number,
   limit = 50
 ): Promise<AuditTimelineItem[]> {
-  const supabase = createAdminClient();
+  const supabase = await createClient();
   const since = scopeToDate(scope);
 
   let query = supabase
     .from("audit_logs")
-    .select("id, actor_user_profile_id, module_code, entity_name, entity_id, entity_reference, action, old_values, new_values, created_at")
+    .select("id, actor_user_profile_id, module_code, entity_name, entity_id, entity_reference, action, old_values, new_values, created_at", {count:"exact"})
     .gte("created_at", since)
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -43,7 +44,7 @@ export async function collectAuditLogEntries(
     query = query.eq("entity_id", entityId);
   }
 
-  const { data } = await query;
+  const { data } = await verifiedPreview(query.order("id",{ascending:false}),limit);
 
   return (data ?? []).map((row) => {
     const diff = buildSafeAuditDiff(
@@ -92,19 +93,19 @@ export async function collectAiEventTimeline(
   entityId?: number,
   limit = 30
 ): Promise<AiEventTimelineItem[]> {
-  const supabase = createAdminClient();
+  const supabase = await createClient();
   const since = scopeToDate(scope);
   const items: AiEventTimelineItem[] = [];
 
   // Risk score events
   const riskQuery = supabase
     .from("erp_ai_risk_score_events")
-    .select("id, event_type, prior_risk_level, new_risk_level, actor_id, created_at, risk_score_id")
+    .select("id, event_type, prior_risk_level, new_risk_level, actor_id, created_at, risk_score_id", {count:"exact"})
     .gte("created_at", since)
     .order("created_at", { ascending: false })
     .limit(limit);
 
-  const { data: riskEvents } = await riskQuery;
+  const { data: riskEvents } = await verifiedPreview(riskQuery.order("id",{ascending:false}),limit);
   for (const row of riskEvents ?? []) {
     items.push({
       id: Number(row.id),
@@ -125,12 +126,12 @@ export async function collectAiEventTimeline(
   // Compliance finding events
   const complianceQuery = supabase
     .from("erp_ai_compliance_finding_events")
-    .select("id, finding_id, event_type, actor_user_id, created_at")
+    .select("id, finding_id, event_type, actor_user_id, created_at", {count:"exact"})
     .gte("created_at", since)
     .order("created_at", { ascending: false })
     .limit(limit);
 
-  const { data: complianceEvents } = await complianceQuery;
+  const { data: complianceEvents } = await verifiedPreview(complianceQuery.order("id",{ascending:false}),limit);
   for (const row of complianceEvents ?? []) {
     items.push({
       id: Number(row.id),
@@ -148,12 +149,12 @@ export async function collectAiEventTimeline(
   // Duplicate candidate events
   const dupQuery = supabase
     .from("erp_ai_duplicate_candidate_events")
-    .select("id, candidate_id, event_type, actor_user_id, created_at")
+    .select("id, candidate_id, event_type, actor_user_id, created_at", {count:"exact"})
     .gte("created_at", since)
     .order("created_at", { ascending: false })
     .limit(limit);
 
-  const { data: dupEvents } = await dupQuery;
+  const { data: dupEvents } = await verifiedPreview(dupQuery.order("id",{ascending:false}),limit);
   for (const row of dupEvents ?? []) {
     items.push({
       id: Number(row.id),
@@ -171,12 +172,12 @@ export async function collectAiEventTimeline(
   // Field suggestion events
   const suggQuery = supabase
     .from("erp_ai_field_suggestion_events")
-    .select("id, suggestion_id, event_type, actor_user_id, created_at")
+    .select("id, suggestion_id, event_type, actor_user_id, created_at", {count:"exact"})
     .gte("created_at", since)
     .order("created_at", { ascending: false })
     .limit(limit);
 
-  const { data: suggEvents } = await suggQuery;
+  const { data: suggEvents } = await verifiedPreview(suggQuery.order("id",{ascending:false}),limit);
   for (const row of suggEvents ?? []) {
     items.push({
       id: Number(row.id),
@@ -203,12 +204,12 @@ export async function collectDmsEventTimeline(
   documentId?: number,
   limit = 20
 ): Promise<AuditTimelineItem[]> {
-  const supabase = createAdminClient();
+  const supabase = await createClient();
   const since = scopeToDate(scope);
 
   let query = supabase
     .from("dms_document_events")
-    .select("id, document_id, event_type, description, performed_by, performed_at")
+    .select("id, document_id, event_type, description, performed_by, performed_at", {count:"exact"})
     .gte("performed_at", since)
     .order("performed_at", { ascending: false })
     .limit(limit);
@@ -217,7 +218,7 @@ export async function collectDmsEventTimeline(
     query = query.eq("document_id", documentId);
   }
 
-  const { data } = await query;
+  const { data } = await verifiedPreview(query.order("id",{ascending:false}),limit);
 
   return (data ?? []).map((row) => ({
     id: Number(row.id),

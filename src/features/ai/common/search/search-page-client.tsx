@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useTransition, useRef } from "react";
+import { useState, useCallback, useTransition, useRef, useEffect } from "react";
 import { AlertTriangle, Info } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +36,7 @@ export function SearchPageClient({
   const [recent, setRecent] = useState<ErpRecentSearch[]>(initialRecent);
   const [isPending, startTransition] = useTransition();
   const latest = useRef(0);
+  useEffect(()=>()=>{latest.current++;},[]);
   const changeQuery = (value:string) => { latest.current++; setQuery(value); setResponse(null); setError(null); setHasSearched(false); };
   const changeMode = (value:ErpSearchMode) => { latest.current++; setMode(value); setResponse(null); setError(null); setHasSearched(false); };
 
@@ -160,7 +161,7 @@ export function SearchPageClient({
           {response.totalCount > 0 && (
             <div className="flex items-center gap-2 pb-2">
               <p className="text-sm text-slate-600">
-                {response.totalCount} result{response.totalCount !== 1 ? "s" : ""} for{" "}
+                {response.totalCount} result{response.totalCount !== 1 ? "s" : ""} shown in this search preview for{" "}
                 <span className="font-medium text-slate-800">&ldquo;{response.query}&rdquo;</span>
               </p>
               {response.intent && (

@@ -9,6 +9,7 @@ type Props = {
   blocked: number;
   isLoading?: boolean;
   hasAccess?: boolean;
+  unavailable?: boolean;
 };
 
 const COLORS = {
@@ -17,7 +18,7 @@ const COLORS = {
   blocked: "hsl(0 72% 55%)",
 };
 
-export function HrWorkforceReadinessRing({ ready, notReady, blocked, isLoading, hasAccess = true }: Props) {
+export function HrWorkforceReadinessRing({ ready, notReady, blocked, isLoading, hasAccess = true, unavailable = false }: Props) {
   const total = ready + notReady + blocked;
   const readyPct = total > 0 ? Math.round((ready / total) * 100) : null;
 
@@ -44,6 +45,8 @@ export function HrWorkforceReadinessRing({ ready, notReady, blocked, isLoading, 
         <div className="flex flex-1 items-center justify-center">
           <div className="h-24 w-24 rounded-full border-4 border-dashed border-muted animate-pulse" />
         </div>
+      ) : unavailable ? (
+        <div className="flex flex-1 items-center justify-center px-4 py-6 text-center"><p className="text-xs text-muted-foreground">Readiness could not be verified</p></div>
       ) : total === 0 ? (
         <div className="flex flex-1 items-center justify-center px-4 py-6 text-center">
           <p className="text-xs text-muted-foreground">No assignment data yet</p>

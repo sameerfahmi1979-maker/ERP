@@ -212,7 +212,7 @@ it('transient failure retries once, while a forbidden read retires every private
  const initial=state.transport.mock.calls.filter(c=>c[1].kind==='pro').length;
  await act(async()=>{await view.client.invalidateQueries({queryKey:['hr','actions','pro-processes',880301]});});
  await screen.findByText('You do not have permission to view HR actions.');expect(state.transport.mock.calls.filter(c=>c[1].kind==='pro')).toHaveLength(initial+1);
- expect(screen.queryAllByText(token('notes'))).toHaveLength(0);expect(view.client.getQueryCache().getAll().filter(q=>q.queryKey[0]==='hr'&&q.queryKey[1]==='actions')).toHaveLength(0);
+ expect(screen.queryAllByText(token('notes'))).toHaveLength(0);await waitFor(()=>expect(view.client.getQueryCache().getAll().filter(q=>q.queryKey[0]==='hr'&&q.queryKey[1]==='actions')).toHaveLength(0));
 });
 it('complete wording is lazy, retained in full and removed when principal access changes',async()=>{
  const full='Full synthetic confidential body '+ 'x'.repeat(5000);state.details.mockImplementation(async(kind:string,id:number)=>({...row(kind,id),note_text:full}));

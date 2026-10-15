@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import {useDmsSectionQuery as useQuery} from "@/features/dms/documents/section-activity";
-import {readDmsSection} from "@/features/dms/documents/section-read";
+import { useContext, useState } from "react";
+import {DmsSectionActivity} from "@/features/dms/documents/section-activity";
+import {useRecordReadActive} from "@/hooks/use-record-read-active";
 import { useQueryClient } from "@tanstack/react-query";
 import { format, parseISO, differenceInDays } from "date-fns";
 import {
@@ -17,70 +17,70 @@ import {
   DmsApprovalActionDialog,
   type ApprovalDialogMode,
 } from "./dms-approval-action-dialog";
-
+import type {AuthContext} from "@/lib/rbac/check";
+import {dmsApprovalReadIdentity} from "@/lib/reads/dms-approvals-schema";
+import {useDmsApprovalState, useDmsApprovalHistory} from "@/hooks/use-dms-approvals";
+import {invalidateDmsApprovalOutcome} from "@/lib/query/invalidation";
 
 interface DmsApprovalActionPanelProps {
   documentId: number;
+  authContext: AuthContext;
 }
 
-export function DmsApprovalActionPanel({ documentId }: DmsApprovalActionPanelProps) {
+export function DmsApprovalActionPanel(props: DmsApprovalActionPanelProps) {
+  return <DmsApprovalActionSession key={JSON.stringify([dmsApprovalReadIdentity(props.authContext), props.documentId])} {...props}/>;
+}
+function DmsApprovalActionSession({ documentId, authContext }: DmsApprovalActionPanelProps) {
+  const recordActive=useRecordReadActive();
+  const sectionActive = useContext(DmsSectionActivity)&&recordActive;
   const qc = useQueryClient();
-  const [dialogMode, setDialogMode] = useState<ApprovalDialogMode | null>(null);
+  const [dialog, setDialog] = useState<{mode: ApprovalDialogMode; approvalId: number | null} | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false), [historyPage, setHistoryPage] = useState(1);
+  const stateQuery = useDmsApprovalState(authContext, documentId, sectionActive);
+  const historyQuery = useDmsApprovalHistory(authContext, documentId, historyPage, sectionActive && historyOpen && stateQuery.data?.record.canViewHistory === true);
 
-  const stateQuery = useQuery({
-    queryKey: ["dms", "approval-state", documentId] as const,
-    queryFn: async ({signal}) => {
-      const r = await readDmsSection("getDocumentApprovalState",[documentId],signal);
-      if (!r.success) throw new Error(r.error ?? "Failed to load approval state");
-      return r.data!;
-    },
-    staleTime: 15_000,
-    retry: 1,
-  });
-
-  const historyQuery = useQuery({
-    queryKey: ["dms", "approval-history", documentId] as const,
-    enabled: stateQuery.data?.canViewHistory === true,
-    queryFn: async ({signal}) => {
-      const r = await readDmsSection("getDocumentApprovalHistory",[documentId],signal);
-      if (!r.success) throw new Error("Approval history is unavailable");
-      return r.data ?? [];
-    },
-    staleTime: 15_000,
-    retry: 1,
-  });
-
-  function invalidate() {
-    qc.invalidateQueries({ queryKey: ["dms", "approval-state", documentId] });
-    qc.invalidateQueries({ queryKey: ["dms", "approval-history", documentId] });
+  function refresh() {
+    // History admission follows the refreshed state. Eagerly retrying it here
+    // would dispatch a read that state retirement immediately cancels.
+    stateQuery.retry();
   }
+  const current = stateQuery.data?.record;
+  const canConfirm = !!dialog && stateQuery.ready && !!current && current.currentApprovalId === dialog.approvalId
+    && (dialog.mode === "submit" ? current.canSubmit : dialog.mode === "approve" ? current.canApprove : dialog.mode === "reject" ? current.canReject : current.canWithdraw);
+  const dialogNode = dialog ? <DmsApprovalActionDialog key={JSON.stringify([dialog.mode, dialog.approvalId])} authContext={authContext}
+    open visible={sectionActive} canConfirm={canConfirm} isActionCurrent={stateQuery.isCurrent}
+    onRefreshStatus={stateQuery.retry} statusRefreshing={stateQuery.busy} statusRefreshDisabled={stateQuery.denied || stateQuery.invalid}
+    onOpenChange={open => {if (!open) setDialog(null);}} mode={dialog.mode} documentId={documentId} approvalId={dialog.approvalId} onSuccess={() => invalidateDmsApprovalOutcome(qc, documentId)}/> : null;
+  function openDialog(mode: ApprovalDialogMode) {if (stateQuery.isCurrent()) setDialog({mode, approvalId: stateQuery.data?.record.currentApprovalId ?? null});}
 
-  if (stateQuery.isLoading) {
+  if (stateQuery.busy) {
     return (
+      <>{dialogNode}
       <div className="flex items-center gap-2 py-6 text-muted-foreground text-sm">
         <Loader2 className="h-4 w-4 animate-spin" />
         Loading approval state...
-      </div>
+      </div></>
     );
   }
 
-  if (stateQuery.isError || !stateQuery.data) {
+  if (!stateQuery.ready || !stateQuery.data) {
     return (
+      <>{stateQuery.denied ? null : dialogNode}
       <div className="flex flex-col items-center gap-3 py-6 text-muted-foreground">
         <AlertCircle className="h-6 w-6 opacity-40" />
         <p className="text-sm text-center">
           Approval details could not be loaded. Check your connection and access, then retry.
         </p>
-        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => stateQuery.refetch()}>
+        <Button size="sm" variant="outline" className="gap-1.5" onClick={stateQuery.retry} disabled={stateQuery.denied || stateQuery.invalid}>
           <RefreshCw className="h-3.5 w-3.5" />
           Retry
         </Button>
-      </div>
+      </div></>
     );
   }
 
-  const state = stateQuery.data;
-  const history = historyQuery.data ?? [];
+  const state = stateQuery.data.record;
+  const history = historyQuery.data?.rows ?? [];
 
   const daysPending =
     state.approvalStatus === "pending_approval" && state.submittedAt
@@ -93,6 +93,7 @@ export function DmsApprovalActionPanel({ documentId }: DmsApprovalActionPanelPro
   }
 
   return (
+    <>{dialogNode}
     <div className="space-y-4">
       {/* Status summary card */}
       <div className="rounded-md border border-border bg-muted/5 p-4 space-y-3">
@@ -109,7 +110,7 @@ export function DmsApprovalActionPanel({ documentId }: DmsApprovalActionPanelPro
             size="sm"
             variant="ghost"
             className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
-            onClick={invalidate}
+            onClick={refresh}
             title="Refresh"
           >
             <RefreshCw className="h-3.5 w-3.5" />
@@ -160,7 +161,7 @@ export function DmsApprovalActionPanel({ documentId }: DmsApprovalActionPanelPro
             <Button
               size="sm"
               className="gap-1.5"
-              onClick={() => setDialogMode("submit")}
+              onClick={() => openDialog("submit")}
             >
               <Send className="h-3.5 w-3.5" />
               {state.approvalStatus === "rejected" || state.approvalStatus === "withdrawn"
@@ -174,7 +175,7 @@ export function DmsApprovalActionPanel({ documentId }: DmsApprovalActionPanelPro
               size="sm"
               variant="outline"
               className="gap-1.5 border-green-300 text-green-700 hover:bg-green-50 hover:text-green-800 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-900/20"
-              onClick={() => setDialogMode("approve")}
+              onClick={() => openDialog("approve")}
             >
               <CheckCircle2 className="h-3.5 w-3.5" />
               Approve
@@ -186,7 +187,7 @@ export function DmsApprovalActionPanel({ documentId }: DmsApprovalActionPanelPro
               size="sm"
               variant="outline"
               className="gap-1.5 border-red-300 text-red-700 hover:bg-red-50 hover:text-red-800 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
-              onClick={() => setDialogMode("reject")}
+              onClick={() => openDialog("reject")}
             >
               <XCircle className="h-3.5 w-3.5" />
               Reject
@@ -198,7 +199,7 @@ export function DmsApprovalActionPanel({ documentId }: DmsApprovalActionPanelPro
               size="sm"
               variant="ghost"
               className="gap-1.5 text-muted-foreground hover:text-foreground"
-              onClick={() => setDialogMode("withdraw")}
+              onClick={() => openDialog("withdraw")}
             >
               <Undo2 className="h-3.5 w-3.5" />
               Withdraw
@@ -218,29 +219,22 @@ export function DmsApprovalActionPanel({ documentId }: DmsApprovalActionPanelPro
         <>
           <Separator />
           <div className="space-y-2">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Approval History</p>
-            {historyQuery.isLoading ? (
+            <Button type="button" variant="outline" size="sm" aria-expanded={historyOpen} onClick={() => setHistoryOpen(value => !value)}>
+              {historyOpen ? "Hide approval history" : "Show approval history"}
+            </Button>
+            {historyOpen && (historyQuery.busy ? (
               <div className="flex items-center gap-2 py-3 text-muted-foreground text-xs">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading history...
               </div>
             ) : (
-              historyQuery.isError ? <DmsLoadError subject="approval history" retry={() => historyQuery.refetch()} pending={historyQuery.isFetching} /> : <DmsApprovalHistorySection rows={history} />
-            )}
+              historyQuery.ready ? <DmsApprovalHistorySection rows={history} page={historyPage} totalCount={historyQuery.data!.totalCount} pageSize={20}
+                onPageChange={page => {if (historyQuery.isCurrent()) setHistoryPage(page);}} />
+                : <DmsLoadError subject="approval history" retry={historyQuery.retry} pending={historyQuery.denied || historyQuery.invalid} />
+            ))}
           </div>
         </>
       )}
 
-      {/* Action dialogs */}
-      {dialogMode && (
-        <DmsApprovalActionDialog
-          open={!!dialogMode}
-          onOpenChange={(open) => { if (!open) setDialogMode(null); }}
-          mode={dialogMode}
-          documentId={documentId}
-          approvalId={state.currentApprovalId}
-          onSuccess={invalidate}
-        />
-      )}
-    </div>
+    </div></>
   );
 }

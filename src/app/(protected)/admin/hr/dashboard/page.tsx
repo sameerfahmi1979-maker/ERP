@@ -2,6 +2,8 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { redirect } from "next/navigation";
 import { HrDashboardPageClient } from "@/features/hr/dashboard/hr-dashboard-page-client";
 import type { HrDashboardPermissions } from "@/features/hr/dashboard/hr-dashboard-page-client";
+import {readHrDashboard} from "@/server/reads/hr-dashboard";
+import {hrDashboardReadIdentity} from "@/lib/reads/hr-dashboard-schema";
 
 export const metadata = { title: "HR Dashboard" };
 
@@ -25,5 +27,7 @@ export default async function HrDashboardPage() {
     canViewRecruitment: hasPermission(ctx, "hr.recruitment.view"),
   };
 
-  return <HrDashboardPageClient permissions={permissions} />;
+  const result = await readHrDashboard({}, ctx);
+  return <HrDashboardPageClient authContext={ctx} permissions={permissions}
+    initialRead={result.success && result.data ? {identity: hrDashboardReadIdentity(ctx), data: result.data} : undefined} />;
 }

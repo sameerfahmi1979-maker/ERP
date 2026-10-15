@@ -18,12 +18,16 @@ import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { DmsDocumentStatusBadge } from "@/features/dms/documents/dms-document-status-badge";
 import { DmsExpiryBadge } from "@/features/dms/documents/dms-expiry-badge";
-import type { HrDocBrowserDocument, HrDocBrowserFile } from "@/server/actions/hr/doc-browser";
+import type { HrBrowserDocument, HrBrowserFile } from "@/lib/reads/hr-document-browser-schema";
 import type { BrowserEntitySelection } from "./hr-doc-browser-types";
 
 interface HrDocBrowserPreviewProps {
   entity: BrowserEntitySelection | null;
-  document: HrDocBrowserDocument | null;
+  document: HrBrowserDocument | null;
+  files: HrBrowserFile[];
+  totalFiles: number;
+  canPreview: boolean;
+  canDownload: boolean;
 }
 
 function formatBytes(bytes: number | null): string {
@@ -36,25 +40,26 @@ function formatBytes(bytes: number | null): string {
 function previewKind(mimeType: string | null): "pdf" | "image" | "other" {
   const mime = (mimeType ?? "").split(";")[0].trim().toLowerCase();
   if (mime === "application/pdf") return "pdf";
-  if (mime.startsWith("image/")) return "image";
+  if (["image/png", "image/jpeg", "image/webp", "image/gif"].includes(mime)) return "image";
   return "other";
 }
 
-export function HrDocBrowserPreview({ entity, document: doc }: HrDocBrowserPreviewProps) {
+export function HrDocBrowserPreview({ entity, document: doc, files, totalFiles, canPreview, canDownload }: HrDocBrowserPreviewProps) {
   const { openTab } = useWorkspace();
   const [activeFileIndex, setActiveFileIndex] = useState(0);
 
   // Reset file selection when the document changes (render-time state adjustment)
-  const [prevDoc, setPrevDoc] = useState<HrDocBrowserDocument | null>(doc);
-  if (prevDoc !== doc) {
-    setPrevDoc(doc);
+  const fileOwner = `${doc?.key ?? ""}:${files[0]?.id ?? ""}`;
+  const [prevDoc, setPrevDoc] = useState(fileOwner);
+  if (prevDoc !== fileOwner) {
+    setPrevDoc(fileOwner);
     setActiveFileIndex(0);
   }
 
-  const activeFile: HrDocBrowserFile | null = useMemo(() => {
-    if (!doc || doc.files.length === 0) return null;
-    return doc.files[Math.min(activeFileIndex, doc.files.length - 1)];
-  }, [doc, activeFileIndex]);
+  const activeFile: HrBrowserFile | null = useMemo(() => {
+    if (!doc || files.length === 0) return null;
+    return files[Math.min(activeFileIndex, files.length - 1)];
+  }, [doc, files, activeFileIndex]);
 
   if (!doc) {
     return (
@@ -67,9 +72,9 @@ export function HrDocBrowserPreview({ entity, document: doc }: HrDocBrowserPrevi
     );
   }
 
-  const kind = activeFile ? previewKind(activeFile.mimeType) : null;
-  const inlineUrl = activeFile ? `/api/dms/file?fileId=${activeFile.id}&disposition=inline` : null;
-  const downloadUrl = activeFile
+  const kind = activeFile && canPreview ? previewKind(activeFile.mimeType) : null;
+  const inlineUrl = activeFile && canPreview ? `/api/dms/file?fileId=${activeFile.id}&disposition=inline` : null;
+  const downloadUrl = activeFile && canDownload
     ? `/api/dms/file?fileId=${activeFile.id}&disposition=attachment`
     : null;
 
@@ -109,7 +114,7 @@ export function HrDocBrowserPreview({ entity, document: doc }: HrDocBrowserPrevi
           {doc.expiryDate && <span>Expiry: {format(new Date(doc.expiryDate), "dd MMM yyyy")}</span>}
           {entity && <span>Owner: {entity.name}</span>}
           <span>
-            {doc.files.length} file{doc.files.length !== 1 ? "s" : ""}
+            {totalFiles} permitted file{totalFiles !== 1 ? "s" : ""}
           </span>
         </div>
 
@@ -133,15 +138,15 @@ export function HrDocBrowserPreview({ entity, document: doc }: HrDocBrowserPrevi
       </div>
 
       {/* File selector (multi-file docs) */}
-      {doc.files.length > 1 && (
+      {files.length > 1 && (
         <div className="flex gap-1.5 px-4 py-2 border-b border-border/60 overflow-x-auto shrink-0">
-          {doc.files.map((f, i) => (
+          {files.map((f, i) => (
             <button
               key={f.id}
               onClick={() => setActiveFileIndex(i)}
               className={cn(
                 "shrink-0 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors max-w-[220px] truncate",
-                i === Math.min(activeFileIndex, doc.files.length - 1)
+                i === Math.min(activeFileIndex, files.length - 1)
                   ? "border-primary bg-primary/10 text-primary"
                   : "border-border text-muted-foreground hover:bg-muted"
               )}
@@ -160,7 +165,7 @@ export function HrDocBrowserPreview({ entity, document: doc }: HrDocBrowserPrevi
             <FileIcon className="h-8 w-8 opacity-25" />
             <p className="text-xs text-center">
               {doc.source === "hr_identity"
-                ? "This HR identity record has no attached file. Details are shown in the strip above."
+                ? "No accessible DMS file is available for this HR identity record. Details are shown above."
                 : "This document has no files attached."}
             </p>
           </div>
@@ -191,7 +196,7 @@ export function HrDocBrowserPreview({ entity, document: doc }: HrDocBrowserPrevi
                 {activeFile.fileSizeBytes != null && ` · ${formatBytes(activeFile.fileSizeBytes)}`}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                Inline preview is not available for this file type.
+                {canPreview ? "Inline preview is not available for this file type." : "Your current access does not allow inline preview."}
               </p>
             </div>
             {downloadUrl && (

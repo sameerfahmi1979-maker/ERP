@@ -1,11 +1,14 @@
 "use client";
 
-import { useId, useState } from "react";
-import { Loader2, CheckCircle2, XCircle, Send, Undo2 } from "lucide-react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
+import type {AuthContext} from "@/lib/rbac/check";
+import {dmsApprovalReadIdentity} from "@/lib/reads/dms-approvals-schema";
+import { Loader2, CheckCircle2, XCircle, Send, Undo2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import {
   submitDocumentForApproval,
   approveDocument,
@@ -17,11 +20,19 @@ export type ApprovalDialogMode = "submit" | "approve" | "reject" | "withdraw";
 
 interface DmsApprovalActionDialogProps {
   open: boolean;
+  /** Keep the same-owner draft mounted while a retained record is inactive. */
+  visible?: boolean;
   onOpenChange: (open: boolean) => void;
   mode: ApprovalDialogMode;
   documentId: number;
   approvalId?: number | null;
   onSuccess: () => void;
+  authContext: AuthContext;
+  canConfirm: boolean;
+  isActionCurrent: () => boolean;
+  onRefreshStatus?: () => void;
+  statusRefreshing?: boolean;
+  statusRefreshDisabled?: boolean;
 }
 
 const DIALOG_META: Record<ApprovalDialogMode, { title: string; subtitle: string; submitLabel: string; icon: React.ReactNode }> = {
@@ -51,14 +62,28 @@ const DIALOG_META: Record<ApprovalDialogMode, { title: string; subtitle: string;
   },
 };
 
-export function DmsApprovalActionDialog({
+export function DmsApprovalActionDialog(props: DmsApprovalActionDialogProps) {
+  if (!props.open) return null;
+  return <DmsApprovalActionDialogSession key={JSON.stringify([dmsApprovalReadIdentity(props.authContext), props.documentId, props.approvalId, props.mode])} {...props}/>;
+}
+function DmsApprovalActionDialogSession({
   open,
+  visible = true,
   onOpenChange,
   mode,
   documentId,
   approvalId,
   onSuccess,
+  canConfirm,
+  isActionCurrent,
+  onRefreshStatus,
+  statusRefreshing = false,
+  statusRefreshDisabled = false,
 }: DmsApprovalActionDialogProps) {
+  const live = useRef(false), saving = useRef(false);
+  const admission = useRef({canConfirm, isActionCurrent, onRefreshStatus, statusRefreshing, statusRefreshDisabled,visible});
+  useLayoutEffect(() => {admission.current = {canConfirm, isActionCurrent, onRefreshStatus, statusRefreshing, statusRefreshDisabled,visible};});
+  useLayoutEffect(() => {live.current = true; return () => {live.current = false;};}, []);
   const [reason, setReason] = useState("");
   const fieldId = useId();
   const [comment, setComment] = useState("");
@@ -67,7 +92,15 @@ export function DmsApprovalActionDialog({
 
   const meta = DIALOG_META[mode];
 
+  function handleRefreshStatus() {
+    if (!live.current || !admission.current.visible || saving.current || admission.current.statusRefreshing || admission.current.statusRefreshDisabled) return;
+    // The owning read guards its lifetime and coalesces same-tick refreshes.
+    // This refresh never invokes or retries a business mutation.
+    admission.current.onRefreshStatus?.();
+  }
+
   function handleClose(open: boolean) {
+    if(!live.current||!admission.current.visible)return;
     if (!open && !submitting) {
       setReason("");
       setComment("");
@@ -77,6 +110,7 @@ export function DmsApprovalActionDialog({
   }
 
   async function handleSubmit() {
+    if (!live.current || !admission.current.visible || saving.current || admission.current.statusRefreshing || !admission.current.canConfirm || !admission.current.isActionCurrent()) return;
     setValidationError(null);
 
     if (mode === "reject" && reason.trim().length < 5) {
@@ -84,6 +118,7 @@ export function DmsApprovalActionDialog({
       return;
     }
 
+    saving.current = true;
     setSubmitting(true);
     try {
       let result: { success: boolean; error?: string; data?: unknown };
@@ -101,6 +136,7 @@ export function DmsApprovalActionDialog({
         result = await withdrawDocumentApproval(documentId, approvalId, { reason: reason.trim() || undefined });
       }
 
+      if (!live.current) return;
       if (result.success) {
         toast.success(
           mode === "submit" ? "Document submitted for approval." :
@@ -116,9 +152,10 @@ export function DmsApprovalActionDialog({
         setValidationError("The action was not completed. Your entries are retained. Refresh the document status and check your access before retrying.");
       }
     } catch {
-      setValidationError("The result could not be confirmed. Your entries are retained. Check the document status before retrying to avoid repeating an approval action.");
+      if (live.current) setValidationError("The result could not be confirmed. Your entries are retained. Check the document status before retrying to avoid repeating an approval action.");
     } finally {
-      setSubmitting(false);
+      saving.current = false;
+      if (live.current) setSubmitting(false);
     }
   }
 
@@ -128,7 +165,7 @@ export function DmsApprovalActionDialog({
 
   return (
     <ERPChildDialogForm
-      open={open}
+      open={open&&visible}
       onOpenChange={handleClose}
       title={meta.title}
       subtitle={meta.subtitle}
@@ -136,10 +173,22 @@ export function DmsApprovalActionDialog({
       mode={mode === "submit" ? "add" : "edit"}
       size="sm"
       isSubmitting={submitting}
+      submitDisabled={!canConfirm || statusRefreshing}
       onSubmit={handleSubmit}
       submitLabel={meta.submitLabel}
     >
       <div className="grid grid-cols-12 gap-4">
+        {!canConfirm && <p role="status" className="col-span-12 text-sm text-muted-foreground">
+          This action is not currently available. Your notes are retained. Refresh the approval status and reopen the action if the request changed.
+        </p>}
+        {onRefreshStatus && <div className="col-span-12 flex flex-wrap items-center gap-2">
+          <Button type="button" size="sm" variant="outline" onClick={handleRefreshStatus}
+            disabled={submitting || statusRefreshing || statusRefreshDisabled}>
+            <RefreshCw aria-hidden="true" className={`mr-1.5 h-3.5 w-3.5${statusRefreshing ? " animate-spin" : ""}`} />
+            Refresh approval status
+          </Button>
+          {statusRefreshing && <span role="status" className="text-xs text-muted-foreground">Refreshing approval status...</span>}
+        </div>}
         {hasCommentField && (
           <div className="col-span-12">
             <Label htmlFor={`${fieldId}-comment`} className="text-xs text-muted-foreground mb-1 block">

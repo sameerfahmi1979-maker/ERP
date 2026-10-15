@@ -9,6 +9,8 @@
  */
 
 import { DraftRestoredNotice } from "@/components/workspace/draft-restored-notice";
+import {useQueryClient} from "@tanstack/react-query";
+import {invalidateDmsDocumentRecord, invalidateDmsEntityDocuments} from "@/lib/query/invalidation";
 import type { ERPRecordSection } from "@/components/workspace/erp-record-section-nav";
 import { ERPRecordSectionPanel as BaseSectionPanel, ERPRecordWorkspaceForm } from "@/components/workspace/erp-record-workspace-form";
 import { useWorkspaceFormDirty as useFormDirty } from "@/hooks/use-workspace-form-dirty";
@@ -113,6 +115,7 @@ function DmsDocumentRecordFormInner({
   entityContext,
 }: DmsDocumentRecordFormProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { closeTab, activeTab, renameTab, updateTabRoute, markDirty } = useWorkspace();
 
   const [currentMode, setCurrentMode] = useState<"add" | "edit" | "view">(mode);
@@ -260,6 +263,8 @@ function DmsDocumentRecordFormInner({
       }
 
       if (result.success) {
+        const savedId = currentMode === "edit" ? doc?.id ?? createdDocId : result.data && "id" in result.data ? Number(result.data.id) : null;
+        if (savedId) invalidateDmsDocumentRecord(queryClient, savedId);
         toast.success(`Document ${currentMode === "edit" ? "updated" : "created"} successfully`);
         clearDraft();
         resetDirty();
@@ -270,9 +275,13 @@ function DmsDocumentRecordFormInner({
 
           // Auto-link to entity context if provided (generic — any module)
           if (entityContext) {
-            await linkDmsDocumentToEntity(newId, entityContext.entityType, entityContext.entityId, {
+            const linkResult = await linkDmsDocumentToEntity(newId, entityContext.entityType, entityContext.entityId, {
               is_primary: true,
             });
+            if (linkResult.success) {
+              invalidateDmsDocumentRecord(queryClient, newId);
+              invalidateDmsEntityDocuments(queryClient, entityContext.entityType, entityContext.entityId);
+            }
           }
 
           setCreatedDocId(newId);
@@ -656,7 +665,7 @@ function DmsDocumentRecordFormInner({
 
         {/* ── Approvals ── */}
         <ERPRecordSectionPanel id="approvals" activeId={activeSection} lazyMount>
-          <DmsDocumentApprovalsSection documentId={effectiveDocId} />
+          <DmsDocumentApprovalsSection documentId={effectiveDocId} authContext={authContext} />
         </ERPRecordSectionPanel>
 
         {/* ── Comments ── */}

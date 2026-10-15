@@ -14,7 +14,8 @@ import {
   TrendingDown,
   Minus,
 } from "lucide-react";
-import type { DmsDashboardStats, DmsDocumentsByDay } from "@/server/actions/dms/dashboard";
+import type { DmsDashboard, DmsDashboardMetric, DmsDocumentsByDay } from "@/lib/reads/dms-dashboard-schema";
+import {dashboardStatusText} from "./dms-dashboard-section-state";
 
 function formatStorage(bytes: number): string {
   if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(1)} GB`;
@@ -59,21 +60,25 @@ type KpiCard = {
   icon: React.ReactNode;
   accent: Accent;
   sparkline?: boolean;
+  available?: boolean;
 };
 
 type Props = {
-  stats: DmsDashboardStats;
+  stats: DmsDashboard;
   sparklineData?: DmsDocumentsByDay[];
 };
 
 export function DmsKpiCards({ stats, sparklineData }: Props) {
-  const trend = trendPct(stats.added_this_month, stats.added_last_month);
+  const value=(metric:DmsDashboardMetric,format=(n:number)=>n.toLocaleString())=>metric.status==="ready"?format(metric.value):dashboardStatusText(metric.status);
+  const number=(metric:DmsDashboardMetric)=>metric.status==="ready"?metric.value:undefined;
+  const current=number(stats.added_this_month),prior=number(stats.added_last_month);
+  const trend=current!==undefined&&prior!==undefined?trendPct(current,prior):null;
 
   const cards: KpiCard[] = [
     {
       label: "Total Documents",
-      value: stats.total_documents.toLocaleString(),
-      sub: "in the repository",
+      value: value(stats.total_documents),available:stats.total_documents.status==="ready",
+      sub: "permitted, non-archived records",
       href: "/dms/documents",
       icon: <FileText className="h-4 w-4" />,
       accent: "blue",
@@ -81,8 +86,8 @@ export function DmsKpiCards({ stats, sparklineData }: Props) {
     },
     {
       label: "Added This Month",
-      value: stats.added_this_month.toLocaleString(),
-      sub: stats.added_last_month > 0 ? `vs ${stats.added_last_month} last month` : "no prior data",
+      value: value(stats.added_this_month),available:stats.added_this_month.status==="ready",
+      sub: prior===undefined?"Previous-month total unavailable":prior>0?`vs ${prior} last month`:"No records added last month",
       trend,
       href: "/dms/documents",
       icon: <PlusCircle className="h-4 w-4" />,
@@ -90,32 +95,32 @@ export function DmsKpiCards({ stats, sparklineData }: Props) {
     },
     {
       label: "Inbox Pending",
-      value: stats.inbox_pending.toLocaleString(),
-      sub: "awaiting processing",
+      value: value(stats.inbox_pending),available:stats.inbox_pending.status==="ready",
+      sub: "permitted intake awaiting processing",
       href: "/dms/inbox",
       icon: <Inbox className="h-4 w-4" />,
-      accent: stats.inbox_pending > 20 ? "amber" : "slate",
+      accent: (number(stats.inbox_pending)??0)>20 ? "amber" : "slate",
     },
     {
       label: "Expiring ≤30 Days",
-      value: stats.expiring_30_days.toLocaleString(),
-      sub: "require attention",
+      value: value(stats.expiring_30_days),available:stats.expiring_30_days.status==="ready",
+      sub: "permitted records requiring attention",
       href: "/dms/expiring",
       icon: <AlertTriangle className="h-4 w-4" />,
-      accent: stats.expiring_30_days > 5 ? "red" : stats.expiring_30_days > 0 ? "amber" : "slate",
+      accent: (number(stats.expiring_30_days)??0)>5 ? "red" : (number(stats.expiring_30_days)??0)>0 ? "amber" : "slate",
     },
     {
       label: "Review Queue",
-      value: stats.review_queue_pending.toLocaleString(),
-      sub: "pending AI review",
+      value: value(stats.review_queue_pending),available:stats.review_queue_pending.status==="ready",
+      sub: "permitted items pending AI review",
       href: "/dms/review-queue",
       icon: <Bot className="h-4 w-4" />,
-      accent: stats.review_queue_pending > 10 ? "violet" : "slate",
+      accent: (number(stats.review_queue_pending)??0)>10 ? "violet" : "slate",
     },
     {
       label: "Storage Used",
-      value: formatStorage(stats.storage_bytes),
-      sub: "across all documents",
+      value: value(stats.storage_bytes,formatStorage),available:stats.storage_bytes.status==="ready",
+      sub: "across permitted document files",
       href: "/admin/dms",
       icon: <HardDrive className="h-4 w-4" />,
       accent: "teal",
@@ -124,10 +129,11 @@ export function DmsKpiCards({ stats, sparklineData }: Props) {
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
-      {cards.map((card) => (
-        <Link
+      {cards.map((card) => {
+        const Shell=card.available?Link:"div";
+        return <Shell
           key={card.label}
-          href={card.href}
+          href={card.available?card.href:""}
           className={cn(
             "group relative flex flex-col overflow-hidden rounded-xl border bg-card shadow-sm",
             "hover:shadow-md hover:-translate-y-0.5 transition-all duration-200"
@@ -143,7 +149,7 @@ export function DmsKpiCards({ stats, sparklineData }: Props) {
             </div>
 
             <div className="flex items-end justify-between gap-2">
-              <p className="text-2xl font-bold tracking-tight tabular-nums leading-none">
+              <p className={cn("font-bold tracking-tight tabular-nums leading-none",card.available?"text-2xl":"text-sm")}>
                 {card.value}
               </p>
               {card.trend != null && (
@@ -171,7 +177,7 @@ export function DmsKpiCards({ stats, sparklineData }: Props) {
 
             {card.sub && <p className="text-[11px] text-muted-foreground/80">{card.sub}</p>}
 
-            {card.sparkline && sparklineData && sparklineData.length > 1 && (
+            {card.available && card.sparkline && sparklineData && sparklineData.length > 1 && (
               <div className="-mx-1 -mb-1 mt-auto h-8 opacity-70 group-hover:opacity-100 transition-opacity">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={sparklineData} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
@@ -195,8 +201,8 @@ export function DmsKpiCards({ stats, sparklineData }: Props) {
               </div>
             )}
           </div>
-        </Link>
-      ))}
+        </Shell>;
+      })}
     </div>
   );
 }

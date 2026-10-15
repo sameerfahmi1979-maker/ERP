@@ -312,6 +312,15 @@ export const invalidatePartyServiceCategories = createChildInvalidator("party_se
 
 export function invalidateDmsDashboard(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: ["dms", "dashboard"] });
+  const queryKey = ["dms", "dashboard-read"];
+  void queryClient.invalidateQueries({queryKey, refetchType: "none"});
+  if (pendingDmsDashboardRefresh.has(queryClient)) return;
+  pendingDmsDashboardRefresh.add(queryClient);
+  queueMicrotask(() => {
+    pendingDmsDashboardRefresh.delete(queryClient);
+    void queryClient.cancelQueries({queryKey});
+    void queryClient.invalidateQueries({queryKey, refetchType: "active"}, {cancelRefetch: true});
+  });
 }
 
 export function invalidateDmsAdminOverview(queryClient: QueryClient): void {
@@ -319,11 +328,17 @@ export function invalidateDmsAdminOverview(queryClient: QueryClient): void {
 }
 
 export function invalidateDmsCategories(queryClient: QueryClient): void {
+  invalidateDmsDashboard(queryClient);
   void queryClient.invalidateQueries({ queryKey: ["dms", "admin", "categories"] });
   void queryClient.invalidateQueries({ queryKey: ["dms", "admin", "overview"] });
 }
 
 export function invalidateDmsDocumentTypes(queryClient: QueryClient): void {
+  invalidateDmsDashboard(queryClient);
+  invalidateDmsApprovalReads(queryClient, null);
+  invalidateEntityDocumentReads(queryClient);
+  invalidateDmsBrowserReads(queryClient, ["types", "search", "files"]);
+  invalidateHrDocumentBrowserReads(queryClient);
   void queryClient.invalidateQueries({ queryKey: ["dms", "admin", "document-types"] });
   void queryClient.invalidateQueries({ queryKey: ["dms", "admin", "overview"] });
 }
@@ -343,22 +358,43 @@ export function invalidateDmsRetentionPolicies(queryClient: QueryClient): void {
 }
 
 export function invalidateAllDmsAdmin(queryClient: QueryClient): void {
+  invalidateDmsDashboard(queryClient);
+  invalidateDmsApprovalReads(queryClient, null);
+  invalidateEntityDocumentReads(queryClient);
+  invalidateDmsBrowserReads(queryClient, ["types", "search", "files"]);
+  invalidateHrDocumentBrowserReads(queryClient);
   void queryClient.invalidateQueries({ queryKey: ["dms", "admin"] });
 }
 
 // ── DMS Documents (DMS.4) ─────────────────────────────────────────────────────
 
 export function invalidateDmsDocuments(queryClient: QueryClient): void {
+  invalidateDmsDashboard(queryClient);
+  invalidateDmsApprovalReads(queryClient, null);
+  invalidateEntityDocumentReads(queryClient);
+  invalidateDmsBrowserReads(queryClient, ["search", "files"]);
+  invalidateHrDocumentBrowserReads(queryClient);
   invalidateAuthorizedRead(queryClient, "dms-documents");
   invalidateAuthorizedRead(queryClient, "dms-archive");
   void queryClient.invalidateQueries({ queryKey: ["dms", "documents"] });
 }
 
 export function invalidateDmsDocument(queryClient: QueryClient, id: number): void {
+  invalidateDmsDashboard(queryClient);
+  invalidateDmsApprovalReads(queryClient, id);
+  invalidateEntityDocumentReads(queryClient);
+  invalidateDmsBrowserReads(queryClient, ["search", "files"]);
+  invalidateHrDocumentBrowserReads(queryClient);
   void queryClient.invalidateQueries({ queryKey: ["dms", "documents", id] });
 }
 
 export function invalidateDmsDocumentRecord(queryClient: QueryClient, id: number): void {
+  invalidateAuthorizedRead(queryClient, "dms-documents");
+  invalidateDmsDashboard(queryClient);
+  invalidateDmsApprovalReads(queryClient, id);
+  invalidateEntityDocumentReads(queryClient);
+  invalidateDmsBrowserReads(queryClient, ["search", "files"]);
+  invalidateHrDocumentBrowserReads(queryClient);
   void queryClient.invalidateQueries({ queryKey: ["dms", "documents", id] });
   void queryClient.invalidateQueries({ queryKey: ["dms", "documents"] });
 }
@@ -366,18 +402,32 @@ export function invalidateDmsDocumentRecord(queryClient: QueryClient, id: number
 // ── DMS.5 — Upload Inbox + File Storage ──────────────────────────────────────
 
 export function invalidateDmsUploadSessions(queryClient: QueryClient): void {
+  invalidateDmsDashboard(queryClient);
   void queryClient.invalidateQueries({ queryKey: ["dms", "upload-sessions"] });
 }
 
 export function invalidateDmsDocumentFiles(queryClient: QueryClient, documentId: number): void {
+  invalidateDmsDashboard(queryClient);
+  invalidateEntityDocumentReads(queryClient);
+  invalidateDmsBrowserReads(queryClient, ["search", "files"]);
+  invalidateHrDocumentBrowserReads(queryClient);
   void queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId, "files"] });
 }
 
 export function invalidateDmsDocumentVersions(queryClient: QueryClient, documentId: number): void {
+  invalidateDmsDashboard(queryClient);
+  invalidateEntityDocumentReads(queryClient);
+  invalidateDmsBrowserReads(queryClient, ["search", "files"]);
+  invalidateHrDocumentBrowserReads(queryClient);
   void queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId, "versions"] });
 }
 
 export function invalidateDmsDocumentFileStorage(queryClient: QueryClient, documentId: number): void {
+  invalidateAuthorizedRead(queryClient, "dms-documents");
+  invalidateDmsDashboard(queryClient);
+  invalidateEntityDocumentReads(queryClient);
+  invalidateDmsBrowserReads(queryClient, ["search", "files"]);
+  invalidateHrDocumentBrowserReads(queryClient);
   void queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId, "files"] });
   void queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId, "versions"] });
   void queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId] });
@@ -391,6 +441,9 @@ export function invalidateDmsEntityDocuments(
   entityType: string,
   entityId: number
 ): void {
+  if (["employee", "employee_dependent"].includes(entityType)) invalidateHrDocumentBrowserReads(queryClient);
+  invalidateEntityDocumentReads(queryClient, entityDocumentOperations, [entityType, entityId]);
+  invalidateDmsBrowserReads(queryClient, ["search"]);
   void queryClient.invalidateQueries({ queryKey: ["dms", "entity-documents", entityType, entityId] });
   void queryClient.invalidateQueries({ queryKey: ["dms", "entity-document-compliance", entityType, entityId] });
   void queryClient.invalidateQueries({ queryKey: ["dms", "attachable-documents", entityType, entityId] });
@@ -400,31 +453,41 @@ export function invalidatePartyDmsDocuments(
   queryClient: QueryClient,
   partyId: number
 ): void {
+  invalidateEntityDocumentReads(queryClient, entityDocumentOperations, ["party", partyId]);
+  invalidateDmsBrowserReads(queryClient, ["search"]);
   void queryClient.invalidateQueries({ queryKey: ["dms", "entity-documents", "party", partyId] });
   void queryClient.invalidateQueries({ queryKey: ["party", "dms-documents", partyId] });
 }
 
 export function invalidateDmsAvailableForLink(queryClient: QueryClient): void {
+  invalidateEntityDocumentReads(queryClient, ["attach", "selected"]);
   void queryClient.invalidateQueries({ queryKey: ["dms", "available-for-link"] });
 }
 
 // ── DMS.8 — Expiry, Renewals, Notifications ───────────────────────────────────
 
 export function invalidateDmsExpiry(queryClient: QueryClient): void {
+  invalidateDmsDashboard(queryClient);
   void queryClient.invalidateQueries({ queryKey: ["dms", "expiry"] });
 }
 
 export function invalidateDmsDocumentExpiry(queryClient: QueryClient, documentId: number): void {
+  invalidateDmsDashboard(queryClient);
+  invalidateEntityDocumentReads(queryClient);
+  invalidateDmsBrowserReads(queryClient, ["search", "files"]);
+  invalidateHrDocumentBrowserReads(queryClient);
   void queryClient.invalidateQueries({ queryKey: ["dms", "expiry", "reminders", "doc", documentId] });
   void queryClient.invalidateQueries({ queryKey: ["dms", "expiry", "stats"] });
   void queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId] });
 }
 
 export function invalidateDmsRenewals(queryClient: QueryClient): void {
+  invalidateDmsDashboard(queryClient);
   void queryClient.invalidateQueries({ queryKey: ["dms", "renewals"] });
 }
 
 export function invalidateDmsDocumentRenewals(queryClient: QueryClient, documentId: number): void {
+  invalidateDmsDashboard(queryClient);
   void queryClient.invalidateQueries({ queryKey: ["dms", "renewals", "doc", documentId] });
   void queryClient.invalidateQueries({ queryKey: ["dms", "renewals"] });
 }
@@ -436,6 +499,8 @@ export function invalidateDmsNotifications(queryClient: QueryClient): void {
 // ── DMS.10 — AI Analysis ─────────────────────────────────────────────────────
 
 export function invalidateDmsAiAnalysis(queryClient: QueryClient, documentId: number): void {
+  invalidateDmsDashboard(queryClient);
+  invalidateEntityDocumentReads(queryClient);
   void queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId, "ai-status"] });
   void queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId, "ai-results"] });
   void queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId, "record"] });
@@ -445,6 +510,10 @@ export function invalidateDmsAiAnalysis(queryClient: QueryClient, documentId: nu
 // ── DMS AI Phase 16 — Apply-to-ERP ───────────────────────────────────────────
 
 export function invalidateDmsApplyToErp(queryClient: QueryClient, documentId: number): void {
+  invalidateDmsDashboard(queryClient);
+  invalidateDmsApprovalReads(queryClient, documentId);
+  invalidateEntityDocumentReads(queryClient);
+  invalidateDmsBrowserReads(queryClient, ["search", "files"]);
   void queryClient.invalidateQueries({ queryKey: ["dms", "apply-to-erp", "runs"] });
   void queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId, "apply-to-erp-preview"] });
   // Also invalidate the document record itself since FK/basic fields may have changed
@@ -456,6 +525,7 @@ export function invalidateDmsApplyToErpRun(queryClient: QueryClient, runId: numb
 }
 
 export function invalidateDmsReviewQueueForApply(queryClient: QueryClient): void {
+  invalidateDmsDashboard(queryClient);
   void queryClient.invalidateQueries({ queryKey: ["dms", "review-queue"] });
 }
 
@@ -497,6 +567,8 @@ export function invalidateDmsApplyCorrectionSource(
 // ── DMS.9 — OCR Pipeline ─────────────────────────────────────────────────────
 
 export function invalidateDmsOcr(queryClient: QueryClient, documentId: number): void {
+  invalidateDmsDashboard(queryClient);
+  invalidateDmsBrowserReads(queryClient, ["search"]);
   void queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId, "ocr-status"] });
   void queryClient.invalidateQueries({ queryKey: ["dms", "documents", documentId, "ocr-text"] });
   void queryClient.invalidateQueries({ queryKey: ["dms", "ocr-jobs"] });
@@ -504,6 +576,8 @@ export function invalidateDmsOcr(queryClient: QueryClient, documentId: number): 
 }
 
 export function invalidateDmsFileOcr(queryClient: QueryClient, fileId: number): void {
+  invalidateEntityDocumentReads(queryClient, ["attach", "selected"]);
+  invalidateDmsBrowserReads(queryClient, ["search"]);
   void queryClient.invalidateQueries({ queryKey: ["dms", "files", fileId, "ocr-text"] });
 }
 
@@ -523,6 +597,7 @@ export function invalidateCommonMdDesignations(queryClient: QueryClient): void {
 }
 
 export function invalidateCommonMdWorkSites(queryClient: QueryClient): void {
+  invalidateHrSearchReads(queryClient, ["operations"]);
   invalidateReportCriterionReads(queryClient, ["work_site_id"]);
   invalidateComplianceReads(queryClient, ["cards"]);
   void queryClient.invalidateQueries({ queryKey: ["common_md", "work_sites"] });
@@ -733,6 +808,7 @@ export function invalidateDmsDocumentUnderstanding(
   queryClient: QueryClient,
   documentId: number
 ): void {
+  invalidateEntityDocumentReads(queryClient, ["attach", "selected"]);
   void queryClient.invalidateQueries({
     queryKey: ["dms", "documents", documentId, "understanding"],
   });
@@ -790,6 +866,8 @@ export function invalidateDataQualityFinding(queryClient: QueryClient, id: numbe
 
 /** Invalidate all HR employee list caches. */
 export function invalidateHrEmployees(queryClient: QueryClient): void {
+  invalidateHrSearchReads(queryClient, employeeSearchCategories, true);
+  invalidateHrDocumentBrowserReads(queryClient);
   invalidateReportCriterionReads(queryClient, ["employee_id"]);
   invalidatePayrollInquiryReads(queryClient, "global-salary-profiles");
   invalidatePayrollInquiryReads(queryClient, "global-wps-readiness");
@@ -799,6 +877,8 @@ export function invalidateHrEmployees(queryClient: QueryClient): void {
 
 /** Invalidate a single employee detail cache. */
 export function invalidateHrEmployee(queryClient: QueryClient, id: number): void {
+  invalidateHrSearchReads(queryClient, employeeSearchCategories, true);
+  invalidateHrDocumentBrowserReads(queryClient);
   invalidateReportCriterionReads(queryClient, ["employee_id"]);
   invalidatePayrollInquiryReads(queryClient, "global-salary-profiles");
   invalidatePayrollInquiryReads(queryClient, "global-wps-readiness");
@@ -814,6 +894,8 @@ export function invalidateHrEmployeeOverview(queryClient: QueryClient, id: numbe
 
 /** Invalidate a single employee status history cache. */
 export function invalidateHrEmployeeStatusHistory(queryClient: QueryClient, id: number): void {
+  invalidateHrSearchReads(queryClient, employeeSearchCategories, true);
+  invalidateHrDocumentBrowserReads(queryClient);
   invalidateReportCriterionReads(queryClient, ["employee_id"]);
   invalidateTimeReads(queryClient, TIME_RECORD_KINDS, id);
   invalidateComplianceReads(queryClient, COMPLIANCE_KINDS, id);
@@ -824,6 +906,8 @@ export function invalidateHrEmployeeStatusHistory(queryClient: QueryClient, id: 
 
 /** Invalidate all HR settings caches. */
 export function invalidateHrSettings(queryClient: QueryClient): void {
+  invalidateHrSearchReads(queryClient, ["time"]);
+  invalidateHrDocumentBrowserReads(queryClient);
   invalidateTimeReads(queryClient, ["leave", "balances"]);
   invalidateTimeOptions(queryClient, ["leave-types"]);
   invalidateComplianceReads(queryClient, COMPLIANCE_KINDS);
@@ -840,6 +924,7 @@ export function invalidateHrGrades(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: ["hr", "settings", "grades"] });
 }
 export function invalidateHrIdentityDocumentTypes(queryClient: QueryClient): void {
+  invalidateHrDocumentBrowserReads(queryClient);
   invalidateComplianceReads(queryClient, ["identity"]);
   void queryClient.invalidateQueries({ queryKey: ["hr", "settings", "identity-document-types"] });
 }
@@ -860,12 +945,14 @@ export function invalidateHrMedicalRecordTypes(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: ["hr", "settings", "medical-record-types"] });
 }
 export function invalidateHrLeaveTypes(queryClient: QueryClient): void {
+  invalidateHrSearchReads(queryClient, ["time"]);
   invalidateTimeReads(queryClient, ["leave", "balances"]);
   invalidateTimeOptions(queryClient, ["leave-types"]);
   void queryClient.invalidateQueries({ queryKey: ["hr", "settings", "leave-types"] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "time", "active-leave-types"] });
 }
 export function invalidateHrRelationshipTypes(queryClient: QueryClient): void {
+  invalidateHrDocumentBrowserReads(queryClient);
   invalidateComplianceReads(queryClient, ["dependents"]);
   void queryClient.invalidateQueries({ queryKey: ["hr", "settings", "relationship-types"] });
 }
@@ -907,6 +994,8 @@ export function invalidateHrEmployeeCompliance(
   queryClient: QueryClient,
   employeeId: number
 ): void {
+  invalidateHrSearchReads(queryClient, ["compliance"]);
+  invalidateHrDocumentBrowserReads(queryClient);
   invalidateComplianceReads(queryClient, COMPLIANCE_KINDS, employeeId);
   invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "compliance", "identity-documents", employeeId] });
@@ -923,6 +1012,7 @@ export function invalidateHrEmployeeComplianceSummary(
   queryClient: QueryClient,
   employeeId: number
 ): void {
+  invalidateHrDocumentBrowserReads(queryClient);
   invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "compliance", "summary", employeeId] });
 }
@@ -931,6 +1021,7 @@ export function invalidateHrEmployeeIdentityDocuments(
   queryClient: QueryClient,
   employeeId: number
 ): void {
+  invalidateHrDocumentBrowserReads(queryClient);
   invalidateHrSearchReads(queryClient, ["compliance"]);
   invalidateComplianceReads(queryClient, ["identity"], employeeId);
   invalidateHrEmployeeOverview(queryClient, employeeId);
@@ -952,6 +1043,7 @@ export function invalidateHrEmployeeDependents(
   queryClient: QueryClient,
   employeeId: number
 ): void {
+  invalidateHrDocumentBrowserReads(queryClient);
   invalidateComplianceReads(queryClient, ["dependents"], employeeId);
   invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "compliance", "dependents", employeeId] });
@@ -1003,6 +1095,7 @@ export function invalidateHrEmployeeTime(
   queryClient: QueryClient,
   employeeId: number
 ): void {
+  invalidateHrSearchReads(queryClient, ["time"]);
   invalidateTimeReads(queryClient, TIME_RECORD_KINDS, employeeId);
   invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "time", "attendance-punches", employeeId] });
@@ -1046,6 +1139,7 @@ export function invalidateHrEmployeeLeave(
   queryClient: QueryClient,
   employeeId: number
 ): void {
+  invalidateHrSearchReads(queryClient, ["time"]);
   invalidateTimeReads(queryClient, ["leave", "balances"], employeeId);
   invalidateHrGlobalLeaveRequests(queryClient);
   invalidateHrEmployeeOverview(queryClient, employeeId);
@@ -1055,6 +1149,7 @@ export function invalidateHrEmployeeLeave(
 }
 
 export function invalidateHrGlobalLeaveRequests(queryClient: QueryClient): void {
+  invalidateHrSearchReads(queryClient, ["time"]);
   void queryClient.invalidateQueries({ queryKey: ["hr", "time", "global-leave-requests"] });
 }
 
@@ -1125,6 +1220,7 @@ export function invalidateHrEmployeePayroll(
   queryClient: QueryClient,
   employeeId: number
 ): void {
+  invalidateHrSearchReads(queryClient, ["payroll"]);
   invalidatePayrollInquiryReads(queryClient, "global-salary-profiles");
   invalidatePayrollInquiryReads(queryClient, "global-wps-readiness");
   invalidateHrEmployeeOverview(queryClient, employeeId);
@@ -1164,6 +1260,7 @@ export function invalidateHrEmployeePayrollHolds(
   queryClient: QueryClient,
   employeeId: number
 ): void {
+  invalidateHrSearchReads(queryClient, ["payroll"]);
   invalidatePayrollInquiryReads(queryClient, "global-wps-readiness");
   invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "holds", employeeId] });
@@ -1175,6 +1272,7 @@ export function invalidateHrEmployeeWps(
   queryClient: QueryClient,
   employeeId: number
 ): void {
+  invalidateHrSearchReads(queryClient, ["payroll"]);
   invalidatePayrollInquiryReads(queryClient, "global-wps-readiness");
   invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "payroll", "wps-profile", employeeId] });
@@ -1183,16 +1281,19 @@ export function invalidateHrEmployeeWps(
 }
 
 export function invalidateHrGlobalPayroll(queryClient: QueryClient): void {
+  invalidateHrSearchReads(queryClient, ["payroll"]);
   invalidatePayrollInquiryReads(queryClient, "global-salary-profiles");
 }
 
 export function invalidateHrGlobalWpsReadiness(queryClient: QueryClient): void {
+  invalidateHrSearchReads(queryClient, ["payroll"]);
   invalidatePayrollInquiryReads(queryClient, "global-wps-readiness");
 }
 
 // ── HR Operations & Readiness (HR.6) ────────────────────────────────────────
 
 export function invalidateHrEmployeeOperations(queryClient: QueryClient, employeeId: number): void {
+  invalidateHrSearchReads(queryClient, ["operations"]);
   invalidateHrEmployeeOverview(queryClient, employeeId);
   invalidateHrGlobalAssignments(queryClient);
   invalidateHrGlobalReadiness(queryClient);
@@ -1209,6 +1310,7 @@ export function invalidateHrEmployeeOperations(queryClient: QueryClient, employe
 }
 
 export function invalidateHrEmployeeAssignments(queryClient: QueryClient, employeeId: number): void {
+  invalidateHrSearchReads(queryClient, ["operations"]);
   invalidateHrEmployeeOverview(queryClient, employeeId);
   invalidateHrGlobalAssignments(queryClient);
   void queryClient.invalidateQueries({ queryKey: ["hr", "operations", "assignments", employeeId] });
@@ -1216,6 +1318,7 @@ export function invalidateHrEmployeeAssignments(queryClient: QueryClient, employ
 }
 
 export function invalidateHrGlobalAssignments(queryClient: QueryClient): void {
+  invalidateHrSearchReads(queryClient, ["operations"]);
   void queryClient.invalidateQueries({ queryKey: ["hr", "operations", "assignments", "counted-page"] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "operations", "global-assignments"] });
 }
@@ -1233,6 +1336,7 @@ export function invalidateHrGlobalReadiness(queryClient: QueryClient): void {
 }
 
 export function invalidateHrEmployeeBlocks(queryClient: QueryClient, employeeId: number): void {
+  invalidateHrSearchReads(queryClient, ["operations"]);
   invalidateHrEmployeeOverview(queryClient, employeeId);
   invalidateHrGlobalBlocks(queryClient);
   void queryClient.invalidateQueries({ queryKey: ["hr", "operations", "blocks", employeeId] });
@@ -1240,6 +1344,7 @@ export function invalidateHrEmployeeBlocks(queryClient: QueryClient, employeeId:
 }
 
 export function invalidateHrGlobalBlocks(queryClient: QueryClient): void {
+  invalidateHrSearchReads(queryClient, ["operations"]);
   void queryClient.invalidateQueries({ queryKey: ["hr", "operations", "blocks", "counted-page"] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "operations", "global-blocks"] });
 }
@@ -1265,21 +1370,25 @@ export function invalidateHrEmployeeAccommodation(queryClient: QueryClient, empl
 // ── HR Actions (HR.7) ─────────────────────────────────────────────────────────
 
 export function invalidateHrEmployeeActions(queryClient: QueryClient, employeeId: number): void {
+  invalidateHrSearchReads(queryClient, ["actions"]);
   void queryClient.invalidateQueries({ queryKey: ["hr", "actions", "summary", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "employees", "overview", employeeId] });
 }
 
 export function invalidateHrEmployeeProProcesses(queryClient: QueryClient, employeeId: number): void {
+  invalidateHrSearchReads(queryClient, ["actions"]);
   invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "actions", "pro-processes", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "actions", "summary", employeeId] });
 }
 
 export function invalidateHrGlobalProProcesses(queryClient: QueryClient): void {
+  invalidateHrSearchReads(queryClient, ["actions"]);
   void queryClient.invalidateQueries({ queryKey: ["hr", "actions", "global-pro-processes"] });
 }
 
 export function invalidateHrEmployeeHrActions(queryClient: QueryClient, employeeId: number): void {
+  invalidateHrSearchReads(queryClient, ["actions"]);
   invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "actions", "hr-actions", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "actions", "summary", employeeId] });
@@ -1292,12 +1401,14 @@ export function invalidateHrEmployeePerformance(queryClient: QueryClient, employ
 }
 
 export function invalidateHrEmployeeDisciplinary(queryClient: QueryClient, employeeId: number): void {
+  invalidateHrSearchReads(queryClient, ["actions"]);
   invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "actions", "disciplinary", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "actions", "summary", employeeId] });
 }
 
 export function invalidateHrGlobalDisciplinary(queryClient: QueryClient): void {
+  invalidateHrSearchReads(queryClient, ["actions"]);
   void queryClient.invalidateQueries({ queryKey: ["hr", "actions", "global-disciplinary"] });
 }
 
@@ -1317,12 +1428,14 @@ export function invalidateHrGlobalApprovals(queryClient: QueryClient): void {
 }
 
 export function invalidateHrEmployeeEos(queryClient: QueryClient, employeeId: number): void {
+  invalidateHrSearchReads(queryClient, ["actions"]);
   invalidateHrEmployeeOverview(queryClient, employeeId);
   void queryClient.invalidateQueries({ queryKey: ["hr", "actions", "eos-cases", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "actions", "summary", employeeId] });
 }
 
 export function invalidateHrGlobalEos(queryClient: QueryClient): void {
+  invalidateHrSearchReads(queryClient, ["actions"]);
   void queryClient.invalidateQueries({ queryKey: ["hr", "actions", "global-eos-cases"] });
 }
 
@@ -1335,6 +1448,7 @@ export function invalidateHrEmployeeClearance(queryClient: QueryClient, eosCaseI
 // ── HR Recruitment & Onboarding (HR.8) ──────────────────────────────────────
 
 export function invalidateHrRecruitment(queryClient: QueryClient): void {
+  invalidateHrSearchReads(queryClient, ["candidates", "onboarding"], true);
   void queryClient.invalidateQueries({ queryKey: ["hr", "recruitment"] });
 }
 
@@ -1364,12 +1478,14 @@ export function invalidateHrRequisition(queryClient: QueryClient, id: number): v
 }
 
 export function invalidateHrCandidates(queryClient: QueryClient): void {
+  invalidateHrSearchReads(queryClient, ["candidates", "onboarding"], true);
   void queryClient.invalidateQueries({ queryKey: ["hr", "recruitment", "candidates"] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "recruitment", "pipeline-summary"] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "recruitment", "summary"] });
 }
 
 export function invalidateHrCandidate(queryClient: QueryClient, id: number): void {
+  invalidateHrSearchReads(queryClient, ["candidates", "onboarding"], true);
   void queryClient.invalidateQueries({ queryKey: ["hr", "recruitment", "candidate", id] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "recruitment", "candidates"] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "recruitment", "pipeline-summary"] });
@@ -1398,16 +1514,19 @@ export function invalidateHrGlobalOffers(queryClient: QueryClient): void {
 }
 
 export function invalidateHrCandidateOnboarding(queryClient: QueryClient, candidateId: number): void {
+  invalidateHrSearchReads(queryClient, ["onboarding"]);
   void queryClient.invalidateQueries({ queryKey: ["hr", "recruitment", "candidate-onboarding", candidateId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "recruitment", "global-onboarding"] });
 }
 
 export function invalidateHrEmployeeOnboarding(queryClient: QueryClient, employeeId: number): void {
+  invalidateHrSearchReads(queryClient, ["onboarding"]);
   void queryClient.invalidateQueries({ queryKey: ["hr", "recruitment", "employee-onboarding", employeeId] });
   void queryClient.invalidateQueries({ queryKey: ["hr", "recruitment", "global-onboarding"] });
 }
 
 export function invalidateHrGlobalOnboarding(queryClient: QueryClient): void {
+  invalidateHrSearchReads(queryClient, ["onboarding"]);
   void queryClient.invalidateQueries({ queryKey: ["hr", "recruitment", "global-onboarding"] });
 }
 
@@ -1494,4 +1613,100 @@ export function invalidateReportDesignerLayout(queryClient: QueryClient, templat
 /** Invalidate report designer test options cache for a specific template. */
 export function invalidateReportDesignerTestOptions(queryClient: QueryClient, templateId: number): void {
   void queryClient.invalidateQueries({ queryKey: ["reports", "designer", "test-options", templateId] });
+}
+
+// Independent P04 read families; business mutation authority is unchanged.
+const pendingHrBrowserRefresh = new WeakSet<QueryClient>();
+
+const pendingDmsDashboardRefresh = new WeakSet<QueryClient>();
+
+const pendingDmsApprovalRefresh = new WeakMap<QueryClient, Set<number | null>>();
+
+const employeeSearchCategories: readonly HrSearchCategory[] = ["employees", "compliance", "time", "payroll", "operations", "actions"];
+
+function invalidateDmsApprovalReads(queryClient: QueryClient, documentId: number | null): void {
+  const family = (ids: ReadonlySet<number | null>) => ({queryKey: ["dms"], predicate: (query: {queryKey: readonly unknown[]}) =>
+    query.queryKey[1] === "approvals" && query.queryKey[2] === "queue"
+    || ["approval-state", "approval-history"].includes(query.queryKey[1] as string) && (ids.has(null) || ids.has(query.queryKey[2] as number))});
+  void queryClient.invalidateQueries({...family(new Set([documentId])), refetchType: "none"});
+  const queued = pendingDmsApprovalRefresh.get(queryClient);
+  if (queued) {queued.add(documentId); return;}
+  const pending = new Set([documentId]); pendingDmsApprovalRefresh.set(queryClient, pending);
+  queueMicrotask(() => {
+    pendingDmsApprovalRefresh.delete(queryClient);
+    const filters = family(pending);
+    void queryClient.cancelQueries(filters);
+    void queryClient.invalidateQueries({...filters, refetchType: "active"}, {cancelRefetch: true});
+  });
+}
+
+type DmsBrowserOperation = "search" | "files" | "types";
+
+type EntityDocumentOperation = "list" | "attach" | "selected" | "summary";
+
+type EntityDocumentRefresh = {parent?: readonly [string, number]; operations: Set<EntityDocumentOperation>};
+
+const entityDocumentOperations: readonly EntityDocumentOperation[] = ["list", "attach", "selected", "summary"];
+
+const pendingEntityDocumentRefresh = new WeakMap<QueryClient, Map<string, EntityDocumentRefresh>>();
+
+function invalidateEntityDocumentReads(queryClient: QueryClient, operations: readonly EntityDocumentOperation[] = entityDocumentOperations, parent?: readonly [string, number]): void {
+  const family = (targets: Map<string, EntityDocumentRefresh>) => ({queryKey: ["dms", "entity-documents-read"],
+    predicate: (query: {queryKey: readonly unknown[]}) => [...targets.values()].some(target =>
+      target.operations.has(query.queryKey[5] as EntityDocumentOperation) && (!target.parent || target.parent[0] === query.queryKey[3] && target.parent[1] === query.queryKey[4]))});
+  const scope = JSON.stringify(parent ?? null), next = {parent, operations: new Set(operations)};
+  void queryClient.invalidateQueries({...family(new Map([[scope, next]])), refetchType: "none"});
+  const queued = pendingEntityDocumentRefresh.get(queryClient);
+  if (queued) {
+    const selected = queued.get(scope) ?? next;
+    for (const operation of operations) selected.operations.add(operation);
+    queued.set(scope, selected);
+    return;
+  }
+  const pending = new Map([[scope, next]]); pendingEntityDocumentRefresh.set(queryClient, pending);
+  queueMicrotask(() => {
+    pendingEntityDocumentRefresh.delete(queryClient);
+    const filters = family(pending);
+    void queryClient.cancelQueries(filters);
+    void queryClient.invalidateQueries({...filters, refetchType: "active"}, {cancelRefetch: true});
+  });
+}
+
+const pendingDmsBrowserRefresh = new WeakMap<QueryClient, Set<DmsBrowserOperation>>();
+
+function invalidateDmsBrowserReads(queryClient: QueryClient, operations: readonly DmsBrowserOperation[]): void {
+  const family = (ops: ReadonlySet<DmsBrowserOperation>) => ({queryKey: ["dms", "browser"],
+    predicate: (query: {queryKey: readonly unknown[]}) => ops.has(query.queryKey[3] as DmsBrowserOperation)});
+  void queryClient.invalidateQueries({...family(new Set(operations)), refetchType: "none"});
+  const queued = pendingDmsBrowserRefresh.get(queryClient);
+  if (queued) {for (const op of operations) queued.add(op); return;}
+  const pending = new Set(operations); pendingDmsBrowserRefresh.set(queryClient, pending);
+  queueMicrotask(() => {
+    pendingDmsBrowserRefresh.delete(queryClient);
+    const filters = family(pending);
+    // Initial/observerless reads must also stop; only active observers refetch.
+    void queryClient.cancelQueries(filters);
+    void queryClient.invalidateQueries({...filters, refetchType: "active"}, {cancelRefetch: true});
+  });
+}
+
+function invalidateHrDocumentBrowserReads(queryClient: QueryClient): void {
+  const queryKey = ["hr", "employees", "document-browser"];
+  void queryClient.cancelQueries({queryKey}, {revert: true});
+  void queryClient.invalidateQueries({queryKey, refetchType: "none"});
+  if (pendingHrBrowserRefresh.has(queryClient)) return;
+  pendingHrBrowserRefresh.add(queryClient);
+  queueMicrotask(() => {
+    pendingHrBrowserRefresh.delete(queryClient);
+    // Query.fetch may reuse an initial in-flight request even with
+    // cancelRefetch:true when no data exists. Retire that pre-mutation request
+    // first; cancelQueries synchronously cancels its retryer before returning.
+    void queryClient.cancelQueries({queryKey});
+    void queryClient.invalidateQueries({queryKey}, {cancelRefetch: true});
+  });
+}
+
+export function invalidateDmsApprovalOutcome(queryClient: QueryClient, documentId: number): void {
+  invalidateDmsDocumentRecord(queryClient, documentId);
+  void queryClient.invalidateQueries({queryKey: ["notifications"]});
 }

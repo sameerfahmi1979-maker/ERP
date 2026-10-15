@@ -2,6 +2,43 @@
 
 Status: partial implementation; **P04 is not closed**. This candidate is stacked on P03. Publication does not authorize merge or deployment.
 
+## Independent-consumer continuation — 15 October 2026
+
+The additional implementation covers the actual DMS Browser, approval queue/state/history, reusable entity-document tab, HR document navigator, HR Dashboard, HR Search, home dashboard, audit list/detail/export and read-only advisory collectors. It does not import F06 implementation or activate providers/workers. These packages use the existing ordinary caller and protected document/recruitment projections, not service-role business reads.
+
+- Native counted pages replace accidental first-page collections. Search/sort ties and payloads are validated; partial, duplicate, mismatched, oversized or denied reads do not become successful empty results. Union/aggregate size limits are explicit failure boundaries, not silent truncation.
+- Browser file metadata and approval history/details are lazy. Entity linking retains the original mutations, parent authorization and unknown-outcome handling. Inactive retained record sections pause reads and hide child portals without deleting unrelated drafts. Confirmation refreshes the relevant existing read families.
+- HR Search uses the generated schema rather than stale prototype field names. Its nullable candidate label is fetched for the displayed onboarding page, not joined into every full-count request. Recruitment task admission, predicates and business actions remain unchanged. Quick suggestions are explicitly bounded previews, not complete results.
+- HR/DMS metrics distinguish ready, restricted, undefined, oversized and failed sources. The home page no longer substitutes sample people, vehicle/revenue values or fabricated activity. Recent activity and top-category/priority panels are labelled bounded previews.
+- Audit lists select metadata only, page beyond the former 300-row cap, and fetch server-redacted details on demand. Explicit exports traverse all matching permitted metadata with a 50,000-row ceiling and reject drift/partial results. Criteria/principal retirement aborts and fences obsolete exports. Search is debounced and the final selected date is inclusive.
+- Advisory aggregate collectors traverse checked complete pages; deliberately recent previews verify their exact cardinality. They use ordinary authenticated reads and do not invoke AI/email providers. This is not acceptance of AI-generated explanations or of every advisory business rule.
+
+The native laboratory composition requires the already-reviewed recruitment scope/child-read prerequisites (`20261013115541` and `20261013124718`) as well as the previously recorded P03/P04 schema. Verification temporarily composes those exact guarded migrations, restores original functions/policies and checks catalog/data hashes.
+
+One additional guarded migration, `20261015184500_perf_advisory_risk_select_initplans.sql`, fixes the populated risk-reader timeout by wrapping three STABLE caller-wide permission predicates in scalar SELECTs. They are evaluated once per statement, never cached across requests. Its exact-policy/STABLE-function guards and metadata postimage retain the original deleted-row predicate, role targets, live-principal restriction, helper bodies, owners, grants and all write policies. Native acceptance compares eight original single-row admission results with complete optimized populations, and compares rolled-back insert/update/delete effects before and after. This changes evaluation cost, not business authorization; it adds no grant, role assignment, helper, provider or production setting.
+
+`20261015190000_perf_audit_global_select_initplan.sql` similarly evaluates only the STABLE global-administrator predicate once for an audit SELECT. The company/branch permission functions keep their original row arguments and are not cached as global decisions. Exact preimages/postimages protect the existing audit insert policy, principal gate, helper definitions, owners and table/function grants. Both optimizations are tested with replay rejection, exact backout and reapplication in isolation; neither is applied to production here.
+
+Branch, Organization and Work Site callers receive only minimal pass-through wiring of their already-supplied `authContext` into the document tab. Their business/master-data logic is not changed. These adapter hunks belong to this isolated performance candidate and must be reconciled with the eventual reviewed F06 candidate; F06's checkout is not edited or imported.
+
+Acceptance is recorded separately for native Auth/PostgREST plus in-process route handlers, mounted component tests, regression suites and shipping checks. Such timings are laboratory observations, not browser measurements or production guarantees. Browser/device measurements remain owner-deferred. Source-bound final results and an explicit dependency register must accompany publication; this section does not itself assert all gates passed.
+
+The final local consumer suite passes **4,007 tests across 138 files**. The native
+laboratory passes **22 cases**, eight-actor risk/audit read parity and risk write
+parity, repeat-apply rejection, exact backout/reapplication and cleanup with zero
+remaining owned sessions. Separate predecessor suites pass P01 35, P02 152 and
+P03 35 tests; the remediation suite passes 838. These are distinct run boundaries,
+not additive coverage percentages. Core build, shipping/E2E types, unit tests,
+vendor integrity and lint baseline pass. Two final P04-test-only corrections
+(actual party schema and awaiting asynchronous cache purge) are followed by the
+entire fresh P04 suite and its type/security checks; hashes prove application,
+migration, package and build inputs unchanged from core/native acceptance. The
+historical failed runs remain retained, not relabelled as passes. Lint retains
+114 inherited warnings and adds none. E2E discovery is not browser execution.
+Exact-head GitHub results are a separate publication gate, not implied here.
+
+Remaining cross-phase gates still include reviewed immutable F06 integration, P03 scoped-master compatibility, item-4 safe template/branding selection, migration/release composition and the remaining performance programme. F07/F08/F09/F10/F17 business lifecycle/AI/delivery acceptance is not closed by faster read consumers. Do not merge this stacked candidate to main or deploy it under this continuation.
+
 ## Included
 
 - The existing generic lookup hook/control and prefetch entry points now use the accepted P02 authorized lookup contract.
@@ -189,9 +226,9 @@ Component/query tests are not browser measurements. No production latency or who
 
 - Exact intended release-schema integration; populated archive/replacement/restore evidence is recorded under item 2.
 - Immutable F06 integration, including the known positive scoped common-master access gate.
-- Remaining administration collections and independent DMS Browser, entity-tab/attach interface, approvals-queue and dashboard consumers require their own current-source reconciliation. Item 2 does not certify these separate surfaces by association.
+- Remaining F06-owned administration collections require reviewed integration. Independent DMS Browser, entity-tab/attach, approvals, dashboards, HR Search, audit and advisory read consumers are covered by the continuation above, not certified merely by association with item 2.
 - Final item-3 combined quality and exact-head publication acceptance; its HR/recruitment/time/payroll/operations implementation does not certify separate dashboards, reports or business workflows.
-- Report criteria/history, notification/delivery reads, dashboards/search/advisory/audit residuals, aligned with owning phases. Do not activate deferred F09 delivery work.
+- Report criteria/history and notification/delivery read work retains its item-4 positive F06 template gate. Independent dashboards/search/advisory/audit read acceptance does not close the owning business phases. Do not activate deferred F09 delivery work.
 - Complete per-consumer inventory reconciliation. Shared-selector tests do not certify every parent screen.
 - Owner-deferred browser/device/journey measurements, explicitly NOT RUN.
 

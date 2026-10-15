@@ -617,6 +617,7 @@ export function OrganizationWorkspaceForm({ organization, mode, authContext }: O
           <p className="text-sm text-muted-foreground">Save the organization first to manage documents.</p>
         ) : (
           <DmsEntityDocumentsTab
+            authContext={authContext}
             entityType="company"
             entityId={companyId}
             entityLabel="Organization"

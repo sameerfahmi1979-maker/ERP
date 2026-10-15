@@ -425,6 +425,7 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext }: Props) {
         <ERPRecordSectionPanel id="documents" activeId={activeSection} title="Documents" lazyMount>
           {employee ? (
             <DmsEntityDocumentsTab
+              authContext={authContext}
               entityType="employee"
               entityId={employee.id}
               entityLabel="Employee"

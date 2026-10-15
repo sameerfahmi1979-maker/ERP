@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import type { AttentionItem } from "@/server/actions/hr/dashboard";
+import type { HrDashboardAttentionItem as AttentionItem } from "@/lib/reads/hr-dashboard-schema";
 import { AlertCircle, AlertTriangle, ArrowUpRight, Info } from "lucide-react";
 import Link from "next/link";
 

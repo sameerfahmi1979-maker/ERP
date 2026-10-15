@@ -7,6 +7,7 @@ import {QueryClient,QueryClientProvider} from "@tanstack/react-query";
 import {FluentProvider,webLightTheme} from "@fluentui/react-components";
 import {WorkspaceUiMemoryProvider} from "@/hooks/use-persistent-ui-state";
 import {DmsSectionActivity} from "@/features/dms/documents/section-activity";
+import {syntheticAuthContext} from "./fixtures/auth-context";
 const serverReads=vi.hoisted(()=>({create:vi.fn(()=>{throw Error("No server actions in client read tests");})}));
 vi.mock("@/hooks/use-workspace",()=>({useWorkspace:()=>({openTab:vi.fn()})}));
 vi.mock("next/cache",()=>({revalidatePath:()=>{throw Error("No mutations");}}));
@@ -49,14 +50,14 @@ const cases=[
  ["versions",<DmsDocumentVersionsSection documentId={9}/>],
  ["mapping",<ErpMappingPreviewPanel documentId={9}/>],
  ["version picker",<DmsLinkVersionDialog documentId={9} documentNo="SYN-9" open onOpenChange={()=>{}}/>],
- ["approval",<DmsApprovalActionPanel documentId={9}/>]
+ ["approval",<DmsApprovalActionPanel documentId={9} authContext={syntheticAuthContext(["dms.documents.view", "dms.approvals.view"])}/>]
 ] as const;
-let client:QueryClient;const calls:{kind:string;args:unknown[]}[]=[];
+let client:QueryClient;const calls:{kind?:string;args?:unknown[];mode?:string;documentId?:number}[]=[];
 beforeEach(()=>{client=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0}}});calls.length=0;serverReads.create.mockClear();vi.stubGlobal("fetch",vi.fn(async (_url,init)=>{expect(init.signal).toBeInstanceOf(AbortSignal);expect(init.cache).toBe("no-store");calls.push(JSON.parse(init.body));return new Response(JSON.stringify({success:false,error:"Permission denied"}),{status:403});}));});
 afterEach(()=>{cleanup();client.clear();vi.unstubAllGlobals();});
 function wrap(element:React.ReactNode,active=true){return <FluentProvider theme={webLightTheme}><QueryClientProvider client={client}><WorkspaceUiMemoryProvider><DmsSectionActivity value={active}>{element}</DmsSectionActivity></WorkspaceUiMemoryProvider></QueryClientProvider></FluentProvider>;}
 for(const [name,element] of cases){
- it(name+" executes its actual read consumer and shows a safe denied state",async()=>{render(wrap(element));if(name==="mapping")fireEvent.click(screen.getByRole("button",{name:"ERP Mapping Preview"}));await waitFor(()=>{expect(calls.length).toBeGreaterThan(0);expect(document.body.textContent).toMatch(/could not|unavailable|access|restricted/i);});expect(calls.every(c=>c.kind&&Array.isArray(c.args))).toBe(true);expect(document.body.textContent).not.toContain("private backend");});
+ it(name+" executes its actual read consumer and shows a safe denied state",async()=>{render(wrap(element));if(name==="mapping")fireEvent.click(screen.getByRole("button",{name:"ERP Mapping Preview"}));await waitFor(()=>{expect(calls.length).toBeGreaterThan(0);expect(document.body.textContent).toMatch(/could not|unavailable|access|restricted/i);});expect(calls.every(c=>name==="approval"?c.mode==="state"&&c.documentId===9:!!c.kind&&Array.isArray(c.args))).toBe(true);expect(document.body.textContent).not.toContain("private backend");});
  it(name+" does not start reads while its retained section is inactive",async()=>{render(wrap(element,false));await new Promise(r=>setTimeout(r,20));expect(calls).toHaveLength(0);expect(serverReads.create).not.toHaveBeenCalled();});
 }
 it("metadata editor hides its portal on a denied recheck and restores the retained draft after retry",async()=>{

@@ -1,272 +1,55 @@
 "use client";
-import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
-
-import { useState, useTransition } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
-import { getDmsDashboardStats } from "@/server/actions/dms/dashboard";
-import type { DmsDashboardStats } from "@/server/actions/dms/dashboard";
-import { useRealtimeSync } from "@/hooks/realtime/use-realtime-sync";
-import { invalidateDmsDashboard } from "@/lib/query/invalidation";
-import { queryKeys } from "@/lib/query/query-keys";
-import { useQuery } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
-import { RefreshCw, FolderKanban, TrendingUp, PieChart, Bot, CalendarClock, BellRing } from "lucide-react";
-import { DmsKpiCards } from "./dms-kpi-cards";
-import { DmsDocumentsOverTimeChart } from "./dms-documents-over-time-chart";
-import { DmsCategoryBarChart } from "./dms-category-bar-chart";
-import { DmsAiPipelineChart } from "./dms-ai-pipeline-chart";
-import { DmsExpiryTimelineChart } from "./dms-expiry-timeline-chart";
-import { DmsInboxPanel, DmsExpiringPanel, DmsRenewalsPanel } from "./dms-action-panels";
-
-type RangeDays = 7 | 30 | 90;
-
-const RANGE_OPTIONS: { label: string; value: RangeDays }[] = [
-  { label: "7d", value: 7 },
-  { label: "30d", value: 30 },
-  { label: "90d", value: 90 },
-];
-
-type Props = {
-  initialStats: DmsDashboardStats;
-};
-
-export function DmsDashboardPageClient({ initialStats }: Props) {
-  const queryClient = useQueryClient();
-  const router = useRouter();
-  const [rangeDays, setRangeDays] = useState<RangeDays>(30);
-  const [, startTransition] = useTransition();
-
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.dms.dashboard(rangeDays),
-    queryFn: async () => {
-      const res = await getDmsDashboardStats(rangeDays);
-      if (!res.success || !res.data) throw new Error(res.error ?? "Failed");
-      return res.data;
-    },
-    initialData: rangeDays === 30 ? initialStats : undefined,
-    staleTime: 60_000,
-  });
- const { data: stats, isLoading } = uiRead1;
-
-  // ERP REALTIME.1D — auto-refresh dashboard when DMS data changes
-  useRealtimeSync({
-    table: "dms_documents",
-    event: "*",
-    debounceMs: 800,
-    onEvent: () => {
-      invalidateDmsDashboard(queryClient);
-    },
-  });
-  useRealtimeSync({
-    table: "dms_upload_sessions",
-    event: "*",
-    debounceMs: 600,
-    onEvent: () => {
-      invalidateDmsDashboard(queryClient);
-    },
-  });
-
-  function handleManualRefresh() {
-    invalidateDmsDashboard(queryClient);
-    startTransition(() => router.refresh());
-  }
-
-  const s = stats ?? initialStats;
-
-  // Derived, honest insights computed from data already on the page — no extra queries.
-  const topCategory = [...s.documents_by_category].sort((a, b) => b.count - a.count)[0];
-  const topCategoryPct =
-    topCategory && s.total_documents > 0
-      ? Math.round((topCategory.count / s.total_documents) * 100)
-      : null;
-
-  const aiComplete = s.ai_pipeline.find((p) => p.status === "ai_complete")?.count ?? 0;
-  const aiCompletePct =
-    s.total_documents > 0 ? Math.round((aiComplete / s.total_documents) * 100) : null;
-
-  const attentionCount = s.inbox_items.length + s.expiring_items.length + s.renewal_items.length;
-
-  return (
-    <QueryReadBoundary queries={[uiRead1]}><div className="space-y-6">
-      {/* Header row */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <FolderKanban className="h-[18px] w-[18px]" />
-          </span>
-          <div>
-            <h1 className="text-lg font-semibold leading-tight">DMS Dashboard</h1>
-            <p className="text-xs text-muted-foreground">
-              Live overview of intake, AI processing, and expiry compliance
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {/* Date range toggle */}
-          <div className="flex rounded-lg border bg-muted/30 p-0.5 gap-0.5">
-            {RANGE_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => setRangeDays(opt.value)}
-                className={cn(
-                  "px-3 py-1 rounded-md text-xs font-medium transition-all",
-                  rangeDays === opt.value
-                    ? "bg-background shadow text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={handleManualRefresh}
-            title="Refresh dashboard"
-          >
-            <RefreshCw className={cn("h-3.5 w-3.5", isLoading && "animate-spin")} />
-          </Button>
-        </div>
-      </div>
-
-      {/* Zone 1 — KPI Cards */}
-      <DmsKpiCards stats={s} sparklineData={s.documents_by_day} />
-
-      {/* Section label */}
-      <div className="flex items-center gap-2 pt-1">
-        <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Analytics
-        </h2>
-      </div>
-
-      {/* Zone 2 — Charts row 1 */}
+import {useState,type ReactNode} from "react";
+import {useQueryClient} from "@tanstack/react-query";
+import type {AuthContext} from "@/lib/rbac/check";
+import {useRealtimeSync} from "@/hooks/realtime/use-realtime-sync";
+import {invalidateDmsDashboard} from "@/lib/query/invalidation";
+import {useDmsDashboard} from "@/hooks/use-dms-dashboard";
+import {dmsDashboardIdentity,type DmsDashboardUnavailable} from "@/lib/reads/dms-dashboard-schema";
+import {Button} from "@/components/ui/button";
+import {Card,CardContent,CardHeader,CardTitle} from "@/components/ui/card";
+import {Skeleton} from "@/components/ui/skeleton";
+import {cn} from "@/lib/utils";
+import {RefreshCw,FolderKanban,TrendingUp,PieChart,Bot,CalendarClock,BellRing} from "lucide-react";
+import {DmsKpiCards} from "./dms-kpi-cards";
+import {DmsDocumentsOverTimeChart} from "./dms-documents-over-time-chart";
+import {DmsCategoryBarChart} from "./dms-category-bar-chart";
+import {DmsAiPipelineChart} from "./dms-ai-pipeline-chart";
+import {DmsExpiryTimelineChart} from "./dms-expiry-timeline-chart";
+import {DmsInboxPanel,DmsExpiringPanel,DmsRenewalsPanel} from "./dms-action-panels";
+import {DmsDashboardSectionState} from "./dms-dashboard-section-state";
+type RangeDays=7|30|90;
+type Props={authContext:AuthContext};
+// Identity-keyed UI owns range and callbacks; no private SSR seed or old-owner
+// fallback survives an account/role/scope change in the workspace.
+export function DmsDashboardPageClient({authContext}:Props){return <DmsDashboardInstance key={dmsDashboardIdentity(authContext)} authContext={authContext}/>;}
+function ChartCard({title,subtitle,icon,children}:{title:string;subtitle:string;icon:ReactNode;children:ReactNode}){
+  return <Card className="shadow-sm"><CardHeader className="pb-2 pt-4 px-4"><div className="flex items-center gap-2">{icon}<CardTitle className="text-sm font-semibold">{title}</CardTitle></div><p className="text-[11px] text-muted-foreground pl-[22px]">{subtitle}</p></CardHeader><CardContent className="px-4 pb-4">{children}</CardContent></Card>;
+}
+function DmsDashboardInstance({authContext}:Props){
+  const queryClient=useQueryClient(),[rangeDays,setRangeDays]=useState<RangeDays>(30),read=useDmsDashboard(authContext,{rangeDays}),s=read.data;
+  useRealtimeSync({table:"dms_documents",event:"*",debounceMs:800,onEvent:()=>invalidateDmsDashboard(queryClient)});
+  useRealtimeSync({table:"dms_upload_sessions",event:"*",debounceMs:600,onEvent:()=>invalidateDmsDashboard(queryClient)});
+  const unavailable=(state:DmsDashboardUnavailable)=><DmsDashboardSectionState status={state.status} onRetry={read.retry}/>;
+  return <div className="space-y-6">
+    <div className="flex items-center justify-between flex-wrap gap-3"><div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary"><FolderKanban className="h-[18px] w-[18px]"/></span><div><h1 className="text-lg font-semibold leading-tight">DMS Dashboard</h1><p className="text-xs text-muted-foreground">Intake, processing and expiry for records you are permitted to view</p></div></div>
+      <div className="flex items-center gap-2"><div className="flex rounded-lg border bg-muted/30 p-0.5 gap-0.5" aria-label="Documents added date range">{([7,30,90] as const).map(days=><button key={days} aria-pressed={rangeDays===days} onClick={()=>setRangeDays(days)} className={cn("px-3 py-1 rounded-md text-xs font-medium transition-all focus-visible:outline-2",rangeDays===days?"bg-background shadow text-foreground":"text-muted-foreground hover:text-foreground")}>{days}d</button>)}</div><Button variant="ghost" size="icon" className="h-8 w-8" onClick={read.retry} disabled={read.denied||read.isFetching} title="Refresh dashboard" aria-label="Refresh dashboard"><RefreshCw className={cn("h-3.5 w-3.5",read.isFetching&&"animate-spin")}/></Button></div>
+    </div>
+    {read.denied?<div role="alert" className="p-4 text-sm">Your dashboard access could not be verified. Sign in again or contact your administrator.</div>:!s?(read.isError?<div role="alert" className="p-4 text-sm">The dashboard could not be loaded. <button className="underline text-primary" onClick={read.retry}>Retry dashboard</button></div>:<div role="status" aria-label="Loading dashboard"><Skeleton className="h-32 w-full"/><Skeleton className="mt-4 h-48 w-full"/></div>):<>
+      <DmsKpiCards stats={s} sparklineData={s.documents_by_day.status==="ready"?s.documents_by_day.items:undefined}/>
+      {[s.total_documents,s.added_this_month,s.added_last_month,s.inbox_pending,s.expiring_30_days,s.review_queue_pending,s.storage_bytes].some(v=>v.status==="failed")&&<div role="alert" className="text-xs text-muted-foreground">Some totals could not be completely loaded. <button onClick={read.retry} className="underline text-primary">Retry dashboard</button></div>}
+      {[s.storage_bytes].some(v=>v.status==="too_large")&&unavailable({status:"too_large"})}
+      <div className="flex items-center gap-2 pt-1"><TrendingUp className="h-3.5 w-3.5 text-muted-foreground"/><h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Analytics</h2></div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card className="shadow-sm">
-          <CardHeader className="pb-2 pt-4 px-4">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="h-3.5 w-3.5 text-blue-500" />
-              <CardTitle className="text-sm font-semibold">Documents Added Over Time</CardTitle>
-            </div>
-            <p className="text-[11px] text-muted-foreground pl-[22px]">
-              {s.added_this_month.toLocaleString()} added in the current month
-            </p>
-          </CardHeader>
-          <CardContent className="px-4 pb-4">
-            {isLoading ? (
-              <Skeleton className="h-48 w-full rounded-lg" />
-            ) : (
-              <DmsDocumentsOverTimeChart
-                data={s.documents_by_day}
-                rangeDays={rangeDays}
-              />
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-sm">
-          <CardHeader className="pb-2 pt-4 px-4">
-            <div className="flex items-center gap-2">
-              <PieChart className="h-3.5 w-3.5 text-violet-500" />
-              <CardTitle className="text-sm font-semibold">Documents by Category</CardTitle>
-            </div>
-            <p className="text-[11px] text-muted-foreground pl-[22px]">
-              {topCategory && topCategoryPct != null
-                ? `${topCategory.name} is your largest category (${topCategoryPct}%)`
-                : "No category data available"}
-            </p>
-          </CardHeader>
-          <CardContent className="px-4 pb-4">
-            {isLoading ? (
-              <Skeleton className="h-48 w-full rounded-lg" />
-            ) : s.documents_by_category.length === 0 ? (
-              <div className="h-48 flex items-center justify-center text-xs text-muted-foreground">
-                No category data available
-              </div>
-            ) : (
-              <DmsCategoryBarChart data={s.documents_by_category} />
-            )}
-          </CardContent>
-        </Card>
+        <ChartCard title="Documents Added Over Time" subtitle={`Created since ${new Date(Date.parse(s.asOf)-rangeDays*86400000).toISOString().slice(0,10)}; permitted archived records included`} icon={<TrendingUp className="h-3.5 w-3.5 text-blue-500"/>}>{s.documents_by_day.status==="ready"?<DmsDocumentsOverTimeChart data={s.documents_by_day.items} rangeDays={rangeDays}/>:unavailable(s.documents_by_day)}</ChartCard>
+        <ChartCard title="Documents by Category" subtitle="Top eight named categories across permitted non-archived records" icon={<PieChart className="h-3.5 w-3.5 text-violet-500"/>}>{s.documents_by_category.status==="ready"?(s.documents_by_category.items.length?<DmsCategoryBarChart data={s.documents_by_category.items}/>:<div className="h-48 flex items-center justify-center text-xs text-muted-foreground">No permitted categorised documents</div>):unavailable(s.documents_by_category)}</ChartCard>
       </div>
-
-      {/* Zone 3 — Charts row 2 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card className="shadow-sm">
-          <CardHeader className="pb-2 pt-4 px-4">
-            <div className="flex items-center gap-2">
-              <Bot className="h-3.5 w-3.5 text-emerald-500" />
-              <CardTitle className="text-sm font-semibold">AI Pipeline Status</CardTitle>
-            </div>
-            <p className="text-[11px] text-muted-foreground pl-[22px]">
-              {aiCompletePct != null
-                ? `${aiCompletePct}% of documents fully AI-processed`
-                : "No AI pipeline data"}
-            </p>
-          </CardHeader>
-          <CardContent className="px-4 pb-4">
-            {isLoading ? (
-              <Skeleton className="h-48 w-full rounded-lg" />
-            ) : s.ai_pipeline.length === 0 ? (
-              <div className="h-48 flex items-center justify-center text-xs text-muted-foreground">
-                No AI pipeline data
-              </div>
-            ) : (
-              <DmsAiPipelineChart
-                data={s.ai_pipeline}
-                total={s.total_documents}
-              />
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-sm">
-          <CardHeader className="pb-2 pt-4 px-4">
-            <div className="flex items-center gap-2">
-              <CalendarClock className="h-3.5 w-3.5 text-amber-500" />
-              <CardTitle className="text-sm font-semibold">Expiry Timeline</CardTitle>
-            </div>
-            <p className="text-[11px] text-muted-foreground pl-[22px]">
-              {s.expiring_30_days > 0
-                ? `${s.expiring_30_days} document${s.expiring_30_days === 1 ? "" : "s"} expiring within 30 days`
-                : "Nothing expiring within 30 days"}
-            </p>
-          </CardHeader>
-          <CardContent className="px-4 pb-4">
-            {isLoading ? (
-              <Skeleton className="h-48 w-full rounded-lg" />
-            ) : (
-              <DmsExpiryTimelineChart data={s.expiry_buckets} />
-            )}
-          </CardContent>
-        </Card>
+        <ChartCard title="AI Pipeline Status" subtitle="Independent counts; stages can overlap. Archived records are included." icon={<Bot className="h-3.5 w-3.5 text-emerald-500"/>}>{s.ai_pipeline.status==="ready"?<DmsAiPipelineChart data={s.ai_pipeline.items}/>:unavailable(s.ai_pipeline)}</ChartCard>
+        <ChartCard title="Expiry Timeline" subtitle="Permitted, non-superseded documents from today through 90 days" icon={<CalendarClock className="h-3.5 w-3.5 text-amber-500"/>}>{s.expiry_buckets.status==="ready"?<DmsExpiryTimelineChart data={s.expiry_buckets.items}/>:unavailable(s.expiry_buckets)}</ChartCard>
       </div>
-
-      {/* Section label */}
-      <div className="flex items-center gap-2 pt-1">
-        <BellRing className="h-3.5 w-3.5 text-muted-foreground" />
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Needs Your Attention
-        </h2>
-        {attentionCount > 0 && (
-          <span className="text-[11px] text-muted-foreground">
-            · {attentionCount} item{attentionCount === 1 ? "" : "s"} across inbox, expiry, and renewals
-          </span>
-        )}
-      </div>
-
-      {/* Zone 4 — Action panels */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 min-h-[220px]">
-        <DmsInboxPanel items={s.inbox_items} />
-        <DmsExpiringPanel items={s.expiring_items} />
-        <DmsRenewalsPanel items={s.renewal_items} />
-      </div>
-    </div></QueryReadBoundary>
-  );
+      <div className="flex items-center gap-2 pt-1"><BellRing className="h-3.5 w-3.5 text-muted-foreground"/><h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Needs Your Attention</h2><span className="text-[11px] text-muted-foreground">Up to five records per panel; badges show each permitted total</span></div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 min-h-[220px]"><DmsInboxPanel panel={s.inbox_items} onRetry={read.retry}/><DmsExpiringPanel panel={s.expiring_items} onRetry={read.retry}/><DmsRenewalsPanel panel={s.renewal_items} onRetry={read.retry}/></div>
+    </>}
+  </div>;
 }

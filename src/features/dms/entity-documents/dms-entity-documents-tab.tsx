@@ -16,8 +16,8 @@
  *   />
  */
 
-import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -35,19 +35,20 @@ import {
 import { toast } from "sonner";
 import { format, isPast, differenceInDays } from "date-fns";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
-import { queryKeys } from "@/lib/query/query-keys";
+import type {AuthContext} from "@/lib/rbac/check";
+import {useDmsEntityDocuments} from "@/hooks/use-dms-entity-documents";
+import {useRecordReadActive} from "@/hooks/use-record-read-active";
+import {dmsEntityDocumentsIdentity} from "@/lib/reads/dms-entity-documents-schema";
 import {
   invalidateDmsEntityDocuments,
   invalidateDmsAvailableForLink,
 } from "@/lib/query/invalidation";
 import {
-  getDmsDocumentsByEntity,
   linkDmsDocumentToEntity,
   unlinkDmsDocumentFromEntity,
-  getAvailableDmsDocumentsForLink,
   type DmsEntityDocumentRow,
 } from "@/server/actions/dms/entity-documents";
-import { getDmsEntityTypeLabel } from "@/lib/dms/dms-entity-types";
+import { getDmsEntityTypeLabel, type DmsEntityTypeValue } from "@/lib/dms/dms-entity-types";
 import { DmsEntityDocumentComplianceCards } from "./dms-entity-document-compliance-cards";
 import { DmsAttachDocumentPicker } from "./dms-attach-document-picker";
 import { cn } from "@/lib/utils";
@@ -55,6 +56,7 @@ import { cn } from "@/lib/utils";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type DmsEntityDocumentsTabProps = {
+  authContext: AuthContext;
   entityType: string;
   entityId: number;
   entityLabel?: string;
@@ -122,7 +124,11 @@ function StatusBadge({ status }: { status: string }) {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function DmsEntityDocumentsTab({
+export function DmsEntityDocumentsTab(props:DmsEntityDocumentsTabProps) {
+  return <EntityDocumentsInstance key={JSON.stringify([dmsEntityDocumentsIdentity(props.authContext),props.entityType,props.entityId])} {...props}/>;
+}
+function EntityDocumentsInstance({
+  authContext,
   entityType,
   entityId,
   entityLabel,
@@ -134,32 +140,37 @@ export function DmsEntityDocumentsTab({
   onChildOpen,
 }: DmsEntityDocumentsTabProps) {
   const router = useRouter();
+  const active=useRecordReadActive();
   const queryClient = useQueryClient();
   const label = entityLabel ?? getDmsEntityTypeLabel(entityType);
 
-  // ── Documents query ──────────────────────────────────────────────────────
-  const {
-    data: documents,
-    isLoading,
-    refetch,
-  } = useQuery({
-    queryKey: queryKeys.dms.entityDocuments(entityType, entityId),
-    queryFn: async () => {
-      const result = await getDmsDocumentsByEntity(entityType, entityId);
-      if (!result.success) throw new Error(result.error ?? "Failed to load documents");
-      return result.data ?? [];
-    },
-    staleTime: 30_000,
-    enabled: !!entityType && entityId > 0,
-  });
-
-  // ── Attach existing dialog ────────────────────────────────────────────────
+  const [blocked,setBlocked]=useState(false),[offset,setOffset]=useState(0),[attachOffset,setAttachOffset]=useState(0);
   const [attachOpen, setAttachOpen] = useState(false);
   const [attachSearch, setAttachSearch] = useState("");
   const [attachSelectedIds, setAttachSelectedIds] = useState<number[]>([]);
   const [isAttaching, setIsAttaching] = useState(false);
+  const [selectionWarning,setSelectionWarning]=useState("");
+  const alive=useRef(true),childEpoch=useRef(0),childIsOpen=useRef(false),busy=useRef(false),unlinkBusy=useRef(false);
+  const onChildOpenRef=useRef(onChildOpen);
+  useLayoutEffect(()=>{onChildOpenRef.current=onChildOpen;},[onChildOpen]);
+  useLayoutEffect(()=>{const shown=active&&attachOpen&&!blocked;if(shown!==childIsOpen.current){childIsOpen.current=shown;onChildOpenRef.current?.(shown);}if(!active)childEpoch.current++;},[active,attachOpen,blocked]);
+  useLayoutEffect(()=>{alive.current=true;return()=>{alive.current=false;if(childIsOpen.current)onChildOpenRef.current?.(false);};},[]);
+  const retire=useCallback(()=>{setBlocked(true);childEpoch.current++;setAttachOpen(false);setAttachSelectedIds([]);if(childIsOpen.current)onChildOpenRef.current?.(false);childIsOpen.current=false;},[]);
+  const parent={entityType:entityType as DmsEntityTypeValue,entityId};
+  const list=useDmsEntityDocuments(authContext,{...parent,operation:"list",offset,limit:25},{enabled:!blocked,onDenied:retire});
+  const parentReady=!blocked&&list.data?.availability==="available";
+  const attach=useDmsEntityDocuments(authContext,{...parent,operation:"attach",search:attachSearch,offset:attachOffset,limit:25},{enabled:attachOpen&&parentReady,onDenied:retire});
+  const selected=useDmsEntityDocuments(authContext,{...parent,operation:"selected",documentIds:attachSelectedIds.length?attachSelectedIds:[1]},{enabled:attachOpen&&parentReady&&attachSelectedIds.length>0,onDenied:retire});
+  const documents=list.data?.availability==="available"?list.data.rows:undefined;
+  const availableDocuments=attach.data?.availability==="available"?attach.data.rows:undefined;
+  const renderEpoch=childEpoch.current;
+  const selectedReady=selected.data?.availability==="available"&&attachSelectedIds.length>0;
+  useEffect(()=>{let current=true;if(list.data?.availability==="unavailable")queueMicrotask(()=>{if(current)retire();});return()=>{current=false;};},[list.data?.availability,retire]);
+  useEffect(()=>{let current=true;if(selected.data?.availability==="unavailable")queueMicrotask(()=>{if(current){setAttachSelectedIds([]);setSelectionWarning("The selected documents are no longer available. Select them again from the current list.");}});return()=>{current=false;};},[selected.data]);
 
   const openAttach = () => {
+    if(!parentReady||!list.isCurrent()||busy.current)return;
+    childEpoch.current++;childIsOpen.current=true;setSelectionWarning("");setAttachOffset(0);
     setAttachSelectedIds([]);
     setAttachSearch("");
     setAttachOpen(true);
@@ -167,45 +178,39 @@ export function DmsEntityDocumentsTab({
   };
 
   const toggleAttachSelection = (documentId: number) => {
+    if(busy.current||!attach.isCurrent()||!availableDocuments?.some(d=>d.id===documentId))return;
+    setSelectionWarning("");
     setAttachSelectedIds((prev) =>
-      prev.includes(documentId) ? prev.filter((id) => id !== documentId) : [...prev, documentId]
+      prev.includes(documentId) ? prev.filter((id) => id !== documentId) : prev.length<100?[...prev, documentId]:prev
     );
   };
 
   const closeAttach = (open: boolean) => {
+    if(!alive.current||renderEpoch!==childEpoch.current)return;
+    if(!open){childEpoch.current++;childIsOpen.current=false;setAttachSelectedIds([]);}
     setAttachOpen(open);
     if (!open) onChildOpen?.(false);
   };
 
-  const { data: availableDocuments, isLoading: attachDocsLoading } = useQuery({
-    queryKey: queryKeys.dms.attachableDocuments(entityType, entityId, attachSearch),
-    queryFn: async () => {
-      const result = await getAvailableDmsDocumentsForLink(entityType, entityId, attachSearch);
-      return result.data ?? [];
-    },
-    enabled: attachOpen,
-    staleTime: 10_000,
-  });
-
   const handleAttach = async () => {
+    if(!alive.current||renderEpoch!==childEpoch.current||blocked||busy.current||!parentReady||!list.isCurrent()||!selectedReady||!selected.isCurrent())return;
     if (attachSelectedIds.length === 0) {
       toast.error("Please select at least one document");
       return;
     }
-    setIsAttaching(true);
+    busy.current=true;setIsAttaching(true);
     try {
       const results = await Promise.all(
         attachSelectedIds.map((docId) => linkDmsDocumentToEntity(docId, entityType, entityId))
       );
       const failed = results.filter((r) => !r.success);
       const succeededCount = results.length - failed.length;
-
+      if(succeededCount>0){invalidateDmsEntityDocuments(queryClient,entityType,entityId);invalidateDmsAvailableForLink(queryClient);}
+      if(!alive.current||renderEpoch!==childEpoch.current)return;
       if (succeededCount > 0) {
         toast.success(
           succeededCount === 1 ? "Document linked" : `${succeededCount} documents linked`
         );
-        invalidateDmsEntityDocuments(queryClient, entityType, entityId);
-        invalidateDmsAvailableForLink(queryClient);
       }
       if (failed.length > 0) {
         toast.error(
@@ -215,38 +220,47 @@ export function DmsEntityDocumentsTab({
         );
       }
       if (failed.length === 0) {
+        childEpoch.current++;childIsOpen.current=false;setAttachSelectedIds([]);
         setAttachOpen(false);
         onChildOpen?.(false);
       }
+    } catch {
+      // A lost response does not prove the mutation failed; retire the selected
+      // admission and refresh before allowing another explicit attempt.
+      invalidateDmsEntityDocuments(queryClient,entityType,entityId);invalidateDmsAvailableForLink(queryClient);
+      if(alive.current&&renderEpoch===childEpoch.current){setAttachSelectedIds([]);setSelectionWarning("The link result could not be confirmed. Refresh and check existing links before retrying.");}
     } finally {
-      setIsAttaching(false);
+      busy.current=false;if(alive.current)setIsAttaching(false);
     }
   };
 
   // ── Unlink ────────────────────────────────────────────────────────────────
   const handleUnlink = async (doc: DmsEntityDocumentRow) => {
+    if(!alive.current||blocked||unlinkBusy.current||!parentReady||!list.isCurrent()||!documents?.some(d=>d.link_id===doc.link_id&&d.document_id===doc.document_id))return;
     if (
       !confirm(
         `Unlink "${doc.title}" from this ${label}? The document will remain in DMS.`
       )
     )
       return;
-    const result = await unlinkDmsDocumentFromEntity(
+    unlinkBusy.current=true;
+    try {const result = await unlinkDmsDocumentFromEntity(
       doc.link_id,
       doc.document_id,
       entityType,
       entityId
     );
     if (result.success) {
-      toast.success("Document unlinked");
       invalidateDmsEntityDocuments(queryClient, entityType, entityId);
-    } else {
+      if(alive.current)toast.success("Document unlinked");
+    } else if(alive.current) {
       toast.error(result.error ?? "Failed to unlink document");
-    }
+    }}catch{invalidateDmsEntityDocuments(queryClient,entityType,entityId);if(alive.current)toast.error("The unlink result could not be confirmed. Refresh before retrying.");}finally{unlinkBusy.current=false;}
   };
 
   // ── Upload to entity ──────────────────────────────────────────────────────
   const handleUpload = () => {
+    if(!parentReady||!list.isCurrent())return;
     router.push(
       `/dms/inbox?entityType=${encodeURIComponent(entityType)}&entityId=${entityId}`
     );
@@ -257,7 +271,7 @@ export function DmsEntityDocumentsTab({
     <div className="space-y-4">
       {/* Compliance Cards */}
       {showComplianceCards && !compact && entityId > 0 && (
-        <DmsEntityDocumentComplianceCards entityType={entityType} entityId={entityId} />
+        <DmsEntityDocumentComplianceCards authContext={authContext} entityType={entityType} entityId={entityId} enabled={!blocked} onDenied={retire}/>
       )}
 
       {/* Header / Actions */}
@@ -270,19 +284,20 @@ export function DmsEntityDocumentsTab({
             type="button"
             variant="ghost"
             size="sm"
-            onClick={() => refetch()}
+            onClick={list.retry}
+            disabled={blocked||list.isFetching}
             title="Refresh"
           >
             <RefreshCw className="h-4 w-4" />
           </Button>
           {canLinkExisting && (
-            <Button type="button" variant="outline" size="sm" onClick={openAttach}>
+            <Button type="button" variant="outline" size="sm" onClick={openAttach} disabled={!parentReady||isAttaching}>
               <Link2 className="h-4 w-4 mr-1" />
               Attach Existing
             </Button>
           )}
           {canUpload && (
-            <Button type="button" variant="outline" size="sm" onClick={handleUpload}>
+            <Button type="button" variant="outline" size="sm" onClick={handleUpload} disabled={!parentReady}>
               <Upload className="h-4 w-4 mr-1" />
               Upload New
             </Button>
@@ -291,16 +306,16 @@ export function DmsEntityDocumentsTab({
       </div>
 
       {/* Document List */}
-      {isLoading ? (
+      {blocked||list.denied ? <p role="alert">Access to this record&apos;s documents could not be verified.</p> : list.isError ? <div role="alert">Documents could not be loaded. <Button type="button" onClick={list.retry}>Retry documents</Button></div> : list.data?.availability==="too_large" ? <p role="alert">This linked set exceeds the safe read budget. No partial list is shown. Contact your administrator.</p> : list.isPending||list.isFetching ? (
         <div className="space-y-2">
           {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className="h-16 rounded-md" />
           ))}
         </div>
-      ) : !documents || documents.length === 0 ? (
+      ) : documents?.length === 0 ? (
         <div className="rounded-md border border-dashed p-8 text-center text-muted-foreground space-y-2">
           <FileText className="h-8 w-8 mx-auto opacity-30" />
-          <p className="text-sm">No documents linked to this {label} yet.</p>
+          <p className="text-sm">{list.data?.availability==="available"&&list.data.totalCount>0?"No documents on this page. Return to the previous page.":`No visible documents linked to this ${label} yet.`}</p>
           {(canUpload || canLinkExisting) && (
             <p className="text-xs">
               Use <strong>Upload New</strong> or <strong>Attach Existing</strong> to add documents.
@@ -309,7 +324,7 @@ export function DmsEntityDocumentsTab({
         </div>
       ) : (
         <div className="space-y-2">
-          {documents.map((doc) => (
+          {documents?.map((doc) => (
             <div
               key={doc.link_id}
               className="rounded-md border bg-card p-3 flex items-start justify-between gap-3 group hover:bg-accent/30 transition-colors"
@@ -365,7 +380,7 @@ export function DmsEntityDocumentsTab({
                   className="h-7 w-7"
                   title="Open in DMS"
                   onClick={() =>
-                    router.push(`/dms/documents/record/${doc.document_id}`)
+                    list.isCurrent()&&router.push(`/dms/documents/record/${doc.document_id}`)
                   }
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
@@ -387,6 +402,7 @@ export function DmsEntityDocumentsTab({
           ))}
         </div>
       )}
+      {list.data?.availability==="available"&&<div className="flex items-center gap-3 text-sm"><span>{list.data.totalCount} visible linked documents</span><Button type="button" variant="outline" disabled={offset===0} onClick={()=>setOffset(Math.max(0,offset-25))}>Previous documents</Button><Button type="button" variant="outline" disabled={offset+25>=list.data.totalCount} onClick={()=>setOffset(offset+25)}>Next documents</Button></div>}
 
       {/* Security note */}
       <div className="flex items-start gap-2 text-xs text-muted-foreground rounded-md bg-muted/40 p-2">
@@ -399,7 +415,7 @@ export function DmsEntityDocumentsTab({
 
       {/* Attach Existing Document Dialog */}
       <ERPChildDialogForm
-        open={attachOpen}
+        open={attachOpen&&active&&!blocked}
         onOpenChange={closeAttach}
         title="Attach Existing Document"
         subtitle={`Link one or more DMS documents to this ${label}`}
@@ -407,17 +423,25 @@ export function DmsEntityDocumentsTab({
         size="lg"
         onSubmit={handleAttach}
         isSubmitting={isAttaching}
+        submitDisabled={!parentReady||!selectedReady||selected.isFetching||selected.isError||blocked}
         submitLabel={
           attachSelectedIds.length > 1
             ? `Link ${attachSelectedIds.length} Documents`
             : "Link Document"
         }
       >
+        {selectionWarning&&<p role="alert">{selectionWarning}</p>}
+        {selected.isError&&attachSelectedIds.length>0&&<div role="alert">Selected documents could not be checked. <Button type="button" onClick={selected.retry}>Retry selection</Button></div>}
+        {selected.data?.availability==="too_large"&&<p role="alert">The selected set exceeds the safe read budget. Select fewer documents.</p>}
         <DmsAttachDocumentPicker
           search={attachSearch}
-          onSearchChange={setAttachSearch}
+          onSearchChange={value=>{if(!busy.current){setAttachSearch(value);setAttachOffset(0);}}}
           documents={availableDocuments ?? []}
-          isLoading={attachDocsLoading}
+          isLoading={!parentReady||attach.isPending||attach.isFetching}
+          errorMessage={attach.isError?"Available documents could not be loaded.":attach.data?.availability==="too_large"?"This search exceeds the safe read budget. Refine the search; no partial matches are shown.":attach.data?.availability==="unavailable"?"These document choices are unavailable.":undefined}
+          onRetry={attach.retry}
+          page={attach.data?.availability==="available"?{offset:attachOffset,limit:25,totalCount:attach.data.totalCount,onOffsetChange:setAttachOffset}:undefined}
+          disabled={isAttaching}
           selectedIds={attachSelectedIds}
           onToggle={toggleAttachSelection}
         />

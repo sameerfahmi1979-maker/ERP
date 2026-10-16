@@ -8,12 +8,16 @@ const witnesses = Object.freeze([
   {id:'replay', keepSelector:true, mutation:'', expected:'Template selection already exists; reconcile migration history instead of replacing it'},
   {id:'wrong-owner', mutation:'SET LOCAL ROLE supabase_admin;', expected:'Template selection requires the reviewed PostgreSQL migration owner and invoker-view support'},
   {id:'missing-safe-view', mutation:'ALTER VIEW public.erp_report_branding_profiles_safe RENAME TO integration_selection_missing_safe_witness;', expected:'Reviewed F06 template RLS or safe branding view is missing or changed'},
-  {id:'widened-safe-view', mutation:`DO $witness$
-DECLARE original text; widened text;
+  {id:'widened-safe-view', mutation:String.raw`DO $witness$
+DECLARE original text; widened text; predicate_count bigint;
+  -- Only the two reviewed pg_get_viewdef forms; do not guess other aliases or arguments.
+  authority_pattern constant text := $predicate$(?<![^ \t\r\n(])erp_private[.]can_read_report_branding[(](?:p[.])?owner_company_id[)]$predicate$;
 BEGIN
   original := pg_get_viewdef('public.erp_report_branding_profiles_safe'::regclass, false);
-  widened := replace(original, 'erp_private.can_read_report_branding(p.owner_company_id)', 'true');
-  IF widened = original THEN RAISE EXCEPTION 'Witness could not locate the original safe-view authority predicate'; END IF;
+  SELECT count(*) INTO predicate_count FROM regexp_matches(original, authority_pattern, 'g');
+  IF predicate_count <> 1 THEN RAISE EXCEPTION 'Witness requires exactly one known safe-view authority predicate'; END IF;
+  widened := regexp_replace(original, authority_pattern, 'true', 'g');
+  IF strpos(widened, 'can_read_report_branding') > 0 THEN RAISE EXCEPTION 'Witness found an unknown safe-view authority predicate'; END IF;
   EXECUTE 'CREATE OR REPLACE VIEW public.erp_report_branding_profiles_safe WITH (security_barrier=true) AS ' || widened;
 END;
 $witness$;`, expected:'Reviewed F06 safe branding projection changed'},

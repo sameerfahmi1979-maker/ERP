@@ -117,3 +117,16 @@ test('all lineage DO procedural variables are disjoint from SQL relation/functio
  assert.match(post[3],/INTO STRICT v_actual_proc FROM pg_proc/);
  assert.match(post[3],/jsonb_agg\(to_jsonb\(p\) ORDER BY p\.oid\) FROM pg_proc p/);
 });
+
+test('owner-change witness requires an admin session, changes ownership there, then restores the guarded postgres role',()=>{
+ const witness=witnesses.find(w=>w.id==='changed-helper-owner');
+ assert.equal(witness.expected,'Document lineage prerequisite drift: erp_private.employee_permission(bigint,text)');
+ assert.match(witness.mutation,/session_user<>'supabase_admin' OR current_user<>'postgres'/);
+ const reset=witness.mutation.indexOf('RESET ROLE;'),alter=witness.mutation.indexOf('ALTER FUNCTION erp_private.employee_permission(bigint,text) OWNER TO supabase_admin;');
+ const restore=witness.mutation.indexOf('SET LOCAL ROLE postgres;');
+ assert.ok(reset>witness.mutation.indexOf('END $owner_witness$;')&&reset<alter&&alter<restore);
+ assert.ok(witness.mutation.trimEnd().endsWith('SET LOCAL ROLE postgres;'));
+ const text=witnessSql(witness,sql,digest);
+ assert.ok(text.indexOf('SET LOCAL ROLE postgres;')<text.indexOf('DO $lineage_preimage$'));
+ assert.match(text,/^BEGIN;/);assert.match(text,/ROLLBACK;$/);assert.doesNotMatch(witness.mutation,/COMMIT|GRANT|SET SESSION AUTHORIZATION/);
+});

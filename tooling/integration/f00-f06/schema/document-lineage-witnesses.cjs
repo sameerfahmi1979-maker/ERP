@@ -11,7 +11,13 @@ const witnesses=Object.freeze([
  SELECT prosrc INTO STRICT original FROM pg_proc WHERE oid='erp_private.document_permission(bigint,text)'::regprocedure;
  definition:=pg_get_functiondef('erp_private.document_permission(bigint,text)'::regprocedure);
  EXECUTE replace(definition,original,original||E'\\n-- changed witness'); END $w$;`,expected:'Document lineage prerequisite drift: erp_private.document_permission(bigint,text)'},
- {id:'changed-helper-owner',mutation:'ALTER FUNCTION erp_private.employee_permission(bigint,text) OWNER TO supabase_admin;',expected:'Document lineage prerequisite drift: erp_private.employee_permission(bigint,text)'},
+ {id:'changed-helper-owner',mutation:`DO $owner_witness$ BEGIN
+ IF session_user<>'supabase_admin' OR current_user<>'postgres' THEN
+  RAISE EXCEPTION 'Owner witness requires supabase_admin session and postgres role';
+ END IF; END $owner_witness$;
+ RESET ROLE;
+ ALTER FUNCTION erp_private.employee_permission(bigint,text) OWNER TO supabase_admin;
+ SET LOCAL ROLE postgres;`,expected:'Document lineage prerequisite drift: erp_private.employee_permission(bigint,text)'},
  {id:'function-grant',mutation:'GRANT EXECUTE ON FUNCTION erp_private.document_permission(bigint,text) TO anon;',expected:'Document lineage prerequisite drift: erp_private.document_permission(bigint,text)'},
  {id:'function-grant-option',mutation:'GRANT EXECUTE ON FUNCTION erp_private.document_permission(bigint,text) TO authenticated WITH GRANT OPTION;',expected:'Document lineage prerequisite drift: erp_private.document_permission(bigint,text)'},
  {id:'changed-search-path',mutation:"ALTER FUNCTION erp_private.document_permission(bigint,text) SET search_path='public';",expected:'Document lineage prerequisite drift: erp_private.document_permission(bigint,text)'},

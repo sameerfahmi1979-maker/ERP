@@ -182,6 +182,7 @@ jobs:
           tests/integration/f00-f06/schema/migration-contract.test.cjs
           tests/integration/f00-f06/schema/native-fixture.test.cjs
           tests/integration/f00-f06/schema/schema-receipt.test.cjs
+          tests/integration/f00-f06/schema/schema-rejection-witnesses.test.cjs
 
   build-types:
     needs: security

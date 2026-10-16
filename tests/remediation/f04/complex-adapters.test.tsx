@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import '../f05/setup';
 vi.mock('@/components/erp/export/erp-export-menu',()=>({ERPExportMenu:()=>null}));
-import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render as renderUI, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createWorkspaceDraftStore } from '@/lib/workspace/workspace-draft-store';
 import type { AuthContext } from '@/lib/rbac/check';
@@ -20,7 +22,11 @@ vi.mock('@/server/actions/common-master-data/work-sites',()=>({createWorkSite:(d
 vi.mock('@/server/actions/branches',()=>({createBranch:(data:unknown)=>ctx.save(data),updateBranch:(data:unknown)=>ctx.save(data)}));
 vi.mock('@/server/actions/organizations',()=>({createOrganization:(data:unknown)=>ctx.save(data),updateOrganization:(data:unknown)=>ctx.save(data)}));
 vi.mock('@/server/actions/common-master-data/owner-company-signatories',()=>({listCompanySignatories:vi.fn(),createCompanySignatory:(data:unknown)=>ctx.sigSave(data),updateCompanySignatory:(data:unknown)=>ctx.sigSave(data),softDeleteCompanySignatory:vi.fn()}));
-vi.mock('@tanstack/react-query',()=>({useQuery:()=>({data:[],isPending:false,isError:false,refetch:vi.fn()}),useQueryClient:()=>({invalidateQueries:vi.fn()})}));
+vi.mock('@tanstack/react-query',async importOriginal=>({
+ ...await importOriginal<typeof import('@tanstack/react-query')>(),
+ // Lookup rows stay offline; invalidation, cancellation and batching use the real cache.
+ useQuery:()=>({data:[],isPending:false,isError:false,refetch:vi.fn()}),
+}));
 vi.mock('@/features/ai/common/compliance-checker',()=>({ComplianceFindingAlert:()=>null}));
 vi.mock('@/features/ai/common/duplicate-detection',()=>({DuplicateCandidateAlert:()=>null}));
 vi.mock('@/features/ai/common/field-suggestions',()=>({AiFieldSuggestionsPanel:()=>null}));
@@ -45,8 +51,18 @@ const administrationAuth:AuthContext={profile:{id:1} as AuthContext['profile'],e
 // Only these child-positive cases require the register's existing GLOBAL read
 // and manage admission. Parent/branch fixtures retain their scoped grants.
 const signatoryAuth:AuthContext={...administrationAuth,permissionCodes:[...administrationAuth.permissionCodes,'organizations.view'],globalPermissionCodes:['organizations.view','organizations.manage'],roleAssignments:[...administrationAuth.roleAssignments!,{roleId:3,roleCode:'signatory_editor',ownerCompanyId:null,branchId:null,permissionCodes:['organizations.view','organizations.manage']}]};
+let queryClient:QueryClient;
+const render=(node:ReactElement)=>renderUI(node,{wrapper:({children})=><QueryClientProvider client={queryClient}>{children}</QueryClientProvider>});
+beforeEach(()=>{
+ queryClient=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});
+ vi.spyOn(console,'error');vi.spyOn(console,'warn');
+});
 beforeEach(()=>{ctx.store=createWorkspaceDraftStore();ctx.save.mockReset().mockImplementation(async(data:{id?:number})=>({success:true,data:{id:data.id??50,revision:'2',changed:true,replayed:false}}));ctx.markDirty.mockReset();ctx.db.mockReset().mockImplementation((table,kind)=>kind==='single'?{data:table==='currencies'?{id:5,currency_code:'SYN'}:{name_en:'Resolved'},error:null}:{data:table==='emirates'?[{id:10,country_id:1,name_en:'Old Emirate',emirate_code:'OLD'}]:table==='cities'?[{id:100,country_id:1,emirate_id:10,name_en:'Old City',city_code:'OLD'}]:[{id:1000,city_id:100,name_en:'Old Area',area_code:'OLD'}],error:null});});
-afterEach(cleanup);
+afterEach(async()=>{
+ cleanup();await Promise.resolve();
+ try{expect(console.error).not.toHaveBeenCalled();expect(console.warn).not.toHaveBeenCalled();}
+ finally{queryClient.clear();vi.restoreAllMocks();}
+});
 it('organization child validates independently without triggering the parent save',async()=>{
  const ui=org(signatoryAuth);fireEvent.click(ui.getByRole('button',{name:'Add Signatory'}));fireEvent.click(ui.getByRole('button',{name:'Save',exact:true}));expect(document.activeElement).toBe(ui.getByLabelText('Full Name *'));expect(ctx.save).not.toHaveBeenCalled();expect(ctx.sigSave).not.toHaveBeenCalled();
 });

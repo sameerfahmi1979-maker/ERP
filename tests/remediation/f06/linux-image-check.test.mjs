@@ -37,6 +37,7 @@ test('cleanup identity binds exact image, container, name and CI owner',()=>{con
 test('native execution uses readonly source/fixture mounts, no network and UID1000',()=>{const a=nativeArguments('/checkout','/evidence/verification');assert.equal(a[a.indexOf('--network')+1],'none');assert.equal(a[a.indexOf('--user')+1],'1000');assert.ok(a.includes('--read-only'));assert.ok(a.includes('type=bind,src=/checkout/src,dst=/app/src,readonly'));assert.ok(a.includes('type=bind,src=/evidence/verification,dst=/app/verification,readonly'));assert.ok(!a.includes('--privileged')&&!a.includes('--publish'));assert.match(BASE,/@sha256:[a-f0-9]{64}$/);});
 const requiredJobs=['core-tests','remediation-tests','f06-tests','performance-phases','performance-compatibility','integration-tests','build-types','security','lint','production-image'];
 const candidateRef='${{ github.event.pull_request.head.sha || github.sha }}';
+const offlineSchemaFiles=['migration-contract.test.cjs','native-fixture.test.cjs','schema-receipt.test.cjs','schema-rejection-witnesses.test.cjs','document-lineage.test.cjs','reconciled-receipt.test.cjs'].map(file=>'tests/integration/f00-f06/schema/'+file);
 function validateEngineeringWorkflow(workflow){
  assert.equal(workflow.env.EXPECTED_CANDIDATE_SHA,candidateRef);
  assert.deepEqual(Object.keys(workflow.jobs).sort(),[...requiredJobs,'verify'].sort());
@@ -61,6 +62,11 @@ function validateEngineeringWorkflow(workflow){
    assert.equal(step.env?.EXPECTED_CANDIDATE_SHA,undefined,name+' admission cannot replace candidate');
   }
  }
+ const schemaSteps=workflow.jobs['integration-tests'].steps.filter(step=>step.name==='Composed migration, fixture identity and schema receipt guards (offline only)');
+ assert.equal(schemaSteps.length,1,'Exactly one complete offline schema gate');
+ assert.equal(schemaSteps[0].if,undefined,'Offline schema gate must not skip');
+ assert.equal(schemaSteps[0]['continue-on-error'],undefined,'Offline schema gate must remain blocking');
+ assert.deepEqual(schemaSteps[0].run.trim().split(/\s+/),['node','--test',...offlineSchemaFiles],'All six exact offline schema suites must execute without filtering');
  const aggregate=workflow.jobs.verify;
  assert.equal(aggregate.if,'always()');
  assert.deepEqual([...aggregate.needs].sort(),[...requiredJobs].sort());
@@ -106,6 +112,17 @@ test('workflow aggregate rejects missing gates, skipped admission and non-succes
   value=>{value.jobs.verify.steps[0].run=value.jobs.verify.steps[0].run.replace('= success','= skipped');},
   value=>{value.jobs.verify.steps[0].run='true';}
  ]){const changed=structuredClone(baseline);mutate(changed);assert.throws(()=>validateEngineeringWorkflow(changed));}
+});
+test('offline schema gate rejects omitted, substituted, filtered or bypassed lineage and receipt suites',()=>{
+ const baseline=yaml.load(fs.readFileSync('.github/workflows/engineering.yml','utf8'));
+ const gate=value=>value.jobs['integration-tests'].steps.find(step=>step.name==='Composed migration, fixture identity and schema receipt guards (offline only)');
+ for(const file of offlineSchemaFiles)for(const replacement of ['',offlineSchemaFiles.find(other=>other!==file)]){
+  const changed=structuredClone(baseline);gate(changed).run=gate(changed).run.replace(file,replacement);
+  assert.throws(()=>validateEngineeringWorkflow(changed),file);
+ }
+ for(const mutate of [step=>{step.run=step.run.replace('node --test','node --test --test-name-pattern=selected');},step=>{step.if='false';},step=>{step['continue-on-error']=true;}]){
+  const changed=structuredClone(baseline);mutate(gate(changed));assert.throws(()=>validateEngineeringWorkflow(changed));
+ }
 });
 test('controller records both SHAs and immutable image and never retries business mutations',()=>{const s=fs.readFileSync('tooling/testing/f06-linux-image-check.mjs','utf8');for(const key of ['candidateHead:candidate,eventSha:event','actualCheckout=checkout','imageId=validateImage(production)','newImageAllLayerCertificateScan:false','cliEnded:ended','CLI_END_UNKNOWN','CLI_TIMEOUT','OUTPUT_BOUND','Absolute HTTP deadline','/dashboard'])assert.ok(s.includes(key));assert.ok(s.includes("request('/dashboard','HEAD')"));assert.doesNotMatch(s,/docker.*rm.*--force|NODE_TLS_REJECT_UNAUTHORIZED=0/);});
 

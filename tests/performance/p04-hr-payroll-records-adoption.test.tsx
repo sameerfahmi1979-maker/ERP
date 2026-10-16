@@ -130,7 +130,12 @@ it.each(["self", "team"])("existing %s payroll/banking capabilities reach author
 it("forbidden subject read clears all private sections and closes child dialogs without retry", async () => {
   const view = mount(); await screen.findAllByText(token("holds")); state.page.mockRejectedValue(new ReadError("Subject access revoked", 403));
   await act(async () => {await view.client.invalidateQueries({queryKey: ["hr", "payroll", "holds", 880301]});}); await screen.findByText("Payroll information is restricted.");
-  expect(screen.queryAllByText(token("salary-components"))).toHaveLength(0); expect(view.onChildOpen).toHaveBeenLastCalledWith(false); expect(view.client.getQueryCache().getAll().some(q => q.queryKey[1] === "payroll")).toBe(false);
+  expect(screen.queryAllByText(token("salary-components"))).toHaveLength(0);
+  // Restricted rendering precedes the passive effect that retires child/cache state.
+  await waitFor(() => {
+    expect(view.onChildOpen).toHaveBeenLastCalledWith(false);
+    expect(view.client.getQueryCache().getAll().some(q => q.queryKey[1] === "payroll")).toBe(false);
+  });
 });
 it("component editor waits for fresh complete detail and preserves a selected inactive catalog value", async () => {
   mount(); await screen.findAllByText(token("salary-components")); expect(state.point.mock.calls.some(c => c[0].kind === "component-detail")).toBe(false);

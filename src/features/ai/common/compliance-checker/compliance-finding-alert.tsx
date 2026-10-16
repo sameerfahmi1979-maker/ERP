@@ -36,17 +36,17 @@ export function ComplianceFindingAlert({ entityType, entityId }: ComplianceFindi
     <QueryReadBoundary queries={[uiRead1]}><Alert
       className={
         hasCritical
-          ? "border-red-300 bg-red-50 mb-4"
-          : "border-amber-300 bg-amber-50 mb-4"
+          ? "border-red-300 bg-red-50 mb-4 dark:border-red-800 dark:bg-red-950"
+          : "border-amber-300 bg-amber-50 mb-4 dark:border-amber-800 dark:bg-amber-950"
       }
     >
       {hasCritical ? (
-        <ShieldAlert className="h-4 w-4 text-red-600" />
+        <ShieldAlert className="h-4 w-4 text-red-600 dark:text-red-300" />
       ) : (
-        <AlertTriangle className="h-4 w-4 text-amber-600" />
+        <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-300" />
       )}
       <AlertDescription
-        className={hasCritical ? "text-red-900 text-sm" : "text-amber-900 text-sm"}
+        className={hasCritical ? "text-red-900 text-sm dark:text-red-200" : "text-amber-900 text-sm dark:text-amber-200"}
       >
         <strong>{count}</strong> open compliance finding{count === 1 ? "" : "s"} require review.
         {(data?.criticalCount ?? 0) > 0 && (

@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { navigateAfterIdentityChange } from "@/lib/auth/client-session";
 import { OpenWorkspaces } from "@/components/workspace/open-workspaces";
 import { useWorkspaceContext } from "@/components/workspace/workspace-provider";
+import { retainWorkspaceDocumentTitle } from "@/lib/workspace/workspace-document-title";
 
 type AppHeaderProps = {
   notificationIdentity?: string;
@@ -29,7 +30,7 @@ export function AppHeader({ notificationIdentity, displayName, email, appName = 
   const activeTab = workspace?.state.tabs.find(tab => tab.id === workspace.state.activeTabId);
   const isHydrated = workspace?.state.isHydrated ?? false;
   useEffect(() => {
-    if (isHydrated && activeTab?.title) document.title = `${activeTab.title} | ${appName}`;
+    if (isHydrated && activeTab?.title) return retainWorkspaceDocumentTitle(`${activeTab.title} | ${appName}`);
   }, [activeTab?.title, appName, isHydrated]);
   const initials = (displayName ?? email ?? "U").slice(0, 2).toUpperCase();
   const handleSignOut = async () => {

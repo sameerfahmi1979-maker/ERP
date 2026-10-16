@@ -61,7 +61,7 @@ export function ReportPreviewHeader({
 
   return (
     <div
-      className={cn("rounded-lg border overflow-hidden shadow-sm bg-white", className)}
+      className={cn("rounded-lg border overflow-hidden shadow-sm bg-card text-card-foreground", className)}
       aria-label="Report preview header"
     >
       {/* ── Company header bar ─────────────────────────────────────────────── */}

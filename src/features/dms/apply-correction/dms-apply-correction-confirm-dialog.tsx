@@ -97,7 +97,7 @@ export function DmsApplyCorrectionConfirmDialog({
       onOpenChange={onOpenChange}
       title="Apply Correction"
       subtitle={`Proposal ${proposal.proposal_code ?? `#${proposal.id}`}`}
-      icon={<ShieldCheck className="h-5 w-5 text-blue-600" />}
+      icon={<ShieldCheck className="h-5 w-5 text-blue-600 dark:text-blue-300" />}
       mode="edit"
       size="md"
       isSubmitting={isSubmitting}
@@ -125,9 +125,9 @@ export function DmsApplyCorrectionConfirmDialog({
         </div>
 
         {/* Correction mode info */}
-        <div className="flex items-center gap-1.5 text-xs text-slate-500">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span>Mode:</span>
-          <span className="font-mono capitalize bg-slate-100 px-1.5 py-0.5 rounded">
+          <span className="font-mono capitalize bg-muted px-1.5 py-0.5 rounded">
             {proposal.correction_mode.replace(/_/g, " ")}
           </span>
         </div>
@@ -136,12 +136,12 @@ export function DmsApplyCorrectionConfirmDialog({
         <label className="flex items-start gap-2.5 cursor-pointer">
           <input
             type="checkbox"
-            className="mt-1 h-4 w-4 rounded border-slate-300"
+            className="mt-1 h-4 w-4 rounded border-input"
             checked={humanReviewConfirmed}
             onChange={(e) => setHumanReviewConfirmed(e.target.checked)}
             disabled={isSubmitting}
           />
-          <span className="text-sm text-slate-700">
+          <span className="text-sm text-foreground">
             I confirm I have reviewed the correction value and take responsibility
             for this change.
           </span>
@@ -152,14 +152,14 @@ export function DmsApplyCorrectionConfirmDialog({
           <label className="flex items-start gap-2.5 cursor-pointer">
             <input
               type="checkbox"
-              className="mt-1 h-4 w-4 rounded border-slate-300"
+              className="mt-1 h-4 w-4 rounded border-input"
               checked={replaceExistingConfirmed}
               onChange={(e) => setReplaceExistingConfirmed(e.target.checked)}
               disabled={isSubmitting}
             />
-            <span className="text-sm text-slate-700">
+            <span className="text-sm text-foreground">
               I confirm I want to replace the existing value:{" "}
-              <span className="font-mono text-xs bg-slate-100 px-1 rounded">
+              <span className="font-mono text-xs bg-muted px-1 rounded">
                 {proposal.current_value_summary}
               </span>
             </span>
@@ -168,14 +168,14 @@ export function DmsApplyCorrectionConfirmDialog({
 
         {/* Error */}
         {error && (
-          <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
             <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
             {error}
           </div>
         )}
 
         {/* Responsibility notice */}
-        <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-500">
+        <div className="rounded-md border border-border bg-muted px-3 py-2.5 text-xs text-muted-foreground">
           This correction will write directly to the ERP target field. The action
           will be audited. No automatic reversal is available after applying.
         </div>
@@ -200,19 +200,19 @@ function ValueDisplay({
   mono?:       boolean;
 }) {
   const variantClass = variant === "info"
-    ? "bg-blue-50 border-blue-200 text-blue-800"
-    : "bg-white border-slate-200 text-slate-700";
+    ? "bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-950 dark:border-blue-800 dark:text-blue-200"
+    : "bg-card border-border text-foreground";
 
   return (
     <div className="space-y-1">
-      <p className="text-xs font-medium text-slate-500">{label}</p>
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <div className={cn(
         "rounded border px-2.5 py-1.5 text-sm min-h-[2rem] break-words",
         variantClass,
         mono && "font-mono text-xs"
       )}>
         {value != null && value !== "" ? value : (
-          <span className="text-slate-400 italic">{emptyLabel}</span>
+          <span className="text-muted-foreground italic">{emptyLabel}</span>
         )}
       </div>
     </div>

@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config';
 import path from 'node:path';
 import { fluentTestServer } from '../fluent-test-config.mts';
 export default defineConfig({
-  resolve: { alias: { '@': path.resolve('src') } },
+  resolve: { alias: { '@': path.resolve('src'), 'server-only': path.resolve('tests/unit/server-only.ts') } },
   oxc: { jsx: { runtime: 'automatic' } },
   test: {
     // Tabster 8.8.0 has a legacy CJS main; transform real Fluent/Tabster through

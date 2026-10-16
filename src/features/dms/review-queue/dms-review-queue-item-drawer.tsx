@@ -254,10 +254,10 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
 };
 
   const PRIORITY_COLORS: Record<string, string> = {
-    urgent: "text-red-700 bg-red-50 border-red-200",
-    high:   "text-orange-700 bg-orange-50 border-orange-200",
-    normal: "text-sky-700 bg-sky-50 border-sky-200",
-    low:    "text-muted-foreground bg-slate-50 border-border",
+    urgent: "text-red-700 bg-red-50 border-red-200 dark:text-red-200 dark:bg-red-950 dark:border-red-800",
+    high:   "text-orange-700 bg-orange-50 border-orange-200 dark:text-orange-200 dark:bg-orange-950 dark:border-orange-800",
+    normal: "text-sky-700 bg-sky-50 border-sky-200 dark:text-sky-200 dark:bg-sky-950 dark:border-sky-800",
+    low:    "text-muted-foreground bg-muted border-border",
   };
 
   return (
@@ -275,7 +275,7 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
         <button
           type="button"
           aria-label="Close review item" disabled={isSubmitting} onClick={onClose}
-          className="rounded-md p-1 hover:bg-slate-100 text-muted-foreground"
+          className="rounded-md p-1 hover:bg-muted text-muted-foreground"
         >
           <X className="h-5 w-5" />
         </button>
@@ -289,11 +289,11 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
           <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold uppercase ${PRIORITY_COLORS[item.priority] ?? PRIORITY_COLORS.normal}`}>
             {item.priority} priority
           </span>
-          <span className="rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground bg-slate-50">
+          <span className="rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground bg-muted">
             {item.status.replace("_", " ")}
           </span>
           {item.confidence != null && (
-            <span className="rounded-full border border-border px-2.5 py-1 text-xs font-mono text-muted-foreground bg-slate-50">
+            <span className="rounded-full border border-border px-2.5 py-1 text-xs font-mono text-muted-foreground bg-muted">
               {(item.confidence * 100).toFixed(0)}% confidence
             </span>
           )}
@@ -301,11 +301,11 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
 
         {/* Reason */}
         {(item.reasonMessage || item.reasonCode) && (
-          <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
-            <p className="text-xs font-semibold text-amber-800 mb-1">Review Reason</p>
-            <p className="text-sm text-amber-900">{item.reasonMessage ?? item.reasonCode}</p>
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950">
+            <p className="text-xs font-semibold text-amber-800 mb-1 dark:text-amber-200">Review Reason</p>
+            <p className="text-sm text-amber-900 dark:text-amber-200">{item.reasonMessage ?? item.reasonCode}</p>
             {item.fieldCode && (
-              <p className="mt-1 text-xs text-amber-700">
+              <p className="mt-1 text-xs text-amber-700 dark:text-amber-200">
                 Field: <code className="font-mono">{item.fieldCode}</code>
               </p>
             )}
@@ -320,12 +320,12 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
               href={sourceUrl}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-700 hover:bg-sky-100 transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-700 hover:bg-sky-100 transition-colors dark:border-sky-800 dark:bg-sky-950 dark:text-sky-200 dark:hover:bg-sky-950"
             >
               <ExternalLink className="h-3.5 w-3.5" />
               {item.document?.document_no ?? item.uploadSession?.session_code ?? `Document ${item.documentId}`}
               {item.document?.title && (
-                <span className="text-sky-500 font-normal">— {item.document.title.slice(0, 40)}</span>
+                <span className="text-sky-500 font-normal dark:text-sky-300">— {item.document.title.slice(0, 40)}</span>
               )}
             </a>
           </div>
@@ -361,7 +361,7 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
 
         {/* Resolution info (if already closed) */}
         {(item.status === "resolved" || item.status === "dismissed") && item.resolutionCode && (
-          <div className="rounded-md border border-border bg-slate-50 p-3">
+          <div className="rounded-md border border-border bg-muted p-3">
             <p className="text-xs font-semibold text-muted-foreground mb-1">
               {item.status === "resolved" ? "Resolution" : "Dismissal Reason"}
             </p>
@@ -374,42 +374,42 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
 
         {/* Phase 13 — Validation Finding Details */}
         {item.validationFinding && (
-          <div className="rounded-md border border-amber-200 bg-amber-50 p-4 space-y-3">
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-4 space-y-3 dark:border-amber-800 dark:bg-amber-950">
             <div className="flex items-center gap-2">
-              <ShieldAlert className="h-4 w-4 text-amber-600" />
-              <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">Validation Finding</p>
+              <ShieldAlert className="h-4 w-4 text-amber-600 dark:text-amber-300" />
+              <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide dark:text-amber-200">Validation Finding</p>
               <span className={`ml-auto text-xs font-medium rounded-full px-2 py-0.5 border ${
                 item.validationFinding.severity === "error"
-                  ? "text-red-700 bg-red-50 border-red-200"
+                  ? "text-red-700 bg-red-50 border-red-200 dark:text-red-200 dark:bg-red-950 dark:border-red-800"
                   : item.validationFinding.severity === "warning"
-                  ? "text-orange-700 bg-orange-50 border-orange-200"
-                  : "text-muted-foreground bg-slate-50 border-border"
+                  ? "text-orange-700 bg-orange-50 border-orange-200 dark:text-orange-200 dark:bg-orange-950 dark:border-orange-800"
+                  : "text-muted-foreground bg-muted border-border"
               }`}>
                 {item.validationFinding.severity}
               </span>
             </div>
             <div className="space-y-1.5">
-              <p className="text-sm font-medium text-amber-900">
+              <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
                 {item.validationFinding.ruleLabel ?? item.validationFinding.ruleCode}
               </p>
               {item.validationFinding.reasonMessage && (
-                <p className="text-xs text-amber-700">{item.validationFinding.reasonMessage}</p>
+                <p className="text-xs text-amber-700 dark:text-amber-200">{item.validationFinding.reasonMessage}</p>
               )}
             </div>
             {/* Conflict comparison */}
             {(item.validationFinding.currentValueSummary || item.validationFinding.aiValueSummary) && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                 {item.validationFinding.currentValueSummary && (
-                  <div className="rounded bg-card border border-amber-200 p-2">
-                    <p className="text-xs text-amber-600 font-medium mb-0.5">Saved Value</p>
+                  <div className="rounded bg-card border border-amber-200 p-2 dark:border-amber-800">
+                    <p className="text-xs text-amber-600 font-medium mb-0.5 dark:text-amber-300">Saved Value</p>
                     <p className="text-xs text-foreground font-mono break-all">
                       {item.validationFinding.currentValueSummary}
                     </p>
                   </div>
                 )}
                 {item.validationFinding.aiValueSummary && (
-                  <div className="rounded bg-card border border-amber-200 p-2">
-                    <p className="text-xs text-amber-600 font-medium mb-0.5">AI Value</p>
+                  <div className="rounded bg-card border border-amber-200 p-2 dark:border-amber-800">
+                    <p className="text-xs text-amber-600 font-medium mb-0.5 dark:text-amber-300">AI Value</p>
                     <p className="text-xs text-foreground font-mono break-all">
                       {item.validationFinding.aiValueSummary}
                     </p>
@@ -418,11 +418,11 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
               </div>
             )}
             {item.validationFinding.confidence != null && (
-              <p className="text-xs text-amber-600">
+              <p className="text-xs text-amber-600 dark:text-amber-300">
                 Confidence: {(item.validationFinding.confidence * 100).toFixed(0)}%
               </p>
             )}
-            <p className="text-xs text-amber-500 font-mono">
+            <p className="text-xs text-amber-500 font-mono dark:text-amber-300">
               Rule: {item.validationFinding.ruleCode} · Status: {item.validationFinding.status}
             </p>
           </div>
@@ -430,12 +430,12 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
 
         {/* Phase 13 — Entity Match Candidate Details */}
         {item.entityMatchCandidate && (
-          <div className="rounded-md border border-sky-200 bg-sky-50 p-4 space-y-3">
+          <div className="rounded-md border border-sky-200 bg-sky-50 p-4 space-y-3 dark:border-sky-800 dark:bg-sky-950">
             <div className="flex items-center gap-2">
-              <Search className="h-4 w-4 text-sky-600" />
-              <p className="text-xs font-semibold text-sky-800 uppercase tracking-wide">Entity Match Candidate</p>
+              <Search className="h-4 w-4 text-sky-600 dark:text-sky-300" />
+              <p className="text-xs font-semibold text-sky-800 uppercase tracking-wide dark:text-sky-200">Entity Match Candidate</p>
               {item.entityMatchCandidate.matchScore != null && (
-                <span className="ml-auto text-xs font-medium rounded-full px-2 py-0.5 border border-sky-200 bg-card text-sky-700">
+                <span className="ml-auto text-xs font-medium rounded-full px-2 py-0.5 border border-sky-200 bg-card text-sky-700 dark:border-sky-800 dark:text-sky-200">
                   {(item.entityMatchCandidate.matchScore * 100).toFixed(0)}% match
                 </span>
               )}
@@ -443,23 +443,23 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
             <div className="space-y-1.5">
               <div className="flex items-start gap-2">
                 <div className="flex-1">
-                  <p className="text-xs text-sky-600 font-medium capitalize">
+                  <p className="text-xs text-sky-600 font-medium capitalize dark:text-sky-300">
                     {item.entityMatchCandidate.targetEntityType.replace(/_/g, " ")}
                   </p>
-                  <p className="text-sm font-semibold text-sky-900">
+                  <p className="text-sm font-semibold text-sky-900 dark:text-sky-200">
                     {item.entityMatchCandidate.targetDisplayName ?? `ID ${item.entityMatchCandidate.targetEntityId}`}
                   </p>
                 </div>
-                <p className="text-xs text-sky-500 font-mono mt-0.5">ID {item.entityMatchCandidate.targetEntityId}</p>
+                <p className="text-xs text-sky-500 font-mono mt-0.5 dark:text-sky-300">ID {item.entityMatchCandidate.targetEntityId}</p>
               </div>
               {item.entityMatchCandidate.matchReason && (
-                <p className="text-xs text-sky-700">{item.entityMatchCandidate.matchReason}</p>
+                <p className="text-xs text-sky-700 dark:text-sky-200">{item.entityMatchCandidate.matchReason}</p>
               )}
               {item.entityMatchCandidate.sourceTextSummary && (
-                <p className="text-xs text-sky-500">Signal: {item.entityMatchCandidate.sourceTextSummary}</p>
+                <p className="text-xs text-sky-500 dark:text-sky-300">Signal: {item.entityMatchCandidate.sourceTextSummary}</p>
               )}
             </div>
-            <div className="flex items-center gap-2 text-xs text-sky-500">
+            <div className="flex items-center gap-2 text-xs text-sky-500 dark:text-sky-300">
               <span>Method: {item.entityMatchCandidate.matchMethod ?? "—"}</span>
               <span>·</span>
               <span>Status: {item.entityMatchCandidate.status}</span>
@@ -473,11 +473,11 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
           && item.entityMatchCandidate.status === "accepted"
           && item.documentId
           && (
-          <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4 space-y-3">
-            <p className="text-xs font-semibold text-emerald-800 uppercase tracking-wide">
+          <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4 space-y-3 dark:border-emerald-800 dark:bg-emerald-950">
+            <p className="text-xs font-semibold text-emerald-800 uppercase tracking-wide dark:text-emerald-200">
               Apply to DMS Document — Phase 16
             </p>
-            <p className="text-xs text-emerald-700">
+            <p className="text-xs text-emerald-700 dark:text-emerald-200">
               This candidate has been accepted. You may now apply it to the document record.
               Feature-flag gated — preview will indicate if not enabled.
             </p>
@@ -526,11 +526,11 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
           && item.documentId
           && item.entityMatchCandidate.targetEntityId
           && (
-          <div className="rounded-md border border-violet-200 bg-violet-50 p-4 space-y-3">
-            <p className="text-xs font-semibold text-violet-800 uppercase tracking-wide">
+          <div className="rounded-md border border-violet-200 bg-violet-50 p-4 space-y-3 dark:border-violet-800 dark:bg-violet-950">
+            <p className="text-xs font-semibold text-violet-800 uppercase tracking-wide dark:text-violet-200">
               Apply to Party Master — Phase 16 Tier 2
             </p>
-            <p className="text-xs text-violet-700">
+            <p className="text-xs text-violet-700 dark:text-violet-200">
               Apply AI-extracted values to this party&apos;s Licenses or Tax Registration records.
               Feature-flag gated. You must select the specific record to update.
             </p>
@@ -545,7 +545,7 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
                   className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
                     partyTargetKind === kind
                       ? "bg-violet-600 text-white border-violet-600"
-                      : "bg-card text-violet-700 border-violet-300 hover:bg-violet-50"
+                      : "bg-card text-violet-700 border-violet-300 hover:bg-violet-50 dark:text-violet-200 dark:border-violet-800 dark:hover:bg-violet-950"
                   }`}
                 >
                   {kind === "party_licenses" ? "Party Licenses" : "Tax Registrations"}
@@ -606,7 +606,7 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
               />
             )}
             {partySelectedRowId == null && (
-              <p className="text-xs text-violet-500 italic">
+              <p className="text-xs text-violet-500 italic dark:text-violet-300">
                 Select a record above to enable apply preview.
               </p>
             )}
@@ -615,14 +615,14 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
 
         {/* DMS AI META.2 — Flow B: embedded AI metadata suggestions review */}
         {isMetadataSuggestionsReviewType && isActive && metadataSuggestionsPayload?.document_type_id && (
-          <div className="rounded-md border border-purple-200 bg-purple-50 p-4 space-y-3">
+          <div className="rounded-md border border-purple-200 bg-purple-50 p-4 space-y-3 dark:border-purple-800 dark:bg-purple-950">
             <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-purple-600" />
-              <p className="text-xs font-semibold text-purple-800 uppercase tracking-wide">
+              <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-300" />
+              <p className="text-xs font-semibold text-purple-800 uppercase tracking-wide dark:text-purple-200">
                 AI Metadata Suggestions
               </p>
             </div>
-            <p className="text-xs text-purple-700">
+            <p className="text-xs text-purple-700 dark:text-purple-200">
               AI has suggested {metadataSuggestions.length} metadata field
               {metadataSuggestions.length !== 1 ? "s" : ""} for{" "}
               {metadataSuggestionsPayload.document_type_name ?? metadataSuggestionsPayload.document_type_code}.
@@ -653,7 +653,7 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
 
         {/* Phase 13 — Safety Notice */}
         {(isValidationReviewType || isMatchingReviewType) && (
-          <div className="rounded-md border border-border bg-slate-50 p-3 text-xs text-muted-foreground">
+          <div className="rounded-md border border-border bg-muted p-3 text-xs text-muted-foreground">
             <p className="font-semibold text-muted-foreground mb-1">Phase 13 Safety Notice</p>
             <p>
               All actions on this item update finding/candidate status only.
@@ -750,7 +750,7 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
 
       {/* Footer — action controls */}
       {isActive && canManage && !showResolveForm && !showDismissForm && !isMetadataSuggestionsReviewType && (
-        <div className="border-t border-border px-6 py-4 flex flex-wrap gap-2 bg-slate-50">
+        <div className="border-t border-border px-6 py-4 flex flex-wrap gap-2 bg-muted">
           {item.status === "open" && (
             <Button size="sm" variant="outline" onClick={handleAssignToMe} disabled={isSubmitting}>
               <UserCheck className="h-3.5 w-3.5 mr-1" />
@@ -837,7 +837,7 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
       )}
 
       {!canManage && isActive && (
-        <div className="border-t border-border px-6 py-3 bg-slate-50">
+        <div className="border-t border-border px-6 py-3 bg-muted">
           <p className="text-xs text-muted-foreground">You have view-only access to the review queue.</p>
         </div>
       )}

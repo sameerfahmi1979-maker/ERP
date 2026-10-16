@@ -14,10 +14,10 @@ import type { SortDir } from "@/hooks/use-sort-paginate";
 
 function PriorityBadge({ priority }: { priority: string }) {
   const map: Record<string, string> = {
-    urgent: "bg-red-100 text-red-700 border border-red-200",
-    high:   "bg-orange-100 text-orange-700 border border-orange-200",
-    normal: "bg-sky-100 text-sky-700 border border-sky-200",
-    low:    "bg-slate-100 text-muted-foreground border border-border",
+    urgent: "bg-red-100 text-red-700 border border-red-200 dark:bg-red-950 dark:text-red-200 dark:border-red-800",
+    high:   "bg-orange-100 text-orange-700 border border-orange-200 dark:bg-orange-950 dark:text-orange-200 dark:border-orange-800",
+    normal: "bg-sky-100 text-sky-700 border border-sky-200 dark:bg-sky-950 dark:text-sky-200 dark:border-sky-800",
+    low:    "bg-muted text-muted-foreground border border-border",
   };
   return (
     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${map[priority] ?? map.normal}`}>
@@ -38,7 +38,7 @@ function ReviewTypeBadge({ reviewType }: { reviewType: string }) {
     metadata_definition_suggestions_review: "AI Metadata Suggest.",
   };
   return (
-    <span className="inline-flex rounded-md bg-violet-50 border border-violet-200 px-2 py-0.5 text-[10px] font-medium text-violet-700">
+    <span className="inline-flex rounded-md bg-violet-50 border border-violet-200 px-2 py-0.5 text-[10px] font-medium text-violet-700 dark:bg-violet-950 dark:border-violet-800 dark:text-violet-200">
       {labels[reviewType] ?? reviewType}
     </span>
   );
@@ -46,12 +46,12 @@ function ReviewTypeBadge({ reviewType }: { reviewType: string }) {
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
-    open:       "bg-emerald-50 text-emerald-700 border-emerald-200",
-    assigned:   "bg-sky-50 text-sky-700 border-sky-200",
-    in_review:  "bg-amber-50 text-amber-700 border-amber-200",
-    resolved:   "bg-slate-100 text-muted-foreground border-border",
-    dismissed:  "bg-slate-100 text-muted-foreground border-border",
-    superseded: "bg-slate-100 text-muted-foreground border-border",
+    open:       "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-200 dark:border-emerald-800",
+    assigned:   "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950 dark:text-sky-200 dark:border-sky-800",
+    in_review:  "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800",
+    resolved:   "bg-muted text-muted-foreground border-border",
+    dismissed:  "bg-muted text-muted-foreground border-border",
+    superseded: "bg-muted text-muted-foreground border-border",
   };
   const labels: Record<string, string> = {
     open:       "Open",
@@ -207,7 +207,7 @@ export function DmsReviewQueueTable({ items, isLoading, onViewItem }: Props) {
   if (items.length === 0) {
     return (
       <div className="rounded-lg border border-border bg-card p-12 text-center">
-        <div className="mx-auto mb-3 h-12 w-12 rounded-full bg-slate-100 flex items-center justify-center">
+        <div className="mx-auto mb-3 h-12 w-12 rounded-full bg-muted flex items-center justify-center">
           <Eye className="h-6 w-6 text-muted-foreground" />
         </div>
         <p className="text-sm font-medium text-muted-foreground">No review items found.</p>
@@ -224,7 +224,7 @@ export function DmsReviewQueueTable({ items, isLoading, onViewItem }: Props) {
       <div role="region" aria-label="Review queue table" tabIndex={0} className="overflow-x-auto">
         <table className="w-full table-fixed text-sm" style={{minWidth:visible.reduce((sum,column)=>sum+column.width,0)}}><colgroup>{visible.map(column=><col key={column.id} style={{width:column.width}}/>)}</colgroup>
           <thead>
-            <ConfiguredRow columns={columns} className="border-b border-border bg-slate-50 text-left">
+            <ConfiguredRow columns={columns} className="border-b border-border bg-muted text-left">
               <RQSortHeader data-column="id" field="id" label="#" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="w-8" />
               <th data-column="type" className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 <span className="inline-flex items-center gap-1.5">
@@ -267,7 +267,7 @@ export function DmsReviewQueueTable({ items, isLoading, onViewItem }: Props) {
             {sorted.map((item) => {
               const isOverdue = item.dueAt && isPast(parseISO(item.dueAt));
               return (
-                <ConfiguredRow columns={columns} key={item.id} className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors">
+                <ConfiguredRow columns={columns} key={item.id} className="border-b border-border hover:bg-muted/60 transition-colors">
                   <td data-column="id" className="px-4 py-3 text-xs text-muted-foreground font-mono">
                     {item.id}
                   </td>
@@ -281,9 +281,9 @@ export function DmsReviewQueueTable({ items, isLoading, onViewItem }: Props) {
                     {item.document?.document_no
                       ? <span className="font-mono">{item.document.document_no}</span>
                       : item.uploadSession?.session_code
-                      ? <span className="font-mono text-violet-600">{item.uploadSession.session_code}</span>
+                      ? <span className="font-mono text-violet-600 dark:text-violet-300">{item.uploadSession.session_code}</span>
                       : item.reviewType === "metadata_definition_suggestions_review"
-                      ? <span className="font-mono text-purple-600">
+                      ? <span className="font-mono text-purple-600 dark:text-purple-300">
                           {String(item.payloadJson?.document_type_code ?? item.sourceId ?? "—")}
                         </span>
                       : <span className="text-muted-foreground">—</span>
@@ -304,7 +304,7 @@ export function DmsReviewQueueTable({ items, isLoading, onViewItem }: Props) {
                         : item.reasonCode ?? "—"}
                     </div>
                     {item.fieldCode && (
-                      <span className="inline-block mt-0.5 rounded bg-slate-100 px-1 text-[10px] font-mono text-muted-foreground">
+                      <span className="inline-block mt-0.5 rounded bg-muted px-1 text-[10px] font-mono text-muted-foreground">
                         {item.fieldCode}
                       </span>
                     )}
@@ -327,7 +327,7 @@ export function DmsReviewQueueTable({ items, isLoading, onViewItem }: Props) {
                       {formatDistanceToNow(parseISO(item.queuedAt), { addSuffix: true })}
                     </div>
                     {item.dueAt && (
-                      <div className={`flex items-center gap-0.5 ${isOverdue ? "text-red-600 font-medium" : "text-muted-foreground"}`}>
+                      <div className={`flex items-center gap-0.5 ${isOverdue ? "text-red-600 font-medium dark:text-red-300" : "text-muted-foreground"}`}>
                         <Clock className="h-2.5 w-2.5" />
                         {isOverdue ? "Overdue" : formatDistanceToNow(parseISO(item.dueAt), { addSuffix: true })}
                       </div>

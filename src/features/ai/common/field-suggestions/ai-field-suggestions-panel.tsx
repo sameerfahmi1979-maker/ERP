@@ -247,10 +247,10 @@ export function AiFieldSuggestionsPanel({
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
-          <Brain className="h-4 w-4 text-violet-600" />
-          <span className="text-sm font-medium text-slate-700">
+          <Brain className="h-4 w-4 text-violet-600 dark:text-violet-300" />
+          <span className="text-sm font-medium text-foreground">
             AI Field Suggestions
-            {entityLabel && <span className="text-slate-500 font-normal"> — {entityLabel}</span>}
+            {entityLabel && <span className="text-muted-foreground font-normal"> — {entityLabel}</span>}
           </span>
           {activeSuggestions.length > 0 && (
             <Badge variant="secondary" className="text-xs">{activeSuggestions.length}</Badge>
@@ -273,7 +273,7 @@ export function AiFieldSuggestionsPanel({
               variant="outline"
               onClick={handleGenerate}
               disabled={isGenerating || !entityId}
-              className="h-7 text-xs gap-1.5 text-violet-700 border-violet-200 hover:bg-violet-50"
+              className="h-7 text-xs gap-1.5 text-violet-700 border-violet-200 hover:bg-violet-50 dark:text-violet-200 dark:border-violet-800 dark:hover:bg-violet-950"
             >
               <Brain className={cn("h-3.5 w-3.5", isGenerating && "animate-pulse")} />
               {isGenerating ? "Generating…" : "Generate Suggestions"}
@@ -283,9 +283,9 @@ export function AiFieldSuggestionsPanel({
       </div>
 
       {/* Human review warning */}
-      <Alert className="py-2 border-amber-200 bg-amber-50">
-        <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
-        <AlertDescription className="text-xs text-amber-700 ml-1">
+      <Alert className="py-2 border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950">
+        <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-300" />
+        <AlertDescription className="text-xs text-amber-700 ml-1 dark:text-amber-200">
           AI suggestions require human review. Always verify the suggested value before applying.
         </AlertDescription>
       </Alert>
@@ -309,7 +309,7 @@ export function AiFieldSuggestionsPanel({
 
       {/* Error state */}
       {error && !isLoading && (
-        <div className="text-center py-6 text-sm text-red-600">
+        <div className="text-center py-6 text-sm text-red-600 dark:text-red-300">
           Failed to load suggestions.{" "}
           <button onClick={() => refetch()} className="underline">Retry</button>
         </div>
@@ -326,7 +326,7 @@ export function AiFieldSuggestionsPanel({
             </p>
           )}
           {!canGenerate && (
-            <p className="text-xs mt-1 text-violet-600">
+            <p className="text-xs mt-1 text-violet-600 dark:text-violet-300">
               AI generation is currently disabled (<code>ERP_AI_FORM_FILL</code> is off).
             </p>
           )}
@@ -335,8 +335,8 @@ export function AiFieldSuggestionsPanel({
 
       {/* Batch bar */}
       {selectedIds.size > 0 && (
-        <div className="flex items-center justify-between gap-2 rounded-md border border-violet-200 bg-violet-50 px-3 py-2">
-          <span className="text-xs text-violet-700 font-medium">
+        <div className="flex items-center justify-between gap-2 rounded-md border border-violet-200 bg-violet-50 px-3 py-2 dark:border-violet-800 dark:bg-violet-950">
+          <span className="text-xs text-violet-700 font-medium dark:text-violet-200">
             {selectedIds.size} suggestion(s) selected
           </span>
           <div className="flex items-center gap-2">
@@ -425,12 +425,12 @@ function SuggestionCard({
 
   return (
     <div className={cn(
-      "rounded-md border p-3 space-y-2 bg-white",
-      isPending && "border-violet-200",
-      isAccepted && "border-blue-200",
-      suggestion.status === "applied" && "border-green-200 bg-green-50/30",
-      suggestion.status === "rejected" && "border-slate-200 bg-slate-50 opacity-70",
-      suggestion.status === "failed" && "border-red-200 bg-red-50/30",
+      "rounded-md border p-3 space-y-2 bg-card",
+      isPending && "border-violet-200 dark:border-violet-800",
+      isAccepted && "border-blue-200 dark:border-blue-800",
+      suggestion.status === "applied" && "border-green-200 bg-green-50/30 dark:border-green-800 dark:bg-green-950/30",
+      suggestion.status === "rejected" && "border-border bg-muted opacity-70",
+      suggestion.status === "failed" && "border-red-200 bg-red-50/30 dark:border-red-800 dark:bg-red-950/30",
     )}>
       {/* Top row: select + field + badges */}
       <div className="flex items-start gap-2">
@@ -438,14 +438,14 @@ function SuggestionCard({
           <Checkbox
             checked={isSelected}
             onCheckedChange={onToggleSelect}
-            className="mt-0.5 border-violet-300"
+            className="mt-0.5 border-violet-300 dark:border-violet-800"
           />
         )}
         {!isPending && <div className="w-4" />}
 
         <div className="flex-1 min-w-0 space-y-1">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-sm font-medium text-slate-800">{suggestion.fieldLabel}</span>
+            <span className="text-sm font-medium text-foreground">{suggestion.fieldLabel}</span>
             <AiSuggestionStatusBadge status={suggestion.status} />
             <AiSuggestionTypeBadge type={suggestion.suggestionType} />
             <AiConfidenceBadge score={suggestion.confidenceScore} />
@@ -454,14 +454,14 @@ function SuggestionCard({
           {/* Values diff */}
           <div className="grid grid-cols-2 gap-2 text-xs mt-1.5">
             <div className="space-y-0.5">
-              <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">Current</span>
-              <p className={cn("text-slate-600 truncate", !suggestion.currentValue && "text-slate-400 italic")}>
+              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Current</span>
+              <p className={cn("text-muted-foreground truncate", !suggestion.currentValue && "text-muted-foreground italic")}>
                 {suggestion.currentValue || "(empty)"}
               </p>
             </div>
             <div className="space-y-0.5">
-              <span className="text-[10px] font-medium text-violet-500 uppercase tracking-wide">AI Suggests</span>
-              <p className={cn("font-medium truncate", !suggestion.suggestedValue ? "text-slate-400 italic" : "text-slate-800")}>
+              <span className="text-[10px] font-medium text-violet-500 uppercase tracking-wide dark:text-violet-300">AI Suggests</span>
+              <p className={cn("font-medium truncate", !suggestion.suggestedValue ? "text-muted-foreground italic" : "text-foreground")}>
                 {suggestion.suggestedValue || "(clear field)"}
               </p>
             </div>
@@ -469,14 +469,14 @@ function SuggestionCard({
 
           {/* Apply error */}
           {suggestion.applyError && (
-            <p className="text-xs text-red-600 mt-1">{suggestion.applyError}</p>
+            <p className="text-xs text-red-600 mt-1 dark:text-red-300">{suggestion.applyError}</p>
           )}
 
           {/* Source evidence reference — metadata only */}
           {suggestion.sourceDocumentId && (
             <div className="flex items-center gap-1.5 mt-1.5">
-              <FileText className="h-3 w-3 text-slate-400 flex-shrink-0" />
-              <span className="text-[11px] text-slate-500">
+              <FileText className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+              <span className="text-[11px] text-muted-foreground">
                 Source: Doc #{suggestion.sourceDocumentId}
                 {suggestion.sourceDocumentType && ` (${suggestion.sourceDocumentType})`}
               </span>
@@ -484,12 +484,12 @@ function SuggestionCard({
               {suggestion.sourceExcerpt && (
                 <Popover>
                   <PopoverTrigger asChild>
-                    <button className="text-[10px] text-violet-600 underline hover:text-violet-800">
+                    <button className="text-[10px] text-violet-600 underline hover:text-violet-800 dark:text-violet-300 dark:hover:text-violet-200">
                       View excerpt
                     </button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-80 text-xs text-slate-700 p-3 leading-relaxed">
-                    <p className="font-medium text-slate-500 mb-1 text-[10px] uppercase tracking-wide">
+                  <PopoverContent className="w-80 text-xs text-foreground p-3 leading-relaxed">
+                    <p className="font-medium text-muted-foreground mb-1 text-[10px] uppercase tracking-wide">
                       Source Excerpt (stored, capped at 500 chars)
                     </p>
                     {suggestion.sourceExcerpt}
@@ -504,13 +504,13 @@ function SuggestionCard({
             <div>
               <button
                 onClick={() => setShowReason((v) => !v)}
-                className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-700"
+                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
               >
                 {showReason ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                 AI Reason
               </button>
               {showReason && (
-                <p className="text-xs text-slate-600 mt-1 pl-3 border-l-2 border-slate-200">
+                <p className="text-xs text-muted-foreground mt-1 pl-3 border-l-2 border-border">
                   {suggestion.aiReason}
                 </p>
               )}
@@ -533,10 +533,10 @@ function SuggestionCard({
                   Accept & Apply
                 </Button>
                 <Button size="sm" variant="outline" onClick={onAccept} className="h-6 text-[11px] px-2">
-                  <CheckCircle2 className="h-2.5 w-2.5 mr-0.5 text-blue-600" />
+                  <CheckCircle2 className="h-2.5 w-2.5 mr-0.5 text-blue-600 dark:text-blue-300" />
                   Accept
                 </Button>
-                <Button size="sm" variant="ghost" onClick={onReject} className="h-6 text-[11px] px-2 text-slate-600">
+                <Button size="sm" variant="ghost" onClick={onReject} className="h-6 text-[11px] px-2 text-muted-foreground">
                   <XCircle className="h-2.5 w-2.5 mr-0.5" />
                   Reject
                 </Button>
@@ -545,10 +545,10 @@ function SuggestionCard({
             {isPending && !canApply && (
               <>
                 <Button size="sm" variant="outline" onClick={onAccept} className="h-6 text-[11px] px-2">
-                  <CheckCircle2 className="h-2.5 w-2.5 mr-0.5 text-blue-600" />
+                  <CheckCircle2 className="h-2.5 w-2.5 mr-0.5 text-blue-600 dark:text-blue-300" />
                   Accept
                 </Button>
-                <Button size="sm" variant="ghost" onClick={onReject} className="h-6 text-[11px] px-2 text-slate-600">
+                <Button size="sm" variant="ghost" onClick={onReject} className="h-6 text-[11px] px-2 text-muted-foreground">
                   <XCircle className="h-2.5 w-2.5 mr-0.5" />
                   Reject
                 </Button>
@@ -564,7 +564,7 @@ function SuggestionCard({
                   <Zap className="h-2.5 w-2.5 mr-0.5" />
                   Apply
                 </Button>
-                <Button size="sm" variant="ghost" onClick={onReject} className="h-6 text-[11px] px-2 text-slate-600">
+                <Button size="sm" variant="ghost" onClick={onReject} className="h-6 text-[11px] px-2 text-muted-foreground">
                   <XCircle className="h-2.5 w-2.5 mr-0.5" />
                   Reject
                 </Button>
@@ -574,7 +574,7 @@ function SuggestionCard({
         )}
         {isLoading && (
           <div className="flex items-center justify-center w-16 flex-shrink-0">
-            <RefreshCw className="h-4 w-4 animate-spin text-violet-500" />
+            <RefreshCw className="h-4 w-4 animate-spin text-violet-500 dark:text-violet-300" />
           </div>
         )}
       </div>

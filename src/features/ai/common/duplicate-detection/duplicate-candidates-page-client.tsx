@@ -176,9 +176,9 @@ export function DuplicateCandidatesPageClient({
   return (
     <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="space-y-6">
       {!summary.featureEnabled && (
-        <Alert className="border-amber-300 bg-amber-50">
-          <AlertTriangle className="h-4 w-4 text-amber-600" />
-          <AlertDescription className="text-amber-900">
+        <Alert className="border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950">
+          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-300" />
+          <AlertDescription className="text-amber-900 dark:text-amber-200">
             <strong>ERP_AI_DUPLICATE_DETECT</strong> is disabled. Scan actions are blocked until an admin
             enables the flag in AI Settings. Existing candidates can still be reviewed below.
           </AlertDescription>
@@ -211,9 +211,9 @@ export function DuplicateCandidatesPageClient({
             </div>
           </div>
           {includeAi && (
-            <Alert className="border-violet-200 bg-violet-50">
-              <Brain className="h-4 w-4 text-violet-600" />
-              <AlertDescription className="text-violet-900 text-sm">
+            <Alert className="border-violet-200 bg-violet-50 dark:border-violet-800 dark:bg-violet-950">
+              <Brain className="h-4 w-4 text-violet-600 dark:text-violet-300" />
+              <AlertDescription className="text-violet-900 text-sm dark:text-violet-200">
                 AI-assisted scan may use up to 50 AI calls. Names similarity + document link mismatch checks only.
               </AlertDescription>
             </Alert>
@@ -305,10 +305,10 @@ function SummaryCard({
   tone: "amber" | "red" | "orange" | "emerald";
 }) {
   const tones = {
-    amber: "text-amber-600 bg-amber-50 border-amber-200",
-    red: "text-red-600 bg-red-50 border-red-200",
-    orange: "text-orange-600 bg-orange-50 border-orange-200",
-    emerald: "text-emerald-600 bg-emerald-50 border-emerald-200",
+    amber: "text-amber-600 bg-amber-50 border-amber-200 dark:text-amber-300 dark:bg-amber-950 dark:border-amber-800",
+    red: "text-red-600 bg-red-50 border-red-200 dark:text-red-300 dark:bg-red-950 dark:border-red-800",
+    orange: "text-orange-600 bg-orange-50 border-orange-200 dark:text-orange-300 dark:bg-orange-950 dark:border-orange-800",
+    emerald: "text-emerald-600 bg-emerald-50 border-emerald-200 dark:text-emerald-300 dark:bg-emerald-950 dark:border-emerald-800",
   };
   return (
     <Card className={tones[tone]}>

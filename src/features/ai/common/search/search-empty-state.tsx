@@ -11,8 +11,8 @@ export function SearchEmptyState({ query, hasSearched }: SearchEmptyStateProps) 
   if (!hasSearched) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 mb-4">
-          <Search className="h-7 w-7 text-slate-400" />
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted mb-4">
+          <Search className="h-7 w-7 text-muted-foreground" />
         </div>
         <h3 className="text-base font-semibold text-foreground">Search across ERP</h3>
         <p className="mt-1 text-sm text-muted-foreground max-w-sm">
@@ -24,8 +24,8 @@ export function SearchEmptyState({ query, hasSearched }: SearchEmptyStateProps) 
 
   return (
     <div className="flex flex-col items-center justify-center py-12 text-center">
-      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 mb-3">
-        <Search className="h-5 w-5 text-slate-400" />
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted mb-3">
+        <Search className="h-5 w-5 text-muted-foreground" />
       </div>
       <h3 className="text-sm font-semibold text-foreground">No results found</h3>
       {query && (

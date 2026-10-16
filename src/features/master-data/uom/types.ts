@@ -8,6 +8,7 @@
 // ============================================================================
 
 export interface UomCategory {
+  workspace_revision?: number;
   id: number;
   category_code: string;
   category_name_en: string;
@@ -29,6 +30,7 @@ export interface UomCategory {
 }
 
 export interface UnitOfMeasure {
+  workspace_revision?: number;
   id: number;
   uom_category_id: number;
   unit_code: string;
@@ -56,6 +58,7 @@ export interface UnitOfMeasure {
 }
 
 export interface UomConversion {
+  workspace_revision?: number;
   id: number;
   from_uom_id: number;
   to_uom_id: number;

@@ -6,9 +6,7 @@
 // stored in Supabase Vault. The `secret_ref` in erp_email_provider_configs
 // is set to "vault:<uuid>" to indicate Vault storage.
 //
-// Fallback: if secret_ref does NOT start with "vault:", it is treated as an
-// environment variable name and resolved from process.env[secret_ref].
-// This fallback exists for local dev overrides only.
+// Environment fallback is limited to approved, provider-bound references.
 //
 // All Vault reads use createAdminClient() (service_role) — never exposed to frontend.
 // ============================================================================
@@ -19,7 +17,12 @@ export const VAULT_PREFIX = "vault:";
 
 /** Returns true if the secret_ref points to Supabase Vault */
 export function isVaultRef(secretRef: string | null | undefined): boolean {
-  return typeof secretRef === "string" && secretRef.startsWith(VAULT_PREFIX);
+  return typeof secretRef === "string" && /^vault:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(secretRef);
+}
+
+export function isAllowedEmailEnvReference(ref: string, providerId?: number): boolean {
+  return ref === "MICROSOFT_GRAPH_CLIENT_SECRET" ||
+    (Number.isSafeInteger(providerId) && providerId! > 0 && ref === `ERP_EMAIL_PROVIDER_${providerId}_SECRET`);
 }
 
 /** Extract the raw UUID from a vault ref like "vault:<uuid>" */
@@ -37,7 +40,8 @@ function extractVaultId(secretRef: string): string {
  * value is missing — so callers can show a clean error to the admin.
  */
 export async function resolveEmailProviderSecret(
-  secretRef: string | null | undefined
+  secretRef: string | null | undefined,
+  providerId?: number
 ): Promise<{ secret: string | null; error: string | null }> {
   if (!secretRef) {
     return { secret: null, error: "No secret_ref configured for this provider." };
@@ -50,70 +54,25 @@ export async function resolveEmailProviderSecret(
       const admin = createAdminClient();
       const { data, error } = await admin.rpc("erp_vault_get_secret", { p_id: vaultId });
       if (error) {
-        return { secret: null, error: `Vault read error: ${error.message}` };
+        return { secret: null, error: "The protected credential could not be read. Ask an authorized administrator to review it." };
       }
       if (!data) {
         return { secret: null, error: "Secret was not found in Vault. It may have been deleted. Re-save the secret via Update Secret." };
       }
-      return { secret: data as string, error: null };
-    } catch (e) {
-      return { secret: null, error: `Vault access failed: ${String(e)}` };
+      return typeof data === "string" ? { secret: data, error: null } : { secret: null, error: "The protected credential response was invalid." };
+    } catch {
+      return { secret: null, error: "The protected credential could not be read." };
     }
   }
 
   // ── Environment variable fallback ─────────────────────────────────────────
+  if (!isAllowedEmailEnvReference(secretRef, providerId)) return { secret: null, error: "This credential reference is not approved for the provider." };
   const envValue = process.env[secretRef] ?? null;
   if (!envValue) {
     return {
       secret: null,
-      error:
-        `Environment variable "${secretRef}" is not configured. ` +
-        `Either set it in your environment or re-save the secret via Update Secret to store it in Supabase Vault.`,
+      error: "The approved provider credential is not configured. Ask an authorized administrator to review protected settings.",
     };
   }
   return { secret: envValue, error: null };
-}
-
-/**
- * Store (or update) an email provider secret in Supabase Vault.
- * Returns the new secret_ref string ("vault:<uuid>") to store in the DB.
- *
- * If the provider already has a vault secret (existing ref starts with "vault:"),
- * updates the existing vault entry in place (same ref UUID).
- * Otherwise creates a new vault secret.
- */
-export async function storeEmailProviderSecretInVault(
-  providerId: number,
-  currentSecretRef: string | null | undefined,
-  secretValue: string
-): Promise<string> {
-  const admin = createAdminClient();
-  const vaultName = `erp_email_provider_${providerId}`;
-  const vaultDescription = `ERP Email Provider ID ${providerId} — Microsoft Graph client secret`;
-
-  // If there's already a vault entry for this provider, update it
-  if (isVaultRef(currentSecretRef)) {
-    const vaultId = extractVaultId(currentSecretRef!);
-    const { error } = await admin.rpc("erp_vault_update_secret", {
-      p_id: vaultId,
-      p_secret: secretValue,
-    });
-    if (error) {
-      throw new Error(`Failed to update vault secret: ${error.message}`);
-    }
-    return currentSecretRef!; // Same ref, same UUID
-  }
-
-  // Create a new vault secret
-  const { data, error } = await admin.rpc("erp_vault_create_secret", {
-    p_secret: secretValue,
-    p_name: vaultName,
-    p_description: vaultDescription,
-  });
-
-  if (error || !data) {
-    throw new Error(`Failed to create vault secret: ${error?.message ?? "no data returned"}`);
-  }
-
-  return `${VAULT_PREFIX}${data}`;
 }

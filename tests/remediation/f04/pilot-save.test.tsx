@@ -25,7 +25,7 @@ vi.mock("@/hooks/use-workspace", () => ({ useWorkspace: () => ({
   closeTab:mock.closeTab, markDirty:mock.markDirty, updateTabRoute:mock.updateTabRoute, isTabActive: (id:string) => id === mock.active,
 })}));
 vi.mock("sonner", () => ({ toast: {error:mock.error, success:vi.fn()} }));
-vi.mock("@tanstack/react-query", () => ({useQuery: () => ({data: undefined})}));
+vi.mock("@tanstack/react-query", () => ({useQuery: () => ({data: undefined}),useQueryClient:()=>({invalidateQueries:vi.fn()})}));
 vi.mock("@/server/actions/common-master-data/departments", () => ({createDepartment:mock.create, updateDepartment:mock.update}));
 vi.mock("@/server/actions/hr/employees", () => ({createEmployee:mock.create, updateEmployee:mock.update}));
 vi.mock("@/server/actions/hr/recruitment", () => ({createCandidate:mock.create, updateCandidate:mock.update, getRecruitmentSalaryAccess:vi.fn()}));
@@ -44,6 +44,7 @@ vi.mock("@/components/workspace/erp-record-workspace-form", () => ({
 }));
 vi.mock("@/components/ui/input", () => ({Input: (props:ComponentProps<"input">) => <input {...props}/>}));
 vi.mock("@/components/ui/textarea", () => ({Textarea: (props:ComponentProps<"textarea">) => <textarea {...props}/>}));
+vi.mock("@/components/erp/organizations/branch-select",()=>({BranchSelect:({value,onValueChange,disabled,name}:{value:number|null;onValueChange:(v:number|null)=>void;disabled:boolean;name:string})=><input aria-label="Branch" name={name} value={value??''} disabled={disabled} onChange={e=>onValueChange(e.target.value?Number(e.target.value):null)}/> }));
 vi.mock("@/components/ui/checkbox", () => ({
   Checkbox: ({checked, onCheckedChange, ...props}: ComponentProps<"input"> & {onCheckedChange:(checked:boolean)=>void}) =>
     <input {...props} type="checkbox" checked={checked} onChange={e => onCheckedChange(e.target.checked)}/>,
@@ -87,8 +88,8 @@ beforeEach(() => {
   mock.store = createWorkspaceDraftStore();
   mock.active = "owner";
   mock.shell = null;
-  mock.create.mockResolvedValue({success:true,data:{id:7001,revision:"1",replayed:false}});
-  mock.update.mockResolvedValue({success:true,data:{id:7001,revision:"1",replayed:false}});
+  mock.create.mockResolvedValue({success:true,data:{id:7001,revision:"1",replayed:false,changed:true,owner_company_id:1,branch_id:null}});
+  mock.update.mockImplementation(async(input)=>({success:true,data:{id:typeof input==='number'?input:input.id,revision:"1",replayed:false,changed:true,owner_company_id:1,branch_id:input.branch_id??null}}));
 });
 afterEach(cleanup);
 const save = async (close=false) => {await act(async()=>{await (close ? mock.shell?.onSaveAndClose?.() : mock.shell?.onSave?.());});};
@@ -96,7 +97,8 @@ const department = {id:11,workspace_revision:1,owner_company_id:1,department_cod
   branch_id:7,parent_department_id:8,cost_center_id:9,department_head_user_id:10} as DepartmentRow;
 function mountDepartment(mode:"add"|"edit"|"view"="add") {
   mock.pathname = "/admin/common-master-data/departments/record/" + (mode==="add" ? "new" : "11");
-  return render(<DepartmentWorkspaceForm mode={mode} department={mode==="add"?null:department} authContext={auth} companies={[{id:1,legal_name_en:"Test",company_code:"TEST"}]}/>);
+  const departmentAuth={...auth,profile:{id:1},isAccountActive:true,permissionCodes:['common_md.manage'],roleAssignments:[{roleCode:'test_manager',ownerCompanyId:1,branchId:null,permissionCodes:['common_md.manage']}]} as unknown as AuthContext;
+  return render(<DepartmentWorkspaceForm mode={mode} department={mode==="add"?null:department} authContext={departmentAuth} companies={[{id:1,legal_name_en:"Test",company_code:"TEST"}]}/>);
 }
 function fillDepartment() {
   fireEvent.change(screen.getByLabelText(/Organization/), {target:{value:"1"}});
@@ -104,8 +106,8 @@ function fillDepartment() {
   fireEvent.change(screen.getByLabelText(/Name \(English\)/), {target:{value:"Synthetic Department"}});
 }
 function delayed() {
-  let resolve!: (value:{success:boolean;data:{id:number;revision:string;replayed:boolean}})=>void;
-  const promise = new Promise<{success:boolean;data:{id:number;revision:string;replayed:boolean}}>(r=>{resolve=r;});
+  let resolve!: (value:{success:boolean;data:{id:number;revision:string;replayed:boolean;changed?:boolean;owner_company_id?:number;branch_id?:number|null}})=>void;
+  const promise = new Promise<{success:boolean;data:{id:number;revision:string;replayed:boolean;changed?:boolean;owner_company_id?:number;branch_id?:number|null}}>(r=>{resolve=r;});
   mock.create.mockReturnValueOnce(promise);
   return resolve;
 }
@@ -132,7 +134,7 @@ describe("Department pilot", () => {
     act(()=>{const callback=mock.shell?.onSaveAndClose; first=callback?.();void callback?.();});
     expect(mock.create).toHaveBeenCalledTimes(1);
     fireEvent.change(screen.getByLabelText(/Name \(English\)/),{target:{value:"Newer"}});
-    await act(async()=>{resolve({success:true,data:{id:7001,revision:"1",replayed:false}});await first;});
+    await act(async()=>{resolve({success:true,data:{id:7001,revision:"1",replayed:false,changed:true,owner_company_id:1,branch_id:null}});await first;});
     expect(mock.closeTab).not.toHaveBeenCalled();expect(mock.shell?.isDirty).toBe(true);
     expect(mock.store?.getDraft("draft:tab:owner:department-workspace-form")?.department_name_en).toBe("Newer");
   });

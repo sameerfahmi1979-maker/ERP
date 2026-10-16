@@ -119,9 +119,9 @@ export const VENDOR_FORM_PREFETCH_TEMPLATE = {
   ] as const,
   masterQueries: [
     { queryKey: queryKeys.countries(false, false), queryFn: () => fetchCountries(false, false) },
-    { queryKey: queryKeys.currencies(false), queryFn: () => fetchCurrencies(false) },
-    { queryKey: queryKeys.paymentTerms(false), queryFn: () => fetchPaymentTerms(false) },
-    { queryKey: queryKeys.taxTypes(false), queryFn: () => fetchTaxTypes(false) },
+    { queryKey: queryKeys.currencies(false), queryFn: (signal) => fetchCurrencies(false, signal) },
+    { queryKey: queryKeys.paymentTerms(false), queryFn: (signal) => fetchPaymentTerms(false, signal) },
+    { queryKey: queryKeys.taxTypes(false), queryFn: (signal) => fetchTaxTypes(false, signal) },
   ],
   childTables: VENDOR_CHILD_TABLES,
 } as const satisfies FormPrefetchDeclaration;
@@ -137,9 +137,9 @@ export const SUBCONTRACTOR_FORM_PREFETCH_TEMPLATE = {
   ] as const,
   masterQueries: [
     { queryKey: queryKeys.countries(false, false), queryFn: () => fetchCountries(false, false) },
-    { queryKey: queryKeys.currencies(false), queryFn: () => fetchCurrencies(false) },
-    { queryKey: queryKeys.paymentTerms(false), queryFn: () => fetchPaymentTerms(false) },
-    { queryKey: queryKeys.taxTypes(false), queryFn: () => fetchTaxTypes(false) },
+    { queryKey: queryKeys.currencies(false), queryFn: (signal) => fetchCurrencies(false, signal) },
+    { queryKey: queryKeys.paymentTerms(false), queryFn: (signal) => fetchPaymentTerms(false, signal) },
+    { queryKey: queryKeys.taxTypes(false), queryFn: (signal) => fetchTaxTypes(false, signal) },
   ],
   childTables: SUBCONTRACTOR_CHILD_TABLES,
 } as const satisfies FormPrefetchDeclaration;
@@ -155,9 +155,9 @@ export const CONSULTANT_FORM_PREFETCH_TEMPLATE = {
   ] as const,
   masterQueries: [
     { queryKey: queryKeys.countries(false, false), queryFn: () => fetchCountries(false, false) },
-    { queryKey: queryKeys.currencies(false), queryFn: () => fetchCurrencies(false) },
-    { queryKey: queryKeys.paymentTerms(false), queryFn: () => fetchPaymentTerms(false) },
-    { queryKey: queryKeys.taxTypes(false), queryFn: () => fetchTaxTypes(false) },
+    { queryKey: queryKeys.currencies(false), queryFn: (signal) => fetchCurrencies(false, signal) },
+    { queryKey: queryKeys.paymentTerms(false), queryFn: (signal) => fetchPaymentTerms(false, signal) },
+    { queryKey: queryKeys.taxTypes(false), queryFn: (signal) => fetchTaxTypes(false, signal) },
   ],
   childTables: CONSULTANT_CHILD_TABLES,
 } as const satisfies FormPrefetchDeclaration;
@@ -187,8 +187,8 @@ export const RECRUITMENT_AGENCY_FORM_PREFETCH_TEMPLATE = {
   ] as const,
   masterQueries: [
     { queryKey: queryKeys.countries(false, false), queryFn: () => fetchCountries(false, false) },
-    { queryKey: queryKeys.currencies(false), queryFn: () => fetchCurrencies(false) },
-    { queryKey: queryKeys.paymentTerms(false), queryFn: () => fetchPaymentTerms(false) },
+    { queryKey: queryKeys.currencies(false), queryFn: (signal) => fetchCurrencies(false, signal) },
+    { queryKey: queryKeys.paymentTerms(false), queryFn: (signal) => fetchPaymentTerms(false, signal) },
   ],
   childTables: RECRUITMENT_AGENCY_CHILD_TABLES,
 } as const satisfies FormPrefetchDeclaration;

@@ -121,6 +121,7 @@ export function HrDocumentEmployeeReviewStep({
     queryKey: ["departments", "list"],
     queryFn: async () => {
       const r = await listDepartments({ is_active: true });
+      if(!r.success)throw new Error('Department choices could not be loaded.');
       return (r.data ?? []).map((d) => ({
         value: d.id,
         label: d.department_name_en,
@@ -135,6 +136,7 @@ export function HrDocumentEmployeeReviewStep({
     queryKey: ["designations", "list"],
     queryFn: async () => {
       const r = await listDesignations({ is_active: true });
+      if(!r.success)throw new Error('Designation choices could not be loaded.');
       return (r.data ?? []).map((d) => ({
         value: d.id,
         label: d.designation_name_en,
@@ -149,6 +151,7 @@ export function HrDocumentEmployeeReviewStep({
     queryKey: ["hr", "settings", "employee-categories"],
     queryFn: async () => {
       const r = await listHrEmployeeCategories({ is_active: true });
+      if(!r.success)throw new Error('Employee category choices could not be loaded.');
       const rows = r.success && r.data ? r.data.data : [];
       return rows.map((c) => ({
         value: c.id,
@@ -164,6 +167,7 @@ export function HrDocumentEmployeeReviewStep({
     queryKey: ["hr", "settings", "employment-types"],
     queryFn: async () => {
       const r = await listHrEmploymentTypes({ is_active: true });
+      if(!r.success)throw new Error('Employment type choices could not be loaded.');
       const rows = r.success && r.data ? r.data.data : [];
       return rows.map((t) => ({
         value: t.id,

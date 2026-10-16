@@ -5,6 +5,8 @@
  * Phase REPORT.3 - Template / Branding / Output Adapter Engine
  */
 
+import type { IssuedBrandingProvenance } from "@/lib/branding/types";
+
 /**
  * Serializable, client-safe branding context for export adapters.
  * Extracted from ResolvedReportTemplate/ReportBrandingProfile on the server
@@ -15,6 +17,8 @@
  * Existing callers without new fields continue to work unchanged.
  */
 export interface ExportBrandingContext {
+  /** Exact version identity for official issuance; absent on legacy exports. */
+  provenance?: IssuedBrandingProvenance;
   /** Company legal name (EN) */
   companyNameEn?: string | null;
   /** Company legal name (AR) */

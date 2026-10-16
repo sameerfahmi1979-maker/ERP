@@ -13,8 +13,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { queryKeys } from "@/lib/query/query-keys";
 import type { AuthContext } from "@/lib/rbac/check";
+import {canCreateRecruitmentDestination,requisitionCreationSchema} from '@/lib/hr/numbered-recruitment-contract';
+import {useNumberedRecruitmentSession} from './use-numbered-recruitment-session';
 import type { JobRequisitionRow } from "@/server/actions/hr/recruitment";
-import { archiveJobRequisition, createJobRequisition, listJobRequisitions, updateJobRequisition } from "@/server/actions/hr/recruitment";
+import { archiveJobRequisition, listJobRequisitions, updateJobRequisition } from "@/server/actions/hr/recruitment";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Briefcase, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState} from "react";
@@ -85,6 +87,8 @@ export function RequisitionsPageClient({ authContext }: Props) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const creation=useNumberedRecruitmentSession('requisition',authContext.profile?.id);
+  const canCreate=canCreateRecruitmentDestination(authContext,null,null);
 
   const uiRead1 = useQuery({
     queryKey: queryKeys.recruitment.requisitions({ search, status: statusFilter }),
@@ -98,7 +102,11 @@ export function RequisitionsPageClient({ authContext }: Props) {
 
   function openAdd() {
     setEditing(null);
-    setForm(EMPTY_FORM);
+    const pending=creation.pending;
+    if(pending?.kind==='requisition'){
+      const value=pending.payload;
+      setForm({requisition_title:value.requisition_title,vacancies_count:String(value.vacancies_count),requisition_status:value.requisition_status,priority:value.priority,target_start_date:value.target_start_date??'',job_description:value.job_description??'',requirements:value.requirements??'',notes:value.notes??''});
+    }else{if(!creation.startNew())return;setForm(EMPTY_FORM);}
     setDialogOpen(true);
   }
 
@@ -117,7 +125,18 @@ export function RequisitionsPageClient({ authContext }: Props) {
     setDialogOpen(true);
   }
 
-  function handleSave() {
+  async function handleSave() {
+    if(!editing){
+      const parsed=requisitionCreationSchema.safeParse({requisition_title:form.requisition_title,vacancies_count:Number(form.vacancies_count),requisition_status:form.requisition_status,priority:form.priority,target_start_date:form.target_start_date||null,job_description:form.job_description||null,requirements:form.requirements||null,notes:form.notes||null});
+      if(!creation.pending&&!parsed.success){toast.error(parsed.error.issues[0]?.message??'Check requisition values.');return;}
+      const value=creation.pending?.kind==='requisition'?creation.pending.payload:parsed.success?parsed.data:null;
+      if(!value)return;
+      const receipt=await creation.submit(value,null);
+      if(!receipt||!creation.isCurrent())return;
+      toast.success('Requisition created');setDialogOpen(false);
+      try{await queryClient.invalidateQueries({queryKey:queryKeys.recruitment.requisitions()});}catch{toast.message('Saved. Refresh the list to see the requisition.');}
+      return;
+    }
     startTransition(async () => {
       const payload = {
         requisition_title: form.requisition_title,
@@ -130,9 +149,7 @@ export function RequisitionsPageClient({ authContext }: Props) {
         notes: form.notes || null,
       };
 
-      const res = editing
-        ? await updateJobRequisition(editing.id, payload)
-        : await createJobRequisition(payload);
+      const res = await updateJobRequisition(editing.id, payload);
 
       if (res.success) {
         toast.success(editing ? "Requisition updated" : "Requisition created");
@@ -157,18 +174,20 @@ export function RequisitionsPageClient({ authContext }: Props) {
   }
 
   return (
-    <QueryReadBoundary queries={[uiRead1]}><div className="p-6 max-w-6xl mx-auto space-y-4">
+    <QueryReadBoundary queries={creation.pending?[]:[uiRead1]}><div className="p-6 max-w-6xl mx-auto space-y-4">
       <div className="flex flex-wrap gap-2 items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Job Requisitions</h1>
           <p className="text-sm text-muted-foreground">{res?.data?.totalCount ?? 0} total</p>
         </div>
         {canManage && (
-          <Button size="sm" onClick={openAdd}>
-            <Plus className="h-4 w-4 mr-1" /> New Requisition
+          <Button size="sm" onClick={openAdd} disabled={creation.saving||creation.blocked||(!canCreate&&!creation.pending)}>
+            <Plus className="h-4 w-4 mr-1" /> {creation.pending?'Recover Requisition':'New Requisition'}
           </Button>
         )}
       </div>
+      {!canCreate&&canManage&&!creation.pending&&<p className="text-sm text-amber-700">Creating an unscoped requisition requires global recruitment management and numbering generation.</p>}
+      {creation.error&&!dialogOpen&&<p role="alert" className="text-sm text-destructive">{creation.error}</p>}
 
       {/* Filters */}
       <div className="flex gap-2 flex-wrap">
@@ -226,10 +245,12 @@ export function RequisitionsPageClient({ authContext }: Props) {
         icon={<Briefcase className="h-5 w-5" />}
         mode={editing ? "edit" : "add"}
         size="lg"
-        isSubmitting={isPending}
+        isSubmitting={isPending||creation.saving}
         onSubmit={handleSave}
+        submitLabel={!editing&&creation.pending?'Retry Original Request':undefined}
       >
-        <div className="grid grid-cols-12 gap-4">
+        {!editing&&creation.error&&<p role="alert" className="text-sm text-destructive">{creation.error}</p>}
+        <fieldset disabled={!editing&&(creation.saving||!!creation.pending||creation.blocked)} className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <RequiredLabel required>Requisition Title</RequiredLabel>
             <Input aria-label="Requisition Title" required value={form.requisition_title} onChange={(e) => set("requisition_title", e.target.value)} placeholder="e.g. Senior Software Engineer" />
@@ -262,7 +283,7 @@ export function RequisitionsPageClient({ authContext }: Props) {
             <Label>Notes</Label>
             <Textarea aria-label="Notes" value={form.notes} onChange={(e) => set("notes", e.target.value)} rows={2} placeholder="Internal notes..." />
           </div>
-        </div>
+        </fieldset>
       </ERPChildDialogForm>
     </div></QueryReadBoundary>
   );

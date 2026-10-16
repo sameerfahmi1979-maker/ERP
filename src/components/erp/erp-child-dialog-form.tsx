@@ -39,6 +39,8 @@ export type ERPChildDialogFormProps = {
   isSubmitting?: boolean;
   /** Missing prerequisite data disables save, not Cancel or retry controls. */
   submitDisabled?: boolean;
+  /** A child operation must finish/reconcile without making its retry controls inert. */
+  closeDisabled?: boolean;
   onCancel?: () => void;
   onSubmit?: () => void | Promise<unknown>;
   /** Controlled/custom inputs should supply meaningful dirty state. Otherwise native edits are tracked conservatively. */
@@ -74,6 +76,7 @@ function ChildDialogSession({
   size = "lg",
   isSubmitting = false,
   submitDisabled = false,
+  closeDisabled = false,
   isDirty,
   onCancel,
   onSubmit,
@@ -120,11 +123,11 @@ function ChildDialogSession({
   }, [onOpenChange]);
 
   const handleCancel = useCallback(() => {
-    if (flight.current || isSubmitting) return;
+    if (flight.current || isSubmitting || closeDisabled) return;
     if (mode !== "view" && (isDirty ?? edited)) { setConfirmDiscard(true); return; }
     onCancel?.();
     closeDialog();
-  }, [onCancel, closeDialog, isSubmitting, mode, isDirty, edited]);
+  }, [onCancel, closeDialog, isSubmitting, closeDisabled, mode, isDirty, edited]);
 
   const submit = async () => {
     if (flight.current || isSubmitting || submitDisabled || !onSubmit) return;
@@ -191,7 +194,7 @@ function ChildDialogSession({
             variant="ghost"
             size="icon-sm"
             className="shrink-0 -mr-2 -mt-1"
-            disabled={busy}
+            disabled={busy || closeDisabled}
             type="button"
             onClick={handleCancel}
             aria-label="Close"
@@ -220,7 +223,7 @@ function ChildDialogSession({
           <p className="font-medium">Discard unsaved changes?</p><p>Your entries in this dialog have not been saved.</p>
           <div className="mt-2 flex gap-2">
             <Button type="button" variant="outline" onClick={() => setConfirmDiscard(false)}>Keep editing</Button>
-            <Button type="button" variant="destructive" disabled={busy} onClick={() => { if (flight.current || isSubmitting) return; onCancel?.(); closeDialog(); }}>Discard changes</Button>
+            <Button type="button" variant="destructive" disabled={busy || closeDisabled} onClick={() => { if (flight.current || isSubmitting || closeDisabled) return; onCancel?.(); closeDialog(); }}>Discard changes</Button>
           </div>
         </div>}
 
@@ -230,7 +233,7 @@ function ChildDialogSession({
             type="button"
             variant="outline"
             onClick={handleCancel}
-            disabled={busy}
+            disabled={busy || closeDisabled}
           >
             {cancelLabel}
           </Button>
@@ -249,7 +252,7 @@ function ChildDialogSession({
           )}
 
           {mode === "view" && (
-            <Button type="button" variant="outline" onClick={handleCancel}>
+            <Button type="button" variant="outline" disabled={closeDisabled} onClick={handleCancel}>
               Close
             </Button>
           )}

@@ -12,9 +12,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Edit, Trash2, Phone, Mail, UserRound } from "lucide-react";
+import { Plus, Edit, Phone, Mail, UserRound } from "lucide-react";
 import { toast } from "sonner";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
+import {PartyChildLifecycleControl,usePartyChildLifecycle} from './party-child-lifecycle-control';
+import {PartyChildSaveDialog,type SavePartyChild} from './party-child-save-dialog';
+import type {CreatePartyContactInput} from './party-schemas';
+
 import { ERPCombobox } from "@/components/erp/combobox";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { usePartyContactsQuery } from "./hooks/use-party-child-queries";
@@ -23,7 +26,6 @@ import { useRealtimeSync } from "@/hooks/realtime/use-realtime-sync";
 import {
   createPartyContact,
   updatePartyContact,
-  deletePartyContact,
 } from "@/server/actions/master-data/party-contacts";
 import {
   getPartyContactRoles,
@@ -60,9 +62,12 @@ export function PartyContactsTab({ partyId, disabled, onChildOpen }: PartyContac
   const queryClient = useQueryClient();
   const { items: contacts, isLoading, error: loadError, refetch } = usePartyContactsQuery(partyId);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const lifecycle=usePartyChildLifecycle({entity:'party_contacts',onSaved:()=>{invalidatePartyContacts(queryClient,partyId);},onOpenChange:onChildOpen});
+  const lifecycleOpen=lifecycle.isOpen;
   const setDialogOpen = (open: boolean) => { setIsDialogOpen(open); onChildOpen?.(open); };
   const [editing, setEditing] = useState<PartyContact | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
   const [form, setForm] = useState({ ...emptyForm });
   const [initialForm, setInitialForm] = useState({ ...emptyForm });
   const fieldId = useId();
@@ -73,7 +78,7 @@ export function PartyContactsTab({ partyId, disabled, onChildOpen }: PartyContac
     table: "party_contacts",
     event: "*",
     filter: `party_id=eq.${partyId}`,
-    enabled: !isDialogOpen,
+    enabled: !isDialogOpen && !lifecycleOpen,
     debounceMs: 400,
     onEvent: () => {
       invalidatePartyContacts(queryClient, partyId);
@@ -93,6 +98,7 @@ export function PartyContactsTab({ partyId, disabled, onChildOpen }: PartyContac
   });
 
   const openAdd = () => {
+    if(lifecycleOpen)return;
     setEditing(null);
     setForm({ ...emptyForm });
     setInitialForm({ ...emptyForm });
@@ -100,6 +106,7 @@ export function PartyContactsTab({ partyId, disabled, onChildOpen }: PartyContac
   };
 
   const openEdit = (item: PartyContact) => {
+    if(lifecycleOpen)return;
     setEditing(item);
     const values = {
       full_name: item.full_name,
@@ -124,18 +131,8 @@ export function PartyContactsTab({ partyId, disabled, onChildOpen }: PartyContac
     setDialogOpen(true);
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("Delete this contact?")) return;
-    const result = await deletePartyContact(id);
-    if (result.success) {
-      toast.success("Contact deleted");
-      invalidatePartyContacts(queryClient, partyId);
-    } else {
-      toast.error(result.error ?? "Failed to delete");
-    }
-  };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (save:SavePartyChild<CreatePartyContactInput>) => {
     if (!form.full_name.trim()) {
       toast.error("Full name is required");
       return;
@@ -162,12 +159,10 @@ export function PartyContactsTab({ partyId, disabled, onChildOpen }: PartyContac
         notes: form.notes || null,
       };
 
-      const result = editing
-        ? await updatePartyContact({ id: editing.id, ...payload })
-        : await createPartyContact(payload);
+      const result = await save(payload);
 
       if (result.success) {
-        toast.success(`Contact ${editing ? "updated" : "added"}`);
+        toast.success(result.data?.changed === false ? "No changes to save" : `Contact ${editing ? "updated" : "added"}`);
         setDialogOpen(false);
         invalidatePartyContacts(queryClient, partyId);
       } else {
@@ -179,6 +174,7 @@ export function PartyContactsTab({ partyId, disabled, onChildOpen }: PartyContac
   };
 
   const columns: ColumnDef<PartyContact>[] = [
+    {id:'archive_state',header:'Archive status',accessorFn:row=>row.archived_at?'Archived':'Current'},
     {id:"full_name",header:"Contact",size:360,accessorFn:row=>[row.full_name,row.designation,row.email,row.mobile,row.phone].filter(Boolean).join(" "),enableHiding:false,cell:({row})=>{const contact=row.original;return (<div className="space-y-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium text-sm">{contact.full_name}</span>
@@ -199,12 +195,10 @@ export function PartyContactsTab({ partyId, disabled, onChildOpen }: PartyContac
     {accessorKey:"is_primary",header:"Primary",},
     {id:"actions",header:"Actions",size:180,enableSorting:false,enableHiding:false,cell:({row})=>{const contact=row.original;return (<>{!disabled && (
                 <div className="flex gap-1 shrink-0">
-                  <Button aria-label="Edit record" type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(contact)}>
+                  <Button aria-label="Edit record" type="button" variant="ghost" size="icon" className="h-7 w-7" disabled={Boolean(contact.archived_at)} onClick={() => openEdit(contact)}>
                     <Edit className="h-3.5 w-3.5" />
                   </Button>
-                  <Button aria-label="Delete record" type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(contact.id)}>
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  <PartyChildLifecycleControl record={contact} onOpen={()=>lifecycle.open(contact,contact.contact_code)}/>
                 </div>
               )}</>);}},
   ];
@@ -224,7 +218,12 @@ export function PartyContactsTab({ partyId, disabled, onChildOpen }: PartyContac
       {loadError ? <div role="alert" className="rounded border p-4"><p>Contact records could not be loaded.</p><Button type="button" variant="outline" onClick={refetch}>Try again</Button></div> :
         <ERPDataTable tableId={`party.contacts:${partyId}`} resultsLabel="Contact" data={contacts ?? []} columns={columns} enableRowSelection={false} />}
 
-      <ERPChildDialogForm
+      {isDialogOpen && <PartyChildSaveDialog
+        key={editing?.id ?? 'new'}
+        formId={`party-contacts-tab:${partyId}`}
+        record={editing}
+        createAction={createPartyContact}
+        updateAction={updatePartyContact}
         open={isDialogOpen}
         onOpenChange={setDialogOpen}
         title={editing ? "Edit Contact" : "Add Contact"}
@@ -305,7 +304,8 @@ export function PartyContactsTab({ partyId, disabled, onChildOpen }: PartyContac
             <Textarea aria-label="Notes" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} />
           </div>
         </div>
-      </ERPChildDialogForm>
+      </PartyChildSaveDialog>}
+      {lifecycle.dialog}
     </div>
   );
 }

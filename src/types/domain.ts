@@ -3,14 +3,14 @@ import type { Tables } from "./database";
 import type { RoleScopeKind } from "@/lib/users/role-scope";
 
 export type UserProfile = Tables<"user_profiles">;
-export type OwnerCompany = Tables<"owner_companies">;
+export type OwnerCompany = Tables<"owner_companies"> & { workspace_revision?: number };
 export type OwnerCompanyWithGeography = OwnerCompany & {
   country_rel: Pick<Tables<"countries">, "id" | "name_en" | "name_ar" | "country_code"> | null;
   emirate_rel: Pick<Tables<"emirates">, "id" | "name_en" | "name_ar"> | null;
   city_rel: Pick<Tables<"cities">, "id" | "name_en" | "name_ar"> | null;
   area_zone_rel: Pick<Tables<"areas_zones">, "id" | "name_en" | "name_ar"> | null;
 };
-export type Branch = Tables<"branches">;
+export type Branch = Tables<"branches"> & { workspace_revision?: number };
 export type Role = Tables<"roles">;
 export type Permission = Tables<"permissions">;
 export type AuditLog = Tables<"audit_logs">;

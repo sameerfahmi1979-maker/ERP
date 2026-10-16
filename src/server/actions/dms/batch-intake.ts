@@ -19,24 +19,23 @@
 
 import { z } from "zod";
 import { logger } from "@/lib/logger";
-import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
-import {
-  createDmsUploadSession,
-  type CreateUploadSessionInput,
-} from "@/server/actions/dms/upload-sessions";
+import {admitBatch, bootstrapBatchOrigin, discoverBatchAdmissions, verifyBatchUpload, bindBatchAdmission, refreshBatchAdmission, recoverBatchMemberUpload, verifySelectedBatchUpload} from "@/server/dms-batch-admission";
+import {batchMemberRequestSchema,batchRequestSchema,type BatchMemberUploadResult,type BatchAdmissionResult, type BatchBootstrapResult, type BatchDiscoveryResult, type BatchObjectResult, type BatchRequest} from "@/lib/dms/batch-admission";
 import {
   startAiIntakeFromUploadSession,
   retryAiIntake,
 } from "@/server/actions/dms/ai-intake";
-import { DMS_MAX_BATCH_FILES } from "@/features/dms/upload/dms-upload-constants";
 import { resolveStandardFileNameForIntakeApprove } from "@/server/actions/dms/standard-file-name";
 import { validateStandardFileName } from "@/lib/dms/standard-file-name";
-import { clampToValidDate } from "@/lib/dms/date-validators";
+import {batchDraftInputSchema,batchDraftContractSchema,batchDraftPrepareRpcSchema,type BatchDraftReceipt,type BatchDraftResult} from "@/lib/dms/numbered-batch-draft";
+import {batchDraftSaveError,createNumberedBatchDraft,batchDraftRecoveryError,readNumberedBatchDraftRecovery,prepareRecoverableNumberedBatchDraft} from "@/server/numbered-batch-draft";
+import type {BatchDraftRecoveryResult,BatchDraftPreparationResult} from "@/lib/dms/numbered-batch-draft";
+import type {WorkspaceSaveContract} from "@/lib/workspace/save-contract";
 import { runApproveAiIntakeSaga } from "@/lib/dms/approve/approve-ai-intake";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -74,12 +73,19 @@ function canDiscard(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
 }
 
 async function isBatchIntakeEnabled(supabase: SupabaseClient): Promise<boolean> {
-  const { data } = await supabase
-    .from("erp_ai_feature_flags")
-    .select("is_enabled")
-    .eq("feature_code", "DMS_BATCH_INTAKE")
-    .single();
-  return !!data?.is_enabled;
+  // Retain the existing caller signature, but do not ask scoped DMS actors for
+  // global settings visibility merely to read this one admission boolean.
+  void supabase;
+  try {
+    const ctx = await getAuthContext();
+    if (!ctx.profile || !canUpload(ctx)) return false;
+    const { data, error } = await createAdminClient()
+      .from("erp_ai_feature_flags")
+      .select("is_enabled")
+      .eq("feature_code", "DMS_BATCH_INTAKE")
+      .single();
+    return !error && data?.is_enabled === true;
+  } catch { return false; }
 }
 
 /** Public flag check for gating the batch UI (server components). */
@@ -93,11 +99,6 @@ export async function isDmsBatchIntakeEnabled(): Promise<boolean> {
 }
 
 // ── Small local helpers ────────────────────────────────────────────────────────
-
-function stripExtension(filename: string): string {
-  const idx = filename.lastIndexOf(".");
-  return (idx > 0 ? filename.slice(0, idx) : filename).slice(0, 480);
-}
 
 // ── Batch counts / status recompute (admin client = reliable bookkeeping) ──────
 
@@ -174,422 +175,152 @@ async function recomputeBatchStatus(batchId: number): Promise<void> {
 // 1. createDmsUploadBatch
 // ════════════════════════════════════════════════════════════════════════════
 
-const BatchFileSchema = z.object({
-  original_filename: z.string().min(1).max(500),
-  mime_type: z.string().min(1),
-  file_size_bytes: z.number().int().positive(),
-  sha256_hash: z.string().length(64),
-});
+export type CreateBatchInput = BatchRequest;
+export type CreateBatchResult = BatchAdmissionResult;
 
-const CreateBatchSchema = z.object({
-  files: z.array(BatchFileSchema).min(1).max(DMS_MAX_BATCH_FILES, {
-    message: `A batch may contain at most ${DMS_MAX_BATCH_FILES} files`,
-  }),
-  entityType: z.string().optional(),
-  entityId: z.number().int().positive().optional(),
-});
+export async function bootstrapDmsBatchOrigin(): Promise<BatchBootstrapResult> {
+  return bootstrapBatchOrigin();
+}
 
-export type CreateBatchInput = z.input<typeof CreateBatchSchema>;
-
-export type BatchSessionResult = {
-  sessionId: number;
-  sessionCode: string;
-  signedUrl: string;
-  token?: string;
-  path: string;
-  originalFilename: string;
-  isDuplicate: boolean;
-  duplicateDocument?: { id: number; document_no: string; title: string } | null;
-};
-
-export type CreateBatchResult = {
-  batchId: number;
-  batchCode: string;
-  sessions: BatchSessionResult[];
-};
-
-export async function createDmsUploadBatch(
-  input: CreateBatchInput
-): Promise<ActionResult<CreateBatchResult>> {
-  try {
-    const parsed = CreateBatchSchema.safeParse(input);
-    if (!parsed.success) {
-      return { success: false, error: parsed.error.issues[0]?.message ?? "Validation error" };
-    }
-    const { files, entityType, entityId } = parsed.data;
-
-    const supabase = await createClient();
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canUpload(ctx))
-      return { success: false, error: "You do not have permission to upload documents" };
-    if (!(await isBatchIntakeEnabled(supabase)))
-      return { success: false, error: "Batch upload is not enabled" };
-
-    const batchCode = "B" + randomUUID().replace(/-/g, "").substring(0, 19).toUpperCase();
-
-    // Create the batch row (RLS: uploader/admin).
-    const { data: batch, error: batchErr } = await supabase
-      .from("dms_upload_batches")
-      .insert({
-        batch_code: batchCode,
-        status: "processing",
-        total_files: files.length,
-        entity_type: entityType ?? null,
-        entity_id: entityId ?? null,
-        created_by: ctx.profile.id,
-      })
-      .select("id, batch_code")
-      .single();
-
-    if (batchErr || !batch) {
-      return { success: false, error: batchErr?.message ?? "Failed to create batch" };
-    }
-
-    const batchId = batch.id as number;
-    const sessions: BatchSessionResult[] = [];
-
-    // Create one upload session per file (reuses proven dedupe + signed URL logic).
-    for (const file of files) {
-      const sessionInput: CreateUploadSessionInput = {
-        original_filename: file.original_filename,
-        mime_type: file.mime_type,
-        file_size_bytes: file.file_size_bytes,
-        sha256_hash: file.sha256_hash,
-      };
-      const res = await createDmsUploadSession(sessionInput);
-      if (!res.success || !res.data) {
-        // Roll back the batch: nothing has been uploaded yet.
-        await supabase
-          .from("dms_upload_batches")
-          .update({ status: "cancelled", deleted_at: new Date().toISOString() })
-          .eq("id", batchId);
-        return {
-          success: false,
-          error: `Failed to prepare "${file.original_filename}": ${res.error ?? "unknown error"}`,
-        };
-      }
-      const d = res.data;
-      // Tag the session with its batch (admin client: bookkeeping update).
-      await createAdminClient()
-        .from("dms_upload_sessions")
-        .update({ batch_id: batchId })
-        .eq("id", d.session.id);
-
-      sessions.push({
-        sessionId: d.session.id,
-        sessionCode: d.session.session_code,
-        signedUrl: d.signedUrl,
-        token: d.token,
-        path: d.path,
-        originalFilename: file.original_filename,
-        isDuplicate: d.isDuplicate,
-        duplicateDocument: d.duplicateDocument ?? null,
-      });
-    }
-
-    await logAudit({
-      module_code: "DMS",
-      entity_name: "dms_upload_batches",
-      entity_id: batchId,
-      entity_reference: batchCode,
-      action: "create",
-      new_values: { event: "dms_batch_created", total_files: files.length, entity_type: entityType ?? null },
-    });
-
-    revalidatePath("/dms/inbox");
-
-    return { success: true, data: { batchId, batchCode, sessions } };
-  } catch (e) {
-    logger.error("createDmsUploadBatch error", e);
-    return { success: false, error: String(e) };
+export async function createDmsUploadBatch(input: BatchRequest): Promise<BatchAdmissionResult> {
+  const result = await admitBatch(input);
+  if (result.state === "admitted") {
+    try { revalidatePath("/dms/inbox"); } catch { /* A cache failure cannot revoke a committed receipt. */ }
   }
+  return result;
+}
+
+export async function recoverDmsUploadBatch(input: BatchRequest): Promise<BatchAdmissionResult> {
+  return createDmsUploadBatch(input);
+}
+
+export async function discoverDmsBatchAdmissions(): Promise<BatchDiscoveryResult> {
+  return discoverBatchAdmissions();
+}
+
+export async function verifyDmsBatchUpload(input: {request: BatchRequest; position: number}): Promise<BatchObjectResult> {
+  return verifyBatchUpload(input);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
 // 2. startAiIntakeAndCreateDraft  (one file → one pending_ai_review draft)
 // ════════════════════════════════════════════════════════════════════════════
 
-const StartDraftSchema = z.object({
-  uploadSessionId: z.number().int().positive(),
-  allowDuplicate: z.boolean().optional().default(false),
-});
 
-export type StartDraftResult = {
-  documentId: number;
-  documentNo: string;
-  status: string;
-  confidence: string | null;
-};
+/** Full durable read; recent-page discovery and complete upload plans are not prerequisites. */
+export async function readDmsUploadBatchDraftRecovery(request:BatchRequest):Promise<BatchDraftRecoveryResult>{
+  if(!batchRequestSchema.safeParse(request).success)return batchDraftRecoveryError("22023");
+  try{
+    const bound=await bindBatchAdmission(request);
+    const result=await readNumberedBatchDraftRecovery(bound.client,bound.receipt,bound.origin);
+    if(!result.success)return result;
+    await refreshBatchAdmission(bound);
+    return {success:true,receipt:bound.receipt,recovery:result.data};
+  }catch(error){return batchDraftRecoveryError(typeof error==="object"&&error!==null&&"code" in error?error.code:undefined);}
+}
 
+export async function recoverDmsBatchMemberUpload(input:{request:BatchRequest;position:number}):Promise<BatchMemberUploadResult>{
+  return recoverBatchMemberUpload(input);
+}
+
+export async function prepareDmsUploadBatchMemberDraft(input:{request:BatchRequest;position:number}):Promise<BatchDraftPreparationResult>{
+  const parsed=batchMemberRequestSchema.safeParse(input);
+  if(!parsed.success)return batchDraftRecoveryError("22023");
+  try{
+    const {request,position}=parsed.data;
+    const bound=await bindBatchAdmission(request);
+    const prepare=()=>prepareRecoverableNumberedBatchDraft(bound.client,bound.receipt,bound.origin,position);
+    let result=await prepare();
+    if(!result.success)return result;
+    const operation=result.data.member.draft_operation_id;
+    await refreshBatchAdmission(bound);
+    if(result.data.member.kind==="prepared"||result.data.member.processing)
+      return {success:true,receipt:bound.receipt,preparation:result.data};
+    const object=await verifySelectedBatchUpload(bound,position);
+    if(object.state!=="present")return batchDraftRecoveryError();
+    await refreshBatchAdmission(bound);
+    result=await prepare();
+    if(!result.success)return result;
+    if(result.data.member.draft_operation_id!==operation)return batchDraftRecoveryError();
+    await refreshBatchAdmission(bound);
+    if(result.data.member.kind==="prepared"||result.data.member.processing)
+      return {success:true,receipt:bound.receipt,preparation:result.data};
+    const member=bound.receipt.members[position];
+    let analyzed:Awaited<ReturnType<typeof startAiIntakeFromUploadSession>>;
+    try{analyzed=await startAiIntakeFromUploadSession({uploadSessionId:member.id,allowDuplicate:false});}
+    catch{return batchDraftRecoveryError();}
+    const response=z.object({success:z.literal(true),data:z.object({sessionCode:z.literal(member.code),status:z.enum(["review_pending","already_processing"]),message:z.string().optional()}).strict()}).strict().safeParse(analyzed);
+    if(!response.success)return batchDraftRecoveryError();
+    await refreshBatchAdmission(bound);
+    result=await prepare();
+    if(!result.success)return result;
+    if(result.data.member.draft_operation_id!==operation)return batchDraftRecoveryError();
+    await refreshBatchAdmission(bound);
+    return {success:true,receipt:bound.receipt,preparation:result.data};
+  }catch(error){return batchDraftRecoveryError(typeof error==="object"&&error!==null&&"code" in error?error.code:undefined);}
+}
+
+const StartDraftSchema = batchDraftInputSchema;
+export type StartDraftResult = BatchDraftReceipt;
+
+/** Two-phase handoff: preparation allocates nothing. The caller retains the
+ * prepared snapshot before dispatching the one atomic numbered consumer. */
 export async function startAiIntakeAndCreateDraft(
-  input: z.input<typeof StartDraftSchema>
-): Promise<ActionResult<StartDraftResult>> {
+  input: z.input<typeof StartDraftSchema>,
+  contract?: WorkspaceSaveContract,
+): Promise<BatchDraftResult> {
+  const identity=batchDraftContractSchema.safeParse(contract);
+  const parsed=StartDraftSchema.safeParse(input);
+  if(!identity.success)return {success:false,error:"Reopen the batch inbox. Its draft request identity is missing."};
+  if(!parsed.success)return {success:false,error:"The draft request is invalid or belongs to another upload."};
   try {
-    const parsed = StartDraftSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-    const { uploadSessionId, allowDuplicate } = parsed.data;
-
-    const supabase = await createClient();
-    const admin = createAdminClient();
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canUpload(ctx)) return { success: false, error: "Permission denied" };
-    if (!(await isBatchIntakeEnabled(supabase)))
-      return { success: false, error: "Batch upload is not enabled" };
-
-    // Load the session.
-    const { data: session, error: sessErr } = await supabase
-      .from("dms_upload_sessions")
-      .select("id, session_code, batch_id, document_id, intake_status, original_filename")
-      .eq("id", uploadSessionId)
-      .is("deleted_at", null)
-      .single();
-    if (sessErr || !session) return { success: false, error: "Upload session not found" };
-
-    const batchId = session.batch_id as number | null;
-
-    // entity_type/entity_id are stored on the batch, not on individual sessions.
-    let batchEntityType: string | null = null;
-    let batchEntityId: number | null = null;
-    if (batchId) {
-      const { data: batchRow } = await supabase
-        .from("dms_upload_batches")
-        .select("entity_type, entity_id")
-        .eq("id", batchId)
-        .single();
-      batchEntityType = (batchRow?.entity_type as string | null) ?? null;
-      batchEntityId = (batchRow?.entity_id as number | null) ?? null;
-    }
-
-    // Idempotency: draft already created for this session.
-    if (session.document_id) {
-      const { data: existingDoc } = await supabase
-        .from("dms_documents")
-        .select("id, document_no, status")
-        .eq("id", session.document_id as number)
-        .single();
-      if (existingDoc) {
-        return {
-          success: true,
-          data: {
-            documentId: existingDoc.id as number,
-            documentNo: existingDoc.document_no as string,
-            status: existingDoc.status as string,
-            confidence: null,
-          },
-        };
+    const ctx=await getAuthContext();
+    if(!ctx.profile||!hasPermission(ctx,"dms.documents.upload")||!hasPermission(ctx,"numbering.rules.generate"))
+      return {success:false,error:"Document upload and numbering generation permissions are required."};
+    const supabase=await createClient();
+    if(parsed.data.prepared) {
+      const result=await createNumberedBatchDraft(supabase,parsed.data,identity.data);
+      if(result.success) {
+        // Summary/cache work is not a second creation and cannot revoke a receipt.
+        try { if(!result.data.replayed&&parsed.data.prepared.batch_id)await recomputeBatchStatus(parsed.data.prepared.batch_id); } catch {}
+        try { revalidatePath("/dms/inbox"); } catch {}
       }
+      return result;
     }
-
-    // Run the proven single-file AI analysis path (OCR + AI + stores result,
-    // sets session.intake_status = review_pending). No draft doc created by it.
-    const aiRes = await startAiIntakeFromUploadSession({ uploadSessionId, allowDuplicate });
-    if (!aiRes.success) {
-      // Session is already marked failed by the analysis action.
-      if (batchId) await recomputeBatchStatus(batchId);
-      await logAudit({
-        module_code: "DMS",
-        entity_name: "dms_upload_sessions",
-        entity_id: uploadSessionId,
-        entity_reference: session.session_code as string,
-        action: "update",
-        new_values: { event: "dms_batch_draft_failed", batch_id: batchId },
-      });
-      return { success: false, error: aiRes.error ?? "AI analysis failed" };
-    }
-
-    // Reload session to pick up ai_result_id.
-    const { data: session2 } = await supabase
-      .from("dms_upload_sessions")
-      .select("id, ai_result_id, mime_type, original_filename, sha256_hash, file_size_bytes")
-      .eq("id", uploadSessionId)
-      .single();
-
-    const aiResultId = (session2?.ai_result_id as number | null) ?? null;
-
-    // Load AI suggestions.
-    let suggestedTypeId: number | null = null;
-    let suggestedTitle: string | null = null;
-    let suggestedDescription: string | null = null;
-    let issueDate: string | null = null;
-    let expiryDate: string | null = null;
-    let confidenceLabel: string | null = null;
-    if (aiResultId) {
-      const { data: ai } = await supabase
-        .from("dms_ai_extraction_results")
-        .select("suggested_document_type_id, suggested_title, suggested_description, issue_date_suggestion, expiry_date_suggestion, classification_confidence")
-        .eq("id", aiResultId)
-        .single();
-      if (ai) {
-        suggestedTypeId = (ai.suggested_document_type_id as number | null) ?? null;
-        suggestedTitle = (ai.suggested_title as string | null) ?? null;
-        suggestedDescription = (ai.suggested_description as string | null) ?? null;
-        issueDate = clampToValidDate(ai.issue_date_suggestion as string | null) ?? null;
-        expiryDate = clampToValidDate(ai.expiry_date_suggestion as string | null) ?? null;
-        confidenceLabel = (ai.classification_confidence as string | null) ?? null;
-      }
-    }
-
-    // Resolve type + category. dms_documents.document_type_id and category_id
-    // are NOT NULL, so a draft must always carry a (correctable) type/category.
-    // Use the AI-suggested type if resolvable; otherwise fall back to the first
-    // active type. The user MUST review/correct this before approval.
-    let typeId = suggestedTypeId;
-    let categoryId: number | null = null;
-    let typeDefaultConfidentiality: string | null = null;
-    if (typeId) {
-      const { data: t } = await supabase
-        .from("dms_document_types")
-        .select("id, category_id, default_confidentiality, is_active")
-        .eq("id", typeId)
-        .single();
-      if (t && t.is_active) {
-        categoryId = t.category_id as number | null;
-        typeDefaultConfidentiality = t.default_confidentiality as string | null;
-      } else {
-        typeId = null;
-      }
-    }
-    if (!typeId || categoryId == null) {
-      const { data: fallback } = await supabase
-        .from("dms_document_types")
-        .select("id, category_id, default_confidentiality")
-        .eq("is_active", true)
-        .is("deleted_at", null)
-        .not("category_id", "is", null)
-        .order("sort_order", { ascending: true })
-        .order("id", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      if (!fallback) {
-        return { success: false, error: "No active document type is configured to host a draft" };
-      }
-      typeId = fallback.id as number;
-      categoryId = fallback.category_id as number;
-      typeDefaultConfidentiality = fallback.default_confidentiality as string | null;
-    }
-
-    // Generate document number.
-    const { data: docNoData, error: docNoError } = await supabase.rpc(
-      "generate_next_reference_number",
-      { p_rule_code: "MASTER_DMS_DOCUMENT" }
-    );
-    const docNoRows = docNoData as Array<{ generated_reference_number: string }> | null;
-    if (docNoError || !docNoRows || docNoRows.length === 0 || !docNoRows[0]?.generated_reference_number) {
-      return { success: false, error: docNoError?.message ?? "Failed to generate document number" };
-    }
-    const documentNo = String(docNoRows[0].generated_reference_number);
-
-    const filename = (session.original_filename as string) ?? "Document";
-    const title = (suggestedTitle && suggestedTitle.trim()) || stripExtension(filename) || documentNo;
-    const confidentiality = typeDefaultConfidentiality ?? "internal";
-
-    // Entity-context carry-through from the parent batch (party only at draft stage).
-    const partyId = batchEntityType === "party" && batchEntityId ? batchEntityId : null;
-
-    // Create the DRAFT document (pending_ai_review). No file copied yet; the
-    // file stays in dms-temp until the user approves this single draft, exactly
-    // like the single-file flow. The intake review screen previews from dms-temp.
-    const nowIso = new Date().toISOString();
-    const { data: draft, error: draftErr } = await supabase
-      .from("dms_documents")
-      .insert({
-        document_no: documentNo,
-        title,
-        description: suggestedDescription ?? null,
-        document_type_id: typeId,
-        category_id: categoryId,
-        status: "pending_ai_review",
-        confidentiality_level: confidentiality,
-        owner_user_id: ctx.profile.id,
-        party_id: partyId,
-        issue_date: issueDate ?? null,
-        expiry_date: expiryDate ?? null,
-        created_by: ctx.profile.id,
-        created_at: nowIso,
-        updated_by: ctx.profile.id,
-        updated_at: nowIso,
-      })
-      .select("id, document_no")
-      .single();
-
-    if (draftErr || !draft) {
-      return { success: false, error: draftErr?.message ?? "Failed to create draft document" };
-    }
-    const documentId = draft.id as number;
-
-    // Link the session to the draft (keep intake_status = review_pending).
-    await supabase
-      .from("dms_upload_sessions")
-      .update({ document_id: documentId, updated_at: nowIso })
-      .eq("id", uploadSessionId);
-
-    // Point the AI result at the draft doc.
-    if (aiResultId) {
-      await supabase
-        .from("dms_ai_extraction_results")
-        .update({ document_id: documentId })
-        .eq("id", aiResultId);
-    }
-
-    // Persist field-level AI suggestions in REVIEW/DRAFT storage only.
-    const reviewRows = [
-      { field_code: "title", field_type: "text", value: title },
-      { field_code: "document_type_id", field_type: "number", value: typeId },
-      { field_code: "description", field_type: "text", value: suggestedDescription ?? null },
-      { field_code: "issue_date", field_type: "date", value: issueDate ?? null },
-      { field_code: "expiry_date", field_type: "date", value: expiryDate ?? null },
-      { field_code: "confidentiality_level", field_type: "text", value: confidentiality },
-    ]
-      .filter((r) => r.value !== null && r.value !== undefined && r.value !== "")
-      .map((r) => ({
-        upload_session_id: uploadSessionId,
-        field_scope: "document",
-        field_code: r.field_code,
-        field_type: r.field_type,
-        suggested_value_json: r.value as unknown,
-        reviewed_value_json: r.value as unknown,
-        confidence_label: confidenceLabel,
-        review_status: "suggested",
-        updated_at: nowIso,
-      }));
-    if (reviewRows.length > 0) {
-      await supabase
-        .from("dms_intake_review_values")
-        .upsert(reviewRows, { onConflict: "upload_session_id,field_scope,field_code" });
-    }
-
-    // Draft-created document event (safe metadata only).
-    await admin.from("dms_document_events").insert({
-      document_id: documentId,
-      event_type: "batch_draft_created",
-      description: `AI draft created from batch intake — session ${session.session_code}`,
-      performed_by: ctx.profile.id,
-      performed_at: nowIso,
-      metadata_json: { document_no: documentNo, upload_session_id: uploadSessionId, batch_id: batchId, ai_result_id: aiResultId },
-    });
-
-    if (batchId) await recomputeBatchStatus(batchId);
-
-    await logAudit({
-      module_code: "DMS",
-      entity_name: "dms_documents",
-      entity_id: documentId,
-      entity_reference: documentNo,
-      action: "create",
-      new_values: { event: "dms_batch_draft_created", upload_session_id: uploadSessionId, batch_id: batchId, ai_result_id: aiResultId },
-    });
-
-    revalidatePath("/dms/inbox");
-
-    return {
-      success: true,
-      data: { documentId, documentNo, status: "pending_ai_review", confidence: confidenceLabel },
+    // Only explicit historical NULL provenance permits the old two-phase path.
+    const source=await supabase.from("dms_upload_sessions").select("batch_draft_operation_id").eq("id",parsed.data.uploadSessionId).is("deleted_at",null).single();
+    if(source.error||!source.data||source.data.batch_draft_operation_id!==null)
+      return {success:false,uncertain:true,error:"Use the retained batch recovery workflow. This upload cannot start a new legacy draft attempt."};
+    const prepare=async()=>{
+      const response=await supabase.rpc("prepare_numbered_dms_batch_draft",{p_session:parsed.data.uploadSessionId});
+      if(response.error)return {error:batchDraftSaveError(response.error.code)};
+      const value=batchDraftPrepareRpcSchema.safeParse(response.data);
+      if(!value.success)return {error:{success:false,uncertain:true,error:"Draft preparation could not be verified. Retry this request."} as BatchDraftResult};
+      return {value:value.data};
     };
-  } catch (e) {
-    logger.error("startAiIntakeAndCreateDraft error", e);
-    return { success: false, error: String(e) };
+    // Database admission checks pinned source scope before any provider access.
+    let preparation=await prepare();
+    if(preparation.error)return preparation.error;
+    if(preparation.value!.kind==="analysis_required") {
+      const pending=preparation.value!;
+      if(pending.processing)return {success:false,uncertain:true,error:"Analysis is still in progress. Retry this retained draft request when it finishes."};
+      const analysis=await startAiIntakeFromUploadSession({uploadSessionId:parsed.data.uploadSessionId,allowDuplicate:parsed.data.allowDuplicate});
+      if(!analysis.success) {
+        try {
+          if(pending.batch_id)await recomputeBatchStatus(pending.batch_id);
+          await logAudit({module_code:"DMS",entity_name:"dms_upload_sessions",entity_id:parsed.data.uploadSessionId,entity_reference:pending.session_code,action:"update",new_values:{event:"dms_batch_draft_failed",batch_id:pending.batch_id}});
+        } catch {}
+        return {success:false,uncertain:true,error:"Analysis was not confirmed. No draft was submitted; retry this retained request after checking the intake."};
+      }
+      preparation=await prepare();
+      if(preparation.error)return preparation.error;
+    }
+    if(preparation.value!.kind!=="prepared")return {success:false,uncertain:true,error:"Analysis is not ready. Retry this retained draft request when it finishes."};
+    const snapshot=preparation.value!.snapshot;
+    if(snapshot.upload_session_id!==parsed.data.uploadSessionId)return {success:false,uncertain:true,error:"Prepared draft identity did not match the upload."};
+    return {success:false,prepared:{operation_id:identity.data.operationId,snapshot}};
+  } catch {
+    return {success:false,uncertain:true,error:"Draft preparation or save was not confirmed. Retry the retained request."};
   }
 }
 

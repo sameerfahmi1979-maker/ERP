@@ -18,7 +18,7 @@ import type { DuplicateMatch, Party } from "@/features/master-data/parties/party
 import { useFormDirty } from "@/hooks/use-form-dirty";
 import type { AuthContext } from "@/lib/rbac/check";
 import { cn } from "@/lib/utils";
-import { createParty, detectPartyDuplicates, updateParty } from "@/server/actions/master-data/parties";
+import { detectPartyDuplicates } from "@/server/actions/master-data/parties";
 import {
   AlertTriangle, Building2, DollarSign, FileText, Landmark, Lock, MapPin,
   Shield,
@@ -26,6 +26,8 @@ import {
 } from "lucide-react";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
+import {usePartyRecordSave} from './use-party-record-save';
+import {PartyCreationTypeNotice} from './party-creation-type-notice';
 import { PartyAddressesTab } from "./party-addresses-tab";
 import { PartyAuditTab } from "./party-audit-tab";
 import { PartyBankDetailsTab } from "./party-bank-details-tab";
@@ -37,12 +39,11 @@ import { PartyServicesTab } from "./party-services-tab";
 import { PartyTaxFinanceTab } from "./party-tax-finance-tab";
 import { PartyTypesTab } from "./party-types-tab";
 
-function hasPerm(ctx: AuthContext, code: string) {
-  return ctx.permissionCodes?.includes(code) || ctx.roleCodes?.includes("system_admin") || ctx.roleCodes?.includes("group_admin");
-}
+import {hasPermission as hasPerm, hasGlobalPermission} from '@/lib/rbac/scope';
 
 // Dynamic ID-backed selects for party-specific lookups
 import { ERPCombobox } from "@/components/erp/combobox";
+import { savedSelection, withSavedSelection } from "@/lib/master-data/saved-selection";
 import { PartySelect } from "@/components/erp/party-select";
 import { Button } from "@/components/ui/button";
 import {
@@ -77,6 +78,8 @@ export function PartyFormDrawer(props: PartyFormDrawerProps) {
 
 function PartyFormDrawerInner({ party, mode, open, onOpenChange, authContext, defaultTypeCode }: PartyFormDrawerProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [typeSelectionDirty,setTypeSelectionDirty]=useState(false);
+  const saveRecord = usePartyRecordSave('party-form-drawer', party, defaultTypeCode);
   const [activeSection, setActiveSection] = useState("basic");
   const [mountedSections, setMountedSections] = useState<Set<string>>(
     () => new Set(["basic"])
@@ -118,19 +121,21 @@ function PartyFormDrawerInner({ party, mode, open, onOpenChange, authContext, de
   const canOverrideDuplicate = authContext.permissionCodes?.includes("master_data.parties.override_duplicate");
 
   // Fetch lookups
-  const { data: natures } = useQuery({
+  const { data: natures, error: naturesError, isLoading: naturesLoading } = useQuery({
     queryKey: ["party_natures"],
     queryFn: async () => {
       const r = await getPartyNatures();
+      if (!r.success || !r.data) throw new Error("Party natures could not be loaded.");
       return r.data ?? [];
     },
     staleTime: 5 * 60 * 1000,
   });
 
-  const { data: statuses } = useQuery({
+  const { data: statuses, error: statusesError, isLoading: statusesLoading } = useQuery({
     queryKey: ["party_statuses"],
     queryFn: async () => {
       const r = await getPartyStatuses();
+      if (!r.success || !r.data) throw new Error("Party statuses could not be loaded.");
       return r.data ?? [];
     },
     staleTime: 5 * 60 * 1000,
@@ -166,6 +171,8 @@ function PartyFormDrawerInner({ party, mode, open, onOpenChange, authContext, de
 
   const performSave = async (): Promise<boolean> => {
     if (isViewing) return false;
+    if(typeSelectionDirty){toast.error('Save the party type selections first. Your overview entries are retained.');return false;}
+    if(!effectivePartyId&&defaultTypeCode&&!hasGlobalPermission(authContext,'master_data.parties.manage_types')){toast.error('Assigning an initial party type requires party-type management permission.');return false;}
 
     const form = document.getElementById("party-form") as HTMLFormElement | null;
     if (!form) return false;
@@ -180,7 +187,6 @@ function PartyFormDrawerInner({ party, mode, open, onOpenChange, authContext, de
       trade_name_ar: (fd.get("trade_name_ar") as string) || null,
       short_name: (fd.get("short_name") as string) || null,
       party_nature_id: partyNatureId ?? 0,
-      primary_party_type_id: party?.primary_party_type_id ?? null,
       parent_party_id: parentPartyId,
       main_phone: (fd.get("main_phone") as string) || null,
       main_mobile: (fd.get("main_mobile") as string) || null,
@@ -203,16 +209,10 @@ function PartyFormDrawerInner({ party, mode, open, onOpenChange, authContext, de
     };
 
     try {
-      let result;
-      if (isEditing && (party || createdPartyId)) {
-        const id = party?.id ?? createdPartyId!;
-        result = await updateParty({ id, ...payload });
-      } else {
-        result = await createParty(payload);
-      }
+      const result = await saveRecord(payload);
 
       if (result.success) {
-        toast.success(`Party ${isEditing ? "updated" : "created"} successfully`);
+        toast.success(result.data?.changed === false ? "No changes to save" : `Party ${isEditing ? "updated" : "created"} successfully`);
         resetDirty();
         if (!isEditing && result.data && "id" in result.data) {
           setCreatedPartyId(result.data.id);
@@ -267,6 +267,7 @@ function PartyFormDrawerInner({ party, mode, open, onOpenChange, authContext, de
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    if (e.target !== e.currentTarget) return;
     e.preventDefault();
     if (isViewing) {
       onOpenChange(false);
@@ -285,7 +286,7 @@ function PartyFormDrawerInner({ party, mode, open, onOpenChange, authContext, de
         mode={currentMode}
         status={party ? (party.is_active ? "Active" : "Inactive") : undefined}
         recordNumber={party?.party_code}
-        isDirty={isDirty}
+        isDirty={isDirty||typeSelectionDirty}
       >
         {/* When any child dialog is open, make the entire drawer content inert so the
             user cannot interact with tabs, fields, or footer buttons behind the dialog.
@@ -306,10 +307,12 @@ function PartyFormDrawerInner({ party, mode, open, onOpenChange, authContext, de
           setActiveSection={handleSectionChange}
         />
 
-        <form id="party-form" onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden">
           <ERPDrawerBody>
+            <form id="party-form" onSubmit={handleSubmit} className="contents">
             {/* ──────────── Tab 1: Basic Information ──────────── */}
             <ERPDrawerSection id="basic" activeId={activeSection} title="Basic Information">
+              {!effectivePartyId&&defaultTypeCode&&<PartyCreationTypeNotice code={defaultTypeCode} authContext={authContext}/>}
               {/* A. Identity */}
               <div className="mb-6">
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Identity</h3>
@@ -395,10 +398,12 @@ function PartyFormDrawerInner({ party, mode, open, onOpenChange, authContext, de
 
                   <div className="col-span-6">
                     <RequiredLabel htmlFor="party_nature_id" required>Party Nature</RequiredLabel>
-                    <ERPCombobox ariaLabel="Party Nature"
+                    <ERPCombobox ariaLabel="Party Nature" name="party_nature_id"
                       value={partyNatureId}
                       onValueChange={(v) => setPartyNatureId(v !== null ? Number(v) : null)}
-                      options={(natures ?? []).map((n) => ({ value: n.id, label: n.name_en }))}
+                    options={withSavedSelection((naturesError ? [] : natures ?? []).filter(n => n.is_active).map(n => ({ value: n.id, label: n.name_en })), partyNatureId, savedSelection(party?.party_nature_id, party?.party_nature_name))}
+                    loading={naturesLoading}
+                    error={naturesError ? "Party natures could not be loaded. Your saved selection is retained." : undefined}
                       placeholder="Select nature..."
                       disabled={isViewing}
                       required
@@ -408,6 +413,7 @@ function PartyFormDrawerInner({ party, mode, open, onOpenChange, authContext, de
                   <div className="col-span-12">
                     <Label htmlFor="parent_party_id">Parent Party</Label>
                     <PartySelect
+                      savedSelection={savedSelection(party?.parent_party_id, party?.parent_party_name)}
                       value={parentPartyId}
                       onValueChange={setParentPartyId}
                       excludePartyId={party?.id ?? createdPartyId ?? undefined}
@@ -495,7 +501,10 @@ function PartyFormDrawerInner({ party, mode, open, onOpenChange, authContext, de
                 <ERPFieldGrid>
                   <div className="col-span-6">
                     <RequiredLabel htmlFor="country_id" required>Country</RequiredLabel>
-                    <CountrySelect
+                  <CountrySelect
+                    savedSelection={savedSelection(party?.country_id, party?.country_name)}
+                      name="country_id"
+                      required
                       value={countryId}
                       onValueChange={(v) => {
                         setCountryId(v);
@@ -509,7 +518,8 @@ function PartyFormDrawerInner({ party, mode, open, onOpenChange, authContext, de
 
                   <div className="col-span-6">
                     <Label htmlFor="emirate_id">Emirate / Region</Label>
-                    <EmirateSelect
+                  <EmirateSelect
+                    savedSelection={countryId === party?.country_id ? savedSelection(party?.emirate_id, party?.emirate_name) : undefined}
                       countryId={countryId}
                       value={emirateId}
                       onValueChange={(v) => {
@@ -523,7 +533,8 @@ function PartyFormDrawerInner({ party, mode, open, onOpenChange, authContext, de
 
                   <div className="col-span-6">
                     <Label htmlFor="city_id">City</Label>
-                    <CitySelect
+                  <CitySelect
+                    savedSelection={countryId === party?.country_id && emirateId === party?.emirate_id ? savedSelection(party?.city_id, party?.city_name) : undefined}
                       emirateId={emirateId}
                       value={cityId}
                       onValueChange={(v) => {
@@ -537,6 +548,7 @@ function PartyFormDrawerInner({ party, mode, open, onOpenChange, authContext, de
                   <div className="col-span-6">
                     <Label htmlFor="area_zone_id">Area / Zone</Label>
                     <AreaZoneSelect
+                      savedSelection={countryId === party?.country_id && emirateId === party?.emirate_id && cityId === party?.city_id ? savedSelection(party?.area_zone_id, party?.area_zone_name) : undefined}
                       cityId={cityId}
                       value={areaZoneId}
                       onValueChange={setAreaZoneId}
@@ -583,10 +595,12 @@ function PartyFormDrawerInner({ party, mode, open, onOpenChange, authContext, de
                 <ERPFieldGrid>
                   <div className="col-span-6">
                     <RequiredLabel htmlFor="party_status_id" required>Party Status</RequiredLabel>
-                    <ERPCombobox ariaLabel="Party Status"
+                    <ERPCombobox ariaLabel="Party Status" name="party_status_id"
                       value={partyStatusId}
                       onValueChange={(v) => setPartyStatusId(v !== null ? Number(v) : null)}
-                      options={(statuses ?? []).map((s) => ({ value: s.id, label: s.name_en }))}
+                    options={withSavedSelection((statusesError ? [] : statuses ?? []).map(s => ({ value: s.id, label: s.name_en })), partyStatusId, savedSelection(party?.party_status_id, party?.party_status_name))}
+                    loading={statusesLoading}
+                    error={statusesError ? "Party statuses could not be loaded. Your saved selection is retained." : undefined}
                       placeholder="Select status..."
                       disabled={isViewing}
                       required
@@ -600,10 +614,12 @@ function PartyFormDrawerInner({ party, mode, open, onOpenChange, authContext, de
                       name="is_active"
                       checked={isActive}
                       onCheckedChange={setIsActive}
-                      disabled={isViewing}
+                      disabled={isViewing || (!!party && !hasGlobalPermission(authContext, 'master_data.parties.deactivate'))}
+                      aria-describedby={party && !hasGlobalPermission(authContext, 'master_data.parties.deactivate') ? 'party-drawer-lifecycle-authority' : undefined}
                     />
                     <span className="text-sm text-muted-foreground">{isActive ? "Yes" : "No"}</span>
                   </div>
+                  {party && !hasGlobalPermission(authContext, 'master_data.parties.deactivate') && <p id="party-drawer-lifecycle-authority" className="col-span-12 text-sm text-muted-foreground">Changing active status requires party activation permission. Other permitted fields can still be edited.</p>}
 
                   <div className="col-span-12">
                     <Label htmlFor="remarks">Remarks</Label>
@@ -627,9 +643,11 @@ function PartyFormDrawerInner({ party, mode, open, onOpenChange, authContext, de
             </ERPDrawerSection>
 
             {/* ──────────── Tab 2: Party Types ──────────── */}
+            </form>
             <ERPDrawerSection id="types" activeId={activeSection} title="Party Types" lazyMount>
               <PartyTypesTab
                 partyId={effectivePartyId}
+                onDirtyChange={setTypeSelectionDirty}
                 disabled={isViewing}
                 authContext={authContext}
                 defaultTypeCode={mode === "add" ? defaultTypeCode : undefined}
@@ -641,7 +659,7 @@ function PartyFormDrawerInner({ party, mode, open, onOpenChange, authContext, de
               {childTabLocked ? (
                 <LockedTabMessage />
               ) : (
-                <PartyLicensesTab partyId={effectivePartyId!} disabled={isViewing} onChildOpen={handleChildOpen} />
+                <PartyLicensesTab partyId={effectivePartyId!} disabled={isViewing || !hasGlobalPermission(authContext, "master_data.parties.manage_licenses") || !hasGlobalPermission(authContext, "master_data.parties.view")} onChildOpen={handleChildOpen} />
               )}
             </ERPDrawerSection>
 
@@ -650,7 +668,7 @@ function PartyFormDrawerInner({ party, mode, open, onOpenChange, authContext, de
               {childTabLocked ? (
                 <LockedTabMessage />
               ) : (
-                <PartyTaxFinanceTab partyId={effectivePartyId!} disabled={isViewing} onChildOpen={handleChildOpen} />
+                <PartyTaxFinanceTab partyId={effectivePartyId!} disabled={isViewing} authContext={authContext} onChildOpen={handleChildOpen} />
               )}
             </ERPDrawerSection>
 
@@ -659,7 +677,7 @@ function PartyFormDrawerInner({ party, mode, open, onOpenChange, authContext, de
               {childTabLocked ? (
                 <LockedTabMessage />
               ) : (
-                <PartyContactsTab partyId={effectivePartyId!} disabled={isViewing} onChildOpen={handleChildOpen} />
+                <PartyContactsTab partyId={effectivePartyId!} disabled={isViewing || !hasGlobalPermission(authContext, "master_data.parties.manage_contacts") || !hasGlobalPermission(authContext, "master_data.parties.view")} onChildOpen={handleChildOpen} />
               )}
             </ERPDrawerSection>
 
@@ -668,7 +686,7 @@ function PartyFormDrawerInner({ party, mode, open, onOpenChange, authContext, de
               {childTabLocked ? (
                 <LockedTabMessage />
               ) : (
-                <PartyAddressesTab partyId={effectivePartyId!} disabled={isViewing} onChildOpen={handleChildOpen} />
+                <PartyAddressesTab partyId={effectivePartyId!} disabled={isViewing || !hasGlobalPermission(authContext, "master_data.parties.manage_addresses") || !hasGlobalPermission(authContext, "master_data.parties.view")} onChildOpen={handleChildOpen} />
               )}
             </ERPDrawerSection>
 
@@ -697,7 +715,10 @@ function PartyFormDrawerInner({ party, mode, open, onOpenChange, authContext, de
               ) : (
                 <PartyServicesTab
                   partyId={effectivePartyId!}
-                  canManage={hasPerm(authContext, "master_data.parties.manage_services")}
+                  canManage={hasGlobalPermission(authContext, "master_data.parties.manage_services") && hasGlobalPermission(authContext, "master_data.parties.view")}
+                  authContext={authContext}
+                  parentInactive={party?.is_active === false}
+                  disabled={isViewing || (!!party?.is_locked && !authContext.roleAssignments?.some(assignment => assignment.roleCode === "system_admin" && assignment.ownerCompanyId === null && assignment.branchId === null))}
                   onChildOpen={handleChildOpen}
                 />
               )}
@@ -710,7 +731,7 @@ function PartyFormDrawerInner({ party, mode, open, onOpenChange, authContext, de
               ) : (
                 <PartyNotesTab
                   partyId={effectivePartyId!}
-                  canManage={!isViewing && hasPerm(authContext, "master_data.parties.edit")}
+                  canManage={!isViewing && hasGlobalPermission(authContext, "master_data.parties.edit")}
                   currentUserProfileId={authContext?.profile?.id ?? null}
                   onChildOpen={handleChildOpen}
                 />
@@ -741,9 +762,9 @@ function PartyFormDrawerInner({ party, mode, open, onOpenChange, authContext, de
             onSave={isViewing ? undefined : () => handleSave()}
             onSaveAndClose={isViewing ? undefined : () => handleSaveAndClose()}
             isSubmitting={isSubmitting}
-            hasUnsavedChanges={isDirty}
+            hasUnsavedChanges={isDirty || typeSelectionDirty}
           />
-        </form>
+        </div>
         </div>{/* end inert wrapper */}
       </ERPDrawerForm>
 

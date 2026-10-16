@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext } from "@/lib/rbac/check";
+import {lookupCapabilities} from '@/features/master-data/lookups/permissions';
 import { LookupCategoryWorkspaceForm } from "@/features/master-data/lookups/components/lookup-category-workspace-form";
 
 export const dynamic = "force-dynamic";
@@ -7,8 +8,8 @@ export const revalidate = 0;
 
 export default async function LookupCategoryNewPage() {
   const authContext = await getAuthContext();
-  if (!hasPermission(authContext, "master_data.lookups.view")) redirect("/access-denied");
-  if (!hasPermission(authContext, "master_data.lookups.manage")) redirect("/admin/master-data/lookups/categories");
+  if (!lookupCapabilities(authContext).read) redirect("/access-denied");
+  if (!lookupCapabilities(authContext).manage) redirect("/admin/master-data/lookups/categories");
 
   return (
     <div className="h-full">

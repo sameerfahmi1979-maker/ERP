@@ -5,7 +5,8 @@
 
 import { redirect } from "next/navigation";
 import { LoadError } from "@/components/erp/load-error";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission,hasGlobalPermission } from "@/lib/rbac/check";
+import {listBrandingProfiles} from '@/server/actions/reports/templates';
 import { getGovernanceSummary } from "@/server/actions/reports/template-governance";
 import { GovernanceDashboardClient } from "./governance-dashboard-client";
 
@@ -21,8 +22,8 @@ export default async function TemplateGovernancePage() {
     redirect("/admin/reports/templates");
   }
 
-  const summary = await getGovernanceSummary();
-  if (!summary.success) return <LoadError title="Template governance" retryHref="/admin/reports/templates/governance" />;
+  const [summary,profiles] = await Promise.all([getGovernanceSummary(),listBrandingProfiles()]);
+  if (!summary.success||!profiles.success) return <LoadError title="Template governance" retryHref="/admin/reports/templates/governance" />;
 
   const canApprove = hasPermission(ctx, "reports.template.approve");
   const canPublish = hasPermission(ctx, "reports.publish") || canApprove;
@@ -36,6 +37,8 @@ export default async function TemplateGovernancePage() {
       canApprove={canApprove}
       canPublish={canPublish}
       canManage={canManage}
+      profiles={profiles.data??[]}
+      globalTemplateCapabilities={{manage:hasGlobalPermission(ctx,'reports.manage'),approve:hasGlobalPermission(ctx,'reports.template.approve'),publish:hasGlobalPermission(ctx,'reports.publish')||hasGlobalPermission(ctx,'reports.template.approve'),sign:hasGlobalPermission(ctx,'reports.sign')}}
     />
   );
 }

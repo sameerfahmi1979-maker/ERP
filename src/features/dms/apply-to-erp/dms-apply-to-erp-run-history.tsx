@@ -9,6 +9,7 @@ import { listDmsApplyToErpRuns, getDmsApplyToErpRun } from "@/server/actions/dms
 import type { DmsErpApplyRun, DmsErpApplyItem } from "@/lib/dms/apply-to-erp/types";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { DmsApplyCorrectionDrawer } from "@/features/dms/apply-correction/dms-apply-correction-drawer";
+import { DmsApplyCorrectionHistory } from "@/features/dms/apply-correction/dms-apply-correction-history";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -47,6 +48,10 @@ function RunHistorySession({ documentId, className, correctionEnabled }: Props) 
     const request = ++latest.current;
     setLoading(true);
     setFailed(false);
+    latestDetail.current++;
+    setExpandedRunId(null);
+    setExpandedRun(null);
+    setLoadingDetail(false);
     try {
       const result = await listDmsApplyToErpRuns({ documentId, pageSize: 20 });
       if (request !== latest.current) return;
@@ -114,18 +119,24 @@ function RunHistorySession({ documentId, className, correctionEnabled }: Props) 
       </div>
 
       {/* Phase 17 — Propose Correction drawer */}
+      {correctionEnabled && documentId && (
+        <section aria-label="Correction proposals" className="mb-4 space-y-2">
+          <h3 className="text-sm font-medium">Correction proposals</h3>
+          <DmsApplyCorrectionHistory documentId={documentId} onChanged={() => void load()} />
+        </section>
+      )}
       {correctionEnabled && correctionItemId && (
         <DmsApplyCorrectionDrawer
           open={true}
-          onOpenChange={(open) => { if (!open) setCorrectionItemId(null); }}
-          applyItemId={correctionItemId}
-          onProposed={() => {
-            // Do NOT clear correctionItemId here — the drawer transitions to the
-            // confirmation dialog internally. Clearing it would unmount the drawer
-            // and destroy confirmProposal state before the dialog can render.
-            // The drawer's onOpenChange closes it only after confirmation is done.
-            void load();
+          onOpenChange={(open) => {
+            if (!open) {
+              setCorrectionItemId(null);
+              void load();
+            }
           }}
+          applyItemId={correctionItemId}
+          // Refresh only after the child closes. Loading here after preparation
+          // unmounts it and loses the mandatory confirmation step.
         />
       )}
 
@@ -167,10 +178,10 @@ function RunHistorySession({ documentId, className, correctionEnabled }: Props) 
                 ) : expandedRun ? (
                   <div className="space-y-2">
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-muted-foreground">
-                      <div>Applied: <span className="text-green-700 font-medium">{expandedRun.items.filter(i => i.status === "applied").length}</span></div>
+                      <div>Applied: <span className="text-green-700 font-medium dark:text-green-200">{expandedRun.items.filter(i => i.status === "applied").length}</span></div>
                       <div>Skipped: <span className="font-medium">{expandedRun.items.filter(i => i.status === "skipped").length}</span></div>
-                      <div>Conflict: <span className="text-amber-700 font-medium">{expandedRun.items.filter(i => i.status === "conflict").length}</span></div>
-                      <div>Failed: <span className="text-red-700 font-medium">{expandedRun.items.filter(i => i.status === "failed").length}</span></div>
+                      <div>Conflict: <span className="text-amber-700 font-medium dark:text-amber-200">{expandedRun.items.filter(i => i.status === "conflict").length}</span></div>
+                      <div>Failed: <span className="text-red-700 font-medium dark:text-red-200">{expandedRun.items.filter(i => i.status === "failed").length}</span></div>
                     </div>
                     {expandedRun.items.length > 0 && (
                       <div className="space-y-1">
@@ -229,7 +240,7 @@ function ApplyItemRow({
           <Button
             size="sm"
             variant="ghost"
-            className="h-6 px-2 text-xs gap-1 text-slate-600 hover:text-slate-900"
+            className="h-6 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground"
             onClick={() => onProposeCorrection(item.id)}
             title="Propose a correction for this applied field"
           >

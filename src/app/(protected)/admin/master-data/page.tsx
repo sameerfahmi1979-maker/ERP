@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { getLookupDashboardStats } from "@/server/actions/master-data/lookups";
 import { ERPPageHeader } from "@/components/erp/page-header";
+import { LoadError } from "@/components/erp/load-error";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Database, FolderTree, Lock, Activity, Clock } from "lucide-react";
 import Link from "next/link";
@@ -19,15 +20,15 @@ async function DashboardContent() {
     redirect("/access-denied");
   }
 
-  const result = await getLookupDashboardStats();
-  
-  if (!result.success || !result.data) {
-    return (
-      <div className="text-center py-12">
-        <p className="text-muted-foreground">Failed to load dashboard statistics</p>
-        <p className="text-sm text-destructive mt-2">{result.error}</p>
-      </div>
-    );
+  let result: Awaited<ReturnType<typeof getLookupDashboardStats>> | undefined;
+  try {
+    result = await getLookupDashboardStats();
+  } catch {
+    return <LoadError title="Master data statistics" retryHref="/admin/master-data" />;
+  }
+  if (result?.kind === "forbidden") redirect("/access-denied");
+  if (!result?.success || !result.data) {
+    return <LoadError title="Master data statistics" retryHref="/admin/master-data" />;
   }
 
   const stats = result.data;

@@ -15,6 +15,7 @@
 import { parseStudioBodySchema } from "@/lib/template-studio/schema";
 import { validateStudioBody } from "@/lib/template-studio/validate";
 import { getRestrictedFieldsFromPaths } from "@/lib/report-designer/field-registry";
+import { reviewVisualTemplateLayoutSecurity } from "@/lib/report-designer/visual-template-security-review";
 
 export type SecurityFindingSeverity = "block" | "warning";
 
@@ -149,24 +150,6 @@ export function runTemplateSecurityReview(
     fields.footer_layout_json !== undefined;
 
   if (hasVisualFields) {
-    // Lazy import to avoid circular dependency at module level
-    const { reviewVisualTemplateLayoutSecurity } =
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      require("@/lib/report-designer/visual-template-security-review") as {
-        reviewVisualTemplateLayoutSecurity: (
-          input: {
-            visual_editor_engine?: string | null;
-            visual_layout_schema_version?: number | null;
-            header_layout_json?: unknown;
-            body_layout_json?: unknown;
-            footer_layout_json?: unknown;
-            style_json?: unknown;
-            // UX.3: template type for governance-aware sensitive field check
-            template_type?: string | null;
-          }
-        ) => { passed: boolean; severity: string; findings: SecurityFinding[]; hasVisualLayout: boolean };
-      };
-
     const visualResult = reviewVisualTemplateLayoutSecurity({
       visual_editor_engine: fields.visual_editor_engine,
       visual_layout_schema_version: fields.visual_layout_schema_version,

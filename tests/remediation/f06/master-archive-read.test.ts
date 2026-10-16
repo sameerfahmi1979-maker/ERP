@@ -1,0 +1,23 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+const mock=vi.hoisted(()=>({rpc:vi.fn(),allowed:true,global:true,pages:[] as unknown[],calls:[] as number[],restore:vi.fn(),hrSave:vi.fn()}));
+vi.mock('@/lib/rbac/check',()=>({getAuthContext:async()=>({}),hasPermission:()=>mock.allowed,hasGlobalPermission:()=>mock.global}));
+vi.mock('@/server/hr-lookup-save',()=>({saveHrLookup:mock.hrSave}));
+vi.mock('@/lib/supabase/server',()=>({createClient:async()=>({rpc:mock.rpc})}));
+vi.mock('@/server/master-lifecycle',()=>({setMasterArchived:mock.restore}));
+import {listArchivedMasters,restoreArchivedMaster} from '@/server/actions/common-master-data/archive';
+const row=(id:number)=>({id,name:'Synthetic',code:'FCAL',revision:'3',owner_company_id:1,company_name:'Synthetic A',branch_id:null,branch_name:null,parent_id:null,archived_at:'2026-10-03T18:00:00Z'});
+beforeEach(()=>{vi.clearAllMocks();mock.calls=[];mock.allowed=true;mock.pages=[{data:[],error:null}];mock.rpc.mockImplementation(()=>{const q={gt:(_field:string,id:number)=>{mock.calls.push(id);return q;},order:()=>q,limit:async()=>mock.pages.shift()};return q;});});
+it('collects every safe keyset page without a silently truncated archive',async()=>{
+ mock.pages=[{data:Array.from({length:200},(_,i)=>row(i+1)),error:null},{data:[row(201)],error:null},{data:[],error:null}];
+ const result=await listArchivedMasters('work_calendars');expect(result.success&&result.data.length).toBe(201);expect(mock.calls).toEqual([0,200,201]);
+});
+it('later page failure is not partial success',async()=>{mock.pages=[{data:[row(1)],error:null},{data:null,error:{message:'private detail'}}];const result=await listArchivedMasters('work_calendars');expect(result.success).toBe(false);expect(JSON.stringify(result)).not.toContain('private detail');});
+it('nonprogressing data fails instead of looping or duplicating rows',async()=>{mock.pages=[{data:[row(1)],error:null},{data:[row(1)],error:null}];expect((await listArchivedMasters('work_calendars')).success).toBe(false);expect(mock.rpc).toHaveBeenCalledTimes(2);});
+it('wrong-parent shift response is not shown as a permitted archive',async()=>{mock.pages=[{data:[{...row(1),parent_id:99}],error:null}];expect((await listArchivedMasters('work_shifts',8)).success).toBe(false);});
+it('no-role actor never makes an archive request',async()=>{mock.allowed=false;expect((await listArchivedMasters('departments')).success).toBe(false);expect(mock.rpc).not.toHaveBeenCalled();});
+it('invalid input is rejected before querying',async()=>{expect((await listArchivedMasters('work_calendars',8)).success).toBe(false);expect(mock.rpc).not.toHaveBeenCalled();});
+it('transport errors are secret safe',async()=>{mock.rpc.mockImplementation(()=>{throw Error('private detail');});expect(JSON.stringify(await listArchivedMasters('departments'))).not.toContain('private detail');});
+it('restore delegates the original revision/operation and inactive lifecycle',async()=>{const contract={operationId:'e8ce9abd-d8da-4365-93b8-5d75ef69da61',revision:'3'};await restoreArchivedMaster('work_shifts',8,contract);expect(mock.restore).toHaveBeenCalledWith('work_shifts',8,false,contract);});
+it('HR archives use their own global authorization and fixed recovery projection',async()=>{const result=await listArchivedMasters('hr_grades');expect(result.success).toBe(true);expect(mock.rpc).toHaveBeenCalledWith('list_archived_hr_settings',{p_entity:'hr_grades'});});
+it('company management alone does not expose shared HR archives',async()=>{mock.global=false;const result=await listArchivedMasters('hr_grades');mock.global=true;expect(result.success).toBe(false);expect(mock.rpc).not.toHaveBeenCalled();});
+it('HR restore delegates to the atomic HR transaction and normalizes the verified receipt',async()=>{const contract={operationId:'e8ce9abd-d8da-4365-93b8-5d75ef69da61',revision:'3'};mock.hrSave.mockResolvedValue({success:true,data:{id:8,entity:'hr_grades',revision:'4',changed:true,replayed:false}});const result=await restoreArchivedMaster('hr_grades',8,contract);expect(mock.hrSave).toHaveBeenCalledWith('hr_grades',8,{},contract,'restore');expect(result).toMatchObject({success:true,archived:false,changed:true,data:{id:8}});});

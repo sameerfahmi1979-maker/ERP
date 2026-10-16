@@ -10,14 +10,12 @@ import { ERPPageHeader } from "@/components/erp/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { GovernanceStatusBadge, SecurityReviewBadge } from "@/features/report-center/template-governance-actions";
-import type { ReportTemplate, TemplateGovernanceStatus } from "@/lib/report-center/types";
+import type { ReportTemplate,ReportBrandingProfile } from "@/lib/report-center/types";
+import {templateCapabilities,noTemplateCapabilities,type TemplateCapabilities} from '@/lib/report-center/template-capabilities';
 import { cn } from "@/lib/utils";
-import {
-  approveTemplate,
-  publishTemplate,
-  rejectTemplate,
-  runTemplateSecurityReviewAction,
-} from "@/server/actions/reports/template-governance";
+import {getGovernanceSummary} from "@/server/actions/reports/template-governance";
+import {createTemplateGovernanceAttempt} from '@/lib/report-center/template-governance-attempt';
+import type {TemplateGovernanceAction} from '@/lib/report-center/template-governance-receipt';
 import {
   ArrowLeft,
   Loader2,
@@ -72,12 +70,12 @@ function RejectDialog({
       size="sm"
       mode="edit"
       isSubmitting={isSubmitting}
-      onSubmit={() => { if (!reason.trim()) { toast.error("Reason required."); return; } onSubmit(reason); }}
+      onSubmit={() => { if (reason.trim().length<5) { toast.error("Provide a reason of at least 5 characters."); return; } onSubmit(reason); }}
       submitLabel="Reject"
     >
       <div className="col-span-12">
         <label className="text-sm font-medium block mb-1.5">Rejection reason (required)</label>
-        <textarea
+        <textarea aria-label="Rejection reason" required minLength={5} maxLength={2000}
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[80px] resize-y focus:outline-none focus:ring-2 focus:ring-ring"
           value={reason}
           onChange={(e) => setReason(e.target.value)}
@@ -92,9 +90,10 @@ function RejectDialog({
 // Row component for approver queue and security review list
 // ─────────────────────────────────────────────────────────────────────────────
 
-function GovernanceQueue({rows,canApprove,canPublish,canManage,onAction,busy,tableId}: {
+function GovernanceQueue({rows,canApprove,canPublish,canManage,onAction,busy,tableId,profiles,globalTemplateCapabilities}: {
   rows:Partial<ReportTemplate>[]; canApprove:boolean; canPublish:boolean; canManage:boolean;
   onAction:(id:number,action:string)=>void; busy:boolean; tableId:string;
+  profiles:ReportBrandingProfile[];globalTemplateCapabilities:TemplateCapabilities;
 }) {
   const columns:ColumnDef<Partial<ReportTemplate>>[]=[
     {accessorKey:"template_name",header:"Template",size:240},
@@ -105,10 +104,13 @@ function GovernanceQueue({rows,canApprove,canPublish,canManage,onAction,busy,tab
     {accessorKey:"rejection_reason",header:"Rejection reason",size:200},
     {id:"actions",header:"Actions",size:240,enableSorting:false,cell:({row})=>{
       const t=row.original;
+      const capability=t.branding_profile_id===undefined?noTemplateCapabilities:templateCapabilities({branding_profile_id:t.branding_profile_id},profiles,globalTemplateCapabilities);
+      const disabled=busy||!t.workspace_revision||t.is_active!==true;
       return <div className="flex flex-wrap gap-2">
-        {t.id && t.governance_status==="in_review" && canApprove && <><Button disabled={busy} size="sm" variant="outline" onClick={()=>onAction(t.id!,"approve")}>Approve</Button><Button disabled={busy} size="sm" variant="outline" onClick={()=>onAction(t.id!,"reject")}>Reject</Button></>}
-        {t.id && t.governance_status==="approved" && canPublish && <Button disabled={busy} size="sm" variant="outline" onClick={()=>onAction(t.id!,"publish")}>Publish</Button>}
-        {t.id && t.security_review_status==="failed" && canManage && <Button disabled={busy} size="sm" variant="outline" onClick={()=>onAction(t.id!,"rerun_security")}>Re-run review</Button>}
+        {t.is_active!==true&&<span className="basis-full text-xs text-muted-foreground">{t.is_active===false?'Inactive — history retained; changes unavailable.':'Availability unavailable — reload before acting.'}</span>}
+        {t.id && t.governance_status==="in_review" && canApprove && capability.approve && <><Button disabled={disabled} size="sm" variant="outline" onClick={()=>onAction(t.id!,"approve")}>Approve</Button><Button disabled={disabled} size="sm" variant="outline" onClick={()=>onAction(t.id!,"reject")}>Reject</Button></>}
+        {t.id && t.governance_status==="approved" && canPublish && capability.publish && <Button disabled={disabled} size="sm" variant="outline" onClick={()=>onAction(t.id!,"publish")}>Publish</Button>}
+        {t.id && t.security_review_status==="failed" && canManage && capability.manage && <Button disabled={disabled} size="sm" variant="outline" onClick={()=>onAction(t.id!,"rerun_security")}>Re-run review</Button>}
       </div>;
     }},
   ];
@@ -126,6 +128,8 @@ interface GovernanceDashboardClientProps {
   canApprove: boolean;
   canPublish: boolean;
   canManage: boolean;
+  profiles?:ReportBrandingProfile[];
+  globalTemplateCapabilities?:TemplateCapabilities;
 }
 
 export function GovernanceDashboardClient({
@@ -135,6 +139,8 @@ export function GovernanceDashboardClient({
   canApprove,
   canPublish,
   canManage,
+  profiles=[],
+  globalTemplateCapabilities=noTemplateCapabilities,
 }: GovernanceDashboardClientProps) {
   const [counts, setCounts] = useState(initialCounts);
   const [inReview, setInReview] = useState(initialInReview);
@@ -147,75 +153,37 @@ export function GovernanceDashboardClient({
     transition(async()=>{try{await action();}catch{toast.error("Change unconfirmed. Refresh before retrying; your reason is retained.");}finally{flight.current=false;}});
   };
 
-  const updateTemplateStatus = (
-    id: number,
-    newStatus: TemplateGovernanceStatus,
-    oldStatus: TemplateGovernanceStatus
-  ) => {
-    setCounts((prev) => ({
-      ...prev,
-      [oldStatus]: Math.max(0, (prev[oldStatus] ?? 0) - 1),
-      [newStatus]: (prev[newStatus] ?? 0) + 1,
-    }));
-    setInReview((prev) => prev.filter((t) => t.id !== id));
-    setFailedSecurity((prev) => prev.filter((t) => t.id !== id));
+  const attempt=useRef(createTemplateGovernanceAttempt());
+  const [saveError,setSaveError]=useState('');
+  const [lastChange,setLastChange]=useState<{row:ReportTemplate;action:TemplateGovernanceAction;note:string|null}|null>(null);
+  const change=(row:ReportTemplate,action:TemplateGovernanceAction,note:string|null=null)=>startTransition(async()=>{
+    setSaveError('');setLastChange({row,action,note});
+    try{
+      const result=await attempt.current.run(row,action,note);
+      const summary=await getGovernanceSummary();
+      if(!summary.success||!summary.data)throw Error('Saved, but the governance queue could not be refreshed. Retry to reload without saving again.');
+      setCounts(summary.data.counts);setInReview(summary.data.inReviewTemplates);setFailedSecurity(summary.data.failedSecurityReviewTemplates);
+      attempt.current.acknowledged();setRejectTarget(null);setLastChange(null);
+      if(result.receipt.review?.passed===false)toast.error('Security review failed ('+result.receipt.review.findings.length+' findings).');
+      else toast.success('Template '+result.template.governance_status.replaceAll('_',' ')+'.');
+    }catch(error){const message=error instanceof Error?error.message:'Change unconfirmed. Retry the same action.';setSaveError(message);toast.error(message);}
+  });
+  const handleAction=(id:number,action:string)=>{
+    const row=[...inReview,...failedSecurity].find(t=>t.id===id);
+    if(!row?.id||!row.workspace_revision||row.is_active!==true||flight.current)return;
+    const capability=row.branding_profile_id===undefined?noTemplateCapabilities:templateCapabilities({branding_profile_id:row.branding_profile_id},profiles,globalTemplateCapabilities);
+    if(action==='approve'||action==='reject'){
+      if(!canApprove||!capability.approve)return;
+      if(action==='reject'){setRejectTarget(id);return;}
+      change(row as ReportTemplate,'approve');
+    }else if(action==='publish'&&canPublish&&capability.publish)change(row as ReportTemplate,'publish');
+    else if(action==='rerun_security'&&canManage&&capability.manage)change(row as ReportTemplate,'review');
   };
-
-  const handleAction = (id: number, action: string) => {
-    if (flight.current || ((action === "reject" || action === "approve") && !canApprove) || (action === "publish" && !canPublish) || (action === "rerun_security" && !canManage)) return;
-    if (action === "reject") {
-      setRejectTarget(id);
-      return;
-    }
-
-    startTransition(async () => {
-      if (action === "approve") {
-        const res = await approveTemplate({ templateId: id });
-        if (res.success) {
-          toast.success("Template approved.");
-          updateTemplateStatus(id, "approved", "in_review");
-        } else {
-          toast.error(res.error ?? "Approval failed.");
-        }
-      } else if (action === "publish") {
-        const res = await publishTemplate(id);
-        if (res.success) {
-          toast.success("Template published.");
-          updateTemplateStatus(id, "published", "approved");
-        } else {
-          toast.error(res.error ?? "Publish failed.");
-        }
-      } else if (action === "rerun_security") {
-        const res = await runTemplateSecurityReviewAction(id);
-        if (res.success) {
-          const rv = res.data!;
-          if (rv.passed) {
-            toast.success("Security review passed.");
-            setFailedSecurity((prev) => prev.filter((t) => t.id !== id));
-          } else {
-            toast.error(`Security review failed (${rv.findings.length} issue(s)).`);
-          }
-        } else {
-          toast.error(res.error ?? "Security review failed.");
-        }
-      }
-    });
-  };
-
-  const handleReject = (reason: string) => {
-    if (!rejectTarget || !canApprove || flight.current) return;
-    const id = rejectTarget;
-    setRejectTarget(null);
-    startTransition(async () => {
-      const res = await rejectTemplate({ templateId: id, reason });
-      if (res.success) {
-        setRejectTarget(null);
-        toast.success("Template rejected.");
-        updateTemplateStatus(id, "rejected", "in_review");
-      } else {
-        toast.error(res.error ?? "Rejection failed.");
-      }
-    });
+  const handleReject=(reason:string)=>{
+    const row=inReview.find(t=>t.id===rejectTarget);
+    if(!row?.id||!row.workspace_revision||row.is_active!==true||!canApprove||flight.current||row.branding_profile_id===undefined)return;
+    if(!templateCapabilities({branding_profile_id:row.branding_profile_id},profiles,globalTemplateCapabilities).approve)return;
+    change(row as ReportTemplate,'reject',reason);
   };
 
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
@@ -242,6 +210,7 @@ export function GovernanceDashboardClient({
         }
       />
 
+      {saveError&&<div role="alert" className="text-destructive">{saveError}{lastChange&&<Button disabled={isPending} variant="outline" onClick={()=>change(lastChange.row,lastChange.action,lastChange.note)}>Retry last action / reload saved result</Button>}</div>}
       {/* Status count cards */}
       <div>
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
@@ -285,7 +254,7 @@ export function GovernanceDashboardClient({
             No templates pending review.
           </div>
         ) : (
-          <GovernanceQueue rows={inReview} tableId="template-governance.inReview" canApprove={canApprove} canPublish={canPublish} canManage={canManage} onAction={handleAction} busy={isPending} />
+          <GovernanceQueue rows={inReview} tableId="template-governance.inReview" canApprove={canApprove} canPublish={canPublish} canManage={canManage} onAction={handleAction} busy={isPending} profiles={profiles} globalTemplateCapabilities={globalTemplateCapabilities} />
         )}
       </div>
 
@@ -299,7 +268,7 @@ export function GovernanceDashboardClient({
               {failedSecurity.length} template{failedSecurity.length !== 1 ? "s" : ""}
             </Badge>
           </h2>
-          <GovernanceQueue rows={failedSecurity} tableId="template-governance.failedSecurity" canApprove={canApprove} canPublish={canPublish} canManage={canManage} onAction={handleAction} busy={isPending} />
+          <GovernanceQueue rows={failedSecurity} tableId="template-governance.failedSecurity" canApprove={canApprove} canPublish={canPublish} canManage={canManage} onAction={handleAction} busy={isPending} profiles={profiles} globalTemplateCapabilities={globalTemplateCapabilities} />
         </div>
       )}
 

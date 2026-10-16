@@ -31,6 +31,8 @@ export type WorkspaceDraftStoreApi = {
   hasDraft: (key: WorkspaceDraftKey) => boolean;
   getViewState: (key: string) => string | undefined;
   setViewState: (key: string, value: string) => void;
+  /** Read-only snapshot of view keys in a trusted tab-relative form namespace. */
+  listViewStateKeysForTab?: (tabId: string, formPrefix: string) => readonly string[];
 };
 
 /**

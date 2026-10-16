@@ -26,21 +26,22 @@ import type {
   DmsDetectedEntity,
   DmsSuggestedLink,
 } from "@/lib/dms/ai/types";
-import { runApproveAiIntakeSaga } from "@/lib/dms/approve/approve-ai-intake";
+import { approveNumberedAiIntake } from "@/server/numbered-ai-approval";
+import type { AiApprovalInput, AiApprovalResult } from "@/lib/dms/numbered-ai-approval";
+import type { WorkspaceSaveContract } from "@/lib/workspace/save-contract";
 import { extractFileContent } from "@/lib/dms/file-content-extractor";
 import { AzureOcrProvider } from "@/lib/dms/ocr/azure-ocr-provider";
 import { loadOcrFeatureFlags, routeOcr } from "@/lib/dms/ocr/ocr-router";
 import { isDmsAiReviewEnabled, upsertDmsReviewQueueItem } from "@/lib/dms/review-queue/review-queue-upsert";
-import { validateStandardFileName } from "@/lib/dms/standard-file-name";
 import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/server/actions/audit";
-import { resolveStandardFileNameForIntakeApprove } from "@/server/actions/dms/standard-file-name";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import {batchDraftUuidSchema,batchDraftPrepareEnvelopeSchema} from "@/lib/dms/numbered-batch-draft";
 
 // ── Entity → party database matching ──────────────────────────────────────────
 
@@ -120,14 +121,6 @@ function canViewIntake(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
   );
 }
 
-function canApproveIntake(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
-  return (
-    hasPermission(ctx, "dms.documents.review_ai") ||
-    hasPermission(ctx, "dms.documents.upload") ||
-    hasPermission(ctx, "dms.admin")
-  );
-}
-
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type ActionResult<T = unknown> = {
@@ -173,6 +166,8 @@ export type IntakeSessionData = {
   duplicate_document_id: number | null;
   ai_result_id: number | null;
   document_id: number | null;
+  owning_company_id?: number | null;
+  owning_branch_id?: number | null;
   reviewed_by: number | null;
   discarded_at: string | null;
   discard_reason: string | null;
@@ -196,32 +191,12 @@ export type IntakeReviewValueRow = {
   review_status: string;
 };
 
-export type ApproveIntakeInput = {
-  uploadSessionId: number;
-  title: string;
-  documentTypeId: number;
-  description?: string | null;
-  issueDate?: string | null;
-  expiryDate?: string | null;
+// Existing callers retain their business payload shape; the dedicated adapter
+// validates it before any I/O and requires a separate operation contract.
+export type ApproveIntakeInput = Omit<AiApprovalInput, "confidentialityLevel" | "metadataValues" | "links"> & {
   confidentialityLevel?: string;
-  owningCompanyId?: number | null;
-  owningBranchId?: number | null;
-  partyId?: number | null;
-  metadataValues?: {
-    definitionId: number;
-    fieldType: string;
-    rawValue: string;
-  }[];
-  tagIds?: number[];
-  links?: {
-    entityType: string;
-    entityId: number;
-    linkRole?: string;
-    isPrimary?: boolean;
-  }[];
-  aiResultId?: number | null;
-  allowDuplicate?: boolean;
-  standardFileName?: string | null;
+  metadataValues?: {definitionId:number;fieldType:string;rawValue:string}[];
+  links?: {entityType:string;entityId:number;linkRole?:string;isPrimary?:boolean}[];
 };
 
 // ── Validation schemas ────────────────────────────────────────────────────────
@@ -231,39 +206,15 @@ const StartIntakeSchema = z.object({
   allowDuplicate: z.boolean().optional().default(false),
 });
 
-const ApproveIntakeSchema = z.object({
-  uploadSessionId: z.number().int().positive(),
-  title: z.string().min(1, "Title is required").max(500),
-  documentTypeId: z.number().int().positive("Document type is required"),
-  description: z.string().max(2000).nullable().optional(),
-  issueDate: z.string().nullable().optional(),
-  expiryDate: z.string().nullable().optional(),
-  confidentialityLevel: z.string().optional(),
-  owningCompanyId: z.number().int().positive().nullable().optional(),
-  owningBranchId: z.number().int().positive().nullable().optional(),
-  partyId: z.number().int().positive().nullable().optional(),
-  metadataValues: z.array(z.object({
-    definitionId: z.number().int().positive(),
-    fieldType: z.string(),
-    rawValue: z.string(),
-  })).optional().default([]),
-  tagIds: z.array(z.number().int().positive()).optional().default([]),
-  links: z.array(z.object({
-    entityType: z.string(),
-    entityId: z.number().int().positive(),
-    linkRole: z.string().optional(),
-    isPrimary: z.boolean().optional(),
-  })).optional().default([]),
-  aiResultId: z.number().int().positive().nullable().optional(),
-  allowDuplicate: z.boolean().optional().default(false),
-  standardFileName: z.string().min(1).max(200).nullable().optional(),
-});
+
 
 // ── startAiIntakeFromUploadSession ───────────────────────────────────────────
 
 export async function startAiIntakeFromUploadSession(
   input: z.input<typeof StartIntakeSchema>
 ): Promise<ActionResult<{ sessionCode: string; status: string; message?: string }>> {
+  // Until an ordinary source read proves explicit NULL, failures are not legacy.
+  let modernStart=true;
   try {
     const parsed = StartIntakeSchema.safeParse(input);
     if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
@@ -293,6 +244,46 @@ export async function startAiIntakeFromUploadSession(
     if (!typedSession.temp_storage_path) return { success: false, error: "Temporary file path is missing" };
     if ((typedSession.intake_status as string) === "approved") return { success: false, error: "Intake already approved" };
     if ((typedSession.intake_status as string) === "discarded") return { success: false, error: "Intake was discarded" };
+
+    // Only explicit NULL is the historical route. A missing migration/projection
+    // must not silently opt a governed upload into stale-run reset behavior.
+    const marker=typedSession.batch_draft_operation_id;
+    const modern=marker!==null;
+    modernStart=modern;
+    const claimFailure=()=>({success:false as const,error:"Analysis start is unconfirmed. Retain this batch for reconciliation."});
+    const modernSource=z.object({id:z.literal(uploadSessionId),batch_draft_operation_id:batchDraftUuidSchema,
+      batch_id:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),admission_position:z.number().int().min(0).max(9),
+      uploaded_by:z.literal(ctx.profile.id),session_code:z.string().length(32).regex(/^[0-9A-F]{32}$/),
+      owning_company_id:z.number().int().positive().nullable(),owning_branch_id:z.number().int().positive().nullable()}).safeParse(typedSession);
+    if(modern&&(!modernSource.success||!batchDraftUuidSchema.safeParse(ctx.profile.auth_user_id).success||allowDuplicate))
+      return claimFailure();
+    let admittedAnchors:{admission_operation_id:string;admission_fingerprint:string}|undefined;
+    const modernPrepare=async()=>{
+      const response=await supabase.rpc("prepare_recoverable_dms_batch_draft",{p_session:uploadSessionId}).retry(false);
+      const parsed=batchDraftPrepareEnvelopeSchema.safeParse(response.data);
+      if(response.error||!parsed.success||!modernSource.success)return null;
+      const value=parsed.data,member=value.member,source=modernSource.data;
+      if(admittedAnchors&&(value.admission_operation_id!==admittedAnchors.admission_operation_id||value.admission_fingerprint!==admittedAnchors.admission_fingerprint))return null;
+      return value.auth_user_id===ctx.profile!.auth_user_id&&value.profile_id===ctx.profile!.id&&
+        value.batch_id===source.batch_id&&value.owning_company_id===source.owning_company_id&&value.owning_branch_id===source.owning_branch_id&&
+        member.position===source.admission_position&&member.upload_session_id===source.id&&member.session_code===source.session_code&&member.draft_operation_id===source.batch_draft_operation_id?value:null;
+    };
+    if(modern){
+      try{
+        if(typedSession.intake_status==="failed")return claimFailure();
+        const preparation=await modernPrepare();
+        if(!preparation)return claimFailure();
+        admittedAnchors={admission_operation_id:preparation.admission_operation_id,admission_fingerprint:preparation.admission_fingerprint};
+        if(preparation.member.kind==="prepared")
+          return {success:true,data:{sessionCode:preparation.member.session_code,status:"review_pending"}};
+        if(preparation.member.processing)
+          return {success:true,data:{sessionCode:preparation.member.session_code,status:"already_processing",message:"Analysis is already in progress. Retain this batch for reconciliation."}};
+        if(typedSession.intake_status!=="uploaded"||typeof typedSession.updated_at!=="string"||!Number.isFinite(Date.parse(typedSession.updated_at))||
+          typeof typedSession.status!=="string"||typedSession.document_id!==null||typedSession.ai_result_id!==null||typedSession.temp_cleaned_at!==null||typedSession.deleted_at!==null)
+          return claimFailure();
+      }catch{return claimFailure();}
+    }
+
     // AI review already completed — return immediately so the UI can redirect to the
     // review page without re-running a full AI pass (which can take 60+ seconds for
     // large documents and cause a server-action timeout).
@@ -304,7 +295,7 @@ export async function startAiIntakeFromUploadSession(
     // A second "AI Fill" click while a run is in flight must NOT start a second
     // full pipeline (double OCR + double GPT cost, racing status updates).
     const intakeStatusNow = typedSession.intake_status as string;
-    if (intakeStatusNow === "ocr_processing" || intakeStatusNow === "ai_processing") {
+    if (!modern && (intakeStatusNow === "ocr_processing" || intakeStatusNow === "ai_processing")) {
       const updatedAtMs = typedSession.updated_at
         ? new Date(typedSession.updated_at as string).getTime()
         : 0;
@@ -349,6 +340,7 @@ export async function startAiIntakeFromUploadSession(
     const { provider, configId } = await getDmsAiProvider();
 
     if (!provider.isConfigured()) {
+      if(modern)return {success:false,data:{sessionCode,status:"provider_not_configured",message:"No AI provider configured. Please configure one in Administration → Settings → AI Settings."},error:"No AI provider configured"};
       // Mark as failed but return sessionCode so user can proceed manually
       await supabase
         .from("dms_upload_sessions")
@@ -373,10 +365,30 @@ export async function startAiIntakeFromUploadSession(
 
     // ── Update status: processing ───────────────────────────────────────────
 
-    await supabase
-      .from("dms_upload_sessions")
-      .update({ intake_status: "ocr_processing", updated_at: new Date().toISOString() })
-      .eq("id", uploadSessionId);
+
+    if(modern){
+      try{
+        const response=await supabase.from("dms_upload_sessions")
+          .update({intake_status:"ocr_processing",updated_at:new Date().toISOString()})
+          .eq("id",uploadSessionId).eq("batch_draft_operation_id",marker)
+          .eq("batch_id",typedSession.batch_id).eq("admission_position",typedSession.admission_position)
+          .eq("uploaded_by",ctx.profile.id).eq("intake_status","uploaded").eq("status",typedSession.status)
+          .eq("updated_at",typedSession.updated_at).is("deleted_at",null).is("document_id",null).is("ai_result_id",null).is("temp_cleaned_at",null)
+          .select("id,batch_draft_operation_id,intake_status").retry(false);
+        const elected=z.array(z.object({id:z.literal(uploadSessionId),batch_draft_operation_id:z.literal(marker as string),intake_status:z.literal("ocr_processing")}).strict()).length(1).safeParse(response.data);
+        if(response.error||!elected.success)return claimFailure();
+        // A new ordinary governed statement after the conditional UPDATE wait.
+        // Not a durable worker lease or DB protection against other direct DML.
+        const current=await modernPrepare();
+        if(!current||current.member.kind!=="analysis_required"||!current.member.processing)return claimFailure();
+      }catch{return claimFailure();}
+    }else{
+      await supabase
+        .from("dms_upload_sessions")
+        .update({ intake_status: "ocr_processing", updated_at: new Date().toISOString() })
+        .eq("id", uploadSessionId);
+    }
+
 
     await logAudit({
       module_code: "DMS",
@@ -452,7 +464,8 @@ export async function startAiIntakeFromUploadSession(
       // Proceed even if extraction produced nothing — the AI will note the limitation.
       contentExtracted = true;
     } catch (err) {
-      logger.error("[ai-intake] file content extraction error:", err);
+      if(modern)logger.warn("[ai-intake] content extraction unavailable",{uploadSessionId});
+      else logger.error("[ai-intake] file content extraction error:", err);
       // Don't block the pipeline — let the AI report it couldn't read the file.
       contentExtracted = true;
     }
@@ -538,7 +551,7 @@ export async function startAiIntakeFromUploadSession(
       } catch (err) {
         logger.warn("[ai-intake] failed to preload top-candidate fields (non-fatal)", {
           typeId: topCandidate.id,
-          err: String(err).slice(0, 200),
+          err: modern ? "Metadata preload unavailable" : String(err).slice(0, 200),
         });
       }
     }
@@ -567,7 +580,7 @@ export async function startAiIntakeFromUploadSession(
         classificationPackets,
       });
     } catch (err) {
-      aiError = String(err);
+      aiError = modern ? "AI analysis was not confirmed. Retain this batch for reconciliation." : String(err);
     }
 
     const durationMs = Date.now() - startMs;
@@ -697,7 +710,7 @@ export async function startAiIntakeFromUploadSession(
         } catch (err) {
           logger.warn("[ai-intake] pass-2 type-specific extraction failed (non-fatal)", {
             typeCode: suggestedTypeCode,
-            err: String(err).slice(0, 200),
+            err: modern ? "Metadata extraction unavailable" : String(err).slice(0, 200),
           });
         }
       }
@@ -804,13 +817,13 @@ export async function startAiIntakeFromUploadSession(
     if (resultErr || !result) {
       await supabase
         .from("dms_ai_extraction_jobs")
-        .update({ status: "failed", error_message: resultErr?.message ?? "Failed to store result", completed_at: completedAt, duration_ms: durationMs })
+        .update({ status: "failed", error_message: modern ? "AI result storage was not confirmed." : resultErr?.message ?? "Failed to store result", completed_at: completedAt, duration_ms: durationMs })
         .eq("id", jobId);
       await supabase
         .from("dms_upload_sessions")
         .update({ intake_status: "failed", updated_at: new Date().toISOString() })
         .eq("id", uploadSessionId);
-      return { success: false, error: resultErr?.message ?? "Failed to store AI result" };
+      return { success: false, error: modern ? "AI result storage was not confirmed. Retain this batch for reconciliation." : resultErr?.message ?? "Failed to store AI result" };
     }
 
     const resultId = result.id as number;
@@ -911,7 +924,7 @@ export async function startAiIntakeFromUploadSession(
         }
       }
     } catch (hookErr) {
-      logger.warn("[ai-intake] review queue hook failed (non-fatal)", { uploadSessionId, error: String(hookErr).slice(0, 200) });
+      logger.warn("[ai-intake] review queue hook failed (non-fatal)", { uploadSessionId, error: modern ? "Review queue update unavailable" : String(hookErr).slice(0, 200) });
     }
 
     return {
@@ -919,6 +932,7 @@ export async function startAiIntakeFromUploadSession(
       data: { sessionCode, status: "review_pending", message: "AI analysis complete" },
     };
   } catch (e) {
+    if(modernStart)return {success:false,error:"Analysis start is unconfirmed. Retain this batch for reconciliation."};
     logger.error("startAiIntakeFromUploadSession error", e);
     return { success: false, error: String(e) };
   }
@@ -986,6 +1000,8 @@ export async function getAiIntakeSession(
       duplicate_document_id: typedSession.duplicate_document_id as number | null,
       ai_result_id: aiResultId,
       document_id: typedSession.document_id as number | null,
+      owning_company_id: typedSession.owning_company_id as number | null,
+      owning_branch_id: typedSession.owning_branch_id as number | null,
       reviewed_by: typedSession.reviewed_by as number | null,
       discarded_at: typedSession.discarded_at as string | null,
       discard_reason: typedSession.discard_reason as string | null,
@@ -1434,7 +1450,11 @@ export async function retryAiIntake(
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
     if (!canStartIntake(ctx)) return { success: false, error: "Permission denied" };
 
-    // Reset intake status before retrying
+    // Governed work cannot be reset: age/failed is not proof a provider is dead.
+    const source=await supabase.from("dms_upload_sessions").select("batch_draft_operation_id").eq("id",uploadSessionId).is("deleted_at",null).single();
+    if(source.error||!source.data||source.data.batch_draft_operation_id!==null)
+      return {success:false,error:"Use the retained batch recovery workflow. This analysis cannot be reset."};
+    // Reset only the explicit historical NULL route.
     await supabase
       .from("dms_upload_sessions")
       .update({
@@ -1443,11 +1463,11 @@ export async function retryAiIntake(
         ai_result_id: null,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", uploadSessionId);
+      .eq("id", uploadSessionId).is("batch_draft_operation_id",null);
 
     return startAiIntakeFromUploadSession({ uploadSessionId });
-  } catch (e) {
-    return { success: false, error: String(e) };
+  } catch {
+    return { success: false, error: "Analysis retry is unavailable. Retain the original request for reconciliation." };
   }
 }
 
@@ -1508,187 +1528,8 @@ export async function discardAiIntake(
 // ── approveAiIntakeAndCreateDocument ─────────────────────────────────────────
 
 export async function approveAiIntakeAndCreateDocument(
-  input: ApproveIntakeInput
-): Promise<ActionResult<{ documentId: number; documentNo: string }>> {
-  try {
-    const parsed = ApproveIntakeSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "Validation error" };
-
-    const {
-      uploadSessionId,
-      title,
-      documentTypeId,
-      description,
-      issueDate,
-      expiryDate,
-      confidentialityLevel,
-      owningCompanyId,
-      owningBranchId,
-      partyId,
-      metadataValues,
-      tagIds,
-      links,
-      aiResultId,
-      standardFileName,
-    } = parsed.data;
-
-    const supabase = await createClient();
-    const adminClient = createAdminClient();
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canApproveIntake(ctx)) return { success: false, error: "Permission denied: requires dms.documents.review_ai or dms.documents.upload" };
-
-    // ── Validate dates ────────────────────────────────────────────────────
-
-    if (issueDate && expiryDate && expiryDate < issueDate) {
-      return { success: false, error: "Expiry date must be on or after issue date" };
-    }
-
-    // ── Load upload session ────────────────────────────────────────────────
-
-    const { data: session, error: sessionError } = await supabase
-      .from("dms_upload_sessions")
-      .select("*")
-      .eq("id", uploadSessionId)
-      .is("deleted_at", null)
-      .single();
-
-    if (sessionError || !session) return { success: false, error: "Upload session not found" };
-    const typedSession = session as Record<string, unknown>;
-    const sessionCode = typedSession.session_code as string;
-
-    // ── Idempotency: already approved ─────────────────────────────────────
-
-    if (typedSession.intake_status === "approved") {
-      const existingDocId = typedSession.document_id as number | null;
-      if (existingDocId) {
-        const { data: existingDoc } = await supabase
-          .from("dms_documents")
-          .select("id, document_no")
-          .eq("id", existingDocId)
-          .single();
-        if (existingDoc) {
-          return { success: true, data: { documentId: existingDocId, documentNo: existingDoc.document_no as string } };
-        }
-      }
-      return { success: false, error: "Intake already approved but document reference is missing" };
-    }
-
-    if (typedSession.intake_status === "discarded") {
-      return { success: false, error: "Cannot approve a discarded intake" };
-    }
-
-    if (!typedSession.temp_storage_path) return { success: false, error: "Temporary file path is missing" };
-
-    // ── Load document type ────────────────────────────────────────────────
-
-    const { data: docType, error: typeError } = await supabase
-      .from("dms_document_types")
-      .select("id, type_code, category_id, default_confidentiality, is_active, requires_expiry_tracking")
-      .eq("id", documentTypeId)
-      .single();
-
-    if (typeError || !docType) return { success: false, error: "Document type not found" };
-    if (!(docType.is_active as boolean)) return { success: false, error: "Selected document type is not active" };
-
-    const requiresExpiryTracking = (docType.requires_expiry_tracking as boolean) ?? false;
-
-    // ── Generate document number ───────────────────────────────────────────
-
-    const { data: docNoData, error: docNoError } = await supabase
-      .rpc("generate_next_reference_number", { p_rule_code: "MASTER_DMS_DOCUMENT" });
-
-    const docNoRows = docNoData as Array<{ generated_reference_number: string }>;
-    if (docNoError || !docNoRows || docNoRows.length === 0 || !docNoRows[0]?.generated_reference_number) {
-      return { success: false, error: docNoError?.message ?? "Failed to generate document number" };
-    }
-
-    const documentNo = String(docNoRows[0].generated_reference_number);
-    const userId = ctx.profile.id;
-    const confidentiality = confidentialityLevel ?? (docType.default_confidentiality as string | null) ?? "internal";
-
-    // ── Resolve and validate standard filename ─────────────────────────────
-
-    const resolvedFileName = await resolveStandardFileNameForIntakeApprove({
-      uploadSessionId,
-      documentTypeId,
-      expiryDate: expiryDate ?? null,
-      documentNo,
-      partyId: partyId ?? null,
-      links: links?.map((l) => ({ entityType: l.entityType, entityId: l.entityId })),
-      metadataValues,
-      standardFileName: standardFileName ?? null,
-      originalFilename: typedSession.original_filename as string,
-      aiResultId: aiResultId ?? null,
-      description: description ?? null,
-      title,
-    });
-
-    const nameValidation = validateStandardFileName(resolvedFileName, { requiresExpiryTracking });
-    if (!nameValidation.valid) {
-      return {
-        success: false,
-        error: `Standard file name is incomplete (missing: ${nameValidation.missing.join(", ")}). Fix on the review screen before approving.`,
-      };
-    }
-
-    // ── Reserve document ID for deterministic storage path ─────────────────
-
-    const { data: reservedIdData, error: reserveIdError } = await supabase
-      .rpc("reserve_dms_document_id");
-
-    if (reserveIdError || !reservedIdData) {
-      return { success: false, error: reserveIdError?.message ?? "Failed to reserve document ID" };
-    }
-
-    const reservedDocumentId = Number(reservedIdData);
-
-    // ── Delegate to transactional approve saga ─────────────────────────────
-
-    const effectiveAiResultId = aiResultId ?? (typedSession.ai_result_id as number | null);
-
-    const sagaResult = await runApproveAiIntakeSaga(supabase, adminClient, {
-      mode: "single_file_new_document",
-      uploadSessionId,
-      sessionCode,
-      tempStoragePath: typedSession.temp_storage_path as string,
-      originalFilename: typedSession.original_filename as string,
-      mimeType: typedSession.mime_type as string,
-      fileSizeBytes: typedSession.file_size_bytes as number,
-      sha256Hash: (typedSession.sha256_hash as string | null) ?? null,
-      documentId: reservedDocumentId,
-      documentNo,
-      title,
-      description: description ?? null,
-      documentTypeId,
-      categoryId: docType.category_id as number,
-      typeCode: docType.type_code as string,
-      confidentialityLevel: confidentiality,
-      owningCompanyId: owningCompanyId ?? null,
-      owningBranchId: owningBranchId ?? null,
-      partyId: partyId ?? null,
-      issueDate: issueDate ?? null,
-      expiryDate: expiryDate ?? null,
-      resolvedFileName,
-      createFileVersion: true,
-      metadataValues: metadataValues ?? [],
-      tagIds: tagIds ?? [],
-      links: links ?? [],
-      aiResultId: effectiveAiResultId,
-      userId,
-    });
-
-    if (!sagaResult.success) return sagaResult;
-
-    // ── Revalidate ────────────────────────────────────────────────────────
-
-    revalidatePath("/dms/documents");
-    revalidatePath("/dms/inbox");
-    revalidatePath(`/dms/intake/${sessionCode}`);
-
-    return { success: true, data: sagaResult.data };
-  } catch (e) {
-    logger.error("approveAiIntakeAndCreateDocument error", e);
-    return { success: false, error: String(e) };
-  }
+  input: ApproveIntakeInput,
+  contract?: WorkspaceSaveContract,
+): Promise<AiApprovalResult> {
+  return approveNumberedAiIntake(input, contract);
 }

@@ -1,5 +1,5 @@
 import { redirect, notFound } from "next/navigation";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, hasGlobalPermission } from "@/lib/rbac/check";
 import { getPortById } from "@/features/master-data/geography/actions";
 import { PortWorkspaceForm } from "@/features/master-data/geography/components/port-workspace-form";
 import Link from "next/link";
@@ -25,7 +25,7 @@ export default async function PortRecordPage({ params, searchParams }: Props) {
       </div>
     );
   }
-  const canEdit = hasPermission(authContext, "master_data.geography.manage");
+  const canEdit = hasGlobalPermission(authContext, 'master_data.geography.manage');
   const mode: "view" | "edit" = modeParam === "edit" && canEdit ? "edit" : "view";
   return <div className="h-full"><PortWorkspaceForm port={result.data} mode={mode} authContext={authContext} /></div>;
 }

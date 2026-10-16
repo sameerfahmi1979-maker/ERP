@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -37,7 +38,7 @@ type UsageLogRow = {
 };
 
 interface AiSettingsPageClientProps {
-  permissions: { canManage: boolean; canManageSecrets: boolean; canTest: boolean; canViewUsage: boolean };
+  permissions: { canViewProviders: boolean; canViewFlags: boolean; canManage: boolean; canManageSecrets: boolean; canTest: boolean; canViewUsage: boolean };
   configs: AiProviderConfig[];
   featureFlags: AiFeatureFlag[];
   usageLogs: UsageLogRow[];
@@ -50,8 +51,9 @@ export function AiSettingsPageClient({
   permissions,
 }: AiSettingsPageClientProps) {
   const [addOpen, setAddOpen] = useState(false);
+  const router = useRouter();
 
-  const enabledCount = configs.filter((c) => c.isEnabled).length;
+  const enabledCount = configs.filter((c) => c.isActive && c.isEnabled).length;
   const testedCount = configs.filter((c) => c.lastTestStatus === "success").length;
   const enabledFlagsCount = featureFlags.filter((f) => f.isEnabled).length;
 
@@ -81,58 +83,58 @@ export function AiSettingsPageClient({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCard
           title="Configured Providers"
-          value={configs.length}
+          value={permissions.canViewProviders ? configs.length : "Restricted"}
           description="Total AI provider configurations"
           colorClass="text-violet-500"
           icon={Brain}
         />
         <SummaryCard
           title="Enabled Providers"
-          value={enabledCount}
-          description="Active and ready for use"
+          value={permissions.canViewProviders ? enabledCount : "Restricted"}
+          description="Enabled configuration; operation readiness is not verified"
           colorClass="text-green-500"
           icon={ShieldCheck}
         />
         <SummaryCard
           title="Tested Successfully"
-          value={testedCount}
-          description="Last connection test passed"
+          value={permissions.canViewProviders ? testedCount : "Restricted"}
+          description="Last connection check passed; not end-to-end acceptance"
           colorClass="text-blue-500"
           icon={ShieldCheck}
         />
         <SummaryCard
           title="Active AI Features"
-          value={enabledFlagsCount}
-          description={`of ${featureFlags.length} features enabled`}
+          value={permissions.canViewFlags ? enabledFlagsCount : "Restricted"}
+          description={permissions.canViewFlags ? `of ${featureFlags.length} features enabled` : "Feature configuration is outside your permission"}
           colorClass="text-amber-500"
           icon={ToggleLeft}
         />
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="providers" className="w-full">
+      <Tabs defaultValue={permissions.canViewProviders ? "providers" : permissions.canViewFlags ? "features" : "usage"} className="w-full">
         <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:grid-cols-none lg:flex">
-          <TabsTrigger value="providers" className="gap-2">
+          {permissions.canViewProviders && <TabsTrigger value="providers" className="gap-2">
             <Brain className="h-4 w-4" />
             Providers
-          </TabsTrigger>
-          <TabsTrigger value="features" className="gap-2">
+          </TabsTrigger>}
+          {permissions.canViewFlags && <TabsTrigger value="features" className="gap-2">
             <ToggleLeft className="h-4 w-4" />
             Feature Flags
-          </TabsTrigger>
+          </TabsTrigger>}
           {permissions.canViewUsage && <TabsTrigger value="usage" className="gap-2">
             <BarChart3 className="h-4 w-4" />
             Usage Logs
           </TabsTrigger>}
         </TabsList>
 
-        <TabsContent value="providers" className="mt-4">
+        {permissions.canViewProviders && <TabsContent value="providers" className="mt-4">
           <AiProviderConfigList configs={configs} onAdd={() => setAddOpen(true)} {...permissions} />
-        </TabsContent>
+        </TabsContent>}
 
-        <TabsContent value="features" className="mt-4">
+        {permissions.canViewFlags && <TabsContent value="features" className="mt-4">
           <AiFeatureFlagsPanel flags={featureFlags} canManage={permissions.canManage} />
-        </TabsContent>
+        </TabsContent>}
 
         <TabsContent value="usage" className="mt-4">
           {permissions.canViewUsage && <AiUsageLogTable logs={usageLogs} />}
@@ -147,6 +149,7 @@ export function AiSettingsPageClient({
           onSaved={() => {
             toast.success("Provider configuration saved");
             setAddOpen(false);
+            router.refresh();
           }}
         />
       )}
@@ -162,7 +165,7 @@ function SummaryCard({
   icon: Icon,
 }: {
   title: string;
-  value: number;
+  value: number | string;
   description: string;
   colorClass: string;
   icon: React.FC<{ className?: string }>;

@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useLayoutEffect, useMemo } from "react";
 import { UploadCloud, AlertCircle, CheckCircle2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { dmsFileMetadataSchema } from "@/lib/dms/batch-admission";
 import { cn } from "@/lib/utils";
 import { DMS_ALLOWED_EXTENSIONS, DMS_MAX_FILE_SIZE_BYTES } from "./dms-upload-constants";
 import type { CreateUploadSessionInput } from "@/server/actions/dms/upload-sessions";
@@ -21,11 +22,17 @@ interface DmsUploadDropzoneProps {
   /** Max files when multiple (default 10). */
   maxFiles?: number;
   disabled?: boolean;
+  /** Controlled selection; Files remain only in the mounted inbox. */
+  files?: SelectedDmsFile[];
+  ownerGeneration?: unknown;
 }
 
-async function computeSha256(file: File): Promise<string> {
+async function computeSha256(file: File, current: () => boolean): Promise<string> {
+  if (!current()) throw Error("Retired file read");
   const buffer = await file.arrayBuffer();
+  if (!current()) throw Error("Retired file read");
   const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
+  if (!current()) throw Error("Retired digest");
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
@@ -40,7 +47,7 @@ function validateFile(file: File): string | null {
   }
   if (file.type && !file.type.includes("octet-stream")) {
     const allowed = [
-      "application/pdf", "image/jpeg", "image/png", "image/tiff", "image/webp",
+      "application/pdf", "image/jpg", "image/x-tiff", "image/jpeg", "image/png", "image/tiff", "image/webp",
       "application/msword",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       "application/vnd.ms-excel",
@@ -59,32 +66,56 @@ export function DmsUploadDropzone({
   multiple = false,
   maxFiles = 10,
   disabled,
+  files: controlledFiles,
+  ownerGeneration,
 }: DmsUploadDropzoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [isHashing, setIsHashing] = useState(false);
-  const processing = useRef(false);
-  const [validationError, setValidationError] = useState<string | null>(null);
+  const epoch = useMemo(() => ({ownerGeneration, disabled, multiple, controlledFiles}), [ownerGeneration, disabled, multiple, controlledFiles]);
+  const [hashingEpoch, setHashingEpoch] = useState<object | null>(null);
+  const isHashing = hashingEpoch === epoch;
+  const setIsHashing = useCallback((value: boolean) => setHashingEpoch(value ? epoch : null), [epoch]);
+  const activation = useRef<{epoch: object; retired: boolean} | null>(null);
+  const processing = useRef<object | null>(null);
+  useLayoutEffect(() => {
+    const lease = {epoch, retired: false}; activation.current = lease;
+    processing.current = null;
+    return () => { lease.retired = true; };
+  }, [epoch]);
+  // Validation can include filenames. Its presentation belongs to the owner,
+  // not the processing epoch, which also changes for ordinary selection/busy updates.
+  const [validation, setValidation] = useState<{ownerGeneration: unknown; error: string | null}>(() => ({ownerGeneration, error: null}));
+  const validationError = validation.ownerGeneration === ownerGeneration ? validation.error : null;
+  if (validation.ownerGeneration !== ownerGeneration) setValidation({ownerGeneration, error: null});
+  const setValidationError = useCallback((error: string | null) => setValidation({ownerGeneration, error}), [ownerGeneration]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [selectedFiles, setSelectedFiles] = useState<SelectedDmsFile[]>([]);
+  const [localFiles, setSelectedFiles] = useState<SelectedDmsFile[]>([]);
   // Mirrors `selectedFiles` so we can compute merges without a state-updater
   // side effect (which would call the parent's setState during render).
-  const selectedFilesRef = useRef<SelectedDmsFile[]>([]);
+  const selectedFiles = controlledFiles ?? localFiles;
+  const selectedFilesRef = useRef<SelectedDmsFile[]>(selectedFiles);
+  useLayoutEffect(() => { selectedFilesRef.current = selectedFiles; }, [selectedFiles]);
+  const begin = () => {
+    const lease = activation.current;
+    if (disabled || !lease || lease.retired || lease.epoch !== epoch || processing.current) return null;
+    const token = {}; processing.current = token; setIsHashing(true);
+    return {current: () => activation.current === lease && !lease.retired && lease.epoch === epoch && processing.current === token,
+      finish: () => {if (processing.current === token) {processing.current = null; setIsHashing(false);}}};
+  };
 
   // ── Single-file mode ────────────────────────────────────────────────────────
   const processSingle = useCallback(async (file: File) => {
-    if (processing.current) return;
+    const run = begin(); if (!run) return;
     setValidationError(null);
     setSelectedFile(null);
     const err = validateFile(file);
     if (err) {
       setValidationError(err);
-      return;
+      run.finish(); return;
     }
-    setIsHashing(true);
-    processing.current = true;
     try {
-      const sha256_hash = await computeSha256(file);
+      const sha256_hash = await computeSha256(file, run.current);
+      if (!run.current()) return;
       setSelectedFile(file);
       onFileSelected?.({
         original_filename: file.name,
@@ -94,21 +125,20 @@ export function DmsUploadDropzone({
         file,
       });
     } catch {
-      setValidationError("Failed to compute file hash. Please try again.");
+      if (run.current()) setValidationError("Failed to compute file hash. Please try again.");
     } finally {
-      processing.current = false;
-      setIsHashing(false);
+      run.finish();
     }
-  }, [onFileSelected]);
+  // begin captures the current activation; callbacks never revive retired work.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onFileSelected, epoch, disabled, setValidationError]);
 
   // ── Multi-file mode ─────────────────────────────────────────────────────────
   const processMultiple = useCallback(async (files: File[]) => {
-    if (processing.current) return;
+    const run = begin(); if (!run) return;
     setValidationError(null);
-    if (files.length === 0) return;
+    if (files.length === 0) { run.finish(); return; }
 
-    setIsHashing(true);
-    processing.current = true;
     try {
       const next: SelectedDmsFile[] = [];
       const errors: string[] = [];
@@ -118,14 +148,14 @@ export function DmsUploadDropzone({
           errors.push(`${file.name}: ${err}`);
           continue;
         }
-        const sha256_hash = await computeSha256(file);
-        next.push({
-          original_filename: file.name,
-          mime_type: file.type || "application/octet-stream",
-          file_size_bytes: file.size,
-          sha256_hash,
-          file,
+        const sha256_hash = await computeSha256(file, run.current);
+        if (!run.current()) return;
+        const metadata = dmsFileMetadataSchema.safeParse({
+          original_filename: file.name, mime_type: file.type,
+          file_size_bytes: file.size, sha256_hash,
         });
+        if (!metadata.success) { errors.push(`${file.name}: File metadata is invalid.`); continue; }
+        next.push({...metadata.data, file});
       }
 
       // De-dupe within the selection by hash + name; cap at maxFiles.
@@ -138,31 +168,34 @@ export function DmsUploadDropzone({
         }
         merged.push(f);
       }
+      if (!run.current()) return;
       selectedFilesRef.current = merged;
       setSelectedFiles(merged);
       onFilesSelected?.(merged);
 
       if (errors.length > 0) setValidationError(errors.join(" • "));
     } catch {
-      setValidationError("Failed to read one or more files. Please try again.");
+      if (run.current()) setValidationError("Failed to read one or more files. Please try again.");
     } finally {
-      processing.current = false;
-      setIsHashing(false);
+      run.finish();
     }
-  }, [maxFiles, onFilesSelected]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [maxFiles, onFilesSelected, epoch, disabled, setValidationError]);
 
   const removeFile = useCallback((hash: string, name: string) => {
+    processing.current = null; setIsHashing(false);
     const next = selectedFilesRef.current.filter((f) => !(f.sha256_hash === hash && f.original_filename === name));
     selectedFilesRef.current = next;
     setSelectedFiles(next);
     onFilesSelected?.(next);
-  }, [onFilesSelected]);
+  }, [onFilesSelected, setIsHashing]);
 
   const clearAll = useCallback(() => {
+    processing.current = null; setIsHashing(false);
     selectedFilesRef.current = [];
     setSelectedFiles([]);
     onFilesSelected?.([]);
-  }, [onFilesSelected]);
+  }, [onFilesSelected, setIsHashing]);
 
   // ── Event handlers ────────────────────────────────────────────────────────
   const handleDrop = useCallback(async (e: React.DragEvent) => {
@@ -183,13 +216,17 @@ export function DmsUploadDropzone({
   const handleDragLeave = useCallback(() => setIsDragging(false), []);
 
   const handleChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
+    if (disabled) return;
+    const input = e.currentTarget;
+    const files = Array.from(input.files ?? []);
+    // Reset this event's input before awaiting. Retired work must not clear an
+    // input now owned by a different selection or inbox activation.
+    input.value = "";
     if (files.length > 0) {
       if (multiple) await processMultiple(files);
       else await processSingle(files[0]);
     }
-    if (inputRef.current) inputRef.current.value = "";
-  }, [multiple, processMultiple, processSingle]);
+  }, [disabled, multiple, processMultiple, processSingle]);
 
   return (
     <div className="space-y-3">
@@ -290,7 +327,7 @@ export function DmsUploadDropzone({
             <p className="text-xs font-medium text-muted-foreground">
               Selected files ({selectedFiles.length}/{maxFiles})
             </p>
-            <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={clearAll} disabled={disabled}>
+            <Button type="button" variant="ghost" size="sm" className="h-6 text-xs" onClick={clearAll} disabled={disabled}>
               Clear all
             </Button>
           </div>

@@ -10,6 +10,7 @@
 export type CategoryScope = 'GLOBAL' | 'COMPANY' | 'BRANCH' | 'MODULE';
 
 export interface LookupCategory {
+  workspace_revision: number;
   id: number;
   category_code: string;
   category_name_en: string;
@@ -36,6 +37,7 @@ export interface LookupCategory {
 }
 
 export interface LookupValue {
+  workspace_revision: number;
   id: number;
   category_id: number;
   value_code: string;
@@ -76,6 +78,10 @@ export interface LookupCategoryWithStats extends LookupCategory {
 
 export interface LookupValueWithCategory extends LookupValue {
   category?: {
+    id: number;
+    workspace_revision: number;
+    is_locked: boolean;
+    is_active: boolean;
     category_code: string;
     category_name_en: string;
     category_name_ar: string | null;
@@ -134,7 +140,6 @@ export interface CreateLookupValueInput {
   icon_name?: string | null;
   badge_variant?: string | null;
   sort_order?: number;
-  is_default?: boolean;
   is_active?: boolean;
   effective_from?: string | null;
   effective_to?: string | null;
@@ -151,7 +156,6 @@ export interface UpdateLookupValueInput {
   icon_name?: string | null;
   badge_variant?: string | null;
   sort_order?: number;
-  is_default?: boolean;
   is_active?: boolean;
   effective_from?: string | null;
   effective_to?: string | null;
@@ -212,6 +216,7 @@ export interface LookupSelectProps {
   valueField?: 'id' | 'code';  // NEW: Choose between ID or code
   className?: string;
   name?: string;
+  ariaLabel?: string;
   error?: string;
 }
 

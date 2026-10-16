@@ -1,7 +1,7 @@
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { getUnitsOfMeasure } from "@/features/master-data/uom/actions";
 import { UnitsTable } from "@/features/master-data/uom/components/units-table";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, hasGlobalPermission } from "@/lib/rbac/check";
 import { redirect } from "next/navigation";
 
 export const metadata = {
@@ -27,7 +27,7 @@ async function UnitsContent() {
 export default async function UnitsOfMeasurePage() {
   const ctx = await getAuthContext();
 
-  if (!hasPermission(ctx, "master_data.uom.view")) {
+  if (!hasPermission(ctx, "master_data.uom.view") && !hasGlobalPermission(ctx, "master_data.uom.manage")) {
     redirect("/access-denied");
   }
 

@@ -6,6 +6,7 @@
  */
 
 import { ERPCombobox } from "@/components/erp/combobox";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import { useOwnerCompaniesQuery } from "@/hooks/lookups";
 
 interface OwnerCompanySelectProps {
@@ -39,10 +40,11 @@ export function OwnerCompanySelect({
   ariaLabel = "Company",
   error,
 }: OwnerCompanySelectProps) {
-  const { options, isLoading, error: fetchError } = useOwnerCompaniesQuery({ includeInactive });
+  const choiceRead = useOwnerCompaniesQuery({ includeInactive, selectedId: value ?? null });
+  const { options, isLoading, error: fetchError } = choiceRead;
 
   const handleValueChange = (newValue: string | number | null) => {
-    if (!onValueChange) return;
+    if (!onValueChange || disabled || !!fetchError) return;
     if (newValue === null) {
       onValueChange(null);
       return;
@@ -52,18 +54,18 @@ export function OwnerCompanySelect({
   };
 
   return (
-    <ERPCombobox
+    <QueryReadBoundary queries={[{isError: !!fetchError, refetch: choiceRead.refetch}]}><ERPCombobox
       value={value ?? null}
       onValueChange={handleValueChange}
-      options={options}
+      options={(options).map(option => ({...option, disabled: option.disabled || disabled || !!fetchError}))}
       placeholder={placeholder}
       searchPlaceholder="Search companies..."
       showCode={showCode}
       language={language}
-      disabled={disabled}
+      disabled={disabled || !!fetchError}
       readOnly={false}
       required={required}
-      loading={isLoading}
+      loading={(isLoading) && value == null}
       error={fetchError ?? error}
       allowClear={allowClear}
       emptyText="No companies available"
@@ -71,6 +73,6 @@ export function OwnerCompanySelect({
       className={className}
       name={name}
       ariaLabel={ariaLabel}
-    />
+    /></QueryReadBoundary>
   );
 }

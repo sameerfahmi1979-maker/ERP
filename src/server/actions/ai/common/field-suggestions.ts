@@ -48,6 +48,7 @@ import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import {applyCompanySuggestions} from '@/server/administration-suggestion-apply';
 
 // ── Shared ActionResult type ──────────────────────────────────────────────────
 
@@ -412,7 +413,12 @@ export async function generateAiFieldSuggestions(
       };
     }
 
-    const validatedSuggestions = validation.output.suggestions;
+    // A child without a reviewed existing target cannot be auto-created or
+    // silently attached to a row added after the generation snapshot.
+    const validatedSuggestions = validation.output.suggestions.filter(s=>{
+      const field=registeredFields.find(f=>f.targetField===s.targetField);
+      return entityType!=='party'||!field||!['party_licenses','party_tax_registrations'].includes(field.targetTable)||Boolean(currentRecord.reviewedTargets?.[field.targetTable]);
+    });
 
     if (validatedSuggestions.length === 0) {
       await logCommonAiUsage({
@@ -464,7 +470,8 @@ export async function generateAiFieldSuggestions(
         entityId,
         validatedSuggestions,
         userProfileId,
-        targetTableByField
+        targetTableByField,
+        currentRecord
       );
     } catch (insertErr) {
       await logCommonAiUsage({
@@ -708,7 +715,8 @@ export interface BatchAcceptApplyResult {
 
 /**
  * Accepts and applies selected AI field suggestions for a given entity.
- * Processes sequentially with per-item results. Never all-at-once.
+ * Company fields share one reviewed revision and commit as one selected batch.
+ * Other entity applications retain their per-item transaction behavior.
  */
 export async function acceptSelectedAiFieldSuggestions(
   input: unknown
@@ -732,6 +740,14 @@ export async function acceptSelectedAiFieldSuggestions(
       return { success: false, error: "You do not have permission to manage this entity." };
     }
 
+    if(entityType==='company'){
+      const applied=await applyCompanySuggestions(suggestionIds,entityId,true);
+      if(!applied.success)return {success:false,error:applied.message};
+      try{revalidateEntityPath('company',entityId);}catch{/* The committed receipts remain authoritative. */}
+      return {success:true,data:{appliedCount:applied.data.length,failedCount:0,skippedCount:0,
+        items:applied.data.map(r=>({suggestionId:r.suggestionId,targetField:r.field,status:'applied' as const,message:applied.message}))}};
+    }
+
     const results: BatchAcceptApplyItemResult[] = [];
     const now = new Date().toISOString();
 
@@ -750,13 +766,13 @@ export async function acceptSelectedAiFieldSuggestions(
       }
 
       // Skip non-pending
-      if (!["pending", "accepted"].includes(suggestion.status)) {
+      if (!["pending", "accepted"].includes(suggestion.status) && !(suggestion.entityType==='party'&&['parties','party_licenses','party_tax_registrations'].includes(suggestion.targetTable)&&suggestion.status==='applied')) {
         results.push({ suggestionId, targetField: suggestion.targetField, status: "skipped", message: `Suggestion is "${suggestion.status}" — skipped.` });
         continue;
       }
 
       // Accept if pending
-      if (suggestion.status === "pending") {
+      if (suggestion.status === "pending" && !(suggestion.entityType==='party'&&['parties','party_licenses','party_tax_registrations'].includes(suggestion.targetTable))) {
         await updateSuggestionStatus(suggestionId, "accepted", userProfileId, null, {
           accepted_by: userProfileId,
           accepted_at: now,
@@ -770,7 +786,11 @@ export async function acceptSelectedAiFieldSuggestions(
       }
 
       // Apply
-      const applyResult = await applyAiSuggestionByRegisteredHandler(suggestionId, userProfileId);
+      const applyResult = await applyAiSuggestionByRegisteredHandler(suggestionId, userProfileId, true);
+      if(applyResult.atomic){
+        results.push({suggestionId,targetField:applyResult.targetField,status:applyResult.success?'applied':'failed',message:applyResult.message});
+        continue;
+      }
 
       await insertSuggestionEvent(
         suggestionId,
@@ -855,6 +875,13 @@ export async function applyAiFieldSuggestion(
 
     // Call apply engine — validates status + handler + executes write
     const applyResult = await applyAiSuggestionByRegisteredHandler(suggestionId, userProfileId);
+
+    if(applyResult.atomic){
+      if(!applyResult.success)return {success:false,error:applyResult.message??'Apply unconfirmed. Retry this same suggestion.'};
+      if(applyResult.entityType==='company'){try{revalidateEntityPath('company',applyResult.entityId);}catch{/* Saved company receipt is authoritative. */}}
+      else revalidateEntityPath(applyResult.entityType,applyResult.entityId);
+      return {success:true,data:{targetField:applyResult.targetField,status:'applied'}};
+    }
 
     const now = new Date().toISOString();
 

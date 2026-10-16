@@ -21,7 +21,7 @@ export const queryKeys = {
       [
         "lookup",
         "values",
-        categoryCode.toUpperCase(),
+        categoryCode.trim().toUpperCase(),
         parentValueCode ?? null,
         includeInactive,
       ] as const,
@@ -31,7 +31,7 @@ export const queryKeys = {
       [
         "lookup",
         "batch",
-        [...categoryCodes].map((c) => c.toUpperCase()).sort(),
+        [...new Set(categoryCodes.map((c) => c.trim().toUpperCase()))].sort(),
         includeInactive,
       ] as const,
   },
@@ -97,6 +97,12 @@ export const queryKeys = {
     ownerCompanyId: number | null | undefined = null,
     includeInactive = false
   ) => ["master", "profit_centers", ownerCompanyId ?? null, includeInactive] as const,
+
+  costCenterParents: (companyId: number | null, branchId: number | null, excludeId: number | null) =>
+    ["master", "cost_centers", "finance-parent", companyId, branchId, excludeId] as const,
+
+  profitCenterParents: (companyId: number | null, branchId: number | null, excludeId: number | null) =>
+    ["master", "profit_centers", "finance-parent", companyId, branchId, excludeId] as const,
 
   // ── Child tables (Phase 3B.6G.1) ───────────────────────────────────────────
   // Convention: ["child", <child_table_name>, <parent_id>]

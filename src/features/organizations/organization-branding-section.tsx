@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useEffect, useTransition } from "react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -43,7 +43,7 @@ function AssetStatusDot({
   uploaded,
   label,
 }: {
-  uploaded: boolean;
+  uploaded: boolean | null;
   label: string;
 }) {
   return (
@@ -54,40 +54,58 @@ function AssetStatusDot({
         <XCircle className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0" />
       )}
       <span className={cn("text-xs", uploaded ? "text-foreground" : "text-muted-foreground")}>
-        {label}
+        {label}{uploaded === null ? " — restricted" : ""}
       </span>
     </div>
   );
 }
 
-export function OrganizationBrandingSection({
+export function OrganizationBrandingSection(props: OrganizationBrandingSectionProps) {
+  return <OrganizationBrandingSession key={props.companyId} {...props}/>;
+}
+function OrganizationBrandingSession({
   companyId,
   canManage,
 }: OrganizationBrandingSectionProps) {
   const { openTab } = useWorkspace();
   const [profile, setProfile] = useState<OrgBrandingProfileSummary | null | undefined>(undefined);
   const [loadError, setLoadError] = useState(false);
-  const [isLoading, startLoadTransition] = useTransition();
+  const [isLoading, setIsLoading] = useState(true);
+  const [refresh, setRefresh] = useState(0);
   const [isEnsuring, startEnsureTransition] = useTransition();
+  const ensureFlight = useRef(false);
+  const ensureOperation = useRef<string | null>(null);
 
   const loadProfile = useCallback(() => {
-    startLoadTransition(async () => {
-      setLoadError(false);
-      try {
-        const result = await getOrganizationBrandingProfile(companyId);
-        if (!result.success) { setLoadError(true); return; }
-        setProfile(result.data ?? null);
-      } catch { setLoadError(true); }
-    });
-  }, [companyId]);
+    setLoadError(false);
+    setIsLoading(true);
+    setRefresh(value => value + 1);
+  }, []);
 
   useEffect(() => {
-    if (companyId > 0) loadProfile();
-  }, [companyId, loadProfile]);
+    if (companyId <= 0) return;
+    let cancelled = false;
+    // A pending read from another company must not keep this company in a
+    // shared React transition or publish its stale response after navigation.
+    void (async () => {
+      try {
+        const result = await getOrganizationBrandingProfile(companyId);
+        if (cancelled) return;
+        if (!result.success) { setLoadError(true); return; }
+        setProfile(result.data ?? null);
+      } catch { if (!cancelled) setLoadError(true); }
+      finally { if (!cancelled) setIsLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [companyId, refresh]);
 
   const handleEnsure = () => {
+    if (!canManage || ensureFlight.current) return;
+    ensureFlight.current = true;
+    ensureOperation.current ??= crypto.randomUUID();
     startEnsureTransition(async () => {
-      const result = await ensureOrgBrandingProfile(companyId);
+      try {
+      const result = await ensureOrgBrandingProfile(companyId,ensureOperation.current!);
       if (!result.success) {
         toast.error(result.error ?? "Failed to create branding profile");
         return;
@@ -97,7 +115,11 @@ export function OrganizationBrandingSection({
           ? "Default report branding profile created"
           : "Default report branding profile already exists"
       );
+      if (result.warning) toast.warning(result.warning);
+      ensureOperation.current = null;
       loadProfile();
+      } catch { toast.error("Branding setup is unconfirmed. Retry to recover the same operation."); }
+      finally { ensureFlight.current = false; }
     });
   };
 
@@ -141,8 +163,7 @@ export function OrganizationBrandingSection({
               </p>
               <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
                 This company does not have a linked default report branding profile. Report
-                headers, logos, and letterheads will use a neutral fallback until one is
-                created.
+                identity and permitted template selection must be reviewed before issuing documents.
               </p>
             </div>
           </div>
@@ -185,7 +206,7 @@ export function OrganizationBrandingSection({
           <div>
             <p className="text-xs font-medium text-muted-foreground mb-2">Uploaded Assets</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {(Object.entries(profile.assetStatus) as [AssetKey, boolean][]).map(
+              {(Object.entries(profile.assetStatus) as [AssetKey, boolean | null][]).map(
                 ([key, uploaded]) => (
                   <AssetStatusDot key={key} uploaded={uploaded} label={ASSET_LABELS[key]} />
                 )

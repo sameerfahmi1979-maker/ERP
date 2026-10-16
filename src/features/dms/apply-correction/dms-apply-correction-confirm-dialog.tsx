@@ -14,12 +14,12 @@
  * FORBIDDEN: Undo, Rollback, Auto Revert, Restore Automatically, One-click Revert
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { AlertTriangle, ShieldCheck } from "lucide-react";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { cn } from "@/lib/utils";
 import type { CorrectionProposalRow } from "@/lib/dms/apply-correction/types";
-import { applyCorrectionProposal } from "@/server/actions/dms/apply-correction";
+import { applyCorrectionProposal,cancelApplyCorrectionProposal } from "@/server/actions/dms/apply-correction";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -52,12 +52,17 @@ export function DmsApplyCorrectionConfirmDialog({
   const [replaceExistingConfirmed, setReplaceExistingConfirmed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const inFlight=useRef(false);
+  const [uncertain,setUncertain]=useState(false);
+  const [attempt,setAttempt]=useState<'apply'|'cancel'|null>(null);
 
   const hasCurrentValue =
     proposal.current_value_summary != null &&
     proposal.current_value_summary !== "";
 
   const handleApply = async () => {
+    if(inFlight.current)return;
+    if(uncertain&&attempt==='cancel'){setError('Retry cancelling this correction to recover its outcome.');return;}
     if (!humanReviewConfirmed) {
       setError("You must confirm you have reviewed the correction.");
       return;
@@ -67,7 +72,7 @@ export function DmsApplyCorrectionConfirmDialog({
       return;
     }
 
-    setIsSubmitting(true);
+    inFlight.current=true;setAttempt('apply');setIsSubmitting(true);
     setError(null);
 
     try {
@@ -78,36 +83,48 @@ export function DmsApplyCorrectionConfirmDialog({
       });
 
       if (!result.success) {
+        setUncertain(result.uncertain===true);
         setError(result.error ?? "Failed to apply correction.");
         return;
       }
 
       onApplied?.(proposal.id);
       onOpenChange(false);
-    } catch (err) {
-      setError(String(err));
+    } catch {
+      setUncertain(true);setError('The result is unconfirmed. Retry this same correction to recover its outcome.');
     } finally {
+      inFlight.current=false;
       setIsSubmitting(false);
     }
+  };
+
+  const handleClose=async(nextOpen:boolean)=>{
+    if(nextOpen||inFlight.current)return;
+    if(uncertain&&attempt==='apply'){setError('Recover the pending apply result before closing.');return;}
+    inFlight.current=true;setAttempt('cancel');setIsSubmitting(true);setError(null);
+    try{const r=await cancelApplyCorrectionProposal(proposal.id);if(!r.success){setUncertain(r.uncertain===true);setError(r.error??'Correction could not be cancelled.');return;}setUncertain(false);onOpenChange(false);}
+    catch{setUncertain(true);setError('Cancellation is unconfirmed. Retry cancelling this correction.');}
+    finally{inFlight.current=false;setIsSubmitting(false);}
   };
 
   return (
     <ERPChildDialogForm
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={handleClose}
       title="Apply Correction"
       subtitle={`Proposal ${proposal.proposal_code ?? `#${proposal.id}`}`}
-      icon={<ShieldCheck className="h-5 w-5 text-blue-600" />}
+      icon={<ShieldCheck className="h-5 w-5 text-primary" />}
       mode="edit"
       size="md"
       isSubmitting={isSubmitting}
+      closeDisabled={isSubmitting||(uncertain&&attempt==='apply')}
       onSubmit={handleApply}
       submitLabel="Apply Correction"
       cancelLabel="Cancel Correction"
     >
       <div className="space-y-5">
         {/* Summary */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <ValueDisplay label="Target Field" value={`${proposal.target_table}.${proposal.target_field}`} mono />
           <ValueDisplay label="Target Record" value={proposal.target_record_id ? `#${proposal.target_record_id}` : "N/A"} />
           <ValueDisplay
@@ -125,9 +142,9 @@ export function DmsApplyCorrectionConfirmDialog({
         </div>
 
         {/* Correction mode info */}
-        <div className="flex items-center gap-1.5 text-xs text-slate-500">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span>Mode:</span>
-          <span className="font-mono capitalize bg-slate-100 px-1.5 py-0.5 rounded">
+          <span className="font-mono capitalize bg-muted px-1.5 py-0.5 rounded">
             {proposal.correction_mode.replace(/_/g, " ")}
           </span>
         </div>
@@ -136,12 +153,12 @@ export function DmsApplyCorrectionConfirmDialog({
         <label className="flex items-start gap-2.5 cursor-pointer">
           <input
             type="checkbox"
-            className="mt-1 h-4 w-4 rounded border-slate-300"
+            className="mt-1 h-4 w-4 shrink-0 rounded border-border accent-primary"
             checked={humanReviewConfirmed}
             onChange={(e) => setHumanReviewConfirmed(e.target.checked)}
-            disabled={isSubmitting}
+            disabled={isSubmitting||uncertain}
           />
-          <span className="text-sm text-slate-700">
+          <span className="text-sm text-foreground">
             I confirm I have reviewed the correction value and take responsibility
             for this change.
           </span>
@@ -152,14 +169,14 @@ export function DmsApplyCorrectionConfirmDialog({
           <label className="flex items-start gap-2.5 cursor-pointer">
             <input
               type="checkbox"
-              className="mt-1 h-4 w-4 rounded border-slate-300"
+              className="mt-1 h-4 w-4 shrink-0 rounded border-border accent-primary"
               checked={replaceExistingConfirmed}
               onChange={(e) => setReplaceExistingConfirmed(e.target.checked)}
-              disabled={isSubmitting}
+              disabled={isSubmitting||uncertain}
             />
-            <span className="text-sm text-slate-700">
+            <span className="text-sm text-foreground">
               I confirm I want to replace the existing value:{" "}
-              <span className="font-mono text-xs bg-slate-100 px-1 rounded">
+              <span className="font-mono text-xs bg-muted px-1 rounded break-words">
                 {proposal.current_value_summary}
               </span>
             </span>
@@ -168,14 +185,14 @@ export function DmsApplyCorrectionConfirmDialog({
 
         {/* Error */}
         {error && (
-          <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div role="alert" className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
             <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
             {error}
           </div>
         )}
 
         {/* Responsibility notice */}
-        <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-500">
+        <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
           This correction will write directly to the ERP target field. The action
           will be audited. No automatic reversal is available after applying.
         </div>
@@ -200,19 +217,19 @@ function ValueDisplay({
   mono?:       boolean;
 }) {
   const variantClass = variant === "info"
-    ? "bg-blue-50 border-blue-200 text-blue-800"
-    : "bg-white border-slate-200 text-slate-700";
+    ? "bg-primary/10 border-primary/30 text-foreground"
+    : "bg-card border-border text-foreground";
 
   return (
-    <div className="space-y-1">
-      <p className="text-xs font-medium text-slate-500">{label}</p>
+    <div className="space-y-1 min-w-0">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <div className={cn(
         "rounded border px-2.5 py-1.5 text-sm min-h-[2rem] break-words",
         variantClass,
         mono && "font-mono text-xs"
       )}>
         {value != null && value !== "" ? value : (
-          <span className="text-slate-400 italic">{emptyLabel}</span>
+          <span className="text-muted-foreground italic">{emptyLabel}</span>
         )}
       </div>
     </div>

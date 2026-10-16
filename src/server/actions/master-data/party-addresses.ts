@@ -1,10 +1,13 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { authorizePartyChildRead } from "@/server/party-child-read-authority";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { revalidatePath } from "next/cache";
-import { logAudit } from "@/server/actions/audit";
-import { generateNextReference } from "@/server/actions/numbering";
+import { setPartyChildArchived } from "@/server/actions/master-data/party-child-lifecycle";
+import { createNumberedParty } from "@/server/numbered-party-create";
+import { attachPartyReferenceLabels } from "@/server/party-reference-labels";
+import { savePartyAddress } from "@/server/party-address-save";
+import type { PartySaveReceipt } from "@/lib/master-data/party-save-contract";
+import type { WorkspaceSaveContract } from "@/lib/workspace/save-contract";
 import {
   createPartyAddressSchema,
   updatePartyAddressSchema,
@@ -13,11 +16,12 @@ import {
 } from "@/features/master-data/parties/party-schemas";
 import type { PartyAddress, ActionResult } from "@/features/master-data/parties/party-types";
 
-const REVALIDATE_PATH = "/admin/master-data/parties";
 
 export async function getPartyAddresses(partyId: number): Promise<ActionResult<PartyAddress[]>> {
   try {
-    const supabase = await createClient();
+    const access = await authorizePartyChildRead(partyId);
+    if (!access.success) return access;
+    const supabase = access.client;
     const { data, error } = await supabase
       .from("party_addresses")
       .select(`
@@ -25,13 +29,14 @@ export async function getPartyAddresses(partyId: number): Promise<ActionResult<P
         party_address_types!address_type_id(name_en),
         countries!country_id(name_en),
         emirates!emirate_id(name_en),
-        cities!city_id(name_en)
+        cities!city_id(name_en),
+        areas_zones!area_zone_id(name_en)
       `)
       .eq("party_id", partyId)
       .order("is_primary", { ascending: false })
       .order("created_at");
 
-    if (error) return { success: false, error: error.message };
+    if (error || !Array.isArray(data)) return { success: false, kind: 'failed', error: 'Addresses could not be loaded. Try again.' };
 
     const rows = (data ?? []).map((row: Record<string, unknown>) => ({
       ...(row as PartyAddress),
@@ -39,127 +44,42 @@ export async function getPartyAddresses(partyId: number): Promise<ActionResult<P
       country_name: (row.countries as { name_en?: string } | null)?.name_en ?? undefined,
       emirate_name: (row.emirates as { name_en?: string } | null)?.name_en ?? undefined,
       city_name: (row.cities as { name_en?: string } | null)?.name_en ?? undefined,
+      area_zone_name: (row.areas_zones as { name_en?: string } | null)?.name_en ?? undefined,
     }));
 
-    return { success: true, data: rows };
-  } catch (error) {
-    return { success: false, error: String(error) };
+    return { success: true, data: await attachPartyReferenceLabels('party_addresses', rows) };
+  } catch {
+    return { success: false, kind: 'failed', error: 'Addresses could not be loaded. Try again.' };
   }
 }
 
-export async function createPartyAddress(input: CreatePartyAddressInput): Promise<ActionResult<{ id: number; address_code: string }>> {
+export async function createPartyAddress(input: CreatePartyAddressInput, contract: WorkspaceSaveContract): Promise<ActionResult<{ id: number; address_code: string; revision: string; replayed: boolean }>> {
   try {
-    const parsed = createPartyAddressSchema.safeParse(input);
-    if (!parsed.success) {
-      return { success: false, error: parsed.error.issues.map((i) => i.message).join("; ") };
-    }
-
+    const parsed = createPartyAddressSchema.strict().safeParse(input);
+    if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.parties.manage_addresses")) {
-      return { success: false, error: "You do not have permission to manage addresses" };
-    }
-
-    const numberingResult = await generateNextReference({
-      ruleCode: "MASTER_PARTY_ADDRESS",
-      targetTableName: "party_addresses",
-      generationReason: "Party address creation",
-    });
-    if (!numberingResult.success || !numberingResult.data?.generatedReferenceNumber) {
-      return { success: false, error: "Failed to generate address code" };
-    }
-
-    const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("party_addresses")
-      .insert({
-        ...parsed.data,
-        address_code: numberingResult.data.generatedReferenceNumber,
-        created_by: ctx.profile?.id ?? null,
-        updated_by: ctx.profile?.id ?? null,
-      })
-      .select("id, address_code")
-      .single();
-
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({
-      module_code: "MASTER_DATA",
-      entity_name: "party_addresses",
-      entity_id: data.id,
-      entity_reference: data.address_code,
-      action: "create",
-      new_values: parsed.data,
-    });
-
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true, data: { id: data.id, address_code: data.address_code } };
-  } catch (error) {
-    return { success: false, error: String(error) };
+    if (!hasPermission(ctx, "master_data.parties.manage_addresses")) return { success: false, error: "Permission denied" };
+    return await createNumberedParty("party_addresses", parsed.data, contract);
+  } catch {
+    return { success: false, error: "Creation could not start. Check your session and try again." };
   }
 }
 
-export async function updatePartyAddress(input: UpdatePartyAddressInput): Promise<ActionResult> {
+export async function updatePartyAddress(input: UpdatePartyAddressInput, contract?: WorkspaceSaveContract): Promise<ActionResult<PartySaveReceipt>> {
   try {
-    const parsed = updatePartyAddressSchema.safeParse(input);
+    const parsed = updatePartyAddressSchema.strict().safeParse(input);
     if (!parsed.success) {
       return { success: false, error: parsed.error.issues.map((i) => i.message).join("; ") };
-    }
-
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.parties.manage_addresses")) {
-      return { success: false, error: "You do not have permission to manage addresses" };
     }
 
     const { id, ...fields } = parsed.data;
-    const supabase = await createClient();
-    const { data: old } = await supabase.from("party_addresses").select("address_code").eq("id", id).single();
-
-    const { error } = await supabase
-      .from("party_addresses")
-      .update({ ...fields, updated_by: ctx.profile?.id ?? null })
-      .eq("id", id);
-
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({
-      module_code: "MASTER_DATA",
-      entity_name: "party_addresses",
-      entity_id: id,
-      entity_reference: old?.address_code ?? String(id),
-      action: "update",
-      new_values: fields,
-    });
-
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: String(error) };
+    return await savePartyAddress(id, fields, contract);
+  } catch {
+    return { success: false, error: "The save could not start. Check your session and try again." };
   }
 }
 
-export async function deletePartyAddress(id: number): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.parties.manage_addresses")) {
-      return { success: false, error: "You do not have permission to manage addresses" };
-    }
-
-    const supabase = await createClient();
-    const { data: old } = await supabase.from("party_addresses").select("address_code").eq("id", id).single();
-    const { error } = await supabase.from("party_addresses").delete().eq("id", id);
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({
-      module_code: "MASTER_DATA",
-      entity_name: "party_addresses",
-      entity_id: id,
-      entity_reference: old?.address_code ?? String(id),
-      action: "delete",
-    });
-
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: String(error) };
-  }
+/** Compatibility name; this operation archives and never deletes history. */
+export async function deletePartyAddress(id: number, contract?: WorkspaceSaveContract): Promise<ActionResult<PartySaveReceipt & {archived:boolean}>> {
+  return setPartyChildArchived("party_addresses", id, true, contract);
 }

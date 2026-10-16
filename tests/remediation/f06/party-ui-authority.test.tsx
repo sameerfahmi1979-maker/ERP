@@ -1,0 +1,32 @@
+// @vitest-environment jsdom
+import {render,screen,cleanup} from '@testing-library/react';
+import type {ReactNode} from 'react';
+import {beforeEach,afterEach,it,expect,vi} from 'vitest';
+import type {AuthContext} from '@/lib/rbac/check';
+const m=vi.hoisted(()=>({ctx:null as AuthContext|null}));
+vi.mock('@/lib/rbac/check',async()=>({...await import('@/lib/rbac/scope'),getAuthContext:async()=>m.ctx}));
+vi.mock('next/navigation',()=>({redirect:(url:string)=>{throw Error('Redirect '+url);},notFound:()=>{throw Error('Not found');},useRouter:()=>({refresh:vi.fn()})}));
+vi.mock('@/hooks/use-workspace',()=>({useWorkspace:()=>({openTab:vi.fn()})}));
+vi.mock('@/hooks/realtime/use-realtime-sync',()=>({useRealtimeSync:vi.fn()}));
+vi.mock('@tanstack/react-query',()=>({useQueryClient:()=>({})}));
+vi.mock('@/features/master-data/parties/party-form-prefetch',()=>({prefetchPartyFormData:vi.fn()}));
+vi.mock('@/components/erp/table/erp-data-table',()=>({ERPDataTable:({toolbarSlot}:{toolbarSlot:ReactNode})=><div>{toolbarSlot}</div>}));
+vi.mock('@/server/actions/master-data/parties',()=>({getPartyById:async()=>({success:true,data:{id:1}}),deactivateParty:vi.fn(),reactivateParty:vi.fn()}));
+vi.mock('@/features/master-data/parties/party-workspace-form',()=>({PartyWorkspaceForm:({mode}:{mode:string})=><div data-testid="mode">{mode}</div>}));
+import {PartiesTable} from '@/features/master-data/parties/parties-table';
+import NewPage from '@/app/(protected)/admin/master-data/parties/record/new/page';
+import RecordPage from '@/app/(protected)/admin/master-data/parties/record/[id]/page';
+const context=(codes:string[],admin=false):AuthContext=>({profile:{id:1} as AuthContext['profile'],email:null,isAccountActive:true,accountStatus:'active',permissionCodes:codes,globalPermissionCodes:codes,roleCodes:admin?['system_admin']:[],roleAssignments:admin?[{roleId:1,roleCode:'system_admin',ownerCompanyId:null,branchId:null,permissionCodes:[]}]:[]});
+beforeEach(()=>{m.ctx=context([]);});afterEach(cleanup);
+it('global administrator sees Add without duplicated explicit permission grants',()=>{render(<PartiesTable parties={[]} authContext={context([],true)}/>);expect(screen.queryByRole('button',{name:'Add Party'})).not.toBeNull();});
+it('party creator with numbering authority enters the new form, without unrelated manage permission',async()=>{m.ctx=context(['master_data.parties.view','master_data.parties.create','numbering.rules.generate']);render(await NewPage({searchParams:Promise.resolve({})}));expect(screen.getByTestId('mode').textContent).toBe('add');});
+it('party editor enters edit mode using the same permission as the update action',async()=>{m.ctx=context(['master_data.parties.view','master_data.parties.edit']);render(await RecordPage({params:Promise.resolve({id:'1'}),searchParams:Promise.resolve({mode:'edit'})}));expect(screen.getByTestId('mode').textContent).toBe('edit');});
+it('no numbering authority does not advertise creation that the database rejects',async()=>{m.ctx=context(['master_data.parties.view','master_data.parties.create']);render(<PartiesTable parties={[]} authContext={m.ctx}/>);expect(screen.queryByRole('button',{name:'Add Party'})).toBeNull();await expect(NewPage({searchParams:Promise.resolve({})})).rejects.toThrow('Redirect');});
+it('view-only actor remains read-only on a manually entered edit URL',async()=>{m.ctx=context(['master_data.parties.view']);render(await RecordPage({params:Promise.resolve({id:'1'}),searchParams:Promise.resolve({mode:'edit'})}));expect(screen.getByTestId('mode').textContent).toBe('view');});
+it('inactive administrators do not receive creation controls',()=>{render(<PartiesTable parties={[]} authContext={{...context([],true),isAccountActive:false,accountStatus:'suspended'}}/>);expect(screen.queryByRole('button',{name:'Add Party'})).toBeNull();});
+it('typed-list creation requires assignment authority, while unclassified creation remains permitted',()=>{
+ const ctx=context(['master_data.parties.view','master_data.parties.create','numbering.rules.generate']);
+ const view=render(<PartiesTable parties={[]} authContext={ctx} defaultTypeCode="CUSTOMER"/>);expect(screen.queryByRole('button',{name:'Add Party'})).toBeNull();
+ view.rerender(<PartiesTable parties={[]} authContext={ctx}/>);expect(screen.queryByRole('button',{name:'Add Party'})).not.toBeNull();
+});
+it('typed-list creator with assignment authority retains Add',()=>{render(<PartiesTable parties={[]} authContext={context(['master_data.parties.view','master_data.parties.create','numbering.rules.generate','master_data.parties.manage_types'])} defaultTypeCode="CUSTOMER"/>);expect(screen.queryByRole('button',{name:'Add Party'})).not.toBeNull();});

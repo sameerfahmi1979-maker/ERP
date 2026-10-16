@@ -7,12 +7,16 @@ export type ActionResult<T = unknown> = {
   success: boolean;
   data?: T;
   error?: string;
+  uncertain?: boolean;
+  /** Read outcomes are distinct from a successful empty collection. */
+  kind?: 'forbidden' | 'not_found' | 'failed';
 };
 
 // ─── Core Party ──────────────────────────────────────────────────────────────
 
 export type Party = {
   id: number;
+  workspace_revision?: number;
   party_code: string;
   display_name: string;
   legal_name_en: string;
@@ -57,6 +61,8 @@ export type Party = {
   country_name?: string | null;
   emirate_name?: string | null;
   city_name?: string | null;
+  area_zone_name?: string | null;
+  parent_party_name?: string | null;
   assigned_type_codes?: string[];
 };
 
@@ -182,6 +188,8 @@ export type PartyTypeAssignment = {
 };
 
 export type PartyLicense = {
+  archived_at?: string | null;
+  workspace_revision?: number;
   id: number;
   license_code: string;
   party_id: number;
@@ -210,6 +218,8 @@ export type PartyLicense = {
 };
 
 export type PartyTaxRegistration = {
+  archived_at?: string | null;
+  workspace_revision?: number;
   id: number;
   tax_registration_code: string;
   party_id: number;
@@ -235,6 +245,7 @@ export type PartyTaxRegistration = {
 
 export type PartyFinanceProfile = {
   id: number;
+  workspace_revision: number;
   party_id: number;
   default_currency_id: number | null;
   default_payment_term_id: number | null;
@@ -251,6 +262,8 @@ export type PartyFinanceProfile = {
 };
 
 export type PartyContact = {
+  archived_at?: string | null;
+  workspace_revision?: number;
   id: number;
   contact_code: string;
   party_id: number;
@@ -278,7 +291,9 @@ export type PartyContact = {
 };
 
 export type PartyAddress = {
+  archived_at?: string | null;
   id: number;
+  workspace_revision?: number;
   address_code: string;
   party_id: number;
   address_type_id: number;
@@ -309,9 +324,12 @@ export type PartyAddress = {
   country_name?: string;
   emirate_name?: string;
   city_name?: string;
+  area_zone_name?: string;
 };
 
 export type PartyBankDetail = {
+  archived_at?: string | null;
+  workspace_revision?: number;
   id: number;
   bank_detail_code: string;
   party_id: number;
@@ -340,6 +358,8 @@ export type PartyBankDetail = {
 };
 
 export type PartyDocument = {
+  archived_at?: string | null;
+  workspace_revision?: number;
   id: number;
   document_code: string;
   party_id: number;

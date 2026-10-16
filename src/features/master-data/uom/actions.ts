@@ -1,9 +1,12 @@
 "use server";
 
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import {saveUomRecord} from "@/server/uom-save";
+import type {WorkspaceSaveContract} from "@/lib/workspace/save-contract";
+import type {WorkspaceSaveResult} from "@/server/workspace-save";
+import {workspaceValidationFailure} from "@/lib/workspace/field-errors";
+import type { WorkspaceFieldErrors } from "@/lib/workspace/field-errors";
+import { getAuthContext, hasPermission, hasGlobalPermission } from "@/lib/rbac/check";
 import { createClient } from "@/lib/supabase/server";
-import { createAuditDiff, logAudit } from "@/server/actions/audit";
-import { revalidatePath } from "next/cache";
 import type {
   UnitOfMeasureFilters,
   UnitOfMeasureWithCategory,
@@ -34,35 +37,8 @@ export type ActionResult<T = unknown> = {
   success: boolean;
   data?: T;
   error?: string;
+  fieldErrors?: WorkspaceFieldErrors;
 };
-
-const UOM_PATHS = [
-  "/admin/master-data/uom/categories",
-  "/admin/master-data/uom/units",
-  "/admin/master-data/uom/conversions",
-] as const;
-
-function revalidateUomPages() {
-  UOM_PATHS.forEach((path) => revalidatePath(path));
-}
-
-function formatValidationErrors(
-  issues: ReadonlyArray<{ path: PropertyKey[]; message: string }>,
-): string {
-  return issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ");
-}
-
-function isSystemAdmin(roleCodes: string[] | undefined): boolean {
-  return roleCodes?.includes("system_admin") ?? false;
-}
-
-function lockedRecordError<T>(): ActionResult<T> {
-  return { success: false, error: "This record is locked and cannot be modified" };
-}
-
-function managePermissionError<T>(): ActionResult<T> {
-  return { success: false, error: "You do not have permission to manage UOM master data" };
-}
 
 function viewPermissionError<T>(): ActionResult<T> {
   return { success: false, error: "You do not have permission to view UOM data" };
@@ -77,7 +53,7 @@ export async function getUomCategories(
 ): Promise<ActionResult<UomCategory[]>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.uom.view")) {
+    if (!hasPermission(ctx, "master_data.uom.view") && !hasGlobalPermission(ctx, "master_data.uom.manage")) {
       return viewPermissionError();
     }
 
@@ -105,7 +81,7 @@ export async function getUomCategories(
     const { data, error } = await query;
     if (error) {
       console.error("getUomCategories error", error);
-      return { success: false, error: error.message };
+      return { success: false, error: "Unable to load units data. Try again; no empty or missing result has been assumed." };
     }
 
     return { success: true, data: data || [] };
@@ -118,7 +94,7 @@ export async function getUomCategories(
 export async function getUomCategoryById(id: number): Promise<ActionResult<UomCategory>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.uom.view")) {
+    if (!hasPermission(ctx, "master_data.uom.view") && !hasGlobalPermission(ctx, "master_data.uom.manage")) {
       return viewPermissionError();
     }
 
@@ -127,13 +103,14 @@ export async function getUomCategoryById(id: number): Promise<ActionResult<UomCa
       .from("uom_categories")
       .select("*")
       .eq("id", id)
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error("getUomCategoryById error", error);
-      return { success: false, error: error.message };
+      return { success: false, error: "Unable to load units data. Try again; no empty or missing result has been assumed." };
     }
 
+    if (!data) return { success: false, error: "Record not found or outside your permitted access." };
     return { success: true, data };
   } catch (error) {
     console.error("getUomCategoryById error", error);
@@ -141,281 +118,30 @@ export async function getUomCategoryById(id: number): Promise<ActionResult<UomCa
   }
 }
 
-export async function createUomCategory(
-  input: CreateUomCategoryInput,
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    const result = createUomCategorySchema.safeParse(input);
-    if (!result.success) {
-      return { success: false, error: formatValidationErrors(result.error.issues) };
-    }
-
-    const validated = result.data;
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.uom.manage")) {
-      return managePermissionError();
-    }
-
-    const supabase = await createClient();
-    const dataToInsert = {
-      ...validated,
-      category_name_ar: validated.category_name_ar || null,
-      description_en: validated.description_en || null,
-      description_ar: validated.description_ar || null,
-      notes: validated.notes || null,
-      created_by: ctx.profile?.id ?? null,
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { data, error } = await supabase
-      .from("uom_categories")
-      .insert(dataToInsert)
-      .select("id, category_code")
-      .single();
-
-    if (error) {
-      console.error("createUomCategory error", error);
-      return { success: false, error: error.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "uom_categories",
-      entity_id: data.id,
-      entity_reference: data.category_code,
-      action: "create",
-      new_values: validated,
-    });
-
-    revalidateUomPages();
-    return { success: true, data: { id: data.id } };
-  } catch (error) {
-    console.error("createUomCategory error", error);
-    return { success: false, error: "An unexpected error occurred" };
-  }
+export async function createUomCategory(input:CreateUomCategoryInput,contract?:WorkspaceSaveContract):Promise<WorkspaceSaveResult>{
+ const result=createUomCategorySchema.safeParse(input);
+ if(!result.success)return workspaceValidationFailure(result.error.issues);
+ return saveUomRecord('uom_categories','save',null,result.data,contract);
 }
 
-export async function updateUomCategory(input: UpdateUomCategoryInput): Promise<ActionResult<void>> {
-  try {
-    const result = updateUomCategorySchema.safeParse(input);
-    if (!result.success) {
-      return { success: false, error: formatValidationErrors(result.error.issues) };
-    }
-
-    const validated = result.data;
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.uom.manage")) {
-      return managePermissionError();
-    }
-
-    const supabase = await createClient();
-
-    const { data: existing, error: fetchError } = await supabase
-      .from("uom_categories")
-      .select("*")
-      .eq("id", validated.id)
-      .single();
-
-    if (fetchError) {
-      return { success: false, error: fetchError.message };
-    }
-
-    if (existing.is_locked && !isSystemAdmin(ctx.roleCodes)) {
-      return lockedRecordError();
-    }
-
-    const { category_name_ar, description_en, description_ar, notes, ...rest } = validated;
-    const dataToUpdate = {
-      ...rest,
-      category_name_ar: category_name_ar === undefined ? undefined : category_name_ar || null,
-      description_en: description_en === undefined ? undefined : description_en || null,
-      description_ar: description_ar === undefined ? undefined : description_ar || null,
-      notes: notes === undefined ? undefined : notes || null,
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { error } = await supabase
-      .from("uom_categories")
-      .update(dataToUpdate)
-      .eq("id", validated.id);
-
-    if (error) {
-      console.error("updateUomCategory error", error);
-      return { success: false, error: error.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "uom_categories",
-      entity_id: validated.id,
-      entity_reference: existing.category_code,
-      action: "update",
-      old_values: createAuditDiff(existing, validated),
-      new_values: validated,
-    });
-
-    revalidateUomPages();
-    return { success: true };
-  } catch (error) {
-    console.error("updateUomCategory error", error);
-    return { success: false, error: "An unexpected error occurred" };
-  }
+export async function updateUomCategory(input:UpdateUomCategoryInput,contract?:WorkspaceSaveContract):Promise<WorkspaceSaveResult>{
+ const result=updateUomCategorySchema.safeParse(input);
+ if(!result.success)return workspaceValidationFailure(result.error.issues);
+ const {id,...data}=result.data;return saveUomRecord('uom_categories','save',id,data,contract);
 }
 
-export async function deleteUomCategory(id: number): Promise<ActionResult<void>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!isSystemAdmin(ctx.roleCodes)) {
-      return { success: false, error: "Only system administrators can delete UOM categories" };
-    }
-
-    const supabase = await createClient();
-    const { data: existing, error: fetchError } = await supabase
-      .from("uom_categories")
-      .select("category_code")
-      .eq("id", id)
-      .single();
-
-    if (fetchError) {
-      return { success: false, error: fetchError.message };
-    }
-
-    const { error } = await supabase.from("uom_categories").delete().eq("id", id);
-
-    if (error) {
-      console.error("deleteUomCategory error", error);
-      return { success: false, error: error.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "uom_categories",
-      entity_id: id,
-      entity_reference: existing.category_code,
-      action: "delete",
-      old_values: { id, category_code: existing.category_code },
-    });
-
-    revalidateUomPages();
-    return { success: true };
-  } catch (error) {
-    console.error("deleteUomCategory error", error);
-    return { success: false, error: "An unexpected error occurred" };
-  }
+/** Retire without erasing references, receipts or audit history. */
+export async function deleteUomCategory(id:number,contract?:WorkspaceSaveContract):Promise<WorkspaceSaveResult>{
+ return saveUomRecord('uom_categories','retire',id,{is_active:false},contract);
 }
 
-export async function toggleUomCategoryStatus(
-  input: ToggleUomStatusInput,
-): Promise<ActionResult<void>> {
-  try {
-    const result = toggleUomStatusSchema.safeParse(input);
-    if (!result.success) {
-      return { success: false, error: formatValidationErrors(result.error.issues) };
-    }
-
-    const validated = result.data;
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.uom.manage")) {
-      return managePermissionError();
-    }
-
-    const supabase = await createClient();
-    const { data: existing, error: fetchError } = await supabase
-      .from("uom_categories")
-      .select("*")
-      .eq("id", validated.id)
-      .single();
-
-    if (fetchError) {
-      return { success: false, error: fetchError.message };
-    }
-
-    if (existing.is_locked && !isSystemAdmin(ctx.roleCodes)) {
-      return lockedRecordError();
-    }
-
-    const dataToUpdate = {
-      is_active: validated.is_active,
-      deactivated_at: validated.is_active ? null : new Date().toISOString(),
-      deactivated_by: validated.is_active ? null : ctx.profile?.id ?? null,
-      deactivation_reason: validated.is_active ? null : validated.deactivation_reason || null,
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { error } = await supabase
-      .from("uom_categories")
-      .update(dataToUpdate)
-      .eq("id", validated.id);
-
-    if (error) {
-      console.error("toggleUomCategoryStatus error", error);
-      return { success: false, error: error.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "uom_categories",
-      entity_id: validated.id,
-      entity_reference: existing.category_code,
-      action: "toggle_status",
-      old_values: { is_active: existing.is_active },
-      new_values: { is_active: validated.is_active, deactivation_reason: validated.deactivation_reason },
-    });
-
-    revalidateUomPages();
-    return { success: true };
-  } catch (error) {
-    console.error("toggleUomCategoryStatus error", error);
-    return { success: false, error: "An unexpected error occurred" };
-  }
+export async function toggleUomCategoryStatus(input:ToggleUomStatusInput,contract?:WorkspaceSaveContract):Promise<WorkspaceSaveResult>{
+ const result=toggleUomStatusSchema.safeParse(input);if(!result.success)return workspaceValidationFailure(result.error.issues);
+ const {id,...data}=result.data;return saveUomRecord('uom_categories','active',id,data,contract);
 }
 
-export async function toggleUomCategoryLock(
-  id: number,
-  locked: boolean,
-): Promise<ActionResult<void>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!isSystemAdmin(ctx.roleCodes)) {
-      return { success: false, error: "Only system administrators can lock/unlock UOM categories" };
-    }
-
-    const supabase = await createClient();
-    const { data: existing, error: fetchError } = await supabase
-      .from("uom_categories")
-      .select("category_code")
-      .eq("id", id)
-      .single();
-
-    if (fetchError) {
-      return { success: false, error: fetchError.message };
-    }
-
-    const { error } = await supabase
-      .from("uom_categories")
-      .update({ is_locked: locked, updated_by: ctx.profile?.id ?? null })
-      .eq("id", id);
-
-    if (error) {
-      console.error("toggleUomCategoryLock error", error);
-      return { success: false, error: error.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "uom_categories",
-      entity_id: id,
-      entity_reference: existing.category_code,
-      action: locked ? "lock" : "unlock",
-      new_values: { is_locked: locked },
-    });
-
-    revalidateUomPages();
-    return { success: true };
-  } catch (error) {
-    console.error("toggleUomCategoryLock error", error);
-    return { success: false, error: "An unexpected error occurred" };
-  }
+export async function toggleUomCategoryLock(id:number,locked:boolean,contract?:WorkspaceSaveContract):Promise<WorkspaceSaveResult>{
+ return saveUomRecord('uom_categories','lock',id,{is_locked:locked},contract);
 }
 
 export async function getActiveUomCategoriesForSelect(): Promise<ActionResult<UomSelectOption[]>> {
@@ -430,7 +156,7 @@ export async function getActiveUomCategoriesForSelect(): Promise<ActionResult<Uo
 
     if (error) {
       console.error("getActiveUomCategoriesForSelect error", error);
-      return { success: false, error: error.message };
+      return { success: false, error: "Unable to load units data. Try again; no empty or missing result has been assumed." };
     }
 
     const options: UomSelectOption[] = (data || []).map((cat) => ({
@@ -456,7 +182,7 @@ export async function getUnitsOfMeasure(
 ): Promise<ActionResult<UnitOfMeasureWithCategory[]>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.uom.view")) {
+    if (!hasPermission(ctx, "master_data.uom.view") && !hasGlobalPermission(ctx, "master_data.uom.manage")) {
       return viewPermissionError();
     }
 
@@ -492,7 +218,7 @@ export async function getUnitsOfMeasure(
     const { data, error } = await query;
     if (error) {
       console.error("getUnitsOfMeasure error", error);
-      return { success: false, error: error.message };
+      return { success: false, error: "Unable to load units data. Try again; no empty or missing result has been assumed." };
     }
 
     return { success: true, data: data || [] };
@@ -505,7 +231,7 @@ export async function getUnitsOfMeasure(
 export async function getUnitOfMeasureById(id: number): Promise<ActionResult<UnitOfMeasureWithCategory>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.uom.view")) {
+    if (!hasPermission(ctx, "master_data.uom.view") && !hasGlobalPermission(ctx, "master_data.uom.manage")) {
       return viewPermissionError();
     }
 
@@ -514,13 +240,14 @@ export async function getUnitOfMeasureById(id: number): Promise<ActionResult<Uni
       .from("units_of_measure")
       .select("*, category:uom_categories(*)")
       .eq("id", id)
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error("getUnitOfMeasureById error", error);
-      return { success: false, error: error.message };
+      return { success: false, error: "Unable to load units data. Try again; no empty or missing result has been assumed." };
     }
 
+    if (!data) return { success: false, error: "Record not found or outside your permitted access." };
     return { success: true, data };
   } catch (error) {
     console.error("getUnitOfMeasureById error", error);
@@ -528,282 +255,30 @@ export async function getUnitOfMeasureById(id: number): Promise<ActionResult<Uni
   }
 }
 
-export async function createUnitOfMeasure(
-  input: CreateUnitOfMeasureInput,
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    const result = createUnitOfMeasureSchema.safeParse(input);
-    if (!result.success) {
-      return { success: false, error: formatValidationErrors(result.error.issues) };
-    }
-
-    const validated = result.data;
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.uom.manage")) {
-      return managePermissionError();
-    }
-
-    const supabase = await createClient();
-    const dataToInsert = {
-      ...validated,
-      unit_name_ar: validated.unit_name_ar || null,
-      symbol: validated.symbol || null,
-      description_en: validated.description_en || null,
-      description_ar: validated.description_ar || null,
-      notes: validated.notes || null,
-      created_by: ctx.profile?.id ?? null,
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { data, error } = await supabase
-      .from("units_of_measure")
-      .insert(dataToInsert)
-      .select("id, unit_code")
-      .single();
-
-    if (error) {
-      console.error("createUnitOfMeasure error", error);
-      return { success: false, error: error.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "units_of_measure",
-      entity_id: data.id,
-      entity_reference: data.unit_code,
-      action: "create",
-      new_values: validated,
-    });
-
-    revalidateUomPages();
-    return { success: true, data: { id: data.id } };
-  } catch (error) {
-    console.error("createUnitOfMeasure error", error);
-    return { success: false, error: "An unexpected error occurred" };
-  }
+export async function createUnitOfMeasure(input:CreateUnitOfMeasureInput,contract?:WorkspaceSaveContract):Promise<WorkspaceSaveResult>{
+ const result=createUnitOfMeasureSchema.safeParse(input);
+ if(!result.success)return workspaceValidationFailure(result.error.issues);
+ return saveUomRecord('units_of_measure','save',null,result.data,contract);
 }
 
-export async function updateUnitOfMeasure(input: UpdateUnitOfMeasureInput): Promise<ActionResult<void>> {
-  try {
-    const result = updateUnitOfMeasureSchema.safeParse(input);
-    if (!result.success) {
-      return { success: false, error: formatValidationErrors(result.error.issues) };
-    }
-
-    const validated = result.data;
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.uom.manage")) {
-      return managePermissionError();
-    }
-
-    const supabase = await createClient();
-    const { data: existing, error: fetchError } = await supabase
-      .from("units_of_measure")
-      .select("*")
-      .eq("id", validated.id)
-      .single();
-
-    if (fetchError) {
-      return { success: false, error: fetchError.message };
-    }
-
-    if (existing.is_locked && !isSystemAdmin(ctx.roleCodes)) {
-      return lockedRecordError();
-    }
-
-    const { unit_name_ar, symbol, description_en, description_ar, notes, ...rest } = validated;
-    const dataToUpdate = {
-      ...rest,
-      unit_name_ar: unit_name_ar === undefined ? undefined : unit_name_ar || null,
-      symbol: symbol === undefined ? undefined : symbol || null,
-      description_en: description_en === undefined ? undefined : description_en || null,
-      description_ar: description_ar === undefined ? undefined : description_ar || null,
-      notes: notes === undefined ? undefined : notes || null,
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { error } = await supabase
-      .from("units_of_measure")
-      .update(dataToUpdate)
-      .eq("id", validated.id);
-
-    if (error) {
-      console.error("updateUnitOfMeasure error", error);
-      return { success: false, error: error.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "units_of_measure",
-      entity_id: validated.id,
-      entity_reference: existing.unit_code,
-      action: "update",
-      old_values: createAuditDiff(existing, validated),
-      new_values: validated,
-    });
-
-    revalidateUomPages();
-    return { success: true };
-  } catch (error) {
-    console.error("updateUnitOfMeasure error", error);
-    return { success: false, error: "An unexpected error occurred" };
-  }
+export async function updateUnitOfMeasure(input:UpdateUnitOfMeasureInput,contract?:WorkspaceSaveContract):Promise<WorkspaceSaveResult>{
+ const result=updateUnitOfMeasureSchema.safeParse(input);
+ if(!result.success)return workspaceValidationFailure(result.error.issues);
+ const {id,...data}=result.data;return saveUomRecord('units_of_measure','save',id,data,contract);
 }
 
-export async function deleteUnitOfMeasure(id: number): Promise<ActionResult<void>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!isSystemAdmin(ctx.roleCodes)) {
-      return { success: false, error: "Only system administrators can delete units of measure" };
-    }
-
-    const supabase = await createClient();
-    const { data: existing, error: fetchError } = await supabase
-      .from("units_of_measure")
-      .select("unit_code")
-      .eq("id", id)
-      .single();
-
-    if (fetchError) {
-      return { success: false, error: fetchError.message };
-    }
-
-    const { error } = await supabase.from("units_of_measure").delete().eq("id", id);
-
-    if (error) {
-      console.error("deleteUnitOfMeasure error", error);
-      return { success: false, error: error.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "units_of_measure",
-      entity_id: id,
-      entity_reference: existing.unit_code,
-      action: "delete",
-      old_values: { id, unit_code: existing.unit_code },
-    });
-
-    revalidateUomPages();
-    return { success: true };
-  } catch (error) {
-    console.error("deleteUnitOfMeasure error", error);
-    return { success: false, error: "An unexpected error occurred" };
-  }
+/** Retire without erasing references, receipts or audit history. */
+export async function deleteUnitOfMeasure(id:number,contract?:WorkspaceSaveContract):Promise<WorkspaceSaveResult>{
+ return saveUomRecord('units_of_measure','retire',id,{is_active:false},contract);
 }
 
-export async function toggleUnitOfMeasureStatus(
-  input: ToggleUomStatusInput,
-): Promise<ActionResult<void>> {
-  try {
-    const result = toggleUomStatusSchema.safeParse(input);
-    if (!result.success) {
-      return { success: false, error: formatValidationErrors(result.error.issues) };
-    }
-
-    const validated = result.data;
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.uom.manage")) {
-      return managePermissionError();
-    }
-
-    const supabase = await createClient();
-    const { data: existing, error: fetchError } = await supabase
-      .from("units_of_measure")
-      .select("*")
-      .eq("id", validated.id)
-      .single();
-
-    if (fetchError) {
-      return { success: false, error: fetchError.message };
-    }
-
-    if (existing.is_locked && !isSystemAdmin(ctx.roleCodes)) {
-      return lockedRecordError();
-    }
-
-    const dataToUpdate = {
-      is_active: validated.is_active,
-      deactivated_at: validated.is_active ? null : new Date().toISOString(),
-      deactivated_by: validated.is_active ? null : ctx.profile?.id ?? null,
-      deactivation_reason: validated.is_active ? null : validated.deactivation_reason || null,
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { error } = await supabase
-      .from("units_of_measure")
-      .update(dataToUpdate)
-      .eq("id", validated.id);
-
-    if (error) {
-      console.error("toggleUnitOfMeasureStatus error", error);
-      return { success: false, error: error.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "units_of_measure",
-      entity_id: validated.id,
-      entity_reference: existing.unit_code,
-      action: "toggle_status",
-      old_values: { is_active: existing.is_active },
-      new_values: { is_active: validated.is_active, deactivation_reason: validated.deactivation_reason },
-    });
-
-    revalidateUomPages();
-    return { success: true };
-  } catch (error) {
-    console.error("toggleUnitOfMeasureStatus error", error);
-    return { success: false, error: "An unexpected error occurred" };
-  }
+export async function toggleUnitOfMeasureStatus(input:ToggleUomStatusInput,contract?:WorkspaceSaveContract):Promise<WorkspaceSaveResult>{
+ const result=toggleUomStatusSchema.safeParse(input);if(!result.success)return workspaceValidationFailure(result.error.issues);
+ const {id,...data}=result.data;return saveUomRecord('units_of_measure','active',id,data,contract);
 }
 
-export async function toggleUnitOfMeasureLock(
-  id: number,
-  locked: boolean,
-): Promise<ActionResult<void>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!isSystemAdmin(ctx.roleCodes)) {
-      return { success: false, error: "Only system administrators can lock/unlock units of measure" };
-    }
-
-    const supabase = await createClient();
-    const { data: existing, error: fetchError } = await supabase
-      .from("units_of_measure")
-      .select("unit_code")
-      .eq("id", id)
-      .single();
-
-    if (fetchError) {
-      return { success: false, error: fetchError.message };
-    }
-
-    const { error } = await supabase
-      .from("units_of_measure")
-      .update({ is_locked: locked, updated_by: ctx.profile?.id ?? null })
-      .eq("id", id);
-
-    if (error) {
-      console.error("toggleUnitOfMeasureLock error", error);
-      return { success: false, error: error.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "units_of_measure",
-      entity_id: id,
-      entity_reference: existing.unit_code,
-      action: locked ? "lock" : "unlock",
-      new_values: { is_locked: locked },
-    });
-
-    revalidateUomPages();
-    return { success: true };
-  } catch (error) {
-    console.error("toggleUnitOfMeasureLock error", error);
-    return { success: false, error: "An unexpected error occurred" };
-  }
+export async function toggleUnitOfMeasureLock(id:number,locked:boolean,contract?:WorkspaceSaveContract):Promise<WorkspaceSaveResult>{
+ return saveUomRecord('units_of_measure','lock',id,{is_locked:locked},contract);
 }
 
 export async function getActiveUnitsForSelect(
@@ -826,7 +301,7 @@ export async function getActiveUnitsForSelect(
 
     if (error) {
       console.error("getActiveUnitsForSelect error", error);
-      return { success: false, error: error.message };
+      return { success: false, error: "Unable to load units data. Try again; no empty or missing result has been assumed." };
     }
 
     const options: UomSelectOption[] = (data || []).map((unit) => ({
@@ -854,7 +329,7 @@ export async function getUomConversions(
 ): Promise<ActionResult<UomConversionWithUnits[]>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.uom.view")) {
+    if (!hasPermission(ctx, "master_data.uom.view") && !hasGlobalPermission(ctx, "master_data.uom.manage")) {
       return viewPermissionError();
     }
 
@@ -883,7 +358,7 @@ export async function getUomConversions(
     const { data, error } = await query;
     if (error) {
       console.error("getUomConversions error", error);
-      return { success: false, error: error.message };
+      return { success: false, error: "Unable to load units data. Try again; no empty or missing result has been assumed." };
     }
 
     return { success: true, data: data || [] };
@@ -896,7 +371,7 @@ export async function getUomConversions(
 export async function getUomConversionById(id: number): Promise<ActionResult<UomConversionWithUnits>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.uom.view")) {
+    if (!hasPermission(ctx, "master_data.uom.view") && !hasGlobalPermission(ctx, "master_data.uom.manage")) {
       return viewPermissionError();
     }
 
@@ -905,13 +380,14 @@ export async function getUomConversionById(id: number): Promise<ActionResult<Uom
       .from("uom_conversions")
       .select("*, from_unit:units_of_measure!from_uom_id(*), to_unit:units_of_measure!to_uom_id(*)")
       .eq("id", id)
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error("getUomConversionById error", error);
-      return { success: false, error: error.message };
+      return { success: false, error: "Unable to load units data. Try again; no empty or missing result has been assumed." };
     }
 
+    if (!data) return { success: false, error: "Record not found or outside your permitted access." };
     return { success: true, data };
   } catch (error) {
     console.error("getUomConversionById error", error);
@@ -919,274 +395,28 @@ export async function getUomConversionById(id: number): Promise<ActionResult<Uom
   }
 }
 
-export async function createUomConversion(
-  input: CreateUomConversionInput,
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    const result = createUomConversionSchema.safeParse(input);
-    if (!result.success) {
-      return { success: false, error: formatValidationErrors(result.error.issues) };
-    }
-
-    const validated = result.data;
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.uom.manage")) {
-      return managePermissionError();
-    }
-
-    const supabase = await createClient();
-    const dataToInsert = {
-      ...validated,
-      conversion_formula_code: validated.conversion_formula_code || null,
-      notes: validated.notes || null,
-      created_by: ctx.profile?.id ?? null,
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { data, error } = await supabase
-      .from("uom_conversions")
-      .insert(dataToInsert)
-      .select("id")
-      .single();
-
-    if (error) {
-      console.error("createUomConversion error", error);
-      return { success: false, error: error.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "uom_conversions",
-      entity_id: data.id,
-      entity_reference: `${validated.from_uom_id}->${validated.to_uom_id}`,
-      action: "create",
-      new_values: validated,
-    });
-
-    revalidateUomPages();
-    return { success: true, data: { id: data.id } };
-  } catch (error) {
-    console.error("createUomConversion error", error);
-    return { success: false, error: "An unexpected error occurred" };
-  }
+export async function createUomConversion(input:CreateUomConversionInput,contract?:WorkspaceSaveContract):Promise<WorkspaceSaveResult>{
+ const result=createUomConversionSchema.safeParse(input);
+ if(!result.success)return workspaceValidationFailure(result.error.issues);
+ return saveUomRecord('uom_conversions','save',null,result.data,contract);
 }
 
-export async function updateUomConversion(input: UpdateUomConversionInput): Promise<ActionResult<void>> {
-  try {
-    const result = updateUomConversionSchema.safeParse(input);
-    if (!result.success) {
-      return { success: false, error: formatValidationErrors(result.error.issues) };
-    }
-
-    const validated = result.data;
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.uom.manage")) {
-      return managePermissionError();
-    }
-
-    const supabase = await createClient();
-    const { data: existing, error: fetchError } = await supabase
-      .from("uom_conversions")
-      .select("*")
-      .eq("id", validated.id)
-      .single();
-
-    if (fetchError) {
-      return { success: false, error: fetchError.message };
-    }
-
-    if (existing.is_locked && !isSystemAdmin(ctx.roleCodes)) {
-      return lockedRecordError();
-    }
-
-    const { conversion_formula_code, notes, ...rest } = validated;
-    const dataToUpdate = {
-      ...rest,
-      conversion_formula_code: conversion_formula_code === undefined ? undefined : conversion_formula_code || null,
-      notes: notes === undefined ? undefined : notes || null,
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { error } = await supabase
-      .from("uom_conversions")
-      .update(dataToUpdate)
-      .eq("id", validated.id);
-
-    if (error) {
-      console.error("updateUomConversion error", error);
-      return { success: false, error: error.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "uom_conversions",
-      entity_id: validated.id,
-      entity_reference: `${existing.from_uom_id}->${existing.to_uom_id}`,
-      action: "update",
-      old_values: createAuditDiff(existing, validated),
-      new_values: validated,
-    });
-
-    revalidateUomPages();
-    return { success: true };
-  } catch (error) {
-    console.error("updateUomConversion error", error);
-    return { success: false, error: "An unexpected error occurred" };
-  }
+export async function updateUomConversion(input:UpdateUomConversionInput,contract?:WorkspaceSaveContract):Promise<WorkspaceSaveResult>{
+ const result=updateUomConversionSchema.safeParse(input);
+ if(!result.success)return workspaceValidationFailure(result.error.issues);
+ const {id,...data}=result.data;return saveUomRecord('uom_conversions','save',id,data,contract);
 }
 
-export async function deleteUomConversion(id: number): Promise<ActionResult<void>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!isSystemAdmin(ctx.roleCodes)) {
-      return { success: false, error: "Only system administrators can delete UOM conversions" };
-    }
-
-    const supabase = await createClient();
-    const { data: existing, error: fetchError } = await supabase
-      .from("uom_conversions")
-      .select("from_uom_id, to_uom_id")
-      .eq("id", id)
-      .single();
-
-    if (fetchError) {
-      return { success: false, error: fetchError.message };
-    }
-
-    const { error } = await supabase.from("uom_conversions").delete().eq("id", id);
-
-    if (error) {
-      console.error("deleteUomConversion error", error);
-      return { success: false, error: error.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "uom_conversions",
-      entity_id: id,
-      entity_reference: `${existing.from_uom_id}->${existing.to_uom_id}`,
-      action: "delete",
-      old_values: { id, from_uom_id: existing.from_uom_id, to_uom_id: existing.to_uom_id },
-    });
-
-    revalidateUomPages();
-    return { success: true };
-  } catch (error) {
-    console.error("deleteUomConversion error", error);
-    return { success: false, error: "An unexpected error occurred" };
-  }
+/** Retire without erasing references, receipts or audit history. */
+export async function deleteUomConversion(id:number,contract?:WorkspaceSaveContract):Promise<WorkspaceSaveResult>{
+ return saveUomRecord('uom_conversions','retire',id,{is_active:false},contract);
 }
 
-export async function toggleUomConversionStatus(
-  input: ToggleUomStatusInput,
-): Promise<ActionResult<void>> {
-  try {
-    const result = toggleUomStatusSchema.safeParse(input);
-    if (!result.success) {
-      return { success: false, error: formatValidationErrors(result.error.issues) };
-    }
-
-    const validated = result.data;
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.uom.manage")) {
-      return managePermissionError();
-    }
-
-    const supabase = await createClient();
-    const { data: existing, error: fetchError } = await supabase
-      .from("uom_conversions")
-      .select("*")
-      .eq("id", validated.id)
-      .single();
-
-    if (fetchError) {
-      return { success: false, error: fetchError.message };
-    }
-
-    if (existing.is_locked && !isSystemAdmin(ctx.roleCodes)) {
-      return lockedRecordError();
-    }
-
-    const dataToUpdate = {
-      is_active: validated.is_active,
-      deactivated_at: validated.is_active ? null : new Date().toISOString(),
-      deactivated_by: validated.is_active ? null : ctx.profile?.id ?? null,
-      deactivation_reason: validated.is_active ? null : validated.deactivation_reason || null,
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { error } = await supabase
-      .from("uom_conversions")
-      .update(dataToUpdate)
-      .eq("id", validated.id);
-
-    if (error) {
-      console.error("toggleUomConversionStatus error", error);
-      return { success: false, error: error.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "uom_conversions",
-      entity_id: validated.id,
-      entity_reference: `${existing.from_uom_id}->${existing.to_uom_id}`,
-      action: "toggle_status",
-      old_values: { is_active: existing.is_active },
-      new_values: { is_active: validated.is_active, deactivation_reason: validated.deactivation_reason },
-    });
-
-    revalidateUomPages();
-    return { success: true };
-  } catch (error) {
-    console.error("toggleUomConversionStatus error", error);
-    return { success: false, error: "An unexpected error occurred" };
-  }
+export async function toggleUomConversionStatus(input:ToggleUomStatusInput,contract?:WorkspaceSaveContract):Promise<WorkspaceSaveResult>{
+ const result=toggleUomStatusSchema.safeParse(input);if(!result.success)return workspaceValidationFailure(result.error.issues);
+ const {id,...data}=result.data;return saveUomRecord('uom_conversions','active',id,data,contract);
 }
 
-export async function toggleUomConversionLock(
-  id: number,
-  locked: boolean,
-): Promise<ActionResult<void>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!isSystemAdmin(ctx.roleCodes)) {
-      return { success: false, error: "Only system administrators can lock/unlock UOM conversions" };
-    }
-
-    const supabase = await createClient();
-    const { data: existing, error: fetchError } = await supabase
-      .from("uom_conversions")
-      .select("from_uom_id, to_uom_id")
-      .eq("id", id)
-      .single();
-
-    if (fetchError) {
-      return { success: false, error: fetchError.message };
-    }
-
-    const { error } = await supabase
-      .from("uom_conversions")
-      .update({ is_locked: locked, updated_by: ctx.profile?.id ?? null })
-      .eq("id", id);
-
-    if (error) {
-      console.error("toggleUomConversionLock error", error);
-      return { success: false, error: error.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "uom_conversions",
-      entity_id: id,
-      entity_reference: `${existing.from_uom_id}->${existing.to_uom_id}`,
-      action: locked ? "lock" : "unlock",
-      new_values: { is_locked: locked },
-    });
-
-    revalidateUomPages();
-    return { success: true };
-  } catch (error) {
-    console.error("toggleUomConversionLock error", error);
-    return { success: false, error: "An unexpected error occurred" };
-  }
+export async function toggleUomConversionLock(id:number,locked:boolean,contract?:WorkspaceSaveContract):Promise<WorkspaceSaveResult>{
+ return saveUomRecord('uom_conversions','lock',id,{is_locked:locked},contract);
 }

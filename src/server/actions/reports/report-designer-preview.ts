@@ -23,6 +23,7 @@ import {
 } from "@/lib/report-designer";
 import { renderExecutiveLedgerHtml } from "@/lib/executive-ledger/html-renderer";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {canManageReportBrandingAssets,canViewReportBrandingAssets} from "@/lib/branding/asset-permissions";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -67,16 +68,11 @@ export async function previewReportDesignerTemplate(
   try {
     // ── Auth ────────────────────────────────────────────────────────────────
     const authCtx = await getAuthContext();
-    if (!hasPermission(authCtx, "reports.manage")) {
-      // Fallback: reports.view is acceptable for viewing a saved, published template
-      if (!hasPermission(authCtx, "reports.view")) {
-        return { ok: false, error: "Insufficient permissions — reports.manage required for editor preview" };
-      }
-    }
+    if(!hasPermission(authCtx,"reports.manage")&&!hasPermission(authCtx,"reports.view"))return {ok:false,error:"Report preview is not authorized."};
 
     const { templateId, headerLayoutJson, bodyLayoutJson, footerLayoutJson } = input;
 
-    if (!templateId || typeof templateId !== "number" || templateId <= 0) {
+    if (!Number.isSafeInteger(templateId) || templateId <= 0) {
       return { ok: false, error: "Invalid template ID" };
     }
 
@@ -84,27 +80,40 @@ export async function previewReportDesignerTemplate(
     const supabase = createAdminClient();
     const { data: tpl, error: tplErr } = await supabase
       .from("erp_report_templates")
-      .select("id,template_name,template_type,governance_status")
+      .select("id,template_name,template_type,governance_status,is_active,branding_profile_id,header_layout_json,body_layout_json,footer_layout_json,branding_profile:erp_report_branding_profiles(id,owner_company_id,is_active,deleted_at)")
       .eq("id", templateId)
       .is("deleted_at", null)
       .single();
 
     if (tplErr || !tpl) {
-      return { ok: false, error: tplErr?.message ?? "Template not found" };
+      return { ok: false, error: "Template preview is unavailable." };
     }
 
-    const template = tpl as {
+    const template = tpl as unknown as {
       id: number;
       template_name: string;
       template_type: string;
       governance_status: string;
+      is_active:boolean;
+      branding_profile_id:number|null;
+      branding_profile:{id:number;owner_company_id:number|null;is_active:boolean;deleted_at:string|null}|null;
+      header_layout_json:unknown;
+      body_layout_json:unknown;
+      footer_layout_json:unknown;
     };
+    const profile=template.branding_profile;
+    if(!template.is_active||(template.branding_profile_id!==null&&!profile)||(profile&&(!profile.is_active||profile.deleted_at))||
+      !canViewReportBrandingAssets(authCtx,profile?.owner_company_id??null))return {ok:false,error:"The selected branding is unavailable or not authorized."};
+    const canEdit=canManageReportBrandingAssets(authCtx,profile?.owner_company_id??null);
+    const hasDraftInput=['headerLayoutJson','bodyLayoutJson','footerLayoutJson'].some(key=>Object.hasOwn(input,key));
+    if(!canEdit&&(hasDraftInput||!['approved','published'].includes(template.governance_status))){
+      return {ok:false,error:"Only an authorized template manager can preview draft layouts. Viewers may preview the saved, approved template."};
+    }
 
     // ── Resolve branding context ─────────────────────────────────────────────
     const brandingResult = await resolveTemplatePreview({ templateId });
-    const branding = brandingResult.success && brandingResult.data
-      ? brandingResult.data
-      : {};
+    if(!brandingResult.success||!brandingResult.data)return {ok:false,error:"Template branding could not be loaded. Retry before previewing."};
+    const branding=brandingResult.data;
 
     // ── Sample binding values (REPORT DESIGNER.5 will use real data) ─────────
     const sampleValues = buildSampleBindingValues();
@@ -113,9 +122,9 @@ export async function previewReportDesignerTemplate(
     const { document, warnings } = mapRawZonesToExecutiveLedgerDocument({
       templateName: template.template_name,
       templateType: template.template_type,
-      headerLayoutRaw: headerLayoutJson,
-      bodyLayoutRaw: bodyLayoutJson,
-      footerLayoutRaw: footerLayoutJson,
+      headerLayoutRaw: canEdit&&Object.hasOwn(input,'headerLayoutJson')?headerLayoutJson:template.header_layout_json,
+      bodyLayoutRaw: canEdit&&Object.hasOwn(input,'bodyLayoutJson')?bodyLayoutJson:template.body_layout_json,
+      footerLayoutRaw: canEdit&&Object.hasOwn(input,'footerLayoutJson')?footerLayoutJson:template.footer_layout_json,
       branding,
       bindingValues: sampleValues,
     });
@@ -135,11 +144,10 @@ export async function previewReportDesignerTemplate(
       html,
       warnings: allWarnings,
     };
-  } catch (err) {
-    console.error("[report-designer-preview] previewReportDesignerTemplate:", err);
+  } catch {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : "Unexpected error during preview generation",
+      error: "The preview could not be generated. Retry or ask an authorized template manager to check the selected branding.",
     };
   }
 }

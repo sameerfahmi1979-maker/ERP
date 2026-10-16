@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -16,8 +17,6 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import type { LookupValue, LookupCategory } from "@/features/master-data/lookups/types";
-import { createLookupValueSchema, updateLookupValueSchema } from "@/features/master-data/lookups/validation";
-import { createLookupValue, updateLookupValue } from "@/server/actions/master-data/lookups";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { FileText, Layers, Calendar, Shield, Info, Palette } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -31,6 +30,9 @@ import {
   ERPRecordSectionPanel,
 } from "@/components/workspace/erp-record-workspace-form";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
+import {useLookupMutation,lookupDraftMatches} from '@/features/master-data/lookups/use-lookup-mutation';
+import {lookupCapabilities} from '@/features/master-data/lookups/permissions';
+import {valueFormPayload} from '@/features/master-data/lookups/form-data';
 
 type LookupValueWorkspaceFormProps = {
   value?: LookupValue | null;
@@ -45,11 +47,16 @@ export function LookupValueWorkspaceForm(props: LookupValueWorkspaceFormProps) {
   return <LookupValueFormSession key={props.value?.id ?? "new"} {...props} />;
 }
 
-function LookupValueFormSession({ value, categories, mode }: LookupValueWorkspaceFormProps) {
-  const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
+function LookupValueFormSession({ value, categories, mode, authContext }: LookupValueWorkspaceFormProps) {
+  const { closeTab, activeTab, markDirty, forceCloseActiveTab, updateTabRoute, renameTab, isTabActive } = useWorkspace();
+  const router = useRouter();
   const queryClient = useQueryClient();
+  const capabilities=lookupCapabilities(authContext);
+  const session=useLookupMutation(FORM_ID,value?.id??null,value?.workspace_revision);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [localError, setLocalError] = useState<string|null>(null);
+  const localBlocked = useRef(false);
   const sections = [
     { id: "basic", label: "Basic Info", icon: FileText },
     { id: "display", label: "Display & Hierarchy", icon: Layers },
@@ -60,11 +67,12 @@ function LookupValueFormSession({ value, categories, mode }: LookupValueWorkspac
   const [activeSection, setActiveSection] = useWorkspaceFormSection(FORM_ID, "basic", sections.map(section => section.id));
   const [colorPreview, setColorPreview] = useState(value?.color_hex ?? "");
 
-  const isEditing = mode === "edit";
-  const isViewing = mode === "view";
+  const isEditing = mode === "edit" || session.savedId !== null;
+  const isViewing = mode === "view" || !capabilities.manage || ((!!value?.is_locked || !!categories.find(c=>c.id===value?.category_id)?.is_locked) && !capabilities.lock);
 
   const { isDirty, resetDirty } = useFormDirty({ formId: FORM_ID, enabled: !isViewing });
   const { getDraftDefault, getDraftNullableId, getDraftBoolean, syncDraft, writeDraftField, clearDraft } = useWorkspaceFormDraft({ formId: FORM_ID, enabled: !isViewing });
+  const [recordCode, setRecordCode] = useState(() => value?.value_code ?? getDraftDefault("value_code", ""));
 
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(() => {
     return getDraftNullableId("category_id", value?.category_id ?? (categories[0]?.id ?? null));
@@ -79,121 +87,98 @@ function LookupValueFormSession({ value, categories, mode }: LookupValueWorkspac
 
   const handleRequestClose = () => closeTab(activeTab?.id ?? "");
 
-  const handleSave = async (): Promise<boolean> => {
-    if (isViewing) return false;
-    const form = document.getElementById(FORM_ID) as HTMLFormElement;
-    const formData = new FormData(form);
-
-    let metadataJson: Record<string, unknown> = {};
-    const metadataStr = formData.get("metadata_json") as string;
-    if (metadataStr && metadataStr.trim()) {
-      try {
-        metadataJson = JSON.parse(metadataStr);
-      } catch {
-        toast.error("Invalid JSON in metadata field");
-        return false;
-      }
-    }
-
+  const handleSave = async (closeAfter = false): Promise<boolean> => {
+    if (!session.isCurrent() || isViewing || isSubmitting || session.blocked || localBlocked.current) return false;
     setIsSubmitting(true);
+    let acknowledged = false;
     try {
-      const data = {
-        category_id: parseInt(formData.get("category_id") as string),
-        value_code: (formData.get("value_code") as string).toUpperCase(),
-        value_label_en: formData.get("value_label_en") as string,
-        value_label_ar: (formData.get("value_label_ar") as string) || null,
-        description: (formData.get("description") as string) || null,
-        parent_value_id: formData.get("parent_value_id") ? parseInt(formData.get("parent_value_id") as string) : null,
-        color_hex: (formData.get("color_hex") as string) || null,
-        icon_name: (formData.get("icon_name") as string) || null,
-        badge_variant: (formData.get("badge_variant") as string) || null,
-        sort_order: parseInt(formData.get("sort_order") as string) || 0,
-        is_default: formData.get("is_default") === "on",
-        is_active: formData.get("is_active") === "on",
-        is_locked: formData.get("is_locked") === "on",
-        effective_from: (formData.get("effective_from") as string) || null,
-        effective_to: (formData.get("effective_to") as string) || null,
-        metadata_json: metadataJson,
-      };
-
-      let validatedData;
-      try {
-        if (isEditing && value) {
-          validatedData = updateLookupValueSchema.parse({ id: value.id, ...data });
-        } else {
-          validatedData = createLookupValueSchema.parse(data);
+      const form=document.getElementById(FORM_ID) as HTMLFormElement;
+      const creating=session.savedId===null;
+      const selected=categories.find(c=>c.id===(value?.category_id??selectedCategoryId));
+      if(!session.uncertain&&!selected){toast.error('The category could not be verified. Reopen this record before saving.');return false;}
+      const result=await session.run(session.uncertain?undefined:{
+        kind:'value',action:'save',categoryId:selected!.id,categoryRevision:String(selected!.workspace_revision),
+        data:valueFormPayload(new FormData(form),creating),
+      });
+      if(!session.isCurrent())return false;
+      if(result.success) {
+        if(!result.acknowledged){toast.warning('Saved, but this workspace could not acknowledge it. Reopen the record.');return false;}
+        acknowledged=true;
+        const original=result.retainedCommand,receipt=result.data;
+        if(!original||!receipt)throw Error('Acknowledged identity is unavailable.');
+        const code=typeof original.data.value_code==='string'?original.data.value_code:recordCode;
+        const name=String(original.data.value_label_en??value?.value_label_en??code);
+        const unchanged=lookupDraftMatches(form,original);
+        setRecordCode(code);setSelectedCategoryId(receipt.category_id);
+        const route=`/admin/master-data/lookups/values/record/${receipt.id}?mode=edit`;
+        let failed=false;
+        const effect=(action:()=>void)=>{if(session.isCurrent())try{action();}catch{failed=true;}};
+        if(unchanged)effect(()=>{clearDraft();resetDirty();});
+        else effect(()=>{syncDraft();writeDraftField('value_code',code);writeDraftField('category_id',receipt.category_id);});
+        if(activeTab){
+          effect(()=>markDirty(activeTab.id,!unchanged));
+          effect(()=>updateTabRoute(activeTab.id,route,receipt.id,'edit'));
+          effect(()=>renameTab(activeTab.id,name,code));
         }
-      } catch (error: unknown) {
-        const zodError = error as { errors?: { message: string }[] };
-        if (zodError.errors) {
-          toast.error(`Validation Error: ${zodError.errors[0].message}`);
-        } else {
-          toast.error("Validation failed");
-        }
-        return false;
-      }
-
-      let result;
-      if (isEditing && value) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        result = await updateLookupValue(validatedData as any);
-      } else {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        result = await createLookupValue(validatedData as any);
-      }
-
-      if (result.success) {
-        toast.success(`Lookup value ${isEditing ? "updated" : "created"} successfully`);
-        clearDraft();
-        resetDirty();
-        invalidateAllLookups(queryClient);
+        effect(()=>invalidateAllLookups(queryClient));
+        if(!closeAfter&&creating&&activeTab)effect(()=>{if(isTabActive(activeTab.id))router.replace(route);});
+        if(failed)throw Error('Local display could not refresh.');
+        effect(()=>toast.success('Lookup value saved.'));
+        if(closeAfter&&unchanged)effect(()=>forceCloseActiveTab());
+        if(failed)throw Error('Local completion could not finish.');
         return true;
-      } else {
-        toast.error(result.error ?? "Failed to save lookup value");
-        return false;
       }
-    } catch {
-      toast.error("An unexpected error occurred");
-      return false;
-    } finally {
-      setIsSubmitting(false);
+      toast.error(result.error??'The lookup could not be saved.');return false;
+    }catch{
+      if(!session.isCurrent())return acknowledged;
+      if(acknowledged){
+        localBlocked.current=true;
+        const error='Saved. A local view could not refresh; reopen it before another change.';
+        setLocalError(error);try{toast.warning(error);}catch{/* Feedback cannot retry a confirmed save. */}
+        return true;
+      }
+      toast.error('Check the rendered fields and metadata. Your entries are retained.');return false;
     }
+    finally{if(session.isCurrent())setIsSubmitting(false);}
   };
 
   const handleSaveAndClose = async () => {
-    const success = await handleSave();
-    if (success) forceCloseActiveTab();
+    await handleSave(true);
   };
 
   return (
     <ERPRecordWorkspaceForm
-      mode={mode}
+      mode={isViewing ? "view" : isEditing ? "edit" : "add"}
       title={isViewing ? "View Lookup Value" : isEditing ? "Edit Lookup Value" : "New Lookup Value"}
-      subtitle={value ? `Value Code: ${value.value_code}` : "Create a new lookup value"}
-      recordCode={value?.value_code}
+      subtitle={isEditing || value ? `Value Code: ${recordCode}` : "Create a new lookup value"}
+      recordCode={isEditing || value ? recordCode : undefined}
       sections={sections}
       activeSection={activeSection}
       onSectionChange={setActiveSection}
       isDirty={isDirty}
-      onSave={isViewing ? undefined : handleSave}
-      onSaveAndClose={isViewing ? undefined : handleSaveAndClose}
+      onSave={isViewing || session.blocked || localError ? undefined : handleSave}
+      onSaveAndClose={isViewing || session.blocked || localError ? undefined : handleSaveAndClose}
       onRequestClose={handleRequestClose}
       isSubmitting={isSubmitting}
     >
+      {(localError||session.message||session.recoveryError) && <div role="alert" className="m-4 rounded border p-3"><p>{localError??session.message??session.recoveryError}</p>{session.uncertain&&!session.blocked&&!localError&&<button type="button" onClick={()=>void handleSave()} disabled={session.working}>Recover original request</button>}</div>}
       <form id={FORM_ID} onSubmit={(e) => { e.preventDefault(); handleSaveAndClose(); }} onInput={syncDraft} onChange={syncDraft}>
+        <fieldset disabled={isViewing||session.working||session.uncertain||session.blocked||!!localError} className="contents">
         <ERPRecordSectionPanel id="basic" activeId={activeSection} title="Basic Information">
           <div className="grid grid-cols-12 gap-4">
             <div className="space-y-2 col-span-6">
               <RequiredLabel htmlFor="category_id">Category</RequiredLabel>
               <Select
+                id="category_id"
                 name="category_id"
+                items={categories.map(cat=>({value:String(cat.id),label:`${cat.category_name_en} (${cat.category_code})`}))}
                 value={selectedCategoryId?.toString()}
                 onValueChange={(val) => { const n = val ? parseInt(val) : null; setSelectedCategoryId(n); writeDraftField("category_id", n ?? ""); }}
-                disabled={isViewing || isEditing}
+                disabled={isViewing || isEditing || session.savedId!==null}
                 required
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select category" />
+                  <SelectValue placeholder="Select category">{selectedCategoryId!==null&&!selectedCategory?'Selected category unavailable — reopen this record':undefined}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {categories.map((cat) => (
@@ -212,8 +197,9 @@ function LookupValueFormSession({ value, categories, mode }: LookupValueWorkspac
                 id="value_code"
                 name="value_code"
                 required
-                defaultValue={getDraftDefault("value_code", value?.value_code ?? "")}
-                disabled={isViewing || isEditing}
+                value={recordCode}
+                onChange={(event)=>setRecordCode(event.target.value)}
+                disabled={isViewing || isEditing || session.savedId!==null}
                 placeholder="PENDING"
                 className="uppercase"
                 maxLength={100}
@@ -302,9 +288,10 @@ function LookupValueFormSession({ value, categories, mode }: LookupValueWorkspac
 
                 <div className="space-y-2 col-span-6">
                   <Label htmlFor="badge_variant" className="text-muted-foreground text-xs">Badge Variant</Label>
-                  <Select name="badge_variant" defaultValue={getDraftDefault("badge_variant", value?.badge_variant ?? "default")} disabled={isViewing}>
+                  <Select name="badge_variant" defaultValue={getDraftDefault("badge_variant", value?.badge_variant ?? "__none")} disabled={isViewing}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="__none">No badge variant</SelectItem>
                       <SelectItem value="default">Default</SelectItem>
                       <SelectItem value="success">Success</SelectItem>
                       <SelectItem value="warning">Warning</SelectItem>
@@ -390,9 +377,7 @@ function LookupValueFormSession({ value, categories, mode }: LookupValueWorkspac
                   id="metadata_json"
                   name="metadata_json"
                   defaultValue={
-                    value?.metadata_json && Object.keys(value.metadata_json).length > 0
-                      ? JSON.stringify(value.metadata_json, null, 2)
-                      : ""
+                    getDraftDefault("metadata_json", value?.metadata_json ? JSON.stringify(value.metadata_json, null, 2) : "")
                   }
                   disabled={isViewing}
                   placeholder='{"key": "value"}'
@@ -420,12 +405,12 @@ function LookupValueFormSession({ value, categories, mode }: LookupValueWorkspac
                 <Label htmlFor="is_active" className="text-sm font-normal cursor-pointer">Active</Label>
               </div>
               <div className="flex items-center space-x-2">
-                <Checkbox id="is_default" name="is_default" defaultChecked={getDraftBoolean("is_default", value?.is_default ?? false)} disabled={isViewing} />
-                <Label htmlFor="is_default" className="text-sm font-normal cursor-pointer">Set as Default</Label>
+                <Checkbox id="is_default" checked={value?.is_default??false} disabled />
+                <Label htmlFor="is_default" className="text-sm font-normal cursor-pointer">Default — save this record, then use the list Set as Default command</Label>
               </div>
               <div className="flex items-center space-x-2">
-                <Checkbox id="is_locked" name="is_locked" defaultChecked={getDraftBoolean("is_locked", value?.is_locked ?? false)} disabled={isViewing} />
-                <Label htmlFor="is_locked" className="text-sm font-normal cursor-pointer">Locked (Prevent Modification)</Label>
+                <Checkbox id="is_locked" checked={value?.is_locked??false} disabled />
+                <Label htmlFor="is_locked" className="text-sm font-normal cursor-pointer">Locked — change using the list Lock/Unlock command</Label>
               </div>
             </div>
             {value?.is_system && (
@@ -467,6 +452,7 @@ function LookupValueFormSession({ value, categories, mode }: LookupValueWorkspac
             <p className="text-sm text-muted-foreground">Audit information will be available after saving</p>
           )}
         </ERPRecordSectionPanel>
+        </fieldset>
       </form>
     </ERPRecordWorkspaceForm>
   );

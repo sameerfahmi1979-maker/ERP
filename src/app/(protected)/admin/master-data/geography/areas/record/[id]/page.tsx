@@ -1,5 +1,5 @@
 import { redirect, notFound } from "next/navigation";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, hasGlobalPermission } from "@/lib/rbac/check";
 import { getAreaById } from "@/features/master-data/geography/actions";
 import { AreaWorkspaceForm } from "@/features/master-data/geography/components/area-workspace-form";
 import Link from "next/link";
@@ -25,7 +25,7 @@ export default async function AreaRecordPage({ params, searchParams }: Props) {
       </div>
     );
   }
-  const canEdit = hasPermission(authContext, "master_data.geography.manage");
+  const canEdit = hasGlobalPermission(authContext, 'master_data.geography.manage');
   const mode: "view" | "edit" = modeParam === "edit" && canEdit ? "edit" : "view";
   return <div className="h-full"><AreaWorkspaceForm area={result.data} mode={mode} authContext={authContext} /></div>;
 }

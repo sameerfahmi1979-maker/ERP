@@ -3,47 +3,27 @@
 import { ERPDataTable } from "@/components/erp/table/erp-data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import type { LookupCategory, LookupValueWithCategory } from "@/features/master-data/lookups/types";
-import {
-  setDefaultLookupValue,
-  toggleLookupValueLock,
-  toggleLookupValueStatus,
-} from "@/server/actions/master-data/lookups";
 import type { ColumnDef } from "@tanstack/react-table";
 import { format } from "date-fns";
-import {
-  Eye,
-  Lock,
-  MoreHorizontal,
-  Pencil,
-  Plus,
-  Power,
-  Star,
-  Unlock,
-} from "lucide-react";
+import {Lock,Plus,Star} from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { toast } from "sonner";
+import {LookupRowActions} from './lookup-row-actions';
+import {lookupValueSearch,lookupValueCategorySearch,lookupCodeSorting,lookupCategorySorting} from '../list-search';
 
 type ValuesTableProps = {
   values: LookupValueWithCategory[];
   categories: LookupCategory[];
   onRefresh?: () => void;
+  readGeneration?:string;
+  canManage: boolean;
+  canLock: boolean;
 };
 
 const BASE = "/admin/master-data/lookups/values";
 
-export function ValuesTable({ values, onRefresh }: ValuesTableProps) {
+export function ValuesTable({ values, onRefresh, canManage, canLock, readGeneration }: ValuesTableProps) {
   const router = useRouter();
-  const [isLoading, setIsLoading] = useState(false);
 
   const handleRefresh = () => {
     if (onRefresh) { onRefresh(); } else { router.refresh(); }
@@ -53,59 +33,11 @@ export function ValuesTable({ values, onRefresh }: ValuesTableProps) {
   const handleView = (value: LookupValueWithCategory) => router.push(`${BASE}/record/${value.id}`);
   const handleEdit = (value: LookupValueWithCategory) => router.push(`${BASE}/record/${value.id}?mode=edit`);
 
-  const handleToggleActive = async (value: LookupValueWithCategory) => {
-    setIsLoading(true);
-    try {
-      const result = await toggleLookupValueStatus(value.id, !value.is_active);
-      if (result.success) {
-        toast.success(`Value ${value.is_active ? "deactivated" : "activated"} successfully`);
-        handleRefresh();
-      } else {
-        toast.error(result.error ?? "Failed to toggle value status");
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleToggleLock = async (value: LookupValueWithCategory) => {
-    setIsLoading(true);
-    try {
-      const result = await toggleLookupValueLock(value.id, !value.is_locked);
-      if (result.success) {
-        toast.success(`Value ${value.is_locked ? "unlocked" : "locked"} successfully`);
-        handleRefresh();
-      } else {
-        toast.error(result.error ?? "Failed to toggle value lock");
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSetDefault = async (value: LookupValueWithCategory) => {
-    if (value.is_default) {
-      toast.info("This value is already the default");
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const result = await setDefaultLookupValue(value.id, value.category_id);
-      if (result.success) {
-        toast.success(`Set "${value.value_label_en}" as default for category`);
-        handleRefresh();
-      } else {
-        toast.error(result.error ?? "Failed to set default value");
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const columns: ColumnDef<LookupValueWithCategory>[] = [
     {
-      accessorKey: "value_code",
+      id: "value_code",
+      accessorFn: lookupValueSearch,
+      sortingFn: lookupCodeSorting<LookupValueWithCategory>(row=>row.value_code),
       header: "Value",
       cell: ({ row }) => (
         <div className="flex items-center gap-2">
@@ -127,7 +59,10 @@ export function ValuesTable({ values, onRefresh }: ValuesTableProps) {
       },
     },
     {
-      accessorKey: "category",
+      id: "category",
+      accessorFn: lookupValueCategorySearch,
+      sortingFn: lookupCategorySorting,
+      sortDescFirst: true,
       header: "Category",
       cell: ({ row }) => (
         <div className="flex flex-col">
@@ -285,59 +220,10 @@ export function ValuesTable({ values, onRefresh }: ValuesTableProps) {
       id: "actions",
       header: "Actions",
       cell: ({ row }) => {
-        const value = row.original;
-        const isDisabled = isLoading;
-
-        return (
-          <DropdownMenu>
-            <DropdownMenuTrigger render={
-              <Button variant="ghost" size="icon" className="h-8 w-8" disabled={isDisabled}>
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            }>
-              <span className="sr-only">Open menu</span>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuGroup>
-                <DropdownMenuItem onClick={() => handleView(value)}>
-                  <Eye className="h-4 w-4 mr-2" />
-                  View Details
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleEdit(value)} disabled={value.is_locked}>
-                  <Pencil className="h-4 w-4 mr-2" />
-                  Edit
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuGroup>
-                <DropdownMenuItem
-                  onClick={() => handleSetDefault(value)}
-                  disabled={value.is_default || !value.is_active}
-                >
-                  <Star className="h-4 w-4 mr-2" />
-                  Set as Default
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleToggleActive(value)} disabled={value.is_locked}>
-                  <Power className="h-4 w-4 mr-2" />
-                  {value.is_active ? "Deactivate" : "Activate"}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleToggleLock(value)}>
-                  {value.is_locked ? (
-                    <>
-                      <Unlock className="h-4 w-4 mr-2" />
-                      Unlock
-                    </>
-                  ) : (
-                    <>
-                      <Lock className="h-4 w-4 mr-2" />
-                      Lock
-                    </>
-                  )}
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        );
+        const value=row.original;
+        return <LookupRowActions readGeneration={readGeneration} kind="value" id={value.id} revision={value.workspace_revision} active={value.is_active} locked={value.is_locked}
+          isDefault={value.is_default} categoryId={value.category_id} categoryRevision={value.category?.workspace_revision} categoryLocked={value.category?.is_locked} categoryActive={value.category?.is_active}
+          canManage={canManage} canLock={canLock} onView={()=>handleView(value)} onEdit={()=>handleEdit(value)} onRefresh={handleRefresh}/>;
       },
       meta: {
         exportable: false,
@@ -366,10 +252,10 @@ export function ValuesTable({ values, onRefresh }: ValuesTableProps) {
           orientation: "landscape",
         }}
         toolbarSlot={
-          <Button onClick={handleAdd} size="sm" className="gap-2">
+          canManage ? <Button onClick={handleAdd} size="sm" className="gap-2">
             <Plus className="h-4 w-4" />
             Add Value
-          </Button>
+          </Button> : null
         }
       />
 

@@ -16,7 +16,8 @@ import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
  * FORBIDDEN: Undo, Rollback, Auto Revert, Restore Automatically, One-click Revert
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import {useWorkspaceSaveSession} from '@/hooks/use-workspace-save-session';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, AlertTriangle, Pencil } from "lucide-react";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
@@ -58,6 +59,9 @@ export function DmsApplyCorrectionDrawer({
   const [correctionMode, setCorrectionMode] = useState<CorrectionMode>("manual");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const session=useWorkspaceSaveSession(`dms-party-correction:${applyItemId}`,null,undefined);
+  const inFlight = useRef(false);
+  const [uncertain,setUncertain] = useState(false);
 
   // Confirmation step
   const [confirmProposal, setConfirmProposal] = useState<Pick<
@@ -87,17 +91,20 @@ export function DmsApplyCorrectionDrawer({
 
   // ── Handle propose ──────────────────────────────────────────────────────
   const handlePropose = async () => {
-    if (!source) return;
+    if (!source || inFlight.current) return;
     if (!correctionValue.trim()) {
       setSubmitError("Please enter a correction value.");
       return;
     }
 
+    inFlight.current=true;
     setIsSubmitting(true);
     setSubmitError(null);
 
     try {
+      const requestId=session.begin({source,correctionMode,correctionValue}).operationId;
       const result = await createApplyCorrectionProposal({
+        requestId,
         originalApplyItemId: source.originalApplyItemId,
         correctionMode,
         rawCorrectionValue: correctionValue,
@@ -105,11 +112,15 @@ export function DmsApplyCorrectionDrawer({
       });
 
       if (!result.success) {
+        setUncertain(result.uncertain===true);
+        if(!result.uncertain)session.rejected();
         setSubmitError(result.error ?? "Failed to create correction proposal.");
         return;
       }
 
       const proposalId = result.data!.proposalId;
+      setUncertain(false);
+      session.rejected();
       onProposed?.(proposalId);
 
       // Invalidate queries
@@ -125,17 +136,21 @@ export function DmsApplyCorrectionDrawer({
         target_field:               source.targetField,
         target_record_id:           source.targetRecordId,
         current_value_summary:      source.currentValueSummary,
-        proposed_correction_summary: correctionValue.slice(0, 200),
+        proposed_correction_summary: source.targetField==='tax_registration_number'?'*'.repeat(Math.max(0,correctionValue.length-4))+correctionValue.slice(-4):correctionValue.slice(0,200),
         correction_mode:            correctionMode,
       });
-    } catch (err) {
-      setSubmitError(String(err));
+    } catch {
+      setUncertain(true);
+      setSubmitError('The outcome is unconfirmed. Retry this same proposal to recover its result.');
     } finally {
+      inFlight.current=false;
       setIsSubmitting(false);
     }
   };
 
   const handleCancel = () => {
+    if(inFlight.current||uncertain){setSubmitError('Recover the pending proposal before closing this review.');return;}
+    session.rejected();
     setCorrectionValue("");
     setCorrectionMode("manual");
     setSubmitError(null);
@@ -154,7 +169,7 @@ export function DmsApplyCorrectionDrawer({
         size="lg"
         isSubmitting={false}
       >
-        <div className="flex items-center gap-2 py-8 text-slate-500">
+        <div className="flex items-center gap-2 py-8 text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin" />
           <span>Loading correction source…</span>
         </div>
@@ -174,7 +189,7 @@ export function DmsApplyCorrectionDrawer({
         size="lg"
         isSubmitting={false}
       >
-        <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-700">
+        <div role="alert" className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-3 text-sm text-destructive">
           <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
           {sourceError instanceof Error
             ? sourceError.message
@@ -196,6 +211,7 @@ export function DmsApplyCorrectionDrawer({
         size="lg"
         isSubmitting={isSubmitting}
         onSubmit={handlePropose}
+        closeDisabled={isSubmitting||uncertain}
         submitLabel="Propose Correction"
         cancelLabel="Cancel"
       >
@@ -205,6 +221,8 @@ export function DmsApplyCorrectionDrawer({
 
           {/* Proposal form */}
           <DmsApplyCorrectionProposalForm
+            hideActions
+            outcomeUncertain={uncertain}
             source={source}
             value={correctionValue}
             onChange={setCorrectionValue}
@@ -225,20 +243,14 @@ export function DmsApplyCorrectionDrawer({
           onOpenChange={(open) => {
             if (!open) {
               setConfirmProposal(null);
+              // A single close owns refresh for both confirmed apply and cancel.
+              void qc.invalidateQueries({queryKey:queryKeys.dms.applyCorrectionSource(applyItemId)});
+              void qc.invalidateQueries({queryKey:queryKeys.dms.applyCorrectionProposals()});
+              void qc.invalidateQueries({queryKey:queryKeys.dms.applyToErpRuns()});
               onOpenChange(false);
             }
           }}
           proposal={confirmProposal}
-          onApplied={() => {
-            setConfirmProposal(null);
-            void qc.invalidateQueries({
-              queryKey: queryKeys.dms.applyCorrectionProposals({}),
-            });
-            void qc.invalidateQueries({
-              queryKey: queryKeys.dms.applyToErpRuns(),
-            });
-            onOpenChange(false);
-          }}
         />
       )}
     </></QueryReadBoundary>

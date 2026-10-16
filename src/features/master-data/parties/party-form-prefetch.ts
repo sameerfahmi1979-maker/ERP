@@ -40,14 +40,14 @@ export async function prefetchPartyFormData(queryClient: QueryClient): Promise<v
   const staleTime = 5 * 60 * 1000;
 
   const prefetchAll = [
-    queryClient.prefetchQuery({ queryKey: queryKeys.countries(false, false), queryFn: () => fetchCountries(false, false), staleTime }),
-    queryClient.prefetchQuery({ queryKey: queryKeys.currencies(false), queryFn: () => fetchCurrencies(false), staleTime }),
-    queryClient.prefetchQuery({ queryKey: queryKeys.paymentTerms(false), queryFn: () => fetchPaymentTerms(false), staleTime }),
-    queryClient.prefetchQuery({ queryKey: queryKeys.taxTypes(false), queryFn: () => fetchTaxTypes(false), staleTime }),
+    queryClient.prefetchQuery({ queryKey: queryKeys.countries(false, false), queryFn: ({signal}) => fetchCountries(false, false, signal), staleTime }),
+    queryClient.prefetchQuery({ queryKey: queryKeys.currencies(false), queryFn: ({signal}) => fetchCurrencies(false, signal), staleTime }),
+    queryClient.prefetchQuery({ queryKey: queryKeys.paymentTerms(false), queryFn: ({signal}) => fetchPaymentTerms(false, signal), staleTime }),
+    queryClient.prefetchQuery({ queryKey: queryKeys.taxTypes(false), queryFn: ({signal}) => fetchTaxTypes(false, signal), staleTime }),
 
     // Each queryFn must unwrap the ActionResult to match how the consuming component's queryFn reads the cache.
-    queryClient.prefetchQuery({ queryKey: ["party_natures"], queryFn: async () => { const r = await getPartyNatures(); return r.data ?? []; }, staleTime }),
-    queryClient.prefetchQuery({ queryKey: ["party_statuses"], queryFn: async () => { const r = await getPartyStatuses(); return r.data ?? []; }, staleTime }),
+    queryClient.prefetchQuery({ queryKey: ["party_natures"], queryFn: async () => { const r = await getPartyNatures(); if (!r.success || !r.data) throw new Error("Party natures could not be loaded."); return r.data; }, staleTime }),
+    queryClient.prefetchQuery({ queryKey: ["party_statuses"], queryFn: async () => { const r = await getPartyStatuses(); if (!r.success || !r.data) throw new Error("Party statuses could not be loaded."); return r.data; }, staleTime }),
     queryClient.prefetchQuery({ queryKey: ["party_types"], queryFn: async () => { const r = await getPartyTypes(); return r.data ?? []; }, staleTime }),
     queryClient.prefetchQuery({ queryKey: ["party_license_types"], queryFn: async () => { const r = await getPartyLicenseTypes(); return r.data ?? []; }, staleTime }),
     queryClient.prefetchQuery({ queryKey: ["party_license_statuses"], queryFn: async () => { const r = await getPartyLicenseStatuses(); return r.data ?? []; }, staleTime }),

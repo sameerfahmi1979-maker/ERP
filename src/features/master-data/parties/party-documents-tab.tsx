@@ -12,10 +12,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Edit, Trash2, FileText, AlertTriangle } from "lucide-react";
+import { Plus, Edit, FileText, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
+import {PartyChildLifecycleControl,usePartyChildLifecycle} from './party-child-lifecycle-control';
+import {PartyChildSaveDialog,type SavePartyChild} from './party-child-save-dialog';
+import type {CreatePartyDocumentInput} from './party-schemas';
 import { format, isPast } from "date-fns";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
+
 import { ERPCombobox } from "@/components/erp/combobox";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { usePartyDocumentsQuery } from "./hooks/use-party-child-queries";
@@ -23,7 +26,6 @@ import { invalidatePartyDocuments } from "@/lib/query/invalidation";
 import {
   createPartyDocument,
   updatePartyDocument,
-  deletePartyDocument,
 } from "@/server/actions/master-data/party-documents";
 import {
   getPartyDocumentTypes,
@@ -53,9 +55,12 @@ export function PartyDocumentsTab({ partyId, disabled, onChildOpen }: PartyDocum
   const queryClient = useQueryClient();
   const { items: documents, isLoading, error: loadError, refetch } = usePartyDocumentsQuery(partyId);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const lifecycle=usePartyChildLifecycle({entity:'party_documents',onSaved:()=>{invalidatePartyDocuments(queryClient,partyId);},onOpenChange:onChildOpen});
+  const lifecycleOpen=lifecycle.isOpen;
   const setDialogOpen = (open: boolean) => { setIsDialogOpen(open); onChildOpen?.(open); };
   const [editing, setEditing] = useState<PartyDocument | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
   const [form, setForm] = useState({ ...emptyForm });
 
   const { data: docTypes } = useQuery({
@@ -71,12 +76,14 @@ export function PartyDocumentsTab({ partyId, disabled, onChildOpen }: PartyDocum
   });
 
   const openAdd = () => {
+    if(lifecycleOpen)return;
     setEditing(null);
     setForm({ ...emptyForm });
     setDialogOpen(true);
   };
 
   const openEdit = (item: PartyDocument) => {
+    if(lifecycleOpen)return;
     setEditing(item);
     setForm({
       document_type_id: item.document_type_id,
@@ -85,25 +92,15 @@ export function PartyDocumentsTab({ partyId, disabled, onChildOpen }: PartyDocum
       issue_date: item.issue_date ?? "",
       expiry_date: item.expiry_date ?? "",
       expiry_required: item.expiry_required,
-      renewal_notice_days: item.renewal_notice_days ? String(item.renewal_notice_days) : "",
+      renewal_notice_days: item.renewal_notice_days == null ? "" : String(item.renewal_notice_days),
       document_status_id: item.document_status_id,
       remarks: item.remarks ?? "",
     });
     setDialogOpen(true);
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("Delete this document record?")) return;
-    const result = await deletePartyDocument(id);
-    if (result.success) {
-      toast.success("Document deleted");
-      invalidatePartyDocuments(queryClient, partyId);
-    } else {
-      toast.error(result.error ?? "Failed to delete");
-    }
-  };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (save:SavePartyChild<CreatePartyDocumentInput>) => {
     if (!form.document_type_id || !form.document_title || !form.document_status_id) {
       toast.error("Document type, title, and status are required");
       return;
@@ -117,19 +114,17 @@ export function PartyDocumentsTab({ partyId, disabled, onChildOpen }: PartyDocum
         document_number: form.document_number || null,
         issue_date: form.issue_date || null,
         expiry_date: form.expiry_date || null,
-        issuing_authority_party_id: null,
+        issuing_authority_party_id: editing?.issuing_authority_party_id ?? null,
         expiry_required: form.expiry_required,
         renewal_notice_days: form.renewal_notice_days ? parseInt(form.renewal_notice_days) : null,
         document_status_id: form.document_status_id!,
         remarks: form.remarks || null,
       };
 
-      const result = editing
-        ? await updatePartyDocument({ id: editing.id, ...payload })
-        : await createPartyDocument(payload);
+      const result = await save(payload);
 
       if (result.success) {
-        toast.success(`Document ${editing ? "updated" : "added"}`);
+        toast.success(result.data?.changed === false ? "No changes to save" : `Document ${editing ? "updated" : "added"}`);
         setDialogOpen(false);
         invalidatePartyDocuments(queryClient, partyId);
       } else {
@@ -141,6 +136,7 @@ export function PartyDocumentsTab({ partyId, disabled, onChildOpen }: PartyDocum
   };
 
   const columns: ColumnDef<PartyDocument>[] = [
+    {id:'archive_state',header:'Archive status',accessorFn:row=>row.archived_at?'Archived':'Current'},
     {id:"document_title",header:"Document",size:360,accessorFn:row=>[row.document_title,row.document_type_name,row.document_number,row.expiry_date].filter(Boolean).join(" "),enableHiding:false,cell:({row})=>{const doc=row.original;const isExpired = doc.expiry_date && isPast(new Date(doc.expiry_date));return (<div className="space-y-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-xs text-muted-foreground">{doc.document_code}</span>
@@ -164,12 +160,10 @@ export function PartyDocumentsTab({ partyId, disabled, onChildOpen }: PartyDocum
     {accessorKey:"expiry_date",header:"Expiry date",meta:{filter:{type:"date"}},},
     {id:"actions",header:"Actions",size:180,enableSorting:false,enableHiding:false,cell:({row})=>{const doc=row.original;return (<>{!disabled && (
                   <div className="flex gap-1 shrink-0">
-                    <Button aria-label="Edit record" type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(doc)}>
+                    <Button aria-label="Edit record" type="button" variant="ghost" size="icon" className="h-7 w-7" disabled={Boolean(doc.archived_at)} onClick={() => openEdit(doc)}>
                       <Edit className="h-3.5 w-3.5" />
                     </Button>
-                    <Button aria-label="Delete record" type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(doc.id)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    <PartyChildLifecycleControl record={doc} onOpen={()=>lifecycle.open(doc,doc.document_code)}/>
                   </div>
                 )}</>);}},
   ];
@@ -194,7 +188,12 @@ export function PartyDocumentsTab({ partyId, disabled, onChildOpen }: PartyDocum
       {loadError ? <div role="alert" className="rounded border p-4"><p>Document records could not be loaded.</p><Button type="button" variant="outline" onClick={refetch}>Try again</Button></div> :
         <ERPDataTable tableId={`party.documents:${partyId}`} resultsLabel="Document" data={documents ?? []} columns={columns} enableRowSelection={false} />}
 
-      <ERPChildDialogForm
+      {isDialogOpen && <PartyChildSaveDialog
+        key={editing?.id ?? 'new'}
+        formId={`party-documents-tab:${partyId}`}
+        record={editing}
+        createAction={createPartyDocument}
+        updateAction={updatePartyDocument}
         open={isDialogOpen}
         onOpenChange={setDialogOpen}
         title={editing ? "Edit Document Record" : "Add Document Record"}
@@ -251,7 +250,8 @@ export function PartyDocumentsTab({ partyId, disabled, onChildOpen }: PartyDocum
             <Textarea aria-label="Remarks" value={form.remarks} onChange={(e) => setForm((f) => ({ ...f, remarks: e.target.value }))} rows={2} />
           </div>
         </div>
-      </ERPChildDialogForm>
+      </PartyChildSaveDialog>}
+      {lifecycle.dialog}
     </div>
   );
 }

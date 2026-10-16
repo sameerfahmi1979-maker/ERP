@@ -1,10 +1,11 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasGlobalPermission } from "@/lib/rbac/check";
 import { getParties } from "@/server/actions/master-data/parties";
 import { PartiesTable } from "@/features/master-data/parties/parties-table";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
+import { LoadError } from "@/components/erp/load-error";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -12,12 +13,14 @@ export const revalidate = 0;
 async function PartiesContent() {
   const authContext = await getAuthContext();
 
-  if (!hasPermission(authContext, "master_data.parties.view")) {
-    redirect("/admin");
+  if (!hasGlobalPermission(authContext, "master_data.parties.view") && !hasGlobalPermission(authContext, "master_data.party_master.view")) {
+    redirect("/access-denied");
   }
 
   const result = await getParties();
-  const parties = result.success && result.data ? result.data : [];
+  if (!result.success && result.kind === 'forbidden') redirect('/access-denied');
+  if (!result.success || !result.data) return <LoadError title="Parties" retryHref="/admin/master-data/parties" />;
+  const parties = result.data;
 
   return <PartiesTable parties={parties} authContext={authContext} />;
 }

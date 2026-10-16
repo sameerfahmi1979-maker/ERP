@@ -134,7 +134,7 @@ export async function resolveReportTemplateForContextAction(
 > {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "reports.view")) {
+    if (!hasPermission(ctx, "reports.view") && !hasPermission(ctx, "reports.manage")) {
       return { success: false, error: "You do not have permission to view reports." };
     }
 
@@ -148,12 +148,15 @@ export async function resolveReportTemplateForContextAction(
 
     // Load registry entry for this report
     const db = createAdminClient();
-    const { data: regRow } = await db
+    const { data: regRow, error: registryError } = await db
       .from("erp_report_registry")
       .select("*")
       .eq("report_code", parsed.data.reportCode)
+      .eq("is_active", true)
+      .is("deleted_at", null)
       .maybeSingle();
 
+    if (registryError) return { success: false, error: "Report configuration could not be loaded. Retry the request." };
     if (!regRow) {
       return { success: false, error: `Report '${parsed.data.reportCode}' not found.` };
     }
@@ -163,7 +166,7 @@ export async function resolveReportTemplateForContextAction(
       ownerCompanyIds: parsed.data.ownerCompanyIds ?? [],
       registryEntry: regRow as ReportRegistryEntry,
       isLetterType: parsed.data.isLetterType,
-    });
+    }, ctx);
 
     return {
       success: true,
@@ -173,8 +176,8 @@ export async function resolveReportTemplateForContextAction(
         isFallback: result.isFallback,
       },
     };
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  } catch {
+    return { success: false, error: "Report branding is unavailable or not authorized. Reload and try again." };
   }
 }
 

@@ -20,6 +20,7 @@ interface UomCategorySelectProps {
   allowClear?: boolean;
   className?: string;
   name?: string;
+  ariaLabel?: string;
   error?: string;
 }
 
@@ -35,6 +36,7 @@ export function UomCategorySelect({
   allowClear = false,
   className,
   name,
+  ariaLabel = "Category",
   error,
 }: UomCategorySelectProps) {
   const { options, isLoading, error: fetchError } = useUomCategoriesQuery({ includeInactive });
@@ -68,6 +70,7 @@ export function UomCategorySelect({
       noResultsText="No results found"
       className={className}
       name={name}
+      ariaLabel={ariaLabel}
     />
   );
 }

@@ -6,6 +6,7 @@ import { DEFAULT_APP_BRANDING_SETTINGS_CODE } from "./constants";
 import type { AppBrandingAssetType, AppBrandingSettings, BrandingAsset } from "./types";
 import { getPublicAppAssetUrl } from "./public-asset-url";
 import type { RuntimeAppBranding, RuntimeAppBrandingAsset } from "./runtime-types";
+import {hasCanonicalBrandingStorageIdentity} from "./storage-paths";
 
 const FALLBACK_APP_NAME = "ALGT ERP";
 const FALLBACK_SHORT_NAME = "ALGT";
@@ -59,6 +60,7 @@ function buildFallbackRuntime(): RuntimeAppBranding {
     sidebarTitle: FALLBACK_SIDEBAR_TITLE,
     sidebarSubtitle: FALLBACK_SIDEBAR_SUBTITLE,
     assets: {},
+    assetStatus: "unavailable",
   };
 }
 
@@ -91,7 +93,7 @@ export const loadRuntimeAppBranding = cache(async (): Promise<RuntimeAppBranding
       settings.tagline
     );
 
-    const { data: assetRows } = await admin
+    const { data: assetRows, error: assetError } = await admin
       .from("erp_branding_assets")
       .select("*")
       .eq("asset_scope", "app")
@@ -102,10 +104,13 @@ export const loadRuntimeAppBranding = cache(async (): Promise<RuntimeAppBranding
     const assets: Partial<Record<AppBrandingAssetType, RuntimeAppBrandingAsset>> =
       {};
 
+    let unavailable = !!assetError;
     for (const row of (assetRows ?? []) as BrandingAsset[]) {
+      if (!hasCanonicalBrandingStorageIdentity(row) || assets[row.asset_type as AppBrandingAssetType]) {unavailable=true;break;}
       const assetType = row.asset_type as AppBrandingAssetType;
       assets[assetType] = {
         id: row.id,
+        workspaceRevision: row.workspace_revision == null ? undefined : String(row.workspace_revision),
         assetType,
         publicUrl: getPublicAppAssetUrl(assetType, row.version_no),
         originalFilename: row.original_filename,
@@ -118,6 +123,7 @@ export const loadRuntimeAppBranding = cache(async (): Promise<RuntimeAppBranding
 
     return {
       settingsId: settings.id,
+      settingsRevision: settings.workspace_revision == null ? undefined : String(settings.workspace_revision),
       appName,
       appShortName,
       tagline: settings.tagline,
@@ -132,7 +138,8 @@ export const loadRuntimeAppBranding = cache(async (): Promise<RuntimeAppBranding
       initials: computeInitials(appName, settings.app_short_name),
       sidebarTitle,
       sidebarSubtitle,
-      assets,
+      assets: unavailable ? {} : assets,
+      assetStatus: unavailable ? "unavailable" : "ready",
     };
   } catch {
     return buildFallbackRuntime();

@@ -108,6 +108,8 @@ export interface ERPRecordWorkspaceFormProps {
    * Child dialog portals escape the inert wrapper via portal to body.
    */
   isChildDialogOpen?: boolean;
+  /** Inline child editor: protect navigation/parent actions without making its controls inert. */
+  isInlineTaskOpen?: boolean;
 
   /**
    * ERP GLOBAL UI.4E — optional ref forwarded to the record body scroll container.
@@ -142,6 +144,7 @@ export function ERPRecordWorkspaceForm({
   onSaveAndClose,
   onRequestClose,
   isChildDialogOpen = false,
+  isInlineTaskOpen = false,
   bodyScrollRef,
   children,
 }: ERPRecordWorkspaceFormProps) {
@@ -154,16 +157,17 @@ export function ERPRecordWorkspaceForm({
   const [focusTarget, setFocusTarget] = React.useState<WorkspaceFieldIssue | null>(null);
   const errorId = React.useId();
   const pending = saving || isSubmitting;
-  useWorkspaceNavigationLock(isChildDialogOpen || pending);
+  const childTaskOpen = isChildDialogOpen || isInlineTaskOpen;
+  useWorkspaceNavigationLock(childTaskOpen || pending);
   const workspace = useWorkspaceContext();
   const owner = useWorkspaceFormOwner();
   const dispatch = workspace?.dispatch;
   const ownerId = owner?.id;
   React.useEffect(() => {
     if (!dispatch || !ownerId) return;
-    dispatch({ type: "MARK_CHILD_DIALOG_OPEN", tabId: ownerId, open: isChildDialogOpen || pending });
+    dispatch({ type: "MARK_CHILD_DIALOG_OPEN", tabId: ownerId, open: childTaskOpen || pending });
     return () => dispatch({ type: "MARK_CHILD_DIALOG_OPEN", tabId: ownerId, open: false });
-  }, [dispatch, ownerId, isChildDialogOpen, pending]);
+  }, [dispatch, ownerId, childTaskOpen, pending]);
   const allIssues = React.useMemo(() => mergeFieldIssues(issues, serverIssues), [issues, serverIssues]);
   useInlineFieldFeedback(allIssues);
   React.useEffect(() => {
@@ -212,7 +216,7 @@ export function ERPRecordWorkspaceForm({
     return next.length === 0;
   };
   const runSave = async (action: NonNullable<typeof onSave>) => {
-    if (flight.current || pending || isChildDialogOpen || !validate()) return;
+    if (flight.current || pending || childTaskOpen || !validate()) return;
     flight.current = true;
     setSaving(true);
     try { await action(); }
@@ -245,7 +249,7 @@ export function ERPRecordWorkspaceForm({
         onSubmitCapture={event => {
           // Child dialogs have their own validation and save lifecycle.
           if (event.target !== recordForm(root.current)) return;
-          if (pending || isChildDialogOpen || !validate()) { event.preventDefault(); event.stopPropagation(); }
+          if (pending || childTaskOpen || !validate()) { event.preventDefault(); event.stopPropagation(); }
         }}
         onInvalidCapture={event => {
           if ((event.target as HTMLInputElement).form !== recordForm(root.current)) return;
@@ -266,7 +270,7 @@ export function ERPRecordWorkspaceForm({
           isDirty={isDirty}
           compact={compactIdentity}
           actions={headerActions}
-          onRequestClose={pending || isChildDialogOpen ? undefined : onRequestClose}
+          onRequestClose={pending || childTaskOpen ? undefined : onRequestClose}
         />
 
         {/* ── Content zone — inert + dimmed when child dialog is open ── */}
@@ -281,9 +285,9 @@ export function ERPRecordWorkspaceForm({
           {/* Footer */}
           <ERPRecordFormFooter
             mode={mode}
-            onCancel={pending || isChildDialogOpen ? undefined : onRequestClose}
-            onSave={onSave ? () => { void runSave(onSave); } : undefined}
-            onSaveAndClose={onSaveAndClose ? () => { void runSave(onSaveAndClose); } : undefined}
+            onCancel={pending || childTaskOpen ? undefined : onRequestClose}
+            onSave={onSave && !isInlineTaskOpen ? () => { void runSave(onSave); } : undefined}
+            onSaveAndClose={onSaveAndClose && !isInlineTaskOpen ? () => { void runSave(onSaveAndClose); } : undefined}
             hasUnsavedChanges={isDirty}
             isSubmitting={pending}
             validationErrorsCount={Math.max(validationErrorsCount, allIssues.length)}

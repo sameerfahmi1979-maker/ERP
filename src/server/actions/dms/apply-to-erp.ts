@@ -32,10 +32,12 @@
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, hasGlobalPermission } from "@/lib/rbac/check";
+import { checkDocumentConfidentialityAccess } from "@/lib/dms/document-access";
 import { logAudit } from "@/server/actions/audit";
 import { logger } from "@/lib/logger";
 import { revalidatePath } from "next/cache";
+import {preparePartyDmsRun,executePartyDmsRun,cancelPartyDmsRun} from '@/server/party-dms-apply';
 import {
   validateApplyTarget,
   isForbiddenTarget,
@@ -44,15 +46,10 @@ import {
 import {
   normalizeApplyValue,
   buildValueSummary,
-  buildPartyFieldSummary,
   truncateSummary,
 } from "@/lib/dms/apply-to-erp/apply-value-normalizer";
 import {
   detectDmsDocumentFieldConflict,
-  detectPartyLicenseFieldConflict,
-  detectPartyTaxFieldConflict,
-  type PartyLicenseRecord,
-  type PartyTaxRecord,
 } from "@/lib/dms/apply-to-erp/apply-conflict-detector";
 import {
   buildRunCreatedMeta,
@@ -142,6 +139,8 @@ function generateRunCode(): string {
 // ── Input Schemas ─────────────────────────────────────────────────────────────
 
 const ApplyItemProposalSchema = z.object({
+  proposedValue: z.string().max(1000).optional(),
+  reviewedRevision: z.string().regex(/^[1-9]\d*$/).optional(),
   sourceType:           z.enum(["extraction_result", "validation_finding", "entity_match_candidate", "dms_metadata_apply"]),
   sourceId:             z.number().int().positive().nullable().optional(),
   sourceFieldCode:      z.string().max(100).nullable().optional(),
@@ -158,6 +157,7 @@ const ApplyItemProposalSchema = z.object({
 });
 
 const CreateRunInputSchema = z.object({
+  requestId: z.uuid().optional(),
   sourceType:        z.enum(["extraction_result", "validation_finding", "entity_match_candidate", "dms_metadata_apply"]),
   sourceId:          z.number().int().positive().nullable().optional(),
   documentId:        z.number().int().positive(),
@@ -284,18 +284,8 @@ export async function createDmsApplyToErpRun(
     }
     const input = parsed.data;
 
-    // Tier 2 — Party flag checks
-    if (input.targetModule === "party" && input.targetKind) {
-      const flagCheck = await checkPartySubFlags(input.targetKind);
-      if (!flagCheck.ok) {
-        return { success: false, error: flagCheck.reason ?? "Party apply flag disabled", errorCode: "feature_flag_disabled" };
-      }
-      // Verify that all items target the same party table specified in targetKind
-      const tableMatch = input.items.every((item) => item.targetTable === input.targetKind);
-      if (!tableMatch) {
-        return { success: false, error: "All items must target the specified targetKind table", errorCode: "invalid_input" };
-      }
-    }
+    if(input.targetModule==='party')return preparePartyDmsRun(input as CreateApplyRunInput);
+    if(input.items.some(i=>['party_licenses','party_tax_registrations'].includes(i.targetTable)))return {success:false,error:'Party fields require a party review.',errorCode:'invalid_input'};
 
     // Validate all items against allowlist and forbidden list
     const validItems = input.items.filter((item) => {
@@ -326,7 +316,7 @@ export async function createDmsApplyToErpRun(
         target_table:        input.targetTable,
         // For party module, target_record_id stores the partyId (parent entity).
         // Child record IDs (license/tax) are stored per-item in apply_items.target_record_id.
-        target_record_id:    input.targetModule === "party" ? (input.partyId ?? null) : (input.targetRecordId ?? null),
+        target_record_id:    input.targetRecordId ?? null,
         requested_by:        userId,
         created_at:          new Date().toISOString(),
         updated_at:          new Date().toISOString(),
@@ -468,7 +458,8 @@ export async function applyDmsApplyToErpRun(
     const userId = ctx.profile.id;
 
     // Reload run record
-    const { data: runRow, error: runLoadErr } = await db
+    const caller = await createClient();
+    const { data: runRow, error: runLoadErr } = await caller
       .from("dms_ai_erp_apply_runs")
       .select("id, run_code, status, document_id, source_type, target_module, target_table, target_record_id, requested_by")
       .eq("id", runId)
@@ -482,6 +473,17 @@ export async function applyDmsApplyToErpRun(
       source_type: string; target_module: string; target_table: string;
       target_record_id: number | null; requested_by: number;
     };
+
+    if(run.target_module==='party'){
+      const result=await executePartyDmsRun(runId,confirmation);
+      if(result.success){
+        // The transaction receipt proves commit; cache failure cannot undo it.
+        for(const path of [`/admin/master-data/parties/record/${run.target_record_id}`,'/admin/master-data/parties',`/dms/documents/record/${run.document_id}`,'/dms/documents']){
+          try{revalidatePath(path);}catch{logger.warn('[party-dms] committed review cache refresh failed',{runId});}
+        }
+      }
+      return result;
+    }
 
     if (run.status !== "pending") {
       return {
@@ -615,148 +617,9 @@ export async function applyDmsApplyToErpRun(
         continue;
       }
 
-      // ── party_licenses field apply (Tier 2) ──────────────────────────────────
-      if (item.target_table === "party_licenses" && item.target_record_id) {
-        // Reload current party_licenses row fresh from DB
-        const { data: licRow } = await db
-          .from("party_licenses")
-          .select("id, party_id, is_active, license_number, license_name, license_activity_text, issue_date, expiry_date, remarks")
-          .eq("id", item.target_record_id)
-          .single();
-
-        const licRecord = licRow as PartyLicenseRecord | null;
-
-        // Determine expected party_id from the run record
-        const expectedPartyId = run.target_record_id;  // stored in the run's party context
-        if (!expectedPartyId) {
-          await db.from("dms_ai_erp_apply_items").update({ status: "failed", failure_reason: "missing party context in run", updated_at: new Date().toISOString() }).eq("id", item.id);
-          failedCount++;
-          itemResults.push({ itemId: item.id, targetTable: item.target_table, targetField: item.target_field, targetRecordId: item.target_record_id, status: "failed" as ApplyItemStatus, appliedValueSummary: null, skipReason: null, failureReason: "missing party context" });
-          continue;
-        }
-
-        const conflictResult = detectPartyLicenseFieldConflict(
-          licRecord,
-          expectedPartyId,
-          item.target_field,
-          item.current_value_summary,
-          confirmation.replaceExistingConfirmed
-        );
-
-        if (conflictResult.conflict) {
-          await db.from("dms_ai_erp_apply_items").update({ status: "conflict", skip_reason: conflictResult.reason.slice(0, 200), updated_at: new Date().toISOString() }).eq("id", item.id);
-          conflictCount++;
-          itemResults.push({ itemId: item.id, targetTable: item.target_table, targetField: item.target_field, targetRecordId: item.target_record_id, status: "conflict" as ApplyItemStatus, appliedValueSummary: null, skipReason: conflictResult.reason, failureReason: null });
-          void logAudit({ module_code: "dms_ai", entity_name: "dms_ai_erp_apply_items", entity_id: item.id, entity_reference: String(runId), action: "dms_apply_to_erp_item_conflict", new_values: buildItemSkippedMeta({ itemId: item.id, runId, targetTable: item.target_table, targetField: item.target_field, reason: conflictResult.reason, status: "conflict" }) });
-          continue;
-        }
-
-        const fieldMeta = validation.field;
-        const normalized = normalizeApplyValue(
-          item.proposed_value_summary,
-          fieldMeta.valueType,
-          item.target_field,
-          { maxLength: fieldMeta.maxLength }
-        );
-
-        if (!normalized.valid) {
-          await db.from("dms_ai_erp_apply_items").update({ status: "failed", failure_reason: normalized.validationError?.slice(0, 200), updated_at: new Date().toISOString() }).eq("id", item.id);
-          failedCount++;
-          itemResults.push({ itemId: item.id, targetTable: item.target_table, targetField: item.target_field, targetRecordId: item.target_record_id, status: "failed" as ApplyItemStatus, appliedValueSummary: null, skipReason: null, failureReason: normalized.validationError ?? "normalization failed" });
-          continue;
-        }
-
-        const { error: writeErr } = await db
-          .from("party_licenses")
-          .update({ [item.target_field]: normalized.normalizedValue, updated_by: userId, updated_at: new Date().toISOString() })
-          .eq("id", item.target_record_id);
-
-        if (writeErr) {
-          await db.from("dms_ai_erp_apply_items").update({ status: "failed", failure_reason: (writeErr as { message?: string })?.message?.slice(0, 200), updated_at: new Date().toISOString() }).eq("id", item.id);
-          failedCount++;
-          itemResults.push({ itemId: item.id, targetTable: item.target_table, targetField: item.target_field, targetRecordId: item.target_record_id, status: "failed" as ApplyItemStatus, appliedValueSummary: null, skipReason: null, failureReason: "DB write error" });
-          continue;
-        }
-
-        const appliedSummary = buildPartyFieldSummary(item.target_field, normalized.normalizedValue, fieldMeta.valueType === "date" ? "date" : "text");
-        await db.from("dms_ai_erp_apply_items").update({ status: "applied", applied_value_summary: truncateSummary(appliedSummary), applied_at: new Date().toISOString(), applied_by: userId, confirmed: true, updated_at: new Date().toISOString() }).eq("id", item.id);
-        appliedCount++;
-        itemResults.push({ itemId: item.id, targetTable: item.target_table, targetField: item.target_field, targetRecordId: item.target_record_id, status: "applied" as ApplyItemStatus, appliedValueSummary: truncateSummary(appliedSummary), skipReason: null, failureReason: null });
-
-        void logAudit({ module_code: "dms_ai", entity_name: "dms_ai_erp_apply_items", entity_id: item.id, entity_reference: String(runId), action: "dms_apply_to_erp_item_applied",
-          new_values: buildItemAppliedMeta({ itemId: item.id, runId, targetTable: item.target_table, targetField: item.target_field, targetRecordId: item.target_record_id, appliedValueSummary: truncateSummary(appliedSummary), partyId: expectedPartyId, targetChildCode: (licRecord?.license_code as string | null) ?? null, targetChildLabel: (licRecord?.license_name as string | null) ?? null }) });
-
-      // ── party_tax_registrations field apply (Tier 2) ─────────────────────────
-      } else if (item.target_table === "party_tax_registrations" && item.target_record_id) {
-        const { data: taxRow } = await db
-          .from("party_tax_registrations")
-          .select("id, party_id, is_active, tax_registration_number, effective_from, effective_to, remarks, tax_registration_code")
-          .eq("id", item.target_record_id)
-          .single();
-
-        const taxRecord = taxRow as PartyTaxRecord | null;
-
-        const expectedPartyId = run.target_record_id;
-        if (!expectedPartyId) {
-          await db.from("dms_ai_erp_apply_items").update({ status: "failed", failure_reason: "missing party context in run", updated_at: new Date().toISOString() }).eq("id", item.id);
-          failedCount++;
-          itemResults.push({ itemId: item.id, targetTable: item.target_table, targetField: item.target_field, targetRecordId: item.target_record_id, status: "failed" as ApplyItemStatus, appliedValueSummary: null, skipReason: null, failureReason: "missing party context" });
-          continue;
-        }
-
-        const conflictResult = detectPartyTaxFieldConflict(
-          taxRecord,
-          expectedPartyId,
-          item.target_field,
-          item.current_value_summary,
-          confirmation.replaceExistingConfirmed
-        );
-
-        if (conflictResult.conflict) {
-          await db.from("dms_ai_erp_apply_items").update({ status: "conflict", skip_reason: conflictResult.reason.slice(0, 200), updated_at: new Date().toISOString() }).eq("id", item.id);
-          conflictCount++;
-          itemResults.push({ itemId: item.id, targetTable: item.target_table, targetField: item.target_field, targetRecordId: item.target_record_id, status: "conflict" as ApplyItemStatus, appliedValueSummary: null, skipReason: conflictResult.reason, failureReason: null });
-          void logAudit({ module_code: "dms_ai", entity_name: "dms_ai_erp_apply_items", entity_id: item.id, entity_reference: String(runId), action: "dms_apply_to_erp_item_conflict", new_values: buildItemSkippedMeta({ itemId: item.id, runId, targetTable: item.target_table, targetField: item.target_field, reason: conflictResult.reason, status: "conflict" }) });
-          continue;
-        }
-
-        const fieldMeta = validation.field;
-        const normalized = normalizeApplyValue(
-          item.proposed_value_summary,
-          fieldMeta.valueType,
-          item.target_field,
-          { maxLength: fieldMeta.maxLength }
-        );
-
-        if (!normalized.valid) {
-          await db.from("dms_ai_erp_apply_items").update({ status: "failed", failure_reason: normalized.validationError?.slice(0, 200), updated_at: new Date().toISOString() }).eq("id", item.id);
-          failedCount++;
-          itemResults.push({ itemId: item.id, targetTable: item.target_table, targetField: item.target_field, targetRecordId: item.target_record_id, status: "failed" as ApplyItemStatus, appliedValueSummary: null, skipReason: null, failureReason: normalized.validationError ?? "normalization failed" });
-          continue;
-        }
-
-        const { error: writeErr } = await db
-          .from("party_tax_registrations")
-          .update({ [item.target_field]: normalized.normalizedValue, updated_by: userId, updated_at: new Date().toISOString() })
-          .eq("id", item.target_record_id);
-
-        if (writeErr) {
-          await db.from("dms_ai_erp_apply_items").update({ status: "failed", failure_reason: (writeErr as { message?: string })?.message?.slice(0, 200), updated_at: new Date().toISOString() }).eq("id", item.id);
-          failedCount++;
-          itemResults.push({ itemId: item.id, targetTable: item.target_table, targetField: item.target_field, targetRecordId: item.target_record_id, status: "failed" as ApplyItemStatus, appliedValueSummary: null, skipReason: null, failureReason: "DB write error" });
-          continue;
-        }
-
-        // TRN fields get masked summary for audit storage
-        const appliedSummary = buildPartyFieldSummary(item.target_field, normalized.normalizedValue, fieldMeta.valueType === "date" ? "date" : "text");
-        await db.from("dms_ai_erp_apply_items").update({ status: "applied", applied_value_summary: truncateSummary(appliedSummary), applied_at: new Date().toISOString(), applied_by: userId, confirmed: true, updated_at: new Date().toISOString() }).eq("id", item.id);
-        appliedCount++;
-        itemResults.push({ itemId: item.id, targetTable: item.target_table, targetField: item.target_field, targetRecordId: item.target_record_id, status: "applied" as ApplyItemStatus, appliedValueSummary: truncateSummary(appliedSummary), skipReason: null, failureReason: null });
-
-        void logAudit({ module_code: "dms_ai", entity_name: "dms_ai_erp_apply_items", entity_id: item.id, entity_reference: String(runId), action: "dms_apply_to_erp_item_applied",
-          new_values: buildItemAppliedMeta({ itemId: item.id, runId, targetTable: item.target_table, targetField: item.target_field, targetRecordId: item.target_record_id, appliedValueSummary: truncateSummary(appliedSummary), partyId: expectedPartyId, targetChildCode: (taxRecord?.tax_registration_code as string | null) ?? null, targetChildLabel: "Tax Registration" }) });
-
-      // ── dms_documents field apply ────────────────────────────────────────────
+      // Party mutations must use the bound, atomic review path above.
+      if (["party_licenses","party_tax_registrations"].includes(item.target_table)) {
+        return {success:false,error:"Create a new party review for this target.",errorCode:"invalid_input"};
       } else if (item.target_table === "dms_documents" && item.target_record_id) {
         // Reload current document record
         const { data: docRow } = await db
@@ -965,21 +828,32 @@ export async function getPartyApplyTargetRows(input: {
   targetKind: PartyApplyTargetKind;
 }): Promise<ActionResult<PartyLicenseRow[] | PartyTaxRow[]>> {
   try {
+    const parsed = z.object({
+      documentId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+      partyId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+      targetKind: z.enum(["party_licenses", "party_tax_registrations"]),
+    }).strict().safeParse(input);
+    if (!parsed.success) return { success: false, error: "Select a valid document, party and target type.", errorCode: "invalid_input" };
     const ctx = await getAuthContext();
     if (!ctx.profile?.id) {
       return { success: false, error: "Not authenticated", errorCode: "not_authenticated" };
     }
 
-    const canView =
-      hasPermission(ctx, "master_data.parties.view") ||
-      hasPermission(ctx, "master_data.parties.manage_licenses") ||
-      hasPermission(ctx, "master_data.parties.manage_tax") ||
-      hasPermission(ctx, "master_data.parties.edit") ||
-      hasPermission(ctx, "system_admin");
-
-    if (!canView) {
+    // Global shared-party authority and source-document authority are separate.
+    // A company-scoped role is not permission to browse the global party data.
+    if (!hasGlobalPermission(ctx, "master_data.parties.view")) {
       return { success: false, error: "Permission denied: requires master_data.parties.view", errorCode: "permission_denied" };
     }
+
+    const db = await createClient();
+    const sourceAccess = await checkDocumentConfidentialityAccess(db, parsed.data.documentId, ctx);
+    if (!sourceAccess.allowed) return { success: false, error: "The source document is unavailable or access is restricted.", errorCode: "permission_denied" };
+    const { data: parent, error: parentError } = await db.from("parties")
+      .select("id, is_active, is_locked").eq("id", parsed.data.partyId).maybeSingle();
+    if (parentError) return { success: false, error: "The party could not be checked. Try again." };
+    if (!parent) return { success: false, error: "This party is unavailable for Apply to ERP.", errorCode: "target_record_not_found" };
+    if (!parent.is_active) return { success: false, error: "This party is inactive and cannot receive changes.", errorCode: "target_record_inactive" };
+    if (parent.is_locked) return { success: false, error: "This party is locked and cannot receive changes.", errorCode: "target_forbidden" };
 
     const masterEnabled = await isDmsApplyToErpEnabled();
     if (!masterEnabled) {
@@ -990,21 +864,24 @@ export async function getPartyApplyTargetRows(input: {
       return { success: false, error: "Party apply feature is not enabled", errorCode: "feature_flag_disabled" };
     }
 
-    const db = createAdminClient();
-
-    if (input.targetKind === "party_licenses") {
+    if (parsed.data.targetKind === "party_licenses") {
       const { data, error } = await db
         .from("party_licenses")
-        .select("id, party_id, license_code, license_number, license_name, issue_date, expiry_date, is_active")
-        .eq("party_id", input.partyId)
+        .select("id, party_id, workspace_revision, license_code, license_number, license_name, license_activity_text, remarks, issue_date, expiry_date, is_active")
+        .eq("party_id", parsed.data.partyId)
+        .eq("is_active", true)
+        .is("archived_at", null)
         .order("is_active", { ascending: false })
         .order("id", { ascending: false });
 
-      if (error) {
+      if (error || !Array.isArray(data)) {
         return { success: false, error: "Failed to load party licenses" };
       }
 
       const rows: PartyLicenseRow[] = (data ?? []).map((r: Record<string, unknown>) => ({
+        workspace_revision: String(r.workspace_revision),
+        license_activity_text: r.license_activity_text as string|null,
+        remarks: r.remarks as string|null,
         id:           r.id as number,
         party_id:     r.party_id as number,
         license_code: (r.license_code as string | null) ?? null,
@@ -1021,12 +898,14 @@ export async function getPartyApplyTargetRows(input: {
       // party_tax_registrations
       const { data, error } = await db
         .from("party_tax_registrations")
-        .select("id, party_id, tax_registration_code, tax_registration_number, effective_from, effective_to, is_active")
-        .eq("party_id", input.partyId)
+        .select("id, party_id, workspace_revision, tax_registration_code, tax_registration_number, remarks, effective_from, effective_to, is_active")
+        .eq("party_id", parsed.data.partyId)
+        .eq("is_active", true)
+        .is("archived_at", null)
         .order("is_active", { ascending: false })
         .order("id", { ascending: false });
 
-      if (error) {
+      if (error || !Array.isArray(data)) {
         return { success: false, error: "Failed to load party tax registrations" };
       }
 
@@ -1035,6 +914,8 @@ export async function getPartyApplyTargetRows(input: {
         return {
           id:                           r.id as number,
           party_id:                     r.party_id as number,
+          workspace_revision: String(r.workspace_revision),
+          remarks: r.remarks as string|null,
           tax_registration_code:        (r.tax_registration_code as string | null) ?? null,
           tax_registration_number_masked: rawTrn
             ? (rawTrn.length <= 8 ? "****" : rawTrn.slice(0, 4) + "****" + rawTrn.slice(-4))
@@ -1047,8 +928,8 @@ export async function getPartyApplyTargetRows(input: {
 
       return { success: true, data: rows };
     }
-  } catch (err) {
-    logger.error("[apply-to-erp] getPartyApplyTargetRows error", { error: String(err) });
+  } catch {
+    logger.error("[apply-to-erp] getPartyApplyTargetRows failed");
     return { success: false, error: "Failed to load party target rows" };
   }
 }
@@ -1094,11 +975,13 @@ export async function getDmsApplyToErpRun(
       return { success: false, error: "Apply run not found", errorCode: "run_not_found" };
     }
 
-    const { data: itemRows } = await db
+    const { data: itemRows, error: itemError } = await db
       .from("dms_ai_erp_apply_items")
       .select("*")
       .eq("apply_run_id", runId)
       .order("id");
+
+    if(itemError||!Array.isArray(itemRows))return {success:false,error:'Apply history could not be loaded. Try again.'};
 
     const run = mapRunRow(runRow as Record<string, unknown>, (itemRows ?? []) as Record<string, unknown>[]);
     return { success: true, data: run };
@@ -1192,15 +1075,18 @@ export async function cancelDmsApplyToErpRun(
     const db = createAdminClient();
     const userId = ctx.profile.id;
 
-    const { data: runRow } = await db
+    const caller = await createClient();
+    const { data: runRow } = await caller
       .from("dms_ai_erp_apply_runs")
-      .select("id, run_code, status, document_id, requested_by")
+      .select("id, run_code, status, document_id, requested_by, target_module")
       .eq("id", runId)
       .single();
 
     if (!runRow) {
       return { success: false, error: "Apply run not found", errorCode: "run_not_found" };
     }
+
+    if(runRow.target_module==='party')return cancelPartyDmsRun(runId);
 
     const run = runRow as { id: number; run_code: string | null; status: string; document_id: number | null; requested_by: number };
 

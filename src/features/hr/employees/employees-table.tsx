@@ -48,6 +48,7 @@ import {
   FileStack,
 } from "lucide-react";
 import { HrDocumentEmployeeCreateWizard } from "./document-create/hr-document-employee-create-wizard";
+import {canStartDocumentEmployee} from '@/lib/hr/numbered-document-employee-contract';
 import type { SortDir } from "@/hooks/use-sort-paginate";
 import { useRealtimeSync } from "@/hooks/realtime/use-realtime-sync";
 import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
@@ -427,7 +428,7 @@ export function EmployeesTable({ initialRows, initialTotal, authContext, documen
 
           {canCreate && (
             <>
-              {documentWizardEnabled && (
+              {documentWizardEnabled && canStartDocumentEmployee(authContext) && (
                 <Button aria-label="Create employee from existing DMS documents"
                   variant="outline"
                   size="sm"
@@ -695,6 +696,8 @@ export function EmployeesTable({ initialRows, initialTotal, authContext, documen
       </AlertDialog>
 
       <HrDocumentEmployeeCreateWizard
+        key={authContext.profile?.id ?? 'unknown'}
+        authContext={authContext}
         open={wizardOpen}
         onOpenChange={setWizardOpen}
       />

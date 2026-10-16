@@ -47,3 +47,13 @@ it('legacy close callback targets the owner after the active tab changes',()=>{
  context.active='second';a.rerender();expect(a.result.current.activeTab?.id).toBe('first');
  act(()=>close());expect(context.close).toHaveBeenCalledExactlyOnceWith('first',{force:true});
 });
+it.each(['{','null','[]',JSON.stringify({id:42,revision:'1',pending:{contract:{operationId:'broken',revision:'1'}}})])('corrupt saved state %# fails closed without discarding the stored request',stored=>{
+ const store=context.store as ReturnType<typeof createWorkspaceDraftStore>;
+ const key='draft:tab:first:test:save';store.setViewState(key,stored);
+ const hook=renderHook(()=>useWorkspaceSaveSession('test',42,9));
+ expect(hook.result.current.recoveryError).toContain('could not be verified');
+ expect(()=>hook.result.current.begin({name:'replacement'})).toThrow('could not be verified');
+ expect(()=>hook.result.current.accept({id:42,revision:'10',replayed:false})).toThrow('could not be verified');
+ expect(()=>hook.result.current.rejected()).toThrow('could not be verified');
+ expect(store.getViewState(key)).toBe(stored);
+});

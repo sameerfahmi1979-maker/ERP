@@ -8,6 +8,7 @@
 
 import type { FinanceBasicsSelectProps } from "@/features/master-data/finance-basics/types";
 import { ERPCombobox } from "@/components/erp/combobox";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import type { ERPComboboxOption } from "@/components/erp/combobox";
 import { useBanksQuery } from "@/hooks/lookups";
 import type { BankRow } from "@/lib/lookups/option-mappers";
@@ -31,14 +32,15 @@ export function BankSelect({
   error,
   countryId,
 }: BankSelectProps) {
+  const choiceRead = useBanksQuery({ countryId, includeInactive, selectedId: value ?? null });
   const {
     options,
     isLoading: loading,
     error: fetchError,
-  } = useBanksQuery({ countryId, includeInactive });
+  } = choiceRead;
 
   const handleValueChange = (newValue: string | number | null) => {
-    if (!onValueChange) return;
+    if (!onValueChange || disabled || !!fetchError) return;
     if (newValue === null) { onValueChange(null); return; }
     const numValue = typeof newValue === "number" ? newValue : Number(newValue);
     onValueChange(!isNaN(numValue) ? numValue : null);
@@ -57,37 +59,27 @@ export function BankSelect({
     );
   };
 
-  if (fetchError) {
-    return (
-      <div className={className}>
-        <div className="flex items-center justify-center h-10 px-3 border border-destructive rounded-md bg-destructive/10">
-          <span className="text-sm text-destructive">{fetchError}</span>
-        </div>
-        {error && <p className="text-sm text-destructive mt-1">{error}</p>}
-      </div>
-    );
-  }
-
   return (
-    <ERPCombobox
+    <QueryReadBoundary queries={[{isError: !!fetchError, refetch: choiceRead.refetch}]}><ERPCombobox
       value={value ?? null}
       onValueChange={handleValueChange}
-      options={options}
-      placeholder={placeholder}
+      options={options.map(option => ({...option, disabled: option.disabled || disabled || !!fetchError}))}
+      placeholder={value != null && !options.some(option => String(option.value) === String(value))
+        ? (loading ? "Loading saved selection…" : "Saved selection unavailable; value retained") : placeholder}
       searchPlaceholder="Search banks..."
       showCode={showCode}
       language={language}
-      disabled={disabled}
+      disabled={disabled || !!fetchError}
       readOnly={false}
       required={required}
-      loading={loading}
-      error={error}
+      loading={loading && value == null}
+      error={fetchError ?? error}
       allowClear={allowClear}
       emptyText="No banks available"
       noResultsText="No results found"
       className={className}
       name={name}
       filterFn={customFilterFn}
-    />
+    /></QueryReadBoundary>
   );
 }

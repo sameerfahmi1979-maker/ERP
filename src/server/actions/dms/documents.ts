@@ -1,6 +1,8 @@
 "use server";
 
-import { zNullableDateString } from "@/lib/dms/date-validators";
+import { dmsDocumentCreateSchema as documentCreateSchema, dmsCreationContractSchema, type DmsCreationReceipt } from "@/lib/dms/numbered-document-create";
+import type { WorkspaceSaveContract } from "@/lib/workspace/save-contract";
+import { createNumberedDmsDocument } from "@/server/numbered-dms-create";
 import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -18,6 +20,7 @@ export type ActionResult<T = unknown> = {
   success: boolean;
   data?: T;
   error?: string;
+  uncertain?: boolean;
 };
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -108,27 +111,6 @@ export type DmsDocumentFilters = {
 };
 
 // ── Validation schemas ─────────────────────────────────────────────────────────
-
-const documentCreateSchema = z.object({
-  title: z.string().min(1, "Title is required").max(500),
-  description: z.string().nullable().optional(),
-  document_type_id: z.number().int().positive("Document type is required"),
-  category_id: z.number().int().positive("Category is required"),
-  status: z
-    .enum(["draft", "pending_review", "approved", "rejected", "active", "expired", "archived", "superseded"])
-    .default("draft"),
-  confidentiality_level: z
-    .enum(["internal", "company", "hr", "finance", "legal", "executive"])
-    .default("internal"),
-  owner_user_id: z.number().int().positive().nullable().optional(),
-  owning_company_id: z.number().int().positive().nullable().optional(),
-  owning_branch_id: z.number().int().positive().nullable().optional(),
-  party_id: z.number().int().positive().nullable().optional(),
-  issue_date: zNullableDateString,
-  expiry_date: zNullableDateString,
-  reminder_policy_id: z.number().int().positive().nullable().optional(),
-  legacy_document_code: z.string().nullable().optional(),
-});
 
 const documentUpdateSchema = documentCreateSchema.partial().extend({
   id: z.number().int().positive(),
@@ -654,9 +636,14 @@ export async function getDmsNewDocumentDefaults(): Promise<
 // ── createDmsDocument ─────────────────────────────────────────────────────────
 
 export async function createDmsDocument(
-  input: CreateDmsDocumentInput
-): Promise<ActionResult<{ id: number; document_no: string }>> {
+  input: CreateDmsDocumentInput,
+  contract: WorkspaceSaveContract
+): Promise<ActionResult<DmsCreationReceipt>> {
+  let committedReceipt: DmsCreationReceipt | undefined;
   try {
+    if (!dmsCreationContractSchema.safeParse(contract).success) {
+      return { success: false, error: "Reopen this form before saving. Its creation request identity is missing." };
+    }
     const ctx = await getAuthContext();
     if (!hasPermission(ctx, "dms.documents.upload") && !hasPermission(ctx, "dms.admin")) {
       return { success: false, error: "Permission denied" };
@@ -683,66 +670,13 @@ export async function createDmsDocument(
       }
     }
 
-    const supabase = await createClient();
-
-    // Generate document number via numbering RPC
-    const { data: numData, error: numError } = await supabase.rpc(
-      "generate_next_reference_number",
-      {
-        p_rule_code: "MASTER_DMS_DOCUMENT",
-        p_document_type_code: null,
-        p_target_table_name: "dms_documents",
-        p_target_record_id: null,
-        p_generation_reason: "DMS document created",
-        p_generated_by: ctx.profile?.id ?? null,
-      }
-    );
-
-    if (numError || !numData || numData.length === 0) {
-      return { success: false, error: "Failed to generate document number" };
-    }
-
-    const documentNo: string = numData[0].generated_reference_number;
-
-    const { data: doc, error } = await supabase
-      .from("dms_documents")
-      .insert({
-        document_no: documentNo,
-        title: data.title,
-        description: data.description ?? null,
-        document_type_id: data.document_type_id,
-        category_id: data.category_id,
-        status: data.status,
-        confidentiality_level: data.confidentiality_level,
-        owner_user_id: data.owner_user_id ?? null,
-        owning_company_id: data.owning_company_id ?? null,
-        owning_branch_id: data.owning_branch_id ?? null,
-        party_id: data.party_id ?? null,
-        issue_date: data.issue_date ?? null,
-        expiry_date: data.expiry_date ?? null,
-        reminder_policy_id: data.reminder_policy_id ?? null,
-        legacy_document_code: data.legacy_document_code ?? null,
-        created_by: ctx.profile?.id ?? null,
-        updated_by: ctx.profile?.id ?? null,
-      })
-      .select("id, document_no")
-      .single();
-
-    if (error) return { success: false, error: error.message };
-
-    // Insert document_created event
-    await insertDmsEvent(supabase, doc.id, "document_created", ctx.profile?.id ?? null, `Document ${documentNo} created`);
-
-    await logAudit({
-      module_code: "DMS",
-      entity_name: "dms_documents",
-      entity_id: doc.id,
-      entity_reference: documentNo,
-      action: "create",
-      new_values: { title: data.title, document_no: documentNo },
-    });
-
-    revalidateDmsDocuments();
+    const result = await createNumberedDmsDocument(data, contract);
+    if (!result.success || !result.data) return result;
+    const doc = result.data;
+    committedReceipt = doc;
+    // The transaction already committed. A refresh failure is not a failed save.
+    try { revalidateDmsDocuments(); }
+    catch { logger.warn("Document creation committed; view refresh is temporarily unavailable."); }
 
     // Auto-generate expiry reminders if expiry_date is set
     if (data.expiry_date) {
@@ -757,8 +691,9 @@ export async function createDmsDocument(
       }
     }
 
-    return { success: true, data: { id: doc.id, document_no: documentNo } };
+    return result;
   } catch (err) {
+    if (committedReceipt) return { success: true, data: committedReceipt };
     logger.error("createDmsDocument error", err);
     return { success: false, error: "Failed to create document" };
   }

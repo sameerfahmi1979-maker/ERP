@@ -1,6 +1,8 @@
+import {randomUUID} from 'node:crypto';
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { getAuthContext, hasPermission, type AuthContext } from "@/lib/rbac/check";
+import { getAuthContext, type AuthContext } from "@/lib/rbac/check";
+import {canReadFinanceReferences} from '@/lib/master-data/finance-reference-contract';
 import { getTaxTypes } from "@/features/master-data/finance-basics/actions";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { TaxTypesTable } from "@/features/master-data/finance-basics/components/tax-types-table";
@@ -22,13 +24,13 @@ async function TaxTypesContent({ authContext }: { authContext: AuthContext }) {
     );
   }
 
-  return <TaxTypesTable taxTypes={result.data} authContext={authContext} />;
+  return <TaxTypesTable taxTypes={result.data} authContext={authContext} readGeneration={randomUUID()} />;
 }
 
 export default async function TaxTypesPage() {
   const ctx = await getAuthContext();
 
-  if (!hasPermission(ctx, "master_data.finance_basics.view")) {
+  if (!canReadFinanceReferences(ctx)) {
     redirect("/access-denied");
   }
 

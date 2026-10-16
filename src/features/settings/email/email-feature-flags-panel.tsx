@@ -1,7 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { toast } from "sonner";
+import { useState } from "react";
+import { useProviderFlagChange } from "../use-provider-flag-change";
+import { AlgtDialog } from "@/components/design-system/algt-dialog";
+import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { AlertTriangle } from "lucide-react";
@@ -15,31 +17,24 @@ interface EmailFeatureFlagsPanelProps {
 }
 
 export function EmailFeatureFlagsPanel({ flags, onRefresh, canManage = false }: EmailFeatureFlagsPanelProps) {
-  const [updating, setUpdating] = useState<string | null>(null);
-  const flight = useRef(false);
+  const [confirming,setConfirming]=useState<EmailFeatureFlag|null>(null);
+  const operation=useProviderFlagChange(updateEmailFeatureFlag,onRefresh);
 
   const handleToggle = async (flag: EmailFeatureFlag) => {
-    if (!canManage || flight.current) return;
+    if (!canManage || operation.busy || operation.uncertain) return;
     if (flag.requiresApproval && !flag.isEnabled) {
-      if (!confirm(`Enable "${flag.featureName}"? This will allow emails to be sent for this feature.`)) return;
+      setConfirming(flag);return;
     }
-    flight.current = true; setUpdating(flag.featureCode);
-    try {
-      const result = await updateEmailFeatureFlag(flag.featureCode, { is_enabled: !flag.isEnabled });
-      if (result.success) {
-        toast.success(`${flag.featureName} ${flag.isEnabled ? "disabled" : "enabled"}`);
-        onRefresh();
-      } else {
-        toast.error(result.error ?? "Failed");
-      }
-    } catch { toast.error("Change unconfirmed. Refresh before retrying."); } finally {
-      flight.current = false;
-      setUpdating(null);
-    }
+    await operation.change(flag.featureCode,flag.workspaceRevision,{is_enabled:!flag.isEnabled});
   };
 
   return (
     <div className="space-y-2">
+      {operation.error&&<div role="alert" className="border border-destructive p-3 text-sm">{operation.error}{operation.uncertain&&<Button className="mt-2" disabled={operation.busy||!canManage} onClick={()=>void operation.retry()}>Retry unchanged setting</Button>}</div>}
+      {operation.refreshError&&<div role="alert" className="border p-3 text-sm">{operation.refreshError}<Button className="mt-2" disabled={operation.busy} onClick={operation.retryRefresh}>Refresh settings</Button></div>}
+      <AlgtDialog open={!!confirming} title="Enable email feature?" onOpenChange={open=>{if(!operation.busy&&!open)setConfirming(null);}} actions={<><Button variant="outline" disabled={operation.busy} onClick={()=>setConfirming(null)}>Keep disabled</Button><Button disabled={operation.busy||!canManage||operation.uncertain} onClick={()=>{if(confirming){const flag=confirming;setConfirming(null);void operation.change(flag.featureCode,flag.workspaceRevision,{is_enabled:true});}}}>Confirm enable</Button></>}>
+        <p>Enable {confirming?.featureName}? This permits email for this feature when its provider and backend delivery service are available. It does not confirm delivery.</p>
+      </AlgtDialog>
       {flags.map((flag) => (
         <div key={flag.featureCode} className="flex items-center justify-between py-2 px-3 rounded-md hover:bg-muted/20 transition-colors">
           <div className="flex-1 min-w-0 mr-4">
@@ -56,7 +51,7 @@ export function EmailFeatureFlagsPanel({ flags, onRefresh, canManage = false }: 
           <Switch
             checked={flag.isEnabled}
             aria-label={`Enable ${flag.featureName}`}
-            disabled={!canManage || updating !== null}
+            disabled={!canManage || operation.busy || operation.uncertain || !flag.workspaceRevision}
             onCheckedChange={() => handleToggle(flag)}
           />
         </div>

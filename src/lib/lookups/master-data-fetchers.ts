@@ -12,7 +12,7 @@
  * their inline queryFns until they are needed for prefetch.
  */
 
-import { createClient } from "@/lib/supabase/client";
+import { fetchConfigurationChoices } from "./configuration-fetchers";
 import type {
   CountryRow,
   CurrencyRow,
@@ -22,70 +22,20 @@ import type {
 
 export async function fetchCountries(
   gccOnly = false,
-  includeInactive = false
+  includeInactive = false,
+  signal?: AbortSignal
 ): Promise<CountryRow[]> {
-  const supabase = createClient();
-  let query = supabase
-    .from("countries")
-    .select("id, country_code, name_en, name_ar, is_gcc")
-    .order("sort_order", { ascending: true })
-    .order("name_en", { ascending: true });
-
-  if (!includeInactive) query = query.eq("is_active", true);
-  if (gccOnly) query = query.eq("is_gcc", true);
-
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
-  return (data ?? []) as CountryRow[];
+  return fetchConfigurationChoices<CountryRow>("countries", { filter: gccOnly, includeInactive }, signal);
 }
 
-export async function fetchCurrencies(
-  includeInactive = false
-): Promise<CurrencyRow[]> {
-  const supabase = createClient();
-  let query = supabase
-    .from("currencies")
-    .select("id, currency_code, currency_name_en, currency_name_ar, symbol, is_base_currency")
-    .order("sort_order", { ascending: true })
-    .order("currency_name_en", { ascending: true });
-
-  if (!includeInactive) query = query.eq("is_active", true);
-
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
-  return (data ?? []) as CurrencyRow[];
+export async function fetchCurrencies(includeInactive = false, signal?: AbortSignal): Promise<CurrencyRow[]> {
+  return fetchConfigurationChoices<CurrencyRow>("currencies", { includeInactive }, signal);
 }
 
-export async function fetchPaymentTerms(
-  includeInactive = false
-): Promise<PaymentTermRow[]> {
-  const supabase = createClient();
-  let query = supabase
-    .from("payment_terms")
-    .select("id, term_code, term_name_en, term_name_ar, due_days")
-    .order("sort_order", { ascending: true })
-    .order("term_name_en", { ascending: true });
-
-  if (!includeInactive) query = query.eq("is_active", true);
-
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
-  return (data ?? []) as PaymentTermRow[];
+export async function fetchPaymentTerms(includeInactive = false, signal?: AbortSignal): Promise<PaymentTermRow[]> {
+  return fetchConfigurationChoices<PaymentTermRow>("paymentTerms", { includeInactive }, signal);
 }
 
-export async function fetchTaxTypes(
-  includeInactive = false
-): Promise<TaxTypeRow[]> {
-  const supabase = createClient();
-  let query = supabase
-    .from("tax_types")
-    .select("id, tax_code, tax_name_en, tax_name_ar, tax_rate")
-    .order("sort_order", { ascending: true })
-    .order("tax_name_en", { ascending: true });
-
-  if (!includeInactive) query = query.eq("is_active", true);
-
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
-  return (data ?? []) as TaxTypeRow[];
+export async function fetchTaxTypes(includeInactive = false, signal?: AbortSignal): Promise<TaxTypeRow[]> {
+  return fetchConfigurationChoices<TaxTypeRow>("taxTypes", { includeInactive }, signal);
 }

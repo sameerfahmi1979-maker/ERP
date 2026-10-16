@@ -7,9 +7,8 @@
  *   server actions — so a form with 6 lookup fields populates one by one.
  *
  * Standard fix:
- *   1. Batch-fetch all category values in ONE server action
- *      (getActiveLookupValuesByCategoryCodes — 2 Supabase round-trips total).
- *   2. Seed the INDIVIDUAL query keys that LookupSelect already reads:
+ *   1. Batch-fetch all category values through one complete HTTP read resource.
+ *   2. Populate the INDIVIDUAL query keys that LookupSelect already reads:
  *      ["lookup", "values", CODE, null, includeInactive]
  *      (queryKeys.lookup.values(code) — parentValueCode defaults to null).
  *
@@ -22,7 +21,7 @@
 
 import type { QueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/query-keys";
-import { getActiveLookupValuesByCategoryCodes } from "@/server/actions/master-data/lookups";
+import { readJson, retryAuthorizedRead } from "@/lib/reads/client";
 import type { LookupValue } from "@/features/master-data/lookups/types";
 import type { MasterQueryDescriptor } from "@/lib/query/form-prefetch-types";
 
@@ -39,11 +38,11 @@ export interface PrefetchLookupResult {
   requestedCodes: readonly string[];
   /** Codes whose individual query key was seeded with values. */
   seededCodes: readonly string[];
-  /** Requested codes that came back empty/absent (inactive or unknown category). */
+  /** Verified empty codes, or requested codes whose read failed. */
   missingCodes: readonly string[];
   /** Total number of lookup values written into the cache. */
   seededCount: number;
-  /** Non-null if the batch server action failed; nothing was seeded. */
+  /** Non-null if the batch or an individual query failed. */
   error: string | null;
 }
 
@@ -89,8 +88,8 @@ export function seedLookupCategoryValues(
 // ── prefetchLookupCategories ──────────────────────────────────────────────────
 
 /**
- * Batch-fetch lookup categories in ONE server action and seed the individual
- * LookupSelect query keys.
+ * Batch-fetch lookup categories through one HTTP read and populate individual
+ * LookupSelect keys under their own cancellable query ownership.
  *
  * Call on drawer open (3B.6G.2+), before or in parallel with first render:
  *
@@ -109,7 +108,7 @@ export async function prefetchLookupCategories(
   options: PrefetchLookupOptions = {}
 ): Promise<PrefetchLookupResult> {
   const { includeInactive = false } = options;
-  const requestedCodes = categoryCodes.map((c) => c.toUpperCase());
+  const requestedCodes = [...new Set(categoryCodes.map((c) => c.trim().toUpperCase()))].sort();
 
   if (requestedCodes.length === 0) {
     return {
@@ -122,36 +121,47 @@ export async function prefetchLookupCategories(
   }
 
   try {
-    const res = await getActiveLookupValuesByCategoryCodes(
-      [...requestedCodes],
-      includeInactive
-    );
-
-    if (!res.success || !res.data) {
-      return {
-        requestedCodes,
-        seededCodes: [],
-        missingCodes: requestedCodes,
-        seededCount: 0,
-        error: res.error ?? "Failed to batch-fetch lookup values",
-      };
-    }
-
-    // Ensure every requested code gets seeded even if absent from the result,
-    // so LookupSelect does not refetch a category we already know is empty.
-    const completeResult: Record<string, LookupValue[]> = {};
-    for (const code of requestedCodes) {
-      completeResult[code] = res.data[code] ?? [];
-    }
-
-    return seedLookupCategoryValues(queryClient, completeResult, { includeInactive });
-  } catch (err) {
+    const batch = queryClient.fetchQuery({
+      queryKey: queryKeys.lookup.batch([...requestedCodes], includeInactive),
+      retry: retryAuthorizedRead,
+      queryFn: async ({signal}) => {
+        const result = (await readJson<{success:true;data:Record<string,LookupValue[]>}>(
+          "lookup-batch", {categoryCodes:[...requestedCodes],includeInactive}, signal)).data;
+        if (!result || requestedCodes.some(code => !Object.hasOwn(result,code) || !Array.isArray(result[code]))) {
+          throw new Error("Choices could not be completely loaded. Please retry.");
+        }
+        return result;
+      },
+    });
+    // Each individual query owns its result. Register before awaiting so a
+    // mounted field shares the pending batch instead of opening a second read.
+    const individual = requestedCodes.map(code => queryClient.fetchQuery({
+      queryKey: queryKeys.lookup.values(code, null, includeInactive),
+      retry: retryAuthorizedRead,
+      queryFn: async ({signal}) => {
+        const values = (await batch)[code];
+        signal.throwIfAborted();
+        return values;
+      },
+    }));
+    const [, ...values] = await Promise.all([batch, ...individual]);
+    // Receipt only: fetchQuery has already committed admitted results. A second
+    // setQueryData here could refill an identity cache cleared after completion.
+    const populated = values as LookupValue[][];
+    return {
+      requestedCodes,
+      seededCodes: requestedCodes.filter((_, index) => populated[index].length > 0),
+      missingCodes: requestedCodes.filter((_, index) => populated[index].length === 0),
+      seededCount: populated.reduce((total, rows) => total + rows.length, 0),
+      error: null,
+    };
+  } catch {
     return {
       requestedCodes,
       seededCodes: [],
       missingCodes: requestedCodes,
       seededCount: 0,
-      error: err instanceof Error ? err.message : "Lookup prefetch failed",
+      error: "Choices could not be completely loaded. Please retry.",
     };
   }
 }
@@ -169,7 +179,7 @@ export interface PrefetchMasterDataResult {
 
 /**
  * Prefetch master-data lists (countries, currencies, …) declared by a parent
- * form. Uses queryClient.prefetchQuery so:
+ * form. Uses queryClient.fetchQuery so failures are observable and:
  *   - already-fresh cache entries are NOT refetched,
  *   - the consuming hook (same queryKey) mounts with data instantly.
  *
@@ -187,16 +197,19 @@ export async function prefetchMasterDataQueries(
   await Promise.all(
     queryDescriptors.map(async (descriptor) => {
       try {
-        await queryClient.prefetchQuery({
+        await queryClient.fetchQuery({
           queryKey: descriptor.queryKey,
-          queryFn: descriptor.queryFn,
+          queryFn: ({signal}) => descriptor.queryFn(signal),
+          retry: retryAuthorizedRead,
           ...(descriptor.staleTime !== undefined
             ? { staleTime: descriptor.staleTime }
             : {}),
         });
         prefetchedKeys.push([...descriptor.queryKey]);
-      } catch (err) {
-        error = err instanceof Error ? err.message : "Master-data prefetch failed";
+      } catch {
+        // Descriptors may throw provider diagnostics; only a safe receipt leaves
+        // this boundary. Each successful sibling still reports its own key.
+        error = "Choices failed";
       }
     })
   );

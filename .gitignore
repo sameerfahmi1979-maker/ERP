@@ -88,3 +88,9 @@ CODEX_AUDIT_13_09_2026/IMPLEMENTATION/F02_CLOSEOUT/
 # F05 private screen evidence, synthetic credentials and isolated builds.
 # Only reviewed source/tests and docs/remediation/F05 summaries may be published.
 /CODEX_AUDIT_13_09_2026/IMPLEMENTATION/F05/
+# F06 isolated runtime and private evidence; publish only reviewed technical summaries.
+/CODEX_AUDIT_13_09_2026/IMPLEMENTATION/F06/
+# Dependency audit and local verification evidence are uploaded by CI, not committed.
+/.security-evidence/
+# Same-head Linux image-check evidence is a CI artifact, never application source.
+/.f06-linux-image-evidence/

@@ -16,7 +16,7 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
-import type { ErpAiFieldSuggestionDraft, ErpAiEntityType } from "../types";
+import type { ErpAiFieldSuggestionDraft, ErpAiEntityType, ErpAiCurrentRecordSnapshot } from "../types";
 import {
   ERP_COMMON_AI_PROMPT_VERSION,
   ERP_COMMON_AI_MAX_EVIDENCE_SNIPPET_CHARS,
@@ -120,7 +120,8 @@ export async function insertPendingSuggestions(
   entityId: number,
   suggestions: ErpAiFieldSuggestionDraft[],
   userProfileId: number,
-  targetTableByField: Map<string, string>
+  targetTableByField: Map<string, string>,
+  currentRecord?: ErpAiCurrentRecordSnapshot
 ): Promise<InsertResult> {
   if (suggestions.length === 0) {
     return { insertedCount: 0, generationBatchId: 0, insertedIds: [] };
@@ -133,14 +134,24 @@ export async function insertPendingSuggestions(
 
   const now = new Date().toISOString();
 
-  const rows = suggestions.map((s) => ({
+  const rows = suggestions.map((s) => {
+    const targetTable=targetTableByField.get(s.targetField)??'';
+    const child=entityType==='party'&&['party_licenses','party_tax_registrations'].includes(targetTable);
+    const company=entityType==='company';
+    const target=currentRecord?.reviewedTargets?.[targetTable];
+    if(child&&(!target||currentRecord?.entityType!==entityType||currentRecord.entityId!==entityId))throw new Error('The reviewed child target is unavailable. Generate and review again.');
+    if(company&&(targetTable!=='owner_companies'||!target||target.id!==entityId||!Number.isSafeInteger(target.id)||!/^[1-9]\d*$/.test(target.revision)
+      ||currentRecord?.entityType!==entityType||currentRecord.entityId!==entityId||!Object.hasOwn(currentRecord.fields,s.targetField)))
+      throw new Error('The reviewed company target is unavailable. Generate and review again.');
+    return ({
     entity_type: entityType,
     entity_id: entityId,
     target_table: targetTableByField.get(s.targetField) ?? "",
     target_field: s.targetField,
     field_label: s.fieldLabel,
     field_type: s.fieldType,
-    current_value: s.currentValue ? String(s.currentValue).slice(0, 2000) : null,
+    current_value: (entityType==='party'||company)&&currentRecord ? currentRecord.fields[s.targetField]??null : s.currentValue ? String(s.currentValue).slice(0, 2000) : null,
+    ...(child||company?{reviewed_target_id:target!.id,reviewed_target_revision:target!.revision}:{}),
     suggested_value: s.suggestedValue
       ? String(s.suggestedValue).slice(0, 2000)
       : null,
@@ -164,7 +175,7 @@ export async function insertPendingSuggestions(
     updated_by: userProfileId,
     created_at: now,
     updated_at: now,
-  }));
+  });});
 
   const { data, error } = await supabase
     .from("erp_ai_field_suggestions")

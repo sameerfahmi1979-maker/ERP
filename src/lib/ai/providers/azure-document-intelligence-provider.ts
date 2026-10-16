@@ -1,94 +1,33 @@
-import { resolveAiProviderSecret } from "@/lib/settings/resolve-ai-secret";
-// ============================================================================
-// Azure Document Intelligence Provider
-// Phase: ERP SETTINGS.1B
-// Implements testConnection for provider_type "azure_document_intelligence".
-// OCR analysis itself is handled by src/lib/dms/ai/azure-document-intelligence-adapter.ts.
-// Security: API key resolved from resolveAiProviderSecret(this.config) at call time — never logged.
-// ============================================================================
-
-import type { AiProviderInterface, AiProviderConfig, AiTestConnectionResult } from "./types";
-
-const TEST_TIMEOUT_MS = 10_000;
-const DEFAULT_API_VERSION = "2024-11-30";
+import {resolveAiProviderSecret} from '@/lib/settings/resolve-ai-secret';
+import {aiEndpoint,providerApiVersion,ProviderConfigurationError,safeProviderFailure} from '@/lib/settings/provider-endpoints';
+import type {AiProviderInterface,AiProviderConfig,AiTestConnectionResult} from './types';
 
 export class AzureDocumentIntelligenceProvider implements AiProviderInterface {
-  readonly providerType;
-  readonly config: AiProviderConfig;
-  readonly isEnabled: boolean;
-
-  constructor(config: AiProviderConfig) {
-    this.config = config;
-    this.providerType = config.providerType;
-    this.isEnabled = config.isEnabled;
-  }
-
-  async testConnection(): Promise<AiTestConnectionResult> {
-    const start = Date.now();
-    const fail = (message: string): AiTestConnectionResult => ({
-      ok: false,
-      status: "failed",
-      message,
-      durationMs: Date.now() - start,
-      providerType: this.config.providerType,
-    });
-
-    const endpoint = this.config.apiEndpoint?.replace(/\/+$/, "");
-    if (!endpoint) {
-      return fail("API Endpoint is not set. Enter your Azure Document Intelligence resource endpoint (https://<resource>.cognitiveservices.azure.com).");
+ readonly providerType;
+ readonly config:AiProviderConfig;
+ readonly isEnabled:boolean;
+ constructor(config:AiProviderConfig){this.config=config;this.providerType=config.providerType;this.isEnabled=config.isEnabled;}
+ async testConnection():Promise<AiTestConnectionResult>{
+  const start=Date.now();
+  const result=(ok:boolean,message:string):AiTestConnectionResult=>({ok,status:ok?'success':'failed',message,durationMs:Date.now()-start,providerType:this.providerType});
+  try{
+   if(!this.config.isActive||this.providerType!=='azure_document_intelligence')throw new ProviderConfigurationError('This provider is inactive or unsupported.');
+   const endpoint=aiEndpoint(this.providerType,this.config.apiEndpoint);
+   const version=providerApiVersion(this.config.apiVersion,'2024-11-30');
+   const key=resolveAiProviderSecret(this.config);
+   if(!key)return result(false,'Provider credentials are not available. Ask an authorized administrator to review the protected credential configuration.');
+   const signal=AbortSignal.timeout(10000);
+   for(const path of ['documentintelligence','formrecognizer']){
+    const response=await fetch(`${endpoint}/${path}/info?api-version=${version}`,{method:'GET',headers:{'Ocp-Apim-Subscription-Key':key},redirect:'error',signal});
+    if(response.status===200){
+     const data:unknown=await response.json();
+     if(!data||typeof data!=='object'||!('customDocumentModels' in data))return result(false,'The provider returned unexpected resource information. Readiness was not verified.');
+     return result(true,'Azure resource authentication verified. OCR processing and the selected model have not been exercised.');
     }
-
-    const secretRef = this.config.secretRef;
-    if (!secretRef) {
-      return fail("No API key reference configured. Enter the API key in the provider form.");
-    }
-
-    const apiKey = resolveAiProviderSecret(this.config);
-    if (!apiKey) {
-      return fail(`Environment variable '${secretRef}' is not set. Save the API key in the provider form.`);
-    }
-
-    const apiVersion = this.config.apiVersion?.trim() || DEFAULT_API_VERSION;
-
-    // The "info" operation is the lightest authenticated call.
-    // Newer API versions (2024+) use the documentintelligence path;
-    // older versions (2023.x and earlier) use formrecognizer.
-    const candidatePaths = [
-      `${endpoint}/documentintelligence/info?api-version=${encodeURIComponent(apiVersion)}`,
-      `${endpoint}/formrecognizer/info?api-version=${encodeURIComponent(apiVersion)}`,
-    ];
-
-    let lastError = "";
-    for (const url of candidatePaths) {
-      try {
-        const response = await fetch(url, {
-          method: "GET",
-          headers: { "Ocp-Apim-Subscription-Key": apiKey },
-          signal: AbortSignal.timeout(TEST_TIMEOUT_MS),
-        });
-
-        if (response.ok) {
-          return {
-            ok: true,
-            status: "success",
-            message: `Azure Document Intelligence connected (api-version ${apiVersion}, model ${this.config.modelId ?? "prebuilt-read"}).`,
-            durationMs: Date.now() - start,
-            modelId: this.config.modelId ?? null,
-            providerType: this.config.providerType,
-          };
-        }
-
-        if (response.status === 401 || response.status === 403) {
-          return fail("Azure rejected the API key (401/403). Verify KEY 1 in Azure Portal → your resource → Keys and Endpoint, and re-save it in the provider form.");
-        }
-
-        // 404 can mean wrong path for this api-version — try the next candidate
-        lastError = `HTTP ${response.status} at ${url.split("?")[0]}`;
-      } catch (err) {
-        lastError = err instanceof Error ? err.message : String(err);
-      }
-    }
-
-    return fail(`Cannot reach Azure Document Intelligence at ${endpoint}: ${lastError}. Check the endpoint URL and API version.`);
-  }
+    // Only a missing API path warrants the documented legacy-path fallback.
+    if(response.status!==404)return result(false,`Azure resource check failed (HTTP ${response.status}). Review credentials, API version and availability.`);
+   }
+   return result(false,'Azure resource information was not found. Review the configured resource and supported API version.');
+  }catch(error){return result(false,safeProviderFailure(error));}
+ }
 }

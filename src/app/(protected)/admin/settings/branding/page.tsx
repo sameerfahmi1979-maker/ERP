@@ -1,6 +1,7 @@
 import { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext } from "@/lib/rbac/check";
+import { canViewAppBranding, canManageAppBranding, canUploadBrandingAssets } from "@/lib/branding/asset-permissions";
 import { getActiveAppBrandingSettings } from "@/server/actions/branding/app-settings";
 import { loadRuntimeAppBranding } from "@/lib/branding/load-runtime-app-branding";
 import { AppBrandingSettingsPageClient } from "@/features/branding/app-branding-settings-page-client";
@@ -18,14 +19,12 @@ export const metadata: Metadata = {
 export default async function AppBrandingSettingsPage() {
   const ctx = await getAuthContext();
 
-  const canView =
-    hasPermission(ctx, "branding.app.view") || hasPermission(ctx, "reports.manage");
+  const canView = canViewAppBranding(ctx);
 
   if (!canView) redirect("/access-denied");
 
-  const canManage = hasPermission(ctx, "branding.app.manage");
-  const canUpload =
-    hasPermission(ctx, "branding.assets.upload") && canManage;
+  const canManage = canManageAppBranding(ctx);
+  const canUpload = canUploadBrandingAssets(ctx) && canManage;
 
   const [settingsResult, runtimeBranding] = await Promise.all([
     getActiveAppBrandingSettings(),

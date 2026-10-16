@@ -1,4 +1,5 @@
 import { resolveAiProviderSecret } from "@/lib/settings/resolve-ai-secret";
+import { aiEndpoint, providerApiVersion } from "@/lib/settings/provider-endpoints";
 /**
  * DMS ARABIC FIX.1 — Azure Document Intelligence Adapter
  *
@@ -15,7 +16,7 @@ import { resolveAiProviderSecret } from "@/lib/settings/resolve-ai-secret";
  *
  * Configuration in erp_ai_provider_configs:
  *   provider_type: "azure_document_intelligence"
- *   api_endpoint: "https://<region>.api.cognitive.microsoft.com"
+ *   api_endpoint: "https://<resource>.cognitiveservices.azure.com"
  *   model_id: "prebuilt-read" | "prebuilt-document" | "prebuilt-idDocument" | "prebuilt-invoice"
  *   secret_ref: "AZURE_DOCUMENT_INTELLIGENCE_KEY" (env var name)
  *   api_version: "2024-11-30" (or latest)
@@ -105,13 +106,12 @@ export class AzureDocumentIntelligenceAdapter implements IDmsAiProvider {
   }
 
   isConfigured(): boolean {
-    if (!this.config.isEnabled || !this.config.isActive) return false;
-    const secretRef = this.config.secretRef;
-    if (!secretRef) return false;
-    const apiKey = resolveAiProviderSecret(this.config);
-    if (!apiKey) return false;
-    const endpoint = this.config.apiEndpoint;
-    return !!(endpoint && endpoint.includes("cognitiveservices.azure.com"));
+    if (!this.config.isEnabled || !this.config.isActive || this.config.providerType !== "azure_document_intelligence") return false;
+    try {
+      aiEndpoint(this.config.providerType, this.config.apiEndpoint);
+      providerApiVersion(this.config.apiVersion, AZURE_API_VERSION);
+      return !!resolveAiProviderSecret(this.config);
+    } catch { return false; }
   }
 
   // ── OCR via Azure Document Intelligence ────────────────────────────────────
@@ -136,11 +136,12 @@ export class AzureDocumentIntelligenceAdapter implements IDmsAiProvider {
       return { success: false, text: "", error: "Azure Document Intelligence API key not set." };
     }
 
-    const endpoint = this.config.apiEndpoint!.replace(/\/$/, "");
+    const endpoint = aiEndpoint(this.config.providerType, this.config.apiEndpoint);
     const modelId = this.modelId ?? "prebuilt-read";
-    const apiVersion = this.config.apiVersion ?? AZURE_API_VERSION;
+    const apiVersion = providerApiVersion(this.config.apiVersion, AZURE_API_VERSION);
 
-    const analyzeUrl = `${endpoint}/documentintelligence/documentModels/${modelId}:analyze?api-version=${apiVersion}`;
+    const modelPath = `${endpoint}/documentintelligence/documentModels/${encodeURIComponent(modelId)}`;
+    const analyzeUrl = `${modelPath}:analyze?api-version=${apiVersion}`;
 
     // Convert base64 to binary for Azure
     const body = JSON.stringify({
@@ -155,11 +156,11 @@ export class AzureDocumentIntelligenceAdapter implements IDmsAiProvider {
         "Content-Type": "application/json",
       },
       body,
+      redirect: "error",
       signal: AbortSignal.timeout(AZURE_TIMEOUT_MS),
     });
 
-    if (!startResponse.ok) {
-      const errText = await startResponse.text().catch(() => "");
+    if (startResponse.status !== 202) {
       return {
         success: false,
         text: "",
@@ -175,6 +176,16 @@ export class AzureDocumentIntelligenceAdapter implements IDmsAiProvider {
       return { success: false, text: "", error: "Azure Document Intelligence: no operation location returned." };
     }
 
+    // A provider response is not authority to forward the resource key elsewhere.
+    try {
+      const location = new URL(operationLocation);
+      const expected = new URL(modelPath);
+      if (location.origin !== expected.origin || location.username || location.password || location.hash ||
+        !location.pathname.startsWith(`${expected.pathname}/analyzeResults/`)) throw new Error("Unexpected polling destination");
+    } catch {
+      return {success:false,text:"",error:"Azure returned an unsupported polling destination. Processing was not confirmed."};
+    }
+
     // Poll for result — budget scales with file size (SPEED.2D + 2O).
     // Honors Azure's Retry-After header when present.
     const approxFileBytes = Math.floor(fileBase64.length * 0.75);
@@ -187,6 +198,7 @@ export class AzureDocumentIntelligenceAdapter implements IDmsAiProvider {
 
       const pollResponse = await fetch(operationLocation, {
         headers: { "Ocp-Apim-Subscription-Key": apiKey },
+        redirect: "error",
         signal: AbortSignal.timeout(15_000),
       });
 

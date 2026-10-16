@@ -22,13 +22,14 @@ import type { Party } from "@/features/master-data/parties/party-types";
 import { useRealtimeSync } from "@/hooks/realtime/use-realtime-sync";
 import { useWorkspace } from "@/hooks/use-workspace";
 import type { AuthContext } from "@/lib/rbac/check";
-import { deactivateParty, reactivateParty } from "@/server/actions/master-data/parties";
+import {hasPermission,hasGlobalPermission} from '@/lib/rbac/scope';
 import { useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import { format } from "date-fns";
 import { Edit, Eye, MoreVertical, Plus, Power } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import {useState} from 'react';
+import {PartyLifecycleDialog} from './party-lifecycle-dialog';
 import { prefetchPartyFormData } from "./party-form-prefetch";
 
 type PartiesTableProps = {
@@ -59,9 +60,11 @@ export function PartiesTable({ parties, authContext, onRefresh, defaultTypeCode,
   const queryClient = useQueryClient();
   const { openTab } = useWorkspace();
 
-  const canCreate = authContext.permissionCodes?.includes("master_data.parties.create");
-  const canEdit = authContext.permissionCodes?.includes("master_data.parties.edit");
-  const canDeactivate = authContext.permissionCodes?.includes("master_data.parties.deactivate");
+  const canCreate = hasPermission(authContext,"master_data.parties.create") && hasGlobalPermission(authContext,"numbering.rules.generate")
+    && (!defaultTypeCode || !ALLOWED_DEFAULT_TYPE_CODES.has(defaultTypeCode) || hasGlobalPermission(authContext,'master_data.parties.manage_types'));
+  const canEdit = hasPermission(authContext,"master_data.parties.edit");
+  const canDeactivate = hasGlobalPermission(authContext,"master_data.parties.deactivate");
+  const [lifecycleParty,setLifecycleParty]=useState<Party|null>(null);
 
   const handleRefresh = () => {
     if (onRefresh) onRefresh();
@@ -244,17 +247,7 @@ export function PartiesTable({ parties, authContext, onRefresh, defaultTypeCode,
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
-                    onClick={async () => {
-                      const result = item.is_active
-                        ? await deactivateParty(item.id)
-                        : await reactivateParty(item.id);
-                      if (result.success) {
-                        toast.success(`Party ${item.is_active ? "deactivated" : "reactivated"}`);
-                        handleRefresh();
-                      } else {
-                        toast.error(result.error ?? "Failed to toggle status");
-                      }
-                    }}
+                    onClick={() => setLifecycleParty(item)}
                   >
                     <Power className="mr-2 h-4 w-4" />
                     {item.is_active ? "Deactivate" : "Reactivate"}
@@ -270,7 +263,7 @@ export function PartiesTable({ parties, authContext, onRefresh, defaultTypeCode,
   ];
 
   return (
-    <ERPDataTable<Party>
+    <><ERPDataTable<Party>
       tableId="parties_table"
       columns={columns}
       data={parties}
@@ -297,5 +290,7 @@ export function PartiesTable({ parties, authContext, onRefresh, defaultTypeCode,
         ) : null
       }
     />
+    {lifecycleParty&&<PartyLifecycleDialog party={lifecycleParty} onClose={()=>setLifecycleParty(null)} onSaved={handleRefresh}/>}
+    </>
   );
 }

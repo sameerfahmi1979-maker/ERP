@@ -319,6 +319,7 @@ function CandidateWorkspaceFormInstance({ candidate, mode, authContext }: Props)
         {candidate ? (
           <CandidateConversionTab
             candidate={candidate}
+            authContext={authContext}
             canManage={canManage}
             canCreateEmployee={canCreateEmployee}
             onChildOpen={setChildDialogOpen}

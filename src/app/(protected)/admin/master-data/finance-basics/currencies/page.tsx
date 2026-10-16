@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { getAuthContext, hasPermission, type AuthContext } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission,hasGlobalPermission, type AuthContext } from "@/lib/rbac/check";
 import { getCurrencies } from "@/features/master-data/finance-basics/actions";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { CurrenciesTable } from "@/features/master-data/finance-basics/components/currencies-table";
@@ -28,7 +28,7 @@ async function CurrenciesContent({ authContext }: { authContext: AuthContext }) 
 export default async function CurrenciesPage() {
   const ctx = await getAuthContext();
 
-  if (!hasPermission(ctx, "master_data.finance_basics.view")) {
+  if (!hasPermission(ctx, "master_data.finance_basics.view")&&!hasGlobalPermission(ctx,"master_data.finance_basics.manage")&&!hasGlobalPermission(ctx,"master_data.lookups.lock")) {
     redirect("/access-denied");
   }
 

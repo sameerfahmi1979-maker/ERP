@@ -27,6 +27,7 @@ import { runReport } from "@/lib/report-center/report-runner";
 import { resolveTemplateForExport } from "@/lib/report-center/template-export";
 import { renderExecutiveLedgerHtml } from "@/lib/executive-ledger/html-renderer";
 import type { ExportBrandingContext } from "@/lib/export/export-types";
+import { issuedBrandingSnapshot } from "@/lib/branding/issuance-provenance";
 import { buildPdfStoragePath, uploadGeneratedPdf } from "@/lib/pdf/storage";
 import { generateVerificationToken, buildVerificationUrl, buildVerificationPath } from "@/lib/public-verification/token";
 import { generateQrDataUrl } from "@/lib/public-verification/qr";
@@ -316,7 +317,11 @@ export async function generateOfficialDocument(
           templateId: resolvedTemplateId,
           reportCode: outputCode,
           principalId: ctx.profile.id,
+          forIssuance: true,
         })) ?? undefined;
+      if (!branding?.provenance) {
+        return { success: false, blocked: "validation_failed", error: "The selected branding is unavailable, changed, or requires version reconciliation. Refresh its selection before issuing." };
+      }
     }
 
     // ── 7. Fingerprint + request key ───────────────────────────────────────
@@ -332,6 +337,9 @@ export async function generateOfficialDocument(
           definition_version: definition.version,
         }
       : { columns: runResult.data.columns, row };
+    // A governed branding change is a new content identity. Replaying an old
+    // request still returns its stored issuance; this never rewrites history.
+    if (branding) dataSnapshot.branding = issuedBrandingSnapshot(branding);
     const requestKey = buildRequestKey({
       outputCode,
       recordId,
@@ -342,7 +350,7 @@ export async function generateOfficialDocument(
       outputCode,
       recordId,
       templateId: resolvedTemplateId ?? null,
-      templateVersion: definition ? definition.version : null,
+      templateVersion: definition?.version ?? branding?.provenance?.templateVersion ?? 1,
       dataSnapshot,
     });
 
@@ -535,7 +543,10 @@ function buildRealPorts(deps: {
           output_profile: "standard",
           locale: deps.language === "bilingual" ? "en-ar" : deps.language,
           direction: deps.language === "ar" ? "rtl" : deps.language === "bilingual" ? "auto" : "ltr",
-          template_version: deps.definition ? deps.definition.version : null,
+          // Fixed documents retain their code definition version. Legacy
+          // governed outputs retain the selected template's actual version;
+          // untemplated legacy output uses the existing database default v1.
+          template_version: deps.definition?.version ?? deps.branding?.provenance?.templateVersion ?? 1,
           generated_by: deps.actorId,
           document_class: rowInput.documentClass,
           output_code: rowInput.outputCode,
@@ -545,9 +556,7 @@ function buildRealPorts(deps: {
           supersedes_issuance_id: rowInput.supersedesIssuanceId,
           data_snapshot_json: deps.dataSnapshot,
           policy_snapshot_json: deps.policy as unknown as Record<string, unknown>,
-          branding_snapshot_json: deps.branding
-            ? { templateId: deps.resolvedTemplateId, companyNameEn: deps.branding.companyNameEn ?? null }
-            : null,
+          branding_snapshot_json: issuedBrandingSnapshot(deps.branding),
         })
         .select("id")
         .single();

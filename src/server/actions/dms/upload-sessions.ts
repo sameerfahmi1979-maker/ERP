@@ -14,11 +14,7 @@ export type ActionResult<T = unknown> = {
   error?: string;
 };
 
-import {
-  DMS_ALLOWED_MIME_TYPES,
-  DMS_ALLOWED_EXTENSIONS,
-  DMS_MAX_FILE_SIZE_BYTES,
-} from "@/features/dms/upload/dms-upload-constants";
+import { dmsFileMetadataSchema } from "@/lib/dms/batch-admission";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -65,11 +61,6 @@ function sanitizeFilename(filename: string): string {
     .replace(/[^a-zA-Z0-9._-]/g, "_")
     .replace(/_{2,}/g, "_")
     .substring(0, 200);
-}
-
-function getFileExtension(filename: string): string {
-  const parts = filename.split(".");
-  return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : "";
 }
 
 function canViewDms(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
@@ -161,14 +152,7 @@ export async function getDmsUploadSession(
 
 // ── Create upload session + get signed upload URL ─────────────────────────────
 
-const CreateSessionSchema = z.object({
-  original_filename: z.string().min(1).max(500),
-  mime_type: z.string().min(1),
-  file_size_bytes: z.number().int().positive().max(DMS_MAX_FILE_SIZE_BYTES, {
-    message: "File exceeds maximum size of 50 MB",
-  }),
-  sha256_hash: z.string().length(64, { message: "Invalid SHA-256 hash" }),
-});
+const CreateSessionSchema = dmsFileMetadataSchema;
 
 export type CreateUploadSessionInput = z.infer<typeof CreateSessionSchema>;
 
@@ -197,17 +181,6 @@ export async function createDmsUploadSession(
       return { success: false, error: parsed.error.issues[0]?.message ?? "Validation error" };
 
     const { original_filename, mime_type, file_size_bytes, sha256_hash } = parsed.data;
-
-    // Validate MIME type
-    if (!DMS_ALLOWED_MIME_TYPES.includes(mime_type as typeof DMS_ALLOWED_MIME_TYPES[number])) {
-      return { success: false, error: `File type '${mime_type}' is not allowed` };
-    }
-
-    // Validate extension
-    const ext = getFileExtension(original_filename);
-    if (!DMS_ALLOWED_EXTENSIONS.includes(ext)) {
-      return { success: false, error: `File extension '.${ext}' is not allowed` };
-    }
 
     // Check for duplicate by SHA-256
     const { data: existingFile } = await supabase

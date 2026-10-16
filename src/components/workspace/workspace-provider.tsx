@@ -18,6 +18,7 @@ import { UnsavedChangesDialog } from "@/components/erp/unsaved-changes-dialog";
 import { useWorkspaceDraftStoreContext } from "@/components/workspace/workspace-draft-provider";
 import {
   createTabFromRoute,
+  DASHBOARD_ROUTE,
   isWorkspaceRoute,
 } from "@/lib/workspace/workspace-route-registry";
 import {
@@ -56,6 +57,7 @@ type WorkspaceContextValue = {
   isTabActive: (tabId: string) => boolean;
   closeOtherTabs: (tabId: string) => void;
   closeAllClosableTabs: () => void;
+  closeConfirmationOpen: boolean;
 };
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
@@ -95,7 +97,7 @@ export function WorkspaceProvider({ children, defaultRoute, principalId, canRest
 
   // ── Restore from localStorage on first client mount ────────────────────────
   useEffect(() => {
-    const saved = restoreFromStorage(principalId);
+    const saved = restoreFromStorage(principalId, defaultRoute);
     if (saved && canRestoreRoute) saved.tabs = saved.tabs.filter(tab => canRestoreRoute(tab.route));
     if (saved) {
       dispatch({ type: "RESTORE_TABS", tabs: saved.tabs, activeTabId: saved.activeTabId, defaultRoute });
@@ -105,6 +107,27 @@ export function WorkspaceProvider({ children, defaultRoute, principalId, canRest
       dispatch({ type: "RESTORE_TABS", tabs: [tab], activeTabId: tab.id, defaultRoute });
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Current route access can change without changing the signed-in principal.
+  // Retire revoked metadata/drafts and choose the new permitted Home immediately.
+  useEffect(()=>{
+    if(!stateRef.current.isHydrated || !canRestoreRoute) return;
+    const current=stateRef.current;
+    const revoked=current.tabs.filter(tab=>!canRestoreRoute(tab.route));
+    if(!revoked.length) return;
+    for(const tab of revoked) draftStore?.clearDraftsForTab(tab.id);
+    const tabs=current.tabs.filter(tab=>canRestoreRoute(tab.route));
+    if(canRestoreRoute(defaultRoute ?? DASHBOARD_ROUTE)) {
+      dispatch({type:"RESTORE_TABS",tabs,activeTabId:current.activeTabId,defaultRoute});
+    } else {
+      dispatch({type:"REVOKE_TABS",tabIds:revoked.map(tab=>tab.id)});
+    }
+    setPendingBulk(null);setPendingCloseTabId(null);
+    if(revoked.some(tab=>tab.id===current.activeTabId)) {
+      const active=stateRef.current.tabs.find(tab=>tab.id===stateRef.current.activeTabId);
+      if(active) router.replace(active.route);
+    }
+  },[canRestoreRoute,defaultRoute,dispatch,draftStore,router]);
 
   // ── Sync active tab when pathname changes (browser back/forward, direct URL) ─
   useEffect(() => {
@@ -116,9 +139,9 @@ export function WorkspaceProvider({ children, defaultRoute, principalId, canRest
     const existing = current.tabs.find(tab => tab.route.split("?")[0] === pathname);
     if (existing) {
       dispatch({type:"SYNC_ROUTE", route});
-    } else if (current.tabs.filter(tab => tab.closable).length >= MAX_TABS) {
+    } else if (current.tabs.filter(tab => tab.closable && !tab.pinned).length >= MAX_TABS) {
       // A direct Link/Back navigation must not bypass admission or evict dirty work.
-      toast.warning("Maximum workspace tabs reached. Close a tab before opening another screen.");
+      toast.warning(`All ${MAX_TABS} working screens are open. Use Open workspaces to close a screen before opening another.`);
       const active = current.tabs.find(tab => tab.id === current.activeTabId);
       if (active) router.replace(active.route);
     } else {
@@ -151,7 +174,7 @@ export function WorkspaceProvider({ children, defaultRoute, principalId, canRest
   const doCloseTab = useCallback(
     (tabId: string) => {
       const tab = stateRef.current.tabs.find((t) => t.id === tabId);
-      if (!tab || !tab.closable) return;
+      if (!tab || !tab.closable || tab.pinned) return;
 
       // Clear all unsaved form drafts for this tab
       draftStore?.clearDraftsForTab(tabId);
@@ -164,7 +187,7 @@ export function WorkspaceProvider({ children, defaultRoute, principalId, canRest
         // Review Queue tab) over the "most recently active tab" heuristic —
         // the heuristic can pick the wrong tab if the user briefly visited
         // another screen (e.g. Upload Inbox) while reviewing.
-        if (tab.returnRoute && isWorkspaceRoute(tab.returnRoute)) {
+        if (tab.returnRoute && isWorkspaceRoute(tab.returnRoute) && (!canRestoreRoute || canRestoreRoute(tab.returnRoute))) {
           router.push(tab.returnRoute);
           return;
         }
@@ -180,13 +203,14 @@ export function WorkspaceProvider({ children, defaultRoute, principalId, canRest
         }
       }
     },
-    [dispatch, router, draftStore]
+    [dispatch, router, draftStore, canRestoreRoute]
   );
 
   // ── openTab ────────────────────────────────────────────────────────────────
   const openTab = useCallback(
     (config: Partial<WorkspaceTab> & { route: string }) => {
       if (!isWorkspaceRoute(config.route)) return;
+      if (canRestoreRoute && !canRestoreRoute(config.route)) return;
       if (navigationBlocked()) return;
       const current = stateRef.current;
       // For record tabs: deduplicate by entityId (same entity = switch, not duplicate).
@@ -201,9 +225,9 @@ export function WorkspaceProvider({ children, defaultRoute, principalId, canRest
         return;
       }
 
-      const closableCount = current.tabs.filter((t) => t.closable).length;
+      const closableCount = current.tabs.filter((t) => t.closable && !t.pinned).length;
       if (closableCount >= MAX_TABS) {
-        toast.warning("Maximum workspace tabs reached. Close a tab before opening another screen.");
+        toast.warning(`All ${MAX_TABS} working screens are open. Use Open workspaces to close a screen before opening another.`);
         return;
       }
 
@@ -221,14 +245,14 @@ export function WorkspaceProvider({ children, defaultRoute, principalId, canRest
       dispatch({ type: "OPEN_TAB", tab: newTab });
       router.push(config.route);
     },
-    [dispatch, router, navigationBlocked]
+    [dispatch, router, navigationBlocked, canRestoreRoute]
   );
 
   // ── closeTab — dirty-safe (4B) ─────────────────────────────────────────────
   const closeTab = useCallback(
     (tabId: string, opts?: { force?: boolean }) => {
       const tab = stateRef.current.tabs.find((t) => t.id === tabId);
-      if (!tab || !tab.closable) return;
+      if (!tab || !tab.closable || tab.pinned) return;
       if (tab.childDialogOpen && !opts?.force) { toast.warning("Finish or close this record's dialog and wait for its save before closing."); return; }
 
       if (tab.dirty && !opts?.force) {
@@ -246,17 +270,24 @@ export function WorkspaceProvider({ children, defaultRoute, principalId, canRest
     (tabId: string) => {
       const tab = stateRef.current.tabs.find((t) => t.id === tabId);
       if (!tab) return;
+      if (canRestoreRoute && !canRestoreRoute(tab.route)) return;
       if (tabId !== stateRef.current.activeTabId && navigationBlocked()) return;
       dispatch({ type: "SET_ACTIVE_TAB", tabId });
       router.push(tab.route);
     },
-    [dispatch, router, navigationBlocked]
+    [dispatch, router, navigationBlocked, canRestoreRoute]
   );
 
   // ── Dirty close dialog handlers ────────────────────────────────────────────
   const doBulkClose=useCallback((ids:string[],keep?:string)=>{
+    // A pending save/dialog can begin after the confirmation was opened.
+    // Recheck the entire operation before clearing even one draft.
+    const targets=stateRef.current.tabs.filter(t=>ids.includes(t.id) && t.closable && !t.pinned);
+    if(targets.some(t=>t.childDialogOpen)) {
+      toast.warning("Finish open dialogs and saves before closing workspaces."); return;
+    }
     for(const id of ids) {
-      if(!stateRef.current.tabs.some(t=>t.id===id && t.closable)) continue;
+      if(!stateRef.current.tabs.some(t=>t.id===id && t.closable && !t.pinned)) continue;
       draftStore?.clearDraftsForTab(id);
       dispatch({type:"CLOSE_TAB",tabId:id});
     }
@@ -266,7 +297,7 @@ export function WorkspaceProvider({ children, defaultRoute, principalId, canRest
   },[dispatch,draftStore,router]);
   const requestBulkClose=useCallback((keep?:string)=>{
     if(keep && !stateRef.current.tabs.some(t=>t.id===keep)) return;
-    const closing=stateRef.current.tabs.filter(t=>t.closable && t.id!==keep);
+    const closing=stateRef.current.tabs.filter(t=>t.closable && !t.pinned && t.id!==keep);
     if(closing.some(t=>t.childDialogOpen)) { toast.warning("Finish open dialogs and saves before closing workspace tabs."); return; }
     const ids=closing.map(t=>t.id);
     if(closing.some(t=>t.dirty)) setPendingBulk({ids,keep});
@@ -280,17 +311,30 @@ export function WorkspaceProvider({ children, defaultRoute, principalId, canRest
   };
 
   const handleDirtyCloseDiscard = () => {
-    if(pendingBulk) doBulkClose(pendingBulk.ids,pendingBulk.keep);
+    if(pendingBulk) {
+      const currentIds=stateRef.current.tabs.filter(t=>t.closable && !t.pinned && t.id!==pendingBulk.keep).map(t=>t.id);
+      if((pendingBulk.keep && !stateRef.current.tabs.some(t=>t.id===pendingBulk.keep)) || currentIds.length!==pendingBulk.ids.length || currentIds.some(id=>!pendingBulk.ids.includes(id))) {
+        toast.warning("Open workspaces changed. Review them and choose Close all or Close others again.");
+        setPendingBulk(null); return;
+      }
+      doBulkClose(pendingBulk.ids,pendingBulk.keep);
+    }
     setPendingBulk(null);
     if (pendingCloseTabId) {
+      if(stateRef.current.tabs.some(t=>t.id===pendingCloseTabId && t.childDialogOpen)) {
+        toast.warning("Finish this record's dialog and save before closing it.");
+        setPendingCloseTabId(null); return;
+      }
       dispatch({ type: "MARK_DIRTY", tabId: pendingCloseTabId, dirty: false });
       doCloseTab(pendingCloseTabId);
     }
     setPendingCloseTabId(null);
   };
 
+  const permittedTabs=canRestoreRoute ? state.tabs.filter(tab=>canRestoreRoute(tab.route)) : state.tabs;
+  const visibleState=permittedTabs.length===state.tabs.length ? state : {...state,tabs:permittedTabs,activeTabId:permittedTabs.some(tab=>tab.id===state.activeTabId)?state.activeTabId:permittedTabs[0]?.id ?? null};
   return (
-    <WorkspaceContext.Provider value={{ state, dispatch, openTab, closeTab, setActiveTab, isTabActive, closeOtherTabs, closeAllClosableTabs }}>
+    <WorkspaceContext.Provider value={{ state:visibleState, dispatch, openTab, closeTab, setActiveTab, isTabActive, closeOtherTabs, closeAllClosableTabs, closeConfirmationOpen:!!pendingCloseTabId || !!pendingBulk }}>
       {children}
 
       {/* Dirty tab close confirmation dialog (ERP GLOBAL UI.4B) */}

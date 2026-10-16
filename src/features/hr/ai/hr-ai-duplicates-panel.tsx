@@ -83,32 +83,32 @@ export function HrAiDuplicatesPanel({ employeeId, canUse }: Props) {
           {result.summary && <p className="text-xs text-muted-foreground italic">{result.summary}</p>}
 
           {result.duplicates.length === 0 ? (
-            <div className="flex items-center gap-1.5 text-sm text-emerald-600 py-2">
+            <div className="flex items-center gap-1.5 text-sm text-emerald-600 py-2 dark:text-emerald-300">
               <CheckCircle2 className="h-4 w-4" /> No duplicates or conflicts detected.
             </div>
           ) : (
             <div className="space-y-2">
               {result.duplicates.map((d, i) => (
-                <div key={i} className="rounded-lg border border-amber-300 bg-amber-50 p-3">
+                <div key={i} className="rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950">
                   <div className="flex items-start gap-2">
-                    <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                    <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0 dark:text-amber-300" />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-                        <Badge variant="outline" className="text-[9px] border-amber-400 text-amber-700">
+                        <Badge variant="outline" className="text-[9px] border-amber-400 text-amber-700 dark:border-amber-800 dark:text-amber-200">
                           {CONFIDENCE_LABEL[d.possibleDuplicateType] ?? d.possibleDuplicateType}
                         </Badge>
-                        <span className="text-[10px] text-amber-600">
+                        <span className="text-[10px] text-amber-600 dark:text-amber-300">
                           {Math.round(d.confidence * 100)}% confidence
                         </span>
                       </div>
-                      <p className="text-xs font-medium text-amber-800">
+                      <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
                         {d.recordALabel} ↔ {d.recordBLabel}
                       </p>
-                      <p className="text-[10px] text-amber-700 mt-0.5">
+                      <p className="text-[10px] text-amber-700 mt-0.5 dark:text-amber-200">
                         Matched: {d.matchedFields.join(", ")}
                       </p>
-                      <p className="text-[10px] text-amber-600 mt-0.5">{d.reason}</p>
-                      <p className="text-[10px] font-medium text-amber-800 mt-1">
+                      <p className="text-[10px] text-amber-600 mt-0.5 dark:text-amber-300">{d.reason}</p>
+                      <p className="text-[10px] font-medium text-amber-800 mt-1 dark:text-amber-200">
                         → {d.recommendedAction}
                       </p>
                     </div>

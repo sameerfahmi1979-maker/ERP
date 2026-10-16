@@ -154,7 +154,7 @@ export function DmsApplyCorrectionDrawer({
         size="lg"
         isSubmitting={false}
       >
-        <div className="flex items-center gap-2 py-8 text-slate-500">
+        <div className="flex items-center gap-2 py-8 text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin" />
           <span>Loading correction source…</span>
         </div>
@@ -174,7 +174,7 @@ export function DmsApplyCorrectionDrawer({
         size="lg"
         isSubmitting={false}
       >
-        <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-700">
+        <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
           <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
           {sourceError instanceof Error
             ? sourceError.message

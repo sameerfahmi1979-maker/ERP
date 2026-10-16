@@ -71,11 +71,11 @@ export function HrAiSearchAssist({ canUse, onApplyFilters }: Props) {
   if (!canUse) return null;
 
   return (
-    <div className="rounded-lg border border-violet-200 bg-violet-50/40 p-3 space-y-2">
+    <div className="rounded-lg border border-violet-200 bg-violet-50/40 p-3 space-y-2 dark:border-violet-800 dark:bg-violet-950/40">
       <div className="flex items-center gap-1.5">
-        <Sparkles className="h-3.5 w-3.5 text-violet-500" />
-        <span className="text-xs font-medium text-violet-700">AI Search Assist</span>
-        <span className="text-[10px] text-violet-500">(Beta)</span>
+        <Sparkles className="h-3.5 w-3.5 text-violet-500 dark:text-violet-300" />
+        <span className="text-xs font-medium text-violet-700 dark:text-violet-200">AI Search Assist</span>
+        <span className="text-[10px] text-violet-500 dark:text-violet-300">(Beta)</span>
       </div>
 
       <div className="flex gap-2">
@@ -84,7 +84,7 @@ export function HrAiSearchAssist({ canUse, onApplyFilters }: Props) {
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") handleSearch(); }}
           placeholder='e.g. "employees with expired documents in Operations"'
-          className="h-8 text-xs bg-white"
+          className="h-8 text-xs bg-card"
           maxLength={400}
         />
         <Button
@@ -92,7 +92,7 @@ export function HrAiSearchAssist({ canUse, onApplyFilters }: Props) {
           variant="outline"
           onClick={handleSearch}
           disabled={isLoading || !query.trim() || featureDisabled}
-          className="h-8 gap-1 shrink-0 border-violet-300 text-violet-700 hover:bg-violet-100"
+          className="h-8 gap-1 shrink-0 border-violet-300 text-violet-700 hover:bg-violet-100 dark:border-violet-800 dark:text-violet-200 dark:hover:bg-violet-950"
         >
           <Brain className="h-3.5 w-3.5" />
           {isLoading ? "…" : "Ask AI"}
@@ -100,15 +100,15 @@ export function HrAiSearchAssist({ canUse, onApplyFilters }: Props) {
       </div>
 
       {error && !isLoading && (
-        <Alert variant="default" className="py-1.5 bg-white border-red-200">
-          <AlertDescription className="text-[10px] text-red-600">{error}</AlertDescription>
+        <Alert variant="default" className="py-1.5 bg-card border-red-200 dark:border-red-800">
+          <AlertDescription className="text-[10px] text-red-600 dark:text-red-300">{error}</AlertDescription>
         </Alert>
       )}
 
       {suggestion && !isLoading && (
-        <div className="space-y-1.5 bg-white rounded border border-violet-200 p-2.5">
+        <div className="space-y-1.5 bg-card rounded border border-violet-200 p-2.5 dark:border-violet-800">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <Badge variant="secondary" className="text-[9px] bg-violet-100 text-violet-700">
+            <Badge variant="secondary" className="text-[9px] bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-200">
               {TARGET_LABELS[suggestion.targetArea] ?? suggestion.targetArea}
             </Badge>
             <span className="text-[10px] text-muted-foreground">
@@ -129,7 +129,7 @@ export function HrAiSearchAssist({ canUse, onApplyFilters }: Props) {
           )}
 
           {suggestion.warning && (
-            <p className="text-[10px] text-amber-600 flex items-center gap-1">
+            <p className="text-[10px] text-amber-600 flex items-center gap-1 dark:text-amber-300">
               <Info className="h-3 w-3" /> {suggestion.warning}
             </p>
           )}

@@ -32,11 +32,11 @@ export function DuplicateCandidateAlert({ entityType, entityId }: DuplicateCandi
   const href = `/admin/ai/duplicates?entityType=${entityType}&entityId=${entityId}`;
 
   return (
-    <QueryReadBoundary queries={[uiRead1]}><Alert className="border-amber-300 bg-amber-50 mb-4">
-      <AlertTriangle className="h-4 w-4 text-amber-600" />
-      <AlertDescription className="text-amber-900 text-sm">
+    <QueryReadBoundary queries={[uiRead1]}><Alert className="border-amber-300 bg-amber-50 mb-4 dark:border-amber-800 dark:bg-amber-950">
+      <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-300" />
+      <AlertDescription className="text-amber-900 text-sm dark:text-amber-200">
         <strong>{count}</strong> duplicate/conflict candidate{count === 1 ? "" : "s"} require review.{" "}
-        <Link href={href} className="font-medium underline underline-offset-2 hover:text-amber-950">
+        <Link href={href} className="font-medium underline underline-offset-2 hover:text-amber-950 dark:hover:text-amber-200">
           Review in AI Duplicates
         </Link>
       </AlertDescription>

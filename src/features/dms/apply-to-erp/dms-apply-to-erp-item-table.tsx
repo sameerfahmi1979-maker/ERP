@@ -39,7 +39,7 @@ export function DmsApplyToErpItemTable({ items, selectedIndices, onToggle, disab
         ? <span className="inline-flex items-center gap-1"><AlertTriangle className="h-4 w-4" aria-hidden />Overwrites</span>
         : "No overwrite detected" },
   ];
-  return <ERPDataTable tableId="special.apply-to-erp-proposals" columns={columns}
+  return <ERPDataTable tableId="special.apply-to-erp-proposals" columns={columns} enableRowSelection={false}
     data={items.map((item, selectionIndex) => ({ ...item, selectionIndex }))}
     resultsLabel="Loaded proposed field changes" emptyMessage="No apply items available."
     initialPageSize={10} />;

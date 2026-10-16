@@ -169,9 +169,9 @@ export function DmsApplyToErpConfirmDialog({
     >
       <div className="space-y-4">
         {/* Safety warning */}
-        <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm">
-          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-amber-600" />
-          <div className="text-amber-800">
+        <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-800 dark:bg-amber-950">
+          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-300" />
+          <div className="text-amber-800 dark:text-amber-200">
             <strong>Human review required.</strong> These values were suggested by AI.
             Verify each field before applying. This action writes directly to{" "}
             {targetModule === "party"
@@ -183,7 +183,7 @@ export function DmsApplyToErpConfirmDialog({
 
         {/* Party context banner */}
         {targetModule === "party" && partyName && (
-          <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-700">
+          <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-700 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-200">
             <span className="font-semibold">Target Party:</span> {partyName}
             {targetKind === "party_licenses" && " → Party License"}
             {targetKind === "party_tax_registrations" && " → Tax Registration"}
@@ -231,21 +231,21 @@ export function DmsApplyToErpConfirmDialog({
         {hasConflictRisk && (
           <label className={cn(
             "flex items-start gap-3 rounded-md border p-3 cursor-pointer transition-colors",
-            replaceExistingConfirmed ? "border-amber-400/60 bg-amber-50/60" : "border-amber-200 bg-amber-50/30"
+            replaceExistingConfirmed ? "border-amber-400/60 bg-amber-50/60 dark:border-amber-800/60 dark:bg-amber-950/60" : "border-amber-200 bg-amber-50/30 dark:border-amber-800 dark:bg-amber-950/30"
           )}>
             <input
               type="checkbox"
-              className="h-4 w-4 mt-0.5 rounded border-gray-300 text-amber-600"
+              className="h-4 w-4 mt-0.5 rounded border-gray-300 text-amber-600 dark:text-amber-300"
               checked={replaceExistingConfirmed}
               onChange={(e) => setReplaceExistingConfirmed(e.target.checked)}
               disabled={isSubmitting}
             />
             <div className="text-sm">
-              <div className="font-medium text-amber-800 flex items-center gap-1.5">
+              <div className="font-medium text-amber-800 flex items-center gap-1.5 dark:text-amber-200">
                 <AlertTriangle className="h-3.5 w-3.5" />
                 I confirm replacing existing values
               </div>
-              <div className="text-amber-700 text-xs mt-0.5">
+              <div className="text-amber-700 text-xs mt-0.5 dark:text-amber-200">
                 Some selected fields already have values. Enabling this will overwrite them.
                 Verify each field is correct before proceeding.
               </div>
@@ -254,7 +254,7 @@ export function DmsApplyToErpConfirmDialog({
         )}
 
         {error && (
-          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
             {error}
           </div>
         )}

@@ -35,6 +35,15 @@ it("employee choice denial remains an error with retry, not an empty successful 
  show(<EmployeesTable initialRows={[]} initialTotal={0} initialUpdatedAt={Date.now()} authContext={auth}/>);
  await waitFor(()=>expect(screen.getByRole("alert")).toBeTruthy());expect(screen.getByRole("button",{name:"Retry loading"})).toBeTruthy();
 });
+it("employee page denial never claims an empty successful result or invites first-record creation",async()=>{
+ fetcher.mockResolvedValue(Response.json({success:false,error:"Permission denied"},{status:403}));
+ show(<EmployeesTable initialRows={[]} initialTotal={0} initialUpdatedAt={0} authContext={auth}/>);
+ await waitFor(()=>expect(screen.getByText("Employee records could not be loaded.")).toBeTruthy());
+ expect(screen.getByText("Employee count unavailable")).toBeTruthy();
+ expect(screen.queryByText("No employees found")).toBeNull();expect(screen.queryByText("No results")).toBeNull();
+ expect(screen.queryByRole("button",{name:"Add first employee"})).toBeNull();
+ expect(screen.getByRole("region",{name:"Scrollable employees"}).closest('[inert]')).toBeTruthy();
+});
 it("actual DMS component reuses SSR, refreshes just the read and never full-route refreshes",async()=>{
  fetcher.mockResolvedValue(Response.json({success:true,data:{rows:[],totalCount:0,page:1,pageSize:25}}));
  show(<DmsDocumentsTable initialDocuments={[]} initialTotal={0} initialUpdatedAt={Date.now()} categories={[]} documentTypes={[]}/>);

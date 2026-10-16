@@ -166,9 +166,9 @@ export function ComplianceFindingsPageClient({
   return (
     <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="space-y-4">
       {!summary.featureEnabled && (
-        <Alert className="border-amber-300 bg-amber-50">
-          <AlertTriangle className="h-4 w-4 text-amber-600" />
-          <AlertDescription className="text-amber-900 text-sm">
+        <Alert className="border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950">
+          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-300" />
+          <AlertDescription className="text-amber-900 text-sm dark:text-amber-200">
             <strong>ERP_AI_COMPLIANCE</strong> is disabled. Existing findings remain visible; scan
             actions are blocked until the flag is enabled in AI Settings.
           </AlertDescription>
@@ -178,7 +178,7 @@ export function ComplianceFindingsPageClient({
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
-            <AlertTriangle className="h-8 w-8 text-amber-500" />
+            <AlertTriangle className="h-8 w-8 text-amber-500 dark:text-amber-300" />
             <div>
               <p className="text-xs text-muted-foreground">Open</p>
               <p className="text-2xl font-bold">{summary.open}</p>
@@ -187,7 +187,7 @@ export function ComplianceFindingsPageClient({
         </Card>
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
-            <ShieldAlert className="h-8 w-8 text-red-500" />
+            <ShieldAlert className="h-8 w-8 text-red-500 dark:text-red-300" />
             <div>
               <p className="text-xs text-muted-foreground">Critical</p>
               <p className="text-2xl font-bold">{summary.critical}</p>
@@ -196,7 +196,7 @@ export function ComplianceFindingsPageClient({
         </Card>
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
-            <Scale className="h-8 w-8 text-orange-500" />
+            <Scale className="h-8 w-8 text-orange-500 dark:text-orange-300" />
             <div>
               <p className="text-xs text-muted-foreground">High</p>
               <p className="text-2xl font-bold">{summary.high}</p>
@@ -205,7 +205,7 @@ export function ComplianceFindingsPageClient({
         </Card>
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
-            <CheckCircle2 className="h-8 w-8 text-emerald-500" />
+            <CheckCircle2 className="h-8 w-8 text-emerald-500 dark:text-emerald-300" />
             <div>
               <p className="text-xs text-muted-foreground">Waived / Resolved</p>
               <p className="text-2xl font-bold">{summary.waivedResolved}</p>
@@ -239,7 +239,7 @@ export function ComplianceFindingsPageClient({
             </div>
           </div>
           {includeAiNotes && (
-            <p className="text-xs text-amber-700">
+            <p className="text-xs text-amber-700 dark:text-amber-200">
               AI notes may incur provider costs. Max 20 AI calls per scan.
             </p>
           )}

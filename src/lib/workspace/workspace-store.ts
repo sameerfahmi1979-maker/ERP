@@ -22,10 +22,9 @@ import {
   safePersistedWorkspaceRoute,
 } from "./workspace-route-registry";
 
-// WORKSPACE.PERF.1 (D1): restored to 10 per the workspace tabs standard.
-// Users with more persisted tabs keep them until closed — only opening NEW
-// tabs is blocked at the limit (never silently close existing tabs).
-export const MAX_TABS = 10;
+// F05-WS30: pinned Home is separate from the 30 working-screen allowance.
+// Admission and the safe metadata manifest use the same limit; drafts are never evicted.
+export const MAX_TABS = 30;
 
 const MANIFEST_PREFIX = "algt_erp_workspace_manifest:v5:";
 function manifestKey(principalId?: string): string | null {
@@ -79,7 +78,7 @@ export function workspaceReducer(
       }
 
       // Max tabs check (dashboard + closable tabs)
-      const closableCount = state.tabs.filter((t) => t.closable).length;
+      const closableCount = state.tabs.filter((t) => t.closable && !t.pinned).length;
       if (closableCount >= state.maxTabs) {
         // Caller (WorkspaceProvider) shows toast — reducer just returns unchanged
         return { ...state, _maxTabsBlocked: true } as WorkspaceState & {
@@ -97,7 +96,7 @@ export function workspaceReducer(
     case "CLOSE_TAB": {
       const { tabId } = action;
       const tab = state.tabs.find((t) => t.id === tabId);
-      if (!tab || !tab.closable) return state;
+      if (!tab || !tab.closable || tab.pinned) return state;
 
       const remaining = state.tabs.filter((t) => t.id !== tabId);
       if (remaining.length === 0) {
@@ -123,15 +122,20 @@ export function workspaceReducer(
     case "CLOSE_OTHER_TABS": {
       if (!state.tabs.some(tab => tab.id === action.tabId)) return state;
       const kept = state.tabs.filter(
-        (t) => !t.closable || t.id === action.tabId
+        (t) => !t.closable || t.pinned || t.id === action.tabId
       );
       return { ...state, tabs: kept, activeTabId: action.tabId };
     }
 
     case "CLOSE_ALL_CLOSABLE": {
-      const kept = state.tabs.filter((t) => !t.closable);
+      const kept = state.tabs.filter((t) => !t.closable || t.pinned);
       const newActiveId = kept.length > 0 ? kept[kept.length - 1].id : null;
       return { ...state, tabs: kept, activeTabId: newActiveId };
+    }
+
+    case "REVOKE_TABS": {
+      const tabs=state.tabs.filter(tab=>!action.tabIds.includes(tab.id));
+      return {...state,tabs,activeTabId:tabs.some(tab=>tab.id===state.activeTabId)?state.activeTabId:tabs[0]?.id ?? null};
     }
 
     case "SET_ACTIVE_TAB": {
@@ -239,7 +243,7 @@ export function workspaceReducer(
         };
       }
       // Create a new tab for this route
-      if (newTab && state.tabs.filter(tab => tab.closable).length < state.maxTabs) {
+      if (newTab && state.tabs.filter(tab => tab.closable && !tab.pinned).length < state.maxTabs) {
         return {
           ...state,
           tabs: [...state.tabs, newTab],
@@ -273,7 +277,7 @@ export function persistToStorage(tabs: WorkspaceTab[], activeTabId: string | nul
   } catch { /* Storage can be disabled; working memory remains available. */ }
 }
 
-export function restoreFromStorage(principalId?: string): {tabs:WorkspaceTab[];activeTabId:string|null} | null {
+export function restoreFromStorage(principalId?: string, homeRoute = DASHBOARD_ROUTE): {tabs:WorkspaceTab[];activeTabId:string|null} | null {
   try {
     // Retire only the three obsolete tab-manifest keys, not unrelated browser data.
     for (const key of ["algt_erp_workspace_tabs","algt_erp_workspace_active_tab","algt_erp_workspace_version"]) localStorage.removeItem(key);
@@ -302,6 +306,8 @@ export function restoreFromStorage(principalId?: string): {tabs:WorkspaceTab[];a
         lastActiveAt:entry.lastActiveAt, dirty:false, childDialogOpen:false, ...(returnRoute ? {returnRoute} : {})});
       ids.add(entry.id); routes.add(route.split("?")[0]);
     }
+    // A forged 31-entry manifest without Home must not admit 31 working screens.
+    if(tabs.filter(tab=>tab.route.split("?")[0]!==homeRoute.split("?")[0]).length>MAX_TABS) return null;
     return tabs.length ? {tabs,activeTabId:typeof manifest.activeTabId === "string" && ids.has(manifest.activeTabId) ? manifest.activeTabId : null} : null;
   } catch { return null; }
 }

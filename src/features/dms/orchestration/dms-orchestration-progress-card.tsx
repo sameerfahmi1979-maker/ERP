@@ -159,7 +159,7 @@ export function DmsOrchestrationProgressCard({
   // If flag disabled and nothing ran
   if (orchestrationStatus === "skipped_feature_disabled") {
     return (
-      <QueryReadBoundary queries={[uiRead1]}><div className="text-xs text-slate-400 flex items-center gap-1.5 py-1">
+      <QueryReadBoundary queries={[uiRead1]}><div className="text-xs text-muted-foreground flex items-center gap-1.5 py-1">
         <Sparkles className="h-3 w-3" />
         Full AI pipeline orchestration is not enabled. Standard AI Fill is available.
       </div></QueryReadBoundary>
@@ -169,13 +169,13 @@ export function DmsOrchestrationProgressCard({
   // Phase 9: job enqueued — show minimal queued state card
   if (orchestrationStatus === "queued") {
     return (
-      <QueryReadBoundary queries={[uiRead1]}><div className="rounded-lg border bg-slate-50 border-slate-200 px-3 py-2">
+      <QueryReadBoundary queries={[uiRead1]}><div className="rounded-lg border bg-muted border-border px-3 py-2">
         <div className="flex items-center gap-2">
-          <Clock className="h-3.5 w-3.5 text-blue-500" />
-          <span className="text-xs font-medium text-slate-700">AI Pipeline</span>
-          <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-blue-50 text-blue-600 border-blue-200">Queued</Badge>
+          <Clock className="h-3.5 w-3.5 text-blue-500 dark:text-blue-300" />
+          <span className="text-xs font-medium text-foreground">AI Pipeline</span>
+          <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-blue-50 text-blue-600 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800">Queued</Badge>
         </div>
-        <p className="text-[11px] text-slate-500 mt-1 ml-5.5">
+        <p className="text-[11px] text-muted-foreground mt-1 ml-5.5">
           AI pipeline is queued for background processing. Refresh to check progress.
         </p>
       </div></QueryReadBoundary>
@@ -189,7 +189,7 @@ export function DmsOrchestrationProgressCard({
   if (orchestrationStatus === "pending" && !isRunning && !autoTrigger) return null;
 
   return (
-    <QueryReadBoundary queries={[uiRead1]}><div className="rounded-lg border bg-slate-50 border-slate-200">
+    <QueryReadBoundary queries={[uiRead1]}><div className="rounded-lg border bg-muted border-border">
       {/* Header */}
       <div role="button" tabIndex={0} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); event.currentTarget.click(); } }}
         className="flex items-center justify-between px-3 py-2 cursor-pointer"
@@ -197,11 +197,11 @@ export function DmsOrchestrationProgressCard({
       >
         <div className="flex items-center gap-2">
           {isRunning ? (
-            <Loader2 className="h-3.5 w-3.5 text-violet-500 animate-spin" />
+            <Loader2 className="h-3.5 w-3.5 text-violet-500 animate-spin dark:text-violet-300" />
           ) : (
-            <Sparkles className="h-3.5 w-3.5 text-violet-600" />
+            <Sparkles className="h-3.5 w-3.5 text-violet-600 dark:text-violet-300" />
           )}
-          <span className="text-xs font-medium text-slate-700">AI Pipeline</span>
+          <span className="text-xs font-medium text-foreground">AI Pipeline</span>
           <OrchestrationStatusBadge status={orchestrationStatus as DmsAiOrchestrationStatus} isRunning={isRunning} />
         </div>
         <div className="flex items-center gap-1.5">
@@ -210,18 +210,18 @@ export function DmsOrchestrationProgressCard({
               size="sm"
               variant="outline"
               onClick={(e) => { e.stopPropagation(); void triggerPipeline(); }}
-              className="h-5 text-[10px] px-2 border-violet-200 text-violet-700"
+              className="h-5 text-[10px] px-2 border-violet-200 text-violet-700 dark:border-violet-800 dark:text-violet-200"
             >
               Run Pipeline
             </Button>
           )}
-          {isExpanded ? <ChevronUp className="h-3.5 w-3.5 text-slate-400" /> : <ChevronDown className="h-3.5 w-3.5 text-slate-400" />}
+          {isExpanded ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
         </div>
       </div>
 
       {/* Step list */}
       {isExpanded && (
-        <div className="border-t border-slate-200 px-3 py-2 space-y-1">
+        <div className="border-t border-border px-3 py-2 space-y-1">
           {steps.map((step) => (
             <StepRow
               key={step.step}
@@ -232,7 +232,7 @@ export function DmsOrchestrationProgressCard({
             />
           ))}
           {steps.length === 0 && isRunning && (
-            <div className="text-xs text-slate-400 py-1">Running AI pipeline…</div>
+            <div className="text-xs text-muted-foreground py-1">Running AI pipeline…</div>
           )}
         </div>
       )}
@@ -260,19 +260,19 @@ function StepRow({
       <StepStatusIcon status={step.status} isRetrying={isRetrying} />
       <span className={cn(
         "text-xs flex-1 truncate",
-        step.status === "completed" ? "text-slate-700" : "",
-        step.status === "failed" ? "text-red-600" : "",
-        step.status === "skipped" ? "text-slate-400" : "",
-        step.status === "pending" ? "text-slate-400" : "",
-        step.status === "running" ? "text-violet-600" : "",
+        step.status === "completed" ? "text-foreground" : "",
+        step.status === "failed" ? "text-red-600 dark:text-red-300" : "",
+        step.status === "skipped" ? "text-muted-foreground" : "",
+        step.status === "pending" ? "text-muted-foreground" : "",
+        step.status === "running" ? "text-violet-600 dark:text-violet-300" : "",
       )}>
         {label}
         {step.durationMs && step.status === "completed" && (
-          <span className="text-slate-400 ml-1">({step.durationMs}ms)</span>
+          <span className="text-muted-foreground ml-1">({step.durationMs}ms)</span>
         )}
       </span>
       {step.status === "failed" && step.safeErrorMessage && (
-        <span className="text-[10px] text-red-500 truncate max-w-[160px]" title={step.safeErrorMessage}>
+        <span className="text-[10px] text-red-500 truncate max-w-[160px] dark:text-red-300" title={step.safeErrorMessage}>
           {step.safeErrorMessage}
         </span>
       )}
@@ -282,7 +282,7 @@ function StepRow({
           variant="ghost"
           onClick={onRetry}
           disabled={isRetrying}
-          className="h-4 text-[9px] px-1.5 text-red-600 hover:text-red-700"
+          className="h-4 text-[9px] px-1.5 text-red-600 hover:text-red-700 dark:text-red-300 dark:hover:text-red-200"
         >
           {isRetrying ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <RefreshCw className="h-2.5 w-2.5" />}
         </Button>
@@ -292,12 +292,12 @@ function StepRow({
 }
 
 function StepStatusIcon({ status, isRetrying }: { status: string; isRetrying: boolean }) {
-  if (isRetrying) return <Loader2 className="h-3 w-3 text-violet-500 animate-spin flex-shrink-0" />;
+  if (isRetrying) return <Loader2 className="h-3 w-3 text-violet-500 animate-spin flex-shrink-0 dark:text-violet-300" />;
   switch (status) {
-    case "completed": return <CheckCircle2 className="h-3 w-3 text-green-500 flex-shrink-0" />;
+    case "completed": return <CheckCircle2 className="h-3 w-3 text-green-500 flex-shrink-0 dark:text-green-300" />;
     case "failed":    return <XCircle className="h-3 w-3 text-red-400 flex-shrink-0" />;
     case "skipped":   return <SkipForward className="h-3 w-3 text-slate-300 flex-shrink-0" />;
-    case "running":   return <Loader2 className="h-3 w-3 text-violet-500 animate-spin flex-shrink-0" />;
+    case "running":   return <Loader2 className="h-3 w-3 text-violet-500 animate-spin flex-shrink-0 dark:text-violet-300" />;
     default:          return <Clock className="h-3 w-3 text-slate-300 flex-shrink-0" />;
   }
 }
@@ -306,19 +306,19 @@ function StepStatusIcon({ status, isRetrying }: { status: string; isRetrying: bo
 
 function OrchestrationStatusBadge({ status, isRunning }: { status: DmsAiOrchestrationStatus; isRunning: boolean }) {
   if (isRunning) {
-    return <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-violet-50 text-violet-600 border-violet-200">Running…</Badge>;
+    return <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-violet-50 text-violet-600 border-violet-200 dark:bg-violet-950 dark:text-violet-300 dark:border-violet-800">Running…</Badge>;
   }
   switch (status) {
     case "complete":
-      return <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-green-50 text-green-700 border-green-200">Complete</Badge>;
+      return <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-200 dark:border-green-800">Complete</Badge>;
     case "complete_with_warnings":
-      return <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-amber-50 text-amber-700 border-amber-200 flex items-center gap-0.5"><AlertTriangle className="h-2.5 w-2.5" />Warnings</Badge>;
+      return <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-amber-50 text-amber-700 border-amber-200 flex items-center gap-0.5 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800"><AlertTriangle className="h-2.5 w-2.5" />Warnings</Badge>;
     case "failed":
-      return <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-red-50 text-red-600 border-red-200">Failed</Badge>;
+      return <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-red-50 text-red-600 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-800">Failed</Badge>;
     case "queued":
-      return <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-blue-50 text-blue-600 border-blue-200">Queued</Badge>;
+      return <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-blue-50 text-blue-600 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800">Queued</Badge>;
     case "skipped_feature_disabled":
-      return <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-slate-400 border-slate-200">Disabled</Badge>;
+      return <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-muted-foreground border-border">Disabled</Badge>;
     default:
       return null;
   }

@@ -46,11 +46,11 @@ export default async function AssistantPage({
             { label: "AI Assistant" },
           ]}
         />
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-center">
-          <p className="text-sm text-amber-800 font-medium">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-center dark:bg-amber-950 dark:border-amber-800">
+          <p className="text-sm text-amber-800 font-medium dark:text-amber-200">
             AI Assistant is not currently enabled.
           </p>
-          <p className="text-xs text-amber-600 mt-1">
+          <p className="text-xs text-amber-600 mt-1 dark:text-amber-300">
             Contact your system administrator to enable this feature in AI Settings.
           </p>
         </div>

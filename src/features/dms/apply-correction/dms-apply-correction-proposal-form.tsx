@@ -75,11 +75,11 @@ export function DmsApplyCorrectionProposalForm({
   return (
     <div className="space-y-5">
       {/* Human responsibility warning */}
-      <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
+      <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
         <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
         <div>
           <p className="font-semibold">Human review required</p>
-          <p className="mt-0.5 text-amber-800">
+          <p className="mt-0.5 text-amber-800 dark:text-amber-200">
             You are responsible for reviewing the correction value before applying.
             This correction will overwrite the current field value after confirmation.
             This action is not automatic — it requires your explicit approval.
@@ -120,7 +120,7 @@ export function DmsApplyCorrectionProposalForm({
 
       {/* Restore previous warning */}
       {mode === "restore_previous" && source.restorePreviousWarning && (
-        <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+        <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
           <Info className="h-4 w-4 mt-0.5 shrink-0" />
           <span>{source.restorePreviousWarning}</span>
         </div>
@@ -130,7 +130,7 @@ export function DmsApplyCorrectionProposalForm({
       <div className="space-y-1.5">
         <Label htmlFor="correction-value">
           Correction Value
-          <span className="ml-1 text-red-500">*</span>
+          <span className="ml-1 text-red-500 dark:text-red-300">*</span>
         </Label>
         <Input required
           id="correction-value"
@@ -143,7 +143,7 @@ export function DmsApplyCorrectionProposalForm({
           disabled={isSubmitting}
           className="font-mono text-sm"
         />
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-muted-foreground">
           Expected type: <span className="font-mono">{source.valueType}</span>
           {source.valueType === "date" && " (format: YYYY-MM-DD)"}
           {source.valueType === "boolean" && " (true or false)"}
@@ -153,7 +153,7 @@ export function DmsApplyCorrectionProposalForm({
 
       {/* Error */}
       {error && (
-        <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           {error}
         </div>
@@ -202,7 +202,7 @@ function ModeButton({
         "rounded-md border px-3 py-1.5 text-sm font-medium transition-colors",
         active
           ? "border-blue-600 bg-blue-600 text-white"
-          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+          : "border-border bg-card text-foreground hover:bg-muted",
         disabled && "pointer-events-none opacity-50"
       )}
     >

@@ -463,11 +463,11 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, au
                   <div className="flex flex-col items-center gap-2">
                     <Users className="h-8 w-8 opacity-30" />
                     <p className="text-sm">
-                      {fetching ? "Loading employees…" : search || activeFilterCount > 0
+                      {uiReadEmployees.isError ? "Employee records could not be loaded." : fetching ? "Loading employees…" : search || activeFilterCount > 0
                         ? "No employees found matching your search or filters"
                         : "No employees found"}
                     </p>
-                    {canCreate && !search && activeFilterCount === 0 && (
+                    {canCreate && !uiReadEmployees.isError && !fetching && !search && activeFilterCount === 0 && (
                       <Button size="sm" variant="outline" onClick={openAdd} className="mt-1 gap-1.5">
                         <Plus className="h-3.5 w-3.5" />
                         Add first employee
@@ -572,7 +572,7 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, au
       </div>
 
       <div className="text-xs text-muted-foreground">
-        {totalCount === 0
+        {uiReadEmployees.isError ? "Employee count unavailable" : totalCount === 0
           ? "No results"
           : `Showing ${Math.min((page - 1) * pageSize + 1, totalCount)}–${Math.min(page * pageSize, totalCount)} of ${totalCount} employees`}
       </div>

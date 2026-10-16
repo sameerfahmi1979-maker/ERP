@@ -198,9 +198,9 @@ export function RiskScoresPageClient({
   return (
     <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="space-y-4">
       {!summary.featureEnabled && (
-        <Alert className="border-amber-300 bg-amber-50">
-          <AlertTriangle className="h-4 w-4 text-amber-600" />
-          <AlertDescription className="text-amber-900 text-sm">
+        <Alert className="border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950">
+          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-300" />
+          <AlertDescription className="text-amber-900 text-sm dark:text-amber-200">
             <strong>ERP_AI_RISK_SCORE</strong> is disabled. Existing scores remain visible;
             calculate actions are blocked until the flag is enabled in AI Settings.
           </AlertDescription>
@@ -210,7 +210,7 @@ export function RiskScoresPageClient({
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
-            <ShieldAlert className="h-8 w-8 text-red-500" />
+            <ShieldAlert className="h-8 w-8 text-red-500 dark:text-red-300" />
             <div>
               <p className="text-xs text-muted-foreground">Critical</p>
               <p className="text-2xl font-bold">{summary.critical}</p>
@@ -219,7 +219,7 @@ export function RiskScoresPageClient({
         </Card>
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
-            <TrendingUp className="h-8 w-8 text-orange-500" />
+            <TrendingUp className="h-8 w-8 text-orange-500 dark:text-orange-300" />
             <div>
               <p className="text-xs text-muted-foreground">High</p>
               <p className="text-2xl font-bold">{summary.high}</p>
@@ -228,7 +228,7 @@ export function RiskScoresPageClient({
         </Card>
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
-            <Clock className="h-8 w-8 text-amber-500" />
+            <Clock className="h-8 w-8 text-amber-500 dark:text-amber-300" />
             <div>
               <p className="text-xs text-muted-foreground">Stale</p>
               <p className="text-2xl font-bold">{summary.stale}</p>
@@ -237,7 +237,7 @@ export function RiskScoresPageClient({
         </Card>
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
-            <CheckCircle2 className="h-8 w-8 text-blue-500" />
+            <CheckCircle2 className="h-8 w-8 text-blue-500 dark:text-blue-300" />
             <div>
               <p className="text-xs text-muted-foreground">Unreviewed</p>
               <p className="text-2xl font-bold">{summary.unreviewed}</p>

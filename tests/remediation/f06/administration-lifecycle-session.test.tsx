@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-// Real table actions and save hooks; only transport, shell ownership, and widgets are doubled.
+// Real table actions, save hooks and query cache; only transport, shell ownership, and widgets are doubled.
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import type { AuthContext } from '@/lib/rbac/check';
 import type { BranchWithCompany, OwnerCompanyWithGeography } from '@/types/domain';
@@ -12,7 +13,6 @@ vi.mock('@/hooks/use-workspace-form-owner', () => ({ useWorkspaceFormOwner: () =
 vi.mock('@/components/workspace/workspace-draft-provider', () => ({ useWorkspaceDraftStoreContext: () => m.store }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: m.refresh, push: vi.fn() }) }));
 vi.mock('sonner', () => ({ toast: { success: m.success } }));
-vi.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({ invalidateQueries: vi.fn() }) }));
 vi.mock('@/server/actions/branches', () => ({ updateBranchStatus: m.status, deleteBranch: m.retire }));
 vi.mock('@/server/actions/organizations', () => ({ updateOrganizationStatus: m.status, deleteOrganization: m.retire }));
 vi.mock('@/components/ui/button', () => ({ Button: (props: ButtonHTMLAttributes<HTMLButtonElement>) => <button type={props.type} onClick={props.onClick} disabled={props.disabled}>{props.children}</button> }));
@@ -33,29 +33,68 @@ import { useAdministrationSaveSession } from '@/hooks/use-administration-save-se
 import type { WorkspaceDraftStoreApi } from '@/lib/workspace/workspace-draft-types';
 
 const auth = { profile: { id: 1 }, permissionCodes: [], globalPermissionCodes: [], roleAssignments: [{ roleId: 1, roleCode: 'system_admin', ownerCompanyId: null, branchId: null, permissionCodes: [] }], roleCodes: ['system_admin'], isAccountActive: true } as unknown as AuthContext;
+let queryClient: QueryClient;
+const dependentKeys = [['read', 'employee-filter-companies', 'synthetic-lifecycle'], ['master', 'owner_companies'], ['master', 'branches']] as const;
+const unhandled: unknown[] = [];
+const onUnhandled = (error: unknown) => { unhandled.push(error); };
+const onWindowError = (event: ErrorEvent) => { unhandled.push(event.error ?? event.message); };
+const onWindowRejection = (event: PromiseRejectionEvent) => { unhandled.push(event.reason); };
+const expectDependenciesInvalidated = (expected: boolean) => {
+  for (const key of dependentKeys) expect(queryClient.getQueryState(key)?.isInvalidated).toBe(expected);
+};
+
 type Kind = 'branch' | 'organization';
 const ui = (kind: Kind, revision = 4, status = 'active') => {
   const row = { id: 81, workspace_revision: revision, owner_company_id: 1, status, company_code: 'SYNTHETIC', legal_name_en: 'Synthetic company', branch_code: 'SYNTHETIC', branch_name_en: 'Synthetic branch' };
-  return kind === 'branch' ? <BranchesTable authContext={auth} data={[row as unknown as BranchWithCompany]} /> : <OrganizationsTable authContext={auth} data={[row as unknown as OwnerCompanyWithGeography]} />;
+  const table = kind === 'branch' ? <BranchesTable authContext={auth} data={[row as unknown as BranchWithCompany]} /> : <OrganizationsTable authContext={auth} data={[row as unknown as OwnerCompanyWithGeography]} />;
+  return <QueryClientProvider client={queryClient}>{table}</QueryClientProvider>;
 };
 const click = (name: string) => fireEvent.click(screen.getByRole('button', { name, exact: true }));
 const receipt = (revision: string) => ({ success: true, data: { id: 81, revision, changed: true, replayed: false } });
 
 beforeEach(() => {
   vi.clearAllMocks(); m.store = createWorkspaceDraftStore(); m.owner = 'lifecycle-test';
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: false } } });
+  for (const key of dependentKeys) queryClient.setQueryData(key, { synthetic: true });
+  unhandled.length = 0;
+  // Observe without suppressing: Vitest must still report every uncaught error.
+  window.addEventListener('error', onWindowError);
+  window.addEventListener('unhandledrejection', onWindowRejection);
+  process.on('unhandledRejection', onUnhandled);
+  process.on('uncaughtExceptionMonitor', onUnhandled);
+  vi.spyOn(console, 'error');
+  vi.spyOn(console, 'warn');
   m.status.mockImplementation((_id: number, _status: string, contract: { revision: string }) => Promise.resolve(receipt(String(BigInt(contract.revision) + 1n))));
   m.retire.mockImplementation((_id: number, contract: { revision: string }) => Promise.resolve(receipt(String(BigInt(contract.revision) + 1n))));
   vi.spyOn(window, 'confirm').mockReturnValue(true);
 });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+afterEach(async () => {
+  try {
+    cleanup(); queryClient.clear();
+    // Invalidation batches schedule microtasks; flush their outcome before
+    // deciding the fixture passed, including work triggered during unmount.
+    await act(async () => { await new Promise<void>(resolve => setTimeout(resolve, 0)); });
+    expect(unhandled).toEqual([]);
+    expect(console.error).not.toHaveBeenCalled();
+    expect(console.warn).not.toHaveBeenCalled();
+  } finally {
+    window.removeEventListener('error', onWindowError);
+    window.removeEventListener('unhandledrejection', onWindowRejection);
+    process.off('unhandledRejection', onUnhandled);
+    process.off('uncaughtExceptionMonitor', onUnhandled);
+    vi.restoreAllMocks();
+  }
+});
 
 for (const kind of ['branch', 'organization'] as const) {
   it(`${kind}: known conflict then refreshed row uses a new operation and current revision`, async () => {
     m.status.mockResolvedValueOnce({ success: false, error: 'A newer revision exists.' });
     const view = render(ui(kind)); click('Deactivate'); await screen.findByRole('alert');
+    expectDependenciesInvalidated(false);
     const original = m.status.mock.calls[0][2]; view.rerender(ui(kind, 8));
     m.status.mockResolvedValueOnce(receipt('9')); click('Deactivate');
     await waitFor(() => expect(m.success).toHaveBeenCalledOnce());
+    expectDependenciesInvalidated(true);
     expect(m.status.mock.calls[1]).toEqual([81, 'inactive', { operationId: expect.any(String), revision: '8' }]);
     expect(m.status.mock.calls[1][2].operationId).not.toBe(original.operationId);
   });
@@ -72,6 +111,7 @@ for (const kind of ['branch', 'organization'] as const) {
   it(`${kind}: uncertain retirement ignores refreshed row values and revision`, async () => {
     m.retire.mockResolvedValueOnce({ success: false, uncertain: true, error: 'Unconfirmed' });
     const view = render(ui(kind)); click('Retire'); await screen.findByRole('button', { name: 'Retry same change' });
+    expectDependenciesInvalidated(false);
     view.rerender(ui(kind, 8, 'suspended')); click('Retry same change');
     await waitFor(() => expect(m.retire).toHaveBeenCalledTimes(2));
     expect(m.retire.mock.calls[1]).toEqual(m.retire.mock.calls[0]); expect(m.retire.mock.calls[1][1].revision).toBe('4');
@@ -109,6 +149,7 @@ for (const kind of ['branch', 'organization'] as const) {
     view.unmount(); m.store = createWorkspaceDraftStore(); render(ui(kind));
     await act(async () => finish(receipt('5')));
     expect(m.success).not.toHaveBeenCalled(); expect(m.refresh).not.toHaveBeenCalled();
+    expectDependenciesInvalidated(false);
     expect(screen.queryByRole('button', { name: 'Retry same change' })).toBeNull();
     click('Deactivate'); await waitFor(() => expect(m.status).toHaveBeenCalledTimes(2));
     expect(m.status.mock.calls[1][2].operationId).not.toBe(m.status.mock.calls[0][2].operationId);

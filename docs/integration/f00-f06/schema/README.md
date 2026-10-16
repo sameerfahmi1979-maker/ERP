@@ -2,6 +2,8 @@
 
 Status: **SOURCE IMPLEMENTED; NATIVE/APP ACCEPTANCE PENDING.** This is not a release or deployment instruction.
 
+**16 October composition update:** native replay exposed an unpublished document-reader lineage prerequisite and a later notification/candidate ordering conflict. The exact129 dependency source manifest and new failed-receipt-preserving acceptance contract are documented in [DOCUMENT_LINEAGE_COMPOSITION.md](DOCUMENT_LINEAGE_COMPOSITION.md). The chronological128 manifest and results below remain historical evidence, not the current executable order. No old migration bytes were changed.
+
 ## Integration hold — 16 October 2026
 
 **NOT READY TO MERGE OR RELEASE.** The actual isolated combined replay stopped at

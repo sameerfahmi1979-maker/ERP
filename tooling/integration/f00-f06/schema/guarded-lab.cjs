@@ -5,6 +5,8 @@ const {pathToFileURL} = require('node:url');
 const {execFileSync} = require('node:child_process');
 const assert = require('node:assert/strict');
 const {sha256} = require('./migration-manifest.cjs');
+const {DEPENDENCY_MANIFEST} = require('./dependency-manifest.cjs');
+const {assertReconciledSchemaReceipt} = require('./reconciled-receipt.cjs');
 const labRoot = 'C:/dev/agt-erp-integration-lab-20261016';
 const sourceRoot = path.resolve(__dirname,'../../../..');
 const baselineSha256 = '7e2263cb4869d93c58e502b455ad181348615e9b794432afeacf49852c83ce4c';
@@ -39,10 +41,24 @@ async function guardedLab() {
   assert.equal(process.env.ALGT_SCHEMA_NATIVE_TARGET,'algt-integration-20261016','Explicit isolated native target admission required');
   const lab = await import(pathToFileURL(path.join(labRoot,'bootstrap.mjs')).href);
   const registry = lab.verify();
-  const receipt = JSON.parse(fs.readFileSync(path.join(labRoot,'schema-receipt.json'),'utf8'));
-  const {composition}=assertSchemaReceipt(receipt,registry,fs.readFileSync(path.join(sourceRoot,'docs/integration/f00-f06/schema/MIGRATION_MANIFEST_20261016.json')));
-  const blob=execFileSync('git',['show',`${composition.actualCommit}:${composition.path}`],{cwd:sourceRoot,maxBuffer:1024*1024});
-  assert.equal(sha256(blob),composition.sha256,'Applied composition does not resolve to its reviewed immutable Git blob');
+  // The original failed receipt remains immutable. Only a separately proven
+  // recovered129 + independent fresh129 replay may admit application tests.
+  const receipt = JSON.parse(fs.readFileSync(path.join(labRoot,'schema-reconciled-receipt.json'),'utf8'));
+  const read=(base,name)=>fs.readFileSync(path.join(base,name));
+  const replayRoot='C:/dev/agt-erp-integration-replay2-20261016';
+  const acceptanceRoot='C:/dev/agt-erp-integration-acceptance2-20261016';
+  const {composition,lineage}=assertReconciledSchemaReceipt(receipt,registry,fs.readFileSync(path.join(sourceRoot,DEPENDENCY_MANIFEST)),{
+    freshReceiptBytes:read(replayRoot,'schema-receipt.json'),
+    catalogComparisonBytes:read(acceptanceRoot,'catalog-comparison.json'),
+    failedSchemaReceiptBytes:read(labRoot,'schema-receipt.json'),
+    failedContinuationReceiptBytes:read('C:/dev/agt-erp-integration-replay-20261016','continuation-receipt.json'),
+    freshCatalogBytes:read(replayRoot,'final-catalog-private.json'),
+    fullStackCatalogBytes:read(replayRoot,'completion-catalog-private.json'),
+  });
+  for(const row of [composition,lineage]){
+    const blob=execFileSync('git',['show',`${row.actualCommit}:${row.path}`],{cwd:sourceRoot,maxBuffer:1024*1024});
+    assert.equal(sha256(blob),row.sha256,'Applied composition does not resolve to its reviewed immutable Git blob');
+  }
   return {sql:lab.sql,verify:lab.verify};
 }
 function guardFailureMessage(error) {
@@ -50,4 +66,4 @@ function guardFailureMessage(error) {
   if (!match) throw error;
   return fs.readFileSync(path.join(labRoot,match[1]),'utf8');
 }
-module.exports = {guardedLab,guardFailureMessage,assertSchemaReceipt};
+module.exports = {guardedLab,guardFailureMessage,assertSchemaReceipt,assertReconciledSchemaReceipt};

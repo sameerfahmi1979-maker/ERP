@@ -99,3 +99,21 @@ test('PL/pgSQL ACL guards parenthesize CASE so its THEN cannot terminate the sur
  assert.match(compiler,/\(true,true\),\(false,true\),\(true,false\),\(false,false\)/);
  assert.doesNotMatch(compiler,/CREATE|ALTER|INSERT|UPDATE|DELETE|COMMIT|EXECUTE/i);
 });
+
+test('all lineage DO procedural variables are disjoint from SQL relation/function aliases',()=>{
+ const catalog=fs.readFileSync(path.join(root,'tests/integration/f00-f06/schema/document-lineage-catalog-acceptance.sql'),'utf8');
+ const blocks=[...`${sql}\n${catalog}`.matchAll(/DO\s+(\$\w+\$)\s*DECLARE([\s\S]*?)\bBEGIN\b([\s\S]*?)END\s+\1;/g)];
+ assert.equal(blocks.length,3,'Inspect both migration guard blocks and the final catalog block');
+ for(const block of blocks){
+  const variables=block[2].split(';').map(part=>part.trim().match(/^(\w+)\s/)).filter(Boolean).map(m=>m[1]);
+  assert.ok(variables.length>=3);
+  const aliases=[...block[3].matchAll(/\b(?:FROM|JOIN)\s+(?:pg_\w+\s+|unnest\([^)]*\)\s*)(?:AS\s+)?(\w+)/gi)]
+   .map(m=>m[1]).filter(name=>!['WHERE','ORDER','LOOP'].includes(name.toUpperCase()));
+  assert.ok(aliases.length>0);
+  assert.deepEqual(variables.filter(name=>aliases.includes(name)),[],block[1]+' variable/SQL alias ambiguity');
+ }
+ const post=blocks.find(block=>block[1]==='$lineage_postimage$');
+ assert.match(post[2],/v_actual_proc record/);assert.doesNotMatch(post[2],/\bp record/);
+ assert.match(post[3],/INTO STRICT v_actual_proc FROM pg_proc/);
+ assert.match(post[3],/jsonb_agg\(to_jsonb\(p\) ORDER BY p\.oid\) FROM pg_proc p/);
+});

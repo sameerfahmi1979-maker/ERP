@@ -237,7 +237,7 @@ GRANT EXECUTE ON FUNCTION erp_private.read_documents_filtered(bigint[],text[]),
  erp_private.read_documents_filtered_v2(bigint[],text[],text[]) TO authenticated;
 
 DO $lineage_postimage$
-DECLARE expected record; p record; acl text[]; unchanged jsonb; signatures text[] := ARRAY['erp_private.business_principal_is_active()','erp_private.candidate_permission(bigint,text)','erp_private.employee_permission(bigint,text)','erp_private.hr_document_evidence_allowed(bigint)','erp_private.onboarding_permission(bigint,bigint,text)','erp_private.permission_in_scope(text,bigint,bigint)','erp_private.read_hr_candidates()','erp_private.readable_employee_ids()','erp_private.recruitment_document_evidence_allowed(bigint)','erp_private.recruitment_scope(bigint,bigint,text)','erp_private.session_is_valid()','public.current_user_can_view_employee_medical(bigint)','public.current_user_can_view_employee(bigint)','public.current_user_is_global_admin()','public.current_user_profile_id()'];
+DECLARE expected record; v_actual_proc record; acl text[]; unchanged jsonb; signatures text[] := ARRAY['erp_private.business_principal_is_active()','erp_private.candidate_permission(bigint,text)','erp_private.employee_permission(bigint,text)','erp_private.hr_document_evidence_allowed(bigint)','erp_private.onboarding_permission(bigint,bigint,text)','erp_private.permission_in_scope(text,bigint,bigint)','erp_private.read_hr_candidates()','erp_private.readable_employee_ids()','erp_private.recruitment_document_evidence_allowed(bigint)','erp_private.recruitment_scope(bigint,bigint,text)','erp_private.session_is_valid()','public.current_user_can_view_employee_medical(bigint)','public.current_user_can_view_employee(bigint)','public.current_user_is_global_admin()','public.current_user_profile_id()'];
 BEGIN
  FOR expected IN SELECT * FROM(VALUES
   ('erp_private.document_permission(bigint,text)','1c6c7a6c40749c9bea0e28cc99e03595',false,'boolean','plpgsql',false),
@@ -247,13 +247,13 @@ BEGIN
   ('erp_private.perf_hr_document_subjects_allowed(bigint)','6d025f4b9359e7685d1085f2179b40b0',false,'boolean','sql',true),
   ('erp_private.perf_recruitment_document_subjects_allowed(bigint)','68539a4aa725e86fa64e50e60b114f90',false,'boolean','sql',true)
  )v(signature,hash,returns_set,return_type,language_name,owner_only) LOOP
-  SELECT * INTO STRICT p FROM pg_proc WHERE oid=to_regprocedure(expected.signature);
-  SELECT array_agg(entry::text ORDER BY entry::text) INTO acl FROM unnest(p.proacl) entry;
-  IF md5(p.prosrc)<>expected.hash OR NOT p.prosecdef OR p.proretset<>expected.returns_set
-   OR p.prorettype<>to_regtype(expected.return_type) OR p.prolang<>(SELECT oid FROM pg_language WHERE lanname=expected.language_name)
-   OR p.prokind<>'f' OR p.proisstrict OR p.proleakproof OR p.proparallel<>'u' OR p.pronargdefaults<>0
-   OR p.prosqlbody IS NOT NULL OR p.probin IS NOT NULL OR p.prosupport<>0 OR p.provariadic<>0
-   OR pg_get_userbyid(p.proowner)<>'postgres' OR p.provolatile<>'s' OR p.proconfig IS DISTINCT FROM ARRAY['search_path=""']::text[]
+  SELECT * INTO STRICT v_actual_proc FROM pg_proc WHERE oid=to_regprocedure(expected.signature);
+  SELECT array_agg(entry::text ORDER BY entry::text) INTO acl FROM unnest(v_actual_proc.proacl) entry;
+  IF md5(v_actual_proc.prosrc)<>expected.hash OR NOT v_actual_proc.prosecdef OR v_actual_proc.proretset<>expected.returns_set
+   OR v_actual_proc.prorettype<>to_regtype(expected.return_type) OR v_actual_proc.prolang<>(SELECT oid FROM pg_language WHERE lanname=expected.language_name)
+   OR v_actual_proc.prokind<>'f' OR v_actual_proc.proisstrict OR v_actual_proc.proleakproof OR v_actual_proc.proparallel<>'u' OR v_actual_proc.pronargdefaults<>0
+   OR v_actual_proc.prosqlbody IS NOT NULL OR v_actual_proc.probin IS NOT NULL OR v_actual_proc.prosupport<>0 OR v_actual_proc.provariadic<>0
+   OR pg_get_userbyid(v_actual_proc.proowner)<>'postgres' OR v_actual_proc.provolatile<>'s' OR v_actual_proc.proconfig IS DISTINCT FROM ARRAY['search_path=""']::text[]
    OR acl IS DISTINCT FROM (CASE WHEN expected.owner_only THEN ARRAY['postgres=X/postgres'] ELSE ARRAY['authenticated=X/postgres','postgres=X/postgres'] END)::text[]
   THEN RAISE EXCEPTION 'Document lineage postimage/ACL mismatch: %',expected.signature; END IF;
  END LOOP;

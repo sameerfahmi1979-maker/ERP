@@ -56,7 +56,7 @@
       "reason": "Both original guards require pre-candidate-expansion reader hash; statement policy is the notification prerequisite."
     }
   ],
-  "digest": "b0b5c3c2a906876e59c70c31bf05be233235edb3d05fd87e32b197db3eb7d208",
+  "digest": "c98382e5f358117076d32e35a0ab4004b036811355344d41f035d0ab57565d84",
   "applicationRules": [
     "Only this exact129 dependency order is reviewed. Standard timestamp-sorted CLI push/up is unsupported.",
     "Original128 migration bytes and donor identities remain immutable; only the two named relocations are permitted.",
@@ -1281,8 +1281,8 @@
       "group": "composition",
       "commit": null,
       "path": "supabase/migrations/20261016111938_integration_perf_document_lineage.sql",
-      "sha256": "24057c0d03ca688fc63e6d324ee5afa810a7e18404b368f8d9ddcedaae03ea60",
-      "bytes": 34150,
+      "sha256": "c9c919fb308a89930a668ba29515b373e9afd459d2b3fdcc5d4b1cf2d8bd4e69",
+      "bytes": 34152,
       "normalization": "candidate UTF8 canonical LF only; verify final Git blob before application",
       "originalOrder": null,
       "order": 111

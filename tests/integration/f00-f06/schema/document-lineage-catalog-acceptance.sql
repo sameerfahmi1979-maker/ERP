@@ -18,7 +18,7 @@ BEGIN
   SELECT array_agg(a::text ORDER BY a::text) INTO acl FROM unnest(actual.proacl)a;
   IF md5(actual.prosrc)<>expected.hash OR pg_get_userbyid(actual.proowner)<>'postgres'
    OR NOT actual.prosecdef OR actual.provolatile<>'s' OR actual.proconfig IS DISTINCT FROM ARRAY['search_path=""']::text[]
-   OR acl IS DISTINCT FROM CASE WHEN expected.owner_only THEN ARRAY['postgres=X/postgres'] ELSE ARRAY['authenticated=X/postgres','postgres=X/postgres'] END::text[]
+   OR acl IS DISTINCT FROM (CASE WHEN expected.owner_only THEN ARRAY['postgres=X/postgres'] ELSE ARRAY['authenticated=X/postgres','postgres=X/postgres'] END)::text[]
   THEN RAISE EXCEPTION 'Final document lineage catalog mismatch: %',expected.signature;END IF;
  END LOOP;
  IF NOT EXISTS(SELECT 1 FROM pg_class WHERE oid='public.hr_candidate_documents'::regclass AND relrowsecurity)

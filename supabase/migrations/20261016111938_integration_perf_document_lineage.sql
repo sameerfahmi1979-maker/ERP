@@ -254,7 +254,7 @@ BEGIN
    OR p.prokind<>'f' OR p.proisstrict OR p.proleakproof OR p.proparallel<>'u' OR p.pronargdefaults<>0
    OR p.prosqlbody IS NOT NULL OR p.probin IS NOT NULL OR p.prosupport<>0 OR p.provariadic<>0
    OR pg_get_userbyid(p.proowner)<>'postgres' OR p.provolatile<>'s' OR p.proconfig IS DISTINCT FROM ARRAY['search_path=""']::text[]
-   OR acl IS DISTINCT FROM CASE WHEN expected.owner_only THEN ARRAY['postgres=X/postgres'] ELSE ARRAY['authenticated=X/postgres','postgres=X/postgres'] END::text[]
+   OR acl IS DISTINCT FROM (CASE WHEN expected.owner_only THEN ARRAY['postgres=X/postgres'] ELSE ARRAY['authenticated=X/postgres','postgres=X/postgres'] END)::text[]
   THEN RAISE EXCEPTION 'Document lineage postimage/ACL mismatch: %',expected.signature; END IF;
  END LOOP;
  unchanged:=jsonb_build_object(

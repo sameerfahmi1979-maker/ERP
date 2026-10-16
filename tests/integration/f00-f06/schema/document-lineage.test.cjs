@@ -86,3 +86,16 @@ test('thirteen fixed rejection witnesses retain exact original bridge guards and
  for(const key of ['schemas','functions','policies','relations','columns','documents','links','candidates'])assert.ok(snapshotSql.includes(`'${key}'`));
  assert.equal(sha256(sql),digest);
 });
+
+test('PL/pgSQL ACL guards parenthesize CASE so its THEN cannot terminate the surrounding IF',()=>{
+ const catalog=fs.readFileSync(path.join(root,'tests/integration/f00-f06/schema/document-lineage-catalog-acceptance.sql'),'utf8');
+ const compiler=fs.readFileSync(path.join(root,'tests/integration/f00-f06/schema/document-lineage-case-compiler.readonly.sql'),'utf8');
+ const condition="acl IS DISTINCT FROM (CASE WHEN expected.owner_only THEN ARRAY['postgres=X/postgres'] ELSE ARRAY['authenticated=X/postgres','postgres=X/postgres'] END)::text[]";
+ for(const source of [sql,catalog,compiler]){
+  assert.equal(source.split(condition).length-1,1,'Actual comparison must match the native compiler witness');
+  assert.doesNotMatch(source,/acl IS DISTINCT FROM CASE/);
+ }
+ assert.match(compiler,/BEGIN READ ONLY;/);assert.match(compiler,/ROLLBACK;/);
+ assert.match(compiler,/\(true,true\),\(false,true\),\(true,false\),\(false,false\)/);
+ assert.doesNotMatch(compiler,/CREATE|ALTER|INSERT|UPDATE|DELETE|COMMIT|EXECUTE/i);
+});

@@ -48,7 +48,7 @@ async function actionChoices<T>(action: () => Promise<{success: boolean; data?: 
 export async function prefetchPartyFormData(queryClient: QueryClient): Promise<PrefetchMasterDataResult> {
   const staleTime = 5 * 60 * 1000;
 
-  return prefetchMasterDataQueries(queryClient, [
+  const result = await prefetchMasterDataQueries(queryClient, [
     { queryKey: queryKeys.countries(false, false), queryFn: (signal) => fetchCountries(false, false, signal), staleTime },
     { queryKey: queryKeys.currencies(false), queryFn: (signal) => fetchCurrencies(false, signal), staleTime },
     { queryKey: queryKeys.paymentTerms(false), queryFn: (signal) => fetchPaymentTerms(false, signal), staleTime },
@@ -70,4 +70,7 @@ export async function prefetchPartyFormData(queryClient: QueryClient): Promise<P
     { queryKey: ["party_note_types"], queryFn: (signal) => actionChoices(getPartyNoteTypes, signal), staleTime },
     { queryKey: ["service_categories_for_select"], queryFn: (signal) => actionChoices(getServiceCategoriesForSelect, signal), staleTime },
   ]);
+  // Do not propagate transport or generic prefetch errors into the Party form.
+  // Keep successful keys truthful while providing its stable, actionable message.
+  return {...result, error: result.error ? "Party choices could not be loaded. Please retry." : null};
 }

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import "../remediation/f05/setup";
 import React from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
@@ -127,9 +128,9 @@ it("clearing an identity cache cancels an in-flight read and prevents its late r
   view.unmount();unregister();expect(qc.getQueryCache().getAll()).toHaveLength(0);
 });
 it("records partial master prefetch failure truthfully while independent successful reads remain usable", async () => {
-  const qc = client(), good = vi.fn(async () => [1]), bad = vi.fn(async () => {throw Error("Choices failed");});
+  const qc = client(), good = vi.fn(async () => [1]), bad = vi.fn(async () => {throw Error("PRIVATE configuration transport detail");});
   const receipt = await prefetchMasterDataQueries(qc, [{queryKey: ["master", "good"], queryFn: good}, {queryKey: ["master", "bad"], queryFn: bad}]);
-  expect(receipt.error).toBe("Choices failed"); expect(receipt.prefetchedKeys).toEqual([["master", "good"]]);
+  expect(receipt.error).toBe("Choices failed"); expect(JSON.stringify(receipt)).not.toContain("PRIVATE"); expect(receipt.prefetchedKeys).toEqual([["master", "good"]]);
   expect(qc.getQueryData(["master", "good"])).toEqual([1]); expect(qc.getQueryData(["master", "bad"])).toBeUndefined();
   expect(bad).toHaveBeenCalledTimes(2);
 });
@@ -166,4 +167,18 @@ it("unit selector preserves its existing retry UI and loads a scoped inactive se
   await waitFor(()=>expect(view.getByRole("combobox").textContent).toContain("Synthetic active"));
   expect(state.calls[1].filters).toEqual([["uom_category_id",2],["id",8]]);expect(change).not.toHaveBeenCalled();
   expect((view.container.querySelector('input[name="unit"]') as HTMLInputElement).value).toBe("8");
+});
+it("unit category retains a permitted historical label without making it selectable", async () => {
+  state.response = async call => {
+    const selected = call.filters.some(([key]) => key === "id");
+    return {data: selected ? [{...active, id: 8, category_name_en: "Historical category"}] : [], count: selected ? 1 : 0, error: null, status: 200};
+  };
+  const changed = vi.fn(), view = render(<QueryClientProvider client={client()}><UomCategorySelect value={8} onValueChange={changed} name="category"/></QueryClientProvider>);
+  await waitFor(() => expect(view.getByRole("combobox").textContent).toContain("Historical category"));
+  expect(state.calls).toHaveLength(2); expect(state.calls[1].filters).toEqual([["id", 8]]);
+  expect((view.container.querySelector('input[name="category"]') as HTMLInputElement).value).toBe("8");
+  fireEvent.click(view.getByRole("combobox"));
+  const option = await view.findByRole("option", {name: /Historical category/});
+  expect(option.getAttribute("aria-disabled")).toBe("true"); fireEvent.click(option);
+  expect(changed).not.toHaveBeenCalled();
 });

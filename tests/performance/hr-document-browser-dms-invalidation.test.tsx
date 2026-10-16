@@ -9,6 +9,7 @@ import {QueryClient, QueryClientProvider, QueryObserver} from "@tanstack/react-q
 import type {ERPRecordWorkspaceFormProps} from "@/components/workspace/erp-record-workspace-form";
 import type {DmsDocumentRecordData} from "@/server/actions/dms/documents";
 import type {AuthContext} from "@/lib/rbac/check";
+import type {WorkspaceSaveContract} from "@/lib/workspace/save-contract";
 import {createWorkspaceDraftStore} from "@/lib/workspace/workspace-draft-store";
 
 const m = vi.hoisted(() => ({store: null as ReturnType<typeof createWorkspaceDraftStore> | null, shell: null as ERPRecordWorkspaceFormProps | null,
@@ -20,7 +21,7 @@ vi.mock("@/components/workspace/workspace-draft-provider", () => ({useWorkspaceD
 vi.mock("@/hooks/use-workspace-form-navigation", () => ({useWorkspaceFormNavigation: () => ({activeTab: {id: "owner"}, markDirty: m.dirty, closeTab: m.close, renameTab: m.rename, updateTabRoute: m.route})}));
 vi.mock("@/components/workspace/erp-record-workspace-form", () => ({ERPRecordWorkspaceForm: (props: ERPRecordWorkspaceFormProps) => {m.shell = props; return <div>{props.children}</div>;},
   ERPRecordSectionPanel: ({children, id, activeId}: {children: React.ReactNode; id: string; activeId: string}) => id === activeId ? <section>{children}</section> : null}));
-vi.mock("sonner", () => ({toast: {error: vi.fn(), success: vi.fn()}}));
+vi.mock("sonner", () => ({toast: {error: vi.fn(), success: vi.fn(), warning: vi.fn()}}));
 vi.mock("@/server/actions/dms/documents", () => ({createDmsDocument: m.create, updateDmsDocument: m.update}));
 vi.mock("@/server/actions/dms/entity-documents", () => ({linkDmsDocumentToEntity: m.link}));
 vi.mock("@/features/dms/documents/sections/dms-document-ai-section", () => ({DmsDocumentAiSection: () => null}));
@@ -79,7 +80,7 @@ async function save(close = false) {await act(async () => {await (close ? m.shel
 function deferred<T>() {let resolve!: (value: T) => void; const promise = new Promise<T>(done => {resolve = done;}); return {promise, resolve};}
 
 beforeEach(() => {vi.clearAllMocks(); m.store = createWorkspaceDraftStore(); m.shell = null; m.approvalProps = null;
-  m.create.mockResolvedValue({success: true, data: {id: 11, document_no: "SYNTHETIC-DOC-11"}});
+  m.create.mockImplementation(async (_payload: unknown, contract: WorkspaceSaveContract) => ({success: true, data: {id: 11, document_no: "SYNTHETIC-DOC-11", operation_id: contract.operationId, replayed: false}}));
   m.update.mockResolvedValue({success: true}); m.link.mockResolvedValue({success: true, data: {id: 91}});
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
@@ -93,7 +94,8 @@ it.each(["add", "edit"] as const)("actual %s confirmed document save refreshes b
   const write = mode === "add" ? m.create : m.update; expect(write).toHaveBeenCalledTimes(1);
   expect(write).toHaveBeenCalledWith({...(mode === "edit" ? {id: 11} : {}), title: "Synthetic changed", description: null, document_type_id: 1,
     category_id: 2, status: "draft", confidentiality_level: "internal", issue_date: null, expiry_date: null,
-    owning_company_id: mode === "edit" ? 1 : null, owning_branch_id: mode === "edit" ? 4 : null, party_id: null});
+    owning_company_id: mode === "edit" ? 1 : null, owning_branch_id: mode === "edit" ? 4 : null, party_id: null},
+    ...(mode === "add" ? [{operationId: expect.stringMatching(/^[0-9a-f-]{36}$/), revision: null}] : []));
   expect(m.link).not.toHaveBeenCalled(); expect(m.close).not.toHaveBeenCalled(); expect(m.replace).toHaveBeenCalledTimes(mode === "add" ? 1 : 0);
 });
 it("the actual document parent passes its exact principal and document into the lazy approval section", async () => {
@@ -101,6 +103,16 @@ it("the actual document parent passes its exact principal and document into the 
   await act(async () => m.shell?.onSectionChange("approvals"));
   expect(m.approvalProps?.documentId).toBe(11); expect(m.approvalProps?.authContext).toBe(auth);
   expect(m.update).not.toHaveBeenCalled();
+});
+it("an incomplete creation receipt retains the draft and retries only the original payload and operation", async () => {
+  m.create.mockResolvedValueOnce({success: true, data: {id: 11, document_no: "SYNTHETIC-DOC-11"}});
+  const {q} = mount("add"); await save();
+  const original = structuredClone(m.create.mock.calls[0]);
+  for (const key of [...affectedBrowserKeys, ...oldKeys]) expect(q.getQueryState(key)?.isInvalidated).toBe(false);
+  expect(m.store!.getDraft(draftKey)?.title).toBe("Synthetic changed"); expect(m.replace).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByRole("textbox", {name: "Synthetic document title"}), {target: {value: "Late input must not replace submitted values"}});
+  await save(); expect(m.create).toHaveBeenCalledTimes(2); expect(m.create.mock.calls[1]).toEqual(original);
+  expect(q.getQueryState(browserKey)?.isInvalidated).toBe(true); expect(m.update).not.toHaveBeenCalled();
 });
 it("a pending write leaves browser data and current draft untouched until confirmed", async () => {
   const pending = deferred<unknown>(); m.update.mockReturnValue(pending.promise); const {q} = mount(); let saved: unknown;
@@ -149,6 +161,7 @@ it.each(["returned-failure", "thrown-failure"])("%s auto-link preserves the know
   const {q} = mount("add", {entityType: "employee", entityId: 7}); await save();
   expect(q.getQueryState(browserKey)?.isInvalidated).toBe(true); expect(m.create).toHaveBeenCalledTimes(1); expect(m.link).toHaveBeenCalledTimes(1);
   for (const key of entityKeys) expect(q.getQueryState(key)?.isInvalidated).toBe(false);
-  // Existing legacy outcome behavior is deliberately unchanged by this cache-only repair.
-  expect(m.replace).toHaveBeenCalledTimes(outcome === "returned-failure" ? 1 : 0);
+  // F06 keeps the accepted creation identity even when optional linking fails.
+  // Both paths open that document; neither dispatches a replacement creation.
+  expect(m.replace).toHaveBeenCalledExactlyOnceWith('/dms/documents/record/11?mode=edit');
 });

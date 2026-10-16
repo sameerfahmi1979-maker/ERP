@@ -3,8 +3,35 @@ import "../remediation/f05/setup";
 import React from "react";
 import {afterEach,expect,it,vi} from "vitest";
 import {act,cleanup,fireEvent,render,screen,waitFor} from "@testing-library/react";
-import {QueryClient,QueryClientProvider} from "@tanstack/react-query";
+import {type QueryClient,useQueryClient} from "@tanstack/react-query";
+import {ReadCacheBoundary,type ReadCacheIdentity} from "@/components/layout/read-cache-boundary";
 import {FluentProvider,webLightTheme} from "@fluentui/react-components";
+
+// Only the application boundary creates the cache. This handle exposes that
+// actual cache for assertions and controlled invalidation, never injection.
+const fixtureOwners=new WeakMap<QueryClient,{identity:ReadCacheIdentity;updatedAt:number;current?:QueryClient;queued:((cache:QueryClient)=>void)[]}>();
+const ownedCaches=new Set<QueryClient>();
+let fixtureSequence=0;
+function fixtureClient():QueryClient{
+ const owner:{identity:ReadCacheIdentity;updatedAt:number;current?:QueryClient;queued:((cache:QueryClient)=>void)[]}={identity:{authUserId:`synthetic-dms-${++fixtureSequence}`,scopeVersion:"scope-one"},updatedAt:Date.now(),queued:[]};
+ const handle=new Proxy({} as QueryClient,{get(_target,key){
+  if(!owner.current){
+   if(key==="setQueryData")return(...args:Parameters<QueryClient["setQueryData"]>)=>{owner.queued.push(cache=>{cache.setQueryData(...args);});};
+   throw Error("Mount the owned boundary before inspecting its cache");
+  }
+  const value=Reflect.get(owner.current,key);return typeof value==="function"?value.bind(owner.current):value;
+ }});
+ fixtureOwners.set(handle,owner);return handle;
+}
+function CacheProbe({handle,children}:{handle:QueryClient;children:React.ReactNode}){
+ const current=useQueryClient(),owner=fixtureOwners.get(handle)!;
+ if(owner.current!==current){owner.current=current;current.setDefaultOptions({queries:{retry:false,retryDelay:0,gcTime:Infinity},mutations:{retry:false}});ownedCaches.add(current);owner.queued.splice(0).forEach(prepare=>prepare(current));}
+ return <>{children}</>;
+}
+function OwnedFixture({handle,children}:{handle:QueryClient;children:React.ReactNode}){
+ return <ReadCacheBoundary {...fixtureOwners.get(handle)!.identity}><CacheProbe handle={handle}>{children}</CacheProbe></ReadCacheBoundary>;
+}
+
 import {WorkspaceUiMemoryProvider} from "@/hooks/use-persistent-ui-state";
 const mocks=vi.hoisted(()=>({restore:vi.fn()}));
 vi.mock("@/hooks/use-workspace",()=>({useWorkspace:()=>({openTab:vi.fn()})}));
@@ -15,9 +42,12 @@ import type {ArchivedDocumentRow} from "@/server/actions/dms/documents";
 const first={id:889001,document_no:"PERF-ARCH00001",title:"Synthetic archived first",status:"archived",reason:"archived",updated_at:"2026-10-01T00:00:00Z",document_type:{name_en:"Synthetic type"}} as ArchivedDocumentRow;
 const next={...first,id:889026,document_no:"PERF-ARCH00026",title:"Synthetic next page"};
 const pageRows=(base:ArchivedDocumentRow)=>Array.from({length:25},(_,i)=>i?{...base,id:base.id+i,document_no:base.document_no+"-"+i,title:base.title+" "+i}:base);
-function wrap(client:QueryClient,visible=true){return <FluentProvider theme={webLightTheme}><WorkspaceUiMemoryProvider><QueryClientProvider client={client}>{visible&&<DmsArchiveTable initialDocuments={pageRows(first)} initialTotal={1107} initialUpdatedAt={Date.now()} categories={[]} documentTypes={[]} canUnarchive />}</QueryClientProvider></WorkspaceUiMemoryProvider></FluentProvider>;}
-function client(){return new QueryClient({defaultOptions:{queries:{retry:false}}});}
-afterEach(()=>{cleanup();vi.unstubAllGlobals();vi.clearAllMocks();});
+function wrap(client:QueryClient,visible=true){
+ const owner=fixtureOwners.get(client)!;
+ const initialSeed={identity:owner.identity,params:{page:1,pageSize:25,sortKey:"updated_at",sortDir:"desc",search:"",columnFilters:{}},data:{rows:pageRows(first),totalCount:1107,page:1,pageSize:25},updatedAt:owner.updatedAt};
+ return <FluentProvider theme={webLightTheme}><WorkspaceUiMemoryProvider><OwnedFixture handle={client}>{visible&&<DmsArchiveTable initialSeed={initialSeed} initialDocuments={initialSeed.data.rows} initialTotal={1107} initialUpdatedAt={initialSeed.updatedAt} categories={[]} documentTypes={[]} canUnarchive />}</OwnedFixture></WorkspaceUiMemoryProvider></FluentProvider>;}
+const client=fixtureClient;
+afterEach(()=>{cleanup();ownedCaches.forEach(cache=>cache.clear());ownedCaches.clear();vi.unstubAllGlobals();vi.clearAllMocks();});
 it("matching server page is reused and next-page requests keep the exact total",async()=>{
  const fetcher=vi.fn(async(_url:unknown,init:RequestInit)=>{const p=JSON.parse(String(init.body));return Response.json({success:true,data:{rows:pageRows(next),totalCount:1107,page:p.page,pageSize:p.pageSize}});});vi.stubGlobal("fetch",fetcher);
  render(wrap(client()));await act(async()=>{await new Promise(resolve=>setTimeout(resolve,70));});expect(fetcher).not.toHaveBeenCalled();expect(screen.getByText("Synthetic archived first")).toBeTruthy();

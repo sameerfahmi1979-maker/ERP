@@ -8,21 +8,213 @@ permissions:
 concurrency:
   group: engineering-${{ github.ref }}
   cancel-in-progress: true
+# Exact reviewed head, not the mutable branch name or GitHub's synthetic merge ref.
+# Every executable gate checks out this same identity. No production credentials.
+env:
+  EXPECTED_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:16421
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: synthetic-ci-public-key
+  NEXT_PUBLIC_SITE_URL: http://127.0.0.1:16401
 jobs:
-  verify:
+  core-tests:
+    needs: security
     runs-on: ubuntu-latest
-    # Combined F06 plus PERF-P01-P04 coverage exceeds the individual candidates.
-    timeout-minutes: 45
-    env:
-      # Build placeholders only; never connect CI to the production database.
-      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:16421
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: synthetic-ci-public-key
-      NEXT_PUBLIC_SITE_URL: http://127.0.0.1:16401
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Verify exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.23.2'
+          cache: npm
+      - run: npm install --global npm@10.9.8
+      - run: npm ci
+      - run: npm test
+
+  remediation-tests:
+    needs: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.23.2'
+          cache: npm
+      - run: npm install --global npm@10.9.8
+      - run: npm ci
+      - run: npm run test:remediation
+
+  f06-tests:
+    needs: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # 267 offline files at composition checkpoint; same config, disjoint Vitest
+    # file shards. No change to local exclusions, aliases, setup or test semantics.
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        shard: ['1/3', '2/3', '3/3']
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.23.2'
+          cache: npm
+      - run: npm install --global npm@10.9.8
+      - run: npm ci
+      - name: F06 offline guard and regression suite
+        run: node node_modules/vitest/vitest.mjs run --config tests/remediation/f06/vitest.config.mts --shard ${{ matrix.shard }}
+
+  performance-phases:
+    needs: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - phase: p01
+            shard: '1/1'
+            typecheck: true
+          - phase: p02
+            shard: '1/1'
+            typecheck: true
+          - phase: p03
+            shard: '1/1'
+            typecheck: true
+          # P04 has 138 files and takes over 18 minutes locally. Bound each
+          # shard independently; typecheck its unchanged project exactly once.
+          - phase: p04
+            shard: '1/3'
+            typecheck: true
+          - phase: p04
+            shard: '2/3'
+            typecheck: false
+          - phase: p04
+            shard: '3/3'
+            typecheck: false
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.23.2'
+          cache: npm
+      - run: npm install --global npm@10.9.8
+      - run: npm ci
+      - name: Phase regression suite with original setup and environment
+        run: node node_modules/vitest/vitest.mjs run --config tests/performance/${{ matrix.phase }}.config.mts --shard ${{ matrix.shard }}
+      - name: Typecheck phase tests including opt-in laboratory harness
+        if: matrix.typecheck
+        run: node node_modules/typescript/bin/tsc --project tests/performance/${{ matrix.phase }}.tsconfig.json --noEmit
+
+  performance-compatibility:
+    needs: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The broad suite defaults to jsdom + browser storage + Fluent aliases,
+    # while the phase suites use node + offline setup. Their overlap is NOT
+    # equivalent evidence: preserve both configurations, shard only within each.
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        shard: ['1/3', '2/3', '3/3']
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.23.2'
+          cache: npm
+      - run: npm install --global npm@10.9.8
+      - run: npm ci
+      - name: Shared read and F06 performance contract regressions
+        run: node node_modules/vitest/vitest.mjs run --config tests/performance/unit.config.mts --shard ${{ matrix.shard }}
+
+  integration-tests:
+    needs: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.23.2'
+          cache: npm
+      - run: npm install --global npm@10.9.8
+      - run: npm ci
+      - name: F00-F06 composed selector and shared integration regressions
+        run: node node_modules/vitest/vitest.mjs run --config tests/integration/f00-f06/vitest.config.mts
+      - name: Composed migration, fixture identity and schema receipt guards (offline only)
+        run: >-
+          node --test
+          tests/integration/f00-f06/schema/migration-contract.test.cjs
+          tests/integration/f00-f06/schema/native-fixture.test.cjs
+          tests/integration/f00-f06/schema/schema-receipt.test.cjs
+
+  build-types:
+    needs: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.23.2'
+          cache: npm
+      - run: npm install --global npm@10.9.8
+      - run: npm ci
+      - run: npm run typecheck:e2e
+      - run: npm run test:e2e -- --list
+      - run: npm run build
+      - run: npm run typecheck
+
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22.23.2'
@@ -31,38 +223,8 @@ jobs:
       - run: npm ci
       - run: npm run security:secrets
       - run: npm run security:vendor
-      - run: npm test
-      - run: npm run test:remediation
-      - name: F06 offline guard and regression suite
-        run: npm exec --no -- vitest run --config tests/remediation/f06/vitest.config.mts
       - name: F06 image-check semantic guards (no Docker execution)
         run: node --test tests/remediation/f06/linux-image-check.test.mjs
-      - name: Shared read and F06 performance contract regressions
-        run: npm exec --no -- vitest run --config tests/performance/unit.config.mts
-      - name: P01 privacy, isolation and instrumentation regression tests
-        run: node node_modules/vitest/vitest.mjs run --config tests/performance/p01.config.mts
-      - name: Typecheck P01 tests including opt-in laboratory harness
-        run: node node_modules/typescript/bin/tsc --project tests/performance/p01.tsconfig.json --noEmit
-      - name: P02 read, cache, lookup, cancellation and session regression tests
-        run: node node_modules/vitest/vitest.mjs run --config tests/performance/p02.config.mts
-      - name: Typecheck P02 tests including opt-in laboratory harness
-        run: node node_modules/typescript/bin/tsc --project tests/performance/p02.tsconfig.json --noEmit
-      - name: P03 pilot read and rendered-component regression tests
-        run: node node_modules/vitest/vitest.mjs run --config tests/performance/p03.config.mts
-      - name: Typecheck P03 tests including opt-in laboratory harness
-        run: node node_modules/typescript/bin/tsc --project tests/performance/p03.tsconfig.json --noEmit
-      - name: P04 consumer adoption regression tests
-        run: node node_modules/vitest/vitest.mjs run --config tests/performance/p04.config.mts
-      - name: Typecheck P04 tests including opt-in laboratory harness
-        run: node node_modules/typescript/bin/tsc --project tests/performance/p04.tsconfig.json --noEmit
-      - name: F00-F06 composed selector and shared integration regressions
-        run: node node_modules/vitest/vitest.mjs run --config tests/integration/f00-f06/vitest.config.mts
-      - name: Composed migration contract guards (offline only)
-        run: node --test tests/integration/f00-f06/schema/migration-contract.test.cjs
-      - run: npm run typecheck:e2e
-      - run: npm run test:e2e -- --list
-      - run: npm run build
-      - run: npm run typecheck
       - name: Full dependency audit and verified local remediation
         run: node --test tests/remediation/f06/dependency-gate.test.cjs
       - name: Integrated vendor archive, lock, source and installed-consumer guards
@@ -77,6 +239,7 @@ jobs:
           path: .security-evidence/
           if-no-files-found: error
           include-hidden-files: true
+
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -85,6 +248,8 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Verify exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22.23.2'
@@ -101,6 +266,8 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Verify exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22.23.2'
@@ -135,3 +302,37 @@ jobs:
             ${{ runner.temp }}/f06-production-build.log
           include-hidden-files: true
           if-no-files-found: error
+
+  # Preserve the stable required-check name. The aggregate always executes and
+  # fails closed for a failed, cancelled, skipped or missing constituent result.
+  # No successful subset of a matrix can turn the complete candidate green.
+  verify:
+    if: always()
+    needs:
+      - core-tests
+      - remediation-tests
+      - f06-tests
+      - performance-phases
+      - performance-compatibility
+      - integration-tests
+      - build-types
+      - security
+      - lint
+      - production-image
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every exact-candidate gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test '${{ needs.core-tests.result }}' = success
+          test '${{ needs.remediation-tests.result }}' = success
+          test '${{ needs.f06-tests.result }}' = success
+          test '${{ needs.performance-phases.result }}' = success
+          test '${{ needs.performance-compatibility.result }}' = success
+          test '${{ needs.integration-tests.result }}' = success
+          test '${{ needs.build-types.result }}' = success
+          test '${{ needs.security.result }}' = success
+          test '${{ needs.lint.result }}' = success
+          test '${{ needs.production-image.result }}' = success

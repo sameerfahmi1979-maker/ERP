@@ -21,6 +21,11 @@ it("does not cache legacy action failures as successful empty choices or expose 
 it("rejects malformed successful action results rather than accepting empty data",async()=>{
  state.action.mockResolvedValue({success:true});const qc=client();expect((await prefetchPartyFormData(qc)).error).not.toBeNull();expect(qc.getQueryData(["party_types"])).toBeUndefined();qc.clear();
 });
+it("sanitizes thrown master-data failures while retaining successful Party choices",async()=>{
+ state.master.mockRejectedValue(Error("PRIVATE provider connection detail"));const qc=client(),result=await prefetchPartyFormData(qc);
+ expect(result.error).toBe("Party choices could not be loaded. Please retry.");expect(JSON.stringify(result)).not.toContain("PRIVATE");
+ expect(result.prefetchedKeys).toHaveLength(14);expect(qc.getQueryData(["party_natures"])).toEqual([{id:2}]);qc.clear();
+});
 it("does not populate the previous account cache after cancellation",async()=>{
  let finish!:(value:unknown)=>void;state.action.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
  const qc=client(), pending=prefetchPartyFormData(qc);await Promise.resolve();await qc.cancelQueries();qc.clear();

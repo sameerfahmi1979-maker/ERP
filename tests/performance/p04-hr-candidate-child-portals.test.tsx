@@ -47,9 +47,13 @@ vi.mock('@/server/actions/hr/recruitment', () => ({
   prepareCandidateEmployeeConversion: state.prep, convertCandidateToEmployee: state.mutate,
 }));
 
-const permissions = ['hr.recruitment.view', 'hr.recruitment.manage', 'hr.payroll.view', 'hr.payroll.manage', 'hr.employees.create'];
+const permissions = ['hr.recruitment.view', 'hr.recruitment.manage', 'hr.payroll.view', 'hr.payroll.manage', 'hr.employees.create', 'hr.employees.view', 'hr.employees.update'];
+const numberingPermissions = ['numbering.rules.generate'];
 const context = {profile: {id: 880106, auth_user_id: 'synthetic-candidate-record-review', must_change_password: false}, accountStatus: 'active', isAccountActive: true,
-  permissionCodes: permissions, roleCodes: ['hr_scoped'], roleAssignments: [{roleId: 880106, roleCode: 'hr_scoped', ownerCompanyId: 880101, branchId: null, permissionCodes: permissions}]} as unknown as AuthContext;
+  permissionCodes: [...permissions, ...numberingPermissions], globalPermissionCodes: numberingPermissions, roleCodes: ['hr_scoped', 'numbering_only'], roleAssignments: [
+    {roleId: 880106, roleCode: 'hr_scoped', ownerCompanyId: 880101, branchId: null, permissionCodes: permissions},
+    {roleId: 880107, roleCode: 'numbering_only', ownerCompanyId: null, branchId: null, permissionCodes: numberingPermissions},
+  ]} as unknown as AuthContext;
 const candidate = {full_name_ar:null,gender:null,nationality_id:null,date_of_birth:null,mobile_number:null,source:null,agency_name:null,referred_by_employee_id:null,current_employer:null,current_position:null,notice_period_days:null,rating:null,availability_date:null,created_at:'2026-10-04T00:00:00Z',updated_at:'2026-10-04T00:00:00Z',created_by:null,deleted_at:null,requisition:null,nationality:null,referred_by:null,id: 880100, workspace_revision: 17, candidate_code: 'SYNTHETIC-880100', full_name_en: 'Synthetic retained candidate', candidate_status: 'new', pipeline_stage: 'new',
   requisition_id: 880109, expected_salary: 54321, email: 'synthetic@example.invalid', current_location: 'Synthetic private location', notes: 'SYNTHETIC PRIVATE PROFILE NOTES'} as CandidateRow;
 const salaryKey = ['hr','recruitment','salary-access',880109];
@@ -115,6 +119,8 @@ async function openChild(s:Scenario){
  if(s.kind==='conversion'){
   fireEvent.change(within(dialog).getByLabelText('Owner Company ID'),{target:{value:'880101'}});
   fireEvent.change(within(dialog).getByLabelText('Joining Date'),{target:{value:'2026-10-04'}});
+  fireEvent.change(within(dialog).getByLabelText('Emergency Contact Name'),{target:{value:'Synthetic emergency contact'}});
+  fireEvent.change(within(dialog).getByLabelText('Emergency Contact Mobile'),{target:{value:'000'}});
  }
  fireEvent.change(within(dialog).getByLabelText(s.field),{target:{value:'SYNTHETIC CHILD NOTES'}});
  return dialog;
@@ -139,7 +145,13 @@ function expectedArgs(s:Scenario){
  if(s.kind==='interviews')return [candidate.id,{interview_round:'first',interview_datetime:null,interview_location:null,interview_status:'scheduled',result:null,score:null,feedback:'SYNTHETIC CHILD NOTES',next_step:null}];
  if(s.kind==='offers')return [candidate.id,{offer_status:'draft',offer_date:null,valid_until:null,proposed_joining_date:null,basic_salary:null,gross_salary:null,currency:'AED',notes:'SYNTHETIC CHILD NOTES'}];
  if(s.kind==='onboarding')return [{task_title:'Synthetic required task',task_category:null,task_status:'pending',due_date:null,notes:'SYNTHETIC CHILD NOTES',candidate_id:candidate.id}];
- return [candidate.id,{owner_company_id:880101,branch_id:null,department_id:null,designation_id:null,employment_type_id:null,employee_category_id:null,joining_date:'2026-10-04',employee_status:'active',conversion_notes:'SYNTHETIC CHILD NOTES',offer_id:null,requisition_id:880109}];
+ return [candidate.id,{owner_company_id:880101,branch_id:null,department_id:null,designation_id:null,employment_type_id:null,employee_category_id:null,joining_date:'2026-10-04',employee_status:'active',conversion_notes:'SYNTHETIC CHILD NOTES',offer_id:null,requisition_id:880109,emergency_contact_name:'Synthetic emergency contact',emergency_contact_mobile:'000'},
+  {operationId:expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i),revision:'17'}];
+}
+function savedResult(s:Scenario){
+ if(s.kind!=='conversion')return {success:true,data:{employee_id:880999,employee_code:'SYN-EMP-880999'}};
+ return {success:true,data:{employee_id:880999,employee_code:'SYN-EMP-880999',candidate_id:candidate.id,candidate_revision:'18',employee_revision:'1',link_id:880998,
+  operation_id:state.mutate.mock.calls.at(-1)![2].operationId,replayed:false,reference_id:880997}};
 }
 async function checkBlocked(s:Scenario,dialog:HTMLElement,retained:()=>void|Promise<unknown>){
  const submit=within(dialog).getByRole('button',{name:s.submit}) as HTMLButtonElement;
@@ -162,7 +174,7 @@ it.each(scenarios.flatMap(s=>['record','salary-access','own-rejection','own-enve
  await waitFor(()=>expect((within(dialog).getByRole('button',{name:s.submit}) as HTMLButtonElement).disabled).toBe(false));
  expect(screen.getByRole('dialog',{name:s.dialog})).toBe(dialog);
  expect((within(dialog).getByLabelText(s.field) as HTMLTextAreaElement).value).toBe('SYNTHETIC CHILD NOTES');
- state.mutate.mockResolvedValue({success:true,data:{employee_id:880999,employee_code:'SYN-EMP-880999'}});
+ state.mutate.mockImplementation(async()=>savedResult(s));
  fireEvent.click(within(dialog).getByRole('button',{name:s.submit}));
  await waitFor(()=>expect(state.mutate).toHaveBeenCalledExactlyOnceWith(...expectedArgs(s)));
  await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
@@ -211,7 +223,7 @@ it.each(scenarios)('$kind permitted rapid submits dispatch once with unchanged b
  mount();await ready();const dialog=await openChild(s),submit=within(dialog).getByRole('button',{name:s.submit}),retained=state.dialogSubmit!;
  await act(async()=>{fireEvent.click(submit);fireEvent.click(submit);await retained();});
  expect(state.mutate).toHaveBeenCalledExactlyOnceWith(...expectedArgs(s));
- await act(async()=>finish({success:true,data:{employee_id:880999,employee_code:'SYN-EMP-880999'}}));
+ await act(async()=>finish(savedResult(s)));
  await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
 });
 it.each(scenarios.flatMap(s=>['success','rejection','unknown'].map(outcome=>({s,outcome}))))(
@@ -220,12 +232,24 @@ it.each(scenarios.flatMap(s=>['success','rejection','unknown'].map(outcome=>({s,
  state.mutate.mockImplementation(()=>new Promise((resolve,reject)=>{finish=resolve;fail=reject;}));
  const view=mount();await ready();const dialog=await openChild(s);
  fireEvent.click(within(dialog).getByRole('button',{name:s.submit}));await waitFor(()=>expect(state.mutate).toHaveBeenCalledTimes(1));
+ const retainedSubmit=state.dialogSubmit!;
+ const numberedKey=`draft:tab:candidate-review-owner:numbered-recruitment:conversion:${candidate.id}:${context.profile!.id}`;
+ const originalNumberedRequest=s.kind==='conversion'?state.store!.getViewState(numberedKey):undefined;
+ if(s.kind==='conversion')expect(JSON.parse(originalNumberedRequest!)).toEqual({pending:{kind:'conversion',candidateId:candidate.id,payload:state.mutate.mock.calls[0][1],contract:state.mutate.mock.calls[0][2]},receipt:null});
  state.read.mockImplementation((route,input)=>input.kind==='record'?Promise.reject(new ReadError('Synthetic denied',403)):reply(route,input));
  await act(async()=>{await view.client.invalidateQueries({queryKey:recordKey});});
  await screen.findByText(/Candidate information is unavailable for this session/);
- await act(async()=>{if(outcome==='unknown')fail(new Error('Synthetic reply lost'));else finish(outcome==='success'?{success:true,data:{employee_id:880999,employee_code:'SYN-EMP-880999'}}:{success:false,error:'Synthetic actual rejection'});});
+ await act(async()=>{if(outcome==='unknown')fail(new Error('Synthetic reply lost'));else finish(outcome==='success'?savedResult(s):{success:false,error:'Synthetic actual rejection'});});
  expect(screen.queryByRole('dialog')).toBeNull();expect(state.mutate).toHaveBeenCalledTimes(1);
- if(outcome==='success')expect(state.success).toHaveBeenCalledTimes(1);
+ if(s.kind==='conversion'){
+  // F06 numbered mutations retain the exact unacknowledged operation in the
+  // original account/tab memory, but cannot publish a late result into a
+  // privacy-retired candidate or dispatch through its retained callback.
+  expect(state.store!.getViewState(numberedKey)).toBe(originalNumberedRequest);
+  expect(state.success).not.toHaveBeenCalled();expect(state.error).not.toHaveBeenCalled();
+  expect(screen.queryByText(/Employee created:/)).toBeNull();
+  await act(async()=>{await retainedSubmit();});expect(state.mutate).toHaveBeenCalledTimes(1);
+ }else if(outcome==='success')expect(state.success).toHaveBeenCalledTimes(1);
  else{expect(state.success).not.toHaveBeenCalled();expect(state.error).toHaveBeenCalledWith(outcome==='unknown'?expect.stringContaining('The operation could not be confirmed.'): 'Synthetic actual rejection');}
 });
 it('Conversion cannot proceed when a refreshed prerequisite says already converted',async()=>{
@@ -237,14 +261,39 @@ it('Conversion cannot proceed when a refreshed prerequisite says already convert
 });
 it('Conversion keeps employee-create permission additional to recruitment management',async()=>{
  const s=scenarios[3],view=mount();await ready();const dialog=await openChild(s),retained=state.dialogSubmit!;
- const perms=permissions.filter(code=>code!=='hr.employees.create'),next={...context,permissionCodes:perms,roleAssignments:context.roleAssignments!.map(role=>({...role,permissionCodes:perms}))};
+ const next={...context,permissionCodes:context.permissionCodes.filter(code=>code!=='hr.employees.create'),roleAssignments:context.roleAssignments!.map(role=>({...role,permissionCodes:role.permissionCodes.filter(code=>code!=='hr.employees.create')}))};
  await act(async()=>{view.client.setQueryData(candidateRecordKey(candidate.id,candidateRecordIdentity(next)),{kind:'record',candidate,salaryAccess:access});view.replace(candidate,next);});
  await within(dialog).findByText(/You do not have permission to make this change/);await checkBlocked(s,dialog,retained);
 });
-it.each(['Owner Company ID','Joining Date'])('Conversion direct handler keeps required %s validation',async field=>{
+it.each([
+ {field:'Owner Company ID',message:'Owner company is required'},
+ {field:'Joining Date',message:'Joining date is required'},
+ {field:'Emergency Contact Name',message:'Emergency contact name is required'},
+ {field:'Emergency Contact Mobile',message:'Emergency contact mobile is required'},
+])('Conversion direct handler keeps required $field validation',async({field,message})=>{
  mount();await ready();const dialog=await openChild(scenarios[3]);
  fireEvent.change(within(dialog).getByLabelText(field),{target:{value:''}});
  await act(async()=>{await state.dialogSubmit?.();});
  expect(state.mutate).not.toHaveBeenCalled();
- expect(state.error).toHaveBeenCalledWith(field==='Owner Company ID'?'Owner company is required':'Joining date is required');
+ expect(state.error).toHaveBeenCalledExactlyOnceWith(message);
+});
+it.each([
+ {field:'Owner Company ID',value:'0',message:'Choose a valid owner company.'},
+ {field:'Owner Company ID',value:'-1',message:'Choose a valid owner company.'},
+ {field:'Owner Company ID',value:'1.5',message:'Choose a valid owner company.'},
+ {field:'Joining Date',value:'2026-02-30',message:'Enter a valid joining date (YYYY-MM-DD).'},
+ {field:'Joining Date',value:'2026-2-01',message:'Enter a valid joining date (YYYY-MM-DD).'},
+ {field:'Joining Date',value:'not-a-date',message:'Enter a valid joining date (YYYY-MM-DD).'},
+])('Conversion rejects invalid $field value $value with a helpful field error',async({field,value,message})=>{
+ mount();await ready();const dialog=await openChild(scenarios[3]);
+ const input=within(dialog).getByLabelText(field) as HTMLInputElement;
+ // Bypass native input sanitizing only in this adversarial test, so the real
+ // handler/schema must reject malformed values even without browser help.
+ if(field==='Joining Date')input.type='text';
+ fireEvent.change(input,{target:{value}});
+ await act(async()=>{await state.dialogSubmit?.();});
+ expect(state.mutate).not.toHaveBeenCalled();
+ expect(state.error).toHaveBeenCalledExactlyOnceWith(message);
+ expect(screen.getByRole('dialog',{name:scenarios[3].dialog})).toBe(dialog);
+ expect((within(dialog).getByLabelText('Conversion Notes') as HTMLTextAreaElement).value).toBe('SYNTHETIC CHILD NOTES');
 });

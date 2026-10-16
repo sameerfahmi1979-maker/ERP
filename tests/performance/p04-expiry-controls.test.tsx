@@ -3,8 +3,35 @@ import "../remediation/f05/setup";
 import React from "react";
 import {afterEach,beforeEach,expect,it,vi} from "vitest";
 import {act,cleanup,fireEvent,render,screen,waitFor} from "@testing-library/react";
-import {QueryClient,QueryClientProvider} from "@tanstack/react-query";
+import {type QueryClient,useQueryClient} from "@tanstack/react-query";
+import {ReadCacheBoundary,type ReadCacheIdentity} from "@/components/layout/read-cache-boundary";
 import {FluentProvider,webLightTheme} from "@fluentui/react-components";
+
+// Only the application boundary creates the cache. This handle exposes that
+// actual cache for assertions and controlled invalidation, never injection.
+const fixtureOwners=new WeakMap<QueryClient,{identity:ReadCacheIdentity;updatedAt:number;current?:QueryClient;queued:((cache:QueryClient)=>void)[]}>();
+const ownedCaches=new Set<QueryClient>();
+let fixtureSequence=0;
+function fixtureClient():QueryClient{
+ const owner:{identity:ReadCacheIdentity;updatedAt:number;current?:QueryClient;queued:((cache:QueryClient)=>void)[]}={identity:{authUserId:`synthetic-dms-${++fixtureSequence}`,scopeVersion:"scope-one"},updatedAt:Date.now(),queued:[]};
+ const handle=new Proxy({} as QueryClient,{get(_target,key){
+  if(!owner.current){
+   if(key==="setQueryData")return(...args:Parameters<QueryClient["setQueryData"]>)=>{owner.queued.push(cache=>{cache.setQueryData(...args);});};
+   throw Error("Mount the owned boundary before inspecting its cache");
+  }
+  const value=Reflect.get(owner.current,key);return typeof value==="function"?value.bind(owner.current):value;
+ }});
+ fixtureOwners.set(handle,owner);return handle;
+}
+function CacheProbe({handle,children}:{handle:QueryClient;children:React.ReactNode}){
+ const current=useQueryClient(),owner=fixtureOwners.get(handle)!;
+ if(owner.current!==current){owner.current=current;current.setDefaultOptions({queries:{retry:false,retryDelay:0,gcTime:Infinity},mutations:{retry:false}});ownedCaches.add(current);owner.queued.splice(0).forEach(prepare=>prepare(current));}
+ return <>{children}</>;
+}
+function OwnedFixture({handle,children}:{handle:QueryClient;children:React.ReactNode}){
+ return <ReadCacheBoundary {...fixtureOwners.get(handle)!.identity}><CacheProbe handle={handle}>{children}</CacheProbe></ReadCacheBoundary>;
+}
+
 import {WorkspaceUiMemoryProvider,usePersistentUiState} from "@/hooks/use-persistent-ui-state";
 import {ReadError} from "@/lib/reads/client";
 const mocks=vi.hoisted(()=>({read:vi.fn(),cancel:vi.fn(),renewals:vi.fn(),override:vi.fn()}));
@@ -18,12 +45,14 @@ import {DmsExpiringDocumentsTable} from "@/features/dms/expiry/dms-expiring-docu
 import {DmsRenewalRequestsTable} from "@/features/dms/renewals/dms-renewal-requests-table";
 const expiry={id:1,document_no:"SYNTH-1",title:"Synthetic expiry",expiry_date:"2026-01-01",issue_date:null,status:"active",confidentiality:"company",days_remaining:-20,document_type:"Synthetic type",category:"Test",is_renewable:true,owner:null,latest_reminder_status:null,expiry_tracking_override:null,expiry_override_reason:null};
 const renewal={id:1,renewal_no:"SYNTH-RENEW",document_id:1,status:"requested",priority:"normal",created_at:"2026-01-01",document:{id:1,document_no:"SYNTH-1",title:"Synthetic expiry",expiry_date:"2026-01-01",document_type_id:1}};
-function client(){return new QueryClient({defaultOptions:{queries:{retry:false,retryDelay:0},mutations:{retry:false}}});}
-function wrap(cache:QueryClient,children:React.ReactNode){return <FluentProvider theme={webLightTheme}><WorkspaceUiMemoryProvider><QueryClientProvider client={cache}>{children}</QueryClientProvider></WorkspaceUiMemoryProvider></FluentProvider>;}
+const client=fixtureClient;
+function wrap(cache:QueryClient,children:React.ReactNode){return <FluentProvider theme={webLightTheme}><WorkspaceUiMemoryProvider><OwnedFixture handle={cache}>{children}</OwnedFixture></WorkspaceUiMemoryProvider></FluentProvider>;}
+const renewalRows=(page=1)=>Array.from({length:25},(_,index)=>({...renewal,id:(page-1)*25+index+1,renewal_no:index?`PAGE-${page}-${index}`:`PAGE-${page}`}));
+const expiryRows=(page=1)=>Array.from({length:25},(_,index)=>({...expiry,id:(page-1)*25+index+1,title:index?`EXPIRY-PAGE-${page}-${index}`:`EXPIRY-PAGE-${page}`}));
 const renewalPage=(rows=[renewal],page=1,totalCount=rows.length)=>({success:true,data:{rows,page,pageSize:25,totalCount}});
 const expiryPage=(rows=[expiry],page=1,totalCount=rows.length)=>({success:true,data:{rows,page,pageSize:25,totalCount}});
 beforeEach(()=>{mocks.read.mockResolvedValue(expiryPage([]));mocks.renewals.mockResolvedValue(renewalPage());mocks.cancel.mockResolvedValue({success:true});mocks.override.mockResolvedValue({success:true});});
-afterEach(()=>{cleanup();vi.resetAllMocks();});
+afterEach(()=>{cleanup();ownedCaches.forEach(cache=>cache.clear());ownedCaches.clear();vi.resetAllMocks();});
 it("expiry search and filter tools remain available on initial loading and genuine zero",async()=>{
  let resolve!:(v:unknown)=>void;mocks.read.mockReturnValue(new Promise(r=>{resolve=r;}));render(wrap(client(),<DmsExpiringDocumentsTable view="expired"/>));
  expect(screen.getByPlaceholderText("Search documents…")).toBeTruthy();expect(screen.getByRole("button",{name:/Edit filters/i})).toBeTruthy();
@@ -76,10 +105,10 @@ it("renewal filters stay mounted through loading and failure, without false zero
 });
 
 it("renewal search is server-wide, masks old actions immediately and resets a later page",async()=>{
- mocks.renewals.mockImplementation(async(params)=>renewalPage([{...renewal,id:params.page,renewal_no:`PAGE-${params.page}`}],params.page,60));
+ mocks.renewals.mockImplementation(async(params)=>renewalPage(renewalRows(params.page),params.page,60));
  const cache=client();render(wrap(cache,<DmsRenewalRequestsTable canManage/>));await screen.findByText("PAGE-1");
  fireEvent.click(screen.getByRole("button",{name:"Next page"}));await screen.findByText("PAGE-2");
- fireEvent.click(screen.getByRole("button",{name:"Complete"}));expect(screen.getByText("Complete renewal dialog")).toBeTruthy();
+ fireEvent.click(screen.getAllByRole("button",{name:"Complete"})[0]);expect(screen.getByText("Complete renewal dialog")).toBeTruthy();
  fireEvent.change(screen.getByPlaceholderText("Search renewals…"),{target:{value:"outside first page"}});
  expect(screen.queryByText("PAGE-2")).toBeNull();expect(screen.queryByText("Complete renewal dialog")).toBeNull();
  await screen.findByText("PAGE-1");expect(mocks.renewals).toHaveBeenLastCalledWith(expect.objectContaining({page:1,pageSize:25,search:"outside first page"}),expect.any(AbortSignal));
@@ -102,7 +131,7 @@ it("an old account's late read cannot replace the next account's denied result",
 it("a confirmed shrinking count returns an out-of-range view to the last valid page",async()=>{
  mocks.renewals.mockImplementation(async(params)=>params.page===1?renewalPage():renewalPage([],params.page,1));
  // First observation has three pages; after a concurrent change only one remains.
- mocks.renewals.mockResolvedValueOnce(renewalPage([renewal],1,60));
+ mocks.renewals.mockResolvedValueOnce(renewalPage(renewalRows(),1,60));
  render(wrap(client(),<DmsRenewalRequestsTable/>));await screen.findByText("60 renewals");fireEvent.click(screen.getByRole("button",{name:"Last page"}));
  await screen.findByText("1 renewal");expect(mocks.renewals).toHaveBeenLastCalledWith(expect.objectContaining({page:1}),expect.any(AbortSignal));
 });
@@ -116,15 +145,15 @@ it("same-criteria verification hides actions but retains an unsaved completion d
 });
 
 it("expiry search resets a later page and retires a pending renewal draft",async()=>{
- mocks.read.mockImplementation(async p=>expiryPage([{...expiry,id:p.page,title:`EXPIRY-PAGE-${p.page}`}],p.page,60));
+ mocks.read.mockImplementation(async p=>expiryPage(expiryRows(p.page),p.page,60));
  render(wrap(client(),<DmsExpiringDocumentsTable view="expired" canRenew/>));await screen.findByText("EXPIRY-PAGE-1");
- fireEvent.click(screen.getByRole("button",{name:"Next page"}));await screen.findByText("EXPIRY-PAGE-2");fireEvent.click(screen.getByRole("button",{name:"Renew"}));
+ fireEvent.click(screen.getByRole("button",{name:"Next page"}));await screen.findByText("EXPIRY-PAGE-2");fireEvent.click(screen.getAllByRole("button",{name:"Renew"})[0]);
  fireEvent.change(screen.getByPlaceholderText("Search documents…"),{target:{value:"outside page one"}});
  expect(screen.queryByText("EXPIRY-PAGE-2")).toBeNull();expect(screen.queryByPlaceholderText("Additional context for this renewal request…")).toBeNull();
  await screen.findByText("EXPIRY-PAGE-1");expect(mocks.read).toHaveBeenLastCalledWith(expect.objectContaining({page:1,search:"outside page one"}),expect.any(AbortSignal));
 });
 it("expiry count shrink clamps to the last valid page",async()=>{
- mocks.read.mockResolvedValueOnce(expiryPage([expiry],1,60)).mockImplementation(async p=>expiryPage(p.page===1?[expiry]:[],p.page,1));
+ mocks.read.mockResolvedValueOnce(expiryPage(expiryRows(),1,60)).mockImplementation(async p=>expiryPage(p.page===1?[expiry]:[],p.page,1));
  render(wrap(client(),<DmsExpiringDocumentsTable view="expired"/>));await screen.findByText("60 documents");fireEvent.click(screen.getByRole("button",{name:"Last page"}));
  await screen.findByText("1 document");expect(mocks.read).toHaveBeenLastCalledWith(expect.objectContaining({page:1}),expect.any(AbortSignal));
 });

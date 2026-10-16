@@ -129,7 +129,15 @@ export function CandidateConversionTab({ candidate, authContext, canManage, canC
   async function handleConvert() {
     if (!session.pending && !mutation.canDispatch()) return;
     const parsed=candidateConversionInputSchema.safeParse(form);
-    if(!session.pending&&!parsed.success){toast.error(parsed.error.issues[0]?.message??'Review employee values.');return;}
+    if(!session.pending&&!parsed.success){
+      const issue=parsed.error.issues[0];
+      const message=issue?.path[0]==='owner_company_id'
+        ? form.owner_company_id==null?'Owner company is required':'Choose a valid owner company.'
+        : issue?.path[0]==='joining_date'
+          ? form.joining_date.trim()===''?'Joining date is required':'Enter a valid joining date (YYYY-MM-DD).'
+          : issue?.message??'Review employee values.';
+      toast.error(message);return;
+    }
     if(!session.pending&&!canCreateRecruitmentDestination(authContext,form.owner_company_id,form.branch_id,true)){toast.error('The selected scope requires recruitment management, employee creation/read/management, and numbering generation.');return;}
     const payload=session.pending?.kind==='conversion'?session.pending.payload:parsed.success?parsed.data:null;
     if(!payload)return;

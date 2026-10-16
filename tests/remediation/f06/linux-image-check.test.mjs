@@ -7,6 +7,18 @@ import {BASE,NATIVE,NATIVE_SHA,IMPACT,HISTORICAL_RAW_IMPACT,LOCK_GRAPH_SHA,TRUST
 const hash=b=>createHash('sha256').update(b).digest('hex');
 test('unknown Docker outcomes require retained references, not assumed daemon quiescence',()=>{const known={cliEnded:true,code:0,reason:null,error:null,signal:null};assert.equal(uncertainDockerOutcome(known),false);assert.equal(uncertainDockerOutcome({...known,code:1}),false);for(const delta of [{cliEnded:false},{reason:'CLI_TIMEOUT'},{error:'CLI_END_UNKNOWN'},{signal:'SIGKILL'}])assert.equal(uncertainDockerOutcome({...known,...delta}),true);const s=fs.readFileSync('tooling/testing/f06-linux-image-check.mjs','utf8');assert.ok(s.indexOf("if(exe==='docker'&&uncertainDockerOutcome(r))")<s.indexOf("write(id+'-outcome.json'"));assert.ok(s.includes('for(const ref of [...refs]){if(uncertainDockerCommands.length)break;try{await close(ref);'));assert.ok(s.includes('FAIL_UNRESOLVED_DOCKER_OPERATION_RETAIN_REFERENCES'));});
 test('image build pipeline explicitly propagates docker failure, not just tee success',()=>{const s=fs.readFileSync('.github/workflows/engineering.yml','utf8');assert.match(s,/name: Build pinned production image with synthetic public configuration\s+shell: bash\s+run: \|\s+set -euo pipefail\s+docker build/);});
+test('CI admits exactly the digest-pinned amd64 base before build and verification without a fallback',()=>{
+ const s=fs.readFileSync('.github/workflows/engineering.yml','utf8').replace(/\r\n/g,'\n');
+ const name='      - name: Pull exact pinned Linux base for provenance verification';
+ const start=s.indexOf(name),next=s.indexOf('      - name:',start+name.length);
+ assert.ok(start>s.indexOf('  production-image:')&&next>start);
+ assert.equal(s.slice(start,next).trimEnd(),[name,'        shell: bash','        run: |','          set -euo pipefail',`          docker pull --platform linux/amd64 ${BASE}`].join('\n'));
+ assert.equal((s.match(/^\s+docker pull\b/gm)||[]).length,1);
+ const build=s.indexOf('      - name: Build pinned production image with synthetic public configuration');
+ const verify=s.indexOf('      - name: Verify same immutable image native paths, provenance, trust and non-root boot');
+ assert.equal(next,build);assert.ok(build<verify);
+ assert.ok(fs.readFileSync('Dockerfile','utf8').split(/\r?\n/).includes(`FROM ${BASE} AS base`));
+});
 const validTap=()=>['TAP version 13',...Array.from({length:11},(_,i)=>'ok '+(i+1)+' - synthetic '+i),'1..11','# tests 11','# suites 0','# pass 11','# fail 0','# cancelled 0','# skipped 0','# todo 0'].join('\n');
 test('actual unchanged Linux fixture bytes remain pinned',()=>assert.equal(hash(fs.readFileSync(NATIVE)),NATIVE_SHA));
 test('reviewed old raw inputs canonicalize only CRLF to the pinned public bytes',()=>{for(const[p,h]of Object.entries(IMPACT)){const b=fs.readFileSync(p);const canonical=p.endsWith('.tgz')?b:Buffer.from(b.toString('utf8').replace(/\r\n/g,'\n'));assert.equal(hash(canonical),h);assert.ok([HISTORICAL_RAW_IMPACT[p],h].includes(hash(b)));}assert.equal(hash(JSON.stringify(JSON.parse(fs.readFileSync('package-lock.json')))),LOCK_GRAPH_SHA);});

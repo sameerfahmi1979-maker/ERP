@@ -5,6 +5,8 @@ on:
     branches: ['codex/perf-p00-*']
 permissions:
   contents: read
+env:
+  EXPECTED_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 jobs:
   inventory:
     strategy:
@@ -15,6 +17,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact candidate checkout
+        run: >-
+          node -e "const head=require('node:child_process').execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(); if(head!==process.env.EXPECTED_CANDIDATE_SHA) throw new Error('Candidate checkout identity mismatch'); console.log('Exact candidate checkout verified');"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22.23.2'

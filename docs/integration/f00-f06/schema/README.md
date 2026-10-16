@@ -2,6 +2,22 @@
 
 Status: **SOURCE IMPLEMENTED; NATIVE/APP ACCEPTANCE PENDING.** This is not a release or deployment instruction.
 
+## Integration hold — 16 October 2026
+
+**NOT READY TO MERGE OR RELEASE.** The actual isolated combined replay stopped at
+`20261014030458_perf_candidate_document_subject_set.sql` with
+`Candidate document authority prerequisite drift`. The transaction's precondition
+failed before its document-policy changes. Earlier successful migration receipts
+and the failed attempt are retained; neither a passing offline contract test nor a
+source manifest is a successful database replay.
+
+The prerequisite definitions and their published lineage must be reconciled and
+independently reviewed before another replay. Do not skip this migration, edit its
+expected hashes to accept unknown authority, import an unreviewed laboratory
+prototype, or claim the final template projection has been applied. Final native
+SQL/HTTP/browser acceptance remains blocked. This hold also applies if automated
+source, build and security checks pass.
+
 ## Source boundary
 
 The reviewed F06 donor is `cd23c1c73e0ca847a92d337e91bb1de131e17839`. The reviewed PERF/F04/F05 donor is `581cf501890bb9a8b3116d4e5858d5efa58bf163`. Their shared prerequisites are byte-identical in Git. The generated [manifest](MIGRATION_MANIFEST_20261016.json) records 26 inherited prerequisites, 85 F06 migrations, 16 PERF migrations and one new composition migration, in chronological order. It is a **source manifest, not applied-history or native evidence**. F06/PERF timestamps interleave. Never apply one branch wholesale then the other or blindly replay already-applied prerequisites.

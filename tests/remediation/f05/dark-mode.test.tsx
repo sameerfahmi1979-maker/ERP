@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import './setup';
+import { useEffect } from 'react';
 import { readFileSync } from 'node:fs';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { useTheme } from 'next-themes';
 import { ThemeProvider } from '@/components/layout/theme-provider';
@@ -30,24 +31,35 @@ it('provides light/dark browser schemes and semantic surface tokens for body-mou
   expect(css).toContain('.algt-auth, .algt-dialog {');
   expect(css).toContain('.dark .algt-auth, .dark .algt-dialog {');
 });
-function ThemeJourney() {
+function ThemeJourney({ theme }: { theme: 'light' | 'dark' }) {
   const { setTheme, resolvedTheme } = useTheme();
-  return <><button onClick={() => setTheme('dark')}>Use dark</button><button onClick={() => setTheme('light')}>Use light</button><output>{resolvedTheme}</output><EditFilters definitions={[{ id: 'status', label: 'Status', type: 'select', options: [{value:'active',label:'Active'}] }]} values={{}} onApply={() => {}} scopeLabel="Synthetic results."/></>;
+  // Change the real context without clicking controls behind a modal. This
+  // exercises a theme update while the existing portal remains mounted.
+  useEffect(() => { setTheme(theme); }, [setTheme, theme]);
+  return <><output>{resolvedTheme}</output><EditFilters definitions={[{ id: 'status', label: 'Status', type: 'select', options: [{value:'active',label:'Active'}] }]} values={{}} onApply={() => {}} scopeLabel="Synthetic results."/></>;
 }
 it('updates the actual theme provider and an already open Fluent portal without losing its filter draft', async () => {
-  render(<ThemeProvider><AlgtFluentProvider><ThemeJourney/></AlgtFluentProvider></ThemeProvider>);
-  fireEvent.click(screen.getByRole('button', { name: 'Use dark' }));
+  const app = (theme: 'light' | 'dark') => <ThemeProvider><AlgtFluentProvider><ThemeJourney theme={theme}/></AlgtFluentProvider></ThemeProvider>;
+  const view = render(app('dark'));
   await waitFor(() => expect(document.documentElement.classList.contains('dark')).toBe(true));
   expect(document.documentElement.style.colorScheme).toBe('dark');
-  fireEvent.click(screen.getByRole('button', { name: 'Edit filters' }));
-  fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'active' } });
-  const dialog = screen.getByRole('dialog', { name: 'Edit filters' });
+  const trigger = screen.getByRole('button', { name: 'Edit filters' });
+  act(() => trigger.focus());
+  fireEvent.click(trigger);
+  const dialog = await screen.findByRole('dialog', { name: 'Edit filters' });
+  const status = within(dialog).getByLabelText('Status') as HTMLSelectElement;
+  act(() => status.focus());
+  expect(document.activeElement).toBe(status);
+  expect(await within(dialog).findByRole('combobox', { name: 'Status' })).toBe(status);
+  fireEvent.change(status, { target: { value: 'active' } });
   expect(dialog.classList.contains('algt-dialog')).toBe(true);
-  fireEvent.click(screen.getByRole('button', { name: 'Use light', hidden: true }));
+  view.rerender(app('light'));
   await waitFor(() => expect(document.documentElement.classList.contains('light')).toBe(true));
   expect(document.documentElement.style.colorScheme).toBe('light');
   expect((screen.getByLabelText('Status') as HTMLSelectElement).value).toBe('active');
-  expect(screen.getByRole('dialog', { name: 'Edit filters' })).toBe(dialog);
+  expect(await screen.findByRole('dialog', { name: 'Edit filters' })).toBe(dialog);
+  expect(await within(dialog).findByRole('combobox', { name: 'Status' })).toBe(status);
+  expect(document.activeElement).toBe(status);
 });
 it('renders search controls with paired semantic surfaces rather than a fixed white background and inherited dark-mode text', () => {
   render(<SearchResultCard result={{ resultType:'entity', entityType:'organization', title:'Synthetic organization', route:'/admin/organizations', snippet:'Synthetic only', badges:[] } as Parameters<typeof SearchResultCard>[0]['result']}/>);

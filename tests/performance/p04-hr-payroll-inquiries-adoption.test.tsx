@@ -4,6 +4,7 @@ import React from "react";
 import {afterEach, expect, it, vi} from "vitest";
 import {act, cleanup, fireEvent, render, screen, waitFor, within} from "@testing-library/react";
 import {QueryClient, QueryClientProvider} from "@tanstack/react-query";
+import {FluentProvider, webLightTheme} from "@fluentui/react-components";
 import type {AuthContext} from "@/lib/rbac/check";
 import {WorkspaceUiMemoryProvider} from "@/hooks/use-persistent-ui-state";
 import {ReadError} from "@/lib/reads/client";
@@ -23,7 +24,7 @@ function page(kind: PayrollInquiryKind, options: {context?: AuthContext; count?:
 const clients: QueryClient[] = [];
 function mount(node: React.ReactNode) {
   const client = new QueryClient({defaultOptions: {queries: {retry: false, retryDelay: 0}}}); clients.push(client);
-  const wrap = (child: React.ReactNode) => <QueryClientProvider client={client}><WorkspaceUiMemoryProvider>{child}</WorkspaceUiMemoryProvider></QueryClientProvider>;
+  const wrap = (child: React.ReactNode) => <FluentProvider theme={webLightTheme}><QueryClientProvider client={client}><WorkspaceUiMemoryProvider>{child}</WorkspaceUiMemoryProvider></QueryClientProvider></FluentProvider>;
   const view = render(wrap(node)); return {...view, client, replace: (child: React.ReactNode) => view.rerender(wrap(child))};
 }
 const ready = (id = 1) => screen.findByText(`Synthetic payroll employee ${id}`);
@@ -144,9 +145,18 @@ it.each(PAYROLL_INQUIRY_KINDS)("%s actual global/employee/column inputs retain l
   fireEvent.change(screen.getByLabelText("Search employee"), {target: {value: " PAY-1101 "}});
   fireEvent.click(screen.getByRole("button", {name: "Find employee"}));
   await waitFor(() => expect(last().employeeSearch).toBe(" PAY-1101 "));
-  fireEvent.click(screen.getByRole("button", {name: /^Edit filters/})); const dialog = await screen.findByRole("dialog");
-  fireEvent.change(within(dialog).getByLabelText("Employee"), {target: {value: "\u00a0Doe_%\\ "}});
-  fireEvent.click(within(dialog).getByRole("button", {name: "Apply"}));
+  await waitFor(() => expect(screen.getByRole("button", {name: "Refresh records"}).hasAttribute("disabled")).toBe(false));
+  const filterTrigger = screen.getByRole("button", {name: /^Edit filters/});
+  act(() => filterTrigger.focus());
+  fireEvent.click(filterTrigger); const dialog = await screen.findByRole("dialog");
+  // Typing requires focus inside the actual modal. A synthetic change event
+  // alone leaves focus outside while Fluent's asynchronous focus trap settles.
+  const employeeFilter = within(dialog).getByLabelText("Employee");
+  act(() => employeeFilter.focus());
+  expect(document.activeElement).toBe(employeeFilter);
+  expect(await within(dialog).findByRole("textbox", {name: "Employee"})).toBe(employeeFilter);
+  fireEvent.change(employeeFilter, {target: {value: "\u00a0Doe_%\\ "}});
+  fireEvent.click(await within(dialog).findByRole("button", {name: "Apply"}));
   await waitFor(() => expect(last().columnFilters).toEqual({full_name_en: "\u00a0Doe_%\\ "}));
   expect(last()).toMatchObject({search: " ", employeeSearch: " PAY-1101 "});
 });

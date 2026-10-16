@@ -1,3 +1,5 @@
+// @vitest-environment node
+// Parse the real server-generated attachments in Node; print tests provide their own window fixture.
 import {afterEach,expect,it,vi} from "vitest";
 import {createRequire} from "node:module";
 import ExcelJS from "exceljs";

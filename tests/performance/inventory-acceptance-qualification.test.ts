@@ -53,7 +53,8 @@ const output=createRequire(import.meta.url)(path.resolve('tooling/performance/in
   inspectInventoryOutput:(out:string,snapshot?:string)=>Record<string,string>;
   writeInventoryOutput:(out:string,snapshot:string,contents:Record<string,string>)=>void;
 };
-const fixtureParent=path.resolve('.performance');
+// Use a tracked parent so standalone runs do not depend on a config-created .performance directory.
+const fixtureParent=path.resolve('tests/performance');
 const fixtures:{root:string;ino:number;dev:number;links:{name:string;target:string;ino:number;dev:number}[]}[]=[];
 const stamp='20261006070000000';
 const payload=(value:string)=>Object.fromEntries(output.inventoryFiles.map(name=>[name,value+name]));

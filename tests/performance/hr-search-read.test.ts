@@ -1,6 +1,8 @@
 import {beforeEach, describe, expect, it, vi} from "vitest";
 import {createHash} from "node:crypto";
 import {readFileSync} from "node:fs";
+// Keep filesystem reads out of Vite's browser-asset new URL rewrite.
+import {URL as NodeURL} from "node:url";
 import type {AuthContext} from "@/lib/rbac/check";
 import {readHrSearch} from "@/server/reads/hr-search";
 import {POST} from "@/app/api/reads/hr-search/route";
@@ -185,7 +187,7 @@ it.each([[400, {page: 0}], [403, {}], [503, {}], [200, {}]] as const)("route has
 });
 const searchActionFingerprint = (source: string) => createHash("sha256").update(source.replace(/\r\n/g, "\n")).digest("hex");
 it("original search action remains unchanged modulo checkout newline encoding", () => {
-  expect(searchActionFingerprint(readFileSync(new URL("../../src/server/actions/hr/search.ts", import.meta.url), "utf8"))).toBe("f456d275a9170a7f093bd3ccdad1db1f5dcff24dab5ed214ec93429f95adba13");
+  expect(searchActionFingerprint(readFileSync(new NodeURL("../../src/server/actions/hr/search.ts", import.meta.url), "utf8"))).toBe("f456d275a9170a7f093bd3ccdad1db1f5dcff24dab5ed214ec93429f95adba13");
 });
 const fingerprintControl = 'const label = "Synthetic café";\nreturn label;\n';
 it("source fingerprint treats equivalent LF and CRLF checkouts identically", () => {

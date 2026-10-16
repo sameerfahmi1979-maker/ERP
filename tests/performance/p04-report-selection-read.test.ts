@@ -1,5 +1,7 @@
 import {beforeEach, expect, it, vi} from "vitest";
 import {readFileSync} from "node:fs";
+// Keep filesystem reads out of Vite's browser-asset new URL rewrite.
+import {URL as NodeURL} from "node:url";
 import type {AuthContext} from "@/lib/rbac/check";
 type Row = Record<string, unknown>;
 type Call = {table: string; methods: unknown[][]};
@@ -188,7 +190,7 @@ it("schemas reject impossible page/selection contracts and strip unknown sensiti
   expect(reportTemplateSelectionPageSchema.safeParse({...data, selected: template(1, {template_name: "Drift"})}).success).toBe(false);
   expect(JSON.stringify(reportTemplateSelectionPageSchema.parse({...data, rows: [template(1, {signature_url: "PRIVATE"})]}))).not.toContain("PRIVATE");
 });
-const readTemplateSelectionContract = () => readFileSync(new URL("../../tooling/performance/contracts/report-template-selection-proposal.sql", import.meta.url), "utf8");
+const readTemplateSelectionContract = () => readFileSync(new NodeURL("../../tooling/performance/contracts/report-template-selection-proposal.sql", import.meta.url), "utf8");
 const sqlWhitespacePattern = (text: string) => text.trim().split(/\s+/).map(token => token.replace(/[.*+?^$(){}|[\]\\]/g, "\\$&")).join("\\s+");
 function assertTemplateSelectionContract(sql: string) {
   // This authored artifact has a deliberately closed grammar, not a general SQL parser.

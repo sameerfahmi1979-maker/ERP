@@ -1,6 +1,6 @@
 "use client";
 
-import {useLayoutEffect, useMemo} from "react";
+import {useLayoutEffect, useMemo, useRef} from "react";
 import {useQueryClient, type QueryKey} from "@tanstack/react-query";
 import {useReadCacheOwner} from "@/components/layout/read-cache-boundary";
 
@@ -16,13 +16,14 @@ function retired(): Error {
 export function useLookupReadLease(enabled: boolean, queryKey: QueryKey) {
   const client = useQueryClient(), owner = useReadCacheOwner();
   const key = JSON.stringify(queryKey);
-  const lease = useMemo(() => ({live: false, client, owner, enabled, key}), [client, owner, enabled, key]);
+  const lease = useMemo(() => ({client, owner, enabled, key}), [client, owner, enabled, key]);
+  const activeLease = useRef<typeof lease | null>(null);
   useLayoutEffect(() => {
-    lease.live = true;
-    return () => {lease.live = false;};
+    activeLease.current = lease;
+    return () => {if (activeLease.current === lease) activeLease.current = null;};
   }, [lease]);
   const readable = () => owner === null || (owner.client === client && owner.identity !== null && owner.isLive());
-  const isCurrent = () => enabled && lease.live && readable();
+  const isCurrent = () => enabled && activeLease.current === lease && readable();
   return {
     enabled: enabled && readable(),
     readable,

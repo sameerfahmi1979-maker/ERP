@@ -18,22 +18,58 @@ import {TIME_RECORD_KINDS, type TimeRecordKind} from "@/lib/reads/hr-time-record
 import type {HrSearchCategory} from "@/lib/hr/search/types";
 import {REPORT_CRITERION_KEYS, type ReportCriterionKey} from "@/lib/reads/report-criteria-schema";
 
-const pendingReportCriterionRefresh = new WeakMap<QueryClient, Set<ReportCriterionKey>>();
+function captureRefresh(work: () => Promise<unknown>): Promise<unknown> {
+  try {return Promise.resolve(work());} catch (error) {return Promise.reject(error);}
+}
+async function settleRefreshes(work: readonly Promise<unknown>[]): Promise<void> {
+  // Observe every operation immediately and finish the whole refresh before
+  // reporting failure. A committed mutation must never be replayed to retry it.
+  const results = await Promise.allSettled(work);
+  const failed = results.find(result => result.status === "rejected");
+  if (failed?.status === "rejected") throw failed.reason;
+}
+type ReportCriterionRefresh = {
+  fields: Set<ReportCriterionKey>; work: Promise<unknown>[]; verify: boolean;
+  backgroundObserved: boolean;
+  completion: Promise<void>; resolve: () => void; reject: (reason: unknown) => void;
+};
+const pendingReportCriterionRefresh = new WeakMap<QueryClient, ReportCriterionRefresh>();
+function reportRefreshCompletion(pending: ReportCriterionRefresh, verify: boolean): Promise<void> | void {
+  if (verify) return pending.completion;
+  // Background invalidators have no checked workflow to receive a rejection.
+  // Observe it once, without logging backend details or altering the original
+  // rejecting promise used by a coalesced checked save/archive workflow.
+  if (!pending.backgroundObserved) {
+    pending.backgroundObserved = true;
+    void pending.completion.catch(() => {console.warn("Report choices could not refresh. Reload before continuing.");});
+  }
+}
 /** Confirmed writes retire matching choice pages and selected values, including
  * in-flight observerless requests. Only active authorized owners refetch. */
-function invalidateReportCriterionReads(queryClient: QueryClient, keys: readonly ReportCriterionKey[]): void {
+function invalidateReportCriterionReads(queryClient: QueryClient, keys: readonly ReportCriterionKey[], verify: true): Promise<void>;
+function invalidateReportCriterionReads(queryClient: QueryClient, keys: readonly ReportCriterionKey[], verify?: false): void;
+function invalidateReportCriterionReads(queryClient: QueryClient, keys: readonly ReportCriterionKey[], verify = false): Promise<void> | void {
   const family = (fields: ReadonlySet<ReportCriterionKey>) => ({queryKey: ["reports", "criteria"],
     predicate: (query: {queryKey: readonly unknown[]}) => fields.has(query.queryKey[4] as ReportCriterionKey)});
-  void queryClient.invalidateQueries({...family(new Set(keys)), refetchType: "none"});
+  const marked = captureRefresh(() => queryClient.invalidateQueries({...family(new Set(keys)), refetchType: "none"}));
   const queued = pendingReportCriterionRefresh.get(queryClient);
-  if (queued) {for (const key of keys) queued.add(key); return;}
-  const pending = new Set(keys); pendingReportCriterionRefresh.set(queryClient, pending);
+  if (queued) {
+    for (const key of keys) queued.fields.add(key);
+    queued.work.push(marked);queued.verify ||= verify;
+    return reportRefreshCompletion(queued, verify);
+  }
+  let resolve!: () => void, reject!: (reason: unknown) => void;
+  const completion = new Promise<void>((done, failed) => {resolve = done;reject = failed;});
+  const pending: ReportCriterionRefresh = {fields: new Set(keys), work: [marked], verify, backgroundObserved: false, completion, resolve, reject};
+  pendingReportCriterionRefresh.set(queryClient, pending);
   queueMicrotask(() => {
     pendingReportCriterionRefresh.delete(queryClient);
-    const filters = family(pending);
-    void queryClient.cancelQueries(filters);
-    void queryClient.invalidateQueries({...filters, refetchType: "active"}, {cancelRefetch: true});
+    const filters = family(pending.fields);
+    const cancel = captureRefresh(() => queryClient.cancelQueries(filters));
+    const refresh = captureRefresh(() => queryClient.invalidateQueries({...filters, refetchType: "active"}, {cancelRefetch: true, throwOnError: pending.verify}));
+    void settleRefreshes([...pending.work, cancel, refresh]).then(pending.resolve, pending.reject);
   });
+  return reportRefreshCompletion(pending, verify);
 }
 
 type TimeOption = "calendars" | "shifts" | "leave-types";
@@ -131,6 +167,14 @@ export function invalidateAuthorizedRead(queryClient: QueryClient, resource: str
     void queryClient.cancelQueries({ queryKey }, { revert: true });
     void queryClient.invalidateQueries({ queryKey, refetchType: "active" }, { cancelRefetch: true });
   });
+}
+/** Awaitable counterpart for a committed-write workflow with read-only recovery. */
+function verifyAuthorizedReadRefresh(queryClient: QueryClient, resource: string): Promise<void> {
+  const queryKey = ["read", resource];
+  return notifyManager.batch(() => settleRefreshes([
+    captureRefresh(() => queryClient.cancelQueries({queryKey}, {revert: true})),
+    captureRefresh(() => queryClient.invalidateQueries({queryKey, refetchType: "active"}, {cancelRefetch: true, throwOnError: true})),
+  ]));
 }
 
 // ── Lookup values ─────────────────────────────────────────────────────────────
@@ -583,11 +627,13 @@ export function invalidateDmsFileOcr(queryClient: QueryClient, fileId: number): 
 
 // ── COMMON MD.1 — Common Master Data ─────────────────────────────────────────
 
-export function invalidateCommonMdDepartments(queryClient: QueryClient): void {
-  invalidateReportCriterionReads(queryClient, ["department_id", "designation_id", "employee_id"]);
-  invalidateAuthorizedRead(queryClient, "employee-filter-departments");
-  invalidateAuthorizedRead(queryClient, "employee-filter-designations");
-  void queryClient.invalidateQueries({ queryKey: ["common_md", "departments"] });
+export function invalidateCommonMdDepartments(queryClient: QueryClient): Promise<void> {
+  return settleRefreshes([
+    invalidateReportCriterionReads(queryClient, ["department_id", "designation_id", "employee_id"], true),
+    verifyAuthorizedReadRefresh(queryClient, "employee-filter-departments"),
+    verifyAuthorizedReadRefresh(queryClient, "employee-filter-designations"),
+    captureRefresh(() => queryClient.invalidateQueries({queryKey: ["common_md", "departments"]}, {throwOnError: true})),
+  ]);
 }
 
 export function invalidateCommonMdDesignations(queryClient: QueryClient): void {

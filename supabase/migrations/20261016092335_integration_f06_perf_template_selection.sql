@@ -27,7 +27,12 @@ BEGIN
     OR has_table_privilege('anon', 'public.erp_report_templates', 'SELECT')
     OR has_table_privilege('anon', 'public.erp_report_branding_profiles_safe', 'SELECT')
     OR has_table_privilege('authenticated', 'public.erp_report_templates', 'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
-    OR has_table_privilege('authenticated', 'public.erp_report_branding_profiles', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') THEN
+    OR has_table_privilege('authenticated', 'public.erp_report_branding_profiles', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+    OR has_any_column_privilege('authenticated', 'public.erp_report_branding_profiles', 'SELECT,INSERT,UPDATE,REFERENCES')
+    OR has_any_column_privilege('authenticated', 'public.erp_report_templates', 'INSERT,UPDATE,REFERENCES')
+    OR has_any_column_privilege('anon', 'public.erp_report_branding_profiles', 'SELECT,INSERT,UPDATE,REFERENCES')
+    OR has_any_column_privilege('anon', 'public.erp_report_branding_profiles_safe', 'SELECT,INSERT,UPDATE,REFERENCES')
+    OR has_any_column_privilege('anon', 'public.erp_report_templates', 'SELECT,INSERT,UPDATE,REFERENCES') THEN
     RAISE EXCEPTION 'Reviewed F06 read-only template and redacted branding privileges changed';
   END IF;
   -- Compare the reviewed helper bodies as well as executable metadata. No

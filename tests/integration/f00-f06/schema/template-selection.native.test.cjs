@@ -1,10 +1,17 @@
 'use strict';
 // Explicit native integration command only; missing fixture fails closed.
 // No fixture creation, issuance, email, mutation, worker or provider calls.
-const {test} = require('node:test');
+const {test, before, after} = require('node:test');
 const assert = require('node:assert/strict');
-const {loadFixture, actorNames, nativeRead, appRead, assertMetadata, columns} = require('../../../../tooling/integration/f00-f06/schema/native-fixture.cjs');
+const {loadFixture, actorNames, nativeRead, appRead, assertMetadata, columns, verifyActorSessions} = require('../../../../tooling/integration/f00-f06/schema/native-fixture.cjs');
+const {guardedLab} = require('../../../../tooling/integration/f00-f06/schema/guarded-lab.cjs');
 const fixture = loadFixture(process.env.ALGT_TEMPLATE_NATIVE_FIXTURE);
+let lab;
+before(async () => {
+  lab = await guardedLab();
+  await verifyActorSessions(fixture, query => JSON.parse(lab.sql(query, 45000)));
+});
+after(async () => { if (lab) await verifyActorSessions(fixture, query => JSON.parse(lab.sql(query, 45000))); });
 const order = 'is_default.desc,template_name.asc,id.asc';
 const nativeParams = extra => ({select: columns.join(','), template_code: `like.${fixture.prefix}*`, order, ...extra});
 
@@ -88,3 +95,17 @@ test('Anonymous selector access is denied and raw branding remains unavailable e
   const raw = await nativeRead(fixture, fixture.actors.scoped, {select: 'id', limit: '1'}, 'erp_report_branding_profiles');
   assert.ok([401, 403].includes(raw.status));
 });
+for (const name of ['branchOnly','noRole','combined']) {
+  test(`${name}: direct native point probes cannot borrow unrelated role scope`, async () => {
+    const actor = fixture.actors[name];
+    const deniedIds = [fixture.ids.foreignId,fixture.ids.unbrandedId,fixture.ids.globalBrandingId,
+      ...(name === 'combined' ? [] : [fixture.ids.tailId])];
+    for (const id of deniedIds) {
+      const native = await nativeRead(fixture, actor, {select:columns.join(','), id:`eq.${id}`});
+      assert.equal(native.status,200); assert.equal(native.count,0); assert.deepEqual(native.body,[]);
+      const app = await appRead(fixture, actor, {selectedId:id});
+      if (name === 'noRole') assert.equal(app.status,403);
+      else { assert.equal(app.status,200); assert.equal(app.body.data.selected,null); }
+    }
+  });
+}

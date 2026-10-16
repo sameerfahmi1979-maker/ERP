@@ -23,7 +23,13 @@ vi.mock('sonner', () => ({ toast: { success: m.success, error: m.error, warning:
 vi.mock('@/server/actions/branches', () => ({ createBranch: m.create, updateBranch: m.update, updateBranchStatus: m.status, deleteBranch: m.retire }));
 vi.mock('@/server/actions/organizations', () => ({ createOrganization: m.create, updateOrganization: m.update, updateOrganizationStatus: m.status, deleteOrganization: m.retire }));
 vi.mock('@/server/actions/common-master-data/owner-company-signatories', () => ({ createCompanySignatory: m.signatory, listCompanySignatories: vi.fn(), softDeleteCompanySignatory: vi.fn(), updateCompanySignatory: m.signatory }));
-vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: [], isPending: false, isError: false, refetch: vi.fn() }), useQueryClient: () => ({ invalidateQueries: vi.fn() }) }));
+vi.mock('@tanstack/react-query', async importOriginal => {
+  const actual = await importOriginal<typeof import('@tanstack/react-query')>();
+  // Keep the real cache/cancellation/batching contract used by PERF invalidation.
+  // No queries are mounted here: business writes and lookup reads remain offline doubles.
+  const queryClient = new actual.QueryClient();
+  return { ...actual, useQuery: () => ({ data: [], isPending: false, isError: false, refetch: vi.fn() }), useQueryClient: () => queryClient };
+});
 vi.mock('@/lib/supabase/client', () => ({ createClient: () => ({ from: (table: string) => {
   m.lookup(table);
   const response = () => m.lookupGate ?? Promise.resolve(table === m.unavailableTable ? { data: null, error: { message: 'PRIVATE lookup detail' } } : { data: table === 'currencies' ? { id: 1, currency_code: m.currency } : { id: 1, name_en: 'Synthetic place', country_id: 1 }, error: null });

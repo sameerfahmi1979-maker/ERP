@@ -44,3 +44,17 @@ test('guard checks the complete F06 safe projection and helper metadata before n
   assert.ok(sql.trim().startsWith('BEGIN;'));
   assert.ok(sql.trim().endsWith('COMMIT;'));
 });
+test('column-only raw branding and template grants cannot bypass table ACL guards', () => {
+  for (const [role,relation,privileges] of [
+    ['authenticated','erp_report_branding_profiles','SELECT,INSERT,UPDATE,REFERENCES'],
+    ['authenticated','erp_report_templates','INSERT,UPDATE,REFERENCES'],
+    ['anon','erp_report_branding_profiles','SELECT,INSERT,UPDATE,REFERENCES'],
+    ['anon','erp_report_branding_profiles_safe','SELECT,INSERT,UPDATE,REFERENCES'],
+    ['anon','erp_report_templates','SELECT,INSERT,UPDATE,REFERENCES'],
+  ]) assert.ok(sql.includes(`has_any_column_privilege('${role}', 'public.${relation}', '${privileges}')`));
+  const catalog=fs.readFileSync(path.join(root,'tests/integration/f00-f06/schema/catalog-acceptance.sql'),'utf8');
+  assert.ok((catalog.match(/has_any_column_privilege/g)||[]).length>=8);
+  const witness=fs.readFileSync(path.join(root,'tests/integration/f00-f06/schema/column-grant-rejections.native.test.cjs'),'utf8');
+  assert.match(witness,/GRANT SELECT \(signature_url\)/);assert.match(witness,/GRANT UPDATE \(body_html_en\)/);
+  assert.match(witness,/ROLLBACK;/);assert.match(witness,/original catalog and column grants identical/);
+});

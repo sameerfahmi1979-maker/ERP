@@ -15,16 +15,16 @@ const page = (id = 1): ReadPage<Row> => ({rows: [{id, label: `Synthetic ${id}`}]
 const envelope = (id = 1): ServerPageSeed<Row> => ({identity, params, data: page(id), updatedAt: Date.now()});
 let client: QueryClient;
 const latest = new Map<string, ReturnType<typeof useServerPage<Row>>>();
-function Grid({id = "one", seed, legacy = false, prefix, enabled = true}: {
-  id?: string; seed?: ServerPageSeed<Row>; legacy?: boolean; prefix?: readonly unknown[]; enabled?: boolean;
+function Grid({id = "one", seed, legacy = false, prefix, enabled = true, criteria = params}: {
+  id?: string; seed?: ServerPageSeed<Row>; legacy?: boolean; prefix?: readonly unknown[]; enabled?: boolean; criteria?: Record<string, unknown>;
 }) {
   // Real SSR props retain their read timestamp across client observer renders.
   // Generating a new one here would falsely claim newer server data on each fetch.
   const [initialSeed] = useState(() => envelope());
   const currentClient = useQueryClient();
   const read = useServerPage<Row>(legacy
-    ? {resource: "composition", params, keyPrefix: prefix, enabled, seed: page(99), seedParams: params, updatedAt: initialSeed.updatedAt}
-    : {resource: "composition", params, keyPrefix: prefix, enabled, seed: seed ?? initialSeed});
+    ? {resource: "composition", params: criteria, keyPrefix: prefix, enabled, seed: page(99), seedParams: params, updatedAt: initialSeed.updatedAt}
+    : {resource: "composition", params: criteria, keyPrefix: prefix, enabled, seed: seed ?? initialSeed});
   useLayoutEffect(() => {client = currentClient;latest.set(id, read);});
   return <p data-testid={id}>{read.data?.rows[0]?.label ?? "unavailable"}</p>;
 }
@@ -124,4 +124,41 @@ it("a later admitted sibling retains the shared read after its first consumer un
   expect(fetcher.mock.calls[0][1]?.signal?.aborted).toBe(false);
   await act(async () => finish(Response.json({success: true, data: page(2)})));
   await waitFor(() => expect(view.getByTestId("second").textContent).toBe("Synthetic 2"));
+});
+
+it.each(["disabled", "mismatched seed"])("the latest %s observer cannot block its admitted sibling's invalidation or retry", async mode => {
+  let revision = 1;
+  const fetcher = vi.fn(async () => Response.json({success: true, data: page(++revision)})); vi.stubGlobal("fetch", fetcher);
+  const seed = envelope();
+  const tree = (withdrawn = false) => <ReadCacheBoundary {...identity}>
+    <Grid id="active" seed={seed}/><Grid id="last" enabled={mode !== "disabled" || !withdrawn}
+      seed={mode === "mismatched seed" && withdrawn ? {...seed, identity: {...identity, scopeVersion: "obsolete"}} : seed}/></ReadCacheBoundary>;
+  const view = render(tree());
+  view.rerender(tree(true));
+  await act(async () => {await client.invalidateQueries({queryKey: ["read", "composition"]});});
+  await waitFor(() => expect(view.getByTestId("active").textContent).toBe("Synthetic 2"));
+  expect(view.getByTestId("last").textContent).toBe("unavailable");
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  await act(async () => {await latest.get("active")!.refetch();});
+  await waitFor(() => expect(view.getByTestId("active").textContent).toBe("Synthetic 3"));
+  expect(view.getByTestId("last").textContent).toBe("unavailable");
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+it.each(["page", "search"])("a returned retry result cannot expose rows while the current %s criteria is unsettled", async mode => {
+  const finish: ((response: Response) => void)[] = [];
+  const fetcher = vi.fn(() => new Promise<Response>(resolve => {finish.push(resolve);})); vi.stubGlobal("fetch", fetcher);
+  const seed = envelope();
+  const tree = (changed = false) => <ReadCacheBoundary {...identity}><Grid seed={seed}
+    criteria={!changed ? params : mode === "page" ? {...params, page: 2} : {...params, search: "changed"}}/></ReadCacheBoundary>;
+  const view = render(tree());
+  let pending!: ReturnType<ReturnType<typeof useServerPage<Row>>["refetch"]>;
+  act(() => {pending = latest.get("one")!.refetch();});
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+  view.rerender(tree(true));
+  let returned!: Awaited<typeof pending>;
+  await act(async () => {finish[0](Response.json({success: true, data: page(2)}));returned = await pending;});
+  expect(returned.canUseData).toBe(false);
+  expect(returned.data).toBeUndefined();
+  expect(latest.get("one")!.canUseData).toBe(false);
 });

@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 // Mounted actual DMS form and retained-create hook. Transport, shell and fields
 // are controlled doubles; no browser, DB, storage or service is used.
-import {useState,type ReactNode} from 'react';
-import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {useState,type ReactElement,type ReactNode} from 'react';
+import {act,cleanup,fireEvent,render as renderUI,screen,waitFor} from '@testing-library/react';
+import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {createWorkspaceDraftStore} from '@/lib/workspace/workspace-draft-store';
 import type {AuthContext} from '@/lib/rbac/check';
@@ -39,11 +40,14 @@ vi.mock('@/features/dms/documents/sections/dms-document-understanding-section',(
 vi.mock('@/features/dms/documents/sections/dms-document-versions-section',()=>({DmsDocumentVersionsSection:()=>null}));
 vi.mock('@/features/dms/documents/sections/dms-document-overview-section',()=>({DmsDocumentOverviewSection:({getDraftDefault,isViewing}:{getDraftDefault:(field:string)=>string;isViewing:boolean})=><label>Title<input name="title" defaultValue={getDraftDefault('title')} readOnly={isViewing}/></label>}));
 import {DmsDocumentRecordForm} from '@/features/dms/documents/dms-document-record-form';
+let queryClient:QueryClient;
+beforeEach(()=>{queryClient=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});});
+const render=(node:ReactElement)=>renderUI(node,{wrapper:({children})=><QueryClientProvider client={queryClient}>{children}</QueryClientProvider>});
 const receipt=(contract:WorkspaceSaveContract)=>({success:true,data:{id:88,document_no:'DMS-88',operation_id:contract.operationId,replayed:false}});
 const ui=(actor=8,linked=false)=><DmsDocumentRecordForm mode="add" authContext={{profile:{id:actor},permissionCodes:[],roleCodes:[]} as unknown as AuthContext} documentTypes={[]} categories={[]} entityContext={linked?{entityType:'party',entityId:77}:null}/>;
 const click=(name='Save')=>fireEvent.click(screen.getByRole('button',{name,exact:true}));
 beforeEach(()=>{vi.resetAllMocks();m.store=createWorkspaceDraftStore();m.owner='owner';m.create.mockImplementation((_payload:unknown,contract:WorkspaceSaveContract)=>Promise.resolve(receipt(contract)));m.update.mockResolvedValue({success:true});m.link.mockResolvedValue({success:true});});
-afterEach(cleanup);
+afterEach(()=>{cleanup();queryClient.clear();});
 it('same-tick Save / Save-close dispatch only one creation',async()=>{let finish!:(value:unknown)=>void;m.create.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));render(ui());click();click('Save close');expect(m.create).toHaveBeenCalledOnce();await act(async()=>finish(receipt(m.create.mock.calls[0][1])));expect(m.close).not.toHaveBeenCalled();});
 it('uncertain result retains exact original inputs and operation across remount',async()=>{m.create.mockRejectedValueOnce(Error('lost'));const h=render(ui());fireEvent.change(screen.getByRole('textbox'),{target:{value:'Submitted original'}});click();await screen.findByRole('alert');const first=structuredClone(m.create.mock.calls[0]);expect((screen.getByRole('textbox') as HTMLInputElement).readOnly).toBe(true);h.unmount();render(ui());expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('Submitted original');click();await waitFor(()=>expect(m.create).toHaveBeenCalledTimes(2));expect(m.create.mock.calls[1]).toEqual(first);});
 it('known first rejection preserves draft and allows corrected new request',async()=>{m.create.mockResolvedValueOnce({success:false,uncertain:false,error:'Rejected'});render(ui());click();await waitFor(()=>expect(m.error).toHaveBeenCalled());expect(m.clear).not.toHaveBeenCalled();fireEvent.change(screen.getByRole('textbox'),{target:{value:'Corrected'}});click();await waitFor(()=>expect(m.create).toHaveBeenCalledTimes(2));expect(m.create.mock.calls[1][0].title).toBe('Corrected');expect(m.create.mock.calls[1][1]).not.toEqual(m.create.mock.calls[0][1]);});

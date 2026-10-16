@@ -32,7 +32,7 @@ function DepartmentsListInstance({departments:initial,canManage,authContext}:Pro
  const [target,setTarget]=useState<Task|null>(null),[saving,setSaving]=useState(false),[uncertain,setUncertain]=useState(false),[error,setError]=useState<string|null>(null),[refreshFailure,setRefreshFailure]=useState(false);
  const [archiveRefreshVersion,setArchiveRefreshVersion]=useState(0),[restoreOpen,setRestoreOpen]=useState(false);
  const attempt=useRef(createWorkspaceSaveAttempt()),flight=useRef(false);
- const refresh=async()=>{invalidateCommonMdDepartments(queryClient);router.refresh();setRefreshFailure(false);};
+ const refresh=async()=>{await invalidateCommonMdDepartments(queryClient);router.refresh();setRefreshFailure(false);};
  const run=async(task:Task)=>{
   if(flight.current||restoreOpen||!canManageDepartment(authContext,task.row.owner_company_id,task.row.branch_id))return;
   flight.current=true;setSaving(true);setError(null);

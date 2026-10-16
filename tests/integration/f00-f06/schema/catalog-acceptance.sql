@@ -21,7 +21,15 @@ BEGIN
     OR has_table_privilege('anon','public.perf_report_template_selection','SELECT')
     OR has_table_privilege('authenticated','public.perf_report_template_selection','INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
     OR has_table_privilege('service_role','public.perf_report_template_selection','SELECT')
-    OR has_table_privilege('authenticated','public.erp_report_branding_profiles','SELECT') THEN
+    OR has_table_privilege('authenticated','public.erp_report_branding_profiles','SELECT')
+    OR has_any_column_privilege('authenticated','public.erp_report_branding_profiles','SELECT,INSERT,UPDATE,REFERENCES')
+    OR has_any_column_privilege('authenticated','public.erp_report_templates','INSERT,UPDATE,REFERENCES')
+    OR has_any_column_privilege('anon','public.erp_report_branding_profiles','SELECT,INSERT,UPDATE,REFERENCES')
+    OR has_any_column_privilege('anon','public.erp_report_branding_profiles_safe','SELECT,INSERT,UPDATE,REFERENCES')
+    OR has_any_column_privilege('anon','public.erp_report_templates','SELECT,INSERT,UPDATE,REFERENCES')
+    OR has_any_column_privilege('anon','public.perf_report_template_selection','SELECT,INSERT,UPDATE,REFERENCES')
+    OR has_any_column_privilege('service_role','public.perf_report_template_selection','SELECT,INSERT,UPDATE,REFERENCES')
+    OR has_any_column_privilege('authenticated','public.perf_report_template_selection','INSERT,UPDATE,REFERENCES') THEN
     RAISE EXCEPTION 'FAIL: selector ACL or raw branding leak';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_class WHERE oid = 'public.erp_report_templates'::regclass AND relrowsecurity) THEN

@@ -4,7 +4,7 @@ import {render,screen,cleanup} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 const mock=vi.hoisted(()=>({list:vi.fn(),scope:vi.fn()}));
 vi.mock('@/lib/rbac/check',()=>({getAuthContext:async()=>({}),hasPermission:()=>true}));
-vi.mock('@/server/actions/common-master-data/departments',()=>({listDepartments:mock.list}));
+vi.mock('@/server/reads/departments',()=>({readDepartments:mock.list}));
 vi.mock('@/server/department-scope-catalogue',()=>({readDepartmentScopeCatalogue:mock.scope}));
 vi.mock('@/components/erp/page-header',()=>({ERPPageHeader:()=>null}));
 vi.mock('@/components/erp/load-error',()=>({LoadError:({title}:{title:string})=><div role="alert">{title} unavailable</div>}));

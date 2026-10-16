@@ -22,3 +22,14 @@
 /tests/remediation/f06/linux-native-paths.cjs text eol=lf
 /tooling/security/verify-vendor-patches.cjs text eol=lf
 /vendor/braces-artifact.json text eol=lf
+# Historical F06 source pins and source-only assertions require exact LF bytes.
+/tests/remediation/f06/admin-child-browser-runtime.mjs text eol=lf
+/tests/remediation/f06/admin-child-browser-fixture.mjs text eol=lf
+/tests/remediation/f06/admin-child-browser-resource-check.mjs text eol=lf
+/tests/remediation/f06/admin-child-browser-authoring.test.ts text eol=lf
+/tests/remediation/f06/n02-browser-contract.mjs text eol=lf
+/tests/remediation/f06/n02-browser-runtime.mjs text eol=lf
+/tests/remediation/f06/n02-browser-fixture.mjs text eol=lf
+/tests/remediation/f06/n02-browser-resource-check.mjs text eol=lf
+/tests/remediation/f06/n02-browser-authoring.test.ts text eol=lf
+/tests/remediation/f06/dms-destination-fixed-runtime-acl.mjs text eol=lf

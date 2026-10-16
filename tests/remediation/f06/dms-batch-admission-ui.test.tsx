@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 // Real inbox, hooks and store; public actions, Storage and navigation are offline ports.
-import {act,cleanup,fireEvent,render,renderHook,screen,waitFor} from '@testing-library/react';
+import {act,cleanup,fireEvent,render as renderUI,renderHook,screen,waitFor} from '@testing-library/react';
+import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
+import type {ReactElement} from 'react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {StrictMode,useState} from 'react';
 import {createHash,webcrypto} from 'node:crypto';
@@ -29,6 +31,9 @@ import {DmsUploadDropzone,type SelectedDmsFile} from '@/features/dms/upload/dms-
 import {useDmsBatchAdmission} from '@/hooks/use-dms-batch-admission';
 import {DmsUploadInboxPageClient} from '@/features/dms/upload/dms-upload-inbox-page-client';
 const originalCrypto = Object.getOwnPropertyDescriptor(globalThis,'crypto');
+let queryClient:QueryClient;
+beforeEach(()=>{queryClient=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});});
+const render=(node:ReactElement)=>renderUI(node,{wrapper:({children})=><QueryClientProvider client={queryClient}>{children}</QueryClientProvider>});
 const auth='11111111-1111-4111-8111-111111111111',operation='22222222-2222-4222-8222-222222222222';
 const code='A'.repeat(32),batchCode='B'+'B'.repeat(32);
 const snapshot:BatchDraftSnapshot={upload_session_id:17,session_code:code,batch_id:18,analysis_result_id:19,owning_company_id:20,owning_branch_id:21,party_id:null,document_type_id:22,category_id:23,title:'Original',description:null,confidentiality_level:'internal',issue_date:null,expiry_date:null,confidence:'high',source_fingerprint:'a'.repeat(64)};
@@ -42,7 +47,7 @@ const ui=()=> <DmsUploadInboxPageClient initialSessions={[]} documents={[]} docu
 const select=async()=>{const file=new File(['x'],'Synthetic.pdf',{type:'application/pdf'});fireEvent.change(screen.getByLabelText('Choose document files'),{target:{files:[file]}});await waitFor(()=>expect(screen.getByRole('button',{name:'Upload & AI Fill All (1)'})).toBeTruthy());};
 const start=async()=>{fireEvent.click(screen.getByRole('button',{name:'Multiple Files (Batch)'}));await select();await waitFor(()=>expect((screen.getByRole('button',{name:'Upload & AI Fill All (1)'}) as HTMLButtonElement).disabled).toBe(false));fireEvent.click(screen.getByRole('button',{name:'Upload & AI Fill All (1)'}));};
 beforeEach(()=>{vi.resetAllMocks();Object.defineProperty(globalThis,'crypto',{configurable:true,value:webcrypto});m.store=createWorkspaceDraftStore();m.owner='owner';sealed=false;m.readOwner={identity:{authUserId:auth,scopeVersion:'scope'},generation:0,isLive:()=>true,admits:()=>true};m.bootstrap.mockResolvedValue({success:true,origin:{authUserId:auth,profileId:7}});m.batch.mockImplementation(async(r:BatchRequest)=>{if(!r.manifest)return {state:'rejected',error:'Invalid batch request'};receipt=receiptFor(r);return {state:'admitted',receipt,capabilityState:'unavailable',capabilities:[],presentPositions:[],issuance_may_be_partial:false};});m.read.mockImplementation(async()=>({success:true,receipt,recovery:{...anchors(),members:[member(sealed)]}}));m.member.mockImplementation(async()=>({state:'ready',receipt,position:0,object:{state:'upload',capability:{position:0,sessionId:17,path:receipt.members[0].path,token:'synthetic-test-value',signedUrl:'https://example.invalid/upload'}},issuance_may_be_partial:true}));m.verify.mockResolvedValue({state:'present'});m.prepare.mockImplementation(async()=>{sealed=true;return prepared();});m.upload.mockResolvedValue({error:null});m.draft.mockImplementation(async(_i:BatchDraftInput,c:WorkspaceSaveContract)=>({success:true,data:{documentId:42,documentNo:'DMS-42',status:'pending_ai_review',confidence:'high',operation_id:c.operationId,upload_session_id:17,replayed:false}}));m.discover.mockResolvedValue({success:true,receipts:[]});});
-afterEach(()=>{cleanup();vi.restoreAllMocks();if(originalCrypto)Object.defineProperty(globalThis,'crypto',originalCrypto);else Reflect.deleteProperty(globalThis,'crypto');});
+afterEach(()=>{cleanup();queryClient.clear();vi.restoreAllMocks();if(originalCrypto)Object.defineProperty(globalThis,'crypto',originalCrypto);else Reflect.deleteProperty(globalThis,'crypto');});
 
 it('pending independent bootstrap disables mutation',async()=>{m.bootstrap.mockImplementation(()=>new Promise(()=>{}));render(ui());fireEvent.click(screen.getByRole('button',{name:'Multiple Files (Batch)'}));await select();expect((screen.getByRole('button',{name:'Upload & AI Fill All (1)'}) as HTMLButtonElement).disabled).toBe(true);expect(m.batch).not.toHaveBeenCalled();});
 it('bootstrap identity differing from the read owner fails closed',async()=>{m.bootstrap.mockResolvedValue({success:true,origin:{authUserId:'99999999-9999-4999-8999-999999999999',profileId:7}});render(ui());fireEvent.click(screen.getByRole('button',{name:'Multiple Files (Batch)'}));await select();await waitFor(()=>expect(screen.getByRole('alert').textContent).toMatch(/owner|identity/i));expect(m.batch).not.toHaveBeenCalled();});

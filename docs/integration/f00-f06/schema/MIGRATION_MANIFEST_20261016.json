@@ -16,7 +16,7 @@
     "required": "separately verified F02 schema-only predecessor",
     "automaticLegacyReplay": false
   },
-  "digest": "c7a481b1487dce64e78acd42dbbe49eeede4e891674b312fa0e93646709fb9f8",
+  "digest": "4b60e6f567234eacf1d0391789b09a60bdef47f5852180e424c6bb3aa95bb980",
   "applicationRules": [
     "Reconcile actual target history and catalog before execution.",
     "Never reapply predecessors already present.",
@@ -1301,8 +1301,8 @@
       "group": "composition",
       "commit": null,
       "path": "supabase/migrations/20261016092335_integration_f06_perf_template_selection.sql",
-      "sha256": "14e2b0d4c74cfa083b913bf47b1bf4c157dcd73e960185c58e4edc2041cffb7d",
-      "bytes": 8136,
+      "sha256": "f5ee3e3b4841864a779a48bf38fa1ec3fdaa8af787cb4e42b28ee43a7203148d",
+      "bytes": 8706,
       "normalization": "candidate UTF8 canonical LF only; verify final Git blob before application"
     }
   ]

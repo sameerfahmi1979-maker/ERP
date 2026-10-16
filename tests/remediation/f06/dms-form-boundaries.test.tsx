@@ -2,9 +2,10 @@
 // Actual record component, native dirty hook and React portal bubbling.
 // Navigation, sections, draft storage and outer layout are controlled doubles.
 import '../f05/setup';
-import {useState,type ReactNode} from 'react';
+import {useState,type ReactElement,type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
-import {cleanup,fireEvent,render,screen} from '@testing-library/react';
+import {cleanup,fireEvent,render as renderUI,screen} from '@testing-library/react';
+import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 const m=vi.hoisted(()=>({sync:vi.fn(),markDirty:vi.fn(),tabDirty:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({replace:vi.fn()})}));
@@ -38,7 +39,10 @@ vi.mock('@/features/dms/documents/sections/dms-document-overview-section',()=>({
 import {DmsDocumentRecordForm} from '@/features/dms/documents/dms-document-record-form';
 import type {AuthContext} from '@/lib/rbac/check';
 import type {DmsDocumentRecordData} from '@/server/actions/dms/documents';
-beforeEach(()=>vi.clearAllMocks());afterEach(cleanup);
+let queryClient:QueryClient;
+const render=(node:ReactElement)=>renderUI(node,{wrapper:({children})=><QueryClientProvider client={queryClient}>{children}</QueryClientProvider>});
+beforeEach(()=>{vi.clearAllMocks();queryClient=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});});
+afterEach(()=>{cleanup();queryClient.clear();});
 const mount=()=>render(<DmsDocumentRecordForm doc={{id:500,status:'draft'} as DmsDocumentRecordData} mode="edit" authContext={{permissionCodes:[],roleCodes:[]} as unknown as AuthContext} documentTypes={[]} categories={[]}/>);
 it('child confirmation does not dirty or snapshot the document form',()=>{mount();fireEvent.click(screen.getByRole('checkbox',{name:'Confirm synthetic correction'}));expect(m.markDirty).not.toHaveBeenCalled();expect(m.sync).not.toHaveBeenCalled();expect(screen.getByTestId('document-dirty').getAttribute('data-dirty')).toBe('false');});
 it('child text input does not snapshot the document draft',()=>{mount();fireEvent.input(screen.getByLabelText('Correction value'),{target:{value:'Child value'}});expect(m.sync).not.toHaveBeenCalled();expect(m.markDirty).not.toHaveBeenCalled();});

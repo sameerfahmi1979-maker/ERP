@@ -76,12 +76,18 @@ export function useServerPage<T>({resource, params, seed: inputSeed, seedParams,
   // Retry handles retain this exact local admission, not a same-shaped future
   // admission. Resource, prefix, enabled and seed-identity ABA cannot revive it.
   const authUserId = seed.identity?.authUserId, scopeVersion = seed.identity?.scopeVersion;
-  const admission = useMemo(() => ({live: false, client, enabled, owner, ownedSeed, authUserId, scopeVersion, prefix}), [client, enabled, owner, ownedSeed, authUserId, scopeVersion, prefix]);
+  const admission = useMemo(() => {
+    let live = false;
+    let readState: {current: string; criteria: string; queryKey: readonly unknown[]} | null = null;
+    return {client, enabled, owner, ownedSeed, authUserId, scopeVersion, prefix,
+      activate: () => {live = enabled;}, retire: () => {live = false;}, isLive: () => live,
+      readState: () => readState, setReadState: (next: NonNullable<typeof readState>) => {readState = next;}};
+  }, [client, enabled, owner, ownedSeed, authUserId, scopeVersion, prefix]);
   useLayoutEffect(() => {
-    admission.live = enabled;
-    return () => {admission.live = false;};
-  }, [enabled, admission]);
-  const currentLease = () => admitted() && admission.live ? admission : null;
+    admission.activate();
+    return admission.retire;
+  }, [admission]);
+  const currentLease = () => admitted() && admission.isLive() ? admission : null;
   const current = canonicalReadParams(params), initial = canonicalReadParams(seed.params);
   const nested = params.filters && typeof params.filters === "object" ? params.filters as Record<string, unknown> : null;
   const text = canonicalReadParams({search: params.search, nestedSearch: nested?.search});
@@ -94,7 +100,10 @@ export function useServerPage<T>({resource, params, seed: inputSeed, seedParams,
   const queryKey = [...namespace, criteria];
   const groupKey = canonicalReadParams({prefix, criteria});
   useLayoutEffect(() => {
-    const allows = () => admission.live && enabled && owner?.client === client && owner.isLive() &&
+    admission.setReadState({current, criteria, queryKey: [...(JSON.parse(prefix).prefix as unknown[]), criteria]});
+  }, [admission, prefix, current, criteria]);
+  useLayoutEffect(() => {
+    const allows = () => admission.isLive() && enabled && owner?.client === client && owner.isLive() &&
       (ownedSeed ? owner.admits({authUserId: authUserId ?? "", scopeVersion: scopeVersion ?? ""}) : owner.identity !== null);
     if (!owner || !allows()) return;
     return retainReadGroup(owner, client, groupKey, [...(JSON.parse(prefix).prefix as unknown[]), criteria], allows);
@@ -121,7 +130,10 @@ export function useServerPage<T>({resource, params, seed: inputSeed, seedParams,
     const group = owner ? readGroups.get(owner)?.get(groupKey) : undefined;
     const dispatchedVersion = owner?.readDenialVersion(resource);
     const mayComplete = () => liveReadGroup(group) && !signal.aborted && owner?.readDenialVersion(resource) === dispatchedVersion;
-    if (!currentLease() || !mayComplete()) throw retired();
+    // TanStack stores the last observer's queryFn, including a disabled one.
+    // Dispatch is authorized by the live group; individual retry handles still
+    // require their own immutable admission below.
+    if (!mayComplete()) throw retired();
     try {
       const result = await readJson<{success: true; data: ReadPage<T>}>(resource, JSON.parse(criteria), signal);
       if (!mayComplete()) throw retired();
@@ -154,10 +166,13 @@ export function useServerPage<T>({resource, params, seed: inputSeed, seedParams,
     const lease = currentLease(), dispatchedVersion = owner?.readDenialVersion(resource);
     if (!lease) throw retired();
     const result = await query.refetch(...args);
-    const canUseData = lease.live && currentLease() === lease &&
+    const state = lease.readState();
+    const entry = state ? client.getQueryCache().find({queryKey: state.queryKey, exact: true}) : undefined;
+    const canUseData = lease.isLive() && currentLease() === lease &&
       owner?.readDenialVersion(resource) === dispatchedVersion &&
-      owner?.readDataIsCurrent(resource, client.getQueryCache().find({queryKey, exact: true})) === true &&
-      !denied(result.error) && !result.isError && result.data !== undefined;
+      owner?.readDataIsCurrent(resource, entry) === true && state?.current === state?.criteria &&
+      !denied(result.error) && !result.isError && !result.isFetching && !result.isPlaceholderData &&
+      result.data !== undefined && entry?.state.data === result.data;
     return {...result, refetch, canUseData, data: canUseData ? result.data : undefined};
   };
   return {...query, refetch, data: readable ? query.data : undefined, isBusy,

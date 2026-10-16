@@ -37,7 +37,7 @@ test('cleanup identity binds exact image, container, name and CI owner',()=>{con
 test('native execution uses readonly source/fixture mounts, no network and UID1000',()=>{const a=nativeArguments('/checkout','/evidence/verification');assert.equal(a[a.indexOf('--network')+1],'none');assert.equal(a[a.indexOf('--user')+1],'1000');assert.ok(a.includes('--read-only'));assert.ok(a.includes('type=bind,src=/checkout/src,dst=/app/src,readonly'));assert.ok(a.includes('type=bind,src=/evidence/verification,dst=/app/verification,readonly'));assert.ok(!a.includes('--privileged')&&!a.includes('--publish'));assert.match(BASE,/@sha256:[a-f0-9]{64}$/);});
 const requiredJobs=['core-tests','remediation-tests','f06-tests','performance-phases','performance-compatibility','integration-tests','build-types','security','lint','production-image'];
 const candidateRef='${{ github.event.pull_request.head.sha || github.sha }}';
-const offlineSchemaFiles=['migration-contract.test.cjs','native-fixture.test.cjs','schema-receipt.test.cjs','schema-rejection-witnesses.test.cjs','document-lineage.test.cjs','reconciled-receipt.test.cjs','branding-acl.test.cjs'].map(file=>'tests/integration/f00-f06/schema/'+file);
+const offlineSchemaFiles=['migration-contract.test.cjs','native-fixture.test.cjs','schema-receipt.test.cjs','schema-rejection-witnesses.test.cjs','document-lineage.test.cjs','reconciled-receipt.test.cjs','branding-acl.test.cjs','template-set.test.cjs'].map(file=>'tests/integration/f00-f06/schema/'+file);
 function validateEngineeringWorkflow(workflow){
  assert.equal(workflow.env.EXPECTED_CANDIDATE_SHA,candidateRef);
  assert.deepEqual(Object.keys(workflow.jobs).sort(),[...requiredJobs,'verify'].sort());

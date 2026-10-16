@@ -51,6 +51,7 @@ function validateEngineeringWorkflow(workflow){
   assert.equal(checkouts[0].uses,'actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803');
   assert.equal(checkouts[0].with.ref,candidateRef,name+' exact candidate pin');
   assert.equal(checkouts[0].with['persist-credentials'],false,name+' credentials');
+  assert.equal(checkouts[0].with['fetch-depth'],name==='integration-tests'?0:undefined,name+' only immutable donor checks require full history');
   const identity=steps[1];
   assert.equal(identity.name,'Verify exact candidate checkout',name+' identity must immediately follow checkout');
   assert.equal(identity.run,'test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"',name+' executable identity check');
@@ -83,6 +84,7 @@ test('each required workflow job rejects missing, mutable, bypassed or late cand
   value=>{delete value.jobs[name];},
   value=>{value.jobs[name].steps[0].with.ref='main';},
   value=>{value.jobs[name].steps[0].with['persist-credentials']=true;},
+  value=>{value.jobs[name].steps[0].with['fetch-depth']=name==='integration-tests'?1:0;},
   value=>{value.jobs[name].steps[1].run='true';},
   value=>{value.jobs[name].steps[1].if='false';},
   value=>{value.jobs[name].steps[0].if='false';},
@@ -96,6 +98,7 @@ test('workflow aggregate rejects missing gates, skipped admission and non-succes
  const baseline=yaml.load(fs.readFileSync('.github/workflows/engineering.yml','utf8'));
  for(const mutate of [
   value=>{value.env.EXPECTED_CANDIDATE_SHA='${{ github.sha }}';},
+  value=>{delete value.jobs['integration-tests'].steps[0].with['fetch-depth'];},
   value=>{value.jobs.verify.needs.pop();},
   value=>{value.jobs.verify.needs.push('security');},
   value=>{value.jobs.verify.if='success()';},

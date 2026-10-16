@@ -183,6 +183,9 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+          # The offline manifest verifies immutable F06/PERF donor Git blobs.
+          # Retain their history without replacing the exact candidate checkout.
+          fetch-depth: 0
       - name: Verify exact candidate checkout
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6

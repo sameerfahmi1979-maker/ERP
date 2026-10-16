@@ -116,8 +116,15 @@ for(const [entity,read,page,title,Table,invalidate,parentKey] of [
    fireEvent.change(search,{target:{value:'C0501'}});expect(screen.getByText('Final ledger 0501')).toBeTruthy();expect(exportedIds()).toEqual([501]);
    expect(screen.getByText('Showing 1 of 1 matching records (501 loaded)')).toBeTruthy();
    fireEvent.click(screen.getByRole('button',{name:'Clear search and filters'}));
+   // Resolve the accessible control once while 25 rows are visible. Repeating
+   // a document-wide accessible-name scan over each 100-row page adds seconds
+   // in jsdom without testing additional pagination behavior.
+   const next=screen.getByRole('button',{name:'Next',exact:true}) as HTMLButtonElement;
    fireEvent.change(screen.getByLabelText('Rows per page'),{target:{value:'100'}});
-   for(let i=0;i<5;i++)fireEvent.click(screen.getByRole('button',{name:'Next',exact:true}));
+   for(let i=0;i<5;i++){
+    expect(next.isConnected).toBe(true);expect(next.disabled).toBe(false);
+    fireEvent.click(next);expect(screen.getByText(`Page ${i+2} of 6`)).toBeTruthy();
+   }
    expect(screen.getByText('Page 6 of 6')).toBeTruthy();expect(screen.getByText('C0501')).toBeTruthy();expect(screen.getByText('Showing 1 of 501 matching records (501 loaded)')).toBeTruthy();
    expect((screen.getByRole('button',{name:'Next',exact:true}) as HTMLButtonElement).disabled).toBe(true);
   });

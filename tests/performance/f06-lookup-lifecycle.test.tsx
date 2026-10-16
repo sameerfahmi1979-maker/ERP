@@ -7,7 +7,8 @@ import {act,cleanup,fireEvent,render,waitFor} from "@testing-library/react";
 import {QueryClient,QueryClientProvider} from "@tanstack/react-query";
 import {prefetchLookupCategories} from "@/lib/query/prefetch-lookups";
 import {clearPrivateCaches,registerPrivateCache} from "@/lib/query/private-cache";
-import {queryKeys} from "@/lib/query/query-keys";
+import {queryKeys} from "@/lib/query/authorized-lookup-keys";
+import {queryKeys as legacyQueryKeys} from "@/lib/query/query-keys";
 import {useLookupBatchQuery,useLookupValuesQuery} from "@/hooks/lookups/use-lookup-queries";
 import {LookupSelect} from "@/components/erp/lookup-select";
 
@@ -33,6 +34,7 @@ it("prefetch commits via query ownership only and reports normalized complete/em
   expect(result).toEqual({requestedCodes:["EMPTY","TEST"],seededCodes:["TEST"],missingCodes:["EMPTY"],seededCount:1,error:null});
   expect(qc.getQueryData(queryKeys.lookup.values("TEST"))).toEqual([value]);
   expect(qc.getQueryData(queryKeys.lookup.values("EMPTY"))).toEqual([]);
+  expect(qc.getQueryData(legacyQueryKeys.lookup.values("TEST"))).toBeUndefined();
   expect(write).not.toHaveBeenCalled();expect(fetcher).toHaveBeenCalledOnce();
 });
 it("retirement immediately after the individual query commits cannot be undone by the later prefetch continuation",async()=>{
@@ -132,8 +134,11 @@ it("code-valued historical drafts and Arabic labels survive failure/retry withou
 it("malformed selected rows are a bounded failed read rather than an empty success",async()=>{
   const fetcher=vi.fn(async(_url:string,init:RequestInit)=>response(JSON.parse(String(init.body)).selected?{}:[value]));vi.stubGlobal("fetch",fetcher);
   const view=render(<QueryClientProvider client={cache()}><Field/></QueryClientProvider>);
-  await waitFor(()=>expect(view.getByTestId("state").textContent).toContain("completely loaded"));
+  await waitFor(()=>expect(JSON.parse(view.getByTestId("state").textContent!)).toEqual({ids:[1],error:"Failed to load lookup values"}));
   expect(fetcher).toHaveBeenCalledTimes(3);
+  const requests=fetcher.mock.calls.map(([,init])=>JSON.parse(String(init.body)));
+  expect(requests.filter(input=>input.selected===2)).toHaveLength(2);
+  expect(requests.filter(input=>!input.selected)).toHaveLength(1);
 });
 function BatchField() {
   const query=useLookupBatchQuery(["TEST","OTHER"]);
@@ -148,6 +153,12 @@ it("mounted batch consumers reject a partial response rather than inventing an a
 it("lookup normalization changes no unrelated key namespace",()=>{
   expect(queryKeys.lookup.values(" test ")).toEqual(queryKeys.lookup.values("TEST"));
   expect(queryKeys.lookup.batch([" test ","TEST","OTHER"])).toEqual(queryKeys.lookup.batch(["OTHER","TEST"]));
+  expect(queryKeys.lookup.values(" test "," parent ")).toEqual(["authorized-lookup","values","TEST","PARENT",false]);
+  expect(queryKeys.lookup.values("TEST")).not.toEqual(legacyQueryKeys.lookup.values("TEST"));
+  expect(legacyQueryKeys.lookup.values(" test ")).toEqual(legacyQueryKeys.lookup.values("TEST"));
+  expect(legacyQueryKeys.lookup.batch([" test ","TEST","OTHER"])).toEqual(legacyQueryKeys.lookup.batch(["OTHER","TEST"]));
+  expect(legacyQueryKeys.lookup.values(" test "," parent ")).toEqual(["lookup","values","TEST"," parent ",false]);
+  expect(legacyQueryKeys.countries()).toEqual(["master","countries",false,false]);
 });
 
 

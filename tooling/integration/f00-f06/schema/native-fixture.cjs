@@ -125,7 +125,28 @@ async function nativeRead(fixture, actor, params, table = 'perf_report_template_
   const response = await fetch(url, {headers: {apikey: fixture.anonKey, ...(actor ? {Authorization: `Bearer ${actor.bearer}`} : {}),
     Prefer: 'count=exact', Accept: 'application/json'}, redirect: 'error', signal: AbortSignal.timeout(30000)});
   const body = await response.json();
-  return {status: response.status, body, count: Number(response.headers.get('content-range')?.split('/')[1])};
+  const contentRange = response.headers.get('content-range');
+  return {status: response.status, body, count: Number(contentRange?.split('/')[1]), contentRange};
+}
+function assertNativeFirstPage(response, expectedIds) {
+  assert.ok(Array.isArray(response.body));
+  assert.equal(response.count, expectedIds.length);
+  assert.deepEqual(response.body.map(row => row.id), expectedIds.slice(0, 25));
+  assert.equal(typeof response.contentRange, 'string', 'Exact Content-Range is required');
+  if (response.body.length === 0) {
+    assert.equal(response.contentRange, '*/0');
+    assert.equal(response.count, 0);
+    assert.equal(response.status, 200);
+    return;
+  }
+  const range = /^0-(0|[1-9]\d*)\/(0|[1-9]\d*)$/.exec(response.contentRange);
+  assert.ok(range, 'Expected exact first-page numeric Content-Range');
+  const end = Number(range[1]), total = Number(range[2]);
+  assert.ok(Number.isSafeInteger(end) && Number.isSafeInteger(total));
+  assert.equal(end, response.body.length - 1);
+  assert.equal(total, expectedIds.length);
+  assert.ok(total >= response.body.length);
+  assert.equal(response.status, total > response.body.length ? 206 : 200);
 }
 async function appRead(fixture, actor, criteria) {
   const response = await fetch(`${fixture.appOrigin}/api/reads/report-template-selection`, {method: 'POST', redirect: 'error',
@@ -138,5 +159,5 @@ function assertMetadata(rows) {
   assert.ok(Array.isArray(rows));
   for (const row of rows) assert.deepEqual(Object.keys(row).sort(), [...columns].sort(), 'Only reviewed metadata columns may escape');
 }
-module.exports = {loadFixture, validateFixture, actorNames, nativeRead, appRead, assertMetadata, columns,
+module.exports = {loadFixture, validateFixture, actorNames, nativeRead, appRead, assertNativeFirstPage, assertMetadata, columns,
   assertActorAuthority, authorityInspectionSql, verifyActorSessions};

@@ -3,7 +3,7 @@
 // No fixture creation, issuance, email, mutation, worker or provider calls.
 const {test, before, after} = require('node:test');
 const assert = require('node:assert/strict');
-const {loadFixture, actorNames, nativeRead, appRead, assertMetadata, columns, verifyActorSessions} = require('../../../../tooling/integration/f00-f06/schema/native-fixture.cjs');
+const {loadFixture, actorNames, nativeRead, appRead, assertNativeFirstPage, assertMetadata, columns, verifyActorSessions} = require('../../../../tooling/integration/f00-f06/schema/native-fixture.cjs');
 const {guardedLab} = require('../../../../tooling/integration/f00-f06/schema/guarded-lab.cjs');
 const fixture = loadFixture(process.env.ALGT_TEMPLATE_NATIVE_FIXTURE);
 let lab;
@@ -21,7 +21,7 @@ for (const name of actorNames) {
     test(`${consumer}: ${name} native exact count/page and actual application boundary`, async () => {
       const actor = fixture.actors[name], expected = actor[issuableOnly ? 'employeeLetterIds' : 'reportCenterIds'];
       const native = await nativeRead(fixture, actor, nativeParams({selectable: 'eq.true', ...(issuableOnly ? {governance_status: 'in.(approved,published)'} : {}), limit: '25', offset: '0'}));
-      assert.equal(native.status, 200, 'Native selector must execute, not return the historical missing-view503');
+      assertNativeFirstPage(native, expected);
       assert.equal(native.count, expected.length);
       assert.deepEqual(native.body.map(row => row.id), expected.slice(0, 25));
       assertMetadata(native.body);

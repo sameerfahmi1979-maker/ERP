@@ -21,7 +21,6 @@ import { AlertTriangle, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
 import type { CorrectionMode, CorrectionSourceData } from "@/lib/dms/apply-correction/types";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -33,6 +32,8 @@ interface Props {
   mode:            CorrectionMode;
   onModeChange:    (m: CorrectionMode) => void;
   isSubmitting:    boolean;
+  outcomeUncertain?: boolean;
+  hideActions?: boolean;
   onSubmit:        () => void;
   onCancel:        () => void;
   error?:          string | null;
@@ -47,6 +48,8 @@ export function DmsApplyCorrectionProposalForm({
   mode,
   onModeChange,
   isSubmitting,
+  outcomeUncertain=false,
+  hideActions=false,
   onSubmit,
   onCancel,
   error,
@@ -56,13 +59,13 @@ export function DmsApplyCorrectionProposalForm({
   const handleUsePrevious = () => {
     if (!source.restorePreviousEnabled) return;
     onModeChange("restore_previous");
-    onChange(source.originalBeforeSummary ?? "");
+    onChange(source.reviewedRevision?source.originalBeforeValue??'':source.originalBeforeSummary??'');
     setShowModeB(false);
   };
 
   const handleUseApplied = () => {
     onModeChange("reapply_ai_value");
-    onChange(source.originalAppliedSummary ?? "");
+    onChange(source.reviewedRevision?source.originalAppliedValue??'':source.originalAppliedSummary??'');
     setShowModeB(false);
   };
 
@@ -75,11 +78,11 @@ export function DmsApplyCorrectionProposalForm({
   return (
     <div className="space-y-5">
       {/* Human responsibility warning */}
-      <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+      <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-sm text-foreground">
         <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
         <div>
           <p className="font-semibold">Human review required</p>
-          <p className="mt-0.5 text-amber-800 dark:text-amber-200">
+          <p className="mt-0.5">
             You are responsible for reviewing the correction value before applying.
             This correction will overwrite the current field value after confirmation.
             This action is not automatic — it requires your explicit approval.
@@ -95,23 +98,23 @@ export function DmsApplyCorrectionProposalForm({
             label="Enter Correction Manually"
             active={mode === "manual"}
             onClick={handleManual}
-            disabled={isSubmitting}
+            disabled={isSubmitting||outcomeUncertain}
           />
           {source.restorePreviousEnabled && (
             <ModeButton
               label="Use Previous Value"
               active={mode === "restore_previous"}
               onClick={handleUsePrevious}
-              disabled={isSubmitting}
+              disabled={isSubmitting||outcomeUncertain}
               title="Prefill with value before original apply"
             />
           )}
-          {source.originalAppliedSummary && (
+          {source.originalAppliedSummary && source.reapplyAvailable!==false && (
             <ModeButton
               label="Use Applied Value"
               active={mode === "reapply_ai_value"}
               onClick={handleUseApplied}
-              disabled={isSubmitting}
+              disabled={isSubmitting||outcomeUncertain}
               title="Prefill with the originally applied AI value"
             />
           )}
@@ -120,7 +123,7 @@ export function DmsApplyCorrectionProposalForm({
 
       {/* Restore previous warning */}
       {mode === "restore_previous" && source.restorePreviousWarning && (
-        <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+        <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-foreground">
           <Info className="h-4 w-4 mt-0.5 shrink-0" />
           <span>{source.restorePreviousWarning}</span>
         </div>
@@ -130,7 +133,7 @@ export function DmsApplyCorrectionProposalForm({
       <div className="space-y-1.5">
         <Label htmlFor="correction-value">
           Correction Value
-          <span className="ml-1 text-red-500 dark:text-red-300">*</span>
+          <span className="ml-1 text-destructive">*</span>
         </Label>
         <Input required
           id="correction-value"
@@ -140,7 +143,7 @@ export function DmsApplyCorrectionProposalForm({
             onChange(e.target.value);
           }}
           placeholder={`Enter ${source.valueType} value…`}
-          disabled={isSubmitting}
+          disabled={isSubmitting||outcomeUncertain}
           className="font-mono text-sm"
         />
         <p className="text-xs text-muted-foreground">
@@ -153,14 +156,14 @@ export function DmsApplyCorrectionProposalForm({
 
       {/* Error */}
       {error && (
-        <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
+        <div role="alert" className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           {error}
         </div>
       )}
 
       {/* Footer actions */}
-      <div className="flex items-center justify-between border-t pt-4">
+      {!hideActions && <div className="flex items-center justify-between border-t pt-4">
         <Button variant="outline" onClick={onCancel} disabled={isSubmitting}>
           Cancel
         </Button>
@@ -170,7 +173,7 @@ export function DmsApplyCorrectionProposalForm({
         >
           {isSubmitting ? "Saving…" : "Propose Correction"}
         </Button>
-      </div>
+      </div>}
 
       {void showModeB}
     </div>
@@ -193,20 +196,16 @@ function ModeButton({
   title?:    string;
 }) {
   return (
-    <button
+    <Button
       type="button"
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={cn(
-        "rounded-md border px-3 py-1.5 text-sm font-medium transition-colors",
-        active
-          ? "border-blue-600 bg-blue-600 text-white"
-          : "border-border bg-card text-foreground hover:bg-muted",
-        disabled && "pointer-events-none opacity-50"
-      )}
+      variant={active ? "default" : "outline"}
+      aria-pressed={active}
+      className="whitespace-normal text-left h-auto min-h-8 py-1.5"
     >
       {label}
-    </button>
+    </Button>
   );
 }

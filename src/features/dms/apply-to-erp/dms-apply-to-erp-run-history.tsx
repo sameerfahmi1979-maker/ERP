@@ -7,9 +7,11 @@ import { Button } from "@/components/ui/button";
 import { DmsApplyRunStatusBadge, DmsApplyItemStatusBadge } from "./dms-apply-status-badge";
 import {readDmsSection} from "@/features/dms/documents/section-read";
 import {useDmsSectionQuery} from "@/features/dms/documents/section-activity";
+import {DmsReadReady, useDmsReadReady} from "@/features/dms/documents/section-read-boundary";
 import type { DmsErpApplyItem } from "@/lib/dms/apply-to-erp/types";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { DmsApplyCorrectionDrawer } from "@/features/dms/apply-correction/dms-apply-correction-drawer";
+import { DmsApplyCorrectionHistory } from "@/features/dms/apply-correction/dms-apply-correction-history";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -31,6 +33,7 @@ export function DmsApplyToErpRunHistory(props: Props) {
 }
 
 function RunHistorySession({ documentId, className, correctionEnabled }: Props) {
+  const parentReadReady = useDmsReadReady();
   const [page,setPage]=useState(1);
   const [expandedRunId,setExpandedRunId]=useState<number|null>(null);
   const [correctionItemId,setCorrectionItemId]=useState<number|null>(null);
@@ -45,11 +48,22 @@ function RunHistorySession({ documentId, className, correctionEnabled }: Props) 
   const expandedRun=detail.isError||detail.isFetching?null:detail.data,loadingDetail=detail.isFetching;
   const load=async()=>{const refreshed=await query.refetch();if(expandedRunId&&refreshed.isSuccess)await detail.refetch();};
   const handleExpand=(id:number)=>setExpandedRunId(expandedRunId===id?null:id);
-  if (failed) return <div className={className} role="alert"><p>Apply history could not be loaded. This is not an empty result.</p><Button onClick={load}>Retry history</Button></div>;
-  if (loading) return <p role="status" className={className}>Loading apply history…</p>;
+  // Keep the receipt/confirmation owner at the same React position during a
+  // background recheck. Hide its portal while reads are unavailable instead of
+  // unmounting it and forgetting the prepared proposal.
+  const correctionEditor = <DmsReadReady value={parentReadReady && !loading && !failed && runs.length > 0}>
+    {correctionEnabled && correctionItemId && <DmsApplyCorrectionDrawer
+      open
+      onOpenChange={open => {if (!open) {setCorrectionItemId(null); void load();}}}
+      applyItemId={correctionItemId}
+    />}
+  </DmsReadReady>;
+  if (failed) return <div className={className}>{correctionEditor}<div role="alert"><p>Apply history could not be loaded. This is not an empty result.</p><Button onClick={load}>Retry history</Button></div></div>;
+  if (loading) return <div className={className}>{correctionEditor}<p role="status">Loading apply history…</p></div>;
   if (runs.length === 0 && page === 1) {
     return (
       <div className={className}>
+        {correctionEditor}
         <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
           <History className="h-4 w-4" />
           <span className="font-medium">Apply History</span>
@@ -61,6 +75,7 @@ function RunHistorySession({ documentId, className, correctionEnabled }: Props) 
 
   return (
     <div className={className}>
+      {correctionEditor}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2 text-sm">
           <History className="h-4 w-4 text-muted-foreground" />
@@ -75,19 +90,11 @@ function RunHistorySession({ documentId, className, correctionEnabled }: Props) 
 
       <div className="flex items-center gap-2"><Button disabled={page<=1||loading} onClick={()=>{setExpandedRunId(null);setPage(p=>p-1);}}>Previous runs</Button><span>Page {page} of {Math.max(1,Math.ceil(total/20))}</span><Button disabled={page>=Math.ceil(total/20)||loading} onClick={()=>{setExpandedRunId(null);setPage(p=>p+1);}}>Next runs</Button></div>
       {/* Phase 17 — Propose Correction drawer */}
-      {correctionEnabled && correctionItemId && (
-        <DmsApplyCorrectionDrawer
-          open={true}
-          onOpenChange={(open) => { if (!open) setCorrectionItemId(null); }}
-          applyItemId={correctionItemId}
-          onProposed={() => {
-            // Do NOT clear correctionItemId here — the drawer transitions to the
-            // confirmation dialog internally. Clearing it would unmount the drawer
-            // and destroy confirmProposal state before the dialog can render.
-            // The drawer's onOpenChange closes it only after confirmation is done.
-            void load();
-          }}
-        />
+      {correctionEnabled && documentId && (
+        <section aria-label="Correction proposals" className="mb-4 space-y-2">
+          <h3 className="text-sm font-medium">Correction proposals</h3>
+          <DmsApplyCorrectionHistory documentId={documentId} onChanged={() => void load()} />
+        </section>
       )}
 
       <div className="space-y-2">

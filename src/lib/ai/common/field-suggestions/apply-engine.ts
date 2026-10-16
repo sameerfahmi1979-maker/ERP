@@ -19,6 +19,8 @@ import { isGloballyNonUpdatableField } from "../non-updatable-fields";
 import { getCommonAiEntityRegistry } from "../registry/index";
 import type { ErpAiEntityType, ErpAiFieldType } from "../types";
 import { APPLY_HANDLER_REGISTRY } from "./apply-handlers";
+import {applyPartySuggestion,applyPartyChildSuggestion} from '@/server/party-suggestion-apply';
+import {applyCompanySuggestion} from '@/server/administration-suggestion-apply';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -36,9 +38,12 @@ export interface SuggestionForApply {
   status: string;
   applyHandlerKey: string | null;
   deletedAt: string | null;
+  reviewedTargetId?: number;
 }
 
 export interface ApplySuggestionResult {
+  /** The party transaction owns its authoritative status, event and audit. */
+  atomic?: boolean;
   success: boolean;
   suggestionId: number;
   entityType: ErpAiEntityType;
@@ -65,7 +70,7 @@ export async function loadSuggestionForApply(
   const { data, error } = await supabase
     .from("erp_ai_field_suggestions")
     .select(
-      "id, entity_type, entity_id, target_table, target_field, field_label, field_type, suggested_value, suggested_value_json, status, deleted_at"
+      "id, entity_type, entity_id, target_table, target_field, field_label, field_type, suggested_value, suggested_value_json, status, deleted_at, reviewed_target_id"
     )
     .eq("id", suggestionId)
     .is("deleted_at", null)
@@ -97,6 +102,7 @@ export async function loadSuggestionForApply(
     status: row.status as string,
     applyHandlerKey: field?.applyHandlerKey ?? null,
     deletedAt: (row.deleted_at as string | null) ?? null,
+    reviewedTargetId: typeof row.reviewed_target_id==='number'?row.reviewed_target_id:undefined,
   };
 }
 
@@ -111,7 +117,8 @@ export async function loadSuggestionForApply(
  */
 export async function applyAiSuggestionByRegisteredHandler(
   suggestionId: number,
-  userProfileId: number
+  userProfileId: number,
+  acceptPendingParty = false
 ): Promise<ApplySuggestionResult> {
   // ── 1. Load suggestion ─────────────────────────────────────────────────────
   const suggestion = await loadSuggestionForApply(suggestionId);
@@ -126,6 +133,22 @@ export async function applyAiSuggestionByRegisteredHandler(
       status: "failed",
       message: "Suggestion not found or has been deleted.",
     };
+  }
+
+  if(suggestion.entityType==='company'&&suggestion.targetTable==='owner_companies'){
+    const applied=await applyCompanySuggestion(suggestionId,suggestion.entityId,suggestion.targetField,acceptPendingParty);
+    return {...applied,atomic:true,suggestionId,entityType:'company',entityId:suggestion.entityId,targetTable:'owner_companies',targetField:suggestion.targetField,status:applied.success?'applied':'failed'};
+  }
+
+  // Parent-party application owns reviewed input, authorization, status, audit
+  // and idempotent replay in one transaction. Never fall back to a raw UPDATE.
+  if(suggestion.entityType==='party'&&suggestion.targetTable==='parties'){
+    const applied=await applyPartySuggestion(suggestionId,suggestion.entityId,acceptPendingParty);
+    return {...applied,atomic:true,suggestionId,entityType:'party',entityId:suggestion.entityId,targetTable:'parties',targetField:suggestion.targetField,status:applied.success?'applied':'failed'};
+  }
+  if(suggestion.entityType==='party'&&['party_licenses','party_tax_registrations'].includes(suggestion.targetTable)){
+    const applied=await applyPartyChildSuggestion(suggestionId,suggestion.entityId,suggestion.targetTable,suggestion.targetField,suggestion.reviewedTargetId??0,acceptPendingParty);
+    return {...applied,atomic:true,suggestionId,entityType:'party',entityId:suggestion.entityId,targetTable:suggestion.targetTable,targetField:suggestion.targetField,status:applied.success?'applied':'failed'};
   }
 
   // ── 2. Status validation ───────────────────────────────────────────────────

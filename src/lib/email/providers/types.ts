@@ -29,6 +29,7 @@ export type EmailTestStatus = "not_tested" | "success" | "failed";
 
 export interface EmailProviderConfig {
   id: number;
+  workspaceRevision?: string;
   providerCode: string;
   providerType: EmailProviderType;
   providerName: string;
@@ -62,6 +63,7 @@ export interface EmailProviderConfig {
 
 export interface EmailFeatureFlag {
   id: number;
+  workspaceRevision?: string;
   featureCode: string;
   featureName: string;
   isEnabled: boolean;

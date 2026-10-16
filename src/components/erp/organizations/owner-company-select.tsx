@@ -44,7 +44,7 @@ export function OwnerCompanySelect({
   const { options, isLoading, error: fetchError } = choiceRead;
 
   const handleValueChange = (newValue: string | number | null) => {
-    if (!onValueChange) return;
+    if (!onValueChange || disabled || !!fetchError) return;
     if (newValue === null) {
       onValueChange(null);
       return;
@@ -54,18 +54,18 @@ export function OwnerCompanySelect({
   };
 
   return (
-    <QueryReadBoundary queries={[choiceRead]}><ERPCombobox
+    <QueryReadBoundary queries={[{isError: !!fetchError, refetch: choiceRead.refetch}]}><ERPCombobox
       value={value ?? null}
       onValueChange={handleValueChange}
-      options={options}
+      options={(options).map(option => ({...option, disabled: option.disabled || disabled || !!fetchError}))}
       placeholder={placeholder}
       searchPlaceholder="Search companies..."
       showCode={showCode}
       language={language}
-      disabled={disabled}
+      disabled={disabled || !!fetchError}
       readOnly={false}
       required={required}
-      loading={isLoading}
+      loading={(isLoading) && value == null}
       error={fetchError ?? error}
       allowClear={allowClear}
       emptyText="No companies available"

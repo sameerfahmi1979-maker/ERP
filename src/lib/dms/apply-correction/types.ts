@@ -44,6 +44,12 @@ export type CorrectionScalarValue = {
 // ── Source data (read from original apply item + live target reload) ──────────
 
 export type CorrectionSourceData = {
+  reviewedRevision?: string;
+  partyId?: number;
+  /** Exact governed values, never reconstructed from display summaries. */
+  originalBeforeValue?: string | null;
+  originalAppliedValue?: string | null;
+  reapplyAvailable?: boolean;
   /** The original apply item (must be status=applied). */
   originalApplyItemId:    number;
   originalApplyRunId:     number;
@@ -125,6 +131,9 @@ export type CorrectionProposalRow = {
 };
 
 // ── Correction result ─────────────────────────────────────────────────────────
+
+/** Browser history is a summary, not an executable stored replacement value. */
+export type CorrectionProposalHistory = Omit<CorrectionProposalRow, "correction_value_json">;
 
 export type CorrectionResult =
   | { success: true;  proposalId: number; status: CorrectionProposalStatus }

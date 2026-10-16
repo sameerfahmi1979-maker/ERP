@@ -1,5 +1,5 @@
 export type WorkspaceSaveContract = { operationId: string; revision: string | null };
-export type WorkspaceSaveReceipt = { id: number; revision: string; replayed: boolean };
+export type WorkspaceSaveReceipt = { id: number; revision: string; replayed: boolean; changed?: boolean; owner_company_id?: number | null; calendar_id?: number | null };
 
 /** Keep the exact original request until an authoritative response resolves it. */
 export function createWorkspaceSaveAttempt() {

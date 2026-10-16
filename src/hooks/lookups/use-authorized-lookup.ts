@@ -13,6 +13,7 @@ import { queryKeys } from "@/lib/query/authorized-lookup-keys";
 import { ReadError, readJson, retryAuthorizedRead } from "@/lib/reads/client";
 import type { LookupChoice as LookupValue } from "@/lib/reads/lookup-contract";
 import type { ERPComboboxOption } from "@/components/erp/combobox";
+import { useLookupReadLease } from "./use-lookup-read-lease";
 
 const mapLookupValueToOption = (row: LookupValue): ERPComboboxOption => ({value: row.id, label: row.value_label_en, labelAr: row.value_label_ar, code: row.value_code, colorHex: row.color_hex, badge: row.badge_variant, raw: row});
 
@@ -58,33 +59,38 @@ export function useLookupValuesQuery(
   options: LookupQueryOptions = {}
 ): LookupQueryResult {
   const { parentValueCode = null, includeInactive = false, enabled = true, selected = null, valueField = "id" } = options;
+  const hasSelected = selected !== null && selected !== "";
+  const queryKey = queryKeys.lookup.values(categoryCode, parentValueCode, includeInactive);
+  const activeLease = useLookupReadLease(enabled && !!categoryCode, queryKey);
 
   const result = useQuery({
-    queryKey: queryKeys.lookup.values(categoryCode, parentValueCode, includeInactive),
-    queryFn: async ({signal}) => {
+    queryKey,
+    queryFn: ({signal}) => activeLease.run(signal, async () => {
       const res = await readJson<{success:true;data:LookupValue[]}>("lookup-values", {categoryCode,parentValueCode,includeInactive}, signal);
       if (!res.success || !Array.isArray(res.data)) {
         throw new Error("Failed to load lookup values");
       }
       return res.data;
-    },
-    enabled: !!categoryCode && enabled,
+    }),
+    enabled: activeLease.enabled,
     retry: retryAuthorizedRead,
   });
 
   const present = (result.data ?? []).some(value => String(valueField === "code" ? value.value_code : value.id) === String(selected));
+  const selectedKey = [...queryKey, "selected", valueField, selected];
+  const selectedLease = useLookupReadLease(enabled && !!categoryCode && hasSelected, selectedKey);
   const selection = useQuery({
-    queryKey: [...queryKeys.lookup.values(categoryCode, parentValueCode, includeInactive), "selected", valueField, selected],
-    queryFn: async ({signal}) => {
+    queryKey: selectedKey,
+    queryFn: ({signal}) => selectedLease.run(signal, async () => {
       const result = (await readJson<{success:true;data:LookupValue[]}>("lookup-values", {categoryCode,parentValueCode,includeInactive,selected,valueField}, signal)).data;
       if (!Array.isArray(result)) throw Error("Failed to load lookup values");
       return result;
-    },
-    enabled: !!categoryCode && enabled && selected !== null && selected !== "" && result.isSuccess && !present,
+    }),
+    enabled: selectedLease.enabled && result.isSuccess && !present,
     retry: retryAuthorizedRead,
   });
   const denied = (result.error instanceof ReadError && [401,403].includes(result.error.status)) || (!present && selection.error instanceof ReadError && [401,403].includes(selection.error.status));
-  const data = denied ? [] : [...(result.data ?? []), ...(!present && selected !== null ? selection.data ?? [] : [])];
+  const data = denied || !activeLease.readable() ? [] : [...(result.data ?? []), ...(!present && hasSelected && selectedLease.readable() ? selection.data ?? [] : [])];
 
   return {
     data,
@@ -92,7 +98,14 @@ export function useLookupValuesQuery(
     isLoading: result.isLoading || selection.isLoading,
     isFetching: result.isFetching || selection.isFetching,
     error: result.error instanceof Error ? result.error.message : !present && selection.error instanceof Error ? selection.error.message : null,
-    refetch: async () => { await result.refetch(); if (selected !== null && !present) await selection.refetch(); },
+    refetch: async () => {
+      if (!activeLease.isCurrent() || (hasSelected && !present && !selectedLease.isCurrent())) return;
+      // Register all reads before yielding: a cancelled first read can resolve,
+      // but must not dispatch a selected-value read into a retired cache.
+      const pending = [result.refetch()];
+      if (hasSelected && !present && selectedLease.isCurrent()) pending.push(selection.refetch());
+      await Promise.all(pending);
+    },
   };
 }
 
@@ -112,22 +125,24 @@ export function useLookupBatchQuery(
   options: { includeInactive?: boolean; enabled?: boolean } = {}
 ): LookupBatchQueryResult {
   const { includeInactive = false, enabled = true } = options;
+  const queryKey = queryKeys.lookup.batch(categoryCodes, includeInactive);
+  const lease = useLookupReadLease(enabled && categoryCodes.length > 0, queryKey);
 
   const result = useQuery({
-    queryKey: queryKeys.lookup.batch(categoryCodes, includeInactive),
-    queryFn: async ({signal}) => {
+    queryKey,
+    queryFn: ({signal}) => lease.run(signal, async () => {
       const res = await readJson<{success:true;data:Record<string,LookupValue[]>}>("lookup-batch", {categoryCodes,includeInactive}, signal);
       if (!res.success || !res.data || categoryCodes.some(code => !Array.isArray(res.data[code.trim().toUpperCase()]))) {
         throw new Error("Failed to load lookup values");
       }
       return res.data;
-    },
-    enabled: categoryCodes.length > 0 && enabled,
+    }),
+    enabled: lease.enabled,
     retry: retryAuthorizedRead,
   });
 
   const denied = result.error instanceof ReadError && [401,403].includes(result.error.status);
-  const data = denied ? {} : result.data ?? {};
+  const data = denied || !lease.readable() ? {} : result.data ?? {};
 
   const mappedOptions: Record<string, ERPComboboxOption[]> = {};
   for (const [code, values] of Object.entries(data)) {
@@ -140,6 +155,6 @@ export function useLookupBatchQuery(
     isLoading: result.isLoading,
     isFetching: result.isFetching,
     error: result.error instanceof Error ? result.error.message : null,
-    refetch: () => result.refetch(),
+    refetch: async () => { if (lease.isCurrent()) await result.refetch(); },
   };
 }

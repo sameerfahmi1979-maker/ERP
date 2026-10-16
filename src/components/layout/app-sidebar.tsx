@@ -339,9 +339,9 @@ const navSections: NavSection[] = [
         kind: "subsection", label: "Finance Basics", icon: Banknote,
         items: [
           { label: "Currencies",     icon: Banknote,    path: "/admin/master-data/finance-basics/currencies",   requiredAnyPermissions: ["master_data.finance_basics.view", "master_data.finance_basics.manage"] },
-          { label: "Payment Terms",  icon: CreditCard,  path: "/admin/master-data/finance-basics/payment-terms", requiredAnyPermissions: ["master_data.finance_basics.view", "master_data.finance_basics.manage"] },
-          { label: "Tax Types",      icon: Percent,     path: "/admin/master-data/finance-basics/tax-types",     requiredAnyPermissions: ["master_data.finance_basics.view", "master_data.finance_basics.manage"] },
-          { label: "Banks",          icon: Landmark,    path: "/admin/master-data/finance-basics/banks",         requiredAnyPermissions: ["master_data.finance_basics.view", "master_data.finance_basics.manage"] },
+          { label: "Payment Terms",  icon: CreditCard,  path: "/admin/master-data/finance-basics/payment-terms", requiredAnyPermissions: ["master_data.finance_basics.view", "master_data.finance_basics.manage", "master_data.lookups.lock"] },
+          { label: "Tax Types",      icon: Percent,     path: "/admin/master-data/finance-basics/tax-types",     requiredAnyPermissions: ["master_data.finance_basics.view", "master_data.finance_basics.manage", "master_data.lookups.lock"] },
+          { label: "Banks",          icon: Landmark,    path: "/admin/master-data/finance-basics/banks",         requiredAnyPermissions: ["master_data.finance_basics.view", "master_data.finance_basics.manage", "master_data.lookups.lock"] },
           { label: "Cost Centers",   icon: CircleGauge, path: "/admin/master-data/finance-basics/cost-centers",  requiredAnyPermissions: ["master_data.finance_basics.view", "master_data.finance_basics.manage"] },
           { label: "Profit Centers", icon: CircleGauge, path: "/admin/master-data/finance-basics/profit-centers", requiredAnyPermissions: ["master_data.finance_basics.view", "master_data.finance_basics.manage"] },
         ],
@@ -382,9 +382,9 @@ const navSections: NavSection[] = [
       { label: "Notif. Templates",     icon: FileText,       path: "/admin/notifications/templates",           requiredAnyPermissions: ["notifications.templates.view", "notifications.templates.manage"] },
       { label: "Delivery Logs",        icon: History,        path: "/admin/notifications/logs",                requiredAnyPermissions: ["notifications.logs.view", "notifications.manage"] },
       { label: "Master Data",          icon: Database,       path: "/admin/master-data",                      requiredAnyPermissions: ["master_data.lookups.view", "master_data.geography.view", "master_data.parties.view"] },
-      { label: "Lookup Categories",    icon: Tags,           path: "/admin/master-data/lookups/categories",   requiredAnyPermissions: ["master_data.lookups.view", "master_data.lookups.manage"] },
-      { label: "Lookup Values",        icon: Database,       path: "/admin/master-data/lookups/values",       requiredAnyPermissions: ["master_data.lookups.view", "master_data.lookups.manage"] },
-      { label: "Locked System Values", icon: LockKeyhole,    path: "/admin/master-data/lookups/system",       requiredAnyPermissions: ["master_data.lookups.view", "master_data.lookups.manage"] },
+      { label: "Lookup Categories",    icon: Tags,           path: "/admin/master-data/lookups/categories",   requiredAnyPermissions: ["master_data.lookups.view", "master_data.lookups.manage", "master_data.lookups.lock"] },
+      { label: "Lookup Values",        icon: Database,       path: "/admin/master-data/lookups/values",       requiredAnyPermissions: ["master_data.lookups.view", "master_data.lookups.manage", "master_data.lookups.lock"] },
+      { label: "Locked System Values", icon: LockKeyhole,    path: "/admin/master-data/lookups/system",       requiredAnyPermissions: ["master_data.lookups.view", "master_data.lookups.manage", "master_data.lookups.lock"] },
       {
         kind: "subsection", label: "AI", icon: Bot,
         items: [

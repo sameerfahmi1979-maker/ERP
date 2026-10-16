@@ -33,16 +33,21 @@ export function LookupSelect({
   valueField = "id",
   className,
   name,
+  ariaLabel,
   error,
 }: LookupSelectProps) {
-  const choiceRead = useLookupValuesQuery(categoryCode, {
-    parentValueCode, includeInactive, enabled: !!categoryCode, selected: value ?? null, valueField,
-  });
   const {
     data: values,
     isLoading: loading,
     error: fetchError,
-  } = choiceRead;
+    refetch,
+  } = useLookupValuesQuery(categoryCode, {
+    parentValueCode,
+    includeInactive,
+    enabled: !!categoryCode,
+    selected: value ?? null,
+    valueField,
+  });
 
   // Map lookup values to ERPComboboxOption[]
   const options: ERPComboboxOption[] = values.map((item) => ({
@@ -53,9 +58,13 @@ export function LookupSelect({
     colorHex: item.color_hex,
     badge: item.badge_variant,
     raw: item,
+    disabled: disabled || !!fetchError || (item.is_active === false && !includeInactive),
   }));
 
   const handleValueChange = (newValue: string | number | null) => {
+    // An already-open popup is portaled outside the failure boundary's inert
+    // subtree. Guard its callbacks as well as disabling its option actions.
+    if (disabled || fetchError) return;
     if (newValue === null) {
       onValueChange?.(null);
       return;
@@ -113,7 +122,7 @@ export function LookupSelect({
   };
 
   return (
-    <QueryReadBoundary queries={[{...choiceRead, isError: !!fetchError}]}><ERPCombobox
+    <QueryReadBoundary queries={[{isError:!!fetchError,refetch}]}><ERPCombobox
       value={value ?? null}
       onValueChange={handleValueChange}
       options={options}
@@ -121,16 +130,17 @@ export function LookupSelect({
       searchPlaceholder="Search..."
       showCode={showCode}
       language={language}
-      disabled={disabled}
+      disabled={disabled || !!fetchError}
       readOnly={false}
       required={required}
       loading={loading}
-      error={fetchError ?? error}
+      error={error}
       allowClear={allowClear}
       emptyText="No options available"
       noResultsText="No results found"
       className={className}
       name={name}
+      ariaLabel={ariaLabel}
       renderOption={renderOption}
     /></QueryReadBoundary>
   );

@@ -24,6 +24,7 @@
  */
 
 import { ERPCombobox } from "@/components/erp/combobox";
+import { savedSelection, withSavedSelection } from "@/lib/master-data/saved-selection";
 import { ERPFieldGrid } from "@/components/erp/erp-drawer-form";
 import { AreaZoneSelect, CitySelect, CountrySelect, EmirateSelect } from "@/components/erp/geography";
 import { PartySelect } from "@/components/erp/party-select";
@@ -55,12 +56,15 @@ import { useWorkspaceScrollState } from "@/hooks/use-workspace-scroll-state";
 import { useWorkspaceSectionState } from "@/hooks/use-workspace-section-state";
 import { useWorkspaceTabDirty } from "@/hooks/use-workspace-tab-dirty";
 import type { AuthContext } from "@/lib/rbac/check";
-import { createParty, detectPartyDuplicates, getPartyNatures, getPartyStatuses, updateParty } from "@/server/actions/master-data/parties";
+import {hasPermission as hasPerm, hasGlobalPermission} from '@/lib/rbac/scope';
+import { detectPartyDuplicates, getPartyNatures, getPartyStatuses } from "@/server/actions/master-data/parties";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Brain, Building2, DollarSign, FileText, Landmark, Lock, MapPin, Shield, Tag, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import {usePartyRecordSave} from './use-party-record-save';
+import {PartyCreationTypeNotice} from './party-creation-type-notice';
 import { PartyAddressesTab } from "./party-addresses-tab";
 import { PartyAuditTab } from "./party-audit-tab";
 import { PartyBankDetailsTab } from "./party-bank-details-tab";
@@ -72,13 +76,6 @@ import { PartyServicesTab } from "./party-services-tab";
 import { PartyTaxFinanceTab } from "./party-tax-finance-tab";
 import { PartyTypesTab } from "./party-types-tab";
 
-function hasPerm(ctx: AuthContext, code: string) {
-  return (
-    ctx.permissionCodes?.includes(code) ||
-    ctx.roleCodes?.includes("system_admin") ||
-    ctx.roleCodes?.includes("group_admin")
-  );
-}
 
 // â”€â”€ Props â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -114,6 +111,7 @@ function PartyWorkspaceFormInner({
 
   // â”€â”€ Mode state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [currentMode, setCurrentMode] = useState<"add" | "edit" | "view">(mode);
+  const saveRecord = usePartyRecordSave('party-workspace-form', party, defaultTypeCode);
   const isViewing = currentMode === "view";
   const isEditing = currentMode === "edit";
 
@@ -169,7 +167,8 @@ function PartyWorkspaceFormInner({
     formId: "party-workspace-form",
     enabled: !isViewing,
   });
-  useWorkspaceTabDirty({ isDirty, enabled: !isViewing });
+  const [typeSelectionDirty,setTypeSelectionDirty]=useState(false);
+  useWorkspaceTabDirty({ isDirty:isDirty||typeSelectionDirty, enabled: !isViewing });
 
   // â”€â”€ Draft preservation (UI.4E.2) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const { getDraftDefault, getDraftNullableId, syncDraft, writeDraftField, clearDraft } = useWorkspaceFormDraft({
@@ -192,6 +191,8 @@ function PartyWorkspaceFormInner({
   // â”€â”€ Child dialog blocking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [childDialogOpen, setChildDialogOpen] = useState(false);
   const handleChildOpen = useCallback((open: boolean) => setChildDialogOpen(open), []);
+  const [financeTaskOpen, setFinanceTaskOpen] = useState(false);
+  const handleFinanceTaskOpen = useCallback((open: boolean) => setFinanceTaskOpen(open), []);
 
   // â”€â”€ Duplicate detection state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [duplicates, setDuplicates] = useState<DuplicateMatch[]>([]);
@@ -203,19 +204,21 @@ function PartyWorkspaceFormInner({
   );
 
   // â”€â”€ Fetch lookups â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const { data: natures } = useQuery({
+  const { data: natures, error: naturesError, isLoading: naturesLoading } = useQuery({
     queryKey: ["party_natures"],
     queryFn: async () => {
       const r = await getPartyNatures();
+      if (!r.success || !r.data) throw new Error("Party natures could not be loaded.");
       return r.data ?? [];
     },
     staleTime: 5 * 60 * 1000,
   });
 
-  const { data: statuses } = useQuery({
+  const { data: statuses, error: statusesError, isLoading: statusesLoading } = useQuery({
     queryKey: ["party_statuses"],
     queryFn: async () => {
       const r = await getPartyStatuses();
+      if (!r.success || !r.data) throw new Error("Party statuses could not be loaded.");
       return r.data ?? [];
     },
     staleTime: 5 * 60 * 1000,
@@ -248,6 +251,8 @@ function PartyWorkspaceFormInner({
   // â”€â”€ Core save logic â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const performSave = async (): Promise<boolean> => {
     if (isViewing) return false;
+    if(typeSelectionDirty){toast.error('Save the party type selections first. Your overview entries are retained.');return false;}
+    if(!effectivePartyId&&defaultTypeCode&&!hasGlobalPermission(authContext,'master_data.parties.manage_types')){toast.error('Assigning an initial party type requires party-type management permission.');return false;}
 
     const form = document.getElementById("party-workspace-form") as HTMLFormElement | null;
     if (!form) return false;
@@ -262,7 +267,6 @@ function PartyWorkspaceFormInner({
       trade_name_ar: (fd.get("trade_name_ar") as string) || null,
       short_name: (fd.get("short_name") as string) || null,
       party_nature_id: partyNatureId ?? 0,
-      primary_party_type_id: party?.primary_party_type_id ?? null,
       parent_party_id: parentPartyId,
       main_phone: (fd.get("main_phone") as string) || null,
       main_mobile: (fd.get("main_mobile") as string) || null,
@@ -285,16 +289,10 @@ function PartyWorkspaceFormInner({
     };
 
     try {
-      let result;
-      if (isEditing && (party || createdPartyId)) {
-        const id = party?.id ?? createdPartyId!;
-        result = await updateParty({ id, ...payload });
-      } else {
-        result = await createParty(payload);
-      }
+      const result = await saveRecord(payload);
 
       if (result.success) {
-        toast.success(`Party ${isEditing ? "updated" : "created"} successfully`);
+        toast.success(result.data?.changed === false ? "No changes to save" : `Party ${isEditing ? "updated" : "created"} successfully`);
         clearDraft();
         resetDirty();
         if (activeTab?.id) markDirty(activeTab.id, false);
@@ -412,7 +410,7 @@ function PartyWorkspaceFormInner({
   return (
     <>
       <ERPRecordWorkspaceForm
-        isDirty={isDirty}
+        isDirty={isDirty||typeSelectionDirty}
         mode={currentMode}
         title={
           isViewing
@@ -435,12 +433,14 @@ function PartyWorkspaceFormInner({
         onSaveAndClose={isViewing ? undefined : handleSaveAndClose}
         onRequestClose={handleRequestClose}
         isChildDialogOpen={childDialogOpen}
+        isInlineTaskOpen={financeTaskOpen}
         bodyScrollRef={bodyScrollRef}
       >
         {/* â”€â”€ Party form â”€â”€ */}
         <form
           id="party-workspace-form"
           onSubmit={(e) => {
+            if (e.target !== e.currentTarget) return;
             e.preventDefault();
             if (isViewing) {
               handleRequestClose();
@@ -448,8 +448,8 @@ function PartyWorkspaceFormInner({
               void handleSaveAndClose();
             }
           }}
-          onInput={syncDraft}
-          onChange={syncDraft}
+          onInput={(e) => { if ((e.target as Element).closest('form') === e.currentTarget) syncDraft(); }}
+          onChange={(e) => { if ((e.target as Element).closest('form') === e.currentTarget) syncDraft(); }}
           className="contents"
         >
           {effectivePartyId ? (
@@ -461,6 +461,7 @@ function PartyWorkspaceFormInner({
           ) : null}
           {/* â”€â”€â”€â”€â”€â”€â”€â”€ Section 1: Basic Information â”€â”€â”€â”€â”€â”€â”€â”€ */}
           <ERPRecordSectionPanel id="basic" activeId={activeSection}>
+            {!effectivePartyId&&defaultTypeCode&&<PartyCreationTypeNotice code={defaultTypeCode} authContext={authContext}/>}
             {/* A. Identity */}
             <div className="mb-6">
               <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Identity</h3>
@@ -512,10 +513,12 @@ function PartyWorkspaceFormInner({
 
                 <div className="col-span-6">
                   <RequiredLabel htmlFor="party_nature_id" required>Party Nature</RequiredLabel>
-                  <ERPCombobox ariaLabel="Party Nature"
+                  <ERPCombobox ariaLabel="Party Nature" name="party_nature_id"
                     value={partyNatureId}
                     onValueChange={(v) => { const n = v !== null ? Number(v) : null; setPartyNatureId(n); writeDraftField("party_nature_id", n ?? ""); }}
-                    options={(natures ?? []).map((n) => ({ value: n.id, label: n.name_en }))}
+                    options={withSavedSelection((naturesError ? [] : natures ?? []).filter(n => n.is_active).map(n => ({ value: n.id, label: n.name_en })), partyNatureId, savedSelection(party?.party_nature_id, party?.party_nature_name))}
+                    loading={naturesLoading}
+                    error={naturesError ? "Party natures could not be loaded. Your saved selection is retained." : undefined}
                     placeholder="Select nature..."
                     disabled={isViewing}
                     required
@@ -525,6 +528,7 @@ function PartyWorkspaceFormInner({
                 <div className="col-span-12">
                   <Label htmlFor="parent_party_id">Parent Party</Label>
                   <PartySelect
+                    savedSelection={savedSelection(party?.parent_party_id, party?.parent_party_name)}
                     value={parentPartyId}
                     onValueChange={(v) => { setParentPartyId(v); writeDraftField("parent_party_id", v ?? ""); }}
                     excludePartyId={party?.id ?? createdPartyId ?? undefined}
@@ -574,6 +578,9 @@ function PartyWorkspaceFormInner({
                 <div className="col-span-6">
                   <RequiredLabel htmlFor="country_id" required>Country</RequiredLabel>
                   <CountrySelect
+                    savedSelection={savedSelection(party?.country_id, party?.country_name)}
+                    name="country_id"
+                    required
                     value={countryId}
                     onValueChange={(v) => { setCountryId(v); setEmirateId(null); setCityId(null); setAreaZoneId(null); writeDraftField("country_id", v ?? ""); writeDraftField("emirate_id", ""); writeDraftField("city_id", ""); writeDraftField("area_zone_id", ""); }}
                     disabled={isViewing}
@@ -582,6 +589,7 @@ function PartyWorkspaceFormInner({
                 <div className="col-span-6">
                   <Label htmlFor="emirate_id">Emirate / Region</Label>
                   <EmirateSelect
+                    savedSelection={countryId === party?.country_id ? savedSelection(party?.emirate_id, party?.emirate_name) : undefined}
                     countryId={countryId}
                     value={emirateId}
                     onValueChange={(v) => { setEmirateId(v); setCityId(null); setAreaZoneId(null); writeDraftField("emirate_id", v ?? ""); writeDraftField("city_id", ""); writeDraftField("area_zone_id", ""); }}
@@ -591,6 +599,7 @@ function PartyWorkspaceFormInner({
                 <div className="col-span-6">
                   <Label htmlFor="city_id">City</Label>
                   <CitySelect
+                    savedSelection={countryId === party?.country_id && emirateId === party?.emirate_id ? savedSelection(party?.city_id, party?.city_name) : undefined}
                     emirateId={emirateId}
                     value={cityId}
                     onValueChange={(v) => { setCityId(v); setAreaZoneId(null); writeDraftField("city_id", v ?? ""); writeDraftField("area_zone_id", ""); }}
@@ -599,7 +608,7 @@ function PartyWorkspaceFormInner({
                 </div>
                 <div className="col-span-6">
                   <Label htmlFor="area_zone_id">Area / Zone</Label>
-                  <AreaZoneSelect cityId={cityId} value={areaZoneId} onValueChange={(v) => { setAreaZoneId(v); writeDraftField("area_zone_id", v ?? ""); }} disabled={isViewing || !cityId} />
+                  <AreaZoneSelect savedSelection={countryId === party?.country_id && emirateId === party?.emirate_id && cityId === party?.city_id ? savedSelection(party?.area_zone_id, party?.area_zone_name) : undefined} cityId={cityId} value={areaZoneId} onValueChange={(v) => { setAreaZoneId(v); writeDraftField("area_zone_id", v ?? ""); }} disabled={isViewing || !cityId} />
                 </div>
                 <div className="col-span-4">
                   <Label htmlFor="po_box">PO Box</Label>
@@ -622,10 +631,12 @@ function PartyWorkspaceFormInner({
               <ERPFieldGrid>
                 <div className="col-span-6">
                   <RequiredLabel htmlFor="party_status_id" required>Party Status</RequiredLabel>
-                  <ERPCombobox ariaLabel="Party Status"
+                  <ERPCombobox ariaLabel="Party Status" name="party_status_id"
                     value={partyStatusId}
                     onValueChange={(v) => { const n = v !== null ? Number(v) : null; setPartyStatusId(n); writeDraftField("party_status_id", n ?? ""); }}
-                    options={(statuses ?? []).map((s) => ({ value: s.id, label: s.name_en }))}
+                    options={withSavedSelection((statusesError ? [] : statuses ?? []).map(s => ({ value: s.id, label: s.name_en })), partyStatusId, savedSelection(party?.party_status_id, party?.party_status_name))}
+                    loading={statusesLoading}
+                    error={statusesError ? "Party statuses could not be loaded. Your saved selection is retained." : undefined}
                     placeholder="Select status..."
                     disabled={isViewing}
                     required
@@ -633,9 +644,10 @@ function PartyWorkspaceFormInner({
                 </div>
                 <div className="col-span-6 flex items-end gap-3 pb-1">
                   <Label htmlFor="is_active">Active</Label>
-                  <Switch id="is_active" name="is_active" checked={isActive} onCheckedChange={(v) => { setIsActive(v); writeDraftField("is_active", String(v)); }} disabled={isViewing} />
+                  <Switch id="is_active" name="is_active" checked={isActive} onCheckedChange={(v) => { setIsActive(v); writeDraftField("is_active", String(v)); }} disabled={isViewing || (!!party && !hasGlobalPermission(authContext, 'master_data.parties.deactivate'))} aria-describedby={party && !hasGlobalPermission(authContext, 'master_data.parties.deactivate') ? 'party-lifecycle-authority' : undefined} />
                   <span className="text-sm text-muted-foreground">{isActive ? "Yes" : "No"}</span>
                 </div>
+                {party && !hasGlobalPermission(authContext, 'master_data.parties.deactivate') && <p id="party-lifecycle-authority" className="col-span-12 text-sm text-muted-foreground">Changing active status requires party activation permission. Other permitted fields can still be edited.</p>}
                 <div className="col-span-12">
                   <Label htmlFor="remarks">Remarks</Label>
                   <Textarea id="remarks" name="remarks" defaultValue={getDraftDefault("remarks", party?.remarks ?? "")} disabled={isViewing} rows={3} />
@@ -652,9 +664,11 @@ function PartyWorkspaceFormInner({
           </ERPRecordSectionPanel>
 
           {/* â”€â”€â”€â”€â”€â”€â”€â”€ Section 2: Party Types â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        </form>
           <ERPRecordSectionPanel id="types" activeId={activeSection} lazyMount>
             <PartyTypesTab
               partyId={effectivePartyId}
+              onDirtyChange={setTypeSelectionDirty}
               disabled={isViewing}
               authContext={authContext}
               defaultTypeCode={mode === "add" ? defaultTypeCode : undefined}
@@ -664,28 +678,28 @@ function PartyWorkspaceFormInner({
           {/* â”€â”€â”€â”€â”€â”€â”€â”€ Section 3: Legal & Licenses â”€â”€â”€â”€â”€â”€â”€â”€ */}
           <ERPRecordSectionPanel id="licenses" activeId={activeSection} lazyMount>
             {childTabLocked ? <LockedTabMessage /> : (
-              <PartyLicensesTab partyId={effectivePartyId!} disabled={isViewing} onChildOpen={handleChildOpen} />
+              <PartyLicensesTab partyId={effectivePartyId!} disabled={isViewing || !hasGlobalPermission(authContext, "master_data.parties.manage_licenses") || !hasGlobalPermission(authContext, "master_data.parties.view")} onChildOpen={handleChildOpen} />
             )}
           </ERPRecordSectionPanel>
 
           {/* â”€â”€â”€â”€â”€â”€â”€â”€ Section 4: Tax & Finance â”€â”€â”€â”€â”€â”€â”€â”€ */}
           <ERPRecordSectionPanel id="tax" activeId={activeSection} lazyMount>
             {childTabLocked ? <LockedTabMessage /> : (
-              <PartyTaxFinanceTab partyId={effectivePartyId!} disabled={isViewing} onChildOpen={handleChildOpen} />
+              <PartyTaxFinanceTab partyId={effectivePartyId!} disabled={isViewing} authContext={authContext} onChildOpen={handleChildOpen} onInlineTaskOpen={handleFinanceTaskOpen} />
             )}
           </ERPRecordSectionPanel>
 
           {/* â”€â”€â”€â”€â”€â”€â”€â”€ Section 5: Contacts â”€â”€â”€â”€â”€â”€â”€â”€ */}
           <ERPRecordSectionPanel id="contacts" activeId={activeSection} lazyMount>
             {childTabLocked ? <LockedTabMessage /> : (
-              <PartyContactsTab partyId={effectivePartyId!} disabled={isViewing} onChildOpen={handleChildOpen} />
+              <PartyContactsTab partyId={effectivePartyId!} disabled={isViewing || !hasGlobalPermission(authContext, "master_data.parties.manage_contacts") || !hasGlobalPermission(authContext, "master_data.parties.view")} onChildOpen={handleChildOpen} />
             )}
           </ERPRecordSectionPanel>
 
           {/* â”€â”€â”€â”€â”€â”€â”€â”€ Section 6: Addresses â”€â”€â”€â”€â”€â”€â”€â”€ */}
           <ERPRecordSectionPanel id="addresses" activeId={activeSection} lazyMount>
             {childTabLocked ? <LockedTabMessage /> : (
-              <PartyAddressesTab partyId={effectivePartyId!} disabled={isViewing} onChildOpen={handleChildOpen} />
+              <PartyAddressesTab partyId={effectivePartyId!} disabled={isViewing || !hasGlobalPermission(authContext, "master_data.parties.manage_addresses") || !hasGlobalPermission(authContext, "master_data.parties.view")} onChildOpen={handleChildOpen} />
             )}
           </ERPRecordSectionPanel>
 
@@ -708,7 +722,10 @@ function PartyWorkspaceFormInner({
             {childTabLocked ? <LockedTabMessage /> : (
               <PartyServicesTab
                 partyId={effectivePartyId!}
-                canManage={hasPerm(authContext, "master_data.parties.manage_services")}
+                canManage={hasGlobalPermission(authContext, "master_data.parties.manage_services") && hasGlobalPermission(authContext, "master_data.parties.view")}
+                authContext={authContext}
+                parentInactive={party?.is_active === false}
+                disabled={isViewing || (!!party?.is_locked && !authContext.roleAssignments?.some(assignment => assignment.roleCode === "system_admin" && assignment.ownerCompanyId === null && assignment.branchId === null))}
                 onChildOpen={handleChildOpen}
               />
             )}
@@ -719,7 +736,7 @@ function PartyWorkspaceFormInner({
             {childTabLocked ? <LockedTabMessage /> : (
               <PartyNotesTab
                 partyId={effectivePartyId!}
-                canManage={!isViewing && hasPerm(authContext, "master_data.parties.edit")}
+                canManage={!isViewing && hasGlobalPermission(authContext, "master_data.parties.edit")}
                 currentUserProfileId={authContext?.profile?.id ?? null}
                 onChildOpen={handleChildOpen}
               />
@@ -753,7 +770,6 @@ function PartyWorkspaceFormInner({
               />
             )}
           </ERPRecordSectionPanel>
-        </form>
       </ERPRecordWorkspaceForm>
 
       {/* â”€â”€ Duplicate Detection Dialog â”€â”€ */}

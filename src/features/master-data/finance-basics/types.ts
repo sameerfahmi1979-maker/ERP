@@ -2,12 +2,14 @@
  * TypeScript types for Finance Basics Master Data
  * Phase 002F.3C.2
  */
+import type { SavedSelection } from '@/lib/master-data/saved-selection';
 
 // ============================================================================
 // Database Types
 // ============================================================================
 
 export interface Currency {
+  workspace_revision?: number;
   id: number;
   currency_code: string;
   currency_name_en: string;
@@ -32,6 +34,7 @@ export interface Currency {
 }
 
 export interface PaymentTerm {
+  workspace_revision?: number;
   id: number;
   term_code: string;
   term_name_en: string;
@@ -57,6 +60,7 @@ export interface PaymentTerm {
 }
 
 export interface TaxType {
+  workspace_revision?: number;
   id: number;
   tax_code: string;
   tax_name_en: string;
@@ -87,6 +91,7 @@ export interface TaxType {
 }
 
 export interface Bank {
+  workspace_revision?: number;
   id: number;
   bank_code: string;
   bank_name_en: string;
@@ -115,6 +120,7 @@ export interface Bank {
 }
 
 export interface CostCenter {
+  workspace_revision?: number;
   id: number;
   cost_center_code: string;
   cost_center_name_en: string;
@@ -140,6 +146,7 @@ export interface CostCenter {
 }
 
 export interface ProfitCenter {
+  workspace_revision?: number;
   id: number;
   profit_center_code: string;
   profit_center_name_en: string;
@@ -177,6 +184,7 @@ export interface BankWithCountry extends Bank {
 }
 
 export interface CostCenterWithRelations extends CostCenter {
+  type_label?: {value_code:string;value_label_en:string;value_label_ar:string|null};
   parent?: {
     cost_center_code: string;
     cost_center_name_en: string;
@@ -194,6 +202,7 @@ export interface CostCenterWithRelations extends CostCenter {
 }
 
 export interface ProfitCenterWithRelations extends ProfitCenter {
+  type_label?: {value_code:string;value_label_en:string;value_label_ar:string|null};
   parent?: {
     profit_center_code: string;
     profit_center_name_en: string;
@@ -506,16 +515,28 @@ export interface BankSelectProps extends FinanceBasicsSelectProps {
   bankTypeCode?: string | null;
 }
 
-export interface CostCenterSelectProps extends FinanceBasicsSelectProps {
+/** Explicit child scope: null means global/all branches, never an omitted filter. */
+export type FinanceParentChoiceScope = {
+  companyId: number | null;
+  branchId: number | null;
+  excludeId: number | null;
+};
+export type FinanceCenterChoiceMode =
+  | { choiceMode?: 'ordinary'; parentScope?: never }
+  | { choiceMode: 'finance-parent'; parentScope: FinanceParentChoiceScope; includeInactive?: false; ownerCompanyId?: never; excludeId?: never };
+
+export type CostCenterSelectProps = FinanceBasicsSelectProps & FinanceCenterChoiceMode & {
   ownerCompanyId?: number | null;
   branchId?: number | null;
   parentCostCenterId?: number | null;
   excludeId?: number | null;
-}
+  savedSelection?: SavedSelection;
+};
 
-export interface ProfitCenterSelectProps extends FinanceBasicsSelectProps {
+export type ProfitCenterSelectProps = FinanceBasicsSelectProps & FinanceCenterChoiceMode & {
   ownerCompanyId?: number | null;
   branchId?: number | null;
   parentProfitCenterId?: number | null;
   excludeId?: number | null;
-}
+  savedSelection?: SavedSelection;
+};

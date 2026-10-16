@@ -1,18 +1,22 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { authorizePartyChildRead } from "@/server/party-child-read-authority";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { revalidatePath } from "next/cache";
-import { logAudit } from "@/server/actions/audit";
-import { generateNextReference } from "@/server/actions/numbering";
+import { setPartyChildArchived } from "@/server/actions/master-data/party-child-lifecycle";
+import { createNumberedParty } from "@/server/numbered-party-create";
+import { savePartyChild } from "@/server/party-child-save";
+import type { PartySaveReceipt } from "@/lib/master-data/party-save-contract";
+import type { WorkspaceSaveContract } from "@/lib/workspace/save-contract";
 import { z } from "zod";
 import type { ActionResult } from "@/features/master-data/parties/party-types";
 
-const REVALIDATE_PATH = "/admin/master-data/parties";
 
 export type PartyNote = {
+  archived_at?: string | null;
   id: number;
   note_code: string;
+  workspace_revision?: number;
   party_id: number;
   note_type_id: number | null;
   note_title: string | null;
@@ -48,21 +52,23 @@ export async function getPartyNoteTypes(): Promise<ActionResult<PartyNoteType[]>
 
 export async function getPartyNotes(partyId: number): Promise<ActionResult<PartyNote[]>> {
   try {
-    const supabase = await createClient();
+    const access = await authorizePartyChildRead(partyId);
+    if (!access.success) return access;
+    const supabase = access.client;
     const { data, error } = await supabase
       .from("party_notes")
       .select("*, party_note_types!note_type_id(name_en)")
       .eq("party_id", partyId)
       .order("created_at", { ascending: false });
-    if (error) return { success: false, error: error.message };
+    if (error || !Array.isArray(data)) return { success: false, kind: 'failed', error: 'Notes could not be loaded. Try again.' };
 
     const rows = (data ?? []).map((row: Record<string, unknown>) => ({
       ...(row as PartyNote),
       note_type_name: (row.party_note_types as { name_en?: string } | null)?.name_en ?? null,
     }));
     return { success: true, data: rows };
-  } catch (error) {
-    return { success: false, error: String(error) };
+  } catch {
+    return { success: false, kind: 'failed', error: 'Notes could not be loaded. Try again.' };
   }
 }
 
@@ -75,86 +81,28 @@ const createNoteSchema = z.object({
   follow_up_date: z.string().nullable().optional(),
 });
 
-const updateNoteSchema = createNoteSchema.extend({ id: z.number().int().positive() });
+const updateNoteSchema = createNoteSchema.extend({ id: z.number().int().positive(), is_private: z.boolean().optional() });
 
-export async function createPartyNote(input: z.infer<typeof createNoteSchema>): Promise<ActionResult<{ id: number; note_code: string }>> {
+export async function createPartyNote(input: z.infer<typeof createNoteSchema>, contract: WorkspaceSaveContract): Promise<ActionResult<{ id: number; note_code: string; revision: string; replayed: boolean }>> {
   try {
-    const parsed = createNoteSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues.map((i) => i.message).join("; ") };
-
+    const parsed = createNoteSchema.strict().safeParse(input);
+    if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
     const ctx = await getAuthContext();
     if (!hasPermission(ctx, "master_data.parties.edit")) return { success: false, error: "Permission denied" };
-
-    const numberingResult = await generateNextReference({
-      ruleCode: "MASTER_PARTY_NOTE",
-      targetTableName: "party_notes",
-      generationReason: "Party note creation",
-    });
-    if (!numberingResult.success || !numberingResult.data?.generatedReferenceNumber) {
-      return { success: false, error: "Failed to generate note code" };
-    }
-
-    const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("party_notes")
-      .insert({ ...parsed.data, note_code: numberingResult.data.generatedReferenceNumber, created_by: ctx.profile?.id, updated_by: ctx.profile?.id })
-      .select("id, note_code")
-      .single();
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({ module_code: "MASTER_DATA", entity_name: "party_notes", entity_id: data.id, entity_reference: data.note_code, action: "create", new_values: { ...parsed.data, note_code: data.note_code } });
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true, data: { id: data.id, note_code: data.note_code } };
-  } catch (error) {
-    return { success: false, error: String(error) };
+    return await createNumberedParty("party_notes", parsed.data, contract);
+  } catch {
+    return { success: false, error: "Creation could not start. Check your session and try again." };
   }
 }
 
-export async function updatePartyNote(input: z.infer<typeof updateNoteSchema>): Promise<ActionResult> {
-  try {
-    const parsed = updateNoteSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues.map((i) => i.message).join("; ") };
-
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.parties.edit")) return { success: false, error: "Permission denied" };
-
-    const { id, ...fields } = parsed.data;
-    const supabase = await createClient();
-    const { data: old } = await supabase.from("party_notes").select("note_code, created_by").eq("id", id).single();
-
-    // Only creator or admin can edit a note
-    if (old?.created_by && old.created_by !== ctx.profile?.id && !hasPermission(ctx, "system_admin")) {
-      return { success: false, error: "Only the note author can edit this note" };
-    }
-
-    const { error } = await supabase.from("party_notes").update({ ...fields, updated_by: ctx.profile?.id }).eq("id", id);
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({ module_code: "MASTER_DATA", entity_name: "party_notes", entity_id: id, entity_reference: old?.note_code ?? String(id), action: "update", new_values: fields });
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: String(error) };
-  }
+export async function updatePartyNote(input: z.infer<typeof updateNoteSchema>, contract?: WorkspaceSaveContract): Promise<ActionResult<PartySaveReceipt>> {
+  const parsed = updateNoteSchema.strict().safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
+  const { id, ...fields } = parsed.data;
+  return savePartyChild("party_notes", id, fields, contract);
 }
 
-export async function deletePartyNote(id: number): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    const supabase = await createClient();
-    const { data: old } = await supabase.from("party_notes").select("note_code, created_by").eq("id", id).single();
-
-    if (old?.created_by && old.created_by !== ctx.profile?.id && !hasPermission(ctx, "system_admin")) {
-      return { success: false, error: "Only the note author can delete this note" };
-    }
-
-    const { error } = await supabase.from("party_notes").delete().eq("id", id);
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({ module_code: "MASTER_DATA", entity_name: "party_notes", entity_id: id, entity_reference: old?.note_code ?? String(id), action: "delete" });
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: String(error) };
-  }
+/** Compatibility name; this operation archives and never deletes history. */
+export async function deletePartyNote(id: number, contract?: WorkspaceSaveContract): Promise<ActionResult<PartySaveReceipt & {archived:boolean}>> {
+  return setPartyChildArchived("party_notes", id, true, contract);
 }

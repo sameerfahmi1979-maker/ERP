@@ -1,8 +1,11 @@
 "use client";
 import { RecordCollection } from "@/components/erp/table/record-collection";
 
-import { useRef, useState } from "react";
-import { toast } from "sonner";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useProviderFlagChange } from "../use-provider-flag-change";
+import { AlgtDialog } from "@/components/design-system/algt-dialog";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -16,61 +19,26 @@ interface AiFeatureFlagsPanelProps {
 }
 
 export function AiFeatureFlagsPanel({ flags, canManage=false }: AiFeatureFlagsPanelProps) {
-  const [updating, setUpdating] = useState<string | null>(null);
-  const flight = useRef(false);
-  const [uncertain, setUncertain] = useState(false);
-
-  const handleToggle = async (flag: AiFeatureFlag, enabled: boolean) => {
-    if (!canManage || flight.current || uncertain) return;
-    flight.current = true;
-    setUpdating(flag.featureCode);
-    try {
-      const result = await updateAiFeatureFlag(flag.featureCode, { is_enabled: enabled });
-      if (result.success) {
-        toast.success(
-          enabled
-            ? `${flag.featureName} enabled`
-            : `${flag.featureName} disabled`
-        );
-      } else {
-        toast.error("Feature change was not accepted. Check your permissions.");
-      }
-    } catch {
-      setUncertain(true);
-    } finally {
-      flight.current = false;
-      setUpdating(null);
-    }
+  const router = useRouter();
+  const operation=useProviderFlagChange(updateAiFeatureFlag,()=>router.refresh());
+  const [confirming,setConfirming]=useState<AiFeatureFlag|null>(null);
+  const handleToggle = async (flag:AiFeatureFlag,enabled:boolean) => {
+    if(!canManage||operation.busy||operation.uncertain)return;
+    await operation.change(flag.featureCode,flag.workspaceRevision,{is_enabled:enabled});
   };
-
-  const handleReviewToggle = async (flag: AiFeatureFlag, requiresReview: boolean) => {
-    if (!canManage || flight.current || uncertain) return;
-    if (!requiresReview && !confirm(
-      `Disabling human review for "${flag.featureName}" means AI results will be auto-accepted. Are you sure?`
-    )) return;
-
-    flight.current = true;
-    setUpdating(flag.featureCode);
-    try {
-      const result = await updateAiFeatureFlag(flag.featureCode, {
-        requires_human_review: requiresReview,
-      });
-      if (result.success) {
-        toast.success(`Human review ${requiresReview ? "enabled" : "disabled"} for ${flag.featureName}`);
-      } else {
-        toast.error("Review setting change was not accepted. Check your permissions.");
-      }
-    } catch {
-      setUncertain(true);
-    } finally {
-      flight.current = false;
-      setUpdating(null);
-    }
+  const handleReviewToggle = async (flag:AiFeatureFlag,required:boolean) => {
+    if(!canManage||operation.busy||operation.uncertain||flag.featureCode.startsWith("DMS_"))return;
+    if(!required){setConfirming(flag);return;}
+    await operation.change(flag.featureCode,flag.workspaceRevision,{requires_human_review:true});
   };
 
   return (
     <div className="space-y-4">
-      {uncertain && <div role="alert" className="border border-destructive p-3 text-sm">The setting change could not be confirmed. Reload and check its current state before retrying.</div>}
+      {operation.error&&<div role="alert" className="border border-destructive p-3 text-sm">{operation.error}{operation.uncertain&&<Button className="mt-2" disabled={operation.busy||!canManage} onClick={()=>void operation.retry()}>Retry unchanged setting</Button>}</div>}
+      {operation.refreshError&&<div role="alert" className="border p-3 text-sm">{operation.refreshError}<Button className="mt-2" disabled={operation.busy} onClick={operation.retryRefresh}>Refresh settings</Button></div>}
+      <AlgtDialog open={!!confirming} title="Remove human review?" onOpenChange={open=>{if(!operation.busy&&!open)setConfirming(null);}} actions={<><Button variant="outline" disabled={operation.busy} onClick={()=>setConfirming(null)}>Keep review</Button><Button disabled={operation.busy||!canManage||operation.uncertain} onClick={()=>{if(confirming){const flag=confirming;setConfirming(null);void operation.change(flag.featureCode,flag.workspaceRevision,{requires_human_review:false});}}}>Confirm removal</Button></>}>
+        <p>Remove the human-review requirement for {confirming?.featureName}? Supported consumers may accept AI results without a reviewer. DMS review cannot be removed here.</p>
+      </AlgtDialog>
       <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/20 p-3">
         <div className="flex items-start gap-2 text-xs text-amber-800 dark:text-amber-200">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -84,7 +52,7 @@ export function AiFeatureFlagsPanel({ flags, canManage=false }: AiFeatureFlagsPa
 
       <div className="grid gap-3">
         {<RecordCollection id="special.ai-feature-flags-panel" rows={flags} fields={[{"id":"featureCode","path":"featureCode","label":"Feature"},{"id":"featureName","path":"featureName","label":"Name"},{"id":"isEnabled","path":"isEnabled","label":"Enabled"}]} renderRecord={(flag) => {
-          const isUpdating = !canManage || updating !== null || uncertain;
+          const isUpdating = !canManage || operation.busy || operation.uncertain || !flag.workspaceRevision;
           return (
             <Card key={flag.featureCode}>
               <CardHeader className="pb-2 pt-4">
@@ -118,7 +86,7 @@ export function AiFeatureFlagsPanel({ flags, canManage=false }: AiFeatureFlagsPa
                     <Switch
                       checked={flag.requiresHumanReview}
                       onCheckedChange={(v) => handleReviewToggle(flag, v)}
-                      disabled={isUpdating}
+                      disabled={isUpdating || flag.featureCode.startsWith("DMS_")}
                       className="h-4 w-7 data-[state=checked]:bg-amber-500"
                       aria-label={`Human review for ${flag.featureName}`}
                     />

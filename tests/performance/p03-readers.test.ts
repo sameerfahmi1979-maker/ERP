@@ -12,7 +12,7 @@ const operations:Array<{table:string;method:string;args:unknown[]}>=[];
 let responses:unknown[]=[];
 function builderFor(table:string){
  const builder:Record<string,unknown>={then:(resolve:(v:unknown)=>void)=>Promise.resolve(responses.shift()).then(resolve)};
- for(const method of ["select","eq","in","is","not","order","range","or","ilike","textSearch","gte","lte","lt","gt","returns"])
+ for(const method of ["select","eq","in","is","not","order","range","or","ilike","textSearch","gte","lte","lt","gt","returns","retry"])
   builder[method]=(...args:unknown[])=>{operations.push({table,method,args});return builder;};return builder;
 }
 beforeEach(()=>{

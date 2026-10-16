@@ -21,16 +21,10 @@ import type {
   TemplateSecurityReviewStatus,
 } from "@/lib/report-center/types";
 import { cn } from "@/lib/utils";
-import {
-  approveTemplate,
-  archiveTemplate,
-  createTemplateDraftVersion,
-  getTemplateGovernanceHistory,
-  publishTemplate,
-  rejectTemplate,
-  runTemplateSecurityReviewAction,
-  submitTemplateForReview,
-} from "@/server/actions/reports/template-governance";
+import {getTemplateGovernanceHistory} from "@/server/actions/reports/template-governance";
+import {createTemplateGovernanceAttempt} from '@/lib/report-center/template-governance-attempt';
+import type {TemplateGovernanceAction,TemplateGovernanceReceipt} from '@/lib/report-center/template-governance-receipt';
+import {useReadCacheOwner} from '@/components/layout/read-cache-boundary';
 import {
   Archive,
   CheckCircle2,
@@ -46,7 +40,7 @@ import {
   ShieldQuestion,
   XCircle,
 } from "lucide-react";
-import { useState, useTransition, useRef } from "react";
+import { useState, useTransition, useRef, useLayoutEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -148,13 +142,29 @@ const EVENT_ICON_CLASS: Record<string, string> = {
 };
 
 function formatEventDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleString("en-GB", {
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) return "Date unavailable";
+  return date.toLocaleString("en-GB", {
     day: "2-digit",
     month: "short",
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function historyDetails(payload: unknown): string[] {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return [];
+  const data = payload as Record<string, unknown>;
+  const details: string[] = [];
+  const positive = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+  if (positive(data.version_no)) details.push(`Template version ${data.version_no}`);
+  if (positive(data.revision) || (typeof data.revision === "string" && /^[1-9]\d{0,18}$/.test(data.revision))) details.push(`Record revision ${data.revision}`);
+  if (positive(data.parent_template_id)) details.push("Created from an earlier template version.");
+  if (positive(data.superseded_by_template_id)) details.push("Superseded by a newer template version.");
+  // Internal request IDs and arbitrary payloads stay in the protected audit
+  // record; they are not useful or safe as raw JSON in the ordinary history UI.
+  return details;
 }
 
 interface HistoryDialogProps {
@@ -170,7 +180,11 @@ export function TemplateGovernanceHistoryDialog({
 }: HistoryDialogProps) {
   const {data:events=[],isLoading:loading,isError,refetch}=useQuery<ReportTemplateEvent[]>({
     queryKey:["template-governance-history",template.id],enabled:open,gcTime:0,retry:false,
-    queryFn:async()=>{const r=await getTemplateGovernanceHistory(template.id);if(!r.success)throw Error("History unavailable");return r.data??[];},
+    queryFn:async()=>{
+      const r=await getTemplateGovernanceHistory(template.id);
+      if(!r.success||!Array.isArray(r.data)||r.data.some(event=>!event||!Number.isSafeInteger(event.id)||event.id<=0||event.template_id!==template.id||typeof event.event_type!=="string"||typeof event.occurred_at!=="string"||(event.notes!==null&&typeof event.notes!=="string")))throw Error("History unavailable");
+      return r.data;
+    },
   });
 
   return (
@@ -184,11 +198,11 @@ export function TemplateGovernanceHistoryDialog({
       size="lg"
       submitLabel="Close"
       onSubmit={() => onOpenChange(false)}
-      cancelLabel=""
     >
       {isError ? <div role="alert">Governance history could not be loaded. <Button onClick={() => void refetch()}>Retry governance history</Button></div> : loading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <div role="status" className="flex items-center justify-center gap-2 py-12">
+          <Loader2 aria-hidden="true" className="h-6 w-6 animate-spin text-muted-foreground" />
+          <span>Loading governance history…</span>
         </div>
       ) : events.length === 0 ? (
         <p className="text-sm text-muted-foreground text-center py-8">
@@ -204,11 +218,11 @@ export function TemplateGovernanceHistoryDialog({
                   EVENT_ICON_CLASS[event.event_type] ?? "bg-muted text-muted-foreground"
                 )}
               >
-                {event.event_type.charAt(9).toUpperCase()}
+                {(EVENT_LABELS[event.event_type] ?? "Template event").charAt(0)}
               </span>
               <div className="rounded-md border bg-card px-3 py-2 shadow-sm">
                 <p className="text-xs font-semibold text-foreground">
-                  {EVENT_LABELS[event.event_type] ?? event.event_type}
+                  {EVENT_LABELS[event.event_type] ?? "Template event"}
                 </p>
                 <p className="text-[10px] text-muted-foreground">
                   {formatEventDate(event.occurred_at)}
@@ -216,11 +230,7 @@ export function TemplateGovernanceHistoryDialog({
                 {event.notes && (
                   <p className="mt-1 text-xs text-foreground/80 whitespace-pre-line">{event.notes}</p>
                 )}
-                {Object.keys(event.payload_json ?? {}).length > 0 && (
-                  <p className="mt-1 text-[10px] text-muted-foreground font-mono truncate">
-                    {JSON.stringify(event.payload_json)}
-                  </p>
-                )}
+                {historyDetails(event.payload_json).map(detail => <p key={detail} className="mt-1 text-xs text-muted-foreground">{detail}</p>)}
               </div>
             </li>
           ))}
@@ -256,8 +266,8 @@ function ReasonDialog({
   const [reason, setReason] = useState("");
 
   const handleSubmit = () => {
-    if (required && !reason.trim()) {
-      toast.error("Please provide a reason.");
+    if (required && reason.trim().length<5) {
+      toast.error("Please provide a reason of at least 5 characters.");
       return;
     }
     onSubmit(reason);
@@ -277,7 +287,7 @@ function ReasonDialog({
       <div className="col-span-12">
         <label className="text-sm font-medium block mb-1.5">{label}</label>
         <textarea
-          aria-label={label} required={required}
+          aria-label={label} required={required} minLength={required?5:undefined} maxLength={2000}
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[80px] resize-y focus:outline-none focus:ring-2 focus:ring-ring"
           value={reason}
           onChange={(e) => setReason(e.target.value)}
@@ -300,8 +310,16 @@ interface GovernanceActionsProps {
   onTemplateUpdated: (updated: Partial<ReportTemplate> & { id: number }) => void;
   onNewVersionCreated?: (newTemplate: Partial<ReportTemplate> & { id: number }) => void;
 }
+function governanceRevision(value:unknown):bigint|null{
+  if(typeof value==='number'&&(!Number.isSafeInteger(value)||value<1))return null;
+  if(typeof value!=='string'&&typeof value!=='number')return null;
+  const text=String(value);return /^[1-9]\d*$/.test(text)?BigInt(text):null;
+}
 
-export function GovernanceActionsDropdown({
+export function GovernanceActionsDropdown(props:GovernanceActionsProps){
+  return <GovernanceActionsSession key={props.template.id} {...props}/>;
+}
+function GovernanceActionsSession({
   template,
   canManage,
   canApprove,
@@ -311,13 +329,17 @@ export function GovernanceActionsDropdown({
 }: GovernanceActionsProps) {
   const [isPending, transition] = useTransition();
   const flight = useRef(false);
-  const startTransition = (action: () => Promise<void>) => {
-    if (flight.current) return;
+  const owner=useReadCacheOwner(),activation=useRef<{live:boolean}|null>(null),liveTemplate=useRef(template);
+  useLayoutEffect(()=>{liveTemplate.current=template;},[template]);
+  useLayoutEffect(()=>{const token={live:true};activation.current=token;return()=>{token.live=false;};},[owner]);
+  const startTransition = (action: (current:()=>boolean) => Promise<void>) => {
+    const token=activation.current,current=()=>!!token?.live&&activation.current===token&&owner?.isLive()!==false;
+    if (flight.current||!current()||liveTemplate.current!==template) return;
     flight.current = true;
     transition(async () => {
-      try { await action(); }
-      catch { toast.error("Change unconfirmed. Refresh templates before trying again; your reason is retained."); }
-      finally { flight.current = false; }
+      try { await action(current); }
+      catch { if(current())try{toast.error("This view could not be refreshed. Reopen templates to reconcile the result.");}catch{/* Feedback is best effort. */} }
+      finally { if(current())flight.current = false; }
     });
   };
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -326,159 +348,73 @@ export function GovernanceActionsDropdown({
 
   const status = template.governance_status ?? "draft";
 
-  const handleSubmitForReview = () =>
-    startTransition(async () => {
-      const res = await submitTemplateForReview(template.id);
-      if (res.success) {
-        toast.success("Template submitted for review.");
-        onTemplateUpdated({ id: template.id, governance_status: "in_review" });
-      } else {
-        toast.error(res.error ?? "Failed to submit for review.");
-      }
-    });
+  const attempt=useRef(createTemplateGovernanceAttempt());
+  const confirmed=useRef<{receipt:TemplateGovernanceReceipt;action:TemplateGovernanceAction;note:string|null;openingRevision:string|null;failed:boolean}|null>(null);
+  const [saveError,setSaveError]=useState('');
+  const [lastChange,setLastChange]=useState<{action:TemplateGovernanceAction;note:string|null}|null>(null);
+  const change=(action:TemplateGovernanceAction,note:string|null=null)=>startTransition(async(current)=>{
+    setSaveError('');
+    const previous=confirmed.current;
+    if(previous&&!previous.failed&&template.id===previous.receipt.source_id){
+      // A copy receipt describes the destination; its source retains the
+      // revision from the admitted request, even if props advanced on replay.
+      const baseline=governanceRevision(previous.receipt.id===previous.receipt.source_id?previous.receipt.revision:previous.openingRevision);
+      const currentRevision=governanceRevision(template.workspace_revision);
+      if(baseline!==null&&currentRevision!==null&&(currentRevision>baseline||currentRevision===baseline&&action!==previous.action))confirmed.current=null;
+    }
+    try{
+      const saved=confirmed.current;
+      const work=saved?attempt.current.reload(saved.receipt,saved.action,current):attempt.current.run(template,action,note,current);
+      const admitted=attempt.current.pending;
+      if(admitted)setLastChange({action:admitted.action,note:admitted.note});
+      const result=await work;
+      if(!current())return;
+      const witness=confirmed.current??{receipt:result.receipt,action,note,openingRevision:admitted?.id===result.receipt.source_id?admitted.contract.revision:null,failed:false};confirmed.current=witness;
+      let failed=false;
+      for(const related of result.related){if(current())try{onTemplateUpdated(related);}catch{failed=true;}}
+      if(current())try{if(witness.action==='new_version')onNewVersionCreated?.(result.template);else onTemplateUpdated(result.template);}catch{failed=true;}
+      if(current())try{attempt.current.acknowledged();}catch{failed=true;}
+      if(current()){setRejectDialogOpen(false);setArchiveDialogOpen(false);}
+      if(current())try{
+        if(result.receipt.review?.passed===false)toast.error('Security review failed ('+result.receipt.review.findings.length+' findings). Correct the content before submission.');
+        else if(result.receipt.review?.severity==='warning')toast.warning('Security review passed with warnings. Review the recorded findings before approval.');
+        else toast.success(witness.action==='new_version'?'Draft revision created.':!result.receipt.changed?'No changes were needed.':'Template '+result.template.governance_status.replaceAll('_',' ')+'.');
+      }catch{failed=true;}
+      witness.failed=failed;
+      if(current()){setLastChange(failed?{action:witness.action,note:witness.note}:null);if(failed)setSaveError('Saved, but the template display could not be refreshed. Retry to reload without saving again.');}
+    }catch(error){
+      if(!current())return;
+      const receipt=attempt.current.confirmed,admitted=attempt.current.pending;
+      if(receipt&&admitted)confirmed.current??={receipt,action:admitted.action,note:admitted.note,openingRevision:admitted.contract.revision,failed:true};
+      if(!admitted&&!confirmed.current)setLastChange(null);
+      const message=confirmed.current?'Saved, but the current template could not be loaded or displayed. Retry to reload without saving again.':error instanceof Error?error.message:'Change unconfirmed. Retry the same action.';
+      setSaveError(message);try{toast.error(message);}catch{/* Keep the existing outcome and retry target. */}
+    }
+  });
+  const handleSubmitForReview=()=>change('submit');
+  const handleApprove=()=>change('approve');
+  const handleReject=(reason:string)=>change('reject',reason);
+  const handlePublish=()=>change('publish');
+  const handleArchive=(reason:string)=>change('archive',reason||null);
+  const handleCreateNewVersion=()=>change('new_version');
+  const handleRunSecurityReview=()=>change('review');
 
-  const handleApprove = () =>
-    startTransition(async () => {
-      const res = await approveTemplate({ templateId: template.id });
-      if (res.success) {
-        toast.success("Template approved.");
-        onTemplateUpdated({ id: template.id, governance_status: "approved" });
-      } else {
-        toast.error(res.error ?? "Failed to approve.");
-      }
-    });
-
-  const handleReject = (reason: string) =>
-    startTransition(async () => {
-      const res = await rejectTemplate({ templateId: template.id, reason });
-      if (res.success) {
-        setRejectDialogOpen(false);
-        toast.success("Template rejected.");
-        onTemplateUpdated({ id: template.id, governance_status: "rejected", rejection_reason: reason });
-      } else {
-        toast.error(res.error ?? "Failed to reject.");
-      }
-    });
-
-  const handlePublish = () =>
-    startTransition(async () => {
-      const res = await publishTemplate(template.id);
-      if (res.success) {
-        toast.success("Template published.");
-        onTemplateUpdated({ id: template.id, governance_status: "published" });
-      } else {
-        toast.error(res.error ?? "Failed to publish.");
-      }
-    });
-
-  const handleArchive = (reason: string) =>
-    startTransition(async () => {
-      const res = await archiveTemplate({ templateId: template.id, reason: reason || undefined });
-      if (res.success) {
-        setArchiveDialogOpen(false);
-        toast.success("Template archived.");
-        onTemplateUpdated({ id: template.id, governance_status: "archived", archive_reason: reason || null });
-      } else {
-        toast.error(res.error ?? "Failed to archive.");
-      }
-    });
-
-  const handleCreateNewVersion = () =>
-    startTransition(async () => {
-      const res = await createTemplateDraftVersion(template.id);
-      if (res.success && res.data) {
-        const newId = res.data.id;
-        const nextVersion = (template.version_no ?? 1) + 1;
-        // Add the new draft to the table with minimal known fields so it renders immediately
-        const draftTemplate: Partial<ReportTemplate> & { id: number } = {
-          id: newId,
-          template_code: `${template.template_code}_V${nextVersion}`,
-          template_name: `${template.template_name} (v${nextVersion})`,
-          template_type: template.template_type,
-          governance_status: "draft",
-          security_review_status: "pending",
-          version_no: nextVersion,
-          parent_template_id: template.id,
-          is_active: true,
-          is_default: false,
-        };
-        onNewVersionCreated?.(draftTemplate);
-        // OFFICIAL DOCS.1 Package 9: visual editors (Puck, Template Studio) are
-        // retired. Official document wording is fixed in code; a new draft
-        // version only carries branding/metadata changes edited via this page.
-        toast.success(`Draft v${nextVersion} created.`, {
-          description:
-            "Official document wording is fixed in code. Edit branding/metadata here, then submit the draft for review.",
-          duration: 8000,
-        });
-      } else {
-        toast.error(res.error ?? "Failed to create new version.");
-      }
-    });
-
-  const handleRunSecurityReview = () =>
-    startTransition(async () => {
-      const res = await runTemplateSecurityReviewAction(template.id);
-      if (res.success) {
-        const review = res.data!;
-
-        // UX.3: check for sensitive field governance warnings
-        const sensitiveWarnings = review.findings.filter(
-          (f) =>
-            f.rule === "restricted_field_elevated_approval_required" ||
-            f.rule === "sensitive_fields_require_elevated_approval" ||
-            f.rule === "restricted_field_template_type_unknown"
-        );
-        const blockingFindings = review.findings.filter((f) => f.severity === "block");
-
-        if (review.passed) {
-          if (sensitiveWarnings.length > 0) {
-            toast.warning(
-              `Security review passed — ${sensitiveWarnings.length} restricted field warning(s). Template requires reports.sensitive_fields.approve to publish.`,
-              { duration: 8000 }
-            );
-          } else if (review.severity === "warning") {
-            toast.success("Security review passed (with warnings).");
-          } else {
-            toast.success("Security review passed.");
-          }
-          onTemplateUpdated({ id: template.id, security_review_status: "passed" });
-        } else {
-          const restrictedBlocks = blockingFindings.filter(
-            (f) =>
-              f.rule === "restricted_field_template_type_not_allowed" ||
-              f.rule === "sensitive_binding_path"
-          );
-          if (restrictedBlocks.length > 0) {
-            toast.error(
-              `Security review failed — ${restrictedBlocks.length} restricted/sensitive field(s) not allowed for this template type. Remove them or change the template type.`,
-              { duration: 10000 }
-            );
-          } else {
-            toast.error(`Security review failed — ${review.findings.length} issue(s) found.`);
-          }
-          onTemplateUpdated({ id: template.id, security_review_status: "failed" });
-        }
-      } else {
-        toast.error(res.error ?? "Security review failed.");
-      }
-    });
-
-  const canSubmit = canManage && (status === "draft" || status === "rejected");
-  const canApproveAction = canApprove && status === "in_review";
-  const canRejectAction = canApprove && status === "in_review";
+  const canSubmit = template.is_active && canManage && (status === "draft" || status === "rejected");
+  const canApproveAction = template.is_active && canApprove && status === "in_review";
+  const canRejectAction = template.is_active && canApprove && status === "in_review";
   const canPublishAction =
-    (canPublish || canApprove) && status === "approved";
+    template.is_active && (canPublish || canApprove) && status === "approved";
   const canArchiveAction =
     (canManage || canApprove) && status !== "archived";
   const canNewVersion =
-    canManage && (status === "approved" || status === "published" || status === "in_review" || status === "draft" || status === "rejected");
-  const canRunReview = canManage || canApprove;
+    template.is_active && canManage && (status === "approved" || status === "published" || status === "in_review" || status === "draft");
+  const canRunReview = template.is_active && (canManage || canApprove) && ["draft","rejected","in_review"].includes(status);
 
   if (!canManage && !canApprove && !canPublish) return null;
 
   return (
     <>
+      {saveError&&<div role="alert" className="max-w-sm text-xs text-destructive">{saveError}{lastChange&&<Button disabled={isPending} variant="outline" onClick={()=>change(lastChange.action,lastChange.note)}>Retry last action / reload saved result</Button>}</div>}
       <DropdownMenu>
         <DropdownMenuTrigger
           disabled={isPending}

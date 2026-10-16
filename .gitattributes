@@ -1,2 +1,24 @@
-# Reviewed security-patch digests must survive Windows/Linux checkouts unchanged.
-vendor/** text eol=lf
+/supabase/migrations/*_f06_*.sql text eol=lf
+/tests/remediation/f06/admin-child-browser-contract.mjs text eol=lf
+/tests/remediation/f06/candidate-replay-v72.mjs text eol=lf
+/tests/remediation/f06/candidate-replay-v73.mjs text eol=lf
+/tests/remediation/f06/cb-browser-runtime.mjs text eol=lf
+/tests/remediation/f06/f06-postgres-denial-canary.mjs text eol=lf
+/tests/remediation/f06/n01-browser-contract.mjs text eol=lf
+/tests/remediation/f06/n03-browser-runtime.mjs text eol=lf
+/tests/remediation/f06/scoped-browser-contract.mjs text eol=lf
+/tests/remediation/f06/scoped-browser-permission-fixture.mjs text eol=lf
+/tests/remediation/f06/braces-local-security.test.cjs text eol=lf
+/tests/remediation/f06/braces-upstream-golden.cjs text eol=lf
+/tests/remediation/f06/braces-upstream-golden.json text eol=lf
+/tooling/security/dependency-gate.cjs text eol=lf
+/vendor/braces/** text eol=lf
+/vendor/sprintf-js/** text eol=lf
+/vendor/PATCH-MANIFEST.json text eol=lf
+/vendor/sprintf-js-artifact.json text eol=lf
+/vendor/sprintf-js-1.0.3-algt.1.tgz -text
+/vendor/braces-3.0.3-algt-depth-1.tgz -text
+/vendor/braces-3.0.3-algt-integrated-2.tgz -text
+/tests/remediation/f06/linux-native-paths.cjs text eol=lf
+/tooling/security/verify-vendor-patches.cjs text eol=lf
+/vendor/braces-artifact.json text eol=lf

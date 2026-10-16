@@ -8,6 +8,10 @@ import { z } from "zod";
 
 export type ActionResult<T = unknown> = { success: boolean; data?: T; error?: string };
 
+type DesignationListResult =
+  | { success: true; data: DesignationRow[]; error?: never; kind?: never }
+  | { success: false; kind: "forbidden" | "failed"; error: string; data?: never };
+
 export type DesignationRow = {
   id: number;
   designation_code: string;
@@ -60,10 +64,11 @@ function canManage(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
   return hasPermission(ctx, "common_md.manage") || hasPermission(ctx, "common_md.designations.manage");
 }
 
-export async function listDesignations(filters?: { owner_company_id?: number; department_id?: number; is_active?: boolean; search?: string }): Promise<ActionResult<DesignationRow[]>> {
+export async function listDesignations(filters?: { owner_company_id?: number; department_id?: number; is_active?: boolean; search?: string }): Promise<DesignationListResult> {
+  const failed: DesignationListResult = { success: false, kind: "failed", error: "Designations could not be loaded. Try again." };
   try {
     const ctx = await getAuthContext();
-    if (!canView(ctx)) return { success: false, error: "Permission denied" };
+    if (!canView(ctx)) return { success: false, kind: "forbidden", error: "Permission denied" };
     const supabase = await createClient();
     let q = supabase
       .from("designations")
@@ -75,10 +80,10 @@ export async function listDesignations(filters?: { owner_company_id?: number; de
     if (filters?.is_active !== undefined) q = q.eq("is_active", filters.is_active);
     if (filters?.search) q = q.ilike("designation_name_en", `%${filters.search}%`);
     const { data, error } = await q;
-    if (error) return { success: false, error: error.message };
-    return { success: true, data: (data ?? []) as DesignationRow[] };
-  } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : String(e) };
+    if (error || !Array.isArray(data)) return failed;
+    return { success: true, data: data as DesignationRow[] };
+  } catch {
+    return failed;
   }
 }
 

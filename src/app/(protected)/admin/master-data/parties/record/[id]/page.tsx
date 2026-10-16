@@ -1,8 +1,8 @@
 import { redirect, notFound } from "next/navigation";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasGlobalPermission } from "@/lib/rbac/check";
 import { getPartyById } from "@/server/actions/master-data/parties";
 import { PartyWorkspaceForm } from "@/features/master-data/parties/party-workspace-form";
-import Link from "next/link";
+import { LoadError } from "@/components/erp/load-error";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -16,33 +16,25 @@ export default async function PartyRecordPage({ params, searchParams }: PartyRec
   const { id: idStr } = await params;
   const { mode: modeParam } = await searchParams;
 
-  const id = parseInt(idStr, 10);
-  if (isNaN(id)) {
+  const id = Number(idStr);
+  if (!/^[1-9]\d*$/.test(idStr) || !Number.isSafeInteger(id)) {
     notFound();
   }
 
   const authContext = await getAuthContext();
 
-  if (!hasPermission(authContext, "master_data.parties.view")) {
-    redirect("/admin");
+  if (!hasGlobalPermission(authContext, "master_data.parties.view") && !hasGlobalPermission(authContext, "master_data.party_master.view")) {
+    redirect("/access-denied");
   }
 
   const result = await getPartyById(id);
 
-  if (!result.success || !result.data) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground">
-        <p className="text-lg font-medium">Party not found</p>
-        <p className="text-sm">The party with ID {idStr} does not exist or you do not have permission to view it.</p>
-        <Link href="/admin/master-data/parties" className="text-sm underline text-primary">
-          Back to All Parties
-        </Link>
-      </div>
-    );
-  }
+  if (!result.success && result.kind === 'forbidden') redirect('/access-denied');
+  if (!result.success && result.kind === 'not_found') notFound();
+  if (!result.success || !result.data) return <LoadError title="Party" retryHref={`/admin/master-data/parties/record/${id}?mode=${modeParam==='edit'?'edit':'view'}`} />;
 
   // Determine mode: prefer ?mode param, default to "view"
-  const canEdit = hasPermission(authContext, "master_data.parties.manage");
+  const canEdit = hasGlobalPermission(authContext, "master_data.parties.edit");
   let mode: "view" | "edit" = "view";
   if (modeParam === "edit" && canEdit) {
     mode = "edit";

@@ -6,48 +6,53 @@
  */
 
 import type { AuthContext } from "@/lib/rbac/check";
-import { hasPermission } from "@/lib/rbac/check";
+import { hasGlobalPermission, hasPermissionInScope } from "@/lib/rbac/scope";
 import { isSensitiveBrandingAssetType } from "./constants";
 import type { BrandingAsset, BrandingAssetScope, BrandingAssetType } from "./types";
 
 export function canViewAppBranding(ctx: AuthContext): boolean {
   return (
-    hasPermission(ctx, "branding.app.view") ||
-    hasPermission(ctx, "reports.manage")
+    hasGlobalPermission(ctx, "branding.app.view") ||
+    hasGlobalPermission(ctx, "branding.app.manage") ||
+    hasGlobalPermission(ctx, "reports.manage")
   );
 }
 
 export function canManageAppBranding(ctx: AuthContext): boolean {
-  return hasPermission(ctx, "branding.app.manage");
+  return hasGlobalPermission(ctx, "branding.app.manage");
 }
 
-export function canUploadBrandingAssets(ctx: AuthContext): boolean {
-  return hasPermission(ctx, "branding.assets.upload");
+export function brandingPermission(ctx:AuthContext,permission:string,companyId:number|null):boolean {
+  return companyId===null?hasGlobalPermission(ctx,permission):hasPermissionInScope(ctx,permission,companyId);
 }
 
-export function canViewReportBrandingAssets(ctx: AuthContext): boolean {
-  return hasPermission(ctx, "reports.view") || hasPermission(ctx, "reports.manage");
+export function canUploadBrandingAssets(ctx: AuthContext,companyId:number|null=null): boolean {
+  return brandingPermission(ctx, "branding.assets.upload",companyId);
 }
 
-export function canManageReportBrandingAssets(ctx: AuthContext): boolean {
-  return hasPermission(ctx, "reports.manage");
+export function canViewReportBrandingAssets(ctx: AuthContext,companyId:number|null=null): boolean {
+  return brandingPermission(ctx, "reports.view",companyId) || brandingPermission(ctx, "reports.manage",companyId);
+}
+
+export function canManageReportBrandingAssets(ctx: AuthContext,companyId:number|null=null): boolean {
+  return brandingPermission(ctx, "reports.manage",companyId);
 }
 
 /** Whether caller may receive a signed URL for this asset type */
 export function canAccessBrandingAssetUrl(
   ctx: AuthContext,
-  asset: Pick<BrandingAsset, "asset_scope" | "asset_type">
+  asset: Pick<BrandingAsset, "asset_scope" | "asset_type" | "owner_company_id">
 ): boolean {
   if (asset.asset_scope === "app") {
     return canViewAppBranding(ctx);
   }
 
-  if (!canViewReportBrandingAssets(ctx)) {
+  if (asset.asset_scope!=="report" || asset.owner_company_id===undefined || !canViewReportBrandingAssets(ctx,asset.owner_company_id)) {
     return false;
   }
 
   if (isSensitiveBrandingAssetType(asset.asset_type)) {
-    return hasPermission(ctx, "reports.sign");
+    return brandingPermission(ctx, "reports.sign",asset.owner_company_id);
   }
 
   return true;

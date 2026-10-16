@@ -19,6 +19,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { logger } from "@/lib/logger";
 import { revalidatePath } from "next/cache";
+import {isPartyCorrectionTarget,runPartyCorrection} from '@/server/party-dms-correction';
+import {correctionHistorySelect,projectCorrectionHistory} from '@/lib/dms/apply-correction/correction-history';
 import {
   loadCorrectionSource,
 } from "@/lib/dms/apply-correction/correction-source-loader";
@@ -40,7 +42,7 @@ import {
 } from "@/lib/dms/apply-to-erp/apply-target-registry";
 import type {
   CorrectionSourceData,
-  CorrectionProposalRow,
+  CorrectionProposalHistory,
   CorrectionResult,
   ListCorrectionProposalsFilter,
   CorrectionMode,
@@ -184,11 +186,13 @@ export async function getApplyCorrectionSource(
 // ── createApplyCorrectionProposal ─────────────────────────────────────────────
 
 const CreateProposalSchema = z.object({
+  requestId: z.uuid().optional(),
   originalApplyItemId:       z.number().int().positive(),
   correctionMode:            z.enum(["manual", "restore_previous", "reapply_ai_value"]),
   rawCorrectionValue:        z.string().min(1, "Correction value cannot be empty."),
   /** Source snapshot captured by UI from getApplyCorrectionSource response. */
   sourceSnapshot:            z.object({
+    reviewedRevision: z.string().regex(/^[1-9]\d*$/).optional(),
     originalApplyItemId:    z.number(),
     originalApplyRunId:     z.number(),
     documentId:             z.number().nullable(),
@@ -242,6 +246,18 @@ export async function createApplyCorrectionProposal(
     }
     const input = parsed.data;
 
+    // Reload the authoritative item first; never let a browser select which
+    // record the correction actually targets, including a forged non-party type.
+    const canonical=await loadCorrectionSource(input.originalApplyItemId,ctx.profile.id);
+    if(!canonical.ok)return {success:false,error:canonical.error.message,errorCode:canonical.error.error};
+    const keys=['originalApplyItemId','originalApplyRunId','documentId','targetModule','targetTable','targetField','targetRecordId','valueType'] as const;
+    if(keys.some(key=>input.sourceSnapshot[key]!==canonical.data[key]))return {success:false,error:'The original correction target changed. Reload it and review again.',errorCode:'conflict_detected'};
+    if(isPartyCorrectionTarget(canonical.data.targetTable)){
+      const result=await runPartyCorrection('prepare',{originalApplyItemId:input.originalApplyItemId,requestId:input.requestId,snapshot:input.sourceSnapshot,mode:input.correctionMode,value:input.rawCorrectionValue});
+      if(result.success)refreshCorrectionViews(canonical.data.documentId,canonical.data.partyId);
+      return result;
+    }
+
     // Validate target still allowlisted
     const targetValidation = validateApplyTarget(
       input.sourceSnapshot.targetTable,
@@ -294,7 +310,7 @@ export async function createApplyCorrectionProposal(
  */
 export async function getApplyCorrectionProposal(
   proposalId: number
-): Promise<ActionResult<CorrectionProposalRow>> {
+): Promise<ActionResult<CorrectionProposalHistory>> {
   try {
     if (!isSafeNumber(proposalId)) {
       return { success: false, error: "Invalid proposalId" };
@@ -326,18 +342,19 @@ export async function getApplyCorrectionProposal(
 
     const { data, error } = await supabase
       .from("dms_ai_erp_apply_correction_proposals")
-      .select("*")
+      .select(correctionHistorySelect)
       .eq("id", proposalId)
       .maybeSingle();
 
-    if (error || !data) {
+    if (error) return {success:false,error:"Correction history could not be loaded. Please try again.",errorCode:error.code==='42501'?'permission_denied':'server_error'};
+    if (!data) {
       return { success: false, error: `Correction proposal ${proposalId} not found.`, errorCode: "proposal_not_found" };
     }
 
-    return { success: true, data: data as unknown as CorrectionProposalRow };
+    return { success: true, data: projectCorrectionHistory(data as unknown as CorrectionProposalHistory) };
   } catch (err) {
     logger.error("[apply-correction] getApplyCorrectionProposal error", { error: String(err) });
-    return { success: false, error: "Failed to load correction proposal." };
+    return { success: false, error: "Failed to load correction proposal.", errorCode: "server_error" };
   }
 }
 
@@ -346,10 +363,21 @@ export async function getApplyCorrectionProposal(
 /**
  * List correction proposals with optional filters.
  */
+const HistoryFilterSchema = z.object({
+  documentId:z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+  targetTable:z.string().regex(/^[a-z][a-z0-9_]{0,99}$/).optional(),
+  targetRecordId:z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+  requestedBy:z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+  status:z.union([z.enum(['draft','pending_confirmation','applied','conflict','cancelled','failed']),z.array(z.enum(['draft','pending_confirmation','applied','conflict','cancelled','failed'])).min(1).max(6)]).optional(),
+  page:z.number().int().min(0).max(Math.floor(Number.MAX_SAFE_INTEGER / 100)-1).optional(),
+  pageSize:z.number().int().min(1).max(100).optional(),
+}).strict();
+
 export async function listApplyCorrectionProposals(
   filters: ListCorrectionProposalsFilter = {}
-): Promise<ActionResult<CorrectionProposalRow[]>> {
+): Promise<ActionResult<CorrectionProposalHistory[]>> {
   try {
+    if(!HistoryFilterSchema.safeParse(filters).success)return {success:false,error:'Invalid correction-history filters.',errorCode:'invalid_input'};
     const ctx = await getAuthContext();
     if (!ctx.profile?.id) {
       return { success: false, error: "Not authenticated", errorCode: "not_authenticated" };
@@ -368,7 +396,7 @@ export async function listApplyCorrectionProposals(
 
     const flagEnabled = await isCorrectionProposalsEnabled();
     if (!flagEnabled) {
-      return { success: true, data: [] }; // empty list when disabled
+      return { success: false, error: "Apply Correction feature is not enabled.", errorCode: "feature_flag_disabled" };
     }
 
     const { createClient } = await import("@/lib/supabase/server");
@@ -376,8 +404,9 @@ export async function listApplyCorrectionProposals(
 
     let query = supabase
       .from("dms_ai_erp_apply_correction_proposals")
-      .select("*")
-      .order("created_at", { ascending: false });
+      .select(correctionHistorySelect)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false });
 
     if (filters.documentId != null) {
       query = query.eq("document_id", filters.documentId);
@@ -403,13 +432,13 @@ export async function listApplyCorrectionProposals(
     const { data, error } = await query;
 
     if (error) {
-      return { success: false, error: error.message };
+      return { success: false, error: "Correction history could not be loaded. Please try again.", errorCode:error.code==='42501'?'permission_denied':'server_error' };
     }
 
-    return { success: true, data: (data ?? []) as unknown as CorrectionProposalRow[] };
+    return { success: true, data: ((data ?? []) as unknown as CorrectionProposalHistory[]).map(projectCorrectionHistory) };
   } catch (err) {
     logger.error("[apply-correction] listApplyCorrectionProposals error", { error: String(err) });
-    return { success: false, error: "Failed to list correction proposals." };
+    return { success: false, error: "Failed to list correction proposals.", errorCode: "server_error" };
   }
 }
 
@@ -502,6 +531,12 @@ export async function applyCorrectionProposal(
       };
     }
 
+    if(isPartyCorrectionTarget((proposal as {target_table:string}).target_table)){
+      const result=await runPartyCorrection('apply',input);
+      if(result.success)refreshCorrectionViews();
+      return result;
+    }
+
     // Execute the correction
     const result = await executeCorrectionProposal(
       {
@@ -560,6 +595,14 @@ export async function cancelApplyCorrectionProposal(
       return { success: false, error: "Apply Correction feature is not enabled.", errorCode: "feature_flag_disabled" };
     }
 
+    const {createClient}=await import('@/lib/supabase/server');
+    const db=await createClient(),loaded=await db.from('dms_ai_erp_apply_correction_proposals').select('target_table').eq('id',proposalId).maybeSingle();
+    if(loaded.error||!loaded.data)return {success:false,error:'Correction proposal unavailable.',errorCode:'proposal_not_found'};
+    if(isPartyCorrectionTarget(loaded.data.target_table)){
+      const result=await runPartyCorrection('cancel',{proposalId});
+      if(result.success)refreshCorrectionViews();
+      return result;
+    }
     const result = await cancelCorrectionProposal(proposalId, ctx.profile.id, ctx.profile.id);
 
     if (!result.success) {
@@ -578,5 +621,12 @@ export async function cancelApplyCorrectionProposal(
 // ── Private ───────────────────────────────────────────────────────────────────
 
 function isSafeNumber(n: unknown): n is number {
-  return typeof n === "number" && Number.isFinite(n) && n > 0;
+  return typeof n === "number" && Number.isSafeInteger(n) && n > 0;
+}
+
+function refreshCorrectionViews(documentId?:number|null,partyId?:number){
+  const paths=['/dms','/dms/review-queue','/dms/documents','/admin/master-data/parties'];
+  if(documentId)paths.push(`/dms/documents/record/${documentId}`);
+  if(partyId)paths.push(`/admin/master-data/parties/record/${partyId}`);
+  for(const path of paths)try{revalidatePath(path);}catch{logger.warn('[party-correction] committed result; view refresh unavailable');}
 }

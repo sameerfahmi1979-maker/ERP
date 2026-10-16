@@ -4,7 +4,7 @@ import { ERPDataTable } from "@/components/erp/table/erp-data-table";
 import type { ColumnDef } from "@tanstack/react-table";
 
 import { ERPCombobox } from "@/components/erp/combobox";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
+
 import { CountrySelect, EmirateSelect } from "@/components/erp/geography";
 import { PartySelect } from "@/components/erp/party-select";
 import { RequiredLabel } from "@/components/erp/required-label";
@@ -22,14 +22,16 @@ import {
 } from "@/server/actions/master-data/parties";
 import {
   createPartyLicense,
-  deletePartyLicense,
   updatePartyLicense,
 } from "@/server/actions/master-data/party-licenses";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { addDays, format, isPast, isWithinInterval } from "date-fns";
-import { BadgeCheck, Edit, ExternalLink, Plus, Trash2 } from "lucide-react";
+import { BadgeCheck, Edit, ExternalLink, Plus } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import {PartyChildLifecycleControl,usePartyChildLifecycle} from './party-child-lifecycle-control';
+import {PartyChildSaveDialog,type SavePartyChild} from './party-child-save-dialog';
+import type {CreatePartyLicenseInput} from './party-schemas';
 import { usePartyLicensesQuery } from "./hooks/use-party-child-queries";
 import type { PartyLicense } from "./party-types";
 
@@ -61,9 +63,12 @@ export function PartyLicensesTab({ partyId, disabled, onChildOpen }: PartyLicens
   const queryClient = useQueryClient();
   const { items: licenses, isLoading, error: loadError, refetch } = usePartyLicensesQuery(partyId);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const lifecycle=usePartyChildLifecycle({entity:'party_licenses',onSaved:()=>{invalidatePartyLicenses(queryClient,partyId);},onOpenChange:onChildOpen});
+  const lifecycleOpen=lifecycle.isOpen;
   const setDialogOpen = (open: boolean) => { setIsDialogOpen(open); onChildOpen?.(open); };
   const [editing, setEditing] = useState<PartyLicense | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
   const [form, setForm] = useState({ ...emptyForm });
 
   const { data: licenseTypes } = useQuery({
@@ -79,12 +84,14 @@ export function PartyLicensesTab({ partyId, disabled, onChildOpen }: PartyLicens
   });
 
   const openAdd = () => {
+    if(lifecycleOpen)return;
     setEditing(null);
     setForm({ ...emptyForm });
     setDialogOpen(true);
   };
 
   const openEdit = (item: PartyLicense) => {
+    if(lifecycleOpen)return;
     setEditing(item);
     setForm({
       license_type_id: item.license_type_id,
@@ -96,7 +103,7 @@ export function PartyLicensesTab({ partyId, disabled, onChildOpen }: PartyLicens
       issue_date: item.issue_date ?? "",
       expiry_date: item.expiry_date ?? "",
       renewal_required: item.renewal_required,
-      renewal_notice_days: item.renewal_notice_days ? String(item.renewal_notice_days) : "",
+      renewal_notice_days: item.renewal_notice_days == null ? "" : String(item.renewal_notice_days),
       license_status_id: item.license_status_id,
       license_activity_text: item.license_activity_text ?? "",
       is_primary: item.is_primary,
@@ -106,18 +113,8 @@ export function PartyLicensesTab({ partyId, disabled, onChildOpen }: PartyLicens
     setDialogOpen(true);
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("Delete this license?")) return;
-    const result = await deletePartyLicense(id);
-    if (result.success) {
-      toast.success("License deleted");
-      invalidatePartyLicenses(queryClient, partyId);
-    } else {
-      toast.error(result.error ?? "Failed to delete");
-    }
-  };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (save:SavePartyChild<CreatePartyLicenseInput>) => {
     if (!form.license_type_id || !form.license_number || !form.license_status_id) {
       toast.error("Please fill in all required fields");
       return;
@@ -143,15 +140,10 @@ export function PartyLicensesTab({ partyId, disabled, onChildOpen }: PartyLicens
         remarks: form.remarks || null,
       };
 
-      let result;
-      if (editing) {
-        result = await updatePartyLicense({ id: editing.id, ...payload });
-      } else {
-        result = await createPartyLicense(payload);
-      }
+      const result = await save(payload);
 
       if (result.success) {
-        toast.success(`License ${editing ? "updated" : "added"}`);
+        toast.success(result.data?.changed === false ? "No changes to save" : `License ${editing ? "updated" : "added"}`);
         setDialogOpen(false);
         invalidatePartyLicenses(queryClient, partyId);
       } else {
@@ -172,6 +164,7 @@ export function PartyLicensesTab({ partyId, disabled, onChildOpen }: PartyLicens
   };
 
   const columns: ColumnDef<PartyLicense>[] = [
+    {id:'archive_state',header:'Archive status',accessorFn:row=>row.archived_at?'Archived':'Current'},
     {id:"license_code",header:"License",size:360,accessorFn:row=>[row.license_code,row.license_number,row.license_type_name,row.expiry_date].filter(Boolean).join(" "),enableHiding:false,cell:({row})=>{const lic=row.original;return (<div className="space-y-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-mono text-xs text-muted-foreground">{lic.license_code}</span>
@@ -202,12 +195,10 @@ export function PartyLicensesTab({ partyId, disabled, onChildOpen }: PartyLicens
                 )}
                 {!disabled && (
                   <>
-                    <Button aria-label="Edit record" type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(lic)}>
+                    <Button aria-label="Edit record" type="button" variant="ghost" size="icon" className="h-7 w-7" disabled={Boolean(lic.archived_at)} onClick={() => openEdit(lic)}>
                       <Edit className="h-3.5 w-3.5" />
                     </Button>
-                    <Button aria-label="Delete record" type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(lic.id)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    <PartyChildLifecycleControl record={lic} onOpen={()=>lifecycle.open(lic,lic.license_code)}/>
                   </>
                 )}
               </div></>);}},
@@ -228,7 +219,12 @@ export function PartyLicensesTab({ partyId, disabled, onChildOpen }: PartyLicens
       {loadError ? <div role="alert" className="rounded border p-4"><p>License records could not be loaded.</p><Button type="button" variant="outline" onClick={refetch}>Try again</Button></div> :
         <ERPDataTable tableId={`party.licenses:${partyId}`} resultsLabel="License" data={licenses ?? []} columns={columns} enableRowSelection={false} />}
 
-      <ERPChildDialogForm
+      {isDialogOpen && <PartyChildSaveDialog
+        key={editing?.id ?? 'new'}
+        formId={`party-licenses-tab:${partyId}`}
+        record={editing}
+        createAction={createPartyLicense}
+        updateAction={updatePartyLicense}
         open={isDialogOpen}
         onOpenChange={setDialogOpen}
         title={editing ? "Edit License" : "Add License"}
@@ -313,7 +309,8 @@ export function PartyLicensesTab({ partyId, disabled, onChildOpen }: PartyLicens
             <Textarea aria-label="Remarks" value={form.remarks} onChange={(e) => setForm((f) => ({ ...f, remarks: e.target.value }))} rows={2} />
           </div>
         </div>
-      </ERPChildDialogForm>
+      </PartyChildSaveDialog>}
+      {lifecycle.dialog}
     </div>
   );
 }

@@ -2,6 +2,9 @@
 import { RecordCollection } from "@/components/erp/table/record-collection";
 
 import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { createWorkspaceSaveAttempt, type WorkspaceSaveContract } from "@/lib/workspace/save-contract";
+import { AlgtDialog } from "@/components/design-system/algt-dialog";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -72,19 +75,48 @@ export function AiProviderConfigList({ configs, onAdd, canManage=false, canManag
   const flight = useRef(false);
   const [busy, setBusy] = useState(false);
   const [uncertain, setUncertain] = useState(false);
+  const [retiring, setRetiring] = useState<AiProviderConfig | null>(null);
+  const [retireError, setRetireError] = useState("");
+  const attempt = useRef(createWorkspaceSaveAttempt());
+  const pending = useRef<{id: number; workspaceRevision: string | null; contract: WorkspaceSaveContract; hadUnknown: boolean} | null>(null);
+  const [retirementUnconfirmed, setRetirementUnconfirmed] = useState(false);
+  const [retirementId, setRetirementId] = useState<number | null>(null);
+  const router = useRouter();
+  const confirmedRef = useRef<Record<number, string | null>>({});
+  const [confirmed, setConfirmed] = useState<Record<number, string | null>>({});
+  const [displayError, setDisplayError] = useState(false);
+  const isConfirmed = (config: AiProviderConfig) => Object.hasOwn(confirmed, config.id) && confirmed[config.id] === (config.workspaceRevision ?? null);
+  const confirm = (config: {id: number; workspaceRevision?: string | null}) => {
+    confirmedRef.current = {...confirmedRef.current, [config.id]: config.workspaceRevision ?? null};
+    setConfirmed(confirmedRef.current);
+  };
+  const display = (effect: () => void) => { try { effect(); } catch { setDisplayError(true); } };
+  const refreshSettings = () => display(() => router.refresh());
 
-  const handleDelete = async (config: AiProviderConfig) => {
-    if (!canManage || flight.current || uncertain) return;
-    if (!confirm(`Delete provider "${config.providerName}"? This cannot be undone.`)) return;
+  const retryRetirement = async () => {
+    const request = pending.current;
+    if (!request || !canManage || flight.current || uncertain) return;
     flight.current = true;
     setBusy(true);
     try {
-      const result = await deleteAiProviderConfig(config.id);
-      if (result.success) toast.success("Provider deleted");
-      else toast.error("Provider deletion was not accepted. Refresh and check your permissions.");
+      const result = await deleteAiProviderConfig(request.id, request.contract);
+      if (!result.success && (result.uncertain || request.hadUnknown)) {
+        request.hadUnknown = true; setRetirementUnconfirmed(true); setRetireError('Retirement unconfirmed. Retry the original retirement to recover its result.'); return;
+      }
+      if (pending.current === request) { pending.current = null; setRetirementId(null); attempt.current.resolved(); }
+      setRetirementUnconfirmed(false);
+      if (result.success) { confirm(request); setRetireError(""); display(() => toast.success("Provider retired; history preserved")); setRetiring(null); refreshSettings(); }
+      else setRetireError(result.error ?? "Provider retirement was not confirmed. Retry the same operation.");
     } catch {
-      setUncertain(true);
+      request.hadUnknown = true; setRetirementUnconfirmed(true);
+      setRetireError("Retirement unconfirmed. Retry this operation to recover its result, or reopen settings to reconcile it.");
     } finally { flight.current = false; setBusy(false); }
+  };
+  const handleDelete = async (config: AiProviderConfig) => {
+    if (!canManage || flight.current || uncertain || config.isDefault || (pending.current && pending.current.id !== config.id) || (Object.hasOwn(confirmedRef.current, config.id) && confirmedRef.current[config.id] === (config.workspaceRevision ?? null))) return;
+    pending.current ??= {id: config.id, workspaceRevision: config.workspaceRevision ?? null, contract: attempt.current.begin(['archive',config.id],config.workspaceRevision ?? null), hadUnknown:false};
+    setRetirementId(pending.current.id);
+    await retryRetirement();
   };
 
   const handleTest = async (config: AiProviderConfig) => {
@@ -98,12 +130,12 @@ export function AiProviderConfigList({ configs, onAdd, canManage=false, canManag
         const message = result.data.ok ? "Connection succeeded" : "Connection failed. Review the provider configuration.";
         setTestResults((prev) => ({ ...prev, [config.id]: { ok: result.data!.ok, message } }));
         if (result.data.ok) {
-          toast.success(message);
+          display(() => toast.success(message));
         } else {
-          toast.error(message);
+          display(() => toast.error(message));
         }
       } else {
-        toast.error("The connection test was not accepted.");
+        display(() => toast.error("The connection test was not accepted."));
       }
     } catch {
       setUncertain(true);
@@ -114,7 +146,7 @@ export function AiProviderConfigList({ configs, onAdd, canManage=false, canManag
     }
   };
 
-  if (configs.length === 0) {
+  if (configs.length === 0 && !retirementUnconfirmed) {
     return (
       <Card>
         <CardContent className="flex flex-col items-center justify-center py-12 gap-3">
@@ -132,6 +164,12 @@ export function AiProviderConfigList({ configs, onAdd, canManage=false, canManag
   return (
     <>
       {uncertain && <div role="alert" className="border border-destructive p-3 text-sm">The operation could not be confirmed. Reload and check the provider status before trying again.</div>}
+      {retirementUnconfirmed && <Button type="button" variant="outline" disabled={busy || !canManage || uncertain} onClick={()=>void retryRetirement()}>Retry original retirement</Button>}
+      {(Object.keys(confirmed).length > 0 || displayError) && <div className="space-y-2">{Object.keys(confirmed).length > 0 && <p role="status">Provider change confirmed. Refresh settings before making another change to this record.</p>}{displayError && <p role="status">The display could not finish updating. Confirmed changes and recorded connection results are unchanged.</p>}<Button type="button" variant="outline" onClick={refreshSettings}>Refresh settings only</Button></div>}
+      <AlgtDialog open={!!retiring} title="Retire AI provider?" onOpenChange={open=>{if(!open&&!busy)setRetiring(null);}} actions={<><Button disabled={busy} variant="outline" onClick={()=>setRetiring(null)}>Keep provider</Button><Button disabled={busy || !canManage || retiring?.isDefault} onClick={()=>{if(retiring)void handleDelete(retiring);}}>Confirm retirement</Button></>}>
+        <p>Retire {retiring?.providerName}? Its configuration and usage history will be preserved. A default must be replaced first.</p>
+        {retireError && <p role="alert">{retireError}</p>}
+      </AlgtDialog>
       <div className="grid gap-4">
         {<RecordCollection id="special.ai-provider-config-list" rows={configs} fields={[{"id":"providerName","path":"providerName","label":"Provider"},{"id":"configCode","path":"configCode","label":"Code"},{"id":"providerType","path":"providerType","label":"Type"},{"id":"purpose","path":"purpose","label":"Purpose"}]} renderRecord={(config) => {
           const liveResult = testResults[config.id];
@@ -179,11 +217,11 @@ export function AiProviderConfigList({ configs, onAdd, canManage=false, canManag
                       <MoreHorizontal className="h-4 w-4" />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      {canManage && <DropdownMenuItem onClick={() => setEditTarget(config)}>
+                      {canManage && <DropdownMenuItem disabled={busy || uncertain || retirementUnconfirmed || isConfirmed(config)} onClick={() => setEditTarget(config)}>
                         <Pencil className="mr-2 h-4 w-4" />
                         Edit Configuration
                       </DropdownMenuItem>}
-                      {canManageSecrets && <DropdownMenuItem onClick={() => setSecretTarget(config)}>
+                      {canManageSecrets && <DropdownMenuItem disabled={busy || uncertain || retirementUnconfirmed || isConfirmed(config)} onClick={() => setSecretTarget(config)}>
                         <Key className="mr-2 h-4 w-4" />
                         Update API Key
                       </DropdownMenuItem>}
@@ -196,8 +234,9 @@ export function AiProviderConfigList({ configs, onAdd, canManage=false, canManag
                       </DropdownMenuItem>}
                       {canManage && <DropdownMenuSeparator />}
                       {canManage && <DropdownMenuItem
+                        disabled={busy || uncertain || isConfirmed(config) || (retirementUnconfirmed && retirementId !== config.id)}
                         className="text-destructive focus:text-destructive"
-                        onClick={() => handleDelete(config)}
+                        onClick={() => { setRetireError(""); setRetiring(config); }}
                       >
                         <Trash2 className="mr-2 h-4 w-4" />
                         Delete
@@ -267,7 +306,7 @@ export function AiProviderConfigList({ configs, onAdd, canManage=false, canManag
                     size="sm"
                     className="h-7 gap-1.5 text-xs"
                     onClick={() => setSecretTarget(config)}
-                    disabled={busy || uncertain}
+                    disabled={busy || uncertain || retirementUnconfirmed || isConfirmed(config)}
                   >
                     <Key className="h-3.5 w-3.5" />
                     Update API Key
@@ -286,8 +325,10 @@ export function AiProviderConfigList({ configs, onAdd, canManage=false, canManag
           canManageSecrets={canManageSecrets}
           onClose={() => setEditTarget(null)}
           onSaved={() => {
-            toast.success("Provider updated");
+            confirm(editTarget);
+            display(() => toast.success("Provider updated"));
             setEditTarget(null);
+            refreshSettings();
           }}
         />
       )}
@@ -298,8 +339,10 @@ export function AiProviderConfigList({ configs, onAdd, canManage=false, canManag
           config={secretTarget}
           onClose={() => setSecretTarget(null)}
           onSaved={() => {
-            toast.success("API key reference saved");
+            confirm(secretTarget);
+            display(() => toast.success("API key reference saved"));
             setSecretTarget(null);
+            refreshSettings();
           }}
         />
       )}

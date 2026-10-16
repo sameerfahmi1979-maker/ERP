@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext } from "@/lib/rbac/check";
+import {lookupCapabilities} from '@/features/master-data/lookups/permissions';
 import { listLookupCategories, listLookupValues } from "@/server/actions/master-data/lookups";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,7 +48,7 @@ async function LockedSystemContent() {
         <AlertTitle>System-Locked Values</AlertTitle>
         <AlertDescription>
           These values are critical to the ERP system and are locked to prevent accidental modification.
-          Only users with lock permission can modify these values.
+          Content changes require global management and lock permissions. Global lock-only users can change only the lock itself.
         </AlertDescription>
       </Alert>
 
@@ -138,7 +139,7 @@ async function LockedSystemContent() {
 export default async function LockedSystemValuesPage() {
   const ctx = await getAuthContext();
   
-  if (!hasPermission(ctx, "master_data.lookups.view")) {
+  if (!lookupCapabilities(ctx).read) {
     redirect("/access-denied");
   }
 

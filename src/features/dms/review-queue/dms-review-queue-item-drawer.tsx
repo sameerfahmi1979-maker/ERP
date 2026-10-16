@@ -18,7 +18,8 @@ import { Button } from "@/components/ui/button";
 import { X, UserCheck, Play, CheckCircle2, Ban, ExternalLink, Clock, ShieldAlert, GitMerge, Search, Sparkles } from "lucide-react";
 // Phase 16 — Apply-to-ERP entry point (feature-flag gated inside DmsApplyToErpPreview)
 import { DmsApplyToErpPreview, DmsPartyTargetSelector } from "@/features/dms/apply-to-erp";
-import type { PartyApplyTargetKind } from "@/lib/dms/apply-to-erp/types";
+import type { PartyApplyTargetKind,PartyLicenseRow,PartyTaxRow } from "@/lib/dms/apply-to-erp/types";
+import {PartyDocumentReviewFields} from '@/features/dms/apply-to-erp/party-document-review-fields';
 // DMS AI META.2 — Flow B: AI metadata suggestions review, embedded (not modal)
 import { DmsAiMetadataSuggestionsDialog } from "@/features/dms/admin/dms-ai-metadata-suggestions-dialog";
 import type { AiSuggestedField } from "@/lib/dms/metadata/ai-definition-builder";
@@ -61,7 +62,8 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
   // Phase 16 Tier 2 — Party write-back state
   const [partyTargetKind, setPartyTargetKind] = useState<PartyApplyTargetKind>("party_licenses");
   const [partySelectedRowId, setPartySelectedRowId] = useState<number | null>(null);
-  const [suggestedTaxExpiry] = useState(() => new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]);
+  const [partySelectedRow,setPartySelectedRow]=useState<PartyLicenseRow|PartyTaxRow|null>(null);
+  const [partyAppliedVersion,setPartyAppliedVersion]=useState(0);
 
   const isActive = ["open", "assigned", "in_review"].includes(item.status);
 
@@ -531,7 +533,7 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
               Apply to Party Master — Phase 16 Tier 2
             </p>
             <p className="text-xs text-violet-700 dark:text-violet-200">
-              Apply AI-extracted values to this party&apos;s Licenses or Tax Registration records.
+              Review values from this document before updating this party&apos;s Licenses or Tax Registration records.
               Feature-flag gated. You must select the specific record to update.
             </p>
 
@@ -541,7 +543,7 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
                 <button
                   key={kind}
                   type="button"
-                  onClick={() => { setPartyTargetKind(kind); setPartySelectedRowId(null); }}
+                  onClick={() => { setPartyTargetKind(kind); setPartySelectedRowId(null);setPartySelectedRow(null); }}
                   className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
                     partyTargetKind === kind
                       ? "bg-violet-600 text-white border-violet-600"
@@ -555,55 +557,22 @@ export function DmsReviewQueueItemDrawer({ item, canManage, onClose, onMutated, 
 
             {/* Row selector */}
             <DmsPartyTargetSelector
+              key={`${item.id}:${partyTargetKind}:${partyAppliedVersion}`}
               documentId={item.documentId}
               partyId={item.entityMatchCandidate.targetEntityId}
               partyName={item.entityMatchCandidate.targetDisplayName}
               targetKind={partyTargetKind}
               selectedRowId={partySelectedRowId}
-              onRowSelected={setPartySelectedRowId}
+              onRowSelected={(id,row)=>{setPartySelectedRowId(id);setPartySelectedRow(id==null?null:row??null);}}
             />
 
             {/* Apply preview — only enabled once a row is selected */}
-            {partySelectedRowId != null && (
-              <DmsApplyToErpPreview
-                documentId={item.documentId}
-                reviewQueueItemId={item.id}
-                sourceType="entity_match_candidate"
-                sourceId={item.entityMatchCandidateId}
-                targetModule="party"
-                targetTable={partyTargetKind}
-                targetRecordId={partySelectedRowId}
-                partyId={item.entityMatchCandidate.targetEntityId}
-                partyName={item.entityMatchCandidate.targetDisplayName}
-                targetKind={partyTargetKind}
-                proposals={[{
-                  sourceType:          "entity_match_candidate",
-                  sourceId:            item.entityMatchCandidateId,
-                  sourceFieldCode:     "party_match_confirmed",
-                  targetTable:         partyTargetKind,
-                  targetField:         partyTargetKind === "party_licenses" ? "remarks" : "effective_to",
-                  targetRecordId:      partySelectedRowId,
-                  targetDisplayLabel:  partyTargetKind === "party_licenses"
-                                         ? "License Remarks"
-                                         : "Tax Effective To Date",
-                  currentValueSummary: null,
-                  proposedValueSummary: partyTargetKind === "party_licenses"
-                                          ? `Verified – entity match: ${item.entityMatchCandidate.targetDisplayName ?? ""}`
-                                          : suggestedTaxExpiry,
-                  valueType:           partyTargetKind === "party_licenses" ? "text" : "date",
-                  confidence:          item.entityMatchCandidate.matchScore ?? null,
-                  requiresConfirmation: true,
-                  conflictRisk:        false,
-                }]}
-                label={
-                  partyTargetKind === "party_licenses"
-                    ? "Preview Apply to Party License"
-                    : "Preview Apply to Tax Registration"
-                }
-                onApplied={() => {
-                  setPartySelectedRowId(null);
-                }}
-              />
+            {partySelectedRowId != null && partySelectedRow && (
+              <PartyDocumentReviewFields key={item.id+':'+partyTargetKind+':'+partySelectedRowId}
+                documentId={item.documentId} partyId={item.entityMatchCandidate.targetEntityId}
+                partyName={item.entityMatchCandidate.targetDisplayName} kind={partyTargetKind} row={partySelectedRow}
+                sourceId={item.entityMatchCandidateId} reviewQueueItemId={item.id}
+                onApplied={()=>{setPartySelectedRowId(null);setPartySelectedRow(null);setPartyAppliedVersion(v=>v+1);}}/>
             )}
             {partySelectedRowId == null && (
               <p className="text-xs text-violet-500 italic dark:text-violet-300">

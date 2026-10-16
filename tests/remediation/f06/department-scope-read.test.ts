@@ -1,0 +1,10 @@
+import {beforeEach,it,expect,vi} from 'vitest';
+vi.mock('server-only',()=>({}));
+const db=vi.hoisted(()=>({rpc:vi.fn()}));
+vi.mock('@/lib/supabase/server',()=>({createClient:async()=>db}));
+import {readDepartmentScopeCatalogue} from '@/server/department-scope-catalogue';
+const data={companies:[{id:1,legal_name_en:'Synthetic',company_code:'SYN',status:'active',can_manage:false}],branches:[{id:2,owner_company_id:1,branch_name_en:'Branch',branch_name_ar:null,branch_code:'B',status:'active',can_manage:true}]};
+beforeEach(()=>{vi.clearAllMocks();db.rpc.mockResolvedValue({data,error:null});});
+it('preserves complete projected labels without querying privileged base tables',async()=>{expect(await readDepartmentScopeCatalogue()).toEqual({success:true,data});expect(db.rpc).toHaveBeenCalledExactlyOnceWith('get_department_scope_catalogue');});
+it.each([null,{companies:[]},{...data,branches:[{...data.branches[0],can_manage:undefined}]},{...data,secret:'not permitted'}])('rejects malformed or overbroad projections: %j',async value=>{db.rpc.mockResolvedValue({data:value,error:null});expect((await readDepartmentScopeCatalogue()).success).toBe(false);});
+it('errors and exceptions never masquerade as empty choices or disclose diagnostics',async()=>{db.rpc.mockResolvedValueOnce({data:null,error:{message:'private failure'}}).mockRejectedValueOnce(Error('private failure'));for(let i=0;i<2;i++){const result=await readDepartmentScopeCatalogue();expect(result.success).toBe(false);expect(JSON.stringify(result)).not.toContain('private');}});

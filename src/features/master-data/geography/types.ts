@@ -8,6 +8,7 @@
 // ============================================================================
 
 export interface Country {
+  workspace_revision?: number;
   id: number;
   country_code: string;
   iso3_code: string;
@@ -36,6 +37,7 @@ export interface Country {
 // For UAE, records are Emirates. For other countries, records may be Governorates, States, Provinces, or Regions.
 // The table name remains "emirates" and FK column remains "emirate_id" for backward compatibility.
 export interface Emirate {
+  workspace_revision?: number;
   id: number;
   emirate_code: string;
   name_en: string;
@@ -61,6 +63,7 @@ export interface Emirate {
 export type AdministrativeRegion = Emirate;
 
 export interface City {
+  workspace_revision?: number;
   id: number;
   city_code: string;
   name_en: string;
@@ -81,6 +84,7 @@ export interface City {
 }
 
 export interface AreaZone {
+  workspace_revision?: number;
   id: number;
   area_code: string;
   name_en: string;
@@ -101,6 +105,7 @@ export interface AreaZone {
 }
 
 export interface Port {
+  workspace_revision?: number;
   id: number;
   port_code: string;
   name_en: string;
@@ -348,6 +353,8 @@ export interface GeographySelectOption {
 }
 
 export interface CountrySelectProps {
+  /** Display-only label from the authorized saved record; not a selectable inactive choice. */
+  savedSelection?: import('@/lib/master-data/saved-selection').SavedSelection;
   value?: number | null;
   onValueChange?: (value: number | null) => void;
   placeholder?: string;
@@ -364,6 +371,7 @@ export interface CountrySelectProps {
 }
 
 export interface EmirateSelectProps {
+  savedSelection?: import('@/lib/master-data/saved-selection').SavedSelection;
   value?: number | null;
   onValueChange?: (value: number | null) => void;
   countryId?: number | null; // Filter regions/emirates by country (for global support)
@@ -380,6 +388,7 @@ export interface EmirateSelectProps {
 }
 
 export interface CitySelectProps {
+  savedSelection?: import('@/lib/master-data/saved-selection').SavedSelection;
   value?: number | null;
   onValueChange?: (value: number | null) => void;
   emirateId?: number | null;
@@ -396,6 +405,7 @@ export interface CitySelectProps {
 }
 
 export interface AreaZoneSelectProps {
+  savedSelection?: import('@/lib/master-data/saved-selection').SavedSelection;
   value?: number | null;
   onValueChange?: (value: number | null) => void;
   cityId?: number | null;

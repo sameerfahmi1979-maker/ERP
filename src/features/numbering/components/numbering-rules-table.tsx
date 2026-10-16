@@ -1,6 +1,7 @@
 "use client";
 
 import type { NumberingRule } from "@/features/numbering/numbering-types";
+import {illustrativeReference} from '@/lib/numbering/format';
 import { ERPDataTable } from "@/components/erp/table/erp-data-table";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
@@ -26,36 +27,43 @@ import { toggleNumberingRuleActive, toggleNumberingRuleLock } from "@/server/act
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { useRouter } from "next/navigation";
+import {useRef,useState} from 'react';
+import {createWorkspaceSaveAttempt} from '@/lib/workspace/save-contract';
 
 const BASE = "/admin/settings/numbering";
 
 type NumberingRulesTableProps = {
   rules: NumberingRule[];
+  canManage:boolean;
+  canLock:boolean;
 };
 
-export function NumberingRulesTable({ rules }: NumberingRulesTableProps) {
+export function NumberingRulesTable({ rules,canManage,canLock }: NumberingRulesTableProps) {
   const router = useRouter();
+  const attempts=useRef(new Map<string,ReturnType<typeof createWorkspaceSaveAttempt>>());
+  const running=useRef(false);
+  const [busy,setBusy]=useState(false);
+  const [receipts,setReceipts]=useState<Record<number,{revision:string;is_active:boolean;is_locked:boolean}>>({});
 
   const handleAdd = () => router.push(`${BASE}/record/new`);
   const handleView = (rule: NumberingRule) => router.push(`${BASE}/record/${rule.id}`);
   const handleEdit = (rule: NumberingRule) => router.push(`${BASE}/record/${rule.id}?mode=edit`);
 
-  const handleToggleActive = async (rule: NumberingRule) => {
-    const result = await toggleNumberingRuleActive(rule.id, !rule.is_active);
-    if (result.success) {
-      toast.success(`Rule ${rule.is_active ? "deactivated" : "activated"} successfully`);
-    } else {
-      toast.error(result.error ?? "Failed to toggle rule status");
-    }
-  };
-
-  const handleToggleLock = async (rule: NumberingRule) => {
-    const result = await toggleNumberingRuleLock(rule.id, !rule.is_locked);
-    if (result.success) {
-      toast.success(`Rule ${rule.is_locked ? "unlocked" : "locked"} successfully`);
-    } else {
-      toast.error(result.error ?? "Failed to toggle rule lock");
-    }
+  const mutate=async(rule:NumberingRule,action:'active'|'lock')=>{
+    if(running.current)return;running.current=true;setBusy(true);
+    const prior=receipts[rule.id];
+    const current=prior&&Number(prior.revision)>=(rule.workspace_revision??0)?prior:{revision:String(rule.workspace_revision??''),is_active:rule.is_active,is_locked:rule.is_locked};
+    const key=`${rule.id}:${action}`,attempt=attempts.current.get(key)??createWorkspaceSaveAttempt();attempts.current.set(key,attempt);
+    const value=action==='active'?!current.is_active:!current.is_locked;
+    try{
+      const contract=attempt.begin({action,value},current.revision||null);
+      const result=action==='active'?await toggleNumberingRuleActive(rule.id,value,contract):await toggleNumberingRuleLock(rule.id,value,contract);
+      if(result.success&&result.data){
+        attempt.resolved();setReceipts(old=>({...old,[rule.id]:{...current,revision:result.data!.revision,[action==='active'?'is_active':'is_locked']:value}}));
+        toast.success(result.data.changed===false?'No changes to save':'Numbering rule updated');
+      }else{if(!result.uncertain)attempt.resolved();toast.error(result.error??'Change unconfirmed. Retry the same action.');}
+    }catch(error){toast.error(error instanceof Error?error.message:'Change unconfirmed. Retry the same action.');}
+    finally{running.current=false;setBusy(false);}
   };
 
   const columns: ColumnDef<NumberingRule>[] = [
@@ -132,18 +140,10 @@ export function NumberingRulesTable({ rules }: NumberingRulesTableProps) {
     },
     {
       id: "next_preview",
-      header: "Next Number Preview",
+      header: "Format Example (UTC)",
       cell: ({ row }) => {
         const rule = row.original;
-        const seq = rule.next_sequence_number.toString().padStart(rule.sequence_length, rule.padding_character);
-        const preview = rule.format_template
-          .replace("{DOC}", rule.document_prefix)
-          .replace("{SEQ}", seq)
-          .replace("{SEQ3}", rule.next_sequence_number.toString().padStart(3, "0"))
-          .replace("{SEQ4}", rule.next_sequence_number.toString().padStart(4, "0"))
-          .replace("{SEQ5}", rule.next_sequence_number.toString().padStart(5, "0"))
-          .replace("{SEQ6}", rule.next_sequence_number.toString().padStart(6, "0"))
-          .replace("{SEQ12}", rule.next_sequence_number.toString().padStart(12, "0"));
+        const preview = illustrativeReference(rule,new Date());
         return (
           <span className="font-mono text-sm font-bold text-indigo-600 dark:text-indigo-400">
             {preview}
@@ -152,11 +152,8 @@ export function NumberingRulesTable({ rules }: NumberingRulesTableProps) {
       },
       meta: {
         exportable: true,
-        exportHeader: "Next Number Preview",
-        exportValue: (row) => {
-          const seq = row.next_sequence_number.toString().padStart(row.sequence_length, row.padding_character);
-          return row.format_template.replace("{DOC}", row.document_prefix).replace("{SEQ}", seq);
-        },
+        exportHeader: "Format Example (UTC)",
+        exportValue: (row) => illustrativeReference(row,new Date()),
       },
     },
     {
@@ -252,18 +249,18 @@ export function NumberingRulesTable({ rules }: NumberingRulesTableProps) {
                   <Eye className="h-4 w-4 mr-2" />
                   View Details
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleEdit(rule)}>
+                <DropdownMenuItem disabled={!canManage||(rule.is_locked&&!canLock)} onClick={() => handleEdit(rule)}>
                   <Pencil className="h-4 w-4 mr-2" />
                   Edit
                 </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
-                <DropdownMenuItem onClick={() => handleToggleActive(rule)}>
+                <DropdownMenuItem disabled={busy||!canManage||(rule.is_locked&&!canLock)} onClick={() => mutate(rule,'active')}>
                   <Power className="h-4 w-4 mr-2" />
                   {rule.is_active ? "Deactivate" : "Activate"}
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleToggleLock(rule)}>
+                <DropdownMenuItem disabled={busy||!canLock} onClick={() => mutate(rule,'lock')}>
                   {rule.is_locked ? (
                     <>
                       <Unlock className="h-4 w-4 mr-2" />
@@ -291,7 +288,7 @@ export function NumberingRulesTable({ rules }: NumberingRulesTableProps) {
     <ERPDataTable<NumberingRule>
       tableId="numbering_rules_table"
       columns={columns}
-      data={rules}
+      data={rules.map(rule=>receipts[rule.id]&&Number(receipts[rule.id].revision)>=(rule.workspace_revision??0)?{...rule,...receipts[rule.id],workspace_revision:Number(receipts[rule.id].revision)}:rule)}
       enableSorting={true}
       enableColumnResizing={true}
       enableRowSelection={true}
@@ -307,7 +304,7 @@ export function NumberingRulesTable({ rules }: NumberingRulesTableProps) {
         orientation: "landscape",
       }}
       toolbarSlot={
-        <Button onClick={handleAdd} size="sm" className="gap-2">
+        <Button disabled={!canManage} onClick={handleAdd} size="sm" className="gap-2">
           <Plus className="h-4 w-4" />
           Add Numbering Rule
         </Button>

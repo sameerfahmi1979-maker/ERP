@@ -1,0 +1,17 @@
+// Explicit read-transport doubles; PostgreSQL boundary proof is separate.
+import {beforeEach,expect,it,vi} from 'vitest';
+import type {SupabaseClient} from '@supabase/supabase-js';
+import {validateGeographyReferences,geographyWriteError} from '@/features/master-data/geography/integrity';
+const from=vi.fn(),maybeSingle=vi.fn();
+const client={from} as unknown as SupabaseClient;
+beforeEach(()=>{vi.resetAllMocks();from.mockReturnValue({select:()=>({eq:()=>({maybeSingle})})});});
+it('accepts matching active country and region',async()=>{maybeSingle.mockResolvedValueOnce({data:{id:1,is_active:true}}).mockResolvedValueOnce({data:{id:2,country_id:1,is_active:true}});expect(await validateGeographyReferences(client,'cities',{country_id:1,emirate_id:2})).toBeNull();});
+it.each(['cities','ports'] as const)('rejects %s mismatch with field-linked feedback',async(entity)=>{maybeSingle.mockResolvedValueOnce({data:{id:1,is_active:true}}).mockResolvedValueOnce({data:{id:2,country_id:3,is_active:true}});expect(await validateGeographyReferences(client,entity,{country_id:1,emirate_id:2})).toMatchObject({success:false,fieldErrors:{country_id:'Country must match the selected region.'}});});
+it('merges partial updates without erasing the existing country',async()=>{maybeSingle.mockResolvedValueOnce({data:{id:1,is_active:true}}).mockResolvedValueOnce({data:{id:5,country_id:3,is_active:true}});expect((await validateGeographyReferences(client,'cities',{emirate_id:5,country_id:undefined},{country_id:1,emirate_id:2,is_active:true}))?.success).toBe(false);});
+it('retains unchanged historical selection during unrelated edits',async()=>{expect(await validateGeographyReferences(client,'cities',{name_en:'Renamed'},{country_id:1,emirate_id:2,is_active:true})).toBeNull();expect(from).not.toHaveBeenCalled();});
+it('rechecks inactive references on reactivation',async()=>{maybeSingle.mockResolvedValue({data:{id:2,is_active:false}});expect((await validateGeographyReferences(client,'areas_zones',{is_active:true},{city_id:2,is_active:false}))?.fieldErrors).toHaveProperty('city_id');});
+it.each([null,{id:2,is_active:false},{id:99,is_active:true}])('rejects missing/inactive/wrong parent receipt %j',async(data)=>{maybeSingle.mockResolvedValue({data});expect((await validateGeographyReferences(client,'areas_zones',{city_id:2}))?.success).toBe(false);});
+it('fails closed and does not disclose failed parent query details',async()=>{maybeSingle.mockResolvedValue({error:{message:'PRIVATE DATABASE DETAIL'}});const result=await validateGeographyReferences(client,'emirates',{country_id:1});expect(result?.success).toBe(false);expect(JSON.stringify(result)).not.toContain('PRIVATE');});
+it('fails closed on thrown transport errors',async()=>{maybeSingle.mockRejectedValue(Error('PRIVATE'));expect(await validateGeographyReferences(client,'areas_zones',{city_id:2})).toMatchObject({success:false});});
+it('does not invent a country for a legacy region with no mapping',async()=>{expect(await validateGeographyReferences(client,'emirates',{country_id:null})).toBeNull();expect(from).not.toHaveBeenCalled();});
+it('maps exact approved business errors and redacts unknown details',()=>{expect(geographyWriteError({code:'23503',message:'Region has active geography dependencies'})).toMatch(/active cities/);expect(geographyWriteError({code:'23503',message:'PRIVATE'})).not.toContain('PRIVATE');expect(geographyWriteError({message:'PRIVATE'})).not.toContain('PRIVATE');});

@@ -29,12 +29,11 @@ export function PortSelect({
   const choiceRead = usePortsQuery({
     emirateId: emirateId ?? null,
     portTypeCode: portTypeCode ?? null,
-    includeInactive,
-   selectedId: value ?? null });
+    includeInactive, selectedId: value ?? null });
   const { options, isLoading, error: fetchError } = choiceRead;
 
   const handleValueChange = (newValue: string | number | null) => {
-    if (!onValueChange) return;
+    if (!onValueChange || disabled || !!fetchError) return;
     if (newValue === null) {
       onValueChange(null);
       return;
@@ -44,18 +43,18 @@ export function PortSelect({
   };
 
   return (
-    <QueryReadBoundary queries={[choiceRead]}><ERPCombobox
+    <QueryReadBoundary queries={[{isError: !!fetchError, refetch: choiceRead.refetch}]}><ERPCombobox
       value={value ?? null}
       onValueChange={handleValueChange}
-      options={options}
+      options={(options).map(option => ({...option, disabled: option.disabled || disabled || !!fetchError}))}
       placeholder={placeholder}
       searchPlaceholder="Search ports..."
       showCode={showCode}
       language={language}
-      disabled={disabled}
+      disabled={disabled || !!fetchError}
       readOnly={false}
       required={required}
-      loading={isLoading}
+      loading={(isLoading) && value == null}
       error={fetchError ?? error}
       allowClear={allowClear}
       emptyText="No ports available"

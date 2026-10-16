@@ -15,6 +15,7 @@ import { createDocumentFromUpload } from "@/server/actions/dms/document-upload-a
 import { linkDmsDocumentToEntity } from "@/server/actions/dms/entity-documents";
 import { FileTypeIcon } from "./dms-file-type-icon";
 import { FileSize } from "./dms-file-size";
+import { useUploadCreationSession } from "./use-upload-creation-session";
 
 export interface DmsDocumentTypeOption {
   id: number;
@@ -49,79 +50,64 @@ function CreateDocumentSession({
   onSuccess,
 }: DmsCreateDocumentFromUploadDialogProps) {
   const router = useRouter();
-  const [title, setTitle] = useState("");
-  const [documentTypeId, setDocumentTypeId] = useState<number | null>(null);
-  const [description, setDescription] = useState("");
-  const [issueDate, setIssueDate] = useState("");
-  const [expiryDate, setExpiryDate] = useState("");
+  const creation = useUploadCreationSession(session!.id, `${entityContext?.entityType ?? "inbox"}:${entityContext?.entityId ?? ""}`);
+  const {title, documentTypeId, description, issueDate, expiryDate} = creation.draft;
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const typeOptions = documentTypes.map((t) => ({
-    value: t.id,
-    label: `${t.type_code} — ${t.name_en}`,
-  }));
+  const [message, setMessage] = useState<string | null>(null);
+  const locked = !!creation.pending || !!creation.receipt || !!creation.recoveryError;
+  const edit = (patch: Partial<typeof creation.draft>) => {
+    if (locked || isSubmitting) return;
+    creation.edit({...creation.draft, ...patch});
+    setMessage(null);
+  };
+  const typeOptions = documentTypes.map((t) => ({value: t.id, label: `${t.type_code} — ${t.name_en}`}));
 
   const handleSubmit = async () => {
-    if (!session) return;
-    if (!title.trim()) { toast.error("Title is required"); return; }
-    if (!documentTypeId) { toast.error("Document type is required"); return; }
-    if (issueDate && expiryDate && expiryDate < issueDate) {
-      toast.error("Expiry date must be on or after issue date");
-      return;
-    }
+    if (!session || isSubmitting || creation.recoveryError) return;
+    if (!creation.pending && (!title.trim() || !documentTypeId)) { setMessage("Title and document type are required"); return; }
+    setMessage(null);
     setIsSubmitting(true);
     try {
-      const result = await createDocumentFromUpload({
-        uploadSessionId: session.id,
-        title: title.trim(),
-        document_type_id: documentTypeId,
-        description: description || undefined,
-        issue_date: issueDate || undefined,
-        expiry_date: expiryDate || undefined,
-        allowDuplicate: session.is_duplicate,
-      });
-      if (!result.success) {
-        toast.error(result.error ?? "Failed to create document");
-        return;
-      }
-      const newDocId = result.data!.documentId;
-      const newDocNo = result.data!.documentNo;
-
-      // Auto-link to entity context if provided (generic — works for any module)
-      if (entityContext) {
-        try {
-          const link = await linkDmsDocumentToEntity(newDocId, entityContext.entityType, entityContext.entityId, { is_primary: true });
-          if (!link.success) toast.warning("The document was created, but its record link was not saved. Open the document and check its links; do not create it again.");
-        } catch {
-          toast.warning("The document was created, but its record link could not be confirmed. Open the document and check its links; do not create it again.");
+      const result = await creation.run({
+        uploadSessionId: session.id, title: title.trim(), document_type_id: documentTypeId!,
+        description: description || undefined, issue_date: issueDate || undefined,
+        expiry_date: expiryDate || undefined, allowDuplicate: session.is_duplicate,
+      }, createDocumentFromUpload);
+      if (!creation.isCurrent()) return;
+      if (!result.success) { setMessage(result.error ?? "The creation request could not be completed. Retry its retained values."); return; }
+      const {documentId, documentNo} = result.data;
+      setMessage(`Document ${documentNo} and its attachment are confirmed.`);
+      // Completion is already retained. Link/toast/navigation errors cannot cause
+      // another document creation or turn the receipt back into uncertainty.
+      try {
+        if (creation.claimEffects()) {
+          if (entityContext) {
+            try {
+              const link = await linkDmsDocumentToEntity(documentId, entityContext.entityType, entityContext.entityId, {is_primary:true});
+              if (!creation.isCurrent()) return;
+              if (!link.success) toast.warning("The document was created, but its record link was not saved. Open the document and check its links; do not create it again.");
+            } catch {
+              if (!creation.isCurrent()) return;
+              toast.warning("The document was created, but its record link could not be confirmed. Open the document and check its links; do not create it again.");
+            }
+          }
+          if (!creation.isCurrent()) return;
+          toast.success(`Document ${documentNo} created successfully`);
+          onSuccess?.(documentId, documentNo);
         }
-      }
+        if (!creation.isCurrent()) return;
+        onOpenChange(false);
+        router.push(`/dms/documents/record/${documentId}`);
+      } catch { if (creation.isCurrent()) setMessage(`Document ${documentNo} is confirmed. Open it from the document list; do not create it again.`); }
+    } finally { if (creation.isCurrent()) setIsSubmitting(false); }
+  };
 
-      toast.success(`Document ${newDocNo} created successfully`);
-      onOpenChange(false);
-      resetForm();
-      onSuccess?.(newDocId, newDocNo);
-      router.push(`/dms/documents/record/${newDocId}`);
-    } finally {
-      setIsSubmitting(false);
+  const handleClose = (nextOpen: boolean) => {
+    if (!isSubmitting && !creation.pending) {
+      if (!nextOpen && !creation.receipt) creation.discard();
+      onOpenChange(nextOpen);
     }
   };
-
-  const resetForm = () => {
-    setTitle("");
-    setDocumentTypeId(null);
-    setDescription("");
-    setIssueDate("");
-    setExpiryDate("");
-  };
-
-  const handleClose = (open: boolean) => {
-    if (!isSubmitting) {
-      onOpenChange(open);
-      if (!open) resetForm();
-    }
-  };
-
   return (
     <ERPChildDialogForm
       open={open}
@@ -129,13 +115,18 @@ function CreateDocumentSession({
       title="Create New Document from Upload"
       subtitle="Fill in the document metadata. A DMS record will be created and the file attached."
       icon={<FilePlus className="h-5 w-5" />}
-      mode="add"
+      mode={creation.receipt ? "view" : "add"}
       size="lg"
       isSubmitting={isSubmitting}
-      isDirty={title !== "" || documentTypeId !== null || description !== "" || issueDate !== "" || expiryDate !== ""}
+      submitDisabled={!!creation.recoveryError}
+      closeDisabled={!!creation.pending}
+      submitLabel={creation.pending ? "Retry original request" : "Create document"}
+      isDirty={!creation.receipt && (title !== "" || documentTypeId !== null || description !== "" || issueDate !== "" || expiryDate !== "" || !!creation.pending)}
       onSubmit={handleSubmit}
     >
       <div className="space-y-4">
+        {(creation.recoveryError || message) && <p role="alert" className="text-sm">{creation.recoveryError || message}</p>}
+        {creation.pending && <p role="status" className="text-sm">The original request is retained in this account and tab&apos;s memory. Retry it unchanged. Reloading or signing out loses this recovery state; check the upload and document list before creating again.</p>}
         {session && (
           <div className="flex items-center gap-3 p-3 rounded-md border border-border bg-muted/10">
             <FileTypeIcon mimeType={session.mime_type} className="h-5 w-5" />
@@ -154,7 +145,8 @@ function CreateDocumentSession({
             id="doc-title"
             required
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            disabled={locked}
+            onChange={(e) => edit({title:e.target.value})}
             placeholder="e.g. Trade License 2026 — Alliance Gulf Transport"
             maxLength={500}
             autoFocus
@@ -163,10 +155,11 @@ function CreateDocumentSession({
 
         <div>
           <RequiredLabel required>Document Type</RequiredLabel>
-          <ERPCombobox ariaLabel="Document Type" required
+          <ERPCombobox name="document_type_id" ariaLabel="Document Type" required
             options={typeOptions}
             value={documentTypeId}
-            onValueChange={(v) => setDocumentTypeId(v as number | null)}
+            disabled={locked}
+            onValueChange={(v) => edit({documentTypeId:v as number | null})}
             placeholder="Select document type…"
             searchPlaceholder="Search types…"
           />
@@ -177,7 +170,8 @@ function CreateDocumentSession({
           <Textarea
             id="doc-description"
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            disabled={locked}
+            onChange={(e) => edit({description:e.target.value})}
             placeholder="Optional description"
             rows={2}
             maxLength={2000}
@@ -191,7 +185,8 @@ function CreateDocumentSession({
               id="issue-date"
               type="date"
               value={issueDate}
-              onChange={(e) => setIssueDate(e.target.value)}
+              disabled={locked}
+              onChange={(e) => edit({issueDate:e.target.value})}
             />
           </div>
           <div>
@@ -200,7 +195,8 @@ function CreateDocumentSession({
               id="expiry-date"
               type="date"
               value={expiryDate}
-              onChange={(e) => setExpiryDate(e.target.value)}
+              disabled={locked}
+              onChange={(e) => edit({expiryDate:e.target.value})}
               min={issueDate || undefined}
             />
           </div>
@@ -208,7 +204,7 @@ function CreateDocumentSession({
 
         {session?.is_duplicate && (
           <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-            ⚠ This file is a duplicate. A new document will be created with admin override.
+            This upload is marked as a duplicate. This request creates a separate document; it does not grant an administration override.
           </div>
         )}
       </div>

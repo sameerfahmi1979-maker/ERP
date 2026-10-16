@@ -2,12 +2,13 @@
 import './setup';
 import { readFileSync } from 'node:fs';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { useTheme } from 'next-themes';
 import { ThemeProvider } from '@/components/layout/theme-provider';
 import { AlgtFluentProvider } from '@/components/design-system/fluent-provider';
 import { EditFilters } from '@/components/erp/table/list-controls';
 import { SearchResultCard } from '@/features/ai/common/search/search-result-card';
+import { PermissionReviewSaveDialog } from '@/features/permissions/permission-review-save-dialog';
 
 afterEach(() => { cleanup(); document.documentElement.classList.remove('dark', 'light'); localStorage.clear(); });
 const css = readFileSync('src/components/design-system/algt-foundation.css', 'utf8');
@@ -56,7 +57,56 @@ it('renders search controls with paired semantic surfaces rather than a fixed wh
   expect(link.classList.contains('bg-white')).toBe(false);
   expect(screen.getByText('Synthetic organization').classList.contains('text-foreground')).toBe(true);
 });
-// Permission-editor theme adoption is recorded for F06 integration; its owned source is unchanged.
+it('keeps populated permission warnings and grant badges theme-paired in the body-mounted review dialog', () => {
+  render(<PermissionReviewSaveDialog open onOpenChange={() => {}} isSaving={false} failedKeys={new Set()} onConfirm={async () => {}} changes={[{ permissionId: 1, permissionCode: 'synthetic.view', permissionName: 'Synthetic permission', roleId: 1, roleCode: 'synthetic', roleName: 'Synthetic role', action: 'grant', originalAssigned: false, roleIsSystem: true, permissionIsSystem: false }]}/>);
+  const warning = screen.getByText('Warning:').closest('p')!;
+  expect(warning.classList.contains('dark:text-amber-200')).toBe(true);
+  expect(warning.parentElement!.classList.contains('dark:bg-amber-950')).toBe(true);
+  const badge = screen.getByText('1 grant');
+  expect(badge.classList.contains('dark:bg-emerald-950')).toBe(true);
+  expect(badge.classList.contains('dark:text-emerald-200')).toBe(true);
+});
+it('keeps revoke and failure meaning readable while saving disables repeated permission actions', () => {
+  const confirm = vi.fn(), change = vi.fn();
+  render(<PermissionReviewSaveDialog open onOpenChange={change} isSaving failedKeys={new Set(['2:7'])} onConfirm={confirm} changes={[{ permissionId: 2, permissionCode: 'synthetic.view', permissionName: 'Synthetic permission', roleId: 7, roleCode: 'synthetic', roleName: 'Synthetic role', action: 'revoke', originalAssigned: true, roleIsSystem: false, permissionIsSystem: true }]}/>);
+  const badge = screen.getByText('1 revoke');
+  expect(badge.classList.contains('dark:bg-amber-950')).toBe(true);
+  expect(badge.classList.contains('dark:text-amber-200')).toBe(true);
+  expect(screen.getByText('Failed').classList.contains('text-destructive')).toBe(true);
+  expect(screen.getByRole('button', { name: 'Cancel' }).hasAttribute('disabled')).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Saving…' }));
+  expect(confirm).not.toHaveBeenCalled();
+  expect(change).not.toHaveBeenCalled();
+});
+it('composes all six F06 theme callers without restoring retired catalogue mutation implementations', () => {
+  const read = (path: string) => readFileSync(`src/features/${path}`, 'utf8');
+  const partyType = read('master-data/parties/admin/party-types-admin-table.tsx');
+  expect(partyType).toContain('hasGlobalPermission');
+  expect(partyType).toContain('createPartyTypeAttempt');
+  expect(partyType).toContain('dark:bg-green-950 dark:text-green-200');
+  for (const name of ['relationship-types', 'service-categories']) {
+    const source = read(`master-data/parties/admin/${name}-admin-table.tsx`);
+    expect(source).toContain('PartyAdminMasterTable');
+    expect(source).not.toContain('handleSubmit');
+  }
+  const audit = read('master-data/parties/party-audit-tab.tsx');
+  for (const color of ['green', 'blue', 'red', 'orange', 'teal']) {
+    expect(audit).toContain(`bg-${color}-100 text-${color}-800 dark:bg-${color}-950 dark:text-${color}-200`);
+  }
+  expect(audit).toContain('?? "bg-muted text-foreground"');
+  const command = read('permissions/permission-command-center.tsx');
+  for (const color of ['emerald', 'blue', 'amber']) {
+    expect(command).toContain(`dark:bg-${color}-950 dark:text-${color}-200 dark:border-${color}-800`);
+  }
+  expect(command).toContain('bg-muted text-muted-foreground border-border');
+  expect(read('permissions/permission-review-save-dialog.tsx')).toContain('dark:bg-amber-950');
+});
+it('retains responsive employee toolbar and the F06 document-creation authority gate with PERF paging', () => {
+  const source = readFileSync('src/features/hr/employees/employees-table.tsx', 'utf8');
+  expect(source).toContain('flex w-full min-w-0 flex-wrap items-center gap-2 md:ml-auto md:w-auto md:flex-nowrap');
+  expect(source).toContain('documentWizardEnabled && canStartDocumentEmployee(authContext)');
+  expect(source).toContain('useServerPage<EmployeeListRow>');
+});
 it('uses semantic recruitment headings and paired warning surfaces in the final HR and assistant cohorts', () => {
   const conversion = readFileSync('src/features/hr/recruitment/tabs/candidate-conversion-tab.tsx', 'utf8');
   expect(conversion).toContain('text-sm font-semibold text-foreground uppercase');

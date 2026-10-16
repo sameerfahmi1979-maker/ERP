@@ -362,6 +362,7 @@ export type Database = {
       }
       banks: {
         Row: {
+          workspace_revision: number
           bank_code: string
           bank_name_ar: string | null
           bank_name_en: string
@@ -389,6 +390,7 @@ export type Database = {
           website_url: string | null
         }
         Insert: {
+          workspace_revision?: number
           bank_code: string
           bank_name_ar?: string | null
           bank_name_en: string
@@ -416,6 +418,7 @@ export type Database = {
           website_url?: string | null
         }
         Update: {
+          workspace_revision?: number
           bank_code?: string
           bank_name_ar?: string | null
           bank_name_en?: string
@@ -14711,6 +14714,7 @@ export type Database = {
       }
       global_lookup_categories: {
         Row: {
+          workspace_revision: number
           category_code: string
           category_name_ar: string | null
           category_name_en: string
@@ -14736,6 +14740,7 @@ export type Database = {
           updated_by: number | null
         }
         Insert: {
+          workspace_revision?: number
           category_code: string
           category_name_ar?: string | null
           category_name_en: string
@@ -14761,6 +14766,7 @@ export type Database = {
           updated_by?: number | null
         }
         Update: {
+          workspace_revision?: number
           category_code?: string
           category_name_ar?: string | null
           category_name_en?: string
@@ -14789,6 +14795,7 @@ export type Database = {
       }
       global_lookup_values: {
         Row: {
+          workspace_revision: number
           badge_variant: string | null
           category_id: number
           color_hex: string | null
@@ -14816,6 +14823,7 @@ export type Database = {
           value_label_en: string
         }
         Insert: {
+          workspace_revision?: number
           badge_variant?: string | null
           category_id: number
           color_hex?: string | null
@@ -14843,6 +14851,7 @@ export type Database = {
           value_label_en: string
         }
         Update: {
+          workspace_revision?: number
           badge_variant?: string | null
           category_id?: number
           color_hex?: string | null
@@ -22267,6 +22276,7 @@ export type Database = {
       }
       payment_terms: {
         Row: {
+          workspace_revision: number
           advance_percentage: number
           calculation_notes: string | null
           created_at: string
@@ -22291,6 +22301,7 @@ export type Database = {
           updated_by: number | null
         }
         Insert: {
+          workspace_revision?: number
           advance_percentage?: number
           calculation_notes?: string | null
           created_at?: string
@@ -22315,6 +22326,7 @@ export type Database = {
           updated_by?: number | null
         }
         Update: {
+          workspace_revision?: number
           advance_percentage?: number
           calculation_notes?: string | null
           created_at?: string
@@ -24712,6 +24724,7 @@ export type Database = {
       }
       tax_types: {
         Row: {
+          workspace_revision: number
           applies_to_purchases: boolean
           applies_to_sales: boolean
           applies_to_scrap: boolean
@@ -24741,6 +24754,7 @@ export type Database = {
           updated_by: number | null
         }
         Insert: {
+          workspace_revision?: number
           applies_to_purchases?: boolean
           applies_to_sales?: boolean
           applies_to_scrap?: boolean
@@ -24770,6 +24784,7 @@ export type Database = {
           updated_by?: number | null
         }
         Update: {
+          workspace_revision?: number
           applies_to_purchases?: boolean
           applies_to_sales?: boolean
           applies_to_scrap?: boolean
@@ -26731,6 +26746,14 @@ export type Database = {
       }
     }
     Functions: {
+      save_finance_reference_record: {
+        Args: { p_entity: string; p_operation: string; p_id: number | null; p_revision: string | null; p_action: string; p_data: Json }
+        Returns: Json
+      }
+      save_lookup_configuration: {
+        Args: { p_kind: string; p_action: string; p_id: number | null; p_revision: string | null; p_category_id: number | null; p_category_revision: string | null; p_operation: string; p_data: Json }
+        Returns: Json
+      }
       approve_dms_ai_intake: {
         Args: { p_payload: Json }
         Returns: {

@@ -8,7 +8,7 @@
 
 import { redirect } from "next/navigation";
 import { LoadError } from "@/components/erp/load-error";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission,hasGlobalPermission } from "@/lib/rbac/check";
 import { ReportTemplatesPageClient } from "@/features/report-center/report-templates-page-client";
 import { listBrandingProfiles, listReportTemplates } from "@/server/actions/reports/templates";
 
@@ -39,6 +39,8 @@ export default async function ReportTemplatesPage() {
       canUpload={canUpload}
       canApprove={canApprove}
       canPublish={canPublish}
+      globalTemplateCapabilities={{manage:hasGlobalPermission(ctx,'reports.manage'),approve:hasGlobalPermission(ctx,'reports.template.approve'),publish:hasGlobalPermission(ctx,'reports.publish')||hasGlobalPermission(ctx,'reports.template.approve'),sign:hasGlobalPermission(ctx,'reports.sign')}}
+      canBackfill={hasGlobalPermission(ctx,"reports.manage") && hasGlobalPermission(ctx,"organizations.manage")}
     />
   );
 }

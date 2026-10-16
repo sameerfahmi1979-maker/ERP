@@ -10,9 +10,11 @@ import type { CitySelectProps } from "@/features/master-data/geography/types";
 import { ERPCombobox } from "@/components/erp/combobox";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import { useCitiesQuery } from "@/hooks/lookups";
+import { withSavedSelection } from "@/lib/master-data/saved-selection";
 
 export function CitySelect({
   value,
+  savedSelection,
   onValueChange,
   emirateId,
   placeholder = "Select city...",
@@ -34,7 +36,7 @@ export function CitySelect({
   } = choiceRead;
 
   const handleValueChange = (newValue: string | number | null) => {
-    if (!onValueChange) return;
+    if (!onValueChange || disabled || !!fetchError) return;
     if (newValue === null) { onValueChange(null); return; }
     const numValue = typeof newValue === "number" ? newValue : Number(newValue);
     onValueChange(!isNaN(numValue) ? numValue : null);
@@ -44,16 +46,16 @@ export function CitySelect({
     <QueryReadBoundary queries={[choiceRead]}><ERPCombobox
       value={value ?? null}
       onValueChange={handleValueChange}
-      options={options}
+      options={(withSavedSelection(fetchError ? [] : options, value, savedSelection)).map(option => ({...option, disabled: option.disabled || disabled || !!fetchError}))}
       placeholder={placeholder}
       searchPlaceholder="Search cities..."
       showCode={showCode}
       language={language}
-      disabled={disabled}
+      disabled={disabled || !!fetchError}
       readOnly={false}
       required={required}
-      loading={loading}
-      error={fetchError ?? error}
+      loading={(loading) && value == null}
+      error={fetchError ? "Cities could not be loaded. Your saved selection is retained." : error}
       allowClear={allowClear}
       emptyText="No cities available"
       noResultsText="No results found"

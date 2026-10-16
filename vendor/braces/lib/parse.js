@@ -1,7 +1,7 @@
 'use strict';
 
 const stringify = require('./stringify');
-const {MAX_DEPTH, depthError} = require('./guard');
+const guard = require('./depth-guard');
 
 /**
  * Constants
@@ -144,7 +144,7 @@ const parse = (input, options = {}) => {
      */
 
     if (value === CHAR_LEFT_PARENTHESES) {
-      if (stack.length >= MAX_DEPTH) throw depthError();
+      if (stack.length > guard.MAX_DEPTH) guard.reject();
       block = push({ type: 'paren', nodes: [] });
       stack.push(block);
       push({ type: 'text', value });
@@ -197,7 +197,7 @@ const parse = (input, options = {}) => {
      */
 
     if (value === CHAR_LEFT_CURLY_BRACE) {
-      if (stack.length >= MAX_DEPTH) throw depthError();
+      if (stack.length > guard.MAX_DEPTH) guard.reject();
       depth++;
 
       const dollar = prev.value && prev.value.slice(-1) === '$' || block.dollar === true;

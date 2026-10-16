@@ -32,7 +32,7 @@ export default async function ProtectedLayout({
   const scopeVersion = readScopeVersion(ctx);
 
   return (
-    <SessionBoundary key={ctx.profile.auth_user_id} authUserId={ctx.profile.auth_user_id} scopeVersion={scopeVersion}><ReadCacheBoundary key={`${ctx.profile.auth_user_id}:${scopeVersion}`}><ErpShell
+    <ReadCacheBoundary key={`${ctx.profile.auth_user_id}:${scopeVersion}`} authUserId={ctx.profile.auth_user_id} scopeVersion={scopeVersion}><SessionBoundary key={ctx.profile.auth_user_id} authUserId={ctx.profile.auth_user_id} scopeVersion={scopeVersion}><ErpShell
       principalId={ctx.profile.auth_user_id}
       displayName={ctx.profile.display_name ?? ctx.profile.full_name}
       email={ctx.email}
@@ -42,6 +42,6 @@ export default async function ProtectedLayout({
       appBranding={appBranding}
     >
       {children}
-    </ErpShell></ReadCacheBoundary></SessionBoundary>
+    </ErpShell></SessionBoundary></ReadCacheBoundary>
   );
 }

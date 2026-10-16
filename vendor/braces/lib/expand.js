@@ -3,9 +3,11 @@
 const fill = require('fill-range');
 const stringify = require('./stringify');
 const utils = require('./utils');
-const {assertAst} = require('./guard');
+const guard = require('./depth-guard');
 
 const append = (queue = '', stash = '', enclose = false) => {
+  guard.assertArrays(queue);
+  guard.assertArrays(stash);
   const result = [];
 
   queue = [].concat(queue);
@@ -32,7 +34,7 @@ const append = (queue = '', stash = '', enclose = false) => {
 };
 
 const expand = (ast, options = {}) => {
-  assertAst(ast);
+  guard.assertAst(ast);
   const rangeLimit = options.rangeLimit === undefined ? 1000 : options.rangeLimit;
 
   const walk = (node, parent = {}) => {
@@ -40,8 +42,11 @@ const expand = (ast, options = {}) => {
 
     let p = parent;
     let q = parent.queue;
+    const parents = new Set();
 
     while (p.type !== 'brace' && p.type !== 'root' && p.parent) {
+      if (parents.has(p) || parents.size >= guard.MAX_DEPTH) guard.reject();
+      parents.add(p);
       p = p.parent;
       q = p.queue;
     }
@@ -76,8 +81,11 @@ const expand = (ast, options = {}) => {
     const enclose = utils.encloseBrace(node);
     let queue = node.queue;
     let block = node;
+    const blocks = new Set();
 
     while (block.type !== 'brace' && block.type !== 'root' && block.parent) {
+      if (blocks.has(block) || blocks.size >= guard.MAX_DEPTH) guard.reject();
+      blocks.add(block);
       block = block.parent;
       queue = block.queue;
     }

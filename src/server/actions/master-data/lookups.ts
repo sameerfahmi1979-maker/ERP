@@ -14,15 +14,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { revalidatePath } from "next/cache";
-import { logAudit, createAuditDiff } from "@/server/actions/audit";
+import {hasGlobalPermission} from '@/lib/rbac/scope';
+import {saveLookupMutation} from '@/server/lookup-save';
+import {lookupCapabilities} from '@/features/master-data/lookups/permissions';
+import type {LookupMutationContract,LookupMutationResult} from '@/features/master-data/lookups/mutation-contract';
 
-function revalidateLookupPages() {
-  revalidatePath("/admin/master-data");
-  revalidatePath("/admin/master-data/lookups/categories");
-  revalidatePath("/admin/master-data/lookups/values");
-  revalidatePath("/admin/master-data/lookups/system");
-}
 import {
   createLookupCategorySchema,
   updateLookupCategorySchema,
@@ -50,7 +46,13 @@ export type ActionResult<T = unknown> = {
   success: boolean;
   data?: T;
   error?: string;
+  /** Administrative reads only; ordinary shared-choice responses stay unchanged. */
+  kind?: "forbidden" | "not_found" | "failed";
 };
+
+type LookupDashboardResult =
+  | { success: true; data: LookupDashboardStats; error?: never; kind?: never }
+  | { success: false; kind: "forbidden" | "failed"; error: string; data?: never };
 
 // ============================================================================
 // LOOKUP CATEGORIES - CRUD OPERATIONS
@@ -65,8 +67,8 @@ export async function listLookupCategories(
 ): Promise<ActionResult<LookupCategoryWithStats[]>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.lookups.view")) {
-      return { success: false, error: "Permission denied" };
+    if (!lookupCapabilities(ctx).read) {
+      return { success: false, kind: "forbidden", error: "Global lookup catalogue access is required." };
     }
 
     const supabase = await createClient();
@@ -99,9 +101,9 @@ export async function listLookupCategories(
 
     const { data, error } = await query;
 
-    if (error) {
+    if (error || !Array.isArray(data)) {
       logger.error("listLookupCategories error", error);
-      return { success: false, error: error.message };
+      return { success: false, kind: error?.code === "42501" ? "forbidden" : "failed", error: error?.code === "42501" ? "Global lookup catalogue access is required." : "The lookup categories could not be loaded. Try again." };
     }
 
     // Compute stats
@@ -120,7 +122,7 @@ export async function listLookupCategories(
     return { success: true, data: categoriesWithStats };
   } catch (error) {
     logger.error("listLookupCategories exception", error);
-    return { success: false, error: "Failed to fetch lookup categories" };
+    return { success: false, kind: "failed", error: "The lookup categories could not be loaded. Try again." };
   }
 }
 
@@ -133,26 +135,28 @@ export async function getLookupCategoryById(
 ): Promise<ActionResult<LookupCategory>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.lookups.view")) {
-      return { success: false, error: "Permission denied" };
+    if (!lookupCapabilities(ctx).read) {
+      return { success: false, kind: "forbidden", error: "Global lookup catalogue access is required." };
     }
 
+    if (!Number.isSafeInteger(id) || id < 1) return { success: false, kind: "not_found", error: "Lookup record not found." };
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("global_lookup_categories")
       .select("*")
       .eq("id", id)
-      .single();
+      .maybeSingle();
 
     if (error) {
       logger.error("getLookupCategoryById error", error);
-      return { success: false, error: error.message };
+      return { success: false, kind: error.code === "42501" ? "forbidden" : "failed", error: error.code === "42501" ? "Global lookup catalogue access is required." : "The lookup category could not be loaded. Try again." };
     }
 
+    if (!data) return { success: false, kind: "not_found", error: "Lookup record not found." };
     return { success: true, data: data as LookupCategory };
   } catch (error) {
     logger.error("getLookupCategoryById exception", error);
-    return { success: false, error: "Failed to fetch lookup category" };
+    return { success: false, kind: "failed", error: "The lookup category could not be loaded. Try again." };
   }
 }
 
@@ -160,292 +164,41 @@ export async function getLookupCategoryById(
  * Create a new lookup category
  * Requires: master_data.lookups.manage permission
  */
-export async function createLookupCategory(
-  input: CreateLookupCategoryInput
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    // 1. Validate input
-    const result = createLookupCategorySchema.safeParse(input);
-    if (!result.success) {
-      const errors = result.error.issues.map(issue => `${issue.path.join(".")}: ${issue.message}`).join("; ");
-      return { success: false, error: errors };
-    }
-
-    // 2. Check permission
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.lookups.manage")) {
-      return { success: false, error: "Permission denied" };
-    }
-
-    if (!ctx.profile?.id) {
-      return { success: false, error: "User profile not found" };
-    }
-
-    // 3. Insert category
-    const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("global_lookup_categories")
-      .insert({
-        ...result.data,
-        created_by: ctx.profile.id,
-        updated_by: ctx.profile.id,
-      })
-      .select("id, category_code")
-      .single();
-
-    if (error) {
-      logger.error("createLookupCategory error", error);
-      return { success: false, error: error.message };
-    }
-
-    // 4. Audit log
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "global_lookup_categories",
-      entity_id: data.id,
-      entity_reference: data.category_code,
-      action: "create_category",
-      new_values: result.data,
-      owner_company_id: ctx.profile.owner_company_id,
-      branch_id: ctx.profile.branch_id,
-    });
-
-    // 5. Revalidate
-    revalidateLookupPages();
-
-    return { success: true, data: { id: data.id } };
-  } catch (error) {
-    logger.error("createLookupCategory exception", error);
-    return { success: false, error: "Failed to create lookup category" };
-  }
+export async function createLookupCategory(input:CreateLookupCategoryInput,contract?:LookupMutationContract):Promise<LookupMutationResult>{
+ const p=createLookupCategorySchema.safeParse(input);
+ if(!p.success)return {success:false,error:'Check the lookup category fields. Protected fields cannot be submitted.'};
+ return saveLookupMutation(null,{kind:'category',action:'save',categoryId:null,categoryRevision:null,data:p.data},contract);
 }
 
 /**
  * Update an existing lookup category
  * Requires: master_data.lookups.manage permission (or lock permission for locked categories)
  */
-export async function updateLookupCategory(
-  input: UpdateLookupCategoryInput
-): Promise<ActionResult<void>> {
-  try {
-    // 1. Validate input
-    const result = updateLookupCategorySchema.safeParse(input);
-    if (!result.success) {
-      const errors = result.error.issues.map(issue => `${issue.path.join(".")}: ${issue.message}`).join("; ");
-      return { success: false, error: errors };
-    }
-
-    // 2. Check permission
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.lookups.manage")) {
-      return { success: false, error: "Permission denied" };
-    }
-
-    if (!ctx.profile?.id) {
-      return { success: false, error: "User profile not found" };
-    }
-
-    // 3. Get existing category to check if locked
-    const supabase = await createClient();
-    const { data: existing, error: fetchError } = await supabase
-      .from("global_lookup_categories")
-      .select("*")
-      .eq("id", input.id)
-      .single();
-
-    if (fetchError || !existing) {
-      return { success: false, error: "Category not found" };
-    }
-
-    // Check lock permission if category is locked
-    if (existing.is_locked && !hasPermission(ctx, "master_data.lookups.lock")) {
-      return { success: false, error: "Cannot modify locked category without lock permission" };
-    }
-
-    // 4. Update category
-    const { id, ...updateData } = result.data;
-    const { error: updateError } = await supabase
-      .from("global_lookup_categories")
-      .update({
-        ...updateData,
-        updated_by: ctx.profile.id,
-      })
-      .eq("id", id);
-
-    if (updateError) {
-      logger.error("updateLookupCategory error", updateError);
-      return { success: false, error: updateError.message };
-    }
-
-    // 5. Audit log
-    const auditDiff = createAuditDiff(existing, { ...existing, ...updateData });
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "global_lookup_categories",
-      entity_id: id,
-      entity_reference: existing.category_code,
-      action: "update_category",
-      old_values: auditDiff.old_values,
-      new_values: auditDiff.new_values,
-      owner_company_id: ctx.profile.owner_company_id,
-      branch_id: ctx.profile.branch_id,
-    });
-
-    // 6. Revalidate
-    revalidateLookupPages();
-
-    return { success: true };
-  } catch (error) {
-    logger.error("updateLookupCategory exception", error);
-    return { success: false, error: "Failed to update lookup category" };
-  }
+export async function updateLookupCategory(input:UpdateLookupCategoryInput,contract?:LookupMutationContract):Promise<LookupMutationResult>{
+ const p=updateLookupCategorySchema.safeParse(input);
+ if(!p.success)return {success:false,error:'Check the lookup category fields. Its code and system identity cannot change.'};
+ const {id,...data}=p.data;
+ return saveLookupMutation(id,{kind:'category',action:'save',categoryId:null,categoryRevision:null,data},contract);
 }
 
 /**
  * Toggle lookup category active status
  * Requires: master_data.lookups.manage permission
  */
-export async function toggleLookupCategoryStatus(
-  id: number,
-  is_active: boolean,
-  deactivation_reason?: string | null
-): Promise<ActionResult<void>> {
-  try {
-    const result = toggleLookupStatusSchema.safeParse({ id, is_active, deactivation_reason });
-    if (!result.success) {
-      return { success: false, error: result.error.issues[0]?.message || "Validation failed" };
-    }
-
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.lookups.manage")) {
-      return { success: false, error: "Permission denied" };
-    }
-
-    if (!ctx.profile?.id) {
-      return { success: false, error: "User profile not found" };
-    }
-
-    const supabase = await createClient();
-    const { data: existing, error: fetchError } = await supabase
-      .from("global_lookup_categories")
-      .select("*")
-      .eq("id", id)
-      .single();
-
-    if (fetchError || !existing) {
-      return { success: false, error: "Category not found" };
-    }
-
-    if (existing.is_locked && !hasPermission(ctx, "master_data.lookups.lock")) {
-      return { success: false, error: "Cannot modify locked category" };
-    }
-
-    const { error: updateError } = await supabase
-      .from("global_lookup_categories")
-      .update({
-        is_active,
-        deactivated_at: is_active ? null : new Date().toISOString(),
-        deactivated_by: is_active ? null : ctx.profile.id,
-        deactivation_reason: is_active ? null : deactivation_reason,
-        updated_by: ctx.profile.id,
-      })
-      .eq("id", id);
-
-    if (updateError) {
-      return { success: false, error: updateError.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "global_lookup_categories",
-      entity_id: id,
-      entity_reference: existing.category_code,
-      action: is_active ? "activate_category" : "deactivate_category",
-      old_values: { is_active: existing.is_active },
-      new_values: { is_active, deactivation_reason },
-      owner_company_id: ctx.profile.owner_company_id,
-      branch_id: ctx.profile.branch_id,
-    });
-
-    revalidateLookupPages();
-
-    return { success: true };
-  } catch (error) {
-    logger.error("toggleLookupCategoryStatus exception", error);
-    return { success: false, error: "Failed to toggle category status" };
-  }
+export async function toggleLookupCategoryStatus(id:number,is_active:boolean,deactivation_reason?:string|null,contract?:LookupMutationContract):Promise<LookupMutationResult>{
+ const p=toggleLookupStatusSchema.safeParse({id,is_active,deactivation_reason});
+ if(!p.success)return {success:false,error:'Check the category status request.'};
+ return saveLookupMutation(id,{kind:'category',action:'active',categoryId:null,categoryRevision:null,data:{is_active,...(deactivation_reason===undefined?{}:{deactivation_reason})}},contract);
 }
 
 /**
  * Toggle lookup category lock status
  * Requires: master_data.lookups.lock permission
  */
-export async function toggleLookupCategoryLock(
-  id: number,
-  is_locked: boolean
-): Promise<ActionResult<void>> {
-  try {
-    const result = toggleLookupLockSchema.safeParse({ id, is_locked });
-    if (!result.success) {
-      return { success: false, error: result.error.issues[0]?.message || "Validation failed" };
-    }
-
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.lookups.lock")) {
-      return { success: false, error: "Lock permission required" };
-    }
-
-    if (!ctx.profile?.id) {
-      return { success: false, error: "User profile not found" };
-    }
-
-    const supabase = await createClient();
-    const { data: existing, error: fetchError } = await supabase
-      .from("global_lookup_categories")
-      .select("*")
-      .eq("id", id)
-      .single();
-
-    if (fetchError || !existing) {
-      return { success: false, error: "Category not found" };
-    }
-
-    const { error: updateError } = await supabase
-      .from("global_lookup_categories")
-      .update({
-        is_locked,
-        updated_by: ctx.profile.id,
-      })
-      .eq("id", id);
-
-    if (updateError) {
-      return { success: false, error: updateError.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "global_lookup_categories",
-      entity_id: id,
-      entity_reference: existing.category_code,
-      action: is_locked ? "lock_category" : "unlock_category",
-      old_values: { is_locked: existing.is_locked },
-      new_values: { is_locked },
-      owner_company_id: ctx.profile.owner_company_id,
-      branch_id: ctx.profile.branch_id,
-    });
-
-    revalidateLookupPages();
-
-    return { success: true };
-  } catch (error) {
-    logger.error("toggleLookupCategoryLock exception", error);
-    return { success: false, error: "Failed to toggle category lock" };
-  }
+export async function toggleLookupCategoryLock(id:number,is_locked:boolean,contract?:LookupMutationContract):Promise<LookupMutationResult>{
+ if(!toggleLookupLockSchema.safeParse({id,is_locked}).success)return {success:false,error:'Check the category lock request.'};
+ return saveLookupMutation(id,{kind:'category',action:'lock',categoryId:null,categoryRevision:null,data:{is_locked}},contract);
 }
-
-// ============================================================================
-// LOOKUP VALUES - CRUD OPERATIONS
-// ============================================================================
 
 /**
  * List lookup values with optional filters
@@ -456,14 +209,14 @@ export async function listLookupValues(
 ): Promise<ActionResult<LookupValueWithCategory[]>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.lookups.view")) {
-      return { success: false, error: "Permission denied" };
+    if (!lookupCapabilities(ctx).read) {
+      return { success: false, kind: "forbidden", error: "Global lookup catalogue access is required." };
     }
 
     const supabase = await createClient();
     let query = supabase.from("global_lookup_values").select(`
       *,
-      category:global_lookup_categories!inner(category_code, category_name_en, category_name_ar),
+      category:global_lookup_categories!inner(id, category_code, category_name_en, category_name_ar, workspace_revision, is_locked, is_active),
       parent_value:global_lookup_values!parent_value_id(value_code, value_label_en, value_label_ar)
     `);
 
@@ -501,15 +254,15 @@ export async function listLookupValues(
 
     const { data, error } = await query;
 
-    if (error) {
+    if (error || !Array.isArray(data)) {
       logger.error("listLookupValues error", error);
-      return { success: false, error: error.message };
+      return { success: false, kind: error?.code === "42501" ? "forbidden" : "failed", error: error?.code === "42501" ? "Global lookup catalogue access is required." : "The lookup values could not be loaded. Try again." };
     }
 
     return { success: true, data: data as LookupValueWithCategory[] };
   } catch (error) {
     logger.error("listLookupValues exception", error);
-    return { success: false, error: "Failed to fetch lookup values" };
+    return { success: false, kind: "failed", error: "The lookup values could not be loaded. Try again." };
   }
 }
 
@@ -522,26 +275,28 @@ export async function getLookupValueById(
 ): Promise<ActionResult<LookupValue>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.lookups.view")) {
-      return { success: false, error: "Permission denied" };
+    if (!lookupCapabilities(ctx).read) {
+      return { success: false, kind: "forbidden", error: "Global lookup catalogue access is required." };
     }
 
+    if (!Number.isSafeInteger(id) || id < 1) return { success: false, kind: "not_found", error: "Lookup record not found." };
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("global_lookup_values")
       .select("*")
       .eq("id", id)
-      .single();
+      .maybeSingle();
 
     if (error) {
       logger.error("getLookupValueById error", error);
-      return { success: false, error: error.message };
+      return { success: false, kind: error.code === "42501" ? "forbidden" : "failed", error: error.code === "42501" ? "Global lookup catalogue access is required." : "The lookup value could not be loaded. Try again." };
     }
 
+    if (!data) return { success: false, kind: "not_found", error: "Lookup record not found." };
     return { success: true, data: data as LookupValue };
   } catch (error) {
     logger.error("getLookupValueById exception", error);
-    return { success: false, error: "Failed to fetch lookup value" };
+    return { success: false, kind: "failed", error: "The lookup value could not be loaded. Try again." };
   }
 }
 
@@ -549,373 +304,49 @@ export async function getLookupValueById(
  * Create a new lookup value
  * Requires: master_data.lookups.manage permission
  */
-export async function createLookupValue(
-  input: CreateLookupValueInput
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    // 1. Validate input
-    const result = createLookupValueSchema.safeParse(input);
-    if (!result.success) {
-      const errors = result.error.issues.map(issue => `${issue.path.join(".")}: ${issue.message}`).join("; ");
-      return { success: false, error: errors };
-    }
-
-    // 2. Check permission
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.lookups.manage")) {
-      return { success: false, error: "Permission denied" };
-    }
-
-    if (!ctx.profile?.id) {
-      return { success: false, error: "User profile not found" };
-    }
-
-    // 3. Check if category is locked
-    const supabase = await createClient();
-    const { data: category, error: catError } = await supabase
-      .from("global_lookup_categories")
-      .select("is_locked, category_code")
-      .eq("id", result.data.category_id)
-      .single();
-
-    if (catError || !category) {
-      return { success: false, error: "Category not found" };
-    }
-
-    if (category.is_locked && !hasPermission(ctx, "master_data.lookups.lock")) {
-      return { success: false, error: "Cannot add values to locked category" };
-    }
-
-    // 4. Insert value
-    const { data, error } = await supabase
-      .from("global_lookup_values")
-      .insert({
-        ...result.data,
-        created_by: ctx.profile.id,
-        updated_by: ctx.profile.id,
-      })
-      .select("id, value_code")
-      .single();
-
-    if (error) {
-      logger.error("createLookupValue error", error);
-      return { success: false, error: error.message };
-    }
-
-    // 5. Audit log
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "global_lookup_values",
-      entity_id: data.id,
-      entity_reference: `${category.category_code}:${data.value_code}`,
-      action: "create_value",
-      new_values: result.data,
-      owner_company_id: ctx.profile.owner_company_id,
-      branch_id: ctx.profile.branch_id,
-    });
-
-    // 6. Revalidate
-    revalidateLookupPages();
-
-    return { success: true, data: { id: data.id } };
-  } catch (error) {
-    logger.error("createLookupValue exception", error);
-    return { success: false, error: "Failed to create lookup value" };
-  }
+export async function createLookupValue(input:CreateLookupValueInput,contract?:LookupMutationContract):Promise<LookupMutationResult>{
+ const p=createLookupValueSchema.safeParse(input);
+ if(!p.success||!contract||p.data.category_id!==contract.categoryId)return {success:false,error:'Check the value fields and its original category. Default and lock use separate commands.'};
+ const {category_id,...data}=p.data;
+ return saveLookupMutation(null,{kind:'value',action:'save',categoryId:category_id,categoryRevision:contract.categoryRevision,data},contract);
 }
 
 /**
  * Update an existing lookup value
  * Requires: master_data.lookups.manage permission (or lock permission for locked values)
  */
-export async function updateLookupValue(
-  input: UpdateLookupValueInput
-): Promise<ActionResult<void>> {
-  try {
-    // 1. Validate input
-    const result = updateLookupValueSchema.safeParse(input);
-    if (!result.success) {
-      const errors = result.error.issues.map(issue => `${issue.path.join(".")}: ${issue.message}`).join("; ");
-      return { success: false, error: errors };
-    }
-
-    // 2. Check permission
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.lookups.manage")) {
-      return { success: false, error: "Permission denied" };
-    }
-
-    if (!ctx.profile?.id) {
-      return { success: false, error: "User profile not found" };
-    }
-
-    // 3. Get existing value to check if locked
-    const supabase = await createClient();
-    const { data: existing, error: fetchError } = await supabase
-      .from("global_lookup_values")
-      .select("*, category:global_lookup_categories!inner(category_code, is_locked)")
-      .eq("id", input.id)
-      .single();
-
-    if (fetchError || !existing) {
-      return { success: false, error: "Value not found" };
-    }
-
-    // Check lock permission if value or category is locked
-    if ((existing.is_locked || existing.category.is_locked) && !hasPermission(ctx, "master_data.lookups.lock")) {
-      return { success: false, error: "Cannot modify locked value without lock permission" };
-    }
-
-    // 4. Update value
-    const { id, ...updateData } = result.data;
-    const { error: updateError } = await supabase
-      .from("global_lookup_values")
-      .update({
-        ...updateData,
-        updated_by: ctx.profile.id,
-      })
-      .eq("id", id);
-
-    if (updateError) {
-      logger.error("updateLookupValue error", updateError);
-      return { success: false, error: updateError.message };
-    }
-
-    // 5. Audit log
-    const auditDiff = createAuditDiff(existing, { ...existing, ...updateData });
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "global_lookup_values",
-      entity_id: id,
-      entity_reference: `${existing.category.category_code}:${existing.value_code}`,
-      action: "update_value",
-      old_values: auditDiff.old_values,
-      new_values: auditDiff.new_values,
-      owner_company_id: ctx.profile.owner_company_id,
-      branch_id: ctx.profile.branch_id,
-    });
-
-    // 6. Revalidate
-    revalidateLookupPages();
-
-    return { success: true };
-  } catch (error) {
-    logger.error("updateLookupValue exception", error);
-    return { success: false, error: "Failed to update lookup value" };
-  }
+export async function updateLookupValue(input:UpdateLookupValueInput,contract?:LookupMutationContract):Promise<LookupMutationResult>{
+ const p=updateLookupValueSchema.safeParse(input);
+ if(!p.success||!contract)return {success:false,error:'Check the value fields. Its code and category cannot change; default and lock use separate commands.'};
+ const {id,...data}=p.data;
+ return saveLookupMutation(id,{kind:'value',action:'save',categoryId:contract.categoryId,categoryRevision:contract.categoryRevision,data},contract);
 }
 
 /**
  * Toggle lookup value active status
  * Requires: master_data.lookups.manage permission
  */
-export async function toggleLookupValueStatus(
-  id: number,
-  is_active: boolean,
-  deactivation_reason?: string | null
-): Promise<ActionResult<void>> {
-  try {
-    const result = toggleLookupStatusSchema.safeParse({ id, is_active, deactivation_reason });
-    if (!result.success) {
-      return { success: false, error: result.error.issues[0]?.message || "Validation failed" };
-    }
-
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.lookups.manage")) {
-      return { success: false, error: "Permission denied" };
-    }
-
-    if (!ctx.profile?.id) {
-      return { success: false, error: "User profile not found" };
-    }
-
-    const supabase = await createClient();
-    const { data: existing, error: fetchError } = await supabase
-      .from("global_lookup_values")
-      .select("*, category:global_lookup_categories!inner(category_code, is_locked)")
-      .eq("id", id)
-      .single();
-
-    if (fetchError || !existing) {
-      return { success: false, error: "Value not found" };
-    }
-
-    if ((existing.is_locked || existing.category.is_locked) && !hasPermission(ctx, "master_data.lookups.lock")) {
-      return { success: false, error: "Cannot modify locked value" };
-    }
-
-    const { error: updateError } = await supabase
-      .from("global_lookup_values")
-      .update({
-        is_active,
-        deactivated_at: is_active ? null : new Date().toISOString(),
-        deactivated_by: is_active ? null : ctx.profile.id,
-        deactivation_reason: is_active ? null : deactivation_reason,
-        updated_by: ctx.profile.id,
-      })
-      .eq("id", id);
-
-    if (updateError) {
-      return { success: false, error: updateError.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "global_lookup_values",
-      entity_id: id,
-      entity_reference: `${existing.category.category_code}:${existing.value_code}`,
-      action: is_active ? "activate_value" : "deactivate_value",
-      old_values: { is_active: existing.is_active },
-      new_values: { is_active, deactivation_reason },
-      owner_company_id: ctx.profile.owner_company_id,
-      branch_id: ctx.profile.branch_id,
-    });
-
-    revalidateLookupPages();
-
-    return { success: true };
-  } catch (error) {
-    logger.error("toggleLookupValueStatus exception", error);
-    return { success: false, error: "Failed to toggle value status" };
-  }
+export async function toggleLookupValueStatus(id:number,is_active:boolean,deactivation_reason?:string|null,contract?:LookupMutationContract):Promise<LookupMutationResult>{
+ if(!toggleLookupStatusSchema.safeParse({id,is_active,deactivation_reason}).success||!contract)return {success:false,error:'Check the value status request.'};
+ return saveLookupMutation(id,{kind:'value',action:'active',categoryId:contract.categoryId,categoryRevision:contract.categoryRevision,data:{is_active,...(deactivation_reason===undefined?{}:{deactivation_reason})}},contract);
 }
 
 /**
  * Toggle lookup value lock status
  * Requires: master_data.lookups.lock permission
  */
-export async function toggleLookupValueLock(
-  id: number,
-  is_locked: boolean
-): Promise<ActionResult<void>> {
-  try {
-    const result = toggleLookupLockSchema.safeParse({ id, is_locked });
-    if (!result.success) {
-      return { success: false, error: result.error.issues[0]?.message || "Validation failed" };
-    }
-
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.lookups.lock")) {
-      return { success: false, error: "Lock permission required" };
-    }
-
-    if (!ctx.profile?.id) {
-      return { success: false, error: "User profile not found" };
-    }
-
-    const supabase = await createClient();
-    const { data: existing, error: fetchError } = await supabase
-      .from("global_lookup_values")
-      .select("*, category:global_lookup_categories!inner(category_code)")
-      .eq("id", id)
-      .single();
-
-    if (fetchError || !existing) {
-      return { success: false, error: "Value not found" };
-    }
-
-    const { error: updateError } = await supabase
-      .from("global_lookup_values")
-      .update({
-        is_locked,
-        updated_by: ctx.profile.id,
-      })
-      .eq("id", id);
-
-    if (updateError) {
-      return { success: false, error: updateError.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "global_lookup_values",
-      entity_id: id,
-      entity_reference: `${existing.category.category_code}:${existing.value_code}`,
-      action: is_locked ? "lock_value" : "unlock_value",
-      old_values: { is_locked: existing.is_locked },
-      new_values: { is_locked },
-      owner_company_id: ctx.profile.owner_company_id,
-      branch_id: ctx.profile.branch_id,
-    });
-
-    revalidateLookupPages();
-
-    return { success: true };
-  } catch (error) {
-    logger.error("toggleLookupValueLock exception", error);
-    return { success: false, error: "Failed to toggle value lock" };
-  }
+export async function toggleLookupValueLock(id:number,is_locked:boolean,contract?:LookupMutationContract):Promise<LookupMutationResult>{
+ if(!toggleLookupLockSchema.safeParse({id,is_locked}).success||!contract)return {success:false,error:'Check the value lock request.'};
+ return saveLookupMutation(id,{kind:'value',action:'lock',categoryId:contract.categoryId,categoryRevision:contract.categoryRevision,data:{is_locked}},contract);
 }
 
 /**
  * Set a lookup value as the default for its category
  * Requires: master_data.lookups.manage permission
  */
-export async function setDefaultLookupValue(
-  id: number,
-  category_id: number
-): Promise<ActionResult<void>> {
-  try {
-    const result = setDefaultValueSchema.safeParse({ id, category_id });
-    if (!result.success) {
-      return { success: false, error: result.error.issues[0]?.message || "Validation failed" };
-    }
-
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.lookups.manage")) {
-      return { success: false, error: "Permission denied" };
-    }
-
-    if (!ctx.profile?.id) {
-      return { success: false, error: "User profile not found" };
-    }
-
-    const supabase = await createClient();
-
-    // 1. Remove default from all values in this category
-    await supabase
-      .from("global_lookup_values")
-      .update({ is_default: false })
-      .eq("category_id", category_id);
-
-    // 2. Set new default
-    const { error: updateError } = await supabase
-      .from("global_lookup_values")
-      .update({ is_default: true, updated_by: ctx.profile.id })
-      .eq("id", id)
-      .eq("category_id", category_id);
-
-    if (updateError) {
-      return { success: false, error: updateError.message };
-    }
-
-    // 3. Audit log
-    const { data: valueData } = await supabase
-      .from("global_lookup_values")
-      .select("value_code, category:global_lookup_categories!inner(category_code)")
-      .eq("id", id)
-      .single();
-
-    if (valueData) {
-      await logAudit({
-        module_code: "master_data",
-        entity_name: "global_lookup_values",
-        entity_id: id,
-        entity_reference: `${(Array.isArray(valueData.category) ? valueData.category[0] : valueData.category)?.category_code ?? "unknown"}:${valueData.value_code}`,
-        action: "set_default_value",
-        new_values: { is_default: true },
-        owner_company_id: ctx.profile.owner_company_id,
-        branch_id: ctx.profile.branch_id,
-      });
-    }
-
-    revalidateLookupPages();
-
-    return { success: true };
-  } catch (error) {
-    logger.error("setDefaultLookupValue exception", error);
-    return { success: false, error: "Failed to set default value" };
-  }
+export async function setDefaultLookupValue(id:number,category_id:number,contract?:LookupMutationContract):Promise<LookupMutationResult>{
+ if(!setDefaultValueSchema.safeParse({id,category_id}).success||!contract||contract.categoryId!==category_id)return {success:false,error:'Check the original default request and category.'};
+ return saveLookupMutation(id,{kind:'value',action:'default',categoryId:category_id,categoryRevision:contract.categoryRevision,data:{}},contract);
 }
 
 // ============================================================================
@@ -948,13 +379,13 @@ export async function getActiveLookupValuesByCategoryCode(
     }
 
     // 2. Check if user is admin (for includeInactive option)
-    const isAdmin = hasPermission(ctx, "master_data.lookups.view");
+    const isAdmin = hasGlobalPermission(ctx, "master_data.lookups.view") || hasGlobalPermission(ctx, "master_data.lookups.manage") || hasGlobalPermission(ctx, "master_data.lookups.lock");
     const shouldIncludeInactive = includeInactive && isAdmin;
 
     // 3. Get category
     const supabase = await createClient();
     const { data: category, error: catError } = await supabase
-      .from("global_lookup_categories")
+      .from("erp_lookup_category_choices")
       .select("id, is_active")
       .eq("category_code", categoryCode.toUpperCase())
       .single();
@@ -970,7 +401,7 @@ export async function getActiveLookupValuesByCategoryCode(
 
     // 5. Build query for values
     let query = supabase
-      .from("global_lookup_values")
+      .from("erp_lookup_value_choices")
       .select("id, value_code, value_label_en, value_label_ar, color_hex, icon_name, badge_variant, sort_order, is_default, parent_value_id")
       .eq("category_id", category.id);
 
@@ -983,7 +414,7 @@ export async function getActiveLookupValuesByCategoryCode(
     if (parentValueCode) {
       // First get parent value ID
       const { data: parentValue } = await supabase
-        .from("global_lookup_values")
+        .from("erp_lookup_value_choices")
         .select("id")
         .eq("category_id", category.id)
         .eq("value_code", parentValueCode.toUpperCase())
@@ -1049,7 +480,7 @@ export async function getActiveLookupValuesByCategoryCodes(
       return { success: false, error: "Authentication required" };
     }
 
-    const isAdmin = hasPermission(ctx, "master_data.lookups.view");
+    const isAdmin = hasGlobalPermission(ctx, "master_data.lookups.view") || hasGlobalPermission(ctx, "master_data.lookups.manage") || hasGlobalPermission(ctx, "master_data.lookups.lock");
     const shouldIncludeInactive = includeInactive && isAdmin;
 
     const normalizedCodes = categoryCodes.map((c) => c.toUpperCase());
@@ -1058,7 +489,7 @@ export async function getActiveLookupValuesByCategoryCodes(
 
     // Round-trip 1: resolve all category IDs at once
     let catQuery = supabase
-      .from("global_lookup_categories")
+      .from("erp_lookup_category_choices")
       .select("id, category_code, is_active")
       .in("category_code", normalizedCodes);
 
@@ -1088,7 +519,7 @@ export async function getActiveLookupValuesByCategoryCodes(
 
     // Round-trip 2: fetch all values for those category IDs at once
     let valQuery = supabase
-      .from("global_lookup_values")
+      .from("erp_lookup_value_choices")
       .select(
         "id, category_id, value_code, value_label_en, value_label_ar, color_hex, icon_name, badge_variant, sort_order, is_default, parent_value_id"
       )
@@ -1143,37 +574,30 @@ export async function getActiveLookupValuesByCategoryCodes(
  * Get master data dashboard statistics
  * Requires: master_data.dashboard.view permission
  */
-export async function getLookupDashboardStats(): Promise<ActionResult<LookupDashboardStats>> {
+export async function getLookupDashboardStats(): Promise<LookupDashboardResult> {
+  const failed: LookupDashboardResult = { success: false, kind: "failed", error: "Master data statistics could not be loaded. Try again." };
   try {
     const ctx = await getAuthContext();
     if (!hasPermission(ctx, "master_data.dashboard.view")) {
-      return { success: false, error: "Permission denied" };
+      return { success: false, kind: "forbidden", error: "Permission denied" };
     }
 
     const supabase = await createClient();
 
     // Get category stats
-    const { data: categories } = await supabase
+    const { data: categories, error: categoriesError } = await supabase
       .from("global_lookup_categories")
       .select("id, is_active, is_locked");
-
-    const total_categories = categories?.length || 0;
-    const active_categories = categories?.filter(c => c.is_active).length || 0;
-    const inactive_categories = total_categories - active_categories;
-    const locked_categories = categories?.filter(c => c.is_locked).length || 0;
+    if (categoriesError || !Array.isArray(categories)) return failed;
 
     // Get value stats
-    const { data: values } = await supabase
+    const { data: values, error: valuesError } = await supabase
       .from("global_lookup_values")
       .select("id, is_active, is_locked");
-
-    const total_values = values?.length || 0;
-    const active_values = values?.filter(v => v.is_active).length || 0;
-    const inactive_values = total_values - active_values;
-    const locked_values = values?.filter(v => v.is_locked).length || 0;
+    if (valuesError || !Array.isArray(values)) return failed;
 
     // Get recently updated values
-    const { data: recent } = await supabase
+    const { data: recent, error: recentError } = await supabase
       .from("global_lookup_values")
       .select(`
         value_label_en,
@@ -1182,8 +606,19 @@ export async function getLookupDashboardStats(): Promise<ActionResult<LookupDash
       `)
       .order("updated_at", { ascending: false })
       .limit(10);
+    if (recentError || !Array.isArray(recent)) return failed;
 
-    const recently_updated = (recent || []).map((r) => ({
+    const total_categories = categories.length;
+    const active_categories = categories.filter(c => c.is_active).length;
+    const inactive_categories = total_categories - active_categories;
+    const locked_categories = categories.filter(c => c.is_locked).length;
+
+    const total_values = values.length;
+    const active_values = values.filter(v => v.is_active).length;
+    const inactive_values = total_values - active_values;
+    const locked_values = values.filter(v => v.is_locked).length;
+
+    const recently_updated = recent.map((r) => ({
       category_name: (Array.isArray(r.category) ? r.category[0] : r.category)?.category_name_en || "Unknown",
       value_label: r.value_label_en,
       updated_at: r.updated_at,
@@ -1203,8 +638,8 @@ export async function getLookupDashboardStats(): Promise<ActionResult<LookupDash
     };
 
     return { success: true, data: stats };
-  } catch (error) {
-    logger.error("getLookupDashboardStats exception", error);
-    return { success: false, error: "Failed to fetch dashboard stats" };
+  } catch {
+    logger.error("getLookupDashboardStats exception");
+    return failed;
   }
 }

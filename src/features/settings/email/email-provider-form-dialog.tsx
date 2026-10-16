@@ -1,6 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { createWorkspaceSaveAttempt, type WorkspaceSaveContract } from "@/lib/workspace/save-contract";
 import { toast } from "sonner";
 import { Mail } from "lucide-react";
 import { Label } from "@/components/ui/label";
@@ -43,6 +46,18 @@ function EmailProviderFormSession({
   onSuccess,
 }: EmailProviderFormDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const attempt = useRef(createWorkspaceSaveAttempt());
+  const pending = useRef<{id: number | null; payload: Parameters<typeof createEmailProviderConfig>[0]; contract: WorkspaceSaveContract; fingerprint: string; hadUnknown: boolean} | null>(null);
+  const flight = useRef(false);
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  const openingRevision = useRef(initialData?.workspaceRevision ?? null);
+  const confirmedRef = useRef(false);
+  const [confirmed, setConfirmed] = useState(false);
+  const [displayError, setDisplayError] = useState(false);
+  const router = useRouter();
+  const display = (effect: () => void) => { try { effect(); } catch { if (alive.current) setDisplayError(true); } };
+  const [saveError, setSaveError] = useState("");
   const [form, setForm] = useState({
     provider_code: initialData?.providerCode ?? "",
     provider_type: initialData?.providerType ?? ("microsoft_graph" as const),
@@ -59,6 +74,8 @@ function EmailProviderFormSession({
     send_mode: initialData?.sendMode ?? ("graph_send_mail" as const),
     is_enabled: initialData?.isEnabled ?? false,
     is_default: initialData?.isDefault ?? false,
+    throttle_per_minute: initialData?.throttlePerMinute?.toString() ?? "",
+    daily_send_limit: initialData?.dailySendLimit?.toString() ?? "",
     notes: initialData?.notes ?? "",
   });
 
@@ -66,17 +83,29 @@ function EmailProviderFormSession({
     setForm((p) => ({ ...p, [key]: value }));
 
   const handleClose = (v: boolean) => {
-    if (!isSubmitting) onOpenChange(v);
+    if (!isSubmitting) display(() => onOpenChange(v));
   };
 
   const handleSubmit = async () => {
+    if (flight.current || confirmedRef.current) return;
     if (!form.provider_name.trim()) { toast.error("Provider name is required"); return; }
     if (mode === "add" && !form.provider_code.trim()) { toast.error("Provider code is required"); return; }
+    const fingerprint = JSON.stringify(form);
+    if (pending.current && pending.current.fingerprint !== fingerprint) {
+      setSaveError("Restore the submitted entries before retrying the original unconfirmed save.");
+      return;
+    }
 
+    flight.current = true;
     setIsSubmitting(true);
+    setSaveError("");
+    let dispatched: typeof pending.current = null;
     try {
       const payload = {
         ...form,
+        is_active: initialData?.isActive ?? true,
+        throttle_per_minute: form.throttle_per_minute === "" ? null : Number(form.throttle_per_minute),
+        daily_send_limit: form.daily_send_limit === "" ? null : Number(form.daily_send_limit),
         tenant_id: form.tenant_id || null,
         client_id: form.client_id || null,
         authority_url: form.authority_url || null,
@@ -88,19 +117,35 @@ function EmailProviderFormSession({
         notes: form.notes || null,
       };
 
-      const result = mode === "add"
-        ? await createEmailProviderConfig(payload)
-        : await updateEmailProviderConfig(initialData!.id, payload);
+      const request = pending.current ?? {id: mode === "add" ? null : initialData!.id, payload: {...payload}, contract: attempt.current.begin(payload, openingRevision.current), fingerprint, hadUnknown: false};
+      pending.current = request;
+      dispatched = request;
+      const result = request.id === null
+        ? await createEmailProviderConfig(request.payload, request.contract)
+        : await updateEmailProviderConfig(request.id, request.payload, request.contract);
+      if (!alive.current) return;
+      if (!result.success && (result.uncertain || request.hadUnknown)) {
+        request.hadUnknown = true;
+        setSaveError("Save unconfirmed. Restore the submitted entries and retry to recover the same operation, or reopen the current record to reconcile it.");
+        return;
+      }
+      if (pending.current === request) { pending.current = null; attempt.current.resolved(); }
 
       if (result.success) {
-        toast.success(mode === "add" ? "Email provider created" : "Email provider updated");
-        onOpenChange(false);
-        onSuccess?.();
+        confirmedRef.current = true;
+        setConfirmed(true);
+        display(() => toast.success(result.data?.changed === false ? "No changes to save" : request.id === null ? "Email provider created" : "Email provider updated"));
+        display(() => onOpenChange(false));
+        display(() => onSuccess?.());
       } else {
-        toast.error((result as { error?: string }).error ?? "Failed");
+        setSaveError(result.error ?? "Provider save was not confirmed. Your entries are retained.");
       }
+    } catch {
+      if (dispatched) dispatched.hadUnknown = true;
+      if (alive.current) setSaveError("Save unconfirmed. Restore the submitted entries and retry to recover the same operation, or reopen the current record to reconcile it.");
     } finally {
-      setIsSubmitting(false);
+      flight.current = false;
+      if (alive.current) setIsSubmitting(false);
     }
   };
 
@@ -114,15 +159,19 @@ function EmailProviderFormSession({
       mode={mode}
       size="lg"
       isSubmitting={isSubmitting}
+      submitDisabled={confirmed}
+      isDirty={confirmed ? false : undefined}
       onSubmit={handleSubmit}
     >
-      <div className="space-y-5">
+      {saveError && <p role="alert" className="rounded-sm border border-destructive p-3 text-sm text-destructive">{saveError}</p>}
+      {confirmed && <div role="status" className="space-y-2"><p>Provider saved. Reopen the current record before making another change.</p>{displayError && <p>The display could not finish updating. The save remains confirmed.</p>}<Button type="button" variant="outline" onClick={() => display(() => router.refresh())}>Refresh settings only</Button></div>}
+      <fieldset disabled={confirmed} className="space-y-5">
         {/* Basic */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {mode === "add" && (
             <div>
               <Label htmlFor="pcode" className="mb-1.5 block">Provider Code <span className="text-red-500">*</span></Label>
-              <Input required id="pcode" value={form.provider_code} onChange={(e) => set("provider_code", e.target.value.toUpperCase())} placeholder="M365_DEFAULT" className="font-mono uppercase" />
+              <Input required id="pcode" pattern="[A-Z0-9_]+" maxLength={100} value={form.provider_code} onChange={(e) => set("provider_code", e.target.value.toUpperCase())} placeholder="M365_DEFAULT" className="font-mono uppercase" />
               <p className="text-xs text-muted-foreground mt-1">Uppercase letters, numbers, underscores only.</p>
             </div>
           )}
@@ -201,17 +250,24 @@ function EmailProviderFormSession({
             <Label htmlFor="is-enabled" className="text-sm cursor-pointer">Enabled</Label>
           </div>
           <div className="flex items-center gap-2">
-            <Switch id="is-default" checked={form.is_default} onCheckedChange={(v) => set("is_default", v)} />
+            <Switch id="is-default" disabled={initialData?.isDefault} checked={form.is_default} onCheckedChange={(v) => set("is_default", v)} />
             <Label htmlFor="is-default" className="text-sm cursor-pointer">Default Provider</Label>
           </div>
         </div>
 
+        <p className="text-xs text-muted-foreground">A default may be configured while disabled. Set another provider as default before retiring this one. Enabling requires a supported adapter and complete credentials.</p>
+        <fieldset className="grid gap-3 sm:grid-cols-2">
+          <legend className="text-sm font-medium">Delivery limits</legend>
+          <div><Label htmlFor="throttle-per-minute">Attempts per rolling minute</Label><Input id="throttle-per-minute" type="number" min={1} max={2147483647} step={1} value={form.throttle_per_minute} onChange={e=>set("throttle_per_minute",e.target.value)} /></div>
+          <div><Label htmlFor="daily-send-limit">Attempts per rolling 24 hours</Label><Input id="daily-send-limit" type="number" min={1} max={2147483647} step={1} value={form.daily_send_limit} onChange={e=>set("daily_send_limit",e.target.value)} /></div>
+          <p className="sm:col-span-2 text-xs text-muted-foreground">Blank means no configured limit, not a recommended budget. These values do not activate workers. F09 release acceptance must verify shared-sender budgets and all delivery paths.</p>
+        </fieldset>
         {/* Notes */}
         <div>
           <Label htmlFor="pnotes" className="mb-1.5 block">Notes</Label>
           <Textarea id="pnotes" value={form.notes} onChange={(e) => set("notes", e.target.value)} rows={2} maxLength={2000} placeholder="Optional notes about this provider..." />
         </div>
-      </div>
+      </fieldset>
     </ERPChildDialogForm>
   );
 }

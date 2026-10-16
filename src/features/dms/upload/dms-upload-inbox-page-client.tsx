@@ -6,11 +6,8 @@ import { Button } from "@/components/ui/button";
 import { DmsAdminFileStoragePanel } from "@/features/dms/admin/dms-admin-file-storage-panel";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import { useDmsBatchAdmission } from "@/hooks/use-dms-batch-admission";
 import { startAiIntakeFromUploadSession } from "@/server/actions/dms/ai-intake";
-import {
-  createDmsUploadBatch,
-  startAiIntakeAndCreateDraft,
-} from "@/server/actions/dms/batch-intake";
 import type { DmsDocumentRow } from "@/server/actions/dms/documents";
 import {
   cancelDmsUploadSession,
@@ -20,16 +17,15 @@ import {
 } from "@/server/actions/dms/upload-sessions";
 import { AlertTriangle, Bot, File as FileIcon, Files, FileText, Inbox, Info, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { DmsBatchUploadProgress, type BatchFileProgress } from "./dms-batch-upload-progress";
 import type { DmsDocumentTypeOption, DmsEntityContext } from "./dms-create-document-from-upload-dialog";
 import { DmsCreateDocumentFromUploadDialog } from "./dms-create-document-from-upload-dialog";
 import { DmsDuplicateWarningPanel } from "./dms-duplicate-warning-panel";
 import { DmsUploadAttachDialog } from "./dms-upload-attach-dialog";
 import { DmsUploadCleanupPanel } from "./dms-upload-cleanup-panel";
 import { DMS_MAX_BATCH_FILES } from "./dms-upload-constants";
-import { DmsUploadDropzone, type SelectedDmsFile } from "./dms-upload-dropzone";
+import { DmsUploadDropzone } from "./dms-upload-dropzone";
 import { DmsUploadSessionTable } from "./dms-upload-session-table";
 
 interface Props {
@@ -68,10 +64,6 @@ function estimateAiDuration(fileSizeBytes: number): string {
   return "1–3 minutes (large document)";
 }
 
-type BatchState =
-  | { phase: "idle" }
-  | { phase: "running"; progress: BatchFileProgress[]; batchCode: string | null };
-
 type UploadMode = "single" | "batch";
 
 export function DmsUploadInboxPageClient({ initialSessions, documents, documentTypes, entityContext, isAdmin = false, batchEnabled = false, autoStartEnabled = false }: Props) {
@@ -86,8 +78,25 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
   const [selectedSession, setSelectedSession] = useState<DmsUploadSessionRow | null>(null);
 
   const [uploadMode, setUploadMode] = useState<UploadMode>("single");
-  const [batchFiles, setBatchFiles] = useState<SelectedDmsFile[]>([]);
-  const [batchState, setBatchState] = useState<BatchState>({ phase: "idle" });
+  const batchFailureRef = useRef<HTMLDivElement>(null);
+  const batch = useDmsBatchAdmission({
+    enabled: batchEnabled && uploadMode === "batch",
+    context: entityContext,
+    upload: async (capability, body, mime) => {
+      const {error} = await createSupabaseClient().storage.from("dms-temp")
+        .uploadToSignedUrl(capability.path, capability.token, body, {contentType: mime, upsert: false});
+      return !error;
+    },
+    onResult: (confirmed, total, code) => {
+      if (confirmed) toast.success(`${confirmed} draft${confirmed === 1 ? "" : "s"} confirmed. Review and approve each one individually.`);
+      else toast.error("No draft confirmation was received. Review the retained member results.");
+      if (confirmed === total) router.push(`/dms/inbox/batch/${code}`);
+    },
+  });
+  const {failureId, ownerGeneration, isCurrent: batchIsCurrent} = batch;
+  useLayoutEffect(() => {
+    if (failureId && batchIsCurrent()) batchFailureRef.current?.focus();
+  }, [failureId, ownerGeneration, batchIsCurrent]);
 
   // ── SPEED.2L: AI progress tracking + status polling ────────────────────────
   const [aiElapsedSec, setAiElapsedSec] = useState(0);
@@ -302,75 +311,6 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
     }
   };
 
-  // ── Batch: upload all + AI draft per file (sequential, one-by-one approval later) ──
-  const handleStartBatch = useCallback(async () => {
-    if (batchFiles.length === 0) return;
-
-    const files = batchFiles;
-    const progress: BatchFileProgress[] = files.map((f) => ({ name: f.original_filename, phase: "pending" }));
-    setBatchState({ phase: "running", progress: [...progress], batchCode: null });
-
-    const updateProgress = (i: number, patch: Partial<BatchFileProgress>) => {
-      progress[i] = { ...progress[i], ...patch };
-      setBatchState((s) => (s.phase === "running" ? { ...s, progress: [...progress] } : s));
-    };
-
-    const createRes = await createDmsUploadBatch({
-      files: files.map((f) => ({
-        original_filename: f.original_filename,
-        mime_type: f.mime_type,
-        file_size_bytes: f.file_size_bytes,
-        sha256_hash: f.sha256_hash,
-      })),
-      entityType: entityContext?.entityType,
-      entityId: entityContext?.entityId,
-    });
-
-    if (!createRes.success || !createRes.data) {
-      toast.error(createRes.error ?? "Failed to create batch");
-      setBatchState({ phase: "idle" });
-      return;
-    }
-
-    const { batchCode, sessions: batchSessions } = createRes.data;
-    setBatchState((s) => (s.phase === "running" ? { ...s, batchCode } : s));
-
-    const supabase = createSupabaseClient();
-
-    for (let i = 0; i < batchSessions.length; i++) {
-      const sess = batchSessions[i];
-      const file = files[i]?.file;
-      if (!file) { updateProgress(i, { phase: "failed", error: "File missing" }); continue; }
-
-      // Upload to signed URL.
-      updateProgress(i, { phase: "uploading" });
-      try {
-        const { error: upErr } = await supabase.storage
-          .from("dms-temp")
-          .uploadToSignedUrl(sess.path, sess.token ?? "", file, { contentType: file.type });
-        if (upErr) { updateProgress(i, { phase: "failed", error: upErr.message }); continue; }
-      } catch (e) {
-        updateProgress(i, { phase: "failed", error: String(e) });
-        continue;
-      }
-
-      // AI-process + create draft (failure isolated per file).
-      updateProgress(i, { phase: "ai" });
-      const draftRes = await startAiIntakeAndCreateDraft({ uploadSessionId: sess.sessionId, allowDuplicate: sess.isDuplicate });
-      updateProgress(i, draftRes.success ? { phase: "done" } : { phase: "failed", error: draftRes.error });
-    }
-
-    const created = progress.filter((p) => p.phase === "done").length;
-    if (created > 0) {
-      toast.success(`${created} draft${created === 1 ? "" : "s"} created. Review and approve each one individually.`);
-    } else {
-      toast.error("No drafts were created. Check the file results below.");
-    }
-
-    setBatchFiles([]);
-    router.push(`/dms/inbox/batch/${batchCode}`);
-  }, [batchFiles, entityContext, router]);
-
   const handleAttach = (session: DmsUploadSessionRow) => {
     setSelectedSession(session);
     setAttachDialogOpen(true);
@@ -408,7 +348,7 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
   };
 
 
-  const batchRunning = batchState.phase === "running";
+  const batchRunning = batch.busy;
 
   return (
     <div className="space-y-6">
@@ -495,35 +435,56 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
           </>
         ) : (
           <>
-            {batchState.phase === "running" ? (
-              <DmsBatchUploadProgress
-                files={batchState.progress}
-                batchCode={batchState.batchCode}
-                onOpenQueue={() => batchState.batchCode && router.push(`/dms/inbox/batch/${batchState.batchCode}`)}
-              />
-            ) : (
-              <>
-                <DmsUploadDropzone
-                  multiple
-                  maxFiles={DMS_MAX_BATCH_FILES}
-                  onFilesSelected={setBatchFiles}
-                />
-                <div className="mt-3 flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    onClick={handleStartBatch}
-                    disabled={batchFiles.length === 0}
-                    className="bg-violet-600 hover:bg-violet-700 text-white"
-                  >
-                    <Bot className="h-3.5 w-3.5 mr-1.5" />
-                    Upload &amp; AI Fill All ({batchFiles.length})
-                  </Button>
-                  <p className="text-xs text-muted-foreground">
-                    Each file becomes a separate AI draft. You review &amp; approve each one individually — no bulk approval.
-                  </p>
-                </div>
-              </>
+            {(batch.error || batch.failureId > 0) && <div ref={batchFailureRef} tabIndex={-1} role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">{batch.error ?? "Some batch members remain unresolved. Review the member results and recover the original requests."}</div>}
+            {!batch.ready && !batch.error && <p role="status" className="text-sm text-muted-foreground">Checking the active inbox owner…</p>}
+            <DmsUploadDropzone
+              multiple
+              maxFiles={DMS_MAX_BATCH_FILES}
+              files={batch.files}
+              ownerGeneration={batch.ownerGeneration}
+              disabled={batch.busy}
+              onFilesSelected={batch.setFiles}
+            />
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {!batch.attempt ? (
+                <Button type="button" size="sm" onClick={() => void batch.start()}
+                  disabled={!batch.ready || batch.busy || batch.files.length === 0}>
+                  <Bot className="h-3.5 w-3.5 mr-1.5" />
+                  Upload &amp; AI Fill All ({batch.files.length})
+                </Button>
+              ) : (
+                <Button type="button" size="sm" onClick={() => void batch.resume()} disabled={!batch.ready || batch.busy}>
+                  Recover retained batch
+                </Button>
+              )}
+              <Button type="button" size="sm" variant="outline" onClick={() => void batch.discover()} disabled={!batch.ready || batch.busy}>Find recent admissions</Button>
+              {batch.canStartAnother && <Button type="button" size="sm" variant="outline" onClick={batch.startAnother} disabled={!batch.ready || batch.busy}>Start another batch</Button>}
+              {batch.attempt?.receipt && <Button type="button" size="sm" variant="outline" onClick={() => router.push(`/dms/inbox/batch/${batch.attempt!.receipt!.batch_code}`)}>Open batch queue</Button>}
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">Only confirmed drafts are ready for review. Approve each one individually — no bulk approval.</p>
+            {batch.busy && <p role="status" className="mt-2 text-sm">Working on the retained batch…</p>}
+            {batch.retentionError && <p role="alert" className="mt-2 text-sm text-destructive">Retained numbered requests could not be read. Reconcile the batch before continuing.</p>}
+            {batch.pendingSessionIds.length > 0 && (
+              <div className="mt-3 space-y-2">
+                <p className="text-sm">Unconfirmed numbered requests retain their original operation. Recovery checks the admission before retrying.</p>
+                {batch.pendingSessionIds.map(id => {
+                  const member = batch.attempt?.receipt?.members.find(m => m.id === id);
+                  return <Button type="button" key={id} variant="outline" size="sm" disabled={!batch.ready || batch.busy || !member}
+                    onClick={() => member && void batch.resume(member.position)}>Retry draft #{id}</Button>;
+                })}
+              </div>
             )}
+            {batch.items.length > 0 && (
+              <section aria-label="Batch member results" className="mt-3 rounded-md border p-3">
+                <p className="text-sm font-medium">{batch.items.filter(i => i.phase === "confirmed").length} of {batch.items.length} drafts confirmed</p>
+                <ul className="mt-2 space-y-2">{batch.items.map(item => <li key={item.position} className="text-sm"><span className="font-medium">{item.name}</span><p className="text-muted-foreground">{item.message}</p></li>)}</ul>
+              </section>
+            )}
+            {batch.recent.length > 0 && <section aria-label="Recent admissions" className="mt-3 space-y-2">
+              <p className="text-sm">Recent admissions (up to 20). This is not a complete history.</p>
+              {batch.recent.map(receipt => <Button type="button" key={receipt.operation_id} size="sm" variant="outline"
+                disabled={!batch.ready || batch.busy} onClick={() => void batch.adopt(receipt)}>Open admission {receipt.batch_code}</Button>)}
+            </section>}
           </>
         )}
       </div>

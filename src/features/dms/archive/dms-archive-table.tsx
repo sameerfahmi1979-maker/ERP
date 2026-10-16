@@ -8,6 +8,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { invalidateDmsDocuments, invalidateDmsDashboard, invalidateDmsExpiry } from "@/lib/query/invalidation";
 import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
 import { canonicalReadParams, useServerPage } from "@/hooks/use-server-page";
+import type { ServerPageSeed } from "@/hooks/use-server-page";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import {
@@ -56,6 +57,7 @@ function ArchiveReasonBadge({ reason }: { reason: "archived" | "renewed" }) {
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface Props {
+  initialSeed?: ServerPageSeed<ArchivedDocumentRow>;
   initialDocuments: ArchivedDocumentRow[];
   initialTotal?: number;
   initialUpdatedAt?: number;
@@ -111,6 +113,7 @@ const DMS_LIST_FIELDS: DmsListField[] = [
 ];
 
 export function DmsArchiveTable({
+  initialSeed,
   initialDocuments,
   initialTotal=initialDocuments.length,
   initialUpdatedAt=0,
@@ -162,7 +165,7 @@ export function DmsArchiveTable({
   const effectivePage=criteriaKey===appliedCriteria?page:1;
   useEffect(()=>{if(criteriaKey!==appliedCriteria){setAppliedCriteria(criteriaKey);setPage(1);}},[criteriaKey,appliedCriteria,setAppliedCriteria,setPage]);
   const seed=useMemo(()=>({rows:initialDocuments,totalCount:initialTotal,page:1,pageSize:25}),[initialDocuments,initialTotal]);
-  const archiveRead=useServerPage<ArchivedDocumentRow>({resource:"dms-archive",params:{...criteria,page:effectivePage,pageSize,sortKey,sortDir},seedParams:{page:1,pageSize:25,sortKey:"updated_at",sortDir:"desc",search:"",columnFilters:{}},seed,updatedAt:initialUpdatedAt});
+  const archiveRead=useServerPage<ArchivedDocumentRow>({resource:"dms-archive",params:{...criteria,page:effectivePage,pageSize,sortKey,sortDir},...(initialSeed ? {seed:initialSeed} : {seedParams:{page:1,pageSize:25,sortKey:"updated_at",sortDir:"desc",search:"",columnFilters:{}},seed,updatedAt:initialUpdatedAt})});
   const total=archiveRead.data?.totalCount;
   const rows=archiveRead.data?.rows??[];
   const totalPages=Math.max(1,Math.ceil((total??0)/pageSize));

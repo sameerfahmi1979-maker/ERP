@@ -1,6 +1,8 @@
+import {randomUUID} from 'node:crypto';
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext } from "@/lib/rbac/check";
+import {lookupCapabilities} from '@/features/master-data/lookups/permissions';
 import { listLookupCategories } from "@/server/actions/master-data/lookups";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { CategoriesTable } from "@/features/master-data/lookups/components/categories-table";
@@ -10,8 +12,9 @@ export const metadata = {
   description: "Manage lookup categories for dropdowns",
 };
 
-async function CategoriesContent() {
+async function CategoriesContent({canManage,canLock}:{canManage:boolean;canLock:boolean}) {
   const result = await listLookupCategories();
+  if (!result.success && result.kind === "forbidden") return <div role="alert" className="p-6">Access denied. Global lookup catalogue access is required.</div>;
   
   if (!result.success || !result.data) {
     return (
@@ -22,13 +25,13 @@ async function CategoriesContent() {
     );
   }
 
-  return <CategoriesTable categories={result.data} />;
+  return <CategoriesTable categories={result.data} canManage={canManage} canLock={canLock} readGeneration={randomUUID()} />;
 }
 
 export default async function LookupCategoriesPage() {
   const ctx = await getAuthContext();
   
-  if (!hasPermission(ctx, "master_data.lookups.view")) {
+  if (!lookupCapabilities(ctx).read) {
     redirect("/access-denied");
   }
 
@@ -49,7 +52,7 @@ export default async function LookupCategoriesPage() {
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
         </div>
       }>
-        <CategoriesContent />
+        <CategoriesContent canManage={lookupCapabilities(ctx).manage} canLock={lookupCapabilities(ctx).lock} />
       </Suspense>
     </div>
   );

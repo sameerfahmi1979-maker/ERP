@@ -464,6 +464,7 @@ function CandidateWorkspaceFormInstance({ candidate: openingCandidate, mode, aut
         {candidate ? (
           <CandidateConversionTab
             candidate={candidate}
+            authContext={authContext}
             canManage={canManage}
             canCreateEmployee={canCreateEmployee}
             mutationAdmitted={authorized}

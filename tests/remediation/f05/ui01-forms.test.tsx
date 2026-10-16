@@ -17,7 +17,7 @@ vi.mock('@/server/actions/users/account-security',()=>({requestPasswordReset:moc
 vi.mock('@/lib/auth/client-session',()=>({navigateAfterIdentityChange:mocks.navigate}));
 vi.mock('@/features/auth/password-reverification',()=>({PasswordReverification:()=> <h1>Reverify safely</h1>}));
 vi.mock('@/components/erp/page-header',()=>({ERPPageHeader:()=> <h1>Branding</h1>}));
-vi.mock('@/features/branding/branding-asset-upload-card',()=>({BrandingAssetUploadCard:({canUpload,label}:{canUpload:boolean;label:string})=><button disabled={!canUpload}>Upload {label}</button>}));
+vi.mock('@/features/branding/branding-asset-upload-card',()=>({BrandingAssetUploadCard:({canUpload,disabled,label}:{canUpload:boolean;disabled?:boolean;label:string})=><button disabled={!canUpload||disabled}>Upload {label}</button>}));
 vi.mock('@/server/actions/branding/app-settings',()=>({updateAppBrandingSettings:mocks.branding}));
 afterEach(cleanup);
 beforeEach(()=>{vi.clearAllMocks();localStorage.clear();sessionStorage.clear();mocks.reset.mockResolvedValue(undefined);});
@@ -53,10 +53,10 @@ it('recovery errors stay visible and retry retains operation identity',async()=>
 it('reverification clears password controls and uses the existing safe flow',async()=>{
  mocks.complete.mockResolvedValue({success:false,requiresFreshSignIn:true});render(<ResetPasswordForm flow="invite"/>);for(const label of [/^New password\s*\*$/,/^Confirm password\s*\*$/])fireEvent.change(screen.getByLabelText(label),{target:{value:'Synthetic-Only-4821'}});fireEvent.click(screen.getByRole('button',{name:'Create password'}));await screen.findByText('Reverify safely');expect(screen.queryByLabelText(/^New password\s*\*$/)).toBeNull();expect(mocks.navigate).not.toHaveBeenCalled();
 });
-const branding={id:1,app_name:'Synthetic'} as AppBrandingSettings;
+const branding={id:1,workspace_revision:1,app_name:'Synthetic'} as AppBrandingSettings;
 const runtime={assets:{}} as RuntimeAppBranding;
 it('valid branding reaches the existing action and failure retains inputs',async()=>{
- mocks.branding.mockResolvedValue({success:false});render(<AppBrandingSettingsPageClient settings={branding} runtimeBranding={runtime} canManage canUpload={false}/>);fireEvent.click(screen.getByRole('button',{name:'Save Settings'}));await waitFor(()=>expect(mocks.branding).toHaveBeenCalledTimes(1));expect(mocks.branding.mock.calls[0][0].app_name).toBe('Synthetic');expect(await screen.findByText(/Settings were not saved/)).toBeTruthy();expect((screen.getByLabelText(/^App Name/) as HTMLInputElement).value).toBe('Synthetic');
+ mocks.branding.mockResolvedValue({success:false,error:'Settings were not saved.'});render(<AppBrandingSettingsPageClient settings={branding} runtimeBranding={runtime} canManage canUpload={false}/>);fireEvent.click(screen.getByRole('button',{name:'Save Settings'}));await waitFor(()=>expect(mocks.branding).toHaveBeenCalledTimes(1));expect(mocks.branding.mock.calls[0][0].app_name).toBe('Synthetic');expect(await screen.findByText(/Settings were not saved/)).toBeTruthy();expect((screen.getByLabelText(/^App Name/) as HTMLInputElement).value).toBe('Synthetic');
 });
 it('branding validates name, email and color before calling an action',()=>{
  render(<AppBrandingSettingsPageClient settings={branding} runtimeBranding={runtime} canManage canUpload={false}/>);fireEvent.change(screen.getByLabelText(/^App Name\s*\*$/),{target:{value:''}});fireEvent.change(screen.getByLabelText('Support Email'),{target:{value:'invalid'}});fireEvent.change(screen.getByLabelText('Primary Color'),{target:{value:'bad'}});fireEvent.click(screen.getByRole('button',{name:'Save Settings'}));expect(screen.getByRole('alert').textContent).toContain('Check 3 fields');expect(mocks.branding).not.toHaveBeenCalled();fireEvent.click(within(screen.getByRole('alert')).getByRole('button',{name:/Support Email/}));expect(document.activeElement).toBe(screen.getByLabelText('Support Email'));
@@ -68,5 +68,5 @@ it('branding dirty state blocks asset changes; save coalesces and refreshes with
  let resolve!:(value:unknown)=>void;mocks.branding.mockImplementation(()=>new Promise(r=>{resolve=r;}));render(<AppBrandingSettingsPageClient settings={branding} runtimeBranding={runtime} canManage canUpload/>);
  fireEvent.change(screen.getByLabelText(/^App Name/),{target:{value:'Updated Synthetic'}});expect((screen.getByRole('button',{name:'Upload Small Logo'}) as HTMLButtonElement).disabled).toBe(true);
  const form=screen.getByRole('button',{name:'Save Settings'}).closest('form')!;fireEvent.submit(form);fireEvent.submit(form);await waitFor(()=>expect(mocks.branding).toHaveBeenCalledOnce());expect(screen.getByLabelText(/^App Name/).closest('fieldset')?.disabled).toBe(true);
- resolve({success:true});await waitFor(()=>expect(mocks.refresh).toHaveBeenCalledOnce());await waitFor(()=>expect((screen.getByRole('button',{name:'Upload Small Logo'}) as HTMLButtonElement).disabled).toBe(false));expect(screen.queryByText(/Save your settings before/)).toBeNull();
+ resolve({success:true,data:{id:1,revision:'2',changed:true,replayed:false}});await waitFor(()=>expect(mocks.refresh).toHaveBeenCalledOnce());await waitFor(()=>expect((screen.getByRole('button',{name:'Upload Small Logo'}) as HTMLButtonElement).disabled).toBe(false));expect(screen.queryByText(/Save your settings before/)).toBeNull();
 });

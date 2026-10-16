@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
-import { getAuthContext, hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
+import { getReadAuthContext } from "@/server/reads/read-context";
+import { readScopeVersion } from "@/lib/reads/scope-version";
+import { hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
 import { readDmsDocumentPage } from "@/server/reads/dms-documents";
 import { readDmsListChoices } from "@/server/reads/dms-list-choices";
 import { DmsDocumentsTable } from "@/features/dms/documents/dms-documents-table";
@@ -10,7 +12,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function DmsDocumentsPage() {
-  const authContext = await getAuthContext();
+  const authContext = await getReadAuthContext();
 
   if (!hasPermission(authContext, "dms.documents.view") && !hasPermission(authContext, "dms.admin")) {
     redirect("/access-denied");
@@ -35,6 +37,11 @@ export default async function DmsDocumentsPage() {
       />
 
       {!docsResult.success || !defaultsResult.success ? <DmsLoadError /> : <DmsDocumentsTable
+        initialSeed={docsResult.data && authContext.profile?.auth_user_id ? {
+          identity:{authUserId:authContext.profile.auth_user_id,scopeVersion:readScopeVersion(authContext)},
+          params:{page:1,pageSize:25,sortKey:"created_at",sortDir:"desc",filters:{excludeArchived:true}},
+          data:docsResult.data,updatedAt:docsResult.data.updatedAt,
+        } : undefined}
         initialDocuments={documents}
         initialTotal={docsResult.data?.totalCount??0}
         initialUpdatedAt={docsResult.data?.updatedAt??0}

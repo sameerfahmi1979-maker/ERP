@@ -1,0 +1,15 @@
+{
+  "artifact": "vendor/braces-3.0.3-algt-integrated-2.tgz",
+  "sha256": "3b42ddbff088317a60e6f10e14f907fff6cb7db5b14d9204cf63534d573339ee",
+  "integrity": "sha512-46Juc7zI9zpC2E4z4tIkfLZy0UdI7w2ORkcS8pH/wGyEEMZUtThi9mtREcx68G6Tv+H1U4d1c7KR0UWFiT/Pqw==",
+  "provenance": "vendor/braces/PROVENANCE.json",
+  "provenanceSha256": "59dc07d3b7e125692206b9dbbc9f636544cc9a3e6e7df83227eac698c4c459ce",
+  "package": "braces",
+  "version": "3.0.3",
+  "advisory": "GHSA-vfj7-8cjw-p6xm",
+  "status": "integrated local nesting, cycle and traversal-budget mitigation; upstream advisory retained",
+  "ceiling": 100,
+  "nodeCeiling": 131072,
+  "securityTest": "tests/remediation/f06/braces-local-security.test.cjs",
+  "golden": "tests/remediation/f06/braces-upstream-golden.json"
+}

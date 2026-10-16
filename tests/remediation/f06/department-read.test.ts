@@ -1,0 +1,12 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+const mock=vi.hoisted(()=>({allow:true,result:{data:null,error:null} as {data:unknown;error:unknown},client:vi.fn(),query:vi.fn(),throwRead:false}));
+vi.mock('@/lib/rbac/check',()=>({getAuthContext:async()=>({}),hasPermission:()=>mock.allow}));
+vi.mock('@/lib/supabase/server',()=>({createClient:mock.client}));
+vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
+import {getDepartmentById,listDepartments,getDepartmentComboboxOptions} from '@/server/actions/common-master-data/departments';
+beforeEach(()=>{vi.clearAllMocks();mock.allow=true;mock.throwRead=false;mock.result={data:null,error:null};const q={select:mock.query,eq:mock.query,is:mock.query,order:mock.query,range:mock.query,retry:mock.query,or:mock.query,limit:mock.query,ilike:mock.query,single:mock.query,maybeSingle:mock.query,then:(resolve:(v:unknown)=>unknown,reject:(e:unknown)=>unknown)=>mock.throwRead?Promise.reject(Error('private detail')).then(resolve,reject):Promise.resolve(mock.result).then(resolve,reject)};mock.query.mockReturnValue(q);mock.client.mockResolvedValue({from:()=>q});});
+it.each([0,-1,1.5,NaN,Number.MAX_SAFE_INTEGER+1])('invalid id %s is rejected before a read',async id=>{expect(await getDepartmentById(id)).toMatchObject({success:false,kind:'invalid_input'});expect(mock.client).not.toHaveBeenCalled();});
+it('missing or invisible rows are not confused with a database outage',async()=>{expect(await getDepartmentById(1)).toMatchObject({success:false,kind:'not_found'});mock.result.error={message:'private detail'};expect(await getDepartmentById(1)).toMatchObject({success:false,kind:'failed'});});
+it.each(['detail','list','choice'])('%s read errors are safe and truthful',async kind=>{mock.result.error={message:'private detail'};const result=kind==='detail'?await getDepartmentById(1):kind==='list'?await listDepartments():await getDepartmentComboboxOptions();expect(result).toMatchObject({success:false,kind:'failed'});expect(JSON.stringify(result)).not.toContain('private detail');});
+it('unauthorized actor triggers no read',async()=>{mock.allow=false;expect(await getDepartmentById(1)).toMatchObject({success:false,kind:'forbidden'});expect(mock.client).not.toHaveBeenCalled();});
+it('transport error is not a not-found response',async()=>{mock.throwRead=true;expect(await getDepartmentById(1)).toMatchObject({success:false,kind:'failed'});});

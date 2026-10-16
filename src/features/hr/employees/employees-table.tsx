@@ -9,7 +9,7 @@ import type { AuthContext } from "@/lib/rbac/check";
 import { hasPermission } from "@/lib/rbac/scope";
 import type { EmployeeListRow } from "@/server/actions/hr/employees";
 import { archiveEmployee } from "@/server/actions/hr/employees";
-import { useServerPage } from "@/hooks/use-server-page";
+import { useServerPage, type ServerPageSeed } from "@/hooks/use-server-page";
 import { readJson, retryAuthorizedRead } from "@/lib/reads/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,6 +46,7 @@ import {
   FileStack,
 } from "lucide-react";
 import { HrDocumentEmployeeCreateWizard } from "./document-create/hr-document-employee-create-wizard";
+import { canStartDocumentEmployee } from "@/lib/hr/numbered-document-employee-contract";
 import type { SortDir } from "@/hooks/use-sort-paginate";
 import { useRealtimeSync } from "@/hooks/realtime/use-realtime-sync";
 import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
@@ -84,6 +85,7 @@ type Props = {
   initialRows: EmployeeListRow[];
   initialTotal: number;
   initialUpdatedAt: number;
+  initialReadIdentity: ServerPageSeed<EmployeeListRow>["identity"];
   authContext: AuthContext;
   documentWizardEnabled?: boolean;
 };
@@ -102,7 +104,7 @@ function statusFilterLabel(s: string): string {
   return s.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
 }
 
-export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, authContext, documentWizardEnabled = false }: Props) {
+export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, initialReadIdentity, authContext, documentWizardEnabled = false }: Props) {
   const { openTab } = useWorkspace();
 
   const {
@@ -192,8 +194,8 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, au
     []
   );
 
-  const seed = useMemo(() => ({rows:initialRows,totalCount:initialTotal,page:1,pageSize:25}),[initialRows,initialTotal]);
-  const uiReadEmployees=useServerPage<EmployeeListRow>({resource:"employees",params:{page,pageSize,search:search.trim()||undefined,employeeStatus:filters.status??undefined,ownerCompanyId:filters.companyId??undefined,departmentId:filters.departmentId??undefined,designationId:filters.designationId??undefined,nationalityId:filters.nationalityId??undefined,sortKey:sortKey??"employee_code",sortDir},seedParams:{page:1,pageSize:25,sortKey:"employee_code",sortDir:"asc"},seed,updatedAt:initialUpdatedAt});
+  const seed = useMemo<ServerPageSeed<EmployeeListRow>>(() => ({identity:initialReadIdentity,params:{page:1,pageSize:25,sortKey:"employee_code",sortDir:"asc"},data:{rows:initialRows,totalCount:initialTotal,page:1,pageSize:25},updatedAt:initialUpdatedAt}),[initialRows,initialTotal,initialUpdatedAt,initialReadIdentity]);
+  const uiReadEmployees=useServerPage<EmployeeListRow>({resource:"employees",params:{page,pageSize,search:search.trim()||undefined,employeeStatus:filters.status??undefined,ownerCompanyId:filters.companyId??undefined,departmentId:filters.departmentId??undefined,designationId:filters.designationId??undefined,nationalityId:filters.nationalityId??undefined,sortKey:sortKey??"employee_code",sortDir},seed});
   const rows=uiReadEmployees.data?.rows??[];
   const totalCount=uiReadEmployees.data?.totalCount??0;
   const fetching=uiReadEmployees.isBusy;
@@ -319,7 +321,7 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, au
           />
         </div>
 
-        <div className="ml-auto flex items-center gap-2 shrink-0">
+        <div className="ml-0 flex w-full min-w-0 flex-wrap items-center gap-2 md:ml-auto md:w-auto md:flex-nowrap">
           <EditColumns columns={columnState.columns} defaults={EMP_COLUMNS} onApply={columnState.setColumns} />
 
           <Button aria-label="Refresh"
@@ -334,7 +336,7 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, au
 
           {canCreate && (
             <>
-              {documentWizardEnabled && (
+              {documentWizardEnabled && canStartDocumentEmployee(authContext) && (
                 <Button aria-label="Create employee from existing DMS documents"
                   variant="outline"
                   size="sm"
@@ -604,6 +606,7 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, au
       <HrDocumentEmployeeCreateWizard
         open={wizardOpen}
         onOpenChange={setWizardOpen}
+        authContext={authContext}
       />
     </div></QueryReadBoundary>
   );

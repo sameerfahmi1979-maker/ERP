@@ -1,8 +1,9 @@
 import { defineConfig } from 'vitest/config';
 import path from 'node:path';
-import { fluentTestServer } from './fluent-test-config.mts';
+import { fluentTestServer, fluentTestAliases } from './fluent-test-config.mts';
 export default defineConfig({
   resolve: { alias: {
+    ...fluentTestAliases,
     '@': path.resolve('src'),
     'server-only': path.resolve('tests/unit/server-only.ts'),
     'https://esm.sh/@supabase/supabase-js@2.106.2': path.resolve('tests/remediation/f02-repair/no-db.ts'),
@@ -22,6 +23,8 @@ export default defineConfig({
       'tests/remediation/f04/*.test.{ts,tsx}',
       'tests/remediation/f05/*.test.{ts,tsx}',
     ],
-    setupFiles: ['tests/remediation/f01/offline-setup.ts'],
+    // Browser suites must use JSDOM's per-window stores on every supported
+    // Node runtime, including Node 25+ which exposes its own host getters.
+    setupFiles: ['tests/remediation/f01/offline-setup.ts', 'tests/remediation/f04/browser-storage.setup.ts'],
   },
 });

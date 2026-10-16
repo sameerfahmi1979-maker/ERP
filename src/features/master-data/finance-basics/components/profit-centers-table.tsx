@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { ProfitCenter } from "@/features/master-data/finance-basics/types";
+import type { ProfitCenterWithRelations } from "@/features/master-data/finance-basics/types";
 import type { AuthContext } from "@/lib/rbac/check";
 import { ERPDataTable } from "@/components/erp/table/erp-data-table";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -19,39 +19,32 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { FinanceBasicsActionsCell } from "./currencies-table";
-import {
-  toggleProfitCenterStatus,
-  deleteProfitCenter,
-  toggleProfitCenterLock,
-} from "@/features/master-data/finance-basics/actions";
-import { toast } from "sonner";
+import {FinanceCenterActionsCell,useFinanceCenterLifecycle,FinanceCenterLifecycleNotice} from "./finance-center-lifecycle";
+import {hasGlobalPermission} from "@/lib/rbac/scope";
+
 import { format } from "date-fns";
 
 type ProfitCentersTableProps = {
-  profitCenters: ProfitCenter[];
+  profitCenters: ProfitCenterWithRelations[];
   authContext: AuthContext;
   onRefresh?: () => void;
 };
 
 const BASE = "/admin/master-data/finance-basics/profit-centers";
 
-export function ProfitCentersTable({ profitCenters, authContext, onRefresh }: ProfitCentersTableProps) {
-  const router = useRouter();
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState<ProfitCenter | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-
-  const handleRefresh = () => {
-    if (onRefresh) onRefresh();
-    else router.refresh();
-  };
-
+export function ProfitCentersTable(props:ProfitCentersTableProps){
+ return <ProfitCentersTableSession key={props.authContext.profile?.id??'none'} {...props}/>;
+}
+function ProfitCentersTableSession({profitCenters,authContext,onRefresh}:ProfitCentersTableProps){
+ const router=useRouter();
+ const [deleteDialogOpen,setDeleteDialogOpen]=useState(false),[itemToDelete,setItemToDelete]=useState<ProfitCenterWithRelations|null>(null);
+ const lifecycle=useFinanceCenterLifecycle('profit_centers',()=>{setDeleteDialogOpen(false);setItemToDelete(null);if(onRefresh)onRefresh();else router.refresh();});
+ const isDeleting=lifecycle.busy;
   const handleAdd = () => router.push(`${BASE}/record/new`);
-  const handleView = (item: ProfitCenter) => router.push(`${BASE}/record/${item.id}`);
-  const handleEdit = (item: ProfitCenter) => router.push(`${BASE}/record/${item.id}?mode=edit`);
+  const handleView = (item: ProfitCenterWithRelations) => router.push(`${BASE}/record/${item.id}`);
+  const handleEdit = (item: ProfitCenterWithRelations) => router.push(`${BASE}/record/${item.id}?mode=edit`);
 
-  const columns: ColumnDef<ProfitCenter>[] = [
+  const columns: ColumnDef<ProfitCenterWithRelations>[] = [
     {
       accessorKey: "profit_center_code",
       accessorFn: (row) => `${row.profit_center_name_en} ${row.profit_center_code}`,
@@ -78,17 +71,17 @@ export function ProfitCentersTable({ profitCenters, authContext, onRefresh }: Pr
       accessorKey: "owner_company_id",
       header: "Company",
       cell: ({ row }) => (
-        <span className="text-sm">{row.original.owner_company_id ?? "Global"}</span>
+        <span className="text-sm">{row.original.owner_company_id==null?"Global":row.original.owner_company?.legal_name_en??"Company unavailable"}</span>
       ),
-      meta: { exportable: true, exportHeader: "Company ID", exportValue: (row) => String(row.owner_company_id ?? "") },
+      meta: { exportable: true, exportHeader: "Company", exportValue: (row) => row.owner_company_id==null?"Global":row.owner_company?.legal_name_en??"Company unavailable" },
     },
     {
       accessorKey: "branch_id",
       header: "Branch",
       cell: ({ row }) => (
-        <span className="text-sm">{row.original.branch_id ?? "—"}</span>
+        <span className="text-sm">{row.original.branch_id==null?"All branches":row.original.branch?.branch_name_en??"Branch unavailable"}</span>
       ),
-      meta: { exportable: true, exportHeader: "Branch ID", exportValue: (row) => String(row.branch_id ?? "") },
+      meta: { exportable: true, exportHeader: "Branch", exportValue: (row) => row.branch_id==null?"All branches":row.branch?.branch_name_en??"Branch unavailable" },
     },
     {
       accessorKey: "is_active",
@@ -116,21 +109,13 @@ export function ProfitCentersTable({ profitCenters, authContext, onRefresh }: Pr
       cell: ({ row }) => {
         const item = row.original;
         return (
-          <FinanceBasicsActionsCell
-            item={item}
+          <FinanceCenterActionsCell disabled={lifecycle.busy||lifecycle.unconfirmed||lifecycle.refreshError}
+            row={item}
             authContext={authContext}
             onView={() => handleView(item)}
             onEdit={() => handleEdit(item)}
-            onToggleActive={async () => {
-              const result = await toggleProfitCenterStatus({ id: item.id, is_active: !item.is_active });
-              if (result.success) { toast.success(`Profit center ${item.is_active ? "deactivated" : "activated"}`); handleRefresh(); }
-              else toast.error(result.error ?? "Failed to toggle status");
-            }}
-            onToggleLock={async () => {
-              const result = await toggleProfitCenterLock(item.id, !item.is_locked);
-              if (result.success) { toast.success(`Profit center ${item.is_locked ? "unlocked" : "locked"}`); handleRefresh(); }
-              else toast.error(result.error ?? "Failed to toggle lock");
-            }}
+            onToggleActive={()=>void lifecycle.change(item,'active')}
+            onToggleLock={()=>void lifecycle.change(item,'lock')}
             onDelete={() => { setItemToDelete(item); setDeleteDialogOpen(true); }}
           />
         );
@@ -141,7 +126,8 @@ export function ProfitCentersTable({ profitCenters, authContext, onRefresh }: Pr
 
   return (
     <>
-      <ERPDataTable<ProfitCenter>
+      {!deleteDialogOpen&&<FinanceCenterLifecycleNotice state={lifecycle}/>}
+      <ERPDataTable<ProfitCenterWithRelations>
         tableId="profit_centers_table"
         columns={columns}
         data={profitCenters}
@@ -160,7 +146,7 @@ export function ProfitCentersTable({ profitCenters, authContext, onRefresh }: Pr
           orientation: "landscape",
         }}
         toolbarSlot={
-          <Button onClick={handleAdd} size="sm" className="gap-2">
+          <Button disabled={lifecycle.busy||lifecycle.unconfirmed||lifecycle.refreshError||!hasGlobalPermission(authContext,'master_data.finance_basics.manage')} onClick={handleAdd} size="sm" className="gap-2">
             <Plus className="h-4 w-4" />
             Add Profit Center
           </Button>
@@ -170,31 +156,21 @@ export function ProfitCentersTable({ profitCenters, authContext, onRefresh }: Pr
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Profit Center</AlertDialogTitle>
+            <AlertDialogTitle>Retire Profit Center</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to permanently delete{" "}
-              <strong>{itemToDelete?.profit_center_name_en}</strong> ({itemToDelete?.profit_center_code})?
+              Are you sure you want to retire{" "}
+              <strong>{itemToDelete?.profit_center_name_en}</strong> ({itemToDelete?.profit_center_code})? The record, references and audit history will be retained. Active dependencies must be resolved first.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <FinanceCenterLifecycleNotice state={lifecycle}/>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting||lifecycle.unconfirmed}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={async () => {
-                if (!itemToDelete) return;
-                setIsDeleting(true);
-                const result = await deleteProfitCenter(itemToDelete.id);
-                setIsDeleting(false);
-                if (result.success) {
-                  toast.success("Profit center deleted");
-                  setDeleteDialogOpen(false);
-                  setItemToDelete(null);
-                  handleRefresh();
-                } else toast.error(result.error ?? "Failed to delete");
-              }}
-              disabled={isDeleting}
+              onClick={e=>{e.preventDefault();if(itemToDelete)void lifecycle.change(itemToDelete,'retire');}}
+              disabled={isDeleting||lifecycle.unconfirmed}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {isDeleting ? "Deleting..." : "Delete Permanently"}
+              {isDeleting ? "Retiring..." : "Retire; keep history"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

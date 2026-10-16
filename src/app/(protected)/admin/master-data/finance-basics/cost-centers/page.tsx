@@ -1,8 +1,9 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { getAuthContext, hasPermission, type AuthContext } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, hasGlobalPermission, type AuthContext } from "@/lib/rbac/check";
 import { getCostCenters } from "@/features/master-data/finance-basics/actions";
 import { ERPPageHeader } from "@/components/erp/page-header";
+import { LoadError } from "@/components/erp/load-error";
 import { CostCentersTable } from "@/features/master-data/finance-basics/components/cost-centers-table";
 
 export const metadata = {
@@ -15,8 +16,8 @@ async function CostCentersContent({ authContext }: { authContext: AuthContext })
 
   if (!result.success || !result.data) {
     return (
-      <div className="text-center py-12">
-        <p className="text-muted-foreground">Failed to load cost centers</p>
+      <div className="space-y-2">
+        <LoadError title="Cost centers" retryHref="/admin/master-data/finance-basics/cost-centers" />
         <p className="text-sm text-destructive mt-2">{result.error}</p>
       </div>
     );
@@ -28,7 +29,7 @@ async function CostCentersContent({ authContext }: { authContext: AuthContext })
 export default async function CostCentersPage() {
   const ctx = await getAuthContext();
 
-  if (!hasPermission(ctx, "master_data.finance_basics.view")) {
+  if (!hasPermission(ctx, "master_data.finance_basics.view")&&!hasGlobalPermission(ctx,"master_data.finance_basics.manage")&&!hasGlobalPermission(ctx,"master_data.lookups.lock")) {
     redirect("/access-denied");
   }
 
@@ -47,8 +48,9 @@ export default async function CostCentersPage() {
 
       <Suspense
         fallback={
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+          <div role="status" className="flex items-center justify-center py-12">
+            <span className="sr-only">Loading cost centers</span>
+            <div aria-hidden="true" className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
           </div>
         }
       >

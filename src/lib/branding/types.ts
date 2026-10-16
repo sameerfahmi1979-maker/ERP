@@ -23,8 +23,21 @@ export type ReportBrandingAssetType =
 
 export type BrandingAssetType = AppBrandingAssetType | ReportBrandingAssetType;
 
+/** Stable issuance provenance. Never store signed URLs or credentials here. */
+export interface IssuedBrandingProvenance {
+  schemaVersion: 1;
+  templateId: number;
+  templateRevision: string;
+  templateVersion: number;
+  brandingProfileId: number;
+  brandingRevision: string;
+  ownerCompanyId: number | null;
+  assets: Array<{ id: number; type: ReportBrandingAssetType; version: number; revision: string }>;
+}
+
 export interface AppBrandingSettings {
   id: number;
+  workspace_revision?: number | string;
   settings_code: string;
   app_name: string;
   app_short_name: string | null;
@@ -48,6 +61,7 @@ export interface AppBrandingSettings {
 
 export interface BrandingAsset {
   id: number;
+  workspace_revision?: number | string;
   asset_scope: BrandingAssetScope;
   app_settings_id: number | null;
   branding_profile_id: number | null;

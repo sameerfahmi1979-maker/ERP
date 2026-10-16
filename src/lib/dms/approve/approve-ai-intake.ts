@@ -383,7 +383,7 @@ export async function runApproveAiIntakeSaga(
 
 // ── Post-commit OCR helper ────────────────────────────────────────────────────
 
-async function runPostCommitOcr(
+export async function runPostCommitOcr(
   supabase: SupabaseClient,
   adminClient: SupabaseClient,
   params: {

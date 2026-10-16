@@ -21,6 +21,9 @@ interface EmailSettingsPageClientProps {
   canSecrets?: boolean;
   canFlags?: boolean;
   initialError?: boolean;
+  canViewProviders?: boolean;
+  canViewFlags?: boolean;
+  canViewLogs?: boolean;
 }
 
 export function EmailSettingsPageClient({
@@ -28,13 +31,20 @@ export function EmailSettingsPageClient({
   featureFlags,
   sendLogs,
   canManage = false, canTest = false, canSecrets = false, canFlags = false, initialError = false,
+  canViewProviders = true, canViewFlags = true, canViewLogs = true,
 }: EmailSettingsPageClientProps) {
   const [addOpen, setAddOpen] = useState(false);
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
-  const enabledProviders = configs.filter((c) => c.isEnabled);
+  const enabledProviders = configs.filter((c) => c.isEnabled && c.isActive);
   const hasEnabledProvider = enabledProviders.length > 0;
+  const defaults = configs.filter(c=>c.isDefault);
+  const readyDefault = defaults.length === 1 && defaults[0].isActive && defaults[0].isEnabled;
+  const readiness = configs.length === 0 ? "No provider configurations exist. Add a provider before configuring delivery."
+    : defaults.length === 0 ? "Providers exist, but no default is selected. Select a supported provider; do not infer readiness from an enabled non-default provider."
+    : defaults.length > 1 ? "Conflicting defaults require administrator reconciliation. No authoritative default can be identified."
+    : "The selected default is disabled or inactive. Configuration is preserved; automatic delivery is not ready.";
 
   // Trigger server-side refresh by forcing page re-render
   const handleRefresh = () => {
@@ -69,19 +79,19 @@ export function EmailSettingsPageClient({
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="rounded-lg border border-border p-3">
-          <p className="text-2xl font-bold tabular-nums">{configs.length}</p>
+          <p className="text-2xl font-bold tabular-nums">{initialError ? "Unavailable" : canViewProviders ? configs.length : "Restricted"}</p>
           <p className="text-xs text-muted-foreground">Providers Configured</p>
         </div>
         <div className={`rounded-lg border p-3 ${hasEnabledProvider ? "border-green-300 bg-green-50/30 dark:bg-green-950/10" : "border-border"}`}>
-          <p className="text-2xl font-bold tabular-nums">{enabledProviders.length}</p>
+          <p className="text-2xl font-bold tabular-nums">{initialError ? "Unavailable" : canViewProviders ? enabledProviders.length : "Restricted"}</p>
           <p className="text-xs text-muted-foreground">Active / Enabled</p>
         </div>
         <div className="rounded-lg border border-border p-3">
-          <p className="text-2xl font-bold tabular-nums">{featureFlags.filter((f) => f.isEnabled).length}</p>
+          <p className="text-2xl font-bold tabular-nums">{initialError ? "Unavailable" : canViewFlags ? featureFlags.filter((f) => f.isEnabled).length : "Restricted"}</p>
           <p className="text-xs text-muted-foreground">Feature Flags On</p>
         </div>
         <div className="rounded-lg border border-border p-3">
-          <p className="text-2xl font-bold tabular-nums">{sendLogs.length}</p>
+          <p className="text-2xl font-bold tabular-nums">{initialError ? "Unavailable" : canViewLogs ? sendLogs.length : "Restricted"}</p>
           <p className="text-xs text-muted-foreground">Send Log Entries</p>
         </div>
       </div>
@@ -91,26 +101,26 @@ export function EmailSettingsPageClient({
       <EmailSecurityNotice />
 
       {/* Not ready notice if no enabled provider */}
-      {!hasEnabledProvider && <EmailProviderNotReadyNotice />}
+      {!initialError && canViewProviders && !readyDefault && <EmailProviderNotReadyNotice message={readiness} />}
 
       {/* Main tabs */}
-      <Tabs defaultValue="providers">
+      <Tabs defaultValue={canViewProviders ? "providers" : canViewFlags ? "flags" : "logs"}>
         <TabsList className="h-auto flex flex-wrap justify-start">
-          <TabsTrigger value="providers" className="gap-1.5">
+          {canViewProviders && <TabsTrigger value="providers" className="gap-1.5">
             <Mail className="h-3.5 w-3.5" />Providers
-          </TabsTrigger>
-          <TabsTrigger value="flags" className="gap-1.5">
+          </TabsTrigger>}
+          {canViewFlags && <TabsTrigger value="flags" className="gap-1.5">
             <ToggleLeft className="h-3.5 w-3.5" />Feature Flags
-          </TabsTrigger>
-          <TabsTrigger value="logs" className="gap-1.5">
+          </TabsTrigger>}
+          {canViewLogs && <TabsTrigger value="logs" className="gap-1.5">
             <ScrollText className="h-3.5 w-3.5" />Send Logs
-          </TabsTrigger>
+          </TabsTrigger>}
           <TabsTrigger value="guide" className="gap-1.5">
             <BookOpen className="h-3.5 w-3.5" />Setup Guide
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="providers" className="mt-4">
+        {canViewProviders && <TabsContent value="providers" className="mt-4">
           <EmailProviderConfigList
             configs={configs}
             canManage={canManage && !initialError && !isPending}
@@ -119,9 +129,9 @@ export function EmailSettingsPageClient({
             onRefresh={handleRefresh}
             onAdd={() => setAddOpen(true)}
           />
-        </TabsContent>
+        </TabsContent>}
 
-        <TabsContent value="flags" className="mt-4">
+        {canViewFlags && <TabsContent value="flags" className="mt-4">
           <div className="rounded-lg border border-border p-4">
             <p className="text-sm font-medium mb-1">Email Feature Flags</p>
             <p className="text-xs text-muted-foreground mb-4">
@@ -130,11 +140,11 @@ export function EmailSettingsPageClient({
             </p>
             <EmailFeatureFlagsPanel flags={featureFlags} onRefresh={handleRefresh} canManage={canFlags && !initialError && !isPending} />
           </div>
-        </TabsContent>
+        </TabsContent>}
 
-        <TabsContent value="logs" className="mt-4">
+        {canViewLogs && <TabsContent value="logs" className="mt-4">
           <EmailSendLogTable logs={sendLogs} />
-        </TabsContent>
+        </TabsContent>}
 
         <TabsContent value="guide" className="mt-4">
           <Microsoft365SetupGuide />
@@ -176,30 +186,30 @@ function Microsoft365SetupGuide() {
           <p className="ml-5 mt-1 text-xs">Certificates & secrets → New client secret → Copy the value immediately (shown only once).</p>
         </li>
         <li>
-          <span className="font-medium text-foreground">Set the secret in your environment</span>
-          <p className="ml-5 mt-1 text-xs">Add to your server environment: <code className="font-mono bg-muted px-1 rounded">MICROSOFT_GRAPH_CLIENT_SECRET=&lt;your-secret&gt;</code></p>
+          <span className="font-medium text-foreground">Save the provider, then protect its credential</span>
+          <p className="ml-5 mt-1 text-xs">Create or edit the provider with its Tenant ID, Client ID and approved sender mailbox. Keep it disabled during setup. A user with separate credential-management permission can then choose &quot;Update Secret&quot; and enter the secret value. It is stored securely in the server vault; do not enter an environment-variable name in that field.</p>
         </li>
         <li>
-          <span className="font-medium text-foreground">Configure the provider in ERP</span>
-          <p className="ml-5 mt-1 text-xs">In the Providers tab: edit M365_DEFAULT → enter Tenant ID and Client ID (App ID) → click &quot;Update Secret&quot; → enter the env var name (e.g. MICROSOFT_GRAPH_CLIENT_SECRET).</p>
+          <span className="font-medium text-foreground">Limit the sender to approved mailboxes</span>
+          <p className="ml-5 mt-1 text-xs">Your Microsoft 365 administrator must restrict this application to the intended sending mailbox. Never put secrets in notes, chat, screenshots or audit records. Existing approved server-managed credentials are a separate deployment configuration, not a value to paste into the secret dialog.</p>
         </li>
         <li>
           <span className="font-medium text-foreground">Test the connection</span>
-          <p className="ml-5 mt-1 text-xs">Click &quot;Test Connection&quot; to verify credentials. Then use &quot;Send Test Email&quot; to confirm email delivery.</p>
+          <p className="ml-5 mt-1 text-xs">&quot;Test Connection&quot; checks authentication and mailbox access without sending mail. An explicitly authorized test email checks provider submission; acceptance is not proof of inbox delivery. Confirm receipt with the intended test recipient. If submission is unconfirmed, investigate before retrying to avoid duplicates.</p>
         </li>
         <li>
-          <span className="font-medium text-foreground">Enable the provider and feature flags</span>
-          <p className="ml-5 mt-1 text-xs">Toggle the provider to Enabled and enable the relevant feature flags (e.g. DMS_EXPIRY_EMAILS) once you confirm delivery works.</p>
+          <span className="font-medium text-foreground">Approve delivery limits and activation separately</span>
+          <p className="ml-5 mt-1 text-xs">Select exactly one enabled, active default. Agree the per-minute and daily attempt limits before activating automated delivery, including capacity used by password emails, manual exports and connection-test emails outside the queue. Configuration or a feature flag alone does not prove that the backend worker is deployed and ready.</p>
         </li>
       </ol>
 
       <div className="rounded-md bg-muted/20 border border-border p-3 text-xs">
-        <p className="font-medium">Important: ERP NOTIFICATIONS.1 required for automatic delivery</p>
+        <p className="font-medium">Automatic delivery has a separate release gate</p>
         <p className="text-muted-foreground mt-1">
-          This SETTINGS.2 phase provides the email provider foundation. Actual automated email delivery
-          (DMS expiry reminders, renewals, etc.) requires the upcoming{" "}
-          <strong>ERP NOTIFICATIONS.1 — Global Notification and Email Delivery Engine</strong> phase,
-          which will consume the <code className="font-mono">email_ready</code> notification queue.
+          F06 governs provider settings. F09 governs queued email, scheduling and controlled retries.
+          Queued limits count dispatch attempts in rolling windows, not recipients or confirmed deliveries.
+          Deploy and verify the matching worker and approved limits under the controlled release plan;
+          do not assume that saving these settings activates automated delivery.
         </p>
       </div>
     </div>

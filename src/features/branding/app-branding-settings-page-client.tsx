@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useTransition, useRef, useEffect, useId } from "react";
+import { useState, useTransition, useRef, useEffect, useLayoutEffect, useId } from "react";
+import { useReadCacheOwner } from '@/components/layout/read-cache-boundary';
+import { z } from 'zod';
 import { useRouter } from "next/navigation";
 import { FormErrorSummary, useInlineFieldFeedback } from "@/components/workspace/form-feedback";
 import { collectWorkspaceFieldIssues, type WorkspaceFieldIssue } from "@/lib/workspace/form-validation";
@@ -17,6 +19,7 @@ import { updateAppBrandingSettings } from "@/server/actions/branding/app-setting
 import type { AppBrandingSettings } from "@/lib/branding";
 import type { RuntimeAppBranding } from "@/lib/branding/runtime-types";
 import type { AppBrandingAssetType } from "@/lib/branding";
+import { createWorkspaceSaveAttempt, type WorkspaceSaveContract } from "@/lib/workspace/save-contract";
 
 type AppBrandingSettingsPageClientProps = {
   settings: AppBrandingSettings;
@@ -45,7 +48,7 @@ const APP_ASSET_DEFS: {
   {
     type: "favicon",
     label: "Favicon",
-    description: "Browser tab icon (ICO or PNG, 32×32 recommended).",
+    description: "Browser tab icon (PNG, 32×32 recommended; convert ICO first).",
   },
   {
     type: "login_background",
@@ -54,7 +57,11 @@ const APP_ASSET_DEFS: {
   },
 ];
 
-export function AppBrandingSettingsPageClient({
+const settingsReceipt=z.object({id:z.number().int().positive(),revision:z.string().regex(/^[1-9]\d*$/),changed:z.boolean(),replayed:z.boolean()});
+export function AppBrandingSettingsPageClient(props:AppBrandingSettingsPageClientProps){
+  return <AppBrandingSettingsSession key={props.settings.id} {...props}/>;
+}
+function AppBrandingSettingsSession({
   settings,
   runtimeBranding,
   canManage,
@@ -76,11 +83,19 @@ export function AppBrandingSettingsPageClient({
   });
   const root = useRef<HTMLFormElement>(null);
   const flight = useRef(false);
+  const attempt = useRef(createWorkspaceSaveAttempt());
+  const pending=useRef<{payload:Parameters<typeof updateAppBrandingSettings>[0];contract:WorkspaceSaveContract;fingerprint:string;hadUnknown:boolean}|null>(null);
+  const confirmed=useRef<{fingerprint:string;failed:boolean}|null>(null);
+  const owner=useReadCacheOwner(),activation=useRef<{live:boolean}|null>(null);
+  useLayoutEffect(()=>{const token={live:true};activation.current=token;return()=>{token.live=false;};},[owner]);
+  const [revision, setRevision] = useState(settings.workspace_revision == null ? null : String(settings.workspace_revision));
   const fieldId = useId();
   const [initial, setInitial] = useState(JSON.stringify(form));
   const dirty = JSON.stringify(form) !== initial;
   const [issues, setIssues] = useState<WorkspaceFieldIssue[]>([]);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [pendingAsset, setPendingAsset] = useState<AppBrandingAssetType | null>(null);
+  const pendingAssetRef = useRef<AppBrandingAssetType | null>(null);
   useInlineFieldFeedback(issues);
   useWorkspaceTabDirty({ isDirty: dirty, enabled: canManage });
   useEffect(() => {
@@ -92,7 +107,12 @@ export function AppBrandingSettingsPageClient({
   const [isSaving, startSaveTransition] = useTransition();
 
   const handleSave = () => {
-    if (!canManage || flight.current) return;
+    const token=activation.current,current=()=>!!token?.live&&activation.current===token&&owner?.isLive()!==false;
+    if (!current() || !canManage || flight.current || pendingAssetRef.current !== null) return;
+    const fingerprint=JSON.stringify(form);
+    if(confirmed.current&&(confirmed.current.failed||confirmed.current.fingerprint===fingerprint)){
+      try{router.refresh();setSaveError(null);}catch{setSaveError('Saved, but the display could not be refreshed. Refresh this view.');}return;
+    }
     const invalid = root.current ? collectWorkspaceFieldIssues(root.current) : [];
     setIssues(invalid);
     if (invalid.length) { invalid[0].control?.focus(); return; }
@@ -100,7 +120,7 @@ export function AppBrandingSettingsPageClient({
     setSaveError(null);
     startSaveTransition(async () => {
       try {
-      const result = await updateAppBrandingSettings({
+      const payload = {
         id: settings.id,
         app_name: form.app_name.trim(),
         app_short_name: form.app_short_name.trim() || null,
@@ -113,18 +133,30 @@ export function AppBrandingSettingsPageClient({
         theme_accent_color: form.theme_accent_color.trim() || null,
         login_title: form.login_title.trim() || null,
         login_subtitle: form.login_subtitle.trim() || null,
-      });
-
+      };
+      if(pending.current&&pending.current.fingerprint!==fingerprint)throw Error('Restore the submitted entries.');
+      pending.current??={payload:structuredClone(payload),contract:attempt.current.begin(payload,revision),fingerprint,hadUnknown:false};
+      const request=pending.current;
+      let result:Awaited<ReturnType<typeof updateAppBrandingSettings>>;
+      try{result=await updateAppBrandingSettings(request.payload,request.contract);}catch{request.hadUnknown=true;throw Error('Save unconfirmed.');}
+      if(!current())return;
+      if(!result||typeof result.success!=='boolean'){request.hadUnknown=true;setSaveError('Settings save response incomplete. Retry the unchanged entries.');return;}
       if (!result.success) {
-        setSaveError("Settings were not saved. Check your access and try again. Your entries are still here.");
+        const earlier=request.hadUnknown;request.hadUnknown ||= result.uncertain===true;
+        if(!request.hadUnknown){attempt.current.resolved();pending.current=null;}
+        setSaveError(earlier?'The earlier settings save is still unconfirmed. Retry the unchanged entries.':result.error ?? "Settings save is unconfirmed. Retry the unchanged entries.");
         return;
       }
-      toast.success("App branding settings saved");
-      setInitial(JSON.stringify(form));
-      router.refresh();
+      const receipt=settingsReceipt.safeParse(result.data);
+      if(!receipt.success||receipt.data.id!==request.payload.id){request.hadUnknown=true;setSaveError('Settings save response incomplete. Retry the unchanged entries.');return;}
+      const witness={fingerprint:request.fingerprint,failed:false};confirmed.current=witness;
+      try{attempt.current.resolved();pending.current=null;setRevision(receipt.data.revision);setInitial(request.fingerprint);}catch{witness.failed=true;}
+      if(current())try{toast.success(receipt.data.changed === false ? "No changes to save" : "App branding settings saved");}catch{witness.failed=true;}
+      if(current())try{router.refresh();}catch{witness.failed=true;}
+      if(current()&&witness.failed)setSaveError('Saved, but the display could not be refreshed. Refresh this view.');
       } catch {
-        setSaveError("The save could not be confirmed. Your entries are still here. Refresh only after checking whether the change was saved.");
-      } finally { flight.current = false; }
+        if(current())setSaveError("Save unconfirmed. Restore the submitted entries and retry to recover the same operation, or reopen to reconcile it.");
+      } finally { if(current())flight.current = false; }
     });
   };
 
@@ -133,6 +165,7 @@ export function AppBrandingSettingsPageClient({
     if (!asset) return null;
     return {
       id: asset.id,
+      workspaceRevision: asset.workspaceRevision,
       originalFilename: asset.originalFilename,
       mimeType: asset.mimeType,
       fileSizeBytes: asset.fileSizeBytes,
@@ -178,7 +211,8 @@ export function AppBrandingSettingsPageClient({
           <h2 className="text-sm font-semibold">Identity & Theme</h2>
           <p className="text-sm text-muted-foreground">Unsaved settings stay on this page only. Save before refreshing or uploading an asset.</p>
 
-          <fieldset disabled={isSaving} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {pendingAsset && <p role="status">Finish or retry the current asset operation before editing these settings.</p>}
+          <fieldset disabled={isSaving || pendingAsset !== null} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
               <RequiredLabel required={canManage} htmlFor={`${fieldId}-app_name`}>App Name</RequiredLabel>
               <Input id={`${fieldId}-app_name`} name="app_name" required pattern={".*\\S.*"} maxLength={200}
@@ -319,7 +353,7 @@ export function AppBrandingSettingsPageClient({
 
           {canManage ? (
             <div className="flex justify-end pt-2">
-              <Button type="submit" size="sm" className="gap-1.5" disabled={isSaving}>
+              <Button type="submit" size="sm" className="gap-1.5" disabled={isSaving || pendingAsset !== null}>
                 <Save className="h-4 w-4" />
                 {isSaving ? "Saving..." : "Save Settings"}
               </Button>
@@ -330,7 +364,7 @@ export function AppBrandingSettingsPageClient({
         <div className="space-y-3">
           <h2 className="text-sm font-semibold px-1">Branding Assets</h2>
           {dirty && canUpload && <p role="status" className="text-sm text-muted-foreground">Save your settings before changing branding assets.</p>}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {runtimeBranding.assetStatus === "unavailable" ? <p role="alert" className="text-destructive">Branding assets could not be loaded. Refresh before uploading or replacing a file.</p> : <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {APP_ASSET_DEFS.map((def) => (
               <BrandingAssetUploadCard
                 key={def.type}
@@ -338,13 +372,21 @@ export function AppBrandingSettingsPageClient({
                 description={def.description}
                 assetType={def.type}
                 appSettingsId={settings.id}
+                parentRevision={revision ?? undefined}
                 asset={getAsset(def.type)}
-                canUpload={canUpload && !dirty && !isSaving}
+                canUpload={canUpload}
+                disabled={dirty || isSaving || pendingAsset !== null && pendingAsset !== def.type || runtimeBranding.settingsRevision !== undefined && runtimeBranding.settingsRevision !== revision}
+                disabledReason={dirty ? "Save your settings before changing branding assets." : pendingAsset ? "Finish the current asset operation first." : "Wait for the current settings version to load before changing an asset."}
+                onPendingChange={pending => {
+                  if (pending && pendingAssetRef.current !== null && pendingAssetRef.current !== def.type) return false;
+                  pendingAssetRef.current = pending ? def.type : null;
+                  setPendingAsset(pendingAssetRef.current); return true;
+                }}
                 required={def.required}
-                onChanged={() => router.refresh()}
+                onChanged={receipt => {setRevision(receipt.parent_revision);router.refresh();}}
               />
             ))}
-          </div>
+          </div>}
         </div>
       </div>
     </div>

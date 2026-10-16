@@ -2,10 +2,10 @@
 
 const fill = require('fill-range');
 const utils = require('./utils');
-const {assertAst} = require('./guard');
+const guard = require('./depth-guard');
 
 const compile = (ast, options = {}) => {
-  assertAst(ast);
+  guard.assertAst(ast);
   const walk = (node, parent = {}) => {
     const invalidBlock = utils.isInvalidBrace(parent);
     const invalidNode = node.invalid === true && options.escapeInvalid === true;

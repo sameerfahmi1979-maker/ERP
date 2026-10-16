@@ -12,21 +12,19 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Edit, Trash2, MapPin } from "lucide-react";
+import { Plus, Edit, MapPin } from "lucide-react";
 import { toast } from "sonner";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
+import {PartyAddressDialog} from './party-address-dialog';
+import {PartyChildLifecycleControl,usePartyChildLifecycle} from './party-child-lifecycle-control';
+import type {SavePartyAddress} from './use-party-address-save';
 import { ERPCombobox } from "@/components/erp/combobox";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { CountrySelect, EmirateSelect, CitySelect, AreaZoneSelect } from "@/components/erp/geography";
 import { usePartyAddressesQuery } from "./hooks/use-party-child-queries";
 import { invalidatePartyAddresses } from "@/lib/query/invalidation";
 import { useRealtimeSync } from "@/hooks/realtime/use-realtime-sync";
-import {
-  createPartyAddress,
-  updatePartyAddress,
-  deletePartyAddress,
-} from "@/server/actions/master-data/party-addresses";
 import { getPartyAddressTypes } from "@/server/actions/master-data/parties";
+import { savedSelection, withSavedSelection } from "@/lib/master-data/saved-selection";
 import type { PartyAddress } from "./party-types";
 
 type PartyAddressesTabProps = {
@@ -61,6 +59,8 @@ export function PartyAddressesTab({ partyId, disabled, onChildOpen }: PartyAddre
   const queryClient = useQueryClient();
   const { items: addresses, isLoading, error: loadError, refetch } = usePartyAddressesQuery(partyId);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const lifecycle=usePartyChildLifecycle({entity:'party_addresses',onSaved:()=>{invalidatePartyAddresses(queryClient,partyId);},onOpenChange:onChildOpen});
+  const lifecycleOpen=lifecycle.isOpen;
   const setDialogOpen = (open: boolean) => { setIsDialogOpen(open); onChildOpen?.(open); };
   const [editing, setEditing] = useState<PartyAddress | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -72,26 +72,28 @@ export function PartyAddressesTab({ partyId, disabled, onChildOpen }: PartyAddre
     table: "party_addresses",
     event: "*",
     filter: `party_id=eq.${partyId}`,
-    enabled: !isDialogOpen,
+    enabled: !isDialogOpen && !lifecycleOpen,
     debounceMs: 400,
     onEvent: () => {
       invalidatePartyAddresses(queryClient, partyId);
     },
   });
 
-  const { data: addressTypes } = useQuery({
+  const { data: addressTypes, error: addressTypesError } = useQuery({
     queryKey: ["party_address_types"],
-    queryFn: async () => (await getPartyAddressTypes()).data ?? [],
+    queryFn: async () => { const result = await getPartyAddressTypes(); if (!result.success || !result.data) throw new Error("Address types could not be loaded."); return result.data; },
     staleTime: 5 * 60 * 1000,
   });
 
   const openAdd = () => {
+    if(lifecycleOpen)return;
     setEditing(null);
     setForm({ ...emptyForm });
     setDialogOpen(true);
   };
 
   const openEdit = (item: PartyAddress) => {
+    if(lifecycleOpen)return;
     setEditing(item);
     setForm({
       address_type_id: item.address_type_id,
@@ -117,18 +119,8 @@ export function PartyAddressesTab({ partyId, disabled, onChildOpen }: PartyAddre
     setDialogOpen(true);
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("Delete this address?")) return;
-    const result = await deletePartyAddress(id);
-    if (result.success) {
-      toast.success("Address deleted");
-      invalidatePartyAddresses(queryClient, partyId);
-    } else {
-      toast.error(result.error ?? "Failed to delete");
-    }
-  };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (save:SavePartyAddress) => {
     if (!form.address_type_id || !form.country_id) {
       toast.error("Address type and country are required");
       return;
@@ -150,8 +142,8 @@ export function PartyAddressesTab({ partyId, disabled, onChildOpen }: PartyAddre
         po_box: form.po_box || null,
         landmark: form.landmark || null,
         google_map_url: form.google_map_url || null,
-        latitude: null,
-        longitude: null,
+        latitude: editing?.latitude ?? null,
+        longitude: editing?.longitude ?? null,
         is_primary: form.is_primary,
         is_billing_address: form.is_billing_address,
         is_shipping_address: form.is_shipping_address,
@@ -160,12 +152,10 @@ export function PartyAddressesTab({ partyId, disabled, onChildOpen }: PartyAddre
         notes: form.notes || null,
       };
 
-      const result = editing
-        ? await updatePartyAddress({ id: editing.id, ...payload })
-        : await createPartyAddress(payload);
+      const result = await save(payload);
 
       if (result.success) {
-        toast.success(`Address ${editing ? "updated" : "added"}`);
+        toast.success(result.data?.changed===false ? "No changes to save" : `Address ${editing ? "updated" : "added"}`);
         setDialogOpen(false);
         invalidatePartyAddresses(queryClient, partyId);
       } else {
@@ -177,6 +167,7 @@ export function PartyAddressesTab({ partyId, disabled, onChildOpen }: PartyAddre
   };
 
   const columns: ColumnDef<PartyAddress>[] = [
+    {id:'archive_state',header:'Archive status',accessorFn:row=>row.archived_at?'Archived':'Current'},
     {id:"address_code",header:"Address",size:360,accessorFn:row=>[row.address_code,row.address_name,row.city_name,row.emirate_name,row.country_name].filter(Boolean).join(" "),enableHiding:false,cell:({row})=>{const addr=row.original;return (<div className="space-y-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-mono text-xs text-muted-foreground">{addr.address_code}</span>
@@ -195,12 +186,10 @@ export function PartyAddressesTab({ partyId, disabled, onChildOpen }: PartyAddre
     {accessorKey:"is_billing_address",header:"Billing",},
     {id:"actions",header:"Actions",size:180,enableSorting:false,enableHiding:false,cell:({row})=>{const addr=row.original;return (<>{!disabled && (
                 <div className="flex gap-1 shrink-0">
-                  <Button aria-label="Edit record" type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(addr)}>
+                  <Button aria-label="Edit record" type="button" variant="ghost" size="icon" className="h-7 w-7" disabled={Boolean(addr.archived_at)} onClick={() => openEdit(addr)}>
                     <Edit className="h-3.5 w-3.5" />
                   </Button>
-                  <Button aria-label="Delete record" type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(addr.id)}>
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  <PartyChildLifecycleControl record={addr} onOpen={()=>lifecycle.open(addr,addr.address_code)}/>
                 </div>
               )}</>);}},
   ];
@@ -220,7 +209,10 @@ export function PartyAddressesTab({ partyId, disabled, onChildOpen }: PartyAddre
       {loadError ? <div role="alert" className="rounded border p-4"><p>Address records could not be loaded.</p><Button type="button" variant="outline" onClick={refetch}>Try again</Button></div> :
         <ERPDataTable tableId={`party.addresses:${partyId}`} resultsLabel="Address" data={addresses ?? []} columns={columns} enableRowSelection={false} />}
 
-      <ERPChildDialogForm
+      {isDialogOpen && <PartyAddressDialog
+        key={`${partyId}:${editing?.id??'new'}`}
+        formId={`party-addresses-tab:${partyId}`}
+        address={editing}
         open={isDialogOpen}
         onOpenChange={setDialogOpen}
         title={editing ? "Edit Address" : "Add Address"}
@@ -237,7 +229,8 @@ export function PartyAddressesTab({ partyId, disabled, onChildOpen }: PartyAddre
             <ERPCombobox ariaLabel="Address Type"
               value={form.address_type_id}
               onValueChange={(v) => setForm((f) => ({ ...f, address_type_id: v !== null ? Number(v) : null }))}
-              options={(addressTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }))}
+              options={withSavedSelection((addressTypesError ? [] : addressTypes ?? []).map(t => ({ value: t.id, label: t.name_en })), form.address_type_id, savedSelection(editing?.address_type_id, editing?.address_type_name))}
+              error={addressTypesError ? "Address types could not be loaded. Your saved selection is retained." : undefined}
               placeholder="Select type..."
               required
             />
@@ -248,19 +241,19 @@ export function PartyAddressesTab({ partyId, disabled, onChildOpen }: PartyAddre
           </div>
           <div className="col-span-6">
             <RequiredLabel required>Country</RequiredLabel>
-            <CountrySelect value={form.country_id} onValueChange={(v) => setForm((f) => ({ ...f, country_id: v, emirate_id: null, city_id: null, area_zone_id: null }))} />
+            <CountrySelect savedSelection={savedSelection(editing?.country_id, editing?.country_name)} value={form.country_id} onValueChange={(v) => setForm((f) => ({ ...f, country_id: v, emirate_id: null, city_id: null, area_zone_id: null }))} />
           </div>
           <div className="col-span-6">
             <Label>Emirate</Label>
-            <EmirateSelect countryId={form.country_id} value={form.emirate_id} onValueChange={(v) => setForm((f) => ({ ...f, emirate_id: v, city_id: null, area_zone_id: null }))} disabled={!form.country_id} />
+            <EmirateSelect savedSelection={form.country_id === editing?.country_id ? savedSelection(editing?.emirate_id, editing?.emirate_name) : undefined} countryId={form.country_id} value={form.emirate_id} onValueChange={(v) => setForm((f) => ({ ...f, emirate_id: v, city_id: null, area_zone_id: null }))} disabled={!form.country_id} />
           </div>
           <div className="col-span-6">
             <Label>City</Label>
-            <CitySelect emirateId={form.emirate_id} value={form.city_id} onValueChange={(v) => setForm((f) => ({ ...f, city_id: v, area_zone_id: null }))} disabled={!form.emirate_id} />
+            <CitySelect savedSelection={form.country_id === editing?.country_id && form.emirate_id === editing?.emirate_id ? savedSelection(editing?.city_id, editing?.city_name) : undefined} emirateId={form.emirate_id} value={form.city_id} onValueChange={(v) => setForm((f) => ({ ...f, city_id: v, area_zone_id: null }))} disabled={!form.emirate_id} />
           </div>
           <div className="col-span-6">
             <Label>Area / Zone</Label>
-            <AreaZoneSelect cityId={form.city_id} value={form.area_zone_id} onValueChange={(v) => setForm((f) => ({ ...f, area_zone_id: v }))} disabled={!form.city_id} />
+            <AreaZoneSelect savedSelection={form.country_id === editing?.country_id && form.emirate_id === editing?.emirate_id && form.city_id === editing?.city_id ? savedSelection(editing?.area_zone_id, editing?.area_zone_name) : undefined} cityId={form.city_id} value={form.area_zone_id} onValueChange={(v) => setForm((f) => ({ ...f, area_zone_id: v }))} disabled={!form.city_id} />
           </div>
           <div className="col-span-6">
             <Label>Street</Label>
@@ -292,7 +285,8 @@ export function PartyAddressesTab({ partyId, disabled, onChildOpen }: PartyAddre
             <Textarea aria-label="Notes" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} />
           </div>
         </div>
-      </ERPChildDialogForm>
+      </PartyAddressDialog>}
+      {lifecycle.dialog}
     </div>
   );
 }

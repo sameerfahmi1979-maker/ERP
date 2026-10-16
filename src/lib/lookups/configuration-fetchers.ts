@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { collectCompletePages } from "@/lib/reads/complete-pages";
 import { ReadError } from "@/lib/reads/client";
+import type { FinanceParentChoiceScope } from "@/features/master-data/finance-basics/types";
 
 // This is an internal, closed allowlist, not a client-supplied table/projection API.
 const definitions = {
@@ -21,20 +22,43 @@ const definitions = {
   ports: { table: "ports", columns: "id,port_code,name_en,name_ar,emirate_id,port_type_code", order: ["sort_order", "name_en"], active: "is_active", parent: "emirate_id", filter: "port_type_code" },
 } as const;
 export type ConfigurationResource = keyof typeof definitions;
-export type ConfigurationParams = { includeInactive?: boolean; parentId?: number | null; filter?: string | boolean | null; selectedId?: number | null };
+export type ConfigurationParams = { selectedId?: number | null } & (
+  | { choiceMode?: "ordinary"; parentScope?: never; includeInactive?: boolean; parentId?: number | null; filter?: string | boolean | null }
+  | { choiceMode: "finance-parent"; parentScope: FinanceParentChoiceScope; includeInactive?: false; parentId?: never; filter?: never }
+);
+
+export function isFinanceParentChoiceScope(value: unknown): value is FinanceParentChoiceScope {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const scope = value as Record<string, unknown>;
+  return Object.keys(scope).length === 3 && ["companyId", "branchId", "excludeId"].every(key =>
+    Object.hasOwn(scope, key) && (scope[key] === null || (Number.isSafeInteger(scope[key]) && Number(scope[key]) > 0)))
+    && (scope.companyId !== null || scope.branchId === null);
+}
 
 /** Preserve existing browser-client RLS and lean mapper shapes; no service-role reads. */
 export async function fetchConfigurationChoices<T extends { id: number }>(resource: ConfigurationResource, params: ConfigurationParams = {}, signal?: AbortSignal): Promise<T[]> {
   const definition = definitions[resource];
-  if (!definition || (params.parentId != null && (!Number.isSafeInteger(params.parentId) || params.parentId <= 0)) || (params.selectedId != null && (!Number.isSafeInteger(params.selectedId) || params.selectedId <= 0))) throw new ReadError("Invalid choice parameters", 400);
+  if (!Object.hasOwn(definitions, resource) || !definition || (params.parentId != null && (!Number.isSafeInteger(params.parentId) || params.parentId <= 0)) || (params.selectedId != null && (!Number.isSafeInteger(params.selectedId) || params.selectedId <= 0))) throw new ReadError("Invalid choice parameters", 400);
+  const parentMode = params.choiceMode === "finance-parent";
+  if (parentMode ? (!["costCenters", "profitCenters"].includes(resource) || !isFinanceParentChoiceScope(params.parentScope)
+      || params.parentId !== undefined || params.filter !== undefined || (params.includeInactive !== undefined && params.includeInactive !== false))
+    : ((params.choiceMode !== undefined && params.choiceMode !== "ordinary") || params.parentScope !== undefined)) throw new ReadError("Invalid choice parameters", 400);
   const db = createClient();
   return collectCompletePages<T>(async (from, to) => {
-    // Runtime projection is fixed by the closed allowlist; avoid expanding a
-    // combinatorial union of every table's unrelated generated relationships.
+    // Runtime projection stays closed; avoid the generated parser's cross-product of every definition.
     let query = db.from(definition.table).select(definition.columns as string, { count: "exact" }).retry(false);
     for (const order of definition.order) query = query.order(order, { ascending: true });
     query = query.order("id", { ascending: true });
-    if ("parent" in definition && params.parentId != null) query = query.eq(definition.parent, params.parentId);
+    if (params.choiceMode === "finance-parent") {
+      const { companyId, branchId, excludeId } = params.parentScope;
+      // Separate URL logic trees are conjunctive. Only validated numeric IDs
+      // enter these fixed predicates; caller RLS remains the authority.
+      query = companyId === null ? query.is("owner_company_id", null)
+        : query.or(`owner_company_id.is.null,owner_company_id.eq.${companyId}`);
+      query = branchId === null ? query.is("branch_id", null)
+        : query.or(`branch_id.is.null,branch_id.eq.${branchId}`);
+      if (excludeId !== null) query = query.neq("id", excludeId);
+    } else if ("parent" in definition && params.parentId != null) query = query.eq(definition.parent, params.parentId);
     if ("filter" in definition && params.filter != null && params.filter !== false && params.filter !== "") query = query.eq(definition.filter, params.filter);
     // Selected legacy values retain the SAME parent/filter and RLS predicates.
     // Only the active predicate is omitted; this grants no new row access.

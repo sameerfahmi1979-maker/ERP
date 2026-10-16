@@ -8,6 +8,7 @@ import type { AppBrandingAssetType } from "./types";
 /** Serializable app branding consumed by login, sidebar, and layout */
 export interface RuntimeAppBranding {
   settingsId: number;
+  settingsRevision?: string;
   appName: string;
   appShortName: string;
   tagline: string | null;
@@ -26,10 +27,12 @@ export interface RuntimeAppBranding {
   /** Expanded sidebar title line 2 */
   sidebarSubtitle: string | null;
   assets: Partial<Record<AppBrandingAssetType, RuntimeAppBrandingAsset>>;
+  assetStatus?: "ready" | "unavailable";
 }
 
 export interface RuntimeAppBrandingAsset {
   id: number;
+  workspaceRevision?: string;
   assetType: AppBrandingAssetType;
   publicUrl: string;
   originalFilename: string | null;

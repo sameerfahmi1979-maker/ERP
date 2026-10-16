@@ -1,0 +1,18 @@
+// @vitest-environment jsdom
+import '../f05/setup';
+import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {afterEach,beforeEach,expect,it,vi} from 'vitest';
+import {FluentProvider,webLightTheme} from '@fluentui/react-components';
+const m=vi.hoisted(()=>({read:vi.fn(),ensure:vi.fn(),open:vi.fn(),success:vi.fn(),error:vi.fn(),warning:vi.fn()}));
+vi.mock('@/server/actions/organizations',()=>({getOrganizationBrandingProfile:m.read,ensureOrgBrandingProfile:m.ensure}));
+vi.mock('@/hooks/use-workspace',()=>({useWorkspace:()=>({openTab:m.open})}));
+vi.mock('sonner',()=>({toast:{success:m.success,error:m.error,warning:m.warning}}));
+import {OrganizationBrandingSection} from '@/features/organizations/organization-branding-section';
+const summary=(name:string)=>({profileId:1,profileCode:'SYNTHETIC',profileName:name,isDefault:true,assetStatus:{report_logo:true,report_logo_small:false,stamp:null,signature:null,watermark:false,letterhead_background:false}});
+const ui=(company=1,canManage=true)=><FluentProvider theme={webLightTheme}><OrganizationBrandingSection companyId={company} canManage={canManage}/></FluentProvider>;
+beforeEach(()=>{vi.resetAllMocks();m.read.mockResolvedValue({success:true,data:null});m.ensure.mockResolvedValue({success:true,data:{profileId:1,wasNew:true}});});afterEach(cleanup);
+it('a failed read cannot masquerade as missing branding or offer create',async()=>{m.read.mockResolvedValue({success:false,error:'PRIVATE'});render(ui());await screen.findByRole('alert');expect(screen.queryByRole('button',{name:'Create Default Branding Profile'})).toBeNull();expect(screen.queryByText('PRIVATE')).toBeNull();});
+it('loading a different company cannot retain the previous company summary',async()=>{let resolve!:(x:unknown)=>void;m.read.mockImplementation((id:number)=>id===1?new Promise(r=>{resolve=r;}):Promise.resolve({success:true,data:summary('Company B')}));const v=render(ui());v.rerender(ui(2));await screen.findByText('Company B');await act(async()=>resolve({success:true,data:summary('Company A private')}));expect(screen.queryByText('Company A private')).toBeNull();});
+it('uncertain setup retries its original operation and suppresses duplicate clicks',async()=>{let resolve!:(x:unknown)=>void;m.ensure.mockImplementationOnce(()=>new Promise(r=>{resolve=r;}));render(ui());const b=await screen.findByRole('button',{name:'Create Default Branding Profile'});fireEvent.click(b);fireEvent.click(b);expect(m.ensure).toHaveBeenCalledOnce();await act(async()=>resolve({success:false,error:'Unconfirmed'}));await waitFor(()=>expect((b as HTMLButtonElement).disabled).toBe(false));fireEvent.click(b);await waitFor(()=>expect(m.ensure).toHaveBeenCalledTimes(2));expect(m.ensure.mock.calls[0]).toEqual(m.ensure.mock.calls[1]);});
+it('read-only users cannot start setup and restricted files are not labelled missing',async()=>{render(ui(1,false));await screen.findByText('No default report branding profile');expect(screen.queryByRole('button',{name:'Create Default Branding Profile'})).toBeNull();cleanup();m.read.mockResolvedValue({success:true,data:summary('Current company')});render(ui());await screen.findByText('Stamp — restricted');expect(screen.getByText('Signature — restricted')).toBeTruthy();});
+it('a confirmed setup followed by failed reread offers retry of the read only',async()=>{m.read.mockResolvedValueOnce({success:true,data:null}).mockResolvedValueOnce({success:false});render(ui());fireEvent.click(await screen.findByRole('button',{name:'Create Default Branding Profile'}));await screen.findByRole('alert');fireEvent.click(screen.getByRole('button',{name:'Try again'}));await waitFor(()=>expect(m.read).toHaveBeenCalledTimes(3));expect(m.ensure).toHaveBeenCalledOnce();});

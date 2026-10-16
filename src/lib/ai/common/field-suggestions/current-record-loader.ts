@@ -36,15 +36,16 @@ export async function loadCurrentRecordSnapshot(
   registry: ErpAiEntityRegistry
 ): Promise<ErpAiCurrentRecordSnapshot> {
   const fields: Record<string, string | null> = {};
+  const reviewedTargets: NonNullable<ErpAiCurrentRecordSnapshot['reviewedTargets']> = {};
 
   // Group fields by table
   const fieldsByTable = groupFieldsByTable(registry.fields);
 
   for (const [table, tableFields] of Object.entries(fieldsByTable)) {
-    await loadTableFields(entityType, entityId, table, tableFields, fields);
+    await loadTableFields(entityType, entityId, table, tableFields, fields, reviewedTargets);
   }
 
-  return { entityType, entityId, fields };
+  return { entityType, entityId, fields, reviewedTargets };
 }
 
 // ── Group fields by target table ──────────────────────────────────────────────
@@ -68,7 +69,8 @@ async function loadTableFields(
   entityId: number,
   targetTable: string,
   fields: ErpAiEligibleFieldRegistration[],
-  out: Record<string, string | null>
+  out: Record<string, string | null>,
+  reviewedTargets: NonNullable<ErpAiCurrentRecordSnapshot['reviewedTargets']>
 ): Promise<void> {
   const columnNames = fields.map((f) => f.targetField);
 
@@ -80,6 +82,42 @@ async function loadTableFields(
     for (const field of fields) {
       out[field.targetField] = null;
     }
+    return;
+  }
+
+  if(entityType==='company'&&targetTable==='owner_companies'){
+    const supabase=await createClient();
+    const {data,error}=await supabase.from('owner_companies').select(['id','workspace_revision',...columnNames].join(',')).eq('id',entityId).maybeSingle();
+    const row=data as unknown as Record<string,unknown>|null;
+    if(error||!row||row.id!==entityId||!Number.isSafeInteger(row.id)||!/^[1-9]\d*$/.test(String(row.workspace_revision))
+      ||(typeof row.workspace_revision==='number'&&!Number.isSafeInteger(row.workspace_revision)))
+      throw new Error('Current company fields and revision could not be loaded. Generate suggestions only after the company is available.');
+    reviewedTargets.owner_companies={id:entityId,revision:String(row.workspace_revision)};
+    // Preserve the exact stored value for review; whitespace is not an absent value.
+    for(const field of fields){const raw=row[field.targetField];out[field.targetField]=raw===null||raw===undefined?null:String(raw);}
+    return;
+  }
+
+  if(entityType==='party'&&targetTable==='parties'){
+    const supabase=await createClient();
+    const {data,error}=await supabase.from('parties').select(columnNames.join(',')).eq('id',entityId).maybeSingle();
+    if(error||!data)throw new Error('Current party fields could not be loaded. No suggestions can be generated from an unavailable record.');
+    for(const field of fields)out[field.targetField]=rawToString((data as unknown as Record<string,unknown>)[field.targetField]);
+    return;
+  }
+
+  if(entityType==='party'&&filterConfig.isChildTable){
+    const supabase=await createClient();
+    const {data,error}=await supabase.from(targetTable).select(['id','workspace_revision',...columnNames].join(','))
+      .eq('party_id',entityId).eq('is_active',true).is('archived_at',null).limit(2);
+    if(error||!Array.isArray(data))throw new Error('Current party child fields could not be loaded. Try again before generating suggestions.');
+    if(data.length>1)throw new Error('Multiple active child records need manual selection. Review these fields in their record editor.');
+    const row=data[0] as unknown as Record<string,unknown>|undefined;
+    if(row){
+      if(!Number.isSafeInteger(row.id)||Number(row.id)<1||!/^[1-9]\d*$/.test(String(row.workspace_revision)))throw new Error('The child review identity is unavailable.');
+      reviewedTargets[targetTable]={id:Number(row.id),revision:String(row.workspace_revision)};
+    }
+    for(const field of fields)out[field.targetField]=rawToString(row?.[field.targetField]);
     return;
   }
 

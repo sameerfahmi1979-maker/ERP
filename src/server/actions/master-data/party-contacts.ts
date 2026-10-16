@@ -1,10 +1,12 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { authorizePartyChildRead } from "@/server/party-child-read-authority";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { revalidatePath } from "next/cache";
-import { logAudit } from "@/server/actions/audit";
-import { generateNextReference } from "@/server/actions/numbering";
+import { setPartyChildArchived } from "@/server/actions/master-data/party-child-lifecycle";
+import { createNumberedParty } from "@/server/numbered-party-create";
+import { savePartyChild } from "@/server/party-child-save";
+import type { PartySaveReceipt } from "@/lib/master-data/party-save-contract";
+import type { WorkspaceSaveContract } from "@/lib/workspace/save-contract";
 import {
   createPartyContactSchema,
   updatePartyContactSchema,
@@ -13,11 +15,12 @@ import {
 } from "@/features/master-data/parties/party-schemas";
 import type { PartyContact, ActionResult } from "@/features/master-data/parties/party-types";
 
-const REVALIDATE_PATH = "/admin/master-data/parties";
 
 export async function getPartyContacts(partyId: number): Promise<ActionResult<PartyContact[]>> {
   try {
-    const supabase = await createClient();
+    const access = await authorizePartyChildRead(partyId);
+    if (!access.success) return access;
+    const supabase = access.client;
     const { data, error } = await supabase
       .from("party_contacts")
       .select(`*, party_contact_departments!department_id(name_en), party_contact_roles!contact_role_id(name_en)`)
@@ -25,7 +28,7 @@ export async function getPartyContacts(partyId: number): Promise<ActionResult<Pa
       .order("is_primary", { ascending: false })
       .order("full_name");
 
-    if (error) return { success: false, error: error.message };
+    if (error || !Array.isArray(data)) return { success: false, kind: 'failed', error: 'Contacts could not be loaded. Try again.' };
 
     const rows = (data ?? []).map((row: Record<string, unknown>) => ({
       ...(row as PartyContact),
@@ -34,124 +37,31 @@ export async function getPartyContacts(partyId: number): Promise<ActionResult<Pa
     }));
 
     return { success: true, data: rows };
-  } catch (error) {
-    return { success: false, error: String(error) };
+  } catch {
+    return { success: false, kind: 'failed', error: 'Contacts could not be loaded. Try again.' };
   }
 }
 
-export async function createPartyContact(input: CreatePartyContactInput): Promise<ActionResult<{ id: number; contact_code: string }>> {
+export async function createPartyContact(input: CreatePartyContactInput, contract: WorkspaceSaveContract): Promise<ActionResult<{ id: number; contact_code: string; revision: string; replayed: boolean }>> {
   try {
-    const parsed = createPartyContactSchema.safeParse(input);
-    if (!parsed.success) {
-      return { success: false, error: parsed.error.issues.map((i) => i.message).join("; ") };
-    }
-
+    const parsed = createPartyContactSchema.strict().safeParse(input);
+    if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.parties.manage_contacts")) {
-      return { success: false, error: "You do not have permission to manage contacts" };
-    }
-
-    const numberingResult = await generateNextReference({
-      ruleCode: "MASTER_PARTY_CONTACT",
-      targetTableName: "party_contacts",
-      generationReason: "Party contact creation",
-    });
-    if (!numberingResult.success || !numberingResult.data?.generatedReferenceNumber) {
-      return { success: false, error: "Failed to generate contact code" };
-    }
-
-    const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("party_contacts")
-      .insert({
-        ...parsed.data,
-        contact_code: numberingResult.data.generatedReferenceNumber,
-        created_by: ctx.profile?.id ?? null,
-        updated_by: ctx.profile?.id ?? null,
-      })
-      .select("id, contact_code")
-      .single();
-
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({
-      module_code: "MASTER_DATA",
-      entity_name: "party_contacts",
-      entity_id: data.id,
-      entity_reference: data.contact_code,
-      action: "create",
-      new_values: parsed.data,
-    });
-
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true, data: { id: data.id, contact_code: data.contact_code } };
-  } catch (error) {
-    return { success: false, error: String(error) };
+    if (!hasPermission(ctx, "master_data.parties.manage_contacts")) return { success: false, error: "Permission denied" };
+    return await createNumberedParty("party_contacts", parsed.data, contract);
+  } catch {
+    return { success: false, error: "Creation could not start. Check your session and try again." };
   }
 }
 
-export async function updatePartyContact(input: UpdatePartyContactInput): Promise<ActionResult> {
-  try {
-    const parsed = updatePartyContactSchema.safeParse(input);
-    if (!parsed.success) {
-      return { success: false, error: parsed.error.issues.map((i) => i.message).join("; ") };
-    }
-
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.parties.manage_contacts")) {
-      return { success: false, error: "You do not have permission to manage contacts" };
-    }
-
-    const { id, ...fields } = parsed.data;
-    const supabase = await createClient();
-    const { data: old } = await supabase.from("party_contacts").select("contact_code").eq("id", id).single();
-
-    const { error } = await supabase
-      .from("party_contacts")
-      .update({ ...fields, updated_by: ctx.profile?.id ?? null })
-      .eq("id", id);
-
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({
-      module_code: "MASTER_DATA",
-      entity_name: "party_contacts",
-      entity_id: id,
-      entity_reference: old?.contact_code ?? String(id),
-      action: "update",
-      new_values: fields,
-    });
-
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: String(error) };
-  }
+export async function updatePartyContact(input: UpdatePartyContactInput, contract?: WorkspaceSaveContract): Promise<ActionResult<PartySaveReceipt>> {
+  const parsed = updatePartyContactSchema.strict().safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
+  const { id, ...fields } = parsed.data;
+  return savePartyChild("party_contacts", id, fields, contract);
 }
 
-export async function deletePartyContact(id: number): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.parties.manage_contacts")) {
-      return { success: false, error: "You do not have permission to manage contacts" };
-    }
-
-    const supabase = await createClient();
-    const { data: old } = await supabase.from("party_contacts").select("contact_code").eq("id", id).single();
-    const { error } = await supabase.from("party_contacts").delete().eq("id", id);
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({
-      module_code: "MASTER_DATA",
-      entity_name: "party_contacts",
-      entity_id: id,
-      entity_reference: old?.contact_code ?? String(id),
-      action: "delete",
-    });
-
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: String(error) };
-  }
+/** Compatibility name; this operation archives and never deletes history. */
+export async function deletePartyContact(id: number, contract?: WorkspaceSaveContract): Promise<ActionResult<PartySaveReceipt & {archived:boolean}>> {
+  return setPartyChildArchived("party_contacts", id, true, contract);
 }

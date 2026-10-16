@@ -1,6 +1,8 @@
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { redirect } from "next/navigation";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { ERPEmptyState } from "@/components/erp/empty-state";
+import { LoadError } from "@/components/erp/load-error";
 import { Button } from "@/components/ui/button";
 import { Briefcase, Plus } from "lucide-react";
 import { listDesignations } from "@/server/actions/common-master-data/designations";
@@ -9,9 +11,21 @@ import { DesignationsListClient } from "@/features/common-master-data/designatio
 
 export default async function DesignationsPage() {
   const ctx = await getAuthContext();
+  if (!hasPermission(ctx, "common_md.view") && !hasPermission(ctx, "common_md.designations.view")) {
+    redirect("/access-denied");
+  }
   const canManage = hasPermission(ctx, "common_md.manage") || hasPermission(ctx, "common_md.designations.manage");
-  const result = await listDesignations({});
-  const designations = result.data ?? [];
+  let result: Awaited<ReturnType<typeof listDesignations>> | undefined;
+  try {
+    result = await listDesignations({});
+  } catch {
+    return <LoadError title="Designations" retryHref="/admin/common-master-data/designations" />;
+  }
+  if (result?.kind === "forbidden") redirect("/access-denied");
+  if (!result?.success || !Array.isArray(result.data)) {
+    return <LoadError title="Designations" retryHref="/admin/common-master-data/designations" />;
+  }
+  const designations = result.data;
 
   return (
     <div className="p-6 space-y-4">

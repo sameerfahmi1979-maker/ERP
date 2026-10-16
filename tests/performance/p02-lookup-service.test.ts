@@ -1,6 +1,6 @@
 import {beforeEach, expect, it, vi} from "vitest";
 const state=vi.hoisted(()=>({auth:vi.fn(), permission:vi.fn(), client:vi.fn()}));
-vi.mock("@/lib/rbac/check",()=>({getAuthContext:state.auth,hasPermission:state.permission}));
+vi.mock("@/lib/rbac/check",()=>({getAuthContext:state.auth,hasGlobalPermission:state.permission}));
 vi.mock("@/lib/supabase/server",()=>({createClient:state.client}));
 import {readLookupValues,readLookupBatch,readLookupSearch} from "@/server/reads/lookup-values";
 const operations:Array<{table:string;method:string;args:unknown[]}>=[];
@@ -20,9 +20,9 @@ it("search uses bounded exact counts, literal wildcards, fixed locale column and
  responses=[{data:{id:1,is_active:true},error:null},{data:[{id:2}],count:30,error:null}];
  const result=await readLookupSearch({categoryCode:"TEST",search:"_%",page:2,pageSize:25,language:"ar"});
  expect(result.success).toBe(true);expect(result.data?.totalCount).toBe(30);
- expect(operations).toContainEqual({table:"global_lookup_values",method:"range",args:[25,49]});
- expect(operations).toContainEqual({table:"global_lookup_values",method:"ilike",args:["value_label_ar","%\\_\\%%"]});
- expect(operations).toContainEqual({table:"global_lookup_values",method:"order",args:["id"]});
+ expect(operations).toContainEqual({table:"erp_lookup_value_choices",method:"range",args:[25,49]});
+ expect(operations).toContainEqual({table:"erp_lookup_value_choices",method:"ilike",args:["value_label_ar","%\\_\\%%"]});
+ expect(operations).toContainEqual({table:"erp_lookup_value_choices",method:"order",args:["id"]});
  expect((await readLookupSearch({categoryCode:"TEST",pageSize:101})).success).toBe(false);
 });
 it.each([{profile:null,isAccountActive:true},{profile:{},isAccountActive:false},{profile:{must_change_password:true},isAccountActive:true}])("rejects inactive, absent and forced-change identity before reading business rows",async context=>{
@@ -39,16 +39,16 @@ it("never treats missing or RLS-hidden categories as a successful empty result",
 it("keeps selected legacy values constrained to category, parent and user-scoped client",async()=>{
  responses=[{data:{id:1,is_active:true},error:null},{data:{id:7},error:null},{data:[{id:9}],count:1,error:null}];
  const result=await readLookupValues({categoryCode:"TEST",parentValueCode:"PARENT",selected:9,includeInactive:true});expect(result.success).toBe(true);
- expect(operations).toContainEqual({table:"global_lookup_values",method:"eq",args:["category_id",1]});
- expect(operations).toContainEqual({table:"global_lookup_values",method:"eq",args:["parent_value_id",7]});
- expect(operations).toContainEqual({table:"global_lookup_values",method:"eq",args:["id",9]});
+ expect(operations).toContainEqual({table:"erp_lookup_value_choices",method:"eq",args:["category_id",1]});
+ expect(operations).toContainEqual({table:"erp_lookup_value_choices",method:"eq",args:["parent_value_id",7]});
+ expect(operations).toContainEqual({table:"erp_lookup_value_choices",method:"eq",args:["id",9]});
  const projection=operations.filter(o=>o.method==="select").map(o=>String(o.args[0])).join(",");
  expect(projection).not.toMatch(/metadata|created_by|description|\*/);
 });
 it("includeInactive is not an administrative permission",async()=>{
  responses=[{data:{id:1,is_active:true},error:null},{data:[],count:0,error:null}];
  expect((await readLookupValues({categoryCode:"TEST",includeInactive:true})).success).toBe(true);
- expect(operations).toContainEqual({table:"global_lookup_values",method:"eq",args:["is_active",true]});
+ expect(operations).toContainEqual({table:"erp_lookup_value_choices",method:"eq",args:["is_active",true]});
 });
 it("does not expose backend details and rejects over-limit configuration collections",async()=>{
  responses=[{data:{id:1,is_active:true},error:null},{data:[],count:5001,error:null}];

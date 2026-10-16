@@ -1,37 +1,12 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { HrSettingsLookupPage } from "@/features/hr/settings/hr-settings-lookup-page";
+import { HrSettingsLookupPage,type HrSettingsLookupProps } from "@/features/hr/settings/hr-settings-lookup-page";
 import { invalidateHrLeaveTypes } from "@/lib/query/invalidation";
-import type { HrSettingsRow, ActionResult } from "@/server/actions/hr/settings";
-
-type Props = {
-  initialData: HrSettingsRow[];
-  canManage: boolean;
-  onList: (params: { search?: string; is_active?: boolean }) => Promise<ActionResult<{ data: HrSettingsRow[]; total: number }>>;
-  onCreate: (input: {
-    code: string;
-    name_en: string;
-    name_ar?: string | null;
-    description?: string | null;
-    is_active: boolean;
-    sort_order: number;
-  }) => Promise<ActionResult<{ id: number }>>;
-  onUpdate: (
-    id: number,
-    input: Partial<{
-      code: string;
-      name_en: string;
-      name_ar?: string | null;
-      description?: string | null;
-      is_active: boolean;
-      sort_order: number;
-    }>
-  ) => Promise<ActionResult>;
-  onToggle: (id: number, is_active: boolean) => Promise<ActionResult>;
-};
+type Props = Omit<HrSettingsLookupProps,'title'|'description'|'breadcrumbs'>;
 
 export function HrLeaveTypesSettingsPageClient({
+  entity,principalId,
   initialData,
   canManage,
   onList,
@@ -43,6 +18,7 @@ export function HrLeaveTypesSettingsPageClient({
 
   return (
     <HrSettingsLookupPage
+      entity={entity} principalId={principalId}
       title="Leave Types"
       description="Types of employee leave: annual, sick, emergency, maternity, paternity, business trip, etc."
       breadcrumbs={[

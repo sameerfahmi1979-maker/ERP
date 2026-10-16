@@ -14,9 +14,11 @@ import type { EmirateSelectProps } from "@/features/master-data/geography/types"
 import { ERPCombobox } from "@/components/erp/combobox";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import { useEmiratesQuery } from "@/hooks/lookups";
+import { withSavedSelection } from "@/lib/master-data/saved-selection";
 
 export function EmirateSelect({
   value,
+  savedSelection,
   onValueChange,
   countryId,
   placeholder = "Select region / emirate / governorate...",
@@ -38,7 +40,7 @@ export function EmirateSelect({
   } = choiceRead;
 
   const handleValueChange = (newValue: string | number | null) => {
-    if (!onValueChange) return;
+    if (!onValueChange || disabled || !!fetchError) return;
     if (newValue === null) { onValueChange(null); return; }
     const numValue = typeof newValue === "number" ? newValue : Number(newValue);
     onValueChange(!isNaN(numValue) ? numValue : null);
@@ -48,16 +50,16 @@ export function EmirateSelect({
     <QueryReadBoundary queries={[choiceRead]}><ERPCombobox
       value={value ?? null}
       onValueChange={handleValueChange}
-      options={options}
+      options={(withSavedSelection(fetchError ? [] : options, value, savedSelection)).map(option => ({...option, disabled: option.disabled || disabled || !!fetchError}))}
       placeholder={placeholder}
       searchPlaceholder="Search regions..."
       showCode={showCode}
       language={language}
-      disabled={disabled}
+      disabled={disabled || !!fetchError}
       readOnly={false}
       required={required}
-      loading={loading}
-      error={fetchError ?? error}
+      loading={(loading) && value == null}
+      error={fetchError ? "Regions could not be loaded. Your saved selection is retained." : error}
       allowClear={allowClear}
       emptyText={countryId ? "No regions found for selected country" : "No regions available"}
       noResultsText="No results found"

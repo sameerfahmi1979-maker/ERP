@@ -13,6 +13,7 @@
 // ============================================================================
 
 import { resolveEmailProviderSecret } from "../vault";
+import { graphEndpoints, ProviderConfigurationError, safeProviderFailure } from "@/lib/settings/provider-endpoints";
 import type {
   EmailMessageInput,
   EmailProviderConfig,
@@ -21,12 +22,6 @@ import type {
   IEmailProvider,
 } from "./types";
 
-interface GraphTokenResponse {
-  access_token: string;
-  token_type: string;
-  expires_in: number;
-}
-
 export class MicrosoftGraphEmailProvider implements IEmailProvider {
   readonly config: EmailProviderConfig;
 
@@ -34,122 +29,53 @@ export class MicrosoftGraphEmailProvider implements IEmailProvider {
     this.config = config;
   }
 
-  private async getAccessToken(): Promise<{ token: string; durationMs: number }> {
-    const { tenantId, clientId, authorityUrl } = this.config;
-
-    // Resolve secret from Vault or env var
-    const { secret, error: secretError } = await resolveEmailProviderSecret(this.config.secretRef);
-    if (!secret) {
-      throw new Error(secretError ?? "Client secret is not configured for this provider.");
-    }
-
-    if (!tenantId) throw new Error("tenant_id is not configured for this provider.");
-    if (!clientId) throw new Error("client_id is not configured for this provider.");
-
-    const tokenUrl =
-      authorityUrl ??
-      `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
-
-    const start = Date.now();
-    const body = new URLSearchParams({
-      client_id: clientId,
-      client_secret: secret,
-      scope: "https://graph.microsoft.com/.default",
-      grant_type: "client_credentials",
-    });
-
-    const res = await fetch(tokenUrl, {
+  private async getAccessToken(signal: AbortSignal): Promise<string> {
+    const endpoints = graphEndpoints(this.config);
+    const { secret } = await resolveEmailProviderSecret(this.config.secretRef, this.config.id);
+    if (!secret) throw new ProviderConfigurationError("Provider credentials are not available. Ask an authorized administrator to review the protected credential configuration.");
+    const res = await fetch(endpoints.token, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: body.toString(),
+      body: new URLSearchParams({ client_id: this.config.clientId!, client_secret: secret, scope: "https://graph.microsoft.com/.default", grant_type: "client_credentials" }).toString(),
+      redirect: "error", signal,
     });
-
-    const durationMs = Date.now() - start;
-
-    if (!res.ok) {
-      let errText = "";
-      try { errText = await res.text(); } catch { /* ignore */ }
-      throw new Error(
-        `Microsoft Graph token request failed (${res.status}). ` +
-        `Verify tenant_id, client_id, and client_secret. Details: ${errText.slice(0, 300)}`
-      );
-    }
-
-    const json = (await res.json()) as GraphTokenResponse;
-    return { token: json.access_token, durationMs };
+    if (res.status !== 200) throw new ProviderConfigurationError(`Microsoft authentication failed (HTTP ${res.status}). Review the protected credentials and tenant/application settings.`);
+    const json: unknown = await res.json();
+    if (!json || typeof json !== "object" || !("access_token" in json) || typeof json.access_token !== "string" || !json.access_token.trim())
+      throw new ProviderConfigurationError("Microsoft returned an unexpected authentication response. No email operation was performed.");
+    return json.access_token;
   }
 
   async testConnection(): Promise<EmailTestConnectionResult> {
     const start = Date.now();
+    const result = (ok: boolean, message: string): EmailTestConnectionResult => ({ok, status: ok ? "success" : "failed", message, durationMs: Date.now() - start});
     try {
-      // Step 1: verify credentials by acquiring an access token
-      const { token, durationMs: tokenMs } = await this.getAccessToken();
-
-      const graphBase = this.config.graphBaseUrl ?? "https://graph.microsoft.com/v1.0";
-      const senderEmail = this.config.senderEmail;
-
-      // Step 2: verify Mail.Send permission by calling the /me endpoint
-      // or /users/{senderEmail} — this only requires the token and User.Read.All
-      // We intentionally skip /mailboxSettings (requires MailboxSettings.Read extra permission)
-      if (senderEmail) {
-        const checkUrl = `${graphBase}/users/${encodeURIComponent(senderEmail)}?$select=id,displayName,mail`;
-        const res = await fetch(checkUrl, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (!res.ok) {
-          const errText = await res.text().catch(() => "");
-          // 403 here means User.Read.All not granted — still report token success
-          // Mail.Send can work even without User.Read.All
-          return {
-            ok: true,
-            status: "success",
-            message:
-              `Token acquired successfully in ${tokenMs}ms. ` +
-              `Sender mailbox lookup skipped (requires User.Read.All permission — not required for sending). ` +
-              `Use "Send Test Email" to verify full Mail.Send permission.`,
-            durationMs: Date.now() - start,
-          };
-        }
-
-        const userData = await res.json() as Record<string, unknown>;
-        const displayName = userData.displayName as string | null;
-        return {
-          ok: true,
-          status: "success",
-          message:
-            `Connected successfully in ${tokenMs}ms. ` +
-            `Sender: ${displayName ?? senderEmail} <${senderEmail}>. ` +
-            `Use "Send Test Email" to verify Mail.Send permission end-to-end.`,
-          durationMs: Date.now() - start,
-        };
-      }
-
-      return {
-        ok: true,
-        status: "success",
-        message: `Token acquired successfully in ${tokenMs}ms. Set sender_email then use "Send Test Email" to verify end-to-end delivery.`,
-        durationMs: Date.now() - start,
-      };
-    } catch (e) {
-      return {
-        ok: false,
-        status: "failed",
-        message: String(e),
-        durationMs: Date.now() - start,
-      };
-    }
+      const endpoints = graphEndpoints(this.config);
+      const signal = AbortSignal.timeout(15000);
+      const token = await this.getAccessToken(signal);
+      const res = await fetch(`${endpoints.graph}/users/${encodeURIComponent(this.config.senderEmail!)}?$select=id`, {
+        headers: {Authorization: `Bearer ${token}`}, redirect: "error", signal,
+      });
+      if (res.status === 403) return result(false, "Credentials were accepted, but the optional sender-directory lookup was not authorized. This does not establish whether Mail.Send is permitted; do not grant broad directory access just to pass this check.");
+      if (res.status !== 200) return result(false, `Sender-directory check failed (HTTP ${res.status}). Mail.Send permission and email delivery are not verified.`);
+      const user: unknown = await res.json();
+      if (!user || typeof user !== "object" || !("id" in user) || typeof user.id !== "string" || !user.id) return result(false, "Microsoft returned unexpected sender information. Readiness was not verified.");
+      return result(true, "Credentials and sender-directory entry verified. Mail.Send permission and email delivery have not been tested.");
+    } catch (error) { return result(false, safeProviderFailure(error)); }
   }
 
   async sendEmail(input: EmailMessageInput): Promise<EmailSendResult> {
     const start = Date.now();
     try {
-      const { token } = await this.getAccessToken();
+      if (!this.config.isEnabled) throw new ProviderConfigurationError("This email provider is disabled.");
+      const endpoints = graphEndpoints(this.config);
+      const signal = AbortSignal.timeout(30000);
+      const token = await this.getAccessToken(signal);
 
       const senderEmail = this.config.senderEmail;
-      if (!senderEmail) throw new Error("sender_email is not configured for this provider.");
+      if (!senderEmail) throw new ProviderConfigurationError("The sender address is not configured.");
 
-      const graphBase = this.config.graphBaseUrl ?? "https://graph.microsoft.com/v1.0";
+      const graphBase = endpoints.graph;
       const sendUrl = `${graphBase}/users/${encodeURIComponent(senderEmail)}/sendMail`;
 
       const body = JSON.stringify({
@@ -191,12 +117,12 @@ export class MicrosoftGraphEmailProvider implements IEmailProvider {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body,
+        body, redirect: "error", signal,
       });
 
       const durationMs = Date.now() - start;
 
-      if (res.status === 202 || res.ok) {
+      if (res.status === 202) {
         const externalMessageId =
           res.headers.get("x-ms-message-id") ??
           res.headers.get("client-request-id") ??
@@ -204,24 +130,23 @@ export class MicrosoftGraphEmailProvider implements IEmailProvider {
         return {
           ok: true,
           status: "sent",
-          message: "Email sent successfully via Microsoft Graph.",
+          message: "Microsoft Graph accepted the email for processing. Inbox delivery is not confirmed.",
           externalMessageId,
           durationMs,
         };
       }
 
-      const errText = await res.text().catch(() => "");
       return {
         ok: false,
         status: "failed",
-        message: `Graph sendMail failed (${res.status}): ${errText.slice(0, 300)}`,
+        message: `Microsoft Graph did not confirm email acceptance (HTTP ${res.status}). Check provider activity before retrying.`,
         durationMs,
       };
     } catch (e) {
       return {
         ok: false,
         status: "failed",
-        message: String(e),
+        message: e instanceof ProviderConfigurationError ? e.message : "Email submission was not confirmed. Check provider activity before retrying; an interrupted response does not prove the email was unsent.",
         durationMs: Date.now() - start,
       };
     }

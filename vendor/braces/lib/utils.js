@@ -1,5 +1,7 @@
 'use strict';
 
+const guard = require('./depth-guard');
+
 exports.isInteger = num => {
   if (typeof num === 'number') {
     return Number.isInteger(num);
@@ -99,6 +101,7 @@ exports.reduce = nodes => nodes.reduce((acc, node) => {
  */
 
 exports.flatten = (...args) => {
+  for (const arg of args) guard.assertArrays(arg);
   const result = [];
 
   const flat = arr => {

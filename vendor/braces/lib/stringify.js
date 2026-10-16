@@ -1,10 +1,10 @@
 'use strict';
 
 const utils = require('./utils');
-const {assertAst} = require('./guard');
+const guard = require('./depth-guard');
 
 module.exports = (ast, options = {}) => {
-  assertAst(ast);
+  guard.assertAst(ast);
   const stringify = (node, parent = {}) => {
     const invalidBlock = options.escapeInvalid && utils.isInvalidBrace(parent);
     const invalidNode = node.invalid === true && options.escapeInvalid === true;

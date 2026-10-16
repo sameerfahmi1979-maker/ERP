@@ -4,6 +4,9 @@
 !.dockerignore
 !package.json
 !package-lock.json
+!vendor/
+!vendor/braces-3.0.3-algt-integrated-2.tgz
+!vendor/sprintf-js-1.0.3-algt.1.tgz
 !next.config.ts
 !tsconfig.json
 !tsconfig.shipping.json
@@ -12,5 +15,3 @@
 !src/**
 !public/
 !public/**
-!vendor/
-!vendor/**

@@ -89,87 +89,37 @@ export async function getEmailProvider(providerCode: string): Promise<IEmailProv
   return buildProvider(config);
 }
 
-/**
- * Get the default enabled email provider.
- * Falls back to any enabled provider if no default is set.
- */
-export async function getDefaultEmailProvider(): Promise<IEmailProvider> {
-  const supabase = await createClient();
-
-  // Try default first
-  const { data: defaultProvider } = await supabase
+/** Select exactly one authoritative default. Never fail over silently. */
+async function readDefaultEmailProvider(
+  db: Pick<ReturnType<typeof createAdminClient>, "from">
+): Promise<IEmailProvider> {
+  // Include disabled defaults when checking ambiguity: filtering them out
+  // would conceal a conflicting historical configuration.
+  const { data, error } = await db
     .from("erp_email_provider_configs")
     .select("*")
     .eq("is_default", true)
-    .eq("is_enabled", true)
-    .eq("is_active", true)
     .is("deleted_at", null)
-    .limit(1)
-    .single();
+    .limit(2);
 
-  if (defaultProvider) {
-    return buildProvider(rowToConfig(defaultProvider as Record<string, unknown>));
+  if (error) throw new Error("The default email provider is unavailable. Retry after settings access is restored.");
+  if (!data || data.length !== 1 || !data[0].is_enabled || !data[0].is_active) {
+    throw new Error("Exactly one enabled, active default email provider is required. Review Email Settings before sending.");
   }
+  return buildProvider(rowToConfig(data[0] as Record<string, unknown>));
+}
 
-  // Fallback to any enabled provider
-  const { data: anyProvider } = await supabase
-    .from("erp_email_provider_configs")
-    .select("*")
-    .eq("is_enabled", true)
-    .eq("is_active", true)
-    .is("deleted_at", null)
-    .limit(1)
-    .single();
-
-  if (!anyProvider) {
-    throw new Error(
-      "No email provider is enabled. Configure one in Admin → Settings → Email Settings."
-    );
-  }
-
-  return buildProvider(rowToConfig(anyProvider as Record<string, unknown>));
+/** Get the single default visible to the already-authorized caller. */
+export async function getDefaultEmailProvider(): Promise<IEmailProvider> {
+  return readDefaultEmailProvider(await createClient());
 }
 
 /**
- * OUTPUT.7 (WP11): system-context variant of getDefaultEmailProvider for
- * machine-to-machine callers (e.g. the schedules worker) that run without a
- * user session. Uses the service-role client, so provider config reads are
- * not blocked by session-scoped RLS. Callers MUST have already performed
- * their own authentication (WORKER_SECRET) and permission validation.
+ * System callers must authenticate and validate their operation first.
+ * A privileged read does not permit fallback to another sender.
  */
 export async function getDefaultEmailProviderSystem(): Promise<IEmailProvider> {
-  const db = createAdminClient();
-
-  const { data: defaultProvider } = await db
-    .from("erp_email_provider_configs")
-    .select("*")
-    .eq("is_default", true)
-    .eq("is_enabled", true)
-    .eq("is_active", true)
-    .is("deleted_at", null)
-    .limit(1)
-    .single();
-
-  if (defaultProvider) {
-    return buildProvider(rowToConfig(defaultProvider as Record<string, unknown>));
-  }
-
-  const { data: anyProvider } = await db
-    .from("erp_email_provider_configs")
-    .select("*")
-    .eq("is_enabled", true)
-    .eq("is_active", true)
-    .is("deleted_at", null)
-    .limit(1)
-    .single();
-
-  if (!anyProvider) {
-    throw new Error(
-      "No email provider is enabled. Configure one in Admin → Settings → Email Settings."
-    );
-  }
-
-  return buildProvider(rowToConfig(anyProvider as Record<string, unknown>));
+  return readDefaultEmailProvider(createAdminClient());
 }
 
 /**

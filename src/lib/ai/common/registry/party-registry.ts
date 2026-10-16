@@ -82,7 +82,7 @@ export const PARTY_REGISTRY: ErpAiEntityRegistry = {
     {
       entityType: ENTITY_TYPE,
       targetTable: TARGET_TABLE,
-      targetField: "primary_email",
+      targetField: "main_email",
       fieldLabel: "Primary Email",
       fieldType: "text",
       documentTypeHints: ["TRADE_LICENSE", "COMPANY_PROFILE", "LETTER_HEAD"],
@@ -98,7 +98,7 @@ export const PARTY_REGISTRY: ErpAiEntityRegistry = {
     {
       entityType: ENTITY_TYPE,
       targetTable: TARGET_TABLE,
-      targetField: "primary_phone",
+      targetField: "main_phone",
       fieldLabel: "Primary Phone",
       fieldType: "text",
       documentTypeHints: ["TRADE_LICENSE", "COMPANY_PROFILE", "LETTER_HEAD"],
@@ -132,7 +132,7 @@ export const PARTY_REGISTRY: ErpAiEntityRegistry = {
     {
       entityType: ENTITY_TYPE,
       targetTable: "party_tax_registrations",
-      targetField: "trn",
+      targetField: "tax_registration_number",
       fieldLabel: "Tax Registration Number (TRN)",
       fieldType: "text",
       documentTypeHints: ["TRN_CERTIFICATE", "VAT_CERTIFICATE"],

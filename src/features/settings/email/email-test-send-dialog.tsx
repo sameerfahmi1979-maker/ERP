@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Send, CheckCircle2, XCircle } from "lucide-react";
 import { Label } from "@/components/ui/label";
@@ -36,25 +38,34 @@ function EmailTestSendSession({
   const [message, setMessage] = useState("This is a test email from ALGT ERP Email Settings.");
   const [result, setResult] = useState<{ ok: boolean; message: string; durationMs?: number } | null>(null);
   const [uncertain, setUncertain] = useState(false);
+  const flight = useRef(false);
+  const terminal = useRef(false);
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  const [displayError, setDisplayError] = useState(false);
+  const router = useRouter();
+  const display = (effect: () => void) => { try { effect(); } catch { if (alive.current) setDisplayError(true); } };
 
   const reset = () => {
     setToEmail(defaultRecipient ?? "");
     setSubject("ALGT ERP Email Test");
     setMessage("This is a test email from ALGT ERP Email Settings.");
-    setResult(null);
   };
 
   const handleClose = (v: boolean) => {
-    if (!isSubmitting) { if (!v) reset(); onOpenChange(v); }
+    if (!isSubmitting) { if (!v) reset(); display(() => onOpenChange(v)); }
   };
 
   const handleSubmit = async () => {
-    if (uncertain || result?.ok) return;
+    if (flight.current || terminal.current) return;
     if (!toEmail.trim()) { toast.error("Recipient email is required"); return; }
+    flight.current = true;
     setIsSubmitting(true);
     setResult(null);
     try {
       const res = await sendTestEmail(providerId, { to_email: toEmail, subject, message });
+      if (!alive.current) return;
+      terminal.current = true;
       const ok = res.success;
       if (!ok) setUncertain(true);
       const resData = (res as { data?: { message?: string; durationMs?: number } }).data;
@@ -64,14 +75,17 @@ function EmailTestSendSession({
         durationMs: resData?.durationMs,
       });
       if (ok) {
-        toast.success("Test send completed — please verify receipt.");
-        onSuccess?.();
+        display(() => toast.success("Test send completed — please verify receipt."));
+        display(() => onSuccess?.());
       }
     } catch {
+      if (!alive.current) return;
+      terminal.current = true;
       setUncertain(true);
       setResult({ok:false,message:"The response was lost. The email may have been sent. Check delivery history and the recipient before starting a new send."});
     } finally {
-      setIsSubmitting(false);
+      flight.current = false;
+      if (alive.current) setIsSubmitting(false);
     }
   };
 
@@ -86,6 +100,7 @@ function EmailTestSendSession({
       size="md"
       isSubmitting={isSubmitting}
       submitDisabled={uncertain || result?.ok === true}
+      isDirty={result ? false : undefined}
       onSubmit={handleSubmit}
       submitLabel="Send Test Email"
     >
@@ -106,6 +121,8 @@ function EmailTestSendSession({
           </div>
         )}
 
+        {result && <div className="space-y-2">{displayError && <p role="status">The display could not finish updating. The send result above is unchanged.</p>}<Button type="button" variant="outline" onClick={() => display(() => router.refresh())}>Refresh settings only</Button></div>}
+        <fieldset disabled={!!result} className="space-y-4">
         <div>
           <Label htmlFor="to-email" className="mb-1.5 block">
             To Email <span className="text-red-500">*</span>
@@ -139,6 +156,7 @@ function EmailTestSendSession({
             maxLength={4000}
           />
         </div>
+        </fieldset>
       </div>
     </ERPChildDialogForm>
   );

@@ -24,21 +24,21 @@ import type {
   PaymentMethod,
 } from "@/features/master-data/parties/party-types";
 import { logger } from "@/lib/logger";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, hasGlobalPermission } from "@/lib/rbac/check";
 import { createClient } from "@/lib/supabase/server";
-import { logAudit } from "@/server/actions/audit";
-import { generateNextReference } from "@/server/actions/numbering";
-import { revalidatePath } from "next/cache";
-
-const REVALIDATE_PATH = "/admin/master-data/parties";
+import { createNumberedParty } from "@/server/numbered-party-create";
+import { savePartyRecord, changePartyState } from "@/server/party-save";
+import { partyTypeState, type PartyTypeState, type PartySaveReceipt } from "@/lib/master-data/party-save-contract";
+import { attachPartyReferenceLabels } from "@/server/party-reference-labels";
+import type { WorkspaceSaveContract } from "@/lib/workspace/save-contract";
 
 // ─── List & Fetch ────────────────────────────────────────────────────────────
 
 export async function getParties(): Promise<ActionResult<Party[]>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.parties.view")) {
-      return { success: false, error: "You do not have permission to view parties" };
+    if (!hasGlobalPermission(ctx, "master_data.parties.view") && !hasGlobalPermission(ctx, "master_data.party_master.view")) {
+      return { success: false, kind: 'forbidden', error: "You do not have permission to view parties" };
     }
 
     const supabase = await createClient();
@@ -51,13 +51,15 @@ export async function getParties(): Promise<ActionResult<Party[]>> {
         party_types!primary_party_type_id(type_name),
         countries!country_id(name_en),
         emirates!emirate_id(name_en),
-        cities!city_id(name_en)
+        cities!city_id(name_en),
+        areas_zones!area_zone_id(name_en),
+        parent_party:erp_party_parent(display_name)
       `)
       .order("display_name");
 
-    if (error) {
-      logger.error("getParties error", error);
-      return { success: false, error: error.message };
+    if (error || !Array.isArray(data)) {
+      logger.warn("Party list read failed.", {code:error?.code});
+      return { success: false, kind: 'failed', error: "Parties could not be loaded. Try again." };
     }
 
     const parties = (data ?? []).map((row: Record<string, unknown>) => ({
@@ -68,21 +70,25 @@ export async function getParties(): Promise<ActionResult<Party[]>> {
       country_name: (row.countries as { name_en?: string } | null)?.name_en ?? null,
       emirate_name: (row.emirates as { name_en?: string } | null)?.name_en ?? null,
       city_name: (row.cities as { name_en?: string } | null)?.name_en ?? null,
+      area_zone_name: (row.areas_zones as { name_en?: string } | null)?.name_en ?? null,
+      parent_party_name: (row.parent_party as { display_name?: string } | null)?.display_name ?? null,
     }));
 
-    return { success: true, data: parties as Party[] };
-  } catch (error) {
-    logger.error("getParties exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { success: true, data: await attachPartyReferenceLabels('parties', parties as Party[]) };
+  } catch {
+    logger.warn("Party list read could not complete.");
+    return { success: false, kind: 'failed', error: "Parties could not be loaded. Try again." };
   }
 }
 
 export async function getPartyById(id: number): Promise<ActionResult<Party>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.parties.view")) {
-      return { success: false, error: "You do not have permission to view parties" };
+    if (!hasGlobalPermission(ctx, "master_data.parties.view") && !hasGlobalPermission(ctx, "master_data.party_master.view")) {
+      return { success: false, kind: 'forbidden', error: "You do not have permission to view parties" };
     }
+
+    if (!Number.isSafeInteger(id) || id < 1) return {success:false,kind:'not_found',error:'Party not found.'};
 
     const supabase = await createClient();
     const { data, error } = await supabase
@@ -94,15 +100,18 @@ export async function getPartyById(id: number): Promise<ActionResult<Party>> {
         party_types!primary_party_type_id(type_name),
         countries!country_id(name_en),
         emirates!emirate_id(name_en),
-        cities!city_id(name_en)
+        cities!city_id(name_en),
+        areas_zones!area_zone_id(name_en),
+        parent_party:erp_party_parent(display_name)
       `)
       .eq("id", id)
-      .single();
+      .maybeSingle();
 
     if (error) {
-      logger.error("getPartyById error", error);
-      return { success: false, error: error.message };
+      logger.warn("Party detail read failed.", {code:error.code});
+      return { success: false, kind: 'failed', error: "This party could not be loaded. Try again." };
     }
+    if (!data) return {success:false,kind:'not_found',error:'Party not found.'};
 
     const row = data as Record<string, unknown>;
     const party: Party = {
@@ -113,12 +122,14 @@ export async function getPartyById(id: number): Promise<ActionResult<Party>> {
       country_name: (row.countries as { name_en?: string } | null)?.name_en ?? null,
       emirate_name: (row.emirates as { name_en?: string } | null)?.name_en ?? null,
       city_name: (row.cities as { name_en?: string } | null)?.name_en ?? null,
+      area_zone_name: (row.areas_zones as { name_en?: string } | null)?.name_en ?? null,
+      parent_party_name: (row.parent_party as { display_name?: string } | null)?.display_name ?? null,
     };
 
-    return { success: true, data: party };
-  } catch (error) {
-    logger.error("getPartyById exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { success: true, data: (await attachPartyReferenceLabels('parties', [party]))[0] };
+  } catch {
+    logger.warn("Party detail read could not complete.");
+    return { success: false, kind: 'failed', error: "This party could not be loaded. Try again." };
   }
 }
 
@@ -336,116 +347,38 @@ export async function detectPartyDuplicates(params: {
 
 // ─── Create Party ─────────────────────────────────────────────────────────────
 
-export async function createParty(
-  input: CreatePartySchemaInput
-): Promise<ActionResult<{ id: number; party_code: string }>> {
+export async function createParty(   input: CreatePartySchemaInput, contract: WorkspaceSaveContract): Promise<ActionResult<{ id: number; party_code: string; revision: string; replayed: boolean }>> {
   try {
-    const parsed = createPartySchema.safeParse(input);
-    if (!parsed.success) {
-      const errors = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
-      return { success: false, error: errors };
-    }
-    const validated = parsed.data;
-
+    const parsed = createPartySchema.strict().safeParse(input);
+    if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.parties.create")) {
-      return { success: false, error: "You do not have permission to create parties" };
+    if (!hasPermission(ctx, "master_data.parties.create")) return { success: false, error: "Permission denied" };
+    if ((parsed.data.initial_type_code || parsed.data.primary_party_type_id != null) && !hasGlobalPermission(ctx, "master_data.parties.manage_types")) {
+      return { success: false, error: "Assigning an initial party type requires party-type management permission." };
     }
-
-    // Generate party code
-    const numberingResult = await generateNextReference({
-      ruleCode: "MASTER_PARTY",
-      documentTypeCode: "PARTY",
-      targetTableName: "parties",
-      generationReason: "Party creation",
-    });
-    if (!numberingResult.success || !numberingResult.data?.generatedReferenceNumber) {
-      return { success: false, error: "Failed to generate party code" };
-    }
-    const party_code = numberingResult.data.generatedReferenceNumber;
-
-    const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("parties")
-      .insert({
-        ...validated,
-        party_code,
-        created_by: ctx.profile?.id ?? null,
-        updated_by: ctx.profile?.id ?? null,
-      })
-      .select("id, party_code")
-      .single();
-
-    if (error) {
-      logger.error("createParty error", error);
-      return { success: false, error: error.message };
-    }
-
-    await logAudit({
-      module_code: "MASTER_DATA",
-      entity_name: "parties",
-      entity_id: data.id,
-      entity_reference: data.party_code,
-      action: "create",
-      new_values: { ...validated, party_code },
-    });
-
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true, data: { id: data.id, party_code: data.party_code } };
-  } catch (error) {
-    logger.error("createParty exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return await createNumberedParty("parties", parsed.data, contract);
+  } catch {
+    return { success: false, error: "Creation could not start. Check your session and try again." };
   }
 }
 
 // ─── Update Party ─────────────────────────────────────────────────────────────
 
 export async function updateParty(
-  input: UpdatePartySchemaInput
-): Promise<ActionResult<{ id: number }>> {
+  input: UpdatePartySchemaInput,
+  contract?: WorkspaceSaveContract
+): Promise<ActionResult<PartySaveReceipt>> {
   try {
-    const parsed = updatePartySchema.safeParse(input);
+    const parsed = updatePartySchema.strict().safeParse(input);
     if (!parsed.success) {
       const errors = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
       return { success: false, error: errors };
     }
     const { id, ...fields } = parsed.data;
 
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.parties.edit")) {
-      return { success: false, error: "You do not have permission to edit parties" };
-    }
-
-    const supabase = await createClient();
-
-    // Fetch old for audit
-    const { data: old } = await supabase.from("parties").select("*").eq("id", id).single();
-
-    const { error } = await supabase
-      .from("parties")
-      .update({ ...fields, updated_by: ctx.profile?.id ?? null })
-      .eq("id", id);
-
-    if (error) {
-      logger.error("updateParty error", error);
-      return { success: false, error: error.message };
-    }
-
-    await logAudit({
-      module_code: "MASTER_DATA",
-      entity_name: "parties",
-      entity_id: id,
-      entity_reference: old?.party_code ?? String(id),
-      action: "update",
-      old_values: old ?? null,
-      new_values: fields,
-    });
-
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true, data: { id } };
-  } catch (error) {
-    logger.error("updateParty exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return await savePartyRecord(id, fields, contract);
+  } catch {
+    return { success: false, error: "The save could not start. Check the fields and your session." };
   }
 }
 
@@ -453,82 +386,31 @@ export async function updateParty(
 
 export async function deactivateParty(
   id: number,
-  reason?: string
-): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.parties.deactivate")) {
-      return { success: false, error: "You do not have permission to deactivate parties" };
-    }
-
-    const supabase = await createClient();
-    const { error } = await supabase
-      .from("parties")
-      .update({
-        is_active: false,
-        deactivated_at: new Date().toISOString(),
-        deactivated_by: ctx.profile?.id ?? null,
-        deactivation_reason: reason ?? null,
-        updated_by: ctx.profile?.id ?? null,
-      })
-      .eq("id", id);
-
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({
-      module_code: "MASTER_DATA",
-      entity_name: "parties",
-      entity_id: id,
-      entity_reference: String(id),
-      action: "deactivate",
-      new_values: { is_active: false, deactivation_reason: reason },
-    });
-
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: String(error) };
-  }
+  reason?: string,
+  contract?: WorkspaceSaveContract
+): Promise<ActionResult<PartySaveReceipt>> {
+  return changePartyState(id,'active',{is_active:false,reason:reason??null},contract);
 }
 
-export async function reactivateParty(id: number): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.parties.deactivate")) {
-      return { success: false, error: "You do not have permission to reactivate parties" };
-    }
-
-    const supabase = await createClient();
-    const { error } = await supabase
-      .from("parties")
-      .update({
-        is_active: true,
-        deactivated_at: null,
-        deactivated_by: null,
-        deactivation_reason: null,
-        updated_by: ctx.profile?.id ?? null,
-      })
-      .eq("id", id);
-
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({
-      module_code: "MASTER_DATA",
-      entity_name: "parties",
-      entity_id: id,
-      entity_reference: String(id),
-      action: "reactivate",
-      new_values: { is_active: true },
-    });
-
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: String(error) };
-  }
+export async function reactivateParty(id: number, contract?: WorkspaceSaveContract): Promise<ActionResult<PartySaveReceipt>> {
+  return changePartyState(id,'active',{is_active:true,reason:null},contract);
 }
 
 // ─── Type Assignments ─────────────────────────────────────────────────────────
+
+export async function getPartyTypeState(partyId:number):Promise<ActionResult<PartyTypeState>>{
+  if(!Number.isSafeInteger(partyId)||partyId<1)return {success:false,error:'Invalid party.'};
+  try{
+    const ctx=await getAuthContext();
+    if(!hasGlobalPermission(ctx,'master_data.parties.view'))return {success:false,error:'You do not have permission to view these party assignments.'};
+    const client=await createClient();const {data,error}=await client.rpc('get_party_type_state',{p_id:partyId});
+    if(error)return {success:false,error:'Party types could not be loaded. Retry before editing.'};
+    if(data===null)return {success:false,error:'Party not found or unavailable.'};
+    const parsed=partyTypeState.safeParse(data);
+    if(!parsed.success||parsed.data.id!==partyId)return {success:false,error:'Party type information is incomplete. Reopen this record.'};
+    return {success:true,data:parsed.data};
+  }catch{return {success:false,error:'Party types could not be loaded. Check your session and retry.'};}
+}
 
 export async function getPartyTypeAssignments(partyId: number): Promise<ActionResult<import("@/features/master-data/parties/party-types").PartyTypeAssignment[]>> {
   try {
@@ -712,30 +594,33 @@ export async function checkDuplicateIban(iban: string, excludeBankDetailId?: num
 export async function getPartiesByTypeCode(typeCode: string): Promise<ActionResult<Party[]>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.parties.view")) {
-      return { success: false, error: "You do not have permission to view parties" };
+    if (!hasGlobalPermission(ctx, "master_data.parties.view") && !hasGlobalPermission(ctx, "master_data.party_master.view")) {
+      return { success: false, kind: 'forbidden', error: "You do not have permission to view parties" };
     }
 
     const supabase = await createClient();
-    const { data: typeRow } = await supabase.from("party_types").select("id").eq("type_code", typeCode).single();
-    if (!typeRow) return { success: true, data: [] };
+    const { data: typeRow, error: typeError } = await supabase.from("party_types").select("id").eq("type_code", typeCode).maybeSingle();
+    if (typeError) return {success:false,kind:'failed',error:'The party type could not be loaded. Try again.'};
+    if (!typeRow) return {success:false,kind:'not_found',error:'This party type is not configured or available.'};
 
-    const { data: assignments } = await supabase
+    const { data: assignments, error: assignmentError } = await supabase
       .from("party_type_assignments")
       .select("party_id")
       .eq("party_type_id", typeRow.id)
       .eq("is_active", true);
+
+    if (assignmentError || !Array.isArray(assignments)) return {success:false,kind:'failed',error:'Party assignments could not be loaded. Try again.'};
 
     const partyIds = (assignments ?? []).map((a: { party_id: number }) => a.party_id);
     if (partyIds.length === 0) return { success: true, data: [] };
 
     const { data, error } = await supabase
       .from("parties")
-      .select(`*, party_natures!party_nature_id(name_en), party_statuses!party_status_id(name_en), party_types!primary_party_type_id(type_name), countries!country_id(name_en), emirates!emirate_id(name_en), cities!city_id(name_en)`)
+      .select(`*, party_natures!party_nature_id(name_en), party_statuses!party_status_id(name_en), party_types!primary_party_type_id(type_name), countries!country_id(name_en), emirates!emirate_id(name_en), cities!city_id(name_en), areas_zones!area_zone_id(name_en), parent_party:erp_party_parent(display_name)`)
       .in("id", partyIds)
       .order("display_name");
 
-    if (error) return { success: false, error: error.message };
+    if (error || !Array.isArray(data)) return {success:false,kind:'failed',error:'Parties could not be loaded. Try again.'};
 
     const parties = (data ?? []).map((row: Record<string, unknown>) => ({
       ...(row as Party),
@@ -745,64 +630,21 @@ export async function getPartiesByTypeCode(typeCode: string): Promise<ActionResu
       country_name: (row.countries as { name_en?: string } | null)?.name_en ?? null,
       emirate_name: (row.emirates as { name_en?: string } | null)?.name_en ?? null,
       city_name: (row.cities as { name_en?: string } | null)?.name_en ?? null,
+      area_zone_name: (row.areas_zones as { name_en?: string } | null)?.name_en ?? null,
+      parent_party_name: (row.parent_party as { display_name?: string } | null)?.display_name ?? null,
     }));
 
-    return { success: true, data: parties as Party[] };
-  } catch (error) {
-    return { success: false, error: String(error) };
+    return { success: true, data: await attachPartyReferenceLabels('parties', parties as Party[]) };
+  } catch {
+    return { success: false, kind:'failed', error: 'Parties could not be loaded. Try again.' };
   }
 }
 
 export async function savePartyTypeAssignments(
   partyId: number,
   selectedTypeIds: number[],
-  primaryTypeId: number | null
-): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.parties.manage_types")) {
-      return { success: false, error: "You do not have permission to manage party types" };
-    }
-
-    const supabase = await createClient();
-
-    // Soft-delete existing assignments for this party
-    await supabase
-      .from("party_type_assignments")
-      .update({ is_active: false, updated_by: ctx.profile?.id ?? null })
-      .eq("party_id", partyId);
-
-    if (selectedTypeIds.length === 0) {
-      revalidatePath(REVALIDATE_PATH);
-      return { success: true };
-    }
-
-    // Insert new assignments
-    const rows = selectedTypeIds.map((typeId) => ({
-      party_id: partyId,
-      party_type_id: typeId,
-      is_primary: typeId === primaryTypeId,
-      is_active: true,
-      assigned_date: new Date().toISOString().split("T")[0],
-      assigned_by: ctx.profile?.id ?? null,
-      created_by: ctx.profile?.id ?? null,
-      updated_by: ctx.profile?.id ?? null,
-    }));
-
-    const { error } = await supabase.from("party_type_assignments").insert(rows);
-    if (error) return { success: false, error: error.message };
-
-    // Update primary type on parties table
-    if (primaryTypeId) {
-      await supabase
-        .from("parties")
-        .update({ primary_party_type_id: primaryTypeId, updated_by: ctx.profile?.id ?? null })
-        .eq("id", partyId);
-    }
-
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: String(error) };
-  }
+  primaryTypeId: number | null,
+  contract?: WorkspaceSaveContract
+): Promise<ActionResult<PartySaveReceipt>> {
+  return changePartyState(partyId,'types',{selected:selectedTypeIds,primary:primaryTypeId},contract);
 }

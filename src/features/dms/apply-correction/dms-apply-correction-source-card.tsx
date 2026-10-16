@@ -32,18 +32,18 @@ export function DmsApplyCorrectionSourceCard({ source, className }: Props) {
     source.currentValueSummary !== source.originalAppliedSummary;
 
   return (
-    <div className={cn("rounded-lg border border-border bg-muted p-4 space-y-4", className)}>
+    <div className={cn("rounded-md border border-border bg-muted/30 p-4 space-y-4", className)}>
       {/* Header */}
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">
           Correction Target
         </p>
         <div className="flex flex-wrap gap-2 text-sm text-foreground">
-          <span className="font-mono bg-muted px-2 py-0.5 rounded text-xs border border-border">
+          <span className="font-mono bg-muted px-2 py-0.5 rounded text-xs border border-border break-all">
             {source.targetTable}
           </span>
           <span className="text-muted-foreground">·</span>
-          <span className="font-mono bg-muted px-2 py-0.5 rounded text-xs border border-border">
+          <span className="font-mono bg-muted px-2 py-0.5 rounded text-xs border border-border break-all">
             {source.targetField}
           </span>
           {source.targetRecordId && (
@@ -87,7 +87,7 @@ export function DmsApplyCorrectionSourceCard({ source, className }: Props) {
 
       {/* Changed warning */}
       {fieldValueChanged && (
-        <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+        <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-foreground">
           <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
           <span>
             The current live value differs from what was applied. The field may have been
@@ -119,14 +119,14 @@ function ValueRow({
   variant:    "neutral" | "info" | "success" | "warning";
 }) {
   const variantClass: Record<typeof variant, string> = {
-    neutral: "bg-card border-border text-muted-foreground",
-    info:    "bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-950 dark:border-blue-800 dark:text-blue-200",
-    success: "bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950 dark:border-emerald-800 dark:text-emerald-200",
-    warning: "bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-200",
+    neutral: "bg-card border-border text-foreground",
+    info:    "bg-primary/10 border-primary/30 text-foreground",
+    success: "bg-emerald-500/10 border-emerald-500/40 text-foreground",
+    warning: "bg-amber-500/10 border-amber-500/40 text-foreground",
   };
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-1 min-w-0">
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <div className={cn(
         "rounded border px-2.5 py-1.5 text-sm min-h-[2rem] break-words",

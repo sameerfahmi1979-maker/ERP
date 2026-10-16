@@ -1,0 +1,46 @@
+// @vitest-environment jsdom
+// Actual record component, native dirty hook and React portal bubbling.
+// Navigation, sections, draft storage and outer layout are controlled doubles.
+import '../f05/setup';
+import {useState,type ReactNode} from 'react';
+import {createPortal} from 'react-dom';
+import {cleanup,fireEvent,render,screen} from '@testing-library/react';
+import {afterEach,beforeEach,expect,it,vi} from 'vitest';
+const m=vi.hoisted(()=>({sync:vi.fn(),markDirty:vi.fn(),tabDirty:vi.fn()}));
+vi.mock('next/navigation',()=>({useRouter:()=>({replace:vi.fn()})}));
+vi.mock('@/hooks/use-workspace-form-navigation',()=>({useWorkspaceFormNavigation:()=>({activeTab:{id:'owner'},markDirty:m.markDirty,closeTab:vi.fn(),renameTab:vi.fn(),updateTabRoute:vi.fn()})}));
+vi.mock('@/hooks/use-workspace-form-dirty',async()=>({useWorkspaceFormDirty:(await import('@/hooks/use-form-dirty')).useFormDirty}));
+vi.mock('@/hooks/use-workspace-tab-dirty',()=>({useWorkspaceTabDirty:m.tabDirty}));
+vi.mock('@/hooks/use-workspace-scroll-state',()=>({useWorkspaceScrollState:vi.fn()}));
+vi.mock('@/hooks/use-workspace-section-state',()=>({useWorkspaceSectionState:()=>useState('overview')}));
+vi.mock('@/hooks/use-workspace-form-draft',()=>({useWorkspaceFormDraft:()=>({getDraftDefault:(_:string,v:unknown)=>v??'',getDraftNullableId:(_:string,v:unknown)=>v,syncDraft:m.sync,writeDraftField:vi.fn(),clearDraft:vi.fn()})}));
+vi.mock('@/components/workspace/erp-record-workspace-form',()=>({ERPRecordWorkspaceForm:({children,isDirty}:{children:ReactNode;isDirty:boolean})=><div data-testid="document-dirty" data-dirty={String(isDirty)}>{children}</div>,ERPRecordSectionPanel:({children}:{children:ReactNode})=><section>{children}</section>}));
+vi.mock('@/server/actions/dms/documents',()=>({createDmsDocument:vi.fn(),updateDmsDocument:vi.fn()}));
+vi.mock('@/server/actions/dms/entity-documents',()=>({linkDmsDocumentToEntity:vi.fn()}));
+vi.mock('@/features/dms/documents/sections/dms-document-ai-section',()=>({DmsDocumentAiSection:()=>createPortal(<form aria-label="Synthetic correction"><label><input type="checkbox"/>Confirm synthetic correction</label><input aria-label="Correction value"/></form>,document.body)}));
+vi.mock('@/features/dms/documents/sections/dms-document-ai-summary-section',()=>({DmsDocumentAiSummarySection:()=>null}));
+vi.mock('@/features/dms/documents/sections/dms-document-approvals-section',()=>({DmsDocumentApprovalsSection:()=>null}));
+vi.mock('@/features/dms/documents/sections/dms-document-ask-ai-section',()=>({DmsDocumentAskAiSection:()=>null}));
+vi.mock('@/features/dms/documents/sections/dms-document-audit-section',()=>({DmsDocumentAuditSection:()=>null}));
+vi.mock('@/features/dms/documents/sections/dms-document-comments-section',()=>({DmsDocumentCommentsSection:()=>null}));
+vi.mock('@/features/dms/documents/sections/dms-document-content-section',()=>({DmsDocumentContentSection:()=>null}));
+vi.mock('@/features/dms/documents/sections/dms-document-expiry-section',()=>({DmsDocumentExpirySection:()=>null}));
+vi.mock('@/features/dms/documents/sections/dms-document-files-section',()=>({DmsDocumentFilesSection:()=>null}));
+vi.mock('@/features/dms/documents/sections/dms-document-intelligence-section',()=>({DmsDocumentIntelligenceSection:()=>null}));
+vi.mock('@/features/dms/documents/sections/dms-document-links-section',()=>({DmsDocumentLinksSection:()=>null}));
+vi.mock('@/features/dms/documents/sections/dms-document-metadata-section',()=>({DmsDocumentMetadataSection:()=>null}));
+vi.mock('@/features/dms/documents/sections/dms-document-ocr-section',()=>({DmsDocumentOcrSection:()=>null}));
+vi.mock('@/features/dms/documents/sections/dms-document-semantic-section',()=>({DmsDocumentSemanticSection:()=>null}));
+vi.mock('@/features/dms/documents/sections/dms-document-tags-section',()=>({DmsDocumentTagsSection:()=>null}));
+vi.mock('@/features/dms/documents/sections/dms-document-understanding-section',()=>({DmsDocumentUnderstandingSection:()=>null}));
+vi.mock('@/features/dms/documents/sections/dms-document-versions-section',()=>({DmsDocumentVersionsSection:()=>null}));
+vi.mock('@/features/dms/documents/sections/dms-document-overview-section',()=>({DmsDocumentOverviewSection:()=> <label>Title<input name="title" defaultValue="Synthetic document"/></label>}));
+import {DmsDocumentRecordForm} from '@/features/dms/documents/dms-document-record-form';
+import type {AuthContext} from '@/lib/rbac/check';
+import type {DmsDocumentRecordData} from '@/server/actions/dms/documents';
+beforeEach(()=>vi.clearAllMocks());afterEach(cleanup);
+const mount=()=>render(<DmsDocumentRecordForm doc={{id:500,status:'draft'} as DmsDocumentRecordData} mode="edit" authContext={{permissionCodes:[],roleCodes:[]} as unknown as AuthContext} documentTypes={[]} categories={[]}/>);
+it('child confirmation does not dirty or snapshot the document form',()=>{mount();fireEvent.click(screen.getByRole('checkbox',{name:'Confirm synthetic correction'}));expect(m.markDirty).not.toHaveBeenCalled();expect(m.sync).not.toHaveBeenCalled();expect(screen.getByTestId('document-dirty').getAttribute('data-dirty')).toBe('false');});
+it('child text input does not snapshot the document draft',()=>{mount();fireEvent.input(screen.getByLabelText('Correction value'),{target:{value:'Child value'}});expect(m.sync).not.toHaveBeenCalled();expect(m.markDirty).not.toHaveBeenCalled();});
+it('real document edits still mark dirty and retain a draft',()=>{mount();fireEvent.change(screen.getByLabelText('Title'),{target:{value:'Actual parent edit'}});expect(m.markDirty).toHaveBeenCalledWith('owner',true);expect(m.sync).toHaveBeenCalled();expect(screen.getByTestId('document-dirty').getAttribute('data-dirty')).toBe('true');});
+it('child edits do not clear an existing unsaved document edit',()=>{mount();fireEvent.input(screen.getByLabelText('Title'),{target:{value:'Keep parent draft'}});m.sync.mockClear();m.markDirty.mockClear();fireEvent.click(screen.getByRole('checkbox',{name:'Confirm synthetic correction'}));expect(m.sync).not.toHaveBeenCalled();expect(m.markDirty).not.toHaveBeenCalled();expect(screen.getByTestId('document-dirty').getAttribute('data-dirty')).toBe('true');});

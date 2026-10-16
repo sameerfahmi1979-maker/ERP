@@ -15,7 +15,7 @@ interface Props {
   partyName?:     string | null;
   targetKind:     PartyApplyTargetKind;
   /** Called when the user explicitly selects (or deselects) a row. */
-  onRowSelected?: (rowId: number | null) => void;
+  onRowSelected?: (rowId: number | null,row?:PartyLicenseRow|PartyTaxRow) => void;
   /** Currently selected row ID (controlled from parent). */
   selectedRowId?: number | null;
   disabled?:      boolean;
@@ -106,7 +106,7 @@ export function DmsPartyTargetSelector({
                   key={row.id}
                   row={row}
                   selected={selectedRowId === row.id}
-                  onSelect={() => onRowSelected?.(selectedRowId === row.id ? null : row.id)}
+                  onSelect={() => onRowSelected?.(selectedRowId === row.id ? null : row.id,row)}
                   disabled={disabled}
                 />
               ))
@@ -115,7 +115,7 @@ export function DmsPartyTargetSelector({
                   key={row.id}
                   row={row}
                   selected={selectedRowId === row.id}
-                  onSelect={() => onRowSelected?.(selectedRowId === row.id ? null : row.id)}
+                  onSelect={() => onRowSelected?.(selectedRowId === row.id ? null : row.id,row)}
                   disabled={disabled}
                 />
               ))

@@ -1,4 +1,17 @@
 import { z } from "zod";
+import {administrationDate,validateAdministrationDates} from '@/lib/master-data/administration-validation';
+
+export const organizationComplianceStatusSchema=z.enum(['compliant','non_compliant','under_review','suspended']);
+const organizationExtendedFields={
+ trade_name:z.string().trim().max(255).nullable().optional(),
+ main_activity:z.string().trim().max(500).nullable().optional(),
+ established_date:administrationDate,
+ compliance_status:organizationComplianceStatusSchema.nullable().optional(),
+ office_address_line_1:z.string().trim().max(500).nullable().optional(),
+ office_address_line_2:z.string().trim().max(500).nullable().optional(),
+ office_emirate_id:z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().optional(),
+ office_city_id:z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().optional(),
+};
 
 /**
  * Owner Company (Organization) Validation Schema
@@ -11,8 +24,9 @@ export const ownerCompanyStatusSchema = z.enum(["active", "inactive", "suspended
 
 // Create schema (for new organizations)
 export const createOrganizationSchema = z.object({
+  ...organizationExtendedFields,
   // Basic Information
-  legal_name_en: z.string().min(1, "English legal name is required").max(255),
+  legal_name_en: z.string().trim().min(1, "English legal name is required").max(255),
   legal_name_ar: z.string().max(255).optional().nullable(),
   short_name: z.string().max(100).optional().nullable(),
   company_code: z
@@ -46,11 +60,11 @@ export const createOrganizationSchema = z.object({
   
   // Legal & Licensing (Phase 002D)
   trade_license_no: z.string().max(100).optional().nullable(),
-  trade_license_issue_date: z.string().optional().nullable(),
-  trade_license_expiry_date: z.string().optional().nullable(),
+  trade_license_issue_date: administrationDate,
+  trade_license_expiry_date: administrationDate,
   licensing_authority: z.string().max(255).optional().nullable(),
   chamber_membership_no: z.string().max(100).optional().nullable(),
-  chamber_membership_expiry_date: z.string().optional().nullable(),
+  chamber_membership_expiry_date: administrationDate,
   
   // Tax & Compliance (Phase 002D)
   trn: z.string().max(100).optional().nullable(),
@@ -59,20 +73,21 @@ export const createOrganizationSchema = z.object({
   corporate_tax_registered: z.boolean().default(false),
   icv_certificate_no: z.string().max(100).optional().nullable(),
   icv_score: z.number().min(0).max(100).optional().nullable(),
-  icv_issue_date: z.string().optional().nullable(),
-  icv_expiry_date: z.string().optional().nullable(),
+  icv_issue_date: administrationDate,
+  icv_expiry_date: administrationDate,
   adnoc_supplier_no: z.string().max(100).optional().nullable(),
   
   // Other
   logo_url: z.string().url("Invalid URL format").max(500).optional().nullable().or(z.literal("")),
   notes: z.string().optional().nullable(),
-});
+}).strict().superRefine(validateAdministrationDates);
 
 // Update schema (for editing organizations)
 export const updateOrganizationSchema = z.object({
+  ...organizationExtendedFields,
   id: z.number().int().positive(),
   // Basic Information - more lenient for updates
-  legal_name_en: z.string().min(1, "English legal name is required").max(255).optional(),
+  legal_name_en: z.string().trim().min(1, "English legal name is required").max(255).optional(),
   legal_name_ar: z.string().max(255).optional().nullable(),
   short_name: z.string().max(100).optional().nullable(),
   company_code: z
@@ -108,11 +123,11 @@ export const updateOrganizationSchema = z.object({
   
   // Legal & Licensing (Phase 002D)
   trade_license_no: z.string().max(100).optional().nullable(),
-  trade_license_issue_date: z.string().optional().nullable(),
-  trade_license_expiry_date: z.string().optional().nullable(),
+  trade_license_issue_date: administrationDate,
+  trade_license_expiry_date: administrationDate,
   licensing_authority: z.string().max(255).optional().nullable(),
   chamber_membership_no: z.string().max(100).optional().nullable(),
-  chamber_membership_expiry_date: z.string().optional().nullable(),
+  chamber_membership_expiry_date: administrationDate,
   
   // Tax & Compliance (Phase 002D)
   trn: z.string().max(100).optional().nullable(),
@@ -121,14 +136,14 @@ export const updateOrganizationSchema = z.object({
   corporate_tax_registered: z.boolean().optional(),
   icv_certificate_no: z.string().max(100).optional().nullable(),
   icv_score: z.number().min(0).max(100).optional().nullable(),
-  icv_issue_date: z.string().optional().nullable(),
-  icv_expiry_date: z.string().optional().nullable(),
+  icv_issue_date: administrationDate,
+  icv_expiry_date: administrationDate,
   adnoc_supplier_no: z.string().max(100).optional().nullable(),
   
   // Other
   logo_url: z.string().url("Invalid URL format").max(500).optional().nullable().or(z.literal("")),
   notes: z.string().optional().nullable(),
-});
+}).strict().superRefine(validateAdministrationDates);
 
 // Type exports
 export type CreateOrganizationInput = z.infer<typeof createOrganizationSchema>;

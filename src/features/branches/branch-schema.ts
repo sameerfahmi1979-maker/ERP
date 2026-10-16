@@ -1,4 +1,14 @@
 import { z } from "zod";
+import {administrationDate,validateAdministrationDates} from '@/lib/master-data/administration-validation';
+
+const branchExtendedFields={
+ opening_date:administrationDate,closing_date:administrationDate,
+ legal_branch_name:z.string().trim().max(255).nullable().optional(),
+ trade_license_branch_ref:z.string().trim().max(100).nullable().optional(),
+ emirate_id:z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().optional(),
+ city_id:z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().optional(),
+ area_zone_id:z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().optional(),
+};
 
 /**
  * Branch Validation Schema
@@ -11,6 +21,7 @@ export const branchStatusSchema = z.enum(["active", "inactive", "suspended"]);
 
 // Create schema (for new branches)
 export const createBranchSchema = z.object({
+  ...branchExtendedFields,
   // Basic Branch Details
   owner_company_id: z.number().int().positive("Owner company is required"),
   branch_code: z
@@ -19,7 +30,7 @@ export const createBranchSchema = z.object({
     .max(50)
     .regex(/^[A-Z0-9_-]+$/, "Branch code must be uppercase letters, numbers, hyphens, or underscores")
     .transform((val) => val.toUpperCase()), // Auto-convert to uppercase
-  branch_name_en: z.string().min(1, "English branch name is required").max(255),
+  branch_name_en: z.string().trim().min(1, "English branch name is required").max(255),
   branch_name_ar: z.string().max(255).optional().nullable(),
   status: branchStatusSchema.default("active"),
   
@@ -54,10 +65,11 @@ export const createBranchSchema = z.object({
   
   // Notes
   notes: z.string().optional().nullable(),
-});
+}).strict().superRefine(validateAdministrationDates);
 
 // Update schema (for editing branches)
 export const updateBranchSchema = z.object({
+  ...branchExtendedFields,
   id: z.number().int().positive(),
   // Basic Branch Details - more lenient for updates
   owner_company_id: z.number().int().positive("Owner company is required").optional(),
@@ -69,7 +81,7 @@ export const updateBranchSchema = z.object({
     .transform((val) => val.toUpperCase())
     .nullable()
     .optional(),
-  branch_name_en: z.string().min(1, "English branch name is required").max(255).optional(),
+  branch_name_en: z.string().trim().min(1, "English branch name is required").max(255).optional(),
   branch_name_ar: z.string().max(255).optional().nullable(),
   status: branchStatusSchema.optional(),
   
@@ -104,7 +116,7 @@ export const updateBranchSchema = z.object({
   
   // Notes
   notes: z.string().optional().nullable(),
-});
+}).strict().superRefine(validateAdministrationDates);
 
 // Type exports
 export type CreateBranchInput = z.infer<typeof createBranchSchema>;

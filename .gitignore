@@ -93,3 +93,8 @@ CODEX_AUDIT_13_09_2026/IMPLEMENTATION/F02_CLOSEOUT/
 /.performance/
 /p00-results.json
 /CODEX_AUDIT_13_09_2026/IMPLEMENTATION/PERFORMANCE/
+# F06 isolated runtime and private evidence; publish only reviewed summaries.
+/CODEX_AUDIT_13_09_2026/IMPLEMENTATION/F06/
+# Dependency and exact-candidate image proofs are retained as CI artifacts.
+/.security-evidence/
+/.f06-linux-image-evidence/

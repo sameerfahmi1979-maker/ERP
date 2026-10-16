@@ -39,15 +39,9 @@ import {
 import type { ERPComboboxOption } from "@/components/erp/combobox/types";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { DMS_CONFIDENTIALITY_LEVELS, DMS_CONFIDENTIALITY_LABELS } from "@/features/dms/documents/dms-document-constants";
 
-const CONFIDENTIALITY_OPTIONS = [
-  { value: "public", label: "Public" },
-  { value: "internal", label: "Internal" },
-  { value: "confidential", label: "Confidential" },
-  { value: "hr", label: "HR Confidential" },
-  { value: "legal", label: "Legal Confidential" },
-  { value: "executive", label: "Executive" },
-];
+const CONFIDENTIALITY_OPTIONS = DMS_CONFIDENTIALITY_LEVELS.map(value => ({ value, label: DMS_CONFIDENTIALITY_LABELS[value] }));
 const EMPTY_DOCUMENT_TYPES: DmsDocumentTypeRow[] = [];
 
 export type ReviewFormValues = {
@@ -392,6 +386,9 @@ export function DmsAiIntakeReviewForm({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  {!CONFIDENTIALITY_OPTIONS.some(option => option.value === values.confidentialityLevel) && values.confidentialityLevel && (
+                    <SelectItem value={values.confidentialityLevel} disabled>Unsupported existing classification</SelectItem>
+                  )}
                   {CONFIDENTIALITY_OPTIONS.map((opt) => (
                     <SelectItem key={opt.value} value={opt.value}>
                       {opt.label}
@@ -399,6 +396,9 @@ export function DmsAiIntakeReviewForm({
                   ))}
                 </SelectContent>
               </Select>
+              {!CONFIDENTIALITY_OPTIONS.some(option => option.value === values.confidentialityLevel) && (
+                <p role="alert" className="text-sm text-destructive">This existing confidentiality value is unsupported. Choose an authorized classification before approval; it will not be remapped automatically.</p>
+              )}
             </DmsAiIntakeFieldRow>
           );
         })()}
@@ -480,8 +480,8 @@ export function buildInitialReviewValues(session: IntakeSessionData): ReviewForm
     issueDate: aiResult?.issue_date_suggestion ?? (extractedFields["issue_date"] as string | undefined) ?? "",
     expiryDate: aiResult?.expiry_date_suggestion ?? (extractedFields["expiry_date"] as string | undefined) ?? "",
     confidentialityLevel: (extractedFields["confidentiality_level"] as string | undefined) ?? "internal",
-    owningCompanyId: null,
-    owningBranchId: null,
+    owningCompanyId: session.owning_company_id ?? null,
+    owningBranchId: session.owning_branch_id ?? null,
     metadataValues: {},
   };
 }

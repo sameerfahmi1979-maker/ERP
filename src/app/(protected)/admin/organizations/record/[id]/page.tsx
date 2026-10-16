@@ -1,4 +1,4 @@
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, hasPermissionInScope } from "@/lib/rbac/check";
 import { redirect, notFound } from "next/navigation";
 import { OrganizationWorkspaceForm } from "@/features/organizations/organization-workspace-form";
 import { getOrganizationById } from "@/server/actions/organizations";
@@ -17,13 +17,18 @@ export default async function OrganizationRecordPage({ params, searchParams }: P
     redirect("/admin/organizations");
   }
 
-  const numericId = parseInt(id);
-  if (isNaN(numericId)) notFound();
+  const numericId = Number(id);
+  if (!/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(numericId)) notFound();
 
   const result = await getOrganizationById(numericId);
-  if (!result.success || !result.data) notFound();
+  if (!result.success) {
+    if (result.errorCode === "not_found" || result.errorCode === "invalid") notFound();
+    if (result.errorCode === "denied") redirect("/admin/organizations");
+    throw new Error("The organization could not be loaded. Try again.");
+  }
+  if (!result.data) throw new Error("The organization could not be loaded. Try again.");
 
-  const mode = modeParam === "edit" && hasPermission(authContext, "organizations.edit") ? "edit" : "view";
+  const mode = modeParam === "edit" && hasPermissionInScope(authContext, "organizations.manage", result.data.id) ? "edit" : "view";
 
   return <OrganizationWorkspaceForm organization={result.data} mode={mode} authContext={authContext} />;
 }

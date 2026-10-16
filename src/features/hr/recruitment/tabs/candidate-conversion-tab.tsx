@@ -1,5 +1,4 @@
 "use client";
-import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import {CandidateChildReadPause, useCandidateChildReadAdmission, type CandidateChildAdmissionProps} from "../candidate-child-read-admission";
 
@@ -13,8 +12,12 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { queryKeys } from "@/lib/query/query-keys";
+import type {AuthContext} from '@/lib/rbac/check';
+import {hasGlobalPermission} from '@/lib/rbac/scope';
+import {candidateConversionInputSchema,canCreateRecruitmentDestination} from '@/lib/hr/numbered-recruitment-contract';
+import {useNumberedRecruitmentSession} from '../use-numbered-recruitment-session';
 import type { CandidateRow } from "@/server/actions/hr/recruitment";
-import { convertCandidateToEmployee, prepareCandidateEmployeeConversion } from "@/server/actions/hr/recruitment";
+import { prepareCandidateEmployeeConversion } from "@/server/actions/hr/recruitment";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle, ExternalLink, UserCheck } from "lucide-react";
 import Link from "next/link";
@@ -23,6 +26,7 @@ import { toast } from "sonner";
 
 type Props = CandidateChildAdmissionProps & {
   candidate: CandidateRow;
+  authContext:AuthContext;
   canManage: boolean;
   canCreateEmployee: boolean;
   onChildOpen?: (open: boolean) => void;
@@ -40,6 +44,8 @@ type ConversionForm = {
   conversion_notes: string;
   offer_id: number | null;
   requisition_id: number | null;
+  emergency_contact_name:string;
+  emergency_contact_mobile:string;
 };
 
 const EMPTY_FORM: ConversionForm = {
@@ -54,6 +60,8 @@ const EMPTY_FORM: ConversionForm = {
   conversion_notes: "",
   offer_id: null,
   requisition_id: null,
+  emergency_contact_name:'',
+  emergency_contact_mobile:'',
 };
 
 const EMPLOYEE_STATUS_OPTIONS = [
@@ -61,30 +69,21 @@ const EMPLOYEE_STATUS_OPTIONS = [
   { value: "probation", label: "Probation" },
 ];
 
-export function CandidateConversionTab({ candidate, canManage, canCreateEmployee, onChildOpen, mutationAdmitted = true, onRetryMutationAdmission }: Props) {
+export function CandidateConversionTab({ candidate, authContext, canManage, canCreateEmployee, onChildOpen, mutationAdmitted = true, onRetryMutationAdmission }: Props) {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<ConversionForm>(EMPTY_FORM);
-  const [isPending, startTransition] = useTransition();
+  const session=useNumberedRecruitmentSession('conversion',authContext.profile?.id,candidate.id);
+  const isPending=session.saving;
+  const [reviewedRevision,setReviewedRevision]=useState<string|null>(null);
   const [conversionResult, setConversionResult] = useState<{ employee_id: number; employee_code: string } | null>(null);
-
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.recruitment.employeeRecruitmentLink(0),
-    queryFn: async () => {
-      // We need to find the employee that was converted from this candidate
-      // We'll use a separate approach via prepareCandidateEmployeeConversion
-      return null;
-    },
-    enabled: false,
-  });
-  const { data: linkRes, isLoading: linkLoading } = uiRead1;
 
   const uiRead2 = useQuery({
     queryKey: ["recruitment", "conversion-prep", candidate.id],
     queryFn: () => prepareCandidateEmployeeConversion(candidate.id),
     staleTime: 30_000,
   });
-  const { data: prepRes, isLoading: prepLoading, refetch: refetchPrep } = uiRead2;
+  const { data: prepRes, isLoading: prepLoading } = uiRead2;
 
   const alreadyConverted = prepRes?.data?.already_converted ?? false;
   const latestOffer = prepRes?.data?.latest_offer;
@@ -93,7 +92,12 @@ export function CandidateConversionTab({ candidate, canManage, canCreateEmployee
     prerequisitesMet: !alreadyConverted && !conversionResult, reads: [uiRead2], onRetryMutationAdmission});
 
   function openDialog() {
+    if(session.pending?.kind==='conversion'){
+      setForm({...EMPTY_FORM,...session.pending.payload,conversion_notes:session.pending.payload.conversion_notes??''});
+      setReviewedRevision(session.pending.contract.revision);setDialogOpen(true);onChildOpen?.(true);return;
+    }
     if (!mutation.canDispatch()) return;
+    if(!session.startNew()||prepRes?.success!==true||String(prepRes.data?.candidate.workspace_revision)!==String(candidate.workspace_revision))return;
     const newForm = { ...EMPTY_FORM };
     if (latestOffer) {
       newForm.offer_id = latestOffer.id;
@@ -108,6 +112,7 @@ export function CandidateConversionTab({ candidate, canManage, canCreateEmployee
       newForm.requisition_id = candidate.requisition_id ?? null;
     }
     setForm(newForm);
+    setReviewedRevision(String(candidate.workspace_revision));
     setDialogOpen(true);
     onChildOpen?.(true);
   }
@@ -121,46 +126,28 @@ export function CandidateConversionTab({ candidate, canManage, canCreateEmployee
     setForm((p) => ({ ...p, [key]: value }));
   };
 
-  function handleConvert() {
-    if (!mutation.canDispatch()) return;
-    if (!form.owner_company_id) { toast.error("Owner company is required"); return; }
-    if (!form.joining_date) { toast.error("Joining date is required"); return; }
-
-    startTransition(async () => {
-      if (!mutation.canDispatch()) return;
-      const res = await convertCandidateToEmployee(candidate.id, {
-        owner_company_id: form.owner_company_id!,
-        branch_id: form.branch_id,
-        department_id: form.department_id,
-        designation_id: form.designation_id,
-        employment_type_id: form.employment_type_id,
-        employee_category_id: form.employee_category_id,
-        joining_date: form.joining_date,
-        employee_status: form.employee_status as "active" | "probation" | "suspended" | "inactive" | "terminated",
-        conversion_notes: form.conversion_notes || undefined,
-        offer_id: form.offer_id,
-        requisition_id: form.requisition_id,
-      });
-
-      if (res.success && res.data) {
-        toast.success(`Candidate converted to employee ${res.data.employee_code}`);
-        setConversionResult(res.data);
-        void queryClient.invalidateQueries({ queryKey: ["recruitment", "conversion-prep", candidate.id] });
-        void queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidates() });
-        refetchPrep();
-        closeDialog();
-      } else {
-        toast.error(res.error ?? "Failed to convert candidate");
-      }
-    });
+  async function handleConvert() {
+    if (!session.pending && !mutation.canDispatch()) return;
+    const parsed=candidateConversionInputSchema.safeParse(form);
+    if(!session.pending&&!parsed.success){toast.error(parsed.error.issues[0]?.message??'Review employee values.');return;}
+    if(!session.pending&&!canCreateRecruitmentDestination(authContext,form.owner_company_id,form.branch_id,true)){toast.error('The selected scope requires recruitment management, employee creation/read/management, and numbering generation.');return;}
+    const payload=session.pending?.kind==='conversion'?session.pending.payload:parsed.success?parsed.data:null;
+    if(!payload)return;
+    const receipt=await session.submit(payload,reviewedRevision);
+    if(!receipt||!session.isCurrent()||!('employee_id' in receipt))return;
+    toast.success(`Candidate converted to employee ${receipt.employee_code}`);setConversionResult(receipt);closeDialog();
+    try{await Promise.all([queryClient.invalidateQueries({queryKey:['recruitment','conversion-prep',candidate.id]}),queryClient.invalidateQueries({queryKey:queryKeys.recruitment.candidates()})]);}catch{toast.message('Saved. Refresh the candidate to see its updated status.');}
   }
 
-  if (prepLoading) {
+  if (prepLoading&&!session.pending) {
     return <div className="p-6"><Skeleton className="h-32 rounded" /></div>;
   }
 
   return (
-    <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="p-6 space-y-6">
+    <QueryReadBoundary queries={session.pending?[]:[uiRead2]}><div className="p-6 space-y-6">
+      {session.error&&!dialogOpen&&<p role="alert" className="text-sm text-destructive">{session.error}</p>}
+      {session.pending&&<Button onClick={openDialog} disabled={isPending||session.blocked}>Recover Original Conversion</Button>}
+      {prepRes?.success&&String(prepRes.data?.candidate.workspace_revision)!==String(candidate.workspace_revision)&&!session.pending&&<p role="alert">The candidate changed. Reopen its record before reviewing conversion.</p>}
       <div>
         <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide mb-4">Candidate Conversion</h3>
 
@@ -192,19 +179,19 @@ export function CandidateConversionTab({ candidate, canManage, canCreateEmployee
                         <p>• Latest accepted offer found — data will be pre-filled from offer</p>
                       )}
                     </div>
-                    {(canManage && canCreateEmployee) ? (
+                    {(canManage && canCreateEmployee && hasGlobalPermission(authContext,'numbering.rules.generate')) ? (
                       <Button
                         className="mt-3"
                         size="sm"
                         onClick={openDialog}
-                        disabled={isPending || !mutation.ready}
+                        disabled={isPending||!mutation.ready||session.blocked||!!session.pending||!!session.receipt||String(prepRes?.data?.candidate.workspace_revision)!==String(candidate.workspace_revision)}
                       >
                         <UserCheck className="h-4 w-4 mr-2" />
                         Convert to Employee
                       </Button>
                     ) : (
                       <p className="mt-3 text-xs text-amber-700 font-medium dark:text-amber-200">
-                        Requires both <code>hr.recruitment.manage</code> and <code>hr.employees.create</code> permissions.
+                        Requires recruitment management, employee creation/read/management in the selected scope, and numbering generation.
                       </p>
                     )}
                   </div>
@@ -238,13 +225,14 @@ export function CandidateConversionTab({ candidate, canManage, canCreateEmployee
         mode="add"
         size="lg"
         isSubmitting={isPending}
-        submitDisabled={!mutation.ready}
+        submitDisabled={session.blocked || (!session.pending && !mutation.ready)}
         onSubmit={handleConvert}
-        submitLabel="Confirm Conversion"
+        submitLabel={session.pending?'Retry Original Request':'Confirm Conversion'}
       >
-        <CandidateChildReadPause admission={mutation} canManage={canManage && canCreateEmployee}
-          blockedReason={alreadyConverted || conversionResult ? "This candidate has already been converted. Your entries are retained; cancel this dialog rather than create another employee." : undefined} />
-        <div className="grid grid-cols-12 gap-4">
+        {!session.pending && <CandidateChildReadPause admission={mutation} canManage={canManage && canCreateEmployee}
+          blockedReason={alreadyConverted || conversionResult ? "This candidate has already been converted. Your entries are retained; cancel this dialog rather than create another employee." : undefined} />}
+        {session.error&&<p role="alert" className="text-sm text-destructive">{session.error}</p>}
+        <fieldset disabled={isPending||!!session.pending||session.blocked} className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <div className="bg-amber-50 border border-amber-200 rounded p-3 text-sm text-amber-800 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-200">
               <strong>Review carefully.</strong> A new employee record will be created from <strong>{candidate.full_name_en}</strong>. You must provide owner company and joining date.
@@ -263,6 +251,14 @@ export function CandidateConversionTab({ candidate, canManage, canCreateEmployee
           <div className="col-span-12 md:col-span-6">
             <RequiredLabel required>Joining Date</RequiredLabel>
             <Input aria-label="Joining Date" required type="date" value={form.joining_date} onChange={(e) => set("joining_date", e.target.value)} />
+          </div>
+          <div className="col-span-12 md:col-span-6">
+            <RequiredLabel required>Emergency Contact Name</RequiredLabel>
+            <Input aria-label="Emergency Contact Name" required value={form.emergency_contact_name} onChange={e=>set('emergency_contact_name',e.target.value)}/>
+          </div>
+          <div className="col-span-12 md:col-span-6">
+            <RequiredLabel required>Emergency Contact Mobile</RequiredLabel>
+            <Input aria-label="Emergency Contact Mobile" required value={form.emergency_contact_mobile} onChange={e=>set('emergency_contact_mobile',e.target.value)}/>
           </div>
           <div className="col-span-12 md:col-span-6">
             <Label>Employee Status</Label>
@@ -289,7 +285,7 @@ export function CandidateConversionTab({ candidate, canManage, canCreateEmployee
             <Label>Conversion Notes</Label>
             <Textarea aria-label="Conversion Notes" value={form.conversion_notes} onChange={(e) => set("conversion_notes", e.target.value)} rows={3} placeholder="Notes about this conversion..." />
           </div>
-        </div>
+        </fieldset>
       </ERPChildDialogForm>
     </div></QueryReadBoundary>
   );

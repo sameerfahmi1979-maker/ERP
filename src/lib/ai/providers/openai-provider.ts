@@ -1,100 +1,32 @@
-import { resolveAiProviderSecret } from "@/lib/settings/resolve-ai-secret";
-// ============================================================================
-// OpenAI / Azure OpenAI Provider
-// Phase: ERP SETTINGS.1
-// Handles test connection for OpenAI and Azure OpenAI provider types.
-// Full chat/extraction support will be added in DMS.10.
-// ============================================================================
-
-import type { AiProviderInterface, AiProviderConfig, AiTestConnectionResult } from "./types";
+import {resolveAiProviderSecret} from '@/lib/settings/resolve-ai-secret';
+import {aiEndpoint,providerApiVersion,ProviderConfigurationError,safeProviderFailure} from '@/lib/settings/provider-endpoints';
+import type {AiProviderInterface,AiProviderConfig,AiTestConnectionResult} from './types';
 
 export class OpenAiProvider implements AiProviderInterface {
-  readonly providerType = "openai" as const;
-  readonly config: AiProviderConfig;
-  readonly isEnabled: boolean;
+ readonly providerType;
+ readonly config:AiProviderConfig;
+ readonly isEnabled:boolean;
+ constructor(config:AiProviderConfig){this.config=config;this.providerType=config.providerType;this.isEnabled=config.isEnabled;}
 
-  constructor(config: AiProviderConfig) {
-    this.config = config;
-    this.isEnabled = config.isEnabled;
-  }
-
-  async testConnection(): Promise<AiTestConnectionResult> {
-    const start = Date.now();
-
-    // Note: isEnabled is NOT checked here — test connection works on disabled providers.
-    // The purpose of testing is to verify credentials BEFORE enabling.
-
-    // Resolve API key from environment variable (secretRef stores the env var name)
-    const secretRef = this.config.secretRef;
-    if (!secretRef) {
-      return {
-        ok: false,
-        status: "failed",
-        message: "No API key reference configured. Add a secret reference in AI Settings.",
-        durationMs: Date.now() - start,
-        providerType: this.config.providerType,
-      };
-    }
-
-    const apiKey = resolveAiProviderSecret(this.config);
-    if (!apiKey) {
-      return {
-        ok: false,
-        status: "failed",
-        message: `Environment variable '${secretRef}' is not set. Configure it in your deployment environment.`,
-        durationMs: Date.now() - start,
-        providerType: this.config.providerType,
-      };
-    }
-
-    try {
-      const baseUrl = this.config.apiEndpoint ?? "https://api.openai.com/v1";
-      const response = await fetch(`${baseUrl}/models`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        signal: AbortSignal.timeout(10000), // 10s timeout
-      });
-
-      const durationMs = Date.now() - start;
-
-      if (response.ok) {
-        const data = await response.json() as { data?: { id: string }[] };
-        const modelId = this.config.modelId;
-        const modelFound = modelId
-          ? (data.data ?? []).some((m) => m.id === modelId)
-          : true;
-
-        return {
-          ok: true,
-          status: "success",
-          message: modelId && !modelFound
-            ? `Connected successfully. Note: model '${modelId}' not found in available models.`
-            : "Connected successfully.",
-          durationMs,
-          modelId: this.config.modelId,
-          providerType: this.config.providerType,
-        };
-      } else {
-        const body = await response.text();
-        return {
-          ok: false,
-          status: "failed",
-          message: `API returned ${response.status}: ${body.substring(0, 200)}`,
-          durationMs,
-          providerType: this.config.providerType,
-        };
-      }
-    } catch (err: unknown) {
-      return {
-        ok: false,
-        status: "failed",
-        message: `Connection failed: ${err instanceof Error ? err.message : String(err)}`,
-        durationMs: Date.now() - start,
-        providerType: this.config.providerType,
-      };
-    }
-  }
+ async testConnection():Promise<AiTestConnectionResult>{
+  const start=Date.now();
+  const result=(ok:boolean,message:string):AiTestConnectionResult=>({ok,status:ok?'success':'failed',message,durationMs:Date.now()-start,providerType:this.providerType,modelId:this.config.modelId});
+  try{
+   if(!this.config.isActive||!['openai','azure_openai'].includes(this.providerType))throw new ProviderConfigurationError('This provider is inactive or unsupported.');
+   // Validate the destination before resolving credentials, including legacy rows.
+   const endpoint=aiEndpoint(this.providerType,this.config.apiEndpoint);
+   const azure=this.providerType==='azure_openai';
+   const url=azure?`${endpoint}/openai/models?api-version=${providerApiVersion(this.config.apiVersion,'2024-10-21')}`:`${endpoint}/models`;
+   const key=resolveAiProviderSecret(this.config);
+   if(!key)return result(false,'Provider credentials are not available. Ask an authorized administrator to review the protected credential configuration.');
+   const headers:Record<string,string>=azure?{'api-key':key}:{Authorization:`Bearer ${key}`};
+   const response=await fetch(url,{method:'GET',headers,redirect:'error',signal:AbortSignal.timeout(10000)});
+   if(response.status!==200)return result(false,`Provider authentication/catalog check failed (HTTP ${response.status}). No model operation was performed.`);
+   const data:unknown=await response.json();
+   const models=data&&typeof data==='object'&&'data' in data?data.data:null;
+   if(!Array.isArray(models)||models.some(m=>!m||typeof m!=='object'||typeof m.id!=='string'))return result(false,'The provider returned an unexpected model catalog. Readiness was not verified.');
+   if(!azure&&this.config.modelId&&!models.some(m=>m.id===this.config.modelId))return result(false,'Credentials were accepted, but the selected model was not listed. Review the selected model before enabling this provider.');
+   return result(true,azure?'Azure credentials and model catalog verified. This does not verify a deployment or a complete AI operation.':'Credentials and model catalog verified. This does not verify a complete AI operation.');
+  }catch(error){return result(false,safeProviderFailure(error));}
+ }
 }

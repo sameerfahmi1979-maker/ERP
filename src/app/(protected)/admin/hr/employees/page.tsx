@@ -1,6 +1,7 @@
 import { LoadError } from "@/components/erp/load-error";
 import { redirect } from "next/navigation";
-import { getAuthContext } from "@/lib/rbac/check";
+import { getReadAuthContext } from "@/server/reads/read-context";
+import { readScopeVersion } from "@/lib/reads/scope-version";
 import { canBrowseEmployees } from "@/lib/rbac/employee-access";
 import { readEmployees } from "@/server/reads/employees";
 import { EmployeesTable } from "@/features/hr/employees/employees-table";
@@ -12,10 +13,10 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function EmployeesPage() {
-  const authContext = await getAuthContext();
+  const authContext = await getReadAuthContext();
 
   if (
-    !canBrowseEmployees(authContext)
+    !authContext.profile?.auth_user_id || !canBrowseEmployees(authContext)
   ) {
     redirect("/access-denied");
   }
@@ -52,6 +53,7 @@ export default async function EmployeesPage() {
         initialRows={rows}
         initialTotal={totalCount}
         initialUpdatedAt={result.data?.updatedAt??0}
+        initialReadIdentity={{authUserId:authContext.profile.auth_user_id,scopeVersion:readScopeVersion(authContext)}}
         authContext={authContext}
         documentWizardEnabled={documentWizardEnabled}
       />

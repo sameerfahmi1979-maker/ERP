@@ -29,7 +29,7 @@ export function DmsApplyToErpItemTable({ items, selectedIndices, onToggle, disab
     { id: "current", accessorKey: "currentValueSummary", header: "Current value", size: 220,
       meta: { filter: { type: "text" } }, cell: ({ getValue }) => String(getValue() ?? "Empty") },
     { id: "proposed", accessorKey: "proposedValueSummary", header: "Proposed value", size: 220,
-      meta: { filter: { type: "text" } }, cell: ({ getValue }) => String(getValue() ?? "Empty") },
+      meta: { filter: { type: "text" } }, cell: ({ row,getValue }) => <span className="whitespace-pre-wrap break-words">{row.original.targetField==='tax_registration_number'?String(getValue()??'Empty'):row.original.proposedValue??String(getValue()??'Empty')}</span> },
     { id: "confidence", accessorKey: "confidence", header: "Confidence", size: 140,
       meta: { filter: { type: "number" } },
       cell: ({ row }) => row.original.confidence == null ? "Not available" : `${Math.round(row.original.confidence * 100)}%` },
@@ -39,7 +39,8 @@ export function DmsApplyToErpItemTable({ items, selectedIndices, onToggle, disab
         ? <span className="inline-flex items-center gap-1"><AlertTriangle className="h-4 w-4" aria-hidden />Overwrites</span>
         : "No overwrite detected" },
   ];
-  return <ERPDataTable tableId="special.apply-to-erp-proposals" columns={columns} enableRowSelection={false}
+  return <ERPDataTable tableId="special.apply-to-erp-proposals" columns={columns}
+    enableRowSelection={false}
     data={items.map((item, selectionIndex) => ({ ...item, selectionIndex }))}
     resultsLabel="Loaded proposed field changes" emptyMessage="No apply items available."
     initialPageSize={10} />;

@@ -36,7 +36,7 @@ export async function prefetchMasterDataQueries(client: QueryClient, descriptors
       await client.fetchQuery({queryKey: descriptor.queryKey, queryFn: ({signal}) => descriptor.queryFn(signal), retry: retryAuthorizedRead,
         ...(descriptor.staleTime !== undefined ? {staleTime: descriptor.staleTime} : {})});
       prefetchedKeys.push([...descriptor.queryKey]);
-    } catch (cause) { error = cause instanceof Error ? cause.message : "Master-data prefetch failed"; }
+    } catch { error = "Choices failed"; }
   }));
   return {requestedCount: descriptors.length, prefetchedKeys, error};
 }

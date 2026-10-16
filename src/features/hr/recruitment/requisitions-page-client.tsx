@@ -12,8 +12,10 @@ import { queryKeys } from "@/lib/query/query-keys";
 import type {RecruitmentRequisitionDetail} from "@/lib/reads/hr-recruitment-inquiries-schema";
 import {useRecruitmentInquiry, useRecruitmentInquiryIdentity, type RecruitmentInquiryProps} from "@/hooks/use-hr-recruitment-inquiry";
 import {RecruitmentInquiryTable} from "./recruitment-inquiry-table";
-import { archiveJobRequisition, createJobRequisition, updateJobRequisition } from "@/server/actions/hr/recruitment";
+import { archiveJobRequisition, updateJobRequisition } from "@/server/actions/hr/recruitment";
 import { useQueryClient } from "@tanstack/react-query";
+import {canCreateRecruitmentDestination,requisitionCreationSchema} from '@/lib/hr/numbered-recruitment-contract';
+import {useNumberedRecruitmentSession} from './use-numbered-recruitment-session';
 import { Briefcase, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState} from "react";
 import { toast } from "sonner";
@@ -94,16 +96,24 @@ function PermittedRequisitionsSession(props: Props & {identity: string; read: Re
   const [editing, setEditing] = useState<RecruitmentRequisitionDetail | null>(null);
   const [form, setForm] = useState<ReqForm>(EMPTY_FORM);
   const [isPending, startTransition] = useTransition();
+  const creation=useNumberedRecruitmentSession('requisition',authContext.profile?.id);
+  const canCreate=canCreateRecruitmentDestination(authContext,null,null);
 
   const set = (key: keyof ReqForm, value: string) => setForm((p) => ({ ...p, [key]: value }));
 
   function openAdd() {
+    if (read.denied || (!creation.pending && (read.busy || read.isError || read.invalid))) return;
     setEditing(null);
-    setForm(EMPTY_FORM);
+    const pending=creation.pending;
+    if(pending?.kind==='requisition'){
+      const value=pending.payload;
+      setForm({requisition_title:value.requisition_title,vacancies_count:String(value.vacancies_count),requisition_status:value.requisition_status,priority:value.priority,target_start_date:value.target_start_date??'',job_description:value.job_description??'',requirements:value.requirements??'',notes:value.notes??''});
+    }else{if(!creation.startNew())return;setForm(EMPTY_FORM);}
     setDialogOpen(true);
   }
 
   async function openEdit(id: number) {
+    if (creation.pending || creation.saving) return;
     const req = await read.loadRequisition(id);
     if (!req) return;
     setEditing(req);
@@ -120,8 +130,19 @@ function PermittedRequisitionsSession(props: Props & {identity: string; read: Re
     setDialogOpen(true);
   }
 
-  function handleSave() {
-    if (read.busy || read.isError || read.invalid || read.denied || editing && !read.data.some(row => row.id === editing.id)) return;
+  async function handleSave() {
+    if (read.denied || ((!creation.pending || editing) && (read.busy || read.isError || read.invalid || editing && !read.data.some(row => row.id === editing.id)))) return;
+    if(!editing){
+      const parsed=requisitionCreationSchema.safeParse({requisition_title:form.requisition_title,vacancies_count:Number(form.vacancies_count),requisition_status:form.requisition_status,priority:form.priority,target_start_date:form.target_start_date||null,job_description:form.job_description||null,requirements:form.requirements||null,notes:form.notes||null});
+      if(!creation.pending&&!parsed.success){toast.error(parsed.error.issues[0]?.message??'Check requisition values.');return;}
+      const value=creation.pending?.kind==='requisition'?creation.pending.payload:parsed.success?parsed.data:null;
+      if(!value)return;
+      const receipt=await creation.submit(value,null);
+      if(!receipt||!creation.isCurrent())return;
+      toast.success('Requisition created');setDialogOpen(false);
+      try{await queryClient.invalidateQueries({queryKey:queryKeys.recruitment.requisitions()});}catch{toast.message('Saved. Refresh the list to see the requisition.');}
+      return;
+    }
     startTransition(async () => {
       const payload = {
         requisition_title: form.requisition_title,
@@ -134,9 +155,7 @@ function PermittedRequisitionsSession(props: Props & {identity: string; read: Re
         notes: form.notes || null,
       };
 
-      const res = editing
-        ? await updateJobRequisition(editing.id, payload)
-        : await createJobRequisition(payload);
+      const res = await updateJobRequisition(editing.id, payload);
 
       if (res.success) {
         toast.success(editing ? "Requisition updated" : "Requisition created");
@@ -149,6 +168,7 @@ function PermittedRequisitionsSession(props: Props & {identity: string; read: Re
   }
 
   function handleArchive(id: number) {
+    if (read.denied || read.busy || read.isError || read.invalid || !read.data.some(row => row.id === id)) return;
     startTransition(async () => {
       const res = await archiveJobRequisition(id);
       if (res.success) {
@@ -167,11 +187,13 @@ function PermittedRequisitionsSession(props: Props & {identity: string; read: Re
           <h1 className="text-xl font-bold text-slate-900">Job Requisitions</h1>
         </div>
         {canManage && (
-          <Button size="sm" onClick={openAdd}>
-            <Plus className="h-4 w-4 mr-1" /> New Requisition
+          <Button size="sm" onClick={openAdd} disabled={creation.saving||creation.blocked||(!canCreate&&!creation.pending)}>
+            <Plus className="h-4 w-4 mr-1" /> {creation.pending?'Recover Requisition':'New Requisition'}
           </Button>
         )}
       </div>
+      {!canCreate&&canManage&&!creation.pending&&<p className="text-sm text-amber-700">Creating an unscoped requisition requires global recruitment management and numbering generation.</p>}
+      {creation.error&&!dialogOpen&&<p role="alert" className="text-sm text-destructive">{creation.error}</p>}
 
       <RecruitmentInquiryTable kind="requisitions" identity={props.identity} read={read} columns={[
         {id: "requisition_code", header: "Code", accessorKey: "requisition_code", enableHiding: false, size: 150},
@@ -183,23 +205,25 @@ function PermittedRequisitionsSession(props: Props & {identity: string; read: Re
         {id: "designation", header: "Designation", accessorFn: row => row.designation?.designation_name_en ?? "—", enableSorting: false, size: 200},
         {id: "target_start_date", header: "Target start", accessorFn: row => row.target_start_date ?? "—", size: 150},
         {id: "actions", header: "Actions", enableSorting: false, cell: ({row}) => canManage && <div className="flex gap-1">
-          <Button aria-label="Edit record" size="sm" variant="ghost" onClick={() => void openEdit(row.original.id)} disabled={read.detailPending || isPending}><Pencil className="h-4 w-4" /></Button>
+          <Button aria-label="Edit record" size="sm" variant="ghost" onClick={() => void openEdit(row.original.id)} disabled={read.detailPending || isPending || creation.saving || !!creation.pending}><Pencil className="h-4 w-4" /></Button>
           <Button aria-label="Archive record" size="sm" variant="ghost" onClick={() => handleArchive(row.original.id)} disabled={isPending}><Trash2 className="h-4 w-4 text-destructive" /></Button>
         </div>},
       ]} />
 
       <ERPChildDialogForm
-        open={dialogOpen && !read.busy && !read.isError && !read.invalid && (!editing || read.data.some(row => row.id === editing.id))}
+        open={dialogOpen && ((!editing && !!creation.pending) || (!read.busy && !read.isError && !read.invalid && (!editing || read.data.some(row => row.id === editing.id))))}
         onOpenChange={setDialogOpen}
         title={editing ? "Edit Requisition" : "New Job Requisition"}
         subtitle="Create or edit a hiring request"
         icon={<Briefcase className="h-5 w-5" />}
         mode={editing ? "edit" : "add"}
         size="lg"
-        isSubmitting={isPending}
+        isSubmitting={isPending||creation.saving}
         onSubmit={handleSave}
+        submitLabel={!editing&&creation.pending?'Retry Original Request':undefined}
       >
-        <div className="grid grid-cols-12 gap-4">
+        {!editing&&creation.error&&<p role="alert" className="text-sm text-destructive">{creation.error}</p>}
+        <fieldset disabled={!editing&&(creation.saving||!!creation.pending||creation.blocked)} className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <RequiredLabel required>Requisition Title</RequiredLabel>
             <Input aria-label="Requisition Title" required value={form.requisition_title} onChange={(e) => set("requisition_title", e.target.value)} placeholder="e.g. Senior Software Engineer" />
@@ -232,7 +256,7 @@ function PermittedRequisitionsSession(props: Props & {identity: string; read: Re
             <Label>Notes</Label>
             <Textarea aria-label="Notes" value={form.notes} onChange={(e) => set("notes", e.target.value)} rows={2} placeholder="Internal notes..." />
           </div>
-        </div>
+        </fieldset>
       </ERPChildDialogForm>
     </div>
   );

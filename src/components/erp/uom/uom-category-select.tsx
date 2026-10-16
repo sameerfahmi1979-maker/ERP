@@ -6,7 +6,6 @@
  */
 
 import { ERPCombobox } from "@/components/erp/combobox";
-import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import { useUomCategoriesQuery } from "@/hooks/lookups";
 
 interface UomCategorySelectProps {
@@ -21,6 +20,7 @@ interface UomCategorySelectProps {
   allowClear?: boolean;
   className?: string;
   name?: string;
+  ariaLabel?: string;
   error?: string;
 }
 
@@ -36,10 +36,10 @@ export function UomCategorySelect({
   allowClear = false,
   className,
   name,
+  ariaLabel = "Category",
   error,
 }: UomCategorySelectProps) {
-  const choiceRead = useUomCategoriesQuery({ includeInactive, selectedId: value ?? null });
-  const { options, isLoading, error: fetchError } = choiceRead;
+  const { options, isLoading, error: fetchError } = useUomCategoriesQuery({ includeInactive });
 
   const handleValueChange = (newValue: string | number | null) => {
     if (!onValueChange) return;
@@ -52,7 +52,7 @@ export function UomCategorySelect({
   };
 
   return (
-    <QueryReadBoundary queries={[choiceRead]}><ERPCombobox
+    <ERPCombobox
       value={value ?? null}
       onValueChange={handleValueChange}
       options={options}
@@ -70,6 +70,7 @@ export function UomCategorySelect({
       noResultsText="No results found"
       className={className}
       name={name}
-    /></QueryReadBoundary>
+      ariaLabel={ariaLabel}
+    />
   );
 }

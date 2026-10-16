@@ -1,44 +1,5 @@
-import { LoadError } from "@/components/erp/load-error";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { redirect } from "next/navigation";
-import { listHrRoleRequirementMatrix } from "@/server/actions/hr/settings";
-import { ERPPageHeader } from "@/components/erp/page-header";
-import { ERPEmptyState } from "@/components/erp/empty-state";
-import { Badge } from "@/components/ui/badge";
-import { Grid3X3 } from "lucide-react";
+import {HrRuleSettingsRoute} from '@/features/hr/settings/hr-rule-settings-route';
 
-export default async function HrRoleRequirementMatrixPage() {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.settings.view") && !hasPermission(ctx, "hr.settings.manage") && !hasPermission(ctx, "hr.admin")) redirect("/admin/hr/settings");
-  const result = await listHrRoleRequirementMatrix({ page_size: 100 });
-  if (!result.success) return <LoadError title="HR records" retryHref="/admin/hr/settings/role-requirement-matrix" />;
-  const rows = result.data?.data ?? [];
-
-  return (
-    <div className="p-6 space-y-4">
-      <ERPPageHeader
-        title="Role Requirement Matrix"
-        description="Maps employee categories and designations to required compliance readiness rules"
-        breadcrumbs={[{ label: "Dashboard", href: "/dashboard" }, { label: "HR Settings", href: "/admin/hr/settings" }, { label: "Role Requirement Matrix" }]}
-      />
-      {rows.length === 0 ? (
-        <ERPEmptyState icon={Grid3X3} title="No role requirement mappings" description="Mappings link employee categories to required readiness rules." />
-      ) : (
-        <div className="rounded-md border overflow-hidden">
-          <div className="divide-y">
-            {rows.map((row) => (
-              <div key={row.id} className="flex items-center justify-between px-4 py-3">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm">Readiness Rule #{row.readiness_rule_template_id}</span>
-                  {row.employee_category_id && <Badge variant="secondary" className="text-[10px]">Category #{row.employee_category_id}</Badge>}
-                  {!row.is_active && <Badge variant="outline" className="text-[10px]">Inactive</Badge>}
-                  <Badge variant={row.is_required ? "destructive" : "outline"} className="text-[10px]">{row.is_required ? "Required" : "Optional"}</Badge>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+export default async function HrRoleRequirementMatrixPage(){
+ return HrRuleSettingsRoute({entity:'hr_role_requirement_matrix'});
 }

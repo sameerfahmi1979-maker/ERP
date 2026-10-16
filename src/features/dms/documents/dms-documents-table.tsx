@@ -41,6 +41,7 @@ import type { DmsAiSearchResult, DmsSearchIntent, DmsSemanticSearchResult } from
 import { SortColHeader } from "@/components/erp/table/sort-col-header";
 import { TablePagination } from "@/components/erp/table/table-pagination";
 import { useServerPage } from "@/hooks/use-server-page";
+import type { ServerPageSeed } from "@/hooks/use-server-page";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import { ConfiguredRow, EditColumns, EditFilters, useListColumns, type ListColumn } from "@/components/erp/table/list-controls";
 import { useRealtimeSync } from "@/hooks/realtime/use-realtime-sync";
@@ -92,6 +93,7 @@ const DMS_EXPIRY_FILTER_OPTIONS: ERPComboboxOption[] = [
 ];
 
 interface DmsDocumentsTableProps {
+  initialSeed?: ServerPageSeed<DmsDocumentRow>;
   initialDocuments: DmsDocumentRow[];
   initialTotal: number;
   initialUpdatedAt: number;
@@ -102,6 +104,7 @@ interface DmsDocumentsTableProps {
 }
 
 export function DmsDocumentsTable({
+  initialSeed,
   initialDocuments,
   initialTotal,
   initialUpdatedAt,
@@ -198,7 +201,7 @@ export function DmsDocumentsTable({
   const seed=useMemo(()=>({rows:initialDocuments,totalCount:initialTotal,page:1,pageSize:25}),[initialDocuments,initialTotal]);
   const today=new Date().toISOString().slice(0,10);
   const filters={excludeArchived:true,search:search.trim()||undefined,searchMode:searchMode==="quick"?"quick":searchMode==="safe"?"safe_fts":searchMode==="content"?"content":undefined,document_type_id:filterType??undefined,category_id:filterCategory??undefined,status:filterStatus??undefined,confidentiality:filterConfidentiality??undefined,expired:filterExpiry==="expired"?true:undefined,expiring_soon:filterExpiry==="expiring_30"?true:undefined,expiry_from:filterExpiry==="valid"?today:undefined,expiryState:filterExpiry==="no_expiry"?"missing_expiry":undefined};
-  const uiReadDocuments=useServerPage<DmsDocumentRow>({resource:"dms-documents",params:{page,pageSize,sortKey:sortKey??"created_at",sortDir,filters},seedParams:{page:1,pageSize:25,sortKey:"created_at",sortDir:"desc",filters:{excludeArchived:true}},seed,updatedAt:initialUpdatedAt});
+  const uiReadDocuments=useServerPage<DmsDocumentRow>({resource:"dms-documents",params:{page,pageSize,sortKey:sortKey??"created_at",sortDir,filters},...(initialSeed ? {seed:initialSeed} : {seedParams:{page:1,pageSize:25,sortKey:"created_at",sortDir:"desc",filters:{excludeArchived:true}},seed,updatedAt:initialUpdatedAt})});
   const total=uiReadDocuments.data?.totalCount??0;
   const totalPages=Math.max(1,Math.ceil(total/pageSize));
   useEffect(()=>{if(!uiReadDocuments.isBusy&&!uiReadDocuments.isError&&uiReadDocuments.data&&page>totalPages)setPageRaw(totalPages);},[uiReadDocuments.isBusy,uiReadDocuments.isError,uiReadDocuments.data,page,totalPages,setPageRaw]);

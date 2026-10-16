@@ -8,25 +8,7 @@ import { ERPDataTable } from "@/components/erp/table/erp-data-table";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Eye,
-  Pencil,
-  Power,
-  Trash2,
-  MoreHorizontal,
-  Plus,
-  Lock,
-  Unlock,
-  Shield,
-} from "lucide-react";
+import {Plus,Lock,Shield} from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,12 +19,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  toggleUomCategoryStatus,
-  deleteUomCategory,
-  toggleUomCategoryLock,
-} from "../actions";
-import { toast } from "sonner";
+import {UomActionsCell,useUomLifecycle,UomLifecycleNotice} from "./uom-lifecycle";
+import {hasGlobalPermission} from "@/lib/rbac/scope";
 import { format } from "date-fns";
 
 type UomCategoriesTableProps = {
@@ -53,65 +31,17 @@ type UomCategoriesTableProps = {
 
 const BASE = "/admin/master-data/uom/categories";
 
-export function UomCategoriesTable({ categories, authContext, onRefresh }: UomCategoriesTableProps) {
-  const router = useRouter();
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState<UomCategory | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-
-  const handleRefresh = () => {
-    if (onRefresh) onRefresh();
-    else router.refresh();
-  };
-
-  const handleAdd = () => router.push(`${BASE}/record/new`);
-  const handleView = (item: UomCategory) => router.push(`${BASE}/record/${item.id}`);
-  const handleEdit = (item: UomCategory) => router.push(`${BASE}/record/${item.id}?mode=edit`);
-
-  const handleToggleActive = async (item: UomCategory) => {
-    const result = await toggleUomCategoryStatus({ id: item.id, is_active: !item.is_active });
-    if (result.success) {
-      toast.success(`Category ${item.is_active ? "deactivated" : "activated"} successfully`);
-      handleRefresh();
-    } else {
-      toast.error(result.error ?? "Failed to toggle category status");
-    }
-  };
-
-  const handleToggleLock = async (item: UomCategory) => {
-    const result = await toggleUomCategoryLock(item.id, !item.is_locked);
-    if (result.success) {
-      toast.success(`Category ${item.is_locked ? "unlocked" : "locked"} successfully`);
-      handleRefresh();
-    } else {
-      toast.error(result.error ?? "Failed to toggle category lock");
-    }
-  };
-
-  const handleDeleteClick = (item: UomCategory) => {
-    setItemToDelete(item);
-    setDeleteDialogOpen(true);
-  };
-
-  const handleDeleteConfirm = async () => {
-    if (!itemToDelete) return;
-    setIsDeleting(true);
-    const result = await deleteUomCategory(itemToDelete.id);
-    setIsDeleting(false);
-    setDeleteDialogOpen(false);
-
-    if (result.success) {
-      toast.success("Category deleted successfully");
-      setItemToDelete(null);
-      handleRefresh();
-    } else {
-      toast.error(result.error ?? "Failed to delete category");
-    }
-  };
-
-  const canManage = authContext.permissionCodes?.includes("master_data.uom.manage") ?? false;
-  const isSystemAdmin = authContext.roleCodes?.includes("system_admin") ?? false;
-
+export function UomCategoriesTable(props:UomCategoriesTableProps){
+ return <UomCategoriesTableSession key={props.authContext.profile?.id??'none'} {...props}/>;
+}
+function UomCategoriesTableSession({categories,authContext,onRefresh}:UomCategoriesTableProps){
+ const router=useRouter();
+ const [deleteDialogOpen,setDeleteDialogOpen]=useState(false),[itemToDelete,setItemToDelete]=useState<UomCategory|null>(null);
+ const lifecycle=useUomLifecycle('uom_categories',()=>{setDeleteDialogOpen(false);setItemToDelete(null);if(onRefresh)onRefresh();else router.refresh();});
+ const isDeleting=lifecycle.busy,canManage=hasGlobalPermission(authContext,'master_data.uom.manage');
+ const handleAdd=()=>router.push(`${BASE}/record/new`);
+ const handleView=(item:UomCategory)=>router.push(`${BASE}/record/${item.id}`);
+ const handleEdit=(item:UomCategory)=>router.push(`${BASE}/record/${item.id}?mode=edit`);
   const columns: ColumnDef<UomCategory>[] = [
     {
       accessorKey: "category_code",
@@ -171,75 +101,18 @@ export function UomCategoriesTable({ categories, authContext, onRefresh }: UomCa
     },
     {
       id: "actions",
-      header: () => <div className="text-right">Actions</div>,
-      cell: ({ row }) => {
-        const item = row.original;
-        const canModify = canManage && (!item.is_locked || isSystemAdmin);
-
-        return (
-          <div className="flex justify-end">
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="h-8 w-8" />}>
-                <MoreHorizontal className="h-4 w-4" />
-                <span className="sr-only">Actions</span>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuGroup>
-                  <DropdownMenuItem onClick={() => handleView(item)}>
-                    <Eye className="mr-2 h-4 w-4" />
-                    View
-                  </DropdownMenuItem>
-                  {canModify && (
-                    <DropdownMenuItem onClick={() => handleEdit(item)}>
-                      <Pencil className="mr-2 h-4 w-4" />
-                      Edit
-                    </DropdownMenuItem>
-                  )}
-                </DropdownMenuGroup>
-                {canModify && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => handleToggleActive(item)}>
-                      <Power className="mr-2 h-4 w-4" />
-                      {item.is_active ? "Deactivate" : "Activate"}
-                    </DropdownMenuItem>
-                  </>
-                )}
-                {isSystemAdmin && (
-                  <>
-                    <DropdownMenuItem onClick={() => handleToggleLock(item)}>
-                      {item.is_locked ? (
-                        <>
-                          <Unlock className="mr-2 h-4 w-4" />
-                          Unlock
-                        </>
-                      ) : (
-                        <>
-                          <Lock className="mr-2 h-4 w-4" />
-                          Lock
-                        </>
-                      )}
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={() => handleDeleteClick(item)}
-                      className="text-destructive"
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Delete
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        );
-      },
+      header: "Actions",
+      cell:({row})=><UomActionsCell row={row.original} authContext={authContext} disabled={lifecycle.busy||lifecycle.unconfirmed||lifecycle.refreshError}
+       onView={()=>handleView(row.original)} onEdit={()=>handleEdit(row.original)}
+       onToggleActive={()=>void lifecycle.change(row.original,'active')} onToggleLock={()=>void lifecycle.change(row.original,'lock')}
+       onDelete={()=>{setItemToDelete(row.original);setDeleteDialogOpen(true);}}/>,
+      meta:{exportable:false},
     },
   ];
 
   return (
     <>
+      {!deleteDialogOpen&&<UomLifecycleNotice state={lifecycle}/>}
       <ERPDataTable<UomCategory>
         tableId="uom_categories_table"
         columns={columns}
@@ -247,7 +120,7 @@ export function UomCategoriesTable({ categories, authContext, onRefresh }: UomCa
         searchPlaceholder="Search categories..."
         toolbarSlot={
           canManage ? (
-            <Button onClick={handleAdd} size="sm">
+            <Button disabled={lifecycle.busy||lifecycle.unconfirmed||lifecycle.refreshError} onClick={handleAdd} size="sm">
               <Plus className="mr-2 h-4 w-4" />
               Add Category
             </Button>
@@ -258,20 +131,20 @@ export function UomCategoriesTable({ categories, authContext, onRefresh }: UomCa
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete UOM Category</AlertDialogTitle>
+            <AlertDialogTitle>Retire UOM Category</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete &quot;{itemToDelete?.category_name_en}&quot;? This action
-              cannot be undone.
+              Are you sure you want to retire &quot;{itemToDelete?.category_name_en}&quot;? The record, references and audit history will be retained. Active dependencies must be resolved first.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <UomLifecycleNotice state={lifecycle}/>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting||lifecycle.unconfirmed}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleDeleteConfirm}
-              disabled={isDeleting}
+              onClick={e=>{e.preventDefault();if(itemToDelete)void lifecycle.change(itemToDelete,'retire');}}
+              disabled={isDeleting||lifecycle.unconfirmed}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {isDeleting ? "Deleting..." : "Delete"}
+              {isDeleting ? "Retiring..." : "Retire; keep history"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -1,0 +1,39 @@
+// @vitest-environment jsdom
+import '../f05/setup';
+import {afterEach,beforeEach,expect,it,vi} from 'vitest';
+import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {FluentProvider,webLightTheme} from '@fluentui/react-components';
+import {TemplateForm} from '@/features/report-center/template-form';
+import type {ReportTemplate,ReportBrandingProfile} from '@/lib/report-center/types';
+const m=vi.hoisted(()=>({create:vi.fn(),update:vi.fn(),read:vi.fn(),saved:vi.fn(),close:vi.fn(),toast:vi.fn()}));
+vi.mock('sonner',()=>({toast:{success:m.toast,error:vi.fn()}}));
+vi.mock('@/server/actions/reports/templates',()=>({createReportTemplate:m.create,updateReportTemplate:m.update,getReportTemplate:m.read}));
+const template={id:2,workspace_revision:4,template_code:'F06_TEST',template_name:'Synthetic template',template_type:'letter',branding_profile_id:null,default_orientation:'portrait',page_size:'a4',language_mode:'en',font_family:'Inter',show_logo:false,show_small_logo:false,show_address:false,show_trn:false,show_license:false,show_signatory:false,show_stamp:false,show_watermark:false,is_default:false,is_active:false,governance_status:'draft'} as ReportTemplate;
+beforeEach(()=>{vi.resetAllMocks();m.create.mockResolvedValue({success:true,data:{id:9,revision:'1',changed:true,replayed:false,owner_company_id:null}});m.update.mockResolvedValue({success:true,data:{id:2,revision:'5',changed:true,replayed:false,owner_company_id:null}});m.read.mockResolvedValue({success:true,data:{...template,workspace_revision:5,template_name:'Authoritative saved name'}});});afterEach(cleanup);
+function ui(t:ReportTemplate|null=template){return <FluentProvider theme={webLightTheme}><TemplateForm open template={t} profiles={[]} onSaved={m.saved} onOpenChange={m.close}/></FluentProvider>;}
+function save(){fireEvent.click(screen.getByRole('button',{name:'Save'}));}
+for(const stage of ['mutation','read'])it(`retired template ${stage} continuation cannot display or start another read`,async()=>{
+ let resolve!:(r:unknown)=>void;(stage==='mutation'?m.update:m.read).mockImplementationOnce(()=>new Promise(r=>{resolve=r;}));render(ui());save();await waitFor(()=>expect(stage==='mutation'?m.update:m.read).toHaveBeenCalledOnce());cleanup();await act(async()=>resolve(stage==='mutation'?{success:true,data:{id:2,revision:'5',changed:true,replayed:false,owner_company_id:null}}:{success:true,data:template}));expect(m.saved).not.toHaveBeenCalled();expect(m.toast).not.toHaveBeenCalled();expect(m.read).toHaveBeenCalledTimes(stage==='mutation'?0:1);
+});
+it('unknown then known failure retains its operation and independent confirmed effects',async()=>{
+ m.update.mockResolvedValueOnce({success:false,uncertain:true,error:'Unconfirmed'}).mockResolvedValueOnce({success:false,error:'Rolled back'});m.toast.mockImplementation(()=>{throw Error('PRIVATE');});render(ui());save();await screen.findByText('Unconfirmed');await ready();save();await screen.findByText(/earlier.*unconfirmed/i);await ready();save();await waitFor(()=>expect(m.saved).toHaveBeenCalledOnce());expect(m.update.mock.calls[2]).toEqual(m.update.mock.calls[0]);expect(screen.getByRole('alert').textContent).toMatch(/Saved/);
+});
+async function ready(){await waitFor(()=>expect((screen.getByRole('button',{name:'Save'}) as HTMLButtonElement).disabled).toBe(false));}
+it('uses the loaded revision, omits immutable code and reloads the authoritative row',async()=>{render(ui());save();await waitFor(()=>expect(m.saved).toHaveBeenCalled());const [data,c]=m.update.mock.calls[0];expect(c).toMatchObject({revision:'4',operationId:expect.any(String)});expect(data).not.toHaveProperty('template_code');expect(data).toMatchObject({show_stamp:false,is_active:false});expect(m.saved.mock.calls[0][0].template_name).toBe('Authoritative saved name');});
+it('uncertain saves retry the same operation and payload',async()=>{m.update.mockResolvedValueOnce({success:false,uncertain:true,error:'Save unconfirmed.'});render(ui());save();await screen.findByText('Save unconfirmed.');await ready();save();await waitFor(()=>expect(m.saved).toHaveBeenCalled());expect(m.update.mock.calls[1]).toEqual(m.update.mock.calls[0]);});
+it('changed input cannot replace an unresolved attempt',async()=>{m.update.mockResolvedValue({success:false,uncertain:true,error:'Save unconfirmed.'});render(ui());save();await screen.findByText('Save unconfirmed.');await ready();fireEvent.change(screen.getByRole('textbox',{name:'Name'}),{target:{value:'Different draft'}});save();await screen.findByText(/previous save is unconfirmed/i);expect(m.update).toHaveBeenCalledOnce();});
+it('a confirmed save followed by read failure offers reload only',async()=>{m.read.mockResolvedValueOnce({success:false});render(ui());save();const retry=await screen.findByRole('button',{name:'Reload saved template'});await waitFor(()=>expect((retry as HTMLButtonElement).disabled).toBe(false));fireEvent.click(retry);await waitFor(()=>expect(m.saved).toHaveBeenCalledOnce());expect(m.update).toHaveBeenCalledOnce();expect(m.read).toHaveBeenCalledTimes(2);});
+it('a malformed or wrong-identity receipt cannot invent a successful row',async()=>{m.update.mockResolvedValue({success:true,data:{id:999,revision:'5',changed:true,replayed:false,owner_company_id:null}});render(ui());save();await screen.findByText(/Save response incomplete/);expect(m.saved).not.toHaveBeenCalled();expect(m.read).not.toHaveBeenCalled();});
+it('no-op feedback is truthful',async()=>{m.update.mockResolvedValue({success:true,data:{id:2,revision:'4',changed:false,replayed:false,owner_company_id:null}});render(ui());save();await waitFor(()=>expect(m.saved).toHaveBeenCalled());expect(m.toast).toHaveBeenCalledWith('No changes to save');});
+it('same-record refresh preserves the initial revision and unsaved edits',async()=>{const mounted=render(ui());fireEvent.change(screen.getByRole('textbox',{name:'Name'}),{target:{value:'My draft'}});mounted.rerender(ui({...template,workspace_revision:99,template_name:'Server change'}));save();await waitFor(()=>expect(m.update).toHaveBeenCalled());expect(m.update.mock.calls[0][0].template_name).toBe('My draft');expect(m.update.mock.calls[0][1].revision).toBe('4');});
+it('linked validation catches whitespace names before any mutation',async()=>{render(ui());fireEvent.change(screen.getByRole('textbox',{name:'Name'}),{target:{value:' '}});save();expect(screen.getByRole('alert').textContent).toContain('Name');expect(m.update).not.toHaveBeenCalled();});
+it('signing controls are disabled when the selected company profile does not grant signing',()=>{
+ const profile={id:7,owner_company_id:1,profile_name:'Company A',profile_type:'company',is_active:true,can_manage:true,can_sign:false} as ReportBrandingProfile;
+ render(<FluentProvider theme={webLightTheme}><TemplateForm open template={{...template,branding_profile_id:7}} profiles={[profile]} onSaved={m.saved} onOpenChange={m.close}/></FluentProvider>);
+ const stamp=screen.getByRole('switch',{name:'Show Stamp'});expect(stamp.getAttribute('aria-disabled')).toBe('true');expect(screen.getByRole('switch',{name:'Show Signatory'}).getAttribute('aria-disabled')).toBe('true');fireEvent.click(stamp);expect(stamp.getAttribute('aria-checked')).toBe('false');
+});
+it('signing controls are enabled only by the selected profile capability',()=>{
+ const profile={id:7,owner_company_id:1,profile_name:'Company A',profile_type:'company',is_active:true,can_manage:true,can_sign:true} as ReportBrandingProfile;
+ render(<FluentProvider theme={webLightTheme}><TemplateForm open template={{...template,branding_profile_id:7}} profiles={[profile]} onSaved={m.saved} onOpenChange={m.close}/></FluentProvider>);
+ const stamp=screen.getByRole('switch',{name:'Show Stamp'});expect(stamp.getAttribute('aria-disabled')).not.toBe('true');fireEvent.click(stamp);expect(stamp.getAttribute('aria-checked')).toBe('true');
+});

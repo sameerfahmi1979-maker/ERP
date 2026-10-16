@@ -10,9 +10,11 @@ import type { AreaZoneSelectProps } from "@/features/master-data/geography/types
 import { ERPCombobox } from "@/components/erp/combobox";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import { useAreasQuery } from "@/hooks/lookups";
+import { withSavedSelection } from "@/lib/master-data/saved-selection";
 
 export function AreaZoneSelect({
   value,
+  savedSelection,
   onValueChange,
   cityId,
   areaTypeCode,
@@ -30,12 +32,11 @@ export function AreaZoneSelect({
   const choiceRead = useAreasQuery({
     cityId: cityId ?? null,
     areaTypeCode: areaTypeCode ?? null,
-    includeInactive,
-   selectedId: value ?? null });
+    includeInactive, selectedId: value ?? null });
   const { options, isLoading, error: fetchError } = choiceRead;
 
   const handleValueChange = (newValue: string | number | null) => {
-    if (!onValueChange) return;
+    if (!onValueChange || disabled || !cityId || !!fetchError) return;
     if (newValue === null) {
       onValueChange(null);
       return;
@@ -52,16 +53,16 @@ export function AreaZoneSelect({
     <QueryReadBoundary queries={[choiceRead]}><ERPCombobox
       value={value ?? null}
       onValueChange={handleValueChange}
-      options={options}
+      options={(withSavedSelection(fetchError ? [] : options, value, savedSelection)).map(option => ({...option, disabled: option.disabled || disabled || !cityId || !!fetchError}))}
       placeholder={effectivePlaceholder}
       searchPlaceholder="Search areas/zones..."
       showCode={showCode}
       language={language}
-      disabled={isDisabled}
+      disabled={isDisabled || !!fetchError}
       readOnly={false}
       required={required}
-      loading={isLoading}
-      error={fetchError ?? error}
+      loading={(isLoading) && value == null}
+      error={fetchError ? "Areas could not be loaded. Your saved selection is retained." : error}
       allowClear={allowClear}
       emptyText={effectiveEmptyText}
       noResultsText="No results found"

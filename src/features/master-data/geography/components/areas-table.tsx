@@ -9,25 +9,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useLookupValues } from "@/features/master-data/lookups/hooks/use-lookup-values";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Eye,
-  Pencil,
-  Power,
-  Trash2,
-  MoreHorizontal,
-  Plus,
-  Lock,
-  Unlock,
-  Shield,
-} from "lucide-react";
+import {Plus,Lock,Shield} from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,8 +20,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { toggleAreaZoneStatus, deleteAreaZone, toggleAreaZoneLock } from "@/features/master-data/geography/actions";
-import { toast } from "sonner";
+import {hasGlobalPermission} from "@/lib/rbac/scope";
+import {useGeographyLifecycle,GeographyLifecycleNotice,GeographyActionsCell} from "./geography-lifecycle";
 import { format } from "date-fns";
 
 type AreasTableProps = {
@@ -50,11 +32,15 @@ type AreasTableProps = {
 
 const BASE = "/admin/master-data/geography/areas";
 
-export function AreasTable({ areas, authContext, onRefresh }: AreasTableProps) {
+export function AreasTable(props:AreasTableProps){
+ return <AreasTableSession key={props.authContext.profile?.id??'none'} {...props}/>;
+}
+function AreasTableSession({ areas, authContext, onRefresh }: AreasTableProps) {
   const router = useRouter();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [areaToDelete, setAreaToDelete] = useState<AreaZoneWithRelations | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const lifecycle=useGeographyLifecycle('areas_zones',()=>{setDeleteDialogOpen(false);setAreaToDelete(null);if(onRefresh)onRefresh();else router.refresh();});
+  const isDeleting=lifecycle.busy;
 
   // Fetch area type lookups
   const { values: areaTypes } = useLookupValues({ categoryCode: "AREA_TYPES" });
@@ -68,58 +54,15 @@ export function AreasTable({ areas, authContext, onRefresh }: AreasTableProps) {
     return map;
   }, [areaTypes]);
 
-  const handleRefresh = () => {
-    if (onRefresh) { onRefresh(); } else { router.refresh(); }
-  };
 
   const handleAdd = () => router.push(`${BASE}/record/new`);
   const handleView = (area: AreaZoneWithRelations) => router.push(`${BASE}/record/${area.id}`);
   const handleEdit = (area: AreaZoneWithRelations) => router.push(`${BASE}/record/${area.id}?mode=edit`);
 
-  const handleToggleActive = async (area: AreaZoneWithRelations) => {
-    const result = await toggleAreaZoneStatus({
-      id: area.id,
-      is_active: !area.is_active,
-    });
-    if (result.success) {
-      toast.success(`Area ${area.is_active ? "deactivated" : "activated"} successfully`);
-      handleRefresh();
-    } else {
-      toast.error(result.error ?? "Failed to toggle area status");
-    }
-  };
-
-  const handleToggleLock = async (area: AreaZoneWithRelations) => {
-    const result = await toggleAreaZoneLock(area.id, !area.is_locked);
-    if (result.success) {
-      toast.success(`Area ${area.is_locked ? "unlocked" : "locked"} successfully`);
-      handleRefresh();
-    } else {
-      toast.error(result.error ?? "Failed to toggle area lock");
-    }
-  };
-
-  const handleDeleteClick = (area: AreaZoneWithRelations) => {
-    setAreaToDelete(area);
-    setDeleteDialogOpen(true);
-  };
-
-  const handleDeleteConfirm = async () => {
-    if (!areaToDelete) return;
-
-    setIsDeleting(true);
-    const result = await deleteAreaZone(areaToDelete.id);
-    setIsDeleting(false);
-
-    if (result.success) {
-      toast.success("Area deleted successfully");
-      setDeleteDialogOpen(false);
-      setAreaToDelete(null);
-      handleRefresh();
-    } else {
-      toast.error(result.error ?? "Failed to delete area");
-    }
-  };
+  const handleToggleActive=(area:AreaZoneWithRelations)=>lifecycle.change(area,'active');
+  const handleToggleLock=(area:AreaZoneWithRelations)=>lifecycle.change(area,'lock');
+  const handleDeleteClick=(area:AreaZoneWithRelations)=>{setAreaToDelete(area);setDeleteDialogOpen(true);};
+  const handleDeleteConfirm=()=>areaToDelete?lifecycle.change(areaToDelete,'retire'):Promise.resolve(false);
 
   const columns: ColumnDef<AreaZoneWithRelations>[] = [
     {
@@ -238,8 +181,8 @@ export function AreasTable({ areas, authContext, onRefresh }: AreasTableProps) {
       cell: ({ row }) => {
         const area = row.original;
         return (
-          <AreaActionsCell
-            area={area}
+          <GeographyActionsCell disabled={lifecycle.busy||lifecycle.unconfirmed||lifecycle.refreshError}
+            row={area}
             authContext={authContext}
             onView={() => handleView(area)}
             onEdit={() => handleEdit(area)}
@@ -257,6 +200,7 @@ export function AreasTable({ areas, authContext, onRefresh }: AreasTableProps) {
 
   return (
     <>
+      {!deleteDialogOpen&&<GeographyLifecycleNotice state={lifecycle}/>}
       <ERPDataTable<AreaZoneWithRelations>
         tableId="areas_table"
         columns={columns}
@@ -276,7 +220,7 @@ export function AreasTable({ areas, authContext, onRefresh }: AreasTableProps) {
           orientation: "landscape",
         }}
         toolbarSlot={
-          <Button onClick={handleAdd} size="sm" className="gap-2">
+          <Button disabled={lifecycle.busy||lifecycle.unconfirmed||lifecycle.refreshError||!hasGlobalPermission(authContext,'master_data.geography.manage')} onClick={handleAdd} size="sm" className="gap-2">
             <Plus className="h-4 w-4" />
             Add Area
           </Button>
@@ -286,121 +230,32 @@ export function AreasTable({ areas, authContext, onRefresh }: AreasTableProps) {
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Area</AlertDialogTitle>
+            <AlertDialogTitle>Retire Area</AlertDialogTitle>
             <AlertDialogDescription>
               <span className="space-y-2 block">
                 <span className="block">
-                  Are you sure you want to permanently delete{" "}
+                  Are you sure you want to retire{" "}
                   <strong>{areaToDelete?.name_en}</strong> ({areaToDelete?.area_code})?
                 </span>
                 <span className="block text-destructive font-semibold">
-                  This action cannot be undone. All related data (branches, sites, etc.) must be removed first.
+                  The record, references and audit history will be retained. Active dependencies must be resolved before retirement.
                 </span>
               </span>
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <GeographyLifecycleNotice state={lifecycle}/>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting||lifecycle.unconfirmed}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleDeleteConfirm}
-              disabled={isDeleting}
+              onClick={e=>{e.preventDefault();void handleDeleteConfirm();}}
+              disabled={isDeleting||lifecycle.unconfirmed||lifecycle.refreshError}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {isDeleting ? "Deleting..." : "Delete Permanently"}
+              {isDeleting ? "Retiring..." : "Retire; keep history"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </>
-  );
-}
-
-function AreaActionsCell({
-  area,
-  authContext,
-  onView,
-  onEdit,
-  onToggleActive,
-  onToggleLock,
-  onDelete,
-}: {
-  area: AreaZoneWithRelations;
-  authContext: AuthContext;
-  onView: () => void;
-  onEdit: () => void;
-  onToggleActive: () => void;
-  onToggleLock: () => void;
-  onDelete: () => void;
-}) {
-  const isSystemAdmin = authContext.roleCodes.includes("system_admin");
-  const hasManagePermission = authContext.permissionCodes.includes("master_data.geography.manage");
-  const hasLockPermission = authContext.permissionCodes.includes("master_data.lookups.lock");
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="h-8 w-8" />}>
-        <MoreHorizontal className="h-4 w-4" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
-        <DropdownMenuGroup>
-          <DropdownMenuItem onClick={onView}>
-            <Eye className="h-4 w-4 mr-2" />
-            View Details
-          </DropdownMenuItem>
-          {hasManagePermission && (
-            <DropdownMenuItem
-              onClick={onEdit}
-              disabled={area.is_locked && !isSystemAdmin}
-            >
-              <Pencil className="h-4 w-4 mr-2" />
-              Edit
-            </DropdownMenuItem>
-          )}
-        </DropdownMenuGroup>
-        {hasManagePermission && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem
-                onClick={onToggleActive}
-                disabled={area.is_locked && !isSystemAdmin}
-              >
-                <Power className="h-4 w-4 mr-2" />
-                {area.is_active ? "Deactivate" : "Activate"}
-              </DropdownMenuItem>
-              {(isSystemAdmin || hasLockPermission) && (
-                <DropdownMenuItem onClick={onToggleLock}>
-                  {area.is_locked ? (
-                    <>
-                      <Unlock className="h-4 w-4 mr-2" />
-                      Unlock
-                    </>
-                  ) : (
-                    <>
-                      <Lock className="h-4 w-4 mr-2" />
-                      Lock
-                    </>
-                  )}
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuGroup>
-          </>
-        )}
-        {isSystemAdmin && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem
-                onClick={onDelete}
-                className="text-destructive focus:text-destructive"
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Delete Permanently
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-          </>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }

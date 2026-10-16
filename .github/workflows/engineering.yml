@@ -154,8 +154,25 @@ jobs:
           cache: npm
       - run: npm install --global npm@10.9.8
       - run: npm ci
+      - name: Allocate fresh synthetic tracing evidence for this shard
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$(mktemp -d "$RUNNER_TEMP/perf-p01-overhead.XXXXXX")"
+          echo "PERF_P01_OVERHEAD_OUTPUT=$evidence_dir/measurement.json" >> "$GITHUB_ENV"
       - name: Shared read and F06 performance contract regressions
         run: node node_modules/vitest/vitest.mjs run --config tests/performance/unit.config.mts --shard ${{ matrix.shard }}
+      - name: Retain synthetic tracing measurements when present in this shard
+        if: always() && env.PERF_P01_OVERHEAD_OUTPUT != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: performance-tracing-${{ strategy.job-index }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ env.PERF_P01_OVERHEAD_OUTPUT }}
+            ${{ env.PERF_P01_OVERHEAD_OUTPUT }}.events.jsonl
+          # Vitest assigns the overhead file to exactly one of the three
+          # shards. Its test fails if either fresh output cannot be written.
+          if-no-files-found: ignore
 
   integration-tests:
     needs: security

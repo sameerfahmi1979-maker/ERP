@@ -2,6 +2,8 @@
 
 Status: **SOURCE IMPLEMENTED; NATIVE/APP ACCEPTANCE PENDING.** This is not a release or deployment instruction.
 
+**Current candidate — 16 October, branding ACL reconciliation:** use the exact **130-step** [V3 dependency manifest](DEPENDENCY_MANIFEST_V3_20261016.json) and [current handoff](BRANDING_ACL_RECONCILIATION_20261016.md). The new penultimate migration removes the confirmed historical PostgreSQL 17 MAINTAIN grant from raw branding; it rejects the extra Dxt grants introduced by an unfaithful laboratory restore. The failed lab remains quarantined. Original 128 migration bytes and the accepted 129-step lineage manifest remain unchanged and historical. Fresh faithful-baseline replay, negative/rollback checks and application acceptance are still required. The dated holds below are preserved history, not alternative current execution orders.
+
 **16 October composition update:** native replay exposed an unpublished document-reader lineage prerequisite and a later notification/candidate ordering conflict. The exact129 dependency source manifest and new failed-receipt-preserving acceptance contract are documented in [DOCUMENT_LINEAGE_COMPOSITION.md](DOCUMENT_LINEAGE_COMPOSITION.md). The chronological128 manifest and results below remain historical evidence, not the current executable order. No old migration bytes were changed.
 
 ## Integration hold — 16 October 2026

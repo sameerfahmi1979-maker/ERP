@@ -18,7 +18,7 @@ export function isInternalDmsDocumentNumber(docNo: string | null | undefined): b
 export async function loadDmsOcrSnippet(db: AdminClient, documentId: number): Promise<string | null> {
   const { data: files } = await db
     .from("dms_document_files")
-    .select("ocr_text, ocr_status")
+    .select("created_at, ocr_text, ocr_status")
     .eq("document_id", documentId)
     .is("deleted_at", null)
     .order("created_at", { ascending: true })

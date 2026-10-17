@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Lock, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import { getPartyAuditLogs } from "@/server/actions/master-data/parties";
@@ -21,7 +22,7 @@ const ACTION_COLORS: Record<string, string> = {
 };
 
 export function PartyAuditTab({ partyId, canViewAudit }: Props) {
-  const { data: result, isLoading } = useQuery({
+  const { data: result, isLoading, isError, refetch } = useQuery({
     queryKey: ["party_audit_logs", partyId],
     queryFn: () => getPartyAuditLogs(partyId),
     enabled: canViewAudit && !!partyId,
@@ -39,10 +40,11 @@ export function PartyAuditTab({ partyId, canViewAudit }: Props) {
 
   if (isLoading) return <div className="flex items-center justify-center h-32 text-muted-foreground">Loading audit log…</div>;
 
-  if (!result?.success) {
+  if (isError || !result?.success) {
     return (
-      <div className="text-destructive p-4 text-sm">
-        {result?.error ?? "Failed to load audit logs"}
+      <div role="alert" className="text-destructive p-4 text-sm space-y-2">
+        <p>Audit logs could not be loaded. Retry loading.</p>
+        <Button type="button" variant="outline" onClick={() => void refetch()}>Retry loading</Button>
       </div>
     );
   }

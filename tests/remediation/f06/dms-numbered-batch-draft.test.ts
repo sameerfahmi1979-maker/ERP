@@ -271,12 +271,16 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
   expect(row.intake_status).toBe("ocr_processing");expect(ai.analyze).not.toHaveBeenCalled();expect(m.audit).not.toHaveBeenCalled();expect(m.download).toHaveBeenCalledOnce();
   expect(m.rpc.mock.calls.some(([name])=>name==="create_numbered_dms_batch_draft")).toBe(false);
  });
- it.each(["provider","result-write","extraction"])("modern %s diagnostics never leak to response/log/persisted error",async boundary=>{
+ it.each(["provider","result-write","extraction","empty-extraction"])("modern %s diagnostics never leak to response/log/persisted error",async boundary=>{
   if(boundary==="provider")ai.analyze.mockRejectedValue(Error("W22_PRIVATE_PROVIDER"));
   if(boundary==="result-write")resultWriteError=true;
   if(boundary==="extraction")ai.extract.mockRejectedValue(Error("W22_PRIVATE_EXTRACTION"));
+  if(boundary==="empty-extraction")ai.extract.mockResolvedValue({text:"",images:[],method:"offline-empty"});
   const result=await (await real()).startAiIntakeFromUploadSession(input);
-  expect(result.success).toBe(boundary==="extraction");expect(ai.analyze).toHaveBeenCalledOnce();
+  expect(result.success).toBe(false);
+  const unreadable = boundary==="extraction" || boundary==="empty-extraction";
+  expect(ai.analyze).toHaveBeenCalledTimes(unreadable?0:1);
+  if(unreadable){expect(ai.usage).not.toHaveBeenCalled();expect(operations.filter(o=>o.action==="insert")).toHaveLength(0);expect(row.intake_status).toBe("failed");}
   expect(JSON.stringify({result,operations,usage:ai.usage.mock.calls,info:ai.log.mock.calls,warn:ai.warn.mock.calls,error:ai.error.mock.calls})).not.toContain("W22_PRIVATE");
   expect(operations.filter(o=>o.payload?.intake_status==="ocr_processing")).toHaveLength(1);
  });

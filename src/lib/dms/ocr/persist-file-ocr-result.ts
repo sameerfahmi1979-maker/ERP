@@ -70,7 +70,7 @@ export async function persistFileOcrResult(
 
   // ── 1. Update dms_document_files ─────────────────────────────────────────────
 
-  const { error: fileErr } = await supabase
+  const { data: savedFile, error: fileErr } = await supabase
     .from("dms_document_files")
     .update({
       ocr_status: "complete",
@@ -79,25 +79,34 @@ export async function persistFileOcrResult(
       ocr_model: model ?? null,
       ocr_completed_at: now,
       ocr_error_message: null,
-      updated_at: now,
     })
-    .eq("id", fileId);
+    .eq("id", fileId)
+    .eq("document_id", documentId)
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
 
-  if (fileErr) {
-    errors.push(`file update: ${fileErr.message}`);
+  if (fileErr || !savedFile) {
+    errors.push("File OCR could not be saved. The record may have changed or access may have been denied.");
+    // Never publish content or recompute a misleading summary after a rejected write.
+    return { fileUpdated, documentUpdated, contentSynced, hasText, errors };
   } else {
     fileUpdated = true;
   }
 
   // ── 2. Recompute document-level OCR summary from all active files ─────────────
-  //    Always do this — even if file update failed — to heal inconsistent states.
+  //    Read failures must not be mistaken for an empty collection.
 
   try {
-    const { data: allFiles } = await supabase
+    const { data: allFiles, error: filesErr } = await supabase
       .from("dms_document_files")
       .select("ocr_status, ocr_text")
       .eq("document_id", documentId)
       .is("deleted_at", null);
+    if (filesErr || !allFiles?.length) {
+      errors.push("Saved OCR, but the document file summary could not be read. Retry to synchronize it.");
+      return { fileUpdated, documentUpdated, contentSynced, hasText, errors };
+    }
 
     const files = (allFiles ?? []) as { ocr_status: string | null; ocr_text: string | null }[];
     const hasAnyText = files.some((f) => typeof f.ocr_text === "string" && f.ocr_text.trim().length > 0);
@@ -113,7 +122,7 @@ export async function persistFileOcrResult(
       ? "complete"
       : "not_started";
 
-    const { error: docErr } = await supabase
+    const { data: savedDoc, error: docErr } = await supabase
       .from("dms_documents")
       .update({
         ocr_status: docOcrStatus,
@@ -121,16 +130,20 @@ export async function persistFileOcrResult(
         ocr_last_run_at: now,
         updated_at: now,
       })
-      .eq("id", documentId);
+      .eq("id", documentId)
+      .is("deleted_at", null)
+      .select("id")
+      .maybeSingle();
 
-    if (docErr) {
-      errors.push(`document update: ${docErr.message}`);
+    if (docErr || !savedDoc) {
+      errors.push("Saved OCR, but the document status could not be synchronized. Retry the operation.");
     } else {
       documentUpdated = true;
     }
-  } catch (e) {
-    errors.push(`document recompute: ${String(e)}`);
+  } catch {
+    errors.push("Saved OCR, but the document status could not be synchronized. Retry the operation.");
   }
+  if (!documentUpdated) return { fileUpdated, documentUpdated, contentSynced, hasText, errors };
 
   // ── 3. Sync content text to dms_document_content ──────────────────────────────
   //    Non-fatal — do not crash callers on content sync failure.
@@ -145,10 +158,10 @@ export async function persistFileOcrResult(
       });
       contentSynced = result.success;
       if (!result.success && result.error) {
-        errors.push(`content sync: ${result.error}`);
+        errors.push("Saved file OCR, but extracted document text could not be synchronized. Retry the operation.");
       }
-    } catch (e) {
-      errors.push(`content sync exception: ${String(e)}`);
+    } catch {
+      errors.push("Saved file OCR, but extracted document text could not be synchronized. Retry the operation.");
     }
   }
 

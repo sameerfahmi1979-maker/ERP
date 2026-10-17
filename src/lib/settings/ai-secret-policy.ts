@@ -12,3 +12,9 @@ export function isAllowedAiSecretReference(providerType: string, providerId: num
   return Number.isSafeInteger(providerId) && providerId > 0 && !!canonical &&
     (ref === canonical || ref === `ERP_AI_PROVIDER_${providerId}_KEY`);
 }
+
+/** Preserve valid custom references, but repair stale references after a provider switch. */
+export function getAiSecretReferenceSuggestion(providerType: string, providerId: number, currentRef?: string | null): string {
+  return currentRef && isAllowedAiSecretReference(providerType, providerId, currentRef)
+    ? currentRef : AI_SECRET_KEYS[providerType] ?? "";
+}

@@ -1,0 +1,16 @@
+import React from 'react';import {renderToStaticMarkup} from 'react-dom/server';
+import {beforeEach,expect,it,vi} from 'vitest';
+const state=vi.hoisted(()=>({query:{} as Record<string,unknown>,options:{} as Record<string,unknown>}));
+vi.mock('@tanstack/react-query',()=>({useQuery:(options:Record<string,unknown>)=>{state.options=options;return state.query;}}));
+vi.mock('@/server/actions/master-data/parties',()=>({getPartyAuditLogs:vi.fn()}));
+vi.mock('@/components/ui/button',()=>({Button:({children,...props}:React.ButtonHTMLAttributes<HTMLButtonElement>)=><button {...props}>{children}</button>}));
+import {PartyAuditTab} from '@/features/master-data/parties/party-audit-tab';
+const row={id:1,action:'update',entity_name:'parties',entity_reference:'SYNTHETIC-AUDIT',new_values:{display_name:'Synthetic'},created_at:'2026-10-17T00:00:00Z'};
+const render=(canViewAudit=true)=>renderToStaticMarkup(<PartyAuditTab partyId={1} canViewAudit={canViewAudit}/>);
+beforeEach(()=>{state.query={isLoading:false,isError:false,data:{success:true,data:[]},refetch:vi.fn()};});
+it('shows populated top-level history with its limited scope disclosed',()=>{state.query.data={success:true,data:[row]};const html=render();expect(html).toContain('SYNTHETIC-AUDIT');expect(html).toContain('top-level party changes only');});
+it('shows genuine successful empty history',()=>{expect(render()).toContain('No audit log entries found');});
+it('blocks stale populated history after a failed refetch and provides an alert and retry',()=>{state.query={...state.query,isError:true,data:{success:true,data:[row]},error:Error('PRIVATE-AUDIT-TRANSPORT')};const html=render();expect(html).toContain('role="alert"');expect(html).toContain('Retry loading');expect(html).not.toContain('SYNTHETIC-AUDIT');expect(html).not.toContain('PRIVATE-AUDIT-TRANSPORT');});
+it('does not expose raw server errors as audit feedback',()=>{state.query.data={success:false,error:'PRIVATE-DATABASE-DETAIL'};const html=render();expect(html).not.toContain('PRIVATE-DATABASE-DETAIL');expect(html).toContain('Retry loading');});
+it('keeps denied data hidden and the query disabled',()=>{state.query.data={success:true,data:[row]};const html=render(false);expect(html).toContain('do not have permission');expect(html).not.toContain('SYNTHETIC-AUDIT');expect(state.options.enabled).toBe(false);});
+it('shows loading without a false empty history',()=>{state.query={...state.query,isLoading:true,data:undefined};const html=render();expect(html).toContain('Loading audit log');expect(html).not.toContain('No audit log entries');});

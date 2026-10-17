@@ -310,7 +310,7 @@ export async function runDmsAiAnalysisForDocument(
     // never needs to run OCR separately. One click = AI analysis.
     const { data: allFiles } = await supabase
       .from("dms_document_files")
-      .select("id, file_name, mime_type, storage_bucket, storage_path, ocr_text, ocr_status")
+      .select("id, created_at, file_name, mime_type, storage_bucket, storage_path, ocr_text, ocr_status")
       .eq("document_id", documentId)
       .order("created_at", { ascending: true });
 

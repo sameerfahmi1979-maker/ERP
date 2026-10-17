@@ -17,11 +17,13 @@ import {
   createAiProviderConfig,
   updateAiProviderConfig,
   saveAiProviderSecret,
+  saveAiProviderSecretReference,
 } from "@/server/actions/settings/ai-settings";
 import { ENV_VAR_SUGGESTIONS } from "./ai-provider-secret-dialog";
 import { aiProviderCreateSchema } from "@/lib/settings/provider-configuration";
 import { FormErrorSummary, useInlineFieldFeedback } from "@/components/workspace/form-feedback";
 import type { WorkspaceFieldIssue } from "@/lib/workspace/form-validation";
+import { getAiSecretReferenceSuggestion } from "@/lib/settings/ai-secret-policy";
 
 interface AiProviderFormDialogProps {
   canManageSecrets?: boolean;
@@ -125,7 +127,7 @@ function ProviderFormSession({
 
   // API key (optional) — persisted to the server env file, never to the DB
   const [secretRef, setSecretRef] = useState(
-    config?.secretRef ?? ENV_VAR_SUGGESTIONS[config?.providerType ?? "openai"] ?? ""
+    getAiSecretReferenceSuggestion(config?.providerType ?? "openai", config?.id ?? 0, config?.secretRef)
   );
   const [secretValue, setSecretValue] = useState("");
   const [showKey, setShowKey] = useState(false);
@@ -232,6 +234,16 @@ function ProviderFormSession({
           return;
         }
         display(() => toast.success("Provider and key saved for this server. Multi-server deployments require coordinated secret rotation."));
+      } else if (canManageSecrets && configId != null && secretRef.trim() && secretRef.trim() !== config?.secretRef) {
+        let referenceConfirmed = false;
+        try {
+          referenceConfirmed = (await saveAiProviderSecretReference({ id: configId, secret_ref: secretRef.trim() })).success;
+        } catch { /* Reference change may have committed; never repeat the confirmed configuration save. */ }
+        if (!alive.current) return;
+        if (!referenceConfirmed) {
+          setSaveError("Provider saved, but the existing deployment key link could not be confirmed. Refresh settings and check the reference before making another change.");
+          return;
+        }
       }
 
       display(onSaved);
@@ -297,7 +309,7 @@ function ProviderFormSession({
                 const isUntouched =
                   !secretRef.trim() ||
                   Object.values(ENV_VAR_SUGGESTIONS).includes(secretRef);
-                if (!config?.secretRef && isUntouched) {
+                if (isUntouched) {
                   setSecretRef(ENV_VAR_SUGGESTIONS[next] ?? "");
                 }
               }}
@@ -387,7 +399,7 @@ function ProviderFormSession({
           </div>
           <p className="text-xs text-muted-foreground">
             Server-file secret changes must be explicitly enabled by the deployment administrator.
-            Managed deployments should use their deployment secret store. Plaintext keys are not saved in application records.
+            To use an existing Railway key, enter its approved variable name and leave API Key Value blank. Plaintext keys are not saved in application records.
             {isEdit && " Leave blank to keep the current key."}
           </p>
 

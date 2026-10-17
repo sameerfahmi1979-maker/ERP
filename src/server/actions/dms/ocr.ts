@@ -9,6 +9,7 @@
  */
 
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
@@ -22,6 +23,7 @@ import { getDmsAiProvider, getAzureDocumentIntelligenceProvider } from "@/lib/dm
 import { persistFileOcrResult } from "@/lib/dms/ocr/persist-file-ocr-result";
 import { loadOcrFeatureFlags, routeOcr } from "@/lib/dms/ocr/ocr-router";
 import { AzureOcrProvider } from "@/lib/dms/ocr/azure-ocr-provider";
+import { OcrStatusReadError, type OcrStatusReadStage } from "@/lib/dms/ocr/status-read-error";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -29,6 +31,8 @@ export type ActionResult<T = unknown> = {
   success: boolean;
   data?: T;
   error?: string;
+  errorCode?: OcrStatusReadStage;
+  reference?: string;
 };
 
 export type DmsOcrFileStatus = {
@@ -104,8 +108,10 @@ function canAdminOcr(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
 
 // ── File select fragment (excludes ocr_text for list views) ──────────────────
 
+// Secured PostgREST RPC reads project pgrst_source before applying ORDER BY.
+// Keep the sort field selected even though it is omitted from the public DTO.
 const OCR_FILE_SELECT = `
-  id, file_name, mime_type, ocr_status, ocr_provider, ocr_model,
+  id, created_at, file_name, mime_type, ocr_status, ocr_provider, ocr_model,
   ocr_started_at, ocr_completed_at, ocr_error_message,
   ocr_confidence, ocr_page_count, ocr_language
 ` as const;
@@ -128,17 +134,31 @@ function toFileStatus(row: Record<string, unknown>): DmsOcrFileStatus {
   };
 }
 
+function statusReadFailure(stage: OcrStatusReadStage, documentId: number, error?: unknown): ActionResult<DmsOcrDocumentStatus> {
+  const reference = randomUUID();
+  const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+  // Never log raw database messages, query URLs, cookies, tokens or OCR bodies.
+  logger.warn("DMS OCR status read failed", {
+    stage, documentId, reference,
+    databaseCode: /^(?:[A-Z0-9]{5}|PGRST\d{3})$/.test(code) ? code : "unavailable",
+  });
+  return { success: false, error: new OcrStatusReadError(stage, reference).message, errorCode: stage, reference };
+}
+
 // ── getDmsOcrStatus ───────────────────────────────────────────────────────────
 
 export async function getDmsOcrStatus(
   documentId: number
 ): Promise<ActionResult<DmsOcrDocumentStatus>> {
+  if (!Number.isSafeInteger(documentId) || documentId <= 0) return { success: false, error: "Invalid document reference." };
+  let stage: OcrStatusReadStage = "authentication";
   try {
     const supabase = await createClient();
     const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canViewOcr(ctx)) return { success: false, error: "Permission denied" };
+    if (!ctx.profile) return statusReadFailure("authentication", documentId);
+    if (!canViewOcr(ctx)) return statusReadFailure("permission", documentId);
 
+    stage = "document";
     const { data: doc, error: docErr } = await supabase
       .from("dms_documents")
       .select("id, ocr_status, ocr_last_run_at, ocr_text_available")
@@ -146,8 +166,9 @@ export async function getDmsOcrStatus(
       .is("deleted_at", null)
       .single();
 
-    if (docErr || !doc) return { success: false, error: docErr?.message ?? "Document not found" };
+    if (docErr || !doc) return statusReadFailure(stage, documentId, docErr);
 
+    stage = "files";
     const { data: files, error: filesErr } = await supabase
       .from("dms_document_files")
       .select(OCR_FILE_SELECT)
@@ -155,7 +176,16 @@ export async function getDmsOcrStatus(
       .is("deleted_at", null)
       .order("created_at", { ascending: false });
 
-    if (filesErr) return { success: false, error: filesErr.message };
+    if (filesErr) return statusReadFailure(stage, documentId, filesErr);
+
+    // Ask the secured projection for IDs only: do not fetch OCR bodies into a
+    // status/list response, and do not hard-code every file as having no text.
+    stage = "text_availability";
+    const { data: textFiles, error: textErr } = await supabase.from("dms_document_files")
+      .select("id").eq("document_id", documentId).is("deleted_at", null)
+      .not("ocr_text", "is", null).neq("ocr_text", "");
+    if (textErr) return statusReadFailure(stage, documentId, textErr);
+    const textIds = new Set((textFiles ?? []).map(file => file.id as number));
 
     return {
       success: true,
@@ -164,11 +194,11 @@ export async function getDmsOcrStatus(
         ocr_status: (doc.ocr_status ?? "not_required") as OcrStatus,
         ocr_last_run_at: doc.ocr_last_run_at ?? null,
         ocr_text_available: doc.ocr_text_available ?? false,
-        files: (files ?? []).map((f) => toFileStatus(f as Record<string, unknown>)),
+        files: (files ?? []).map((f) => ({ ...toFileStatus(f as Record<string, unknown>), has_text: textIds.has(f.id as number) })),
       },
     };
   } catch (e) {
-    return { success: false, error: String(e) };
+    return statusReadFailure(stage, documentId, e);
   }
 }
 
@@ -227,7 +257,7 @@ export async function getDmsDocumentOcrText(
 
     const { data, error } = await supabase
       .from("dms_document_files")
-      .select("id, file_name, ocr_text, ocr_status")
+      .select("id, created_at, file_name, ocr_text, ocr_status")
       .eq("document_id", documentId)
       .eq("ocr_status", "complete")
       .is("deleted_at", null)
@@ -257,16 +287,17 @@ export async function getDmsDocumentOcrText(
 const TriggerOcrSchema = z.object({
   fileId: z.number().int().positive(),
   forceRetry: z.boolean().optional().default(false),
+  forceVision: z.boolean().optional().default(false),
 });
 
 export async function triggerDmsOcrForFile(
-  input: z.infer<typeof TriggerOcrSchema>
+  input: z.input<typeof TriggerOcrSchema>
 ): Promise<ActionResult<{ job_id: number; status: OcrStatus; message: string }>> {
   try {
     const parsed = TriggerOcrSchema.safeParse(input);
     if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
-    const { fileId, forceRetry } = parsed.data;
+    const { fileId, forceRetry, forceVision } = parsed.data;
     const supabase = await createClient();
     const adminClient = await createAdminClient();
     const ctx = await getAuthContext();
@@ -287,10 +318,10 @@ export async function triggerDmsOcrForFile(
 
     // 2. Guard: don't re-run unless forceRetry is set
     const currentStatus = (file.ocr_status ?? "not_started") as OcrStatus;
-    if (!forceRetry && currentStatus === "complete") {
+    if (!forceRetry && !forceVision && currentStatus === "complete") {
       return { success: false, error: "OCR already completed for this file. Use forceRetry to re-run." };
     }
-    if (!forceRetry && currentStatus === "processing") {
+    if (currentStatus === "processing") {
       return { success: false, error: "OCR is already processing for this file." };
     }
 
@@ -367,11 +398,12 @@ export async function triggerDmsOcrForFile(
     try {
       // 6a. Load OCR feature flags
       const featureFlags = await loadOcrFeatureFlags(supabase);
+      if (!featureFlags.dmsOcr) throw new Error("OCR is disabled in AI Settings.");
 
-      if (featureFlags.dmsOcrRouter) {
+      if (featureFlags.dmsOcrRouter || forceVision) {
         // ── Phase 10A: OCR router path ─────────────────────────────────────
         // Load providers for the router
-        const { provider: gptProvider } = await getDmsAiProvider();
+        const { provider: gptProvider } = await getDmsAiProvider("ocr");
         const { provider: azureAdapter } = await getAzureDocumentIntelligenceProvider();
         const azureProvider = azureAdapter ? new AzureOcrProvider(azureAdapter) : null;
 
@@ -380,6 +412,7 @@ export async function triggerDmsOcrForFile(
           mimeType: file.mime_type as string,
           fileName: file.file_name as string,
           featureFlags,
+          forceVision,
           azureProvider,
           gptProvider: gptProvider.isConfigured() ? gptProvider : null,
         });
@@ -396,7 +429,7 @@ export async function triggerDmsOcrForFile(
         );
 
         if (content.hasContent) {
-          const { provider: aiProvider } = await getDmsAiProvider();
+          const { provider: aiProvider } = await getDmsAiProvider("ocr");
           if (!aiProvider.isConfigured()) {
             throw new Error("No AI provider configured. Add an OpenAI API key in AI Settings.");
           }
@@ -430,22 +463,45 @@ export async function triggerDmsOcrForFile(
 
     // 7. Save results via shared persist helper
     if (finalStatus === "complete") {
-      await persistFileOcrResult({
-        supabase,
-        fileId,
-        documentId,
-        text: extractedText || null,
-        provider: usedProviderCode,
-        model: model ?? null,
-        performedBy: ctx.profile.id,
-        source: "ocr",
-      });
+      if (!extractedText.trim()) {
+        finalStatus = "failed";
+        ocrError = "OCR produced no readable text. Check the file and configured OCR provider, then retry.";
+      }
+    }
+    if (finalStatus === "complete") {
+      try {
+        const saved = await persistFileOcrResult({
+          supabase,
+          fileId,
+          documentId,
+          text: extractedText || null,
+          provider: usedProviderCode,
+          model: model ?? null,
+          performedBy: ctx.profile.id,
+          source: "ocr",
+        });
+        if (!saved.fileUpdated || !saved.documentUpdated || (saved.hasText && !saved.contentSynced)) {
+          finalStatus = "failed";
+          ocrError = "OCR text was read but could not be fully saved. Retry the operation; no success was recorded.";
+        }
+      } catch {
+        finalStatus = "failed";
+        ocrError = "OCR text was read but could not be fully saved. Retry the operation; no success was recorded.";
+      }
+    }
 
-      await supabase
+    if (finalStatus === "complete") {
+      const { data: savedJob, error: jobSaveError } = await supabase
         .from("dms_ai_extraction_jobs")
         .update({ status: "completed", completed_at: completedAt, duration_ms: durationMs, model, provider: usedProviderCode })
-        .eq("id", jobId);
+        .eq("id", jobId).select("id").maybeSingle();
+      if (jobSaveError || !savedJob) {
+        finalStatus = "failed";
+        ocrError = "OCR text was saved, but its job status could not be recorded. Retry to synchronize it.";
+      }
+    }
 
+    if (finalStatus === "complete") {
       await insertDocumentEvent(supabase, documentId, fileId, "ocr_completed", ctx.profile.id, {
         provider: usedProviderCode,
         duration_ms: durationMs,
@@ -489,7 +545,7 @@ export async function triggerDmsOcrForFile(
 
 export async function triggerDmsOcrForDocument(
   documentId: number,
-  options?: { forceRetry?: boolean }
+  options?: { forceRetry?: boolean; forceVision?: boolean }
 ): Promise<ActionResult<{ triggered: number; results: { file_id: number; status: OcrStatus; message: string }[] }>> {
   try {
     const supabase = await createClient();
@@ -510,13 +566,14 @@ export async function triggerDmsOcrForDocument(
     let triggered = 0;
 
     for (const file of files) {
-      const result = await triggerDmsOcrForFile({ fileId: file.id as number, forceRetry: options?.forceRetry ?? false });
+      const result = await triggerDmsOcrForFile({ fileId: file.id as number, forceRetry: options?.forceRetry ?? false, forceVision: options?.forceVision ?? false });
       const status = result.data?.status ?? (result.success ? "complete" : "failed");
       results.push({ file_id: file.id as number, status, message: result.data?.message ?? result.error ?? "" });
       if (result.success) triggered++;
     }
 
-    return { success: true, data: { triggered, results } };
+    const failed = results.some(result => result.status === "failed");
+    return { success: !failed, data: { triggered, results }, error: failed ? "Some files could not be processed or saved. Review their OCR status and retry." : undefined };
   } catch (e) {
     return { success: false, error: String(e) };
   }

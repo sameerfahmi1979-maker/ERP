@@ -15,6 +15,7 @@
 
 import { convertPdfPagesToImages, isPdfTextEmpty } from "./pdf-to-images";
 import { logger } from "@/lib/logger";
+import { pdfTextNeedsVisualOcr } from "./pdf-text-quality";
 
 export interface ExtractedImage {
   fileName: string;
@@ -31,6 +32,10 @@ export interface ExtractedContent {
   hasContent: boolean;
   /** Human-readable note about how the content was extracted (for logging). */
   method: string;
+  /** Embedded text exists but must not be trusted as the OCR result. */
+  pdfTextRejected?: boolean;
+  /** Actual PDF page count reported by the renderer, not the capped image count. */
+  pageCount?: number;
 }
 
 const EMPTY: ExtractedContent = { text: "", images: [], hasContent: false, method: "none" };
@@ -125,6 +130,8 @@ export interface ExtractFileContentOptions {
    * falls back to a vision model.
    */
   skipPdfPageRendering?: boolean;
+  /** Explicit user request to ignore the embedded layer and read page images. */
+  forcePdfVision?: boolean;
 }
 
 /**
@@ -153,13 +160,14 @@ export async function extractFileContent(
       text = (parsed.text ?? "").trim();
     } catch { /* fall through to image conversion */ }
 
-    if (!isPdfTextEmpty(text)) {
+    const pdfTextRejected = !!options?.forcePdfVision || pdfTextNeedsVisualOcr(text);
+    if (!isPdfTextEmpty(text) && !pdfTextRejected) {
       return { text, images: [], hasContent: true, method: "pdf-text-layer" };
     }
 
     // No text layer — scanned PDF.
     if (options?.skipPdfPageRendering) {
-      return { text: "", images: [], hasContent: true, method: "pdf-scanned-render-deferred" };
+      return { text: "", images: [], hasContent: true, method: "pdf-scanned-render-deferred", pdfTextRejected };
     }
 
     // Render pages to images for vision
@@ -170,6 +178,8 @@ export async function extractFileContent(
         images: pages.map((p) => ({ fileName: p.fileName, base64: p.base64, mimeType: p.mimeType })),
         hasContent: true,
         method: "pdf-rendered-images",
+        pdfTextRejected,
+        pageCount: pages[0]?.totalPages,
       };
     }
     return { ...EMPTY, method: "pdf-no-content" };

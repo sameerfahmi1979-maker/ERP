@@ -116,7 +116,7 @@ function createDmsAdapter(config: AiProviderConfig): IDmsAiProvider {
  * Returns the best available DMS AI provider.
  * Tries config codes in priority order; falls back to noop.
  */
-export async function getDmsAiProvider(): Promise<{
+export async function getDmsAiProvider(operation: "analysis" | "ocr" = "analysis"): Promise<{
   provider: IDmsAiProvider;
   configCode: string | null;
   configId: number | null;
@@ -127,10 +127,18 @@ export async function getDmsAiProvider(): Promise<{
     // server-side operation — the API key secret_ref is never returned to clients.
     const supabase = createAdminClient();
 
-    const { data, error } = await supabase
+    // Keep classification/extraction selection unchanged. OCR may use its own
+    // model/key, including the historical Azure-named config converted to OpenAI.
+    const priority: readonly string[] = operation === "ocr"
+      ? ["DEFAULT_DMS_OCR", "DEFAULT_ARABIC_OCR", "ARABIC_OCR_AZURE", ...CONFIG_PRIORITY]
+      : CONFIG_PRIORITY;
+    let query = supabase
       .from("erp_ai_provider_configs")
-      .select("*")
-      .in("config_code", CONFIG_PRIORITY)
+      .select("*");
+    query = operation === "ocr"
+      ? query.or(`purpose.eq.ocr,config_code.in.(${priority.join(",")})`)
+      : query.in("config_code", priority);
+    const { data, error } = await query
       .eq("is_active", true)
       .eq("is_enabled", true)
       .is("deleted_at", null)
@@ -145,10 +153,24 @@ export async function getDmsAiProvider(): Promise<{
       (data as Record<string, unknown>[]).map((r) => [r.config_code as string, r])
     );
 
-    for (const code of CONFIG_PRIORITY) {
+    // Custom OCR configurations created in Settings must not silently fall
+    // through to the classifier. Keep named OCR overrides first and analysis
+    // priority unchanged; prefer a default custom OCR config deterministically.
+    const codes = operation === "ocr" ? [
+      ...priority.filter(code => !CONFIG_PRIORITY.includes(code as typeof CONFIG_PRIORITY[number])),
+      ...(data as Record<string, unknown>[])
+        .filter(row => row.purpose === "ocr" && !priority.includes(row.config_code as string))
+        .sort((a, b) => Number(Boolean(b.is_default)) - Number(Boolean(a.is_default)) ||
+          String(a.config_code).localeCompare(String(b.config_code)))
+        .map(row => row.config_code as string),
+      ...CONFIG_PRIORITY,
+    ] : priority;
+
+    for (const code of codes) {
       const row = byCode.get(code);
       if (row) {
         const config = rowToConfig(row as Record<string, unknown>);
+        if (operation === "ocr" && config.providerType !== "openai" && config.providerType !== "azure_openai") continue;
         const provider = createDmsAdapter(config);
         if (provider.isConfigured()) {
           return { provider, configCode: code, configId: config.id };

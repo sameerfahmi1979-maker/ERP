@@ -460,7 +460,7 @@ export async function runPostCommitOcr(
 
             if (featureFlags.dmsOcrRouter) {
               // Phase 10A router path
-              const { provider: gptProvider } = await getDmsAiProvider();
+              const { provider: gptProvider } = await getDmsAiProvider("ocr");
               const { provider: azureAdapter } = await getAzureDocumentIntelligenceProvider();
               const azureProvider = azureAdapter ? new AzureOcrProvider(azureAdapter) : null;
 
@@ -479,7 +479,7 @@ export async function runPostCommitOcr(
               // Legacy path: extractFileContent + GPT-4.1 vision
               const content = await extractFileContent(buffer, fileMime, fileNameResolved);
               if (content.hasContent) {
-                const { provider: aiProvider } = await getDmsAiProvider();
+                const { provider: aiProvider } = await getDmsAiProvider("ocr");
                 if (aiProvider.isConfigured()) {
                   const fallbackOutput = await aiProvider.analyze({
                     ocrText: content.text,
@@ -514,7 +514,7 @@ export async function runPostCommitOcr(
     // Persist OCR result — uses ocrFallbackProviderCode to record actual provider used.
     if (rawOcrText && rawOcrText.trim().length > 0) {
       if (resolvedFileId) {
-        await persistFileOcrResult({
+        const savedOcr = await persistFileOcrResult({
           supabase,
           fileId: resolvedFileId,
           documentId,
@@ -524,6 +524,12 @@ export async function runPostCommitOcr(
           performedBy: userId,
           source: "ai_intake",
         });
+        if (!savedOcr.fileUpdated || !savedOcr.documentUpdated || (savedOcr.hasText && !savedOcr.contentSynced)) {
+          logger.warn("[approve-saga] OCR synchronization incomplete; retry OCR for this document", {
+            documentId, fileId: resolvedFileId, fileUpdated: savedOcr.fileUpdated,
+            documentUpdated: savedOcr.documentUpdated, contentSynced: savedOcr.contentSynced,
+          });
+        }
       } else {
         await writeDocumentContentTextSystem({
           documentId,

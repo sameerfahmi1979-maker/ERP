@@ -11,12 +11,14 @@
 
 import { logger } from "@/lib/logger";
 import path from "path";
+import { pathToFileURL } from "node:url";
 
 export interface PdfPageImage {
   fileName: string;
   base64: string;
   mimeType: "image/png";
   pageNumber: number;
+  totalPages?: number;
 }
 
 /** Scale factor for rendering — 3.0 gives ~216 DPI for sharper small-print (IDs, stamps). */
@@ -44,14 +46,19 @@ export async function convertPdfPagesToImages(
     // In Next.js server-side rendering, pdfjs resolves workerSrc relative to its
     // compiled chunk path (inside .next/), causing a "Cannot find module" error.
     // Using process.cwd() always resolves from the project root.
-    const workerAbsPath = path
-      .resolve(process.cwd(), "node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs")
-      .replace(/\\/g, "/");
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `file:///${workerAbsPath}`;
+    const workerAbsPath = path.resolve(process.cwd(), "node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs");
+    pdfjsLib.GlobalWorkerOptions.workerSrc = pathToFileURL(workerAbsPath).href;
+    const assetDirectory = (name: string) => path.resolve(process.cwd(), "node_modules/pdfjs-dist", name).replace(/\\/g, "/") + "/";
 
     const loadingTask = pdfjsLib.getDocument({
       data: new Uint8Array(buffer),
       disableFontFace: true,
+      // Node has no browser font fallback. Without these local resources,
+      // ordinary Helvetica/Times glyphs can become boxes in the OCR image.
+      standardFontDataUrl: assetDirectory("standard_fonts"),
+      cMapUrl: assetDirectory("cmaps"),
+      cMapPacked: true,
+      wasmUrl: assetDirectory("wasm"),
       // Verbosity 0 = suppress pdfjs console noise
       verbosity: 0,
     });
@@ -68,9 +75,6 @@ export async function convertPdfPagesToImages(
         const height = Math.ceil(viewport.height);
 
         const canvas = createCanvas(width, height);
-        // @napi-rs/canvas context is structurally compatible with pdfjs CanvasRenderingContext2D
-        const context = canvas.getContext("2d");
-
         // pdfjs-dist v6 RenderParameters requires `canvas` (the element itself)
         const renderTask = page.render({
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -87,6 +91,7 @@ export async function convertPdfPagesToImages(
           base64: pngBuffer.toString("base64"),
           mimeType: "image/png",
           pageNumber: pageNum,
+          totalPages: pdf.numPages,
         });
       } catch (pageErr) {
         // Skip individual bad pages rather than failing the whole document

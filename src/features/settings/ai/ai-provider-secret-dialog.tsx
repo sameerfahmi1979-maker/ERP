@@ -8,8 +8,8 @@ import { Input } from "@/components/ui/input";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { ShieldCheck, Eye, EyeOff } from "lucide-react";
 import type { AiProviderConfig } from "@/lib/ai/providers/types";
-import { saveAiProviderSecret } from "@/server/actions/settings/ai-settings";
-import { AI_SECRET_KEYS } from "@/lib/settings/ai-secret-policy";
+import { saveAiProviderSecret, saveAiProviderSecretReference } from "@/server/actions/settings/ai-settings";
+import { AI_SECRET_KEYS, getAiSecretReferenceSuggestion } from "@/lib/settings/ai-secret-policy";
 
 export const ENV_VAR_SUGGESTIONS = AI_SECRET_KEYS;
 
@@ -43,15 +43,14 @@ function SecretSession({
   const [showKey, setShowKey] = useState(false);
   const suggestedRef = ENV_VAR_SUGGESTIONS[config.providerType] ?? "PROVIDER_API_KEY";
 
-  const [secretRef, setSecretRef] = useState(config.secretRef ?? suggestedRef);
+  const [secretRef, setSecretRef] = useState(getAiSecretReferenceSuggestion(config.providerType, config.id, config.secretRef));
   const [secretValue, setSecretValue] = useState("");
   const [errors, setErrors] = useState<{ secretRef?: string; secretValue?: string }>({});
 
   const validate = (): boolean => {
     const errs: { secretRef?: string; secretValue?: string } = {};
     if (!secretRef.trim()) errs.secretRef = "Required";
-    if (!secretValue.trim()) errs.secretValue = "Required";
-    else if (/^https?:\/\//i.test(secretValue.trim())) {
+    if (/^https?:\/\//i.test(secretValue.trim())) {
       errs.secretValue = "This looks like a URL — paste the API key, not the endpoint.";
     }
     setErrors(errs);
@@ -64,11 +63,11 @@ function SecretSession({
     setIsSubmitting(true);
     setSaveError(null);
     try {
-      const result = await saveAiProviderSecret({
+      const result = secretValue.trim() ? await saveAiProviderSecret({
         id: config.id,
         secret_value: secretValue,
         secret_ref: secretRef,
-      });
+      }) : await saveAiProviderSecretReference({ id: config.id, secret_ref: secretRef.trim() });
       if (!alive.current) return;
       terminal.current = true;
       setSubmitted(true);
@@ -98,7 +97,7 @@ function SecretSession({
       open={open}
       onOpenChange={(o) => { if (!o) { try { onClose(); } catch { setSaveError(confirmed ? "The dialog could not close. The key save remains confirmed." : submitted ? "The dialog could not close. The key update remains unconfirmed; do not retry it here." : "The dialog could not close. Your unsent entries remain here."); } } }}
       title={`Update API Key — ${config.providerName}`}
-      subtitle="Use an approved provider key name. Managed deployments require administrator-controlled secret rotation."
+      subtitle="Link an existing deployment key by leaving the key value blank."
       icon={<ShieldCheck className="h-5 w-5 text-violet-500" />}
       mode="edit"
       size="sm"
@@ -151,12 +150,11 @@ function SecretSession({
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="secret_value">
-            API Key <span className="text-destructive">*</span>
+            API Key (optional)
           </Label>
           <div className="relative">
             <Input
               id="secret_value"
-              required
               maxLength={500}
               pattern="(?!https?://).*"
               type={showKey ? "text" : "password"}
@@ -181,7 +179,7 @@ function SecretSession({
           </div>
           {errors.secretValue && <p className="text-xs text-destructive">{errors.secretValue}</p>}
           <p className="text-xs text-muted-foreground">
-            Enter once to generate masked preview. Field is cleared after every attempt.
+            Leave blank to use the existing Railway variable. Enter a new key only for an explicitly enabled server-file rotation. Field is cleared after every attempt.
           </p>
         </div>
       </fieldset>
